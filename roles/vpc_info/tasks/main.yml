@@ -1,0 +1,37 @@
+---
+- name: Ensure information about virtual private clouds is gathered
+  tags:
+    - vpc_info
+  amazon.aws.ec2_vpc_net_info:
+    filters: "{{ vpc_info_filters }}"
+    validate_certs: true
+    vpc_ids: "{{ vpc_info_vpc_ids }}"
+  register: _vpc_list
+
+- name: Ensure information about virtual private clouds is formatted
+  tags:
+    - vpc_info
+  ansible.builtin.set_fact:
+    _vpc_cidr_block: "{{ _vpc_cidr_block |
+                         default({}) |
+                         combine({_name: _cidr_block}) }}"
+    _vpc_dopt: "{{ _vpc_dopt |
+                   default({}) |
+                   combine({_name: _dopt}) }}"
+    _vpc_id: "{{ _vpc_id |
+                 default({}) |
+                 combine({_name: _id}) }}"
+  loop: "{{ _vpc_list.vpcs }}"
+  loop_control:
+    label: "{{ _name }}"
+    loop_var: _vpc
+  vars:
+    _cidr_block: "{{ _vpc.cidr_block }}"
+    _dopt: "{{ _vpc.dhcp_options_id }}"
+    _id: "{{ _vpc.vpc_id }}"
+    _name: "{{ _vpc.tags.Name | default(none) }}"
+  when:
+    - _vpc_list.vpcs is defined
+    - _vpc_list.vpcs | length > 0
+    - _vpc.tags.Name is defined
+...
