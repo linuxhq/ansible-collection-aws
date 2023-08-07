@@ -31,3 +31,8 @@ An example playbook utilizing roles available in this collection
       collections:
         - linuxhq.aws
       connection: local
+      roles:
+        - role: linuxhq.aws.vpc
+          vpcs:
+            - name: molecule
+              cidr_block: 192.168.0.0/24
