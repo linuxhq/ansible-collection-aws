@@ -1,4 +1,4 @@
-# igw
+# internet\_gateway
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
@@ -12,7 +12,7 @@ None
 
 Available variables are listed below, along with default values:
 
-    igws: []
+    internet_gateways: []
 
 ## Dependencies
 
@@ -25,8 +25,8 @@ Available variables are listed below, along with default values:
         - linuxhq.aws
       connection: local
       roles:
-        - role: linuxhq.aws.igw
-          igws:
+        - role: linuxhq.aws.internet_gateway
+          internet_gateways:
             - name: molecule
               vpc_id: "{{ _vpc_id['molecule'] }}"
 

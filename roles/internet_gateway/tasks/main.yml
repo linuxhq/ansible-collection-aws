@@ -1,7 +1,7 @@
 ---
 - name: Ensure virtual private cloud internet gateways are present
   tags:
-    - igw
+    - internet_gateway
   amazon.aws.ec2_vpc_igw:
     purge_tags: "{{ _igw.purge_tags | default(true) }}"
     region: "{{ _igw.region | default(omit) }}"
@@ -9,7 +9,7 @@
     tags: "{{ _igw.tags | default({}) | combine({'Name': _igw.name}) }}"
     validate_certs: true
     vpc_id: "{{ _igw.vpc_id }}"
-  loop: "{{ igws }}"
+  loop: "{{ internet_gateways }}"
   loop_control:
     label: "{{ _igw.name | default(none) }}"
     loop_var: _igw
