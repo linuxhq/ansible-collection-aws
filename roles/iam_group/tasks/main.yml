@@ -1,0 +1,20 @@
+---
+- name: Ensure iam groups are configured
+  tags:
+    - iam_group
+  community.aws.iam_group:
+    managed_policies: "{{ _group.managed_policies | default([]) }}"
+    name: "{{ _group.name }}"
+    purge_policies: "{{ _group.purge_policies | default(false) }}"
+    purge_users: "{{ _group.purge_users | default(false) }}"
+    region: "{{ _group.region | default(omit) }}"
+    state: "{{ _group.state | default('present') }}"
+    users: "{{ _group.users | default([]) }}"
+    validate_certs: true
+  loop: "{{ iam_groups }}"
+  loop_control:
+    label: "{{ _group.name | default(none) }}"
+    loop_var: _group
+  when:
+    - _group.name is defined
+...

@@ -1,0 +1,26 @@
+---
+- name: Ensure iam users are configured
+  tags:
+    - iam_user
+  community.aws.iam_user:
+    managed_policies: "{{ _user.managed_policies | default([]) }}"
+    name: "{{ _user.name }}"
+    password: "{{ _user.password | default(omit) }}"
+    password_reset_required: "{{ _user.password_reset_required | default(false) }}"
+    purge_policies: "{{ _user.purge_policies | default(false) }}"
+    purge_tags: "{{ _user.purge_tags | default(true) }}"
+    region: "{{ _user.region | default(omit) }}"
+    remove_password: "{{ _user.remove_password | default(omit) }}"
+    state: "{{ _user.state | default('present') }}"
+    tags: "{{ _user.tags | default({}) }}"
+    update_password: "{{ _user.update_password | default('always') }}"
+    validate_certs: true
+    wait: "{{ _user.wait | default(true) }}"
+    wait_timeout: "{{ _user.wait_timeout | default(120) }}"
+  loop: "{{ iam_users }}"
+  loop_control:
+    label: "{{ _user.name | default(none) }}"
+    loop_var: _user
+  when:
+    - _user.name is defined
+...
