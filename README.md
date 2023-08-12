@@ -32,7 +32,7 @@ An example playbook utilizing roles available in this collection
         - linuxhq.aws
       connection: local
       vars:
-        aws_network: 192.168.0.0.24
+        aws_network: 192.168.0.0/24
         aws_region: us-west-1
 
       roles:
