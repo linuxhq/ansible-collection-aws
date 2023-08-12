@@ -4,8 +4,8 @@
     - subnet_info
   amazon.aws.ec2_vpc_subnet_info:
     filters: "{{ subnet_info_filters }}"
-    validate_certs: true
     subnet_ids: "{{ subnet_info_subnet_ids }}"
+    validate_certs: true
   register: _subnet_list
 
 - name: Ensure information about subnets is formatted
