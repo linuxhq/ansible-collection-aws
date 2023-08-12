@@ -1,0 +1,27 @@
+---
+- name: Ensure virtual private clouds are present
+  tags:
+    - vpc
+  amazon.aws.ec2_vpc_net:
+    cidr_block: "{{ _vpc.cidr_block }}"
+    dhcp_opts_id: "{{ _vpc.dhcp_opts_id | default(omit) }}"
+    dns_hostnames: "{{ _vpc.dns_hostnames | default(true) }}"
+    dns_support: "{{ _vpc.dns_support | default(true) }}"
+    multi_ok: "{{ _vpc.multi_ok | default(false) }}"
+    name: "{{ _vpc.name }}"
+    purge_cidrs: "{{ _vpc.purge_cidrs | default(false) }}"
+    purge_tags: "{{ _vpc.purge_tags | default(true) }}"
+    region: "{{ _vpc.region | default(omit) }}"
+    state: "{{ _vpc.state | default('present') }}"
+    tags: "{{ _vpc.tags | default({}) }}"
+    tenancy: "{{ _vpc.tenancy | default('default') }}"
+    validate_certs: true
+    vpc_id: "{{ _vpc.vpc_id | default(omit) }}"
+  loop: "{{ vpcs }}"
+  loop_control:
+    label: "{{ _vpc.name | default(none) }}"
+    loop_var: _vpc
+  when:
+    - _vpc.cidr_block is defined
+    - _vpc.name is defined
+...
