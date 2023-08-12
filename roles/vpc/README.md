@@ -20,7 +20,7 @@ None
 
 ## Example Playbook
 
-    - hosts: localhost
+    - hosts: aws
       collections:
         - linuxhq.aws
       connection: local

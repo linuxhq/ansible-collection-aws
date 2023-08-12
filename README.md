@@ -30,3 +30,4 @@ An example playbook utilizing roles available in this collection
     - hosts: aws
       collections:
         - linuxhq.aws
+      connection: local
