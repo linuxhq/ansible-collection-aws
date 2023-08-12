@@ -24,15 +24,15 @@ Available variables are listed below, along with default values:
       collections:
         - linuxhq.aws
       connection: local
+      vars:
+        aws_region: us-west-1
       roles:
         - role: linuxhq.aws.subnet
           subnets:
-            - name: linuxhq-a
-              az: us-west-1a
-              cidr: 192.168.0.0/25
-            - name: linuxhq-b
-              az: us-west-1b
-              cidr: 192.168.0.128/25
+            - name: molecule-a
+              az: "{{ aws_region ~ 'a' }}"
+              cidr: 192.168.0.0/24
+              vpc_id: "{{ _vpc_id['molecule'] }}"
 
 ## License
 
