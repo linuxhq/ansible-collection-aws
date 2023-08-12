@@ -38,16 +38,19 @@ An example playbook utilizing roles available in this collection
           vpcs:
             - name: molecule
               cidr_block: 192.168.0.0/24
+
         - role: linuxhq.aws.internet_gateway
           internet_gateways:
             - name: molecule
           vpc_id: "{{ _vpc_id['molecule'] }}"
+
         - role: linuxhq.aws.subnets
           subnets:
             - name: molecule-a
               az: "{{ aws_region ~ 'a' }}"
               cidr: 192.168.0.0/24
               vpc_id: "{{ _vpc_id['molecule'] }}"
+
         - role: linuxhq.aws.route_table
           route_tables:
             - name: molecule-a
