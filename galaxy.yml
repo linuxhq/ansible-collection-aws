@@ -1,0 +1,23 @@
+---
+authors:
+  - Taylor Kimball (https://github.com/tkimball83)
+build_ignore:
+  - .gitignore
+description: A collection of aws roles
+dependencies:
+  amazon.aws: '*'
+  community.aws: '*'
+documentation: https://github.com/linuxhq/ansible-collection-aws/blob/main/README.md
+homepage: https://www.linuxhq.org
+issues: https://github.com/linuxhq/ansible-collection-aws/issues
+license:
+  - GPL-3.0-or-later
+name: aws
+namespace: linuxhq
+readme: README.md
+repository: https://github.com/linuxhq/ansible-collection-aws
+tags:
+  - cloud
+  - infrastructure
+version: 1.0.0
+...
