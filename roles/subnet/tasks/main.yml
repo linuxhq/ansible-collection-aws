@@ -1,0 +1,26 @@
+---
+- name: Ensure virtual private cloud subnets are present
+  tags:
+    - subnet
+  amazon.aws.ec2_vpc_subnet:
+    assign_instances_ipv6: "{{ _subnet.assign_instances_ipv6 | default(false) }}"
+    az: "{{ _subnet.az }}"
+    cidr: "{{ _subnet.cidr }}"
+    map_public: "{{ _subnet.map_public | default(false) }}"
+    purge_tags: "{{ _subnet.purge_tags | default(true) }}"
+    state: "{{ _subnet.state | default('present') }}"
+    tags: "{{ _subnet.tags | default({}) | combine({'Name': _subnet.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _subnet.vpc_id }}"
+    wait: "{{ _subnet.wait | default(true) }}"
+    wait_timeout: "{{ _subnet.wait_timeout | default(300) }}"
+  loop: "{{ subnets }}"
+  loop_control:
+    label: "{{ _subnet.name | default(none) }}"
+    loop_var: _subnet
+  when:
+    - _subnet.az is defined
+    - _subnet.cidr is defined
+    - _subnet.name is defined
+    - _subnet.vpc_id is defined
+...
