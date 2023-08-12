@@ -32,12 +32,14 @@ An example playbook utilizing roles available in this collection
         - linuxhq.aws
       connection: local
       vars:
+        aws_network: 192.168.0.0.24
         aws_region: us-west-1
+
       roles:
         - role: linuxhq.aws.vpc
           vpcs:
             - name: molecule
-              cidr_block: 192.168.0.0/24
+              cidr_block: "{{ aws_network }}"
 
         - role: linuxhq.aws.internet_gateway
           internet_gateways:
@@ -48,7 +50,7 @@ An example playbook utilizing roles available in this collection
           subnets:
             - name: molecule-a
               az: "{{ aws_region ~ 'a' }}"
-              cidr: 192.168.0.0/24
+              cidr: "{{ aws_network }}"
               vpc_id: "{{ _vpc_id['molecule'] }}"
 
         - role: linuxhq.aws.route_table
