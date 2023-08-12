@@ -1,10 +1,11 @@
 ---
 dependencies:
-  - { role: linuxhq.aws.vpc_info, tags: igw }
+  - { role: linuxhq.aws.subnet_info, tags: route_table }
+  - { role: linuxhq.aws.vpc_info, tags: route_table }
 galaxy_info:
-  role_name: igw
+  role_name: route_table
   author: Taylor Kimball
-  description: Configure internet gateways in aws virtual private clouds
+  description: Configure route tables in aws virtual private clouds
   license: GPLv3
   min_ansible_version: 2.15.0
   platforms:
@@ -17,5 +18,6 @@ galaxy_info:
   galaxy_tags:
     - amazon
     - aws
-    - igw
+    - route
+    - table
 ...
