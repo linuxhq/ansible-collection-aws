@@ -42,7 +42,7 @@ An example playbook utilizing roles available in this collection
         - role: linuxhq.aws.internet_gateway
           internet_gateways:
             - name: molecule
-          vpc_id: "{{ _vpc_id['molecule'] }}"
+              vpc_id: "{{ _vpc_id['molecule'] }}"
 
         - role: linuxhq.aws.subnets
           subnets:
