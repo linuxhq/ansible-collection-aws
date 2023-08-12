@@ -8,6 +8,7 @@
     cidr: "{{ _subnet.cidr }}"
     map_public: "{{ _subnet.map_public | default(false) }}"
     purge_tags: "{{ _subnet.purge_tags | default(true) }}"
+    region: "{{ _subnet.region | default(omit) }}"
     state: "{{ _subnet.state | default('present') }}"
     tags: "{{ _subnet.tags | default({}) | combine({'Name': _subnet.name}) }}"
     validate_certs: true
