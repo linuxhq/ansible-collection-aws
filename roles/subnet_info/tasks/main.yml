@@ -22,8 +22,8 @@
                        default({}) |
                        combine({_name: _az_id}) }}"
     _subnet_cidr_block: "{{ _subnet_cidr_block |
-                           default({}) |
-                           combine({_name: _cidr_block}) }}"
+                            default({}) |
+                            combine({_name: _cidr_block}) }}"
     _subnet_id: "{{ _subnet_id |
                     default({}) |
                     combine({_name: _id}) }}"

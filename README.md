@@ -46,7 +46,7 @@ An example playbook utilizing roles available in this collection
             - name: molecule
               vpc_id: "{{ _vpc_id['molecule'] }}"
 
-        - role: linuxhq.aws.subnets
+        - role: linuxhq.aws.subnet
           subnets:
             - name: molecule-a
               az: "{{ aws_region ~ 'a' }}"
