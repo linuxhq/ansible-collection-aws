@@ -9,10 +9,9 @@
     purge_subnets: "{{ _rtb.purge_subnets | default(true) }}"
     purge_tags: "{{ _rtb.purge_tags | default(true) }}"
     region: "{{ _rtb.region | default(omit) }}"
-    route_table_id: "{{ _rtb.route_table_id | default(omit) }}"
     routes: "{{ _rtb.routes }}"
     state: "{{ _rtb.state | default('present') }}"
-    subnets: "{{ _rtb.subnets }}"
+    subnets: "{{ _rtb.subnets | default(omit) }}"
     tags: "{{ _rtb.tags | default({}) | combine({'Name': _rtb.name}) }}"
     validate_certs: true
     vpc_id: "{{ _rtb.vpc_id }}"
@@ -23,6 +22,6 @@
   when:
     - _rtb.name is defined
     - _rtb.routes is defined
-    - _rtb.subnets is defined
+    - _rtb.routes | length > 0
     - _rtb.vpc_id is defined
 ...
