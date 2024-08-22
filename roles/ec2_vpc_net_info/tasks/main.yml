@@ -13,7 +13,8 @@
     - ec2_vpc_net_info
   ansible.builtin.set_fact:
     _ec2_vpc_net_info_list:
-      "{{ __ec2_vpc_net_info_query.vpcs }}"
+      "{{ __ec2_vpc_net_info_query.vpcs |
+          d([]) }}"
 
 - name: Ensure dictionaries of virtual private cloud information is generated
   tags:

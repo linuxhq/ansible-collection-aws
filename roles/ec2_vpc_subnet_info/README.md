@@ -1,4 +1,4 @@
-# subnet\_info
+# ec2\_vpc\_subnet\_info
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
@@ -12,18 +12,15 @@ None
 
 Available variables are listed below, along with default values:
 
-    subnet_info_filters: {}
-    subnet_info_subnet_ids: []
+    ec2_vpc_subnet_info_filters: {}
+    ec2_vpc_subnet_info_subnet_ids: []
 
 ## Return Values
 
-    _subnet_arn
-    _subnet_az
-    _subnet_az_id
-    _subnet_cidr_block
-    _subnet_id
-    _subnet_list
-    _subnet_vpc_id
+    _ec2_vpc_subnet_info_availability_zone
+    _ec2_vpc_subnet_info_cidr_block
+    _ec2_vpc_subnet_info_subnet_id
+    _ec2_vpc_subnet_info_vpc_id
 
 ## Dependencies
 
@@ -32,11 +29,9 @@ None
 ## Example Playbook
 
     - hosts: aws
-      collections:
-        - linuxhq.aws
       connection: local
       roles:
-        - role: linuxhq.aws.subnet_info
+        - linuxhq.aws.subnet_info
 
 ## License
 
