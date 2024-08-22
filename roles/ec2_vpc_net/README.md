@@ -12,7 +12,7 @@ None
 
 Available variables are listed below, along with default values:
 
-    ec2_vpc_net: []
+    ec2_vpc_net_list: []
 
 ## Return Values
 
@@ -28,7 +28,7 @@ None
       connection: local
       roles:
         - role: linuxhq.aws.ec2_vpc_net
-          ec2_vpc_net:
+          ec2_vpc_net_list:
             - name: molecule
               cidr_block: 192.168.0.0/24
 
