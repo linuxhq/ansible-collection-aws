@@ -1,0 +1,40 @@
+---
+- name: Ensure information about virtual private clouds is gathered
+  tags:
+    - ec2_vpc_net_info
+  amazon.aws.ec2_vpc_net_info:
+    filters: "{{ ec2_vpc_net_info_filters }}"
+    validate_certs: true
+    vpc_ids: "{{ ec2_vpc_net_info_vpc_ids }}"
+  register: __ec2_vpc_net_info_query
+
+- name: Ensure list of virtual private clouds is generated
+  tags:
+    - ec2_vpc_net_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_net_info_list:
+      "{{ __ec2_vpc_net_info_query.vpcs }}"
+
+- name: Ensure dictionaries of virtual private cloud information is generated
+  tags:
+    - ec2_vpc_net_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_net_info_cidr_block:
+      "{{ _ec2_vpc_net_info_cidr_block |
+          default({}) |
+          combine({_vpc.tags.Name: _vpc.cidr_block}) }}"
+    _ec2_vpc_net_info_dhcp_options_id:
+      "{{ _ec2_vpc_net_info_dhcp_options_id |
+          default({}) |
+          combine({_vpc.tags.Name: _vpc.dhcp_options_id}) }}"
+    _ec2_vpc_net_info_id:
+      "{{ _ec2_vpc_net_info_id |
+          default({}) |
+          combine({_vpc.tags.Name: _vpc.id}) }}"
+  loop: "{{ _ec2_vpc_net_info_list }}"
+  loop_control:
+    label: "{{ _vpc.tags.Name | d(none) }}"
+    loop_var: _vpc
+  when:
+    - _vpc.tags.Name is defined
+...
