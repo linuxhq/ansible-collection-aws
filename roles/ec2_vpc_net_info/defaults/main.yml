@@ -1,0 +1,4 @@
+---
+ec2_vpc_net_info_filters: {}
+ec2_vpc_net_info_vpc_ids: []
+...

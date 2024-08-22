@@ -1,8 +1,8 @@
-# vpc
+# ec2\_vpc\_net\_info
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Configure aws virtual private clouds
+Gather information about virtual private clouds
 
 ## Requirements
 
@@ -12,7 +12,15 @@ None
 
 Available variables are listed below, along with default values:
 
-    vpcs: []
+    ec2_vpc_net_info_filters: {}
+    ec2_vpc_net_info_vpc_ids: []
+
+## Return Values
+
+    _ec2_vpc_net_info_cidr_block
+    _ec2_vpc_net_info_dhcp_options_id
+    _ec2_vpc_net_info_id
+    _ec2_vpc_net_info_list
 
 ## Dependencies
 
@@ -21,14 +29,9 @@ None
 ## Example Playbook
 
     - hosts: aws
-      collections:
-        - linuxhq.aws
       connection: local
       roles:
-        - role: linuxhq.aws.vpc
-          vpcs:
-            - name: molecule
-              cidr_block: 192.168.0.0/24
+        - linuxhq.aws.ec2_vpc_net_info
 
 ## License
 

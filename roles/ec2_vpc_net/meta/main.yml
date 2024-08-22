@@ -1,11 +1,12 @@
 ---
 dependencies: []
 galaxy_info:
-  role_name: vpc_info
+  role_name: ec2_vpc_net
   author: Taylor Kimball
-  description: Gather information about virtual private clouds
+  description: Manage aws virtual private clouds
   license: GPLv3
   min_ansible_version: 2.15.0
+  namespace: linuxhq
   platforms:
     - name: GenericLinux
       versions:
@@ -16,6 +17,7 @@ galaxy_info:
   galaxy_tags:
     - amazon
     - aws
-    - info
+    - ec2
+    - net
     - vpc
 ...
