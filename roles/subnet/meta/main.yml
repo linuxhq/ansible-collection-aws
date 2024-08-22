@@ -1,6 +1,6 @@
 ---
 dependencies:
-  - { role: linuxhq.aws.vpc_info, tags: subnet }
+  - { role: linuxhq.aws.ec2_vpc_net_info, tags: subnet }
 galaxy_info:
   role_name: subnet
   author: Taylor Kimball

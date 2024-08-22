@@ -1,6 +1,6 @@
 ---
 dependencies:
-  - { role: linuxhq.aws.vpc_info, tags: internet_gateway }
+  - { role: linuxhq.aws.ec2_vpc_net_info, tags: internet_gateway }
 galaxy_info:
   role_name: internet_gateway
   author: Taylor Kimball
