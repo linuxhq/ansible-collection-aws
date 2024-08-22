@@ -1,0 +1,54 @@
+---
+- name: Ensure information about subnets is gathered
+  tags:
+    - ec2_vpc_subnet_info
+  amazon.aws.ec2_vpc_subnet_info:
+    filters: "{{ ec2_vpc_subnet_info_filters }}"
+    subnet_ids: "{{ ec2_vpc_subnet_info_subnet_ids }}"
+    validate_certs: true
+  register: __ec2_vpc_subnet_info_query
+
+- name: Ensure list of virtual private cloud subnets is generated
+  tags:
+    - ec2_vpc_subnet_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_subnet_info_list:
+      "{{ __ec2_vpc_subnet_info_query.subnets |
+          d([]) }}"
+
+- name: Ensure dictionaries of virtual private cloud subnet information is generated
+  tags:
+    - ec2_vpc_subnet_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_subnet_info_availability_zone:
+      "{{ _ec2_vpc_subnet_info_availability_zone |
+          d({}) |
+          combine({_subnet.tags.Name: _subnet.availability_zone}) }}"
+    _ec2_vpc_subnet_info_availability_zone_id:
+      "{{ _ec2_vpc_subnet_info_availability_zone_id |
+          d({}) |
+          combine({_subnet.tags.Name: _subnet.availability_zone_id}) }}"
+    _ec2_vpc_subnet_info_cidr_block:
+      "{{ _ec2_vpc_subnet_info_cidr_block |
+          d({}) |
+          combine({_subnet.tags.Name: _subnet.cidr_block}) }}"
+    _ec2_vpc_subnet_info_subnet_arn:
+      "{{ _ec2_vpc_subnet_info_subnet_arn |
+          d({}) |
+          combine({_subnet.tags.Name: _subnet.subnet_arn}) }}"
+    _ec2_vpc_subnet_info_subnet_id:
+      "{{ _ec2_vpc_subnet_info_subnet_id |
+          d({}) |
+          combine({_subnet.tags.Name: _subnet.subnet_id}) }}"
+    _ec2_vpc_subnet_info_vpc_id:
+      "{{ _ec2_vpc_subnet_info_vpc_id |
+          d({}) |
+          combine({_subnet.tags.Name: _subnet.vpc_id}) }}"
+  loop: "{{ _ec2_vpc_subnet_info_list }}"
+  loop_control:
+    label: "{{ _subnet.tags.Name | d(none) }}"
+    loop_var: _subnet
+  vars:
+  when:
+    - _subnet.tags.Name is defined
+...

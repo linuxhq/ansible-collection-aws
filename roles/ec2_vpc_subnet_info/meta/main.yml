@@ -1,7 +1,7 @@
 ---
 dependencies: []
 galaxy_info:
-  role_name: subnet_info
+  role_name: ec2_vpc_subnet_info
   author: Taylor Kimball
   description: Gather information about virtual private cloud subnets
   license: GPLv3
@@ -16,6 +16,8 @@ galaxy_info:
   galaxy_tags:
     - amazon
     - aws
+    - ec2
     - info
     - subnet
+    - vpc
 ...
