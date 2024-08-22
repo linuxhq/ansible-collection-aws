@@ -48,7 +48,6 @@
   loop_control:
     label: "{{ _subnet.tags.Name | d(none) }}"
     loop_var: _subnet
-  vars:
   when:
     - _subnet.tags.Name is defined
 ...
