@@ -33,7 +33,7 @@ None
     - hosts: aws
       connection: local
       roles:
-        - linuxhq.aws.subnet_info
+        - linuxhq.aws.ec2_vpc_subnet_info
 
 ## License
 

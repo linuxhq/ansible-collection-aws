@@ -1,8 +1,8 @@
-# subnet
+# ec2\_vpc\_subnet
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Configure subnets in aws virtual private clouds
+Manage aws virtual private cloud subnets
 
 ## Requirements
 
@@ -12,27 +12,27 @@ None
 
 Available variables are listed below, along with default values:
 
-    subnets: []
+    ec2_vpc_subnet_list: []
+
+## Return Values
+
+    _ec2_vpc_subnet_list
 
 ## Dependencies
 
-* [linuxhq.aws.vpc_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/vpc_info)
+* [linuxhq.aws.ec2\_vpc\_net\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/vpc_info)
 
 ## Example Playbook
 
     - hosts: aws
-      collections:
-        - linuxhq.aws
       connection: local
-      vars:
-        aws_region: us-west-1
       roles:
-        - role: linuxhq.aws.subnet
-          subnets:
+        - role: linuxhq.aws.ec2_vpc_subnet
+          ec2_vpc_subnet_list:
             - name: molecule-a
               az: "{{ aws_region ~ 'a' }}"
               cidr: 192.168.0.0/24
-              vpc_id: "{{ _vpc_id['molecule'] }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id['molecule'] }}"
 
 ## License
 

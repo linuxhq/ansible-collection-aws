@@ -1,12 +1,13 @@
 ---
 dependencies:
-  - { role: linuxhq.aws.ec2_vpc_net_info, tags: subnet }
+  - { role: linuxhq.aws.ec2_vpc_net_info, tags: ec2_vpc_subnet }
 galaxy_info:
-  role_name: subnet
+  role_name: ec2_vpc_subnet
   author: Taylor Kimball
-  description: Configure subnets in aws virtual private clouds
+  description: Manage aws virtual private cloud subnets
   license: GPLv3
   min_ansible_version: 2.15.0
+  namespace: linuxhq
   platforms:
     - name: GenericLinux
       versions:
@@ -17,5 +18,7 @@ galaxy_info:
   galaxy_tags:
     - amazon
     - aws
+    - ec2
     - subnet
+    - vpc
 ...
