@@ -5,8 +5,8 @@ build_ignore:
   - .gitignore
 description: A collection of aws roles
 dependencies:
-  amazon.aws: '*'
-  community.aws: '*'
+  amazon.aws: 8.1.0
+  community.aws: 8.0.0
 documentation: https://github.com/linuxhq/ansible-collection-aws/blob/main/README.md
 homepage: https://www.linuxhq.org
 issues: https://github.com/linuxhq/ansible-collection-aws/issues
@@ -19,5 +19,5 @@ repository: https://github.com/linuxhq/ansible-collection-aws
 tags:
   - cloud
   - infrastructure
-version: 1.0.3
+version: 1.0.4
 ...

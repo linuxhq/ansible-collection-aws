@@ -1,10 +1,10 @@
 ---
 dependencies:
-  - { role: linuxhq.aws.ec2_vpc_net_info, tags: internet_gateway }
+  - { role: linuxhq.aws.ec2_vpc_net_info, tags: ec2_vpc_igw }
 galaxy_info:
-  role_name: internet_gateway
+  role_name: ec2_vpc_igw
   author: Taylor Kimball
-  description: Configure internet gateways in aws virtual private clouds
+  description: Manage aws virtual private cloud internet gateways
   license: GPLv3
   min_ansible_version: 2.15.0
   platforms:
@@ -17,6 +17,7 @@ galaxy_info:
   galaxy_tags:
     - amazon
     - aws
-    - gateway
-    - internet
+    - ec2
+    - igw
+    - vpc
 ...
