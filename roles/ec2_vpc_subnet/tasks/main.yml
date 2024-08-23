@@ -20,7 +20,8 @@
     vpc_id: "{{ _subnet.vpc_id }}"
     wait: "{{ _subnet.wait | d(true) }}"
     wait_timeout: "{{ _subnet.wait_timeout | d(300) }}"
-  loop: "{{ subnets }}"
+  register: __ec2_vpc_subnet_results
+  loop: "{{ ec2_vpc_subnet_list }}"
   loop_control:
     label: "{{ _subnet.name | d(none) }}"
     loop_var: _subnet
@@ -28,4 +29,14 @@
     - _subnet.cidr is defined
     - _subnet.name is defined
     - _subnet.vpc_id is defined
+
+- name: Ensure virtual private cloud subnet result list is generated
+  tags:
+    - ec2_vpc_subnet
+  ansible.builtin.set_fact:
+    _ec2_vpc_subnet_list:
+      "{{ __ec2_vpc_subnet_results.results |
+          map(attribute='subnet', default=[]) |
+          list |
+          d([]) }}"
 ...
