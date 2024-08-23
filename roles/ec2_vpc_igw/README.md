@@ -1,8 +1,8 @@
-# internet\_gateway
+# ec2\_vpc\_igw
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Configure internet gateways in aws virtual private clouds
+Manage aws virtual private cloud internet gateways
 
 ## Requirements
 
@@ -12,23 +12,25 @@ None
 
 Available variables are listed below, along with default values:
 
-    internet_gateways: []
+    ec2_vpc_igw_list: []
+
+## Return Values
+
+None
 
 ## Dependencies
 
-* [linuxhq.aws.vpc_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/vpc_info)
+* [linuxhq.aws.ec2\_vpc\_net\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/vpc_info)
 
 ## Example Playbook
 
     - hosts: aws
-      collections:
-        - linuxhq.aws
       connection: local
       roles:
-        - role: linuxhq.aws.internet_gateway
-          internet_gateways:
+        - role: linuxhq.aws.ec2_vpc_igw
+          ec2_vpc_igw_list:
             - name: molecule
-              vpc_id: "{{ _vpc_id['molecule'] }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id['molecule'] }}"
 
 ## License
 
