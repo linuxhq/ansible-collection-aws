@@ -28,37 +28,35 @@ A collection of aws roles
 An example playbook utilizing roles available in this collection
 
     - hosts: aws
-      collections:
-        - linuxhq.aws
       connection: local
       vars:
         aws_network: 192.168.0.0/24
         aws_region: us-west-1
 
       roles:
-        - role: linuxhq.aws.vpc
-          vpcs:
+        - role: linuxhq.aws.ec2_vpc_net
+          ec2_vpc_net_list:
             - name: molecule
               cidr_block: "{{ aws_network }}"
 
-        - role: linuxhq.aws.internet_gateway
-          internet_gateways:
+        - role: linuxhq.aws.ec2_vpc_igw
+          ec2_vpc_igw_list:
             - name: molecule
-              vpc_id: "{{ _vpc_id['molecule'] }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id['molecule'] }}"
 
-        - role: linuxhq.aws.subnet
-          subnets:
+        - role: linuxhq.aws.ec2_vpc_subnet
+          ec2_vpc_subnet_list:
             - name: molecule-a
               az: "{{ aws_region ~ 'a' }}"
               cidr: "{{ aws_network }}"
-              vpc_id: "{{ _vpc_id['molecule'] }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id['molecule'] }}"
 
-        - role: linuxhq.aws.route_table
-          route_tables:
+        - role: linuxhq.aws.ec2_vpc_route_table
+          ec2_vpc_route_table_list:
             - name: molecule-a
               routes:
                 - dest: '0.0.0.0/0'
                   gateway_id: igw
               subnets:
-                - "{{ _subnet_id['molecule-a'] }}"
-              vpc_id: "{{ _vpc_id['molecule'] }}"
+                - "{{ _ec2_vpc_subnet_info_subnet_id['molecule-a'] }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id['molecule'] }}"
