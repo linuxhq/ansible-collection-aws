@@ -1,0 +1,37 @@
+---
+- name: Ensure information about virtual private cloud dhcp options is gathered
+  tags:
+    - ec2_vpc_dhcp_option_info
+  amazon.aws.ec2_vpc_dhcp_option_info:
+    dhcp_options_ids: "{{ ec2_vpc_dhcp_option_info_dhcp_options_ids }}"
+    filters: "{{ ec2_vpc_dhcp_option_info_filters }}"
+    validate_certs: true
+  register: __ec2_vpc_dhcp_option_info_query
+
+- name: Ensure list of virtual private cloud dhcp options is generated
+  tags:
+    - ec2_vpc_dhcp_option_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_dhcp_option_info_list:
+      "{{ __ec2_vpc_dhcp_option_info_query.dhcp_options |
+          d([]) }}"
+
+- name: Ensure dictionaries of virtual private cloud dhcp option information is generated
+  tags:
+    - ec2_vpc_dhcp_option_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_dhcp_option_info_dhcp_configurations:
+      "{{ _ec2_vpc_dhcp_option_info_dhcp_configurations |
+          default({}) |
+          combine({_dopt.tags.Name: _dopt.dhcp_configurations}) }}"
+    _ec2_vpc_dhcp_option_info_dhcp_options_id:
+      "{{ _ec2_vpc_dhcp_option_info_dhcp_options_id |
+          default({}) |
+          combine({_dopt.tags.Name: _dopt.dhcp_options_id}) }}"
+  loop: "{{ _ec2_vpc_dhcp_option_info_list }}"
+  loop_control:
+    label: "{{ _dopt.tags.Name | d(none) }}"
+    loop_var: _dopt
+  when:
+    - _dopt.tags.Name is defined
+...
