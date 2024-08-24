@@ -29,6 +29,12 @@ None
       roles:
         - role: linuxhq.aws.iam_user
           iam_user_list:
+            - name: kopia
+              purge_policies: true
+            - name: linuxhq
+              purge_policies: true
+            - name: molecule
+              purge_policies: true
 
 ## License
 
