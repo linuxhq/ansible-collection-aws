@@ -20,7 +20,7 @@
   register: __ec2_vpc_route_table_results
   loop: "{{ ec2_vpc_route_table_list }}"
   loop_control:
-    label: "{{ _rtb.name | default(none) }}"
+    label: "{{ _rtb.name | d(none) }}"
     loop_var: _rtb
   when:
     - _rtb.name is defined
