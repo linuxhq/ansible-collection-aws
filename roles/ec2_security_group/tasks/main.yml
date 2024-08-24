@@ -1,0 +1,65 @@
+---
+- name: Ensure ec2 security groups are present
+  tags:
+    - ec2_security_group
+  amazon.aws.ec2_security_group:
+    description: "{{ _sg.description | d(_sg.name) }}"
+    name: "{{ _sg.name }}"
+    purge_rules: false
+    purge_rules_egress: false
+    purge_tags: true
+    state: present
+    tags:
+      "{{ _sg.tags |
+          d({}) |
+          combine({'Name': _sg.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _sg.vpc_id }}"
+  loop: "{{ ec2_security_group_list }}"
+  loop_control:
+    label: "{{ _sg.name | d(none) }}"
+    loop_var: _sg
+  when:
+    - _sg.name is defined
+    - _sg.vpc_id is defined
+
+- name: Ensure ec2 security groups are populated
+  tags:
+    - ec2_security_group
+  amazon.aws.ec2_security_group:
+    description: "{{ _sg.description | d(_sg.name) }}"
+    name: "{{ _sg.name }}"
+    purge_rules: true
+    purge_rules_egress: true
+    purge_tags: true
+    rules: "{{ _sg.rules }}"
+    rules_egress: "{{ _sg.rules_egress }}"
+    state: present
+    tags:
+      "{{ _sg.tags |
+          d({}) |
+          combine({'Name': _sg.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _sg.vpc_id }}"
+  register: __ec2_security_group_results
+  loop: "{{ ec2_security_group_list }}"
+  loop_control:
+    label: "{{ _sg.name | d(none) }}"
+    loop_var: _sg
+  when:
+    - _sg.name is defined
+    - _sg.rules is defined
+    - _sg.rules | length > 0
+    - _sg.rules_egress is defined
+    - _sg.rules_egress | length > 0
+    - _sg.vpc_id is defined
+
+- name: Ensure ec2 security group result list is generated
+  tags:
+    - ec2_security_group
+  ansible.builtin.set_fact:
+    _ec2_security_group_list:
+      "{{ __ec2_security_group_results.results |
+          list |
+          d([]) }}"
+...
