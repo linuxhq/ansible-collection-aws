@@ -20,6 +20,7 @@ Available variables are listed below, along with default values:
 
 ## Dependencies
 
+* [linuxhq.aws.ec2\_vpc\_nat\_gateway\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_nat_gateway_info)
 * [linuxhq.aws.ec2\_vpc\_net\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_net_info)
 * [linuxhq.aws.ec2\_vpc\_subnet\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_subnet_info)
 
