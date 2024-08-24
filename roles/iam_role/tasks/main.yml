@@ -1,0 +1,45 @@
+---
+- name: Ensure iam roles are present
+  tags:
+    - iam_role
+  amazon.aws.iam_role:
+    assume_role_policy_document: "{{ _role.assume_role_policy_document }}"
+    boundary: "{{ _role.boundary | d(omit) }}"
+    create_instance_profile: "{{ _role.create_instance_profile | d(true) }}"
+    delete_instance_profile: "{{ _role.delete_instance_profile | d(false) }}"
+    description: "{{ _role.description | d(_role.name) }}"
+    managed_policies: "{{ _role.managed_policies }}"
+    max_session_duration: "{{ _role.max_session_duration | d(omit) }}"
+    name: "{{ _role.name }}"
+    path: "{{ _role.path | d(omit) }}"
+    purge_policies: "{{ _role.purge_policies | d(true) }}"
+    purge_tags: "{{ _role.purge_tags | d(true) }}"
+    state: present
+    tags:
+      "{{ _role.tags |
+          d({}) |
+          combine({'Name': _role.name}) }}"
+    validate_certs: true
+    wait: "{{ _role.wait | d(true) }}"
+    wait_timeout: "{{ _role.wait_timeout | d(120) }}"
+  register: __iam_role_results
+  loop: "{{ iam_role_list }}"
+  loop_control:
+    label: "{{ _role.name | d(none) }}"
+    loop_var: _role
+  when:
+    - _role.assume_role_policy_document is defined
+    - _role.name is defined
+    - _role.managed_policies is defined
+    - _role.managed_policies | length > 0
+
+- name: Ensure iam role results list is generated
+  tags:
+    - iam_role
+  ansible.builtin.set_fact:
+    _iam_role_list:
+      "{{ __iam_role_results.results |
+          map(attribute='iam_role', default=[]) |
+          list |
+          d([]) }}"
+...
