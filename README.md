@@ -34,6 +34,10 @@ An example playbook utilizing roles available in this collection
         aws_region: us-west-1
 
       roles:
+        - linuxhq.aws.aws_az_info
+        - linuxhq.aws.aws_caller_info
+        - linuxhq.aws.aws_region_info
+
         - role: linuxhq.aws.ec2_vpc_net
           ec2_vpc_net_list:
             - name: molecule
@@ -47,7 +51,7 @@ An example playbook utilizing roles available in this collection
         - role: linuxhq.aws.ec2_vpc_subnet
           ec2_vpc_subnet_list:
             - name: molecule-a
-              az: "{{ aws_region ~ 'a' }}"
+              az: "{{ aws_region ~ _aws_az_info_list_s.0 }}"
               cidr: "{{ aws_network }}"
               vpc_id: "{{ _ec2_vpc_net_info_id['molecule'] }}"
 
@@ -58,5 +62,5 @@ An example playbook utilizing roles available in this collection
                 - dest: '0.0.0.0/0'
                   gateway_id: igw
               subnets:
-                - "{{ _ec2_vpc_subnet_info_subnet_id['molecule-a'] }}"
+                - "{{ _ec2_vpc_subnet_info_subnet_id['molecule-' ~ _aws_az_info_list_s.0] }}"
               vpc_id: "{{ _ec2_vpc_net_info_id['molecule'] }}"
