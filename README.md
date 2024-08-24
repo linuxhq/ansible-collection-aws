@@ -44,6 +44,14 @@ An example playbook to build a vpc across three availability zones
             - name: "{{ aws_vpc }}"
               cidr_block: "{{ aws_network }}"
 
+        - role: linuxhq.aws.ec2_vpc_dhcp_option
+          ec2_vpc_dhcp_option_list:
+            - name: "{{ aws_vpc }}"
+              dns_servers:
+                - 1.1.1.1
+                - 1.1.1.2
+              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+
         - role: linuxhq.aws.ec2_vpc_igw
           ec2_vpc_igw_list:
             - name: "{{ aws_vpc }}"
