@@ -1,0 +1,37 @@
+---
+- name: Ensure iam managed policies are present
+  tags:
+    - iam_managed_policy
+  amazon.aws.iam_managed_policy:
+    description: "{{ _policy.description | d(_policy.name) }}"
+    make_default: "{{ _policy.make_default | d(true) }}"
+    name: "{{ _policy.name }}"
+    only_version: "{{ _policy.only_version | d(false) }}"
+    path: "{{ _policy.path | d(omit) }}"
+    policy: "{{ _policy.policy | to_json }}"
+    state: present
+    tags:
+      "{{ _policy.tags |
+          d({}) |
+          combine({'Name': _policy.name}) }}"
+    validate_certs: true
+  register: __iam_managed_policy_results
+  loop: "{{ iam_managed_policy_list }}"
+  loop_control:
+    label: "{{ _policy.name | d(none) }}"
+    loop_var: _policy
+  when:
+    - _policy.name is defined
+    - _policy.policy is defined
+    - _policy.policy | length > 0
+
+- name: Ensure iam managed policies results list is generated
+  tags:
+    - iam_managed_policy
+  ansible.builtin.set_fact:
+    _iam_managed_policy_list:
+      "{{ __iam_managed_policy_results.results |
+          map(attribute='policy', default=[]) |
+          list |
+          d([]) }}"
+...

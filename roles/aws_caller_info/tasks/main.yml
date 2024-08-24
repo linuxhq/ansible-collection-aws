@@ -1,0 +1,19 @@
+---
+- name: Ensure information about user and account is gathered
+  tags:
+    - always
+    - aws_caller_info
+  amazon.aws.aws_caller_info:
+    validate_certs: true
+  register: __aws_caller_info_query
+
+- name: Ensure strings of user and caller information is generated
+  tags:
+    - always
+    - aws_caller_info
+  ansible.builtin.set_fact:
+    _aws_caller_info_account: "{{ __aws_caller_info_query.account }}"
+    _aws_caller_info_account_alias: "{{ __aws_caller_info_query.account_alias }}"
+    _aws_caller_info_arn: "{{ __aws_caller_info_query.arn }}"
+    _aws_caller_info_user_id: "{{ __aws_caller_info_query.user_id }}"
+...

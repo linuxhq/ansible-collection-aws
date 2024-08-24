@@ -1,0 +1,33 @@
+---
+- name: Ensure information about regions is gathered
+  tags:
+    - always
+    - aws_region_info
+  amazon.aws.aws_region_info:
+    filters: "{{ aws_region_info_filters }}"
+    validate_certs: true
+  register: __aws_region_info_query
+
+- name: Ensure list of aws regions is generated
+  tags:
+    - aws_region_info
+  ansible.builtin.set_fact:
+    _aws_region_info_list:
+      "{{ __aws_region_info_query.regions }}"
+
+- name: Ensure dictionaries of aws regions is generated
+  tags:
+    - always
+    - aws_region_info
+  ansible.builtin.set_fact:
+    _aws_region_info_endpoint:
+      "{{ _aws_region_info_endpoint |
+          d({}) |
+          combine({_region.region_name: _region.endpoint}) }}"
+  loop: "{{ _aws_region_info_list }}"
+  loop_control:
+    label: "{{ _region.region_name | d(none) }}"
+    loop_var: _region
+  when:
+    - _region.region_name is defined
+...
