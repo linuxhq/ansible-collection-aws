@@ -123,3 +123,30 @@ An example playbook to build a vpc across three availability zones
               subnets:
                 - "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2] }}"
               vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+
+            - name: "{{ aws_vpc }}-pvt-{{ _aws_az_info_list_s.0 }}"
+              routes:
+                - dest: '0.0.0.0/0'
+                  gateway_id:
+                    "{{ _ec2_vpc_nat_gateway_info_nat_gateway_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0] }}"
+              subnets:
+                - "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0] }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+
+            - name: "{{ aws_vpc }}-pvt-{{ _aws_az_info_list_s.1 }}"
+              routes:
+                - dest: '0.0.0.0/0'
+                  gateway_id:
+                    "{{ _ec2_vpc_nat_gateway_info_nat_gateway_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1] }}"
+              subnets:
+                - "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1] }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+
+            - name: "{{ aws_vpc }}-pvt-{{ _aws_az_info_list_s.2 }}"
+              routes:
+                - dest: '0.0.0.0/0'
+                  gateway_id:
+                    "{{ _ec2_vpc_nat_gateway_info_nat_gateway_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2] }}"
+              subnets:
+                - "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2] }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
