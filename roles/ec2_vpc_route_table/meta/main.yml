@@ -1,13 +1,14 @@
 ---
 dependencies:
-  - { role: linuxhq.aws.ec2_vpc_net_info, tags: route_table }
-  - { role: linuxhq.aws.ec2_vpc_subnet_info, tags: route_table }
+  - { role: linuxhq.aws.ec2_vpc_subnet_info, tags: ec2_vpc_route_table }
+  - { role: linuxhq.aws.ec2_vpc_net_info, tags: ec2_vpc_route_table }
 galaxy_info:
-  role_name: route_table
+  role_name: ec2_vpc_route_table
   author: Taylor Kimball
-  description: Configure route tables in aws virtual private clouds
+  description: Manage aws virtual private cloud route tables
   license: GPLv3
   min_ansible_version: 2.15.0
+  namespace: linuxhq
   platforms:
     - name: GenericLinux
       versions:
@@ -18,6 +19,8 @@ galaxy_info:
   galaxy_tags:
     - amazon
     - aws
+    - ec2
     - route
     - table
+    - vpc
 ...
