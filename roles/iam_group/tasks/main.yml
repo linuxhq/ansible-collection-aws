@@ -1,0 +1,31 @@
+---
+- name: Ensure iam groups are present
+  tags:
+    - iam_group
+  amazon.aws.iam_group:
+    managed_policies: "{{ _group.managed_policies | d([]) }}"
+    name: "{{ _group.name }}"
+    path: "{{ _group.path | d(omit) }}"
+    purge_policies: "{{ _group.purge_policies | d(false) }}"
+    purge_users: "{{ _group.purge_policies | d(false) }}"
+    state: present
+    users: "{{ _group.users | d([]) }}"
+    validate_certs: true
+  register: __iam_group_results
+  loop: "{{ iam_group_list }}"
+  loop_control:
+    label: "{{ _group.name | d(none) }}"
+    loop_var: _group
+  when:
+    - _group.name is defined
+
+- name: Ensure iam group results list is generated
+  tags:
+    - iam_group
+  ansible.builtin.set_fact:
+    _iam_group_list:
+      "{{ __iam_group_results.results |
+          map(attribute='iam_group', default=[]) |
+          list |
+          d([]) }}"
+...
