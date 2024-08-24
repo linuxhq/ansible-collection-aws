@@ -1,0 +1,40 @@
+---
+- name: Ensure virtual private cloud route tables are present
+  tags:
+    - ec2_vpc_route_table
+  amazon.aws.ec2_vpc_route_table:
+    gateway_id: "{{ _rtb.gateway_id | d(omit) }}"
+    propagating_vgw_ids: "{{ _rtb.propagating_vgw_ids | d([]) }}"
+    purge_routes: "{{ _rtb.purge_routes | d(true) }}"
+    purge_subnets: "{{ _rtb.purge_subnets | d(true) }}"
+    purge_tags: "{{ _rtb.purge_tags | d(true) }}"
+    routes: "{{ _rtb.routes }}"
+    state: present
+    subnets: "{{ _rtb.subnets }}"
+    tags:
+      "{{ _rtb.tags |
+          d({}) |
+          combine({'Name': _rtb.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _rtb.vpc_id }}"
+  register: __ec2_vpc_route_table_results
+  loop: "{{ ec2_vpc_route_table_list }}"
+  loop_control:
+    label: "{{ _rtb.name | default(none) }}"
+    loop_var: _rtb
+  when:
+    - _rtb.name is defined
+    - _rtb.routes is defined
+    - _rtb.subnets is defined
+    - _rtb.vpc_id is defined
+
+- name: Ensure virtual private cloud route tables results list is generated
+  tags:
+    - ec2_vpc_route_table
+  ansible.builtin.set_fact:
+    _ec2_vpc_route_table_list:
+      "{{ __ec2_vpc_route_table_results.results |
+          map(attribute='route_table', default=[]) |
+          list |
+          d([]) }}"
+...

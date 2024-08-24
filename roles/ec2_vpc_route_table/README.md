@@ -1,8 +1,8 @@
-# route\_table
+# ec2\_vpc\_route\_table
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Configure route tables in aws virtual private clouds
+Manage aws virtual private cloud route tables
 
 ## Requirements
 
@@ -12,29 +12,31 @@ None
 
 Available variables are listed below, along with default values:
 
-    route_tables: []
+    ec2_vpc_route_table_list: []
+
+## Return Values
+
+    _ec2_vpc_route_table_list
 
 ## Dependencies
 
-* [linuxhq.aws.subnet_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/subnet_info)
-* [linuxhq.aws.vpc_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/vpc_info)
+* [linuxhq.aws.ec2\_vpc\_net\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_net_info)
+* [linuxhq.aws.ec2\_vpc\_subnet\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_subnet_info)
 
 ## Example Playbook
 
     - hosts: aws
-      collections:
-        - linuxhq.aws
       connection: local
       roles:
-        - role: linuxhq.aws.route_table
-          route_tables:
+        - role: linuxhq.aws.ec2_vpc_route_table
+          ec2_vpc_route_table_list:
             - name: molecule-a
               routes:
                 - dest: '0.0.0.0/0'
                   gateway_id: igw
               subnets:
-                - "{{ _subnet_id['molecule-a'] }}"
-              vpc_id: "{{ _vpc_id['molecule'] }}"
+                - "{{ _ec2_vpc_subnet_info_subnet_id['molecule-a'] }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id['molecule'] }}"
 
 ## License
 
