@@ -46,7 +46,7 @@ An example playbook utilizing roles available in this collection
 
         - role: linuxhq.aws.ec2_vpc_igw
           ec2_vpc_igw_list:
-            - name: molecule
+            - name: "{{ aws_vpc }}"
               vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
 
         - role: linuxhq.aws.ec2_vpc_subnet
