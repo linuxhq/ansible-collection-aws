@@ -31,8 +31,8 @@ An example playbook to build a vpc across three availability zones
       connection: local
       vars:
         aws_network: 192.168.0.0/24
-        aws_region: us-west-1
-        aws_vpc: molecule
+        aws_region: us-west-2
+        aws_vpc: linuxhq
 
       roles:
         - linuxhq.aws.aws_az_info
