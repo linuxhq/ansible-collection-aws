@@ -81,6 +81,23 @@ An example playbook to build a vpc across three availability zones
               cidr: "{{ aws_network | ansible.utils.ipsubnet(27, 5) }}"
               vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
 
+        - role: linuxhq.aws.ec2_vpc_nat_gateway
+          ec2_vpc_nat_gateway_list:
+            - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.0 }}"
+              if_exist_do_not_create: true
+              subnet_id: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0] }}"
+              wait: true
+
+            - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.1 }}"
+              if_exist_do_not_create: true
+              subnet_id: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1] }}"
+              wait: true
+
+            - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.2 }}"
+              if_exist_do_not_create: true
+              subnet_id: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2] }}"
+              wait: true
+
         - role: linuxhq.aws.ec2_vpc_route_table
           ec2_vpc_route_table_list:
             - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.0 }}"
