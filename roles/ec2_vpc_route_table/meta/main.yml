@@ -1,5 +1,6 @@
 ---
 dependencies:
+  - { role: linuxhq.aws.ec2_vpc_nat_gateway_info, tags: ec2_vpc_route_table }
   - { role: linuxhq.aws.ec2_vpc_subnet_info, tags: ec2_vpc_route_table }
   - { role: linuxhq.aws.ec2_vpc_net_info, tags: ec2_vpc_route_table }
 galaxy_info:
