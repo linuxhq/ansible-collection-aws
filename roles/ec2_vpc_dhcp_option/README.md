@@ -28,6 +28,11 @@ Available variables are listed below, along with default values:
       connection: local
       roles:
         - role: linuxhq.aws.ec2_vpc_dhcp_option
+          ec2_vpc_dhcp_option_list:
+            - name: linuxhq
+              dns_servers:
+                - 1.1.1.1
+                - 1.1.1.2
 
 ## License
 
