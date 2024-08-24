@@ -25,7 +25,7 @@ A collection of aws roles
 
 # Playbook
 
-An example playbook utilizing roles available in this collection
+An example playbook to build a vpc across three availability zones
 
     - hosts: aws
       connection: local
@@ -51,17 +51,58 @@ An example playbook utilizing roles available in this collection
 
         - role: linuxhq.aws.ec2_vpc_subnet
           ec2_vpc_subnet_list:
-            - name: "{{ aws_vpc }}-{{ _aws_az_info_list_s.0 }}"
+            - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.0 }}"
               az: "{{ aws_region ~ _aws_az_info_list_s.0 }}"
-              cidr: "{{ aws_network }}"
+              cidr: "{{ aws_network | ansible.utils.ipsubnet(27, 0) }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+
+            - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.1 }}"
+              az: "{{ aws_region ~ _aws_az_info_list_s.1 }}"
+              cidr: "{{ aws_network | ansible.utils.ipsubnet(27, 1) }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+
+            - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.2 }}"
+              az: "{{ aws_region ~ _aws_az_info_list_s.2 }}"
+              cidr: "{{ aws_network | ansible.utils.ipsubnet(27, 2) }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+
+            - name: "{{ aws_vpc }}-pvt-{{ _aws_az_info_list_s.0 }}"
+              az: "{{ aws_region ~ _aws_az_info_list_s.0 }}"
+              cidr: "{{ aws_network | ansible.utils.ipsubnet(27, 3) }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+
+            - name: "{{ aws_vpc }}-pvt-{{ _aws_az_info_list_s.1 }}"
+              az: "{{ aws_region ~ _aws_az_info_list_s.1 }}"
+              cidr: "{{ aws_network | ansible.utils.ipsubnet(27, 4) }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+
+            - name: "{{ aws_vpc }}-pvt-{{ _aws_az_info_list_s.2 }}"
+              az: "{{ aws_region ~ _aws_az_info_list_s.2 }}"
+              cidr: "{{ aws_network | ansible.utils.ipsubnet(27, 5) }}"
               vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
 
         - role: linuxhq.aws.ec2_vpc_route_table
           ec2_vpc_route_table_list:
-            - name: "{{ aws_vpc }}-{{ _aws_az_info_list_s.0 }}"
+            - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.0 }}"
               routes:
                 - dest: '0.0.0.0/0'
                   gateway_id: igw
               subnets:
-                - "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-' ~ _aws_az_info_list_s.0] }}"
+                - "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0] }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+
+            - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.1 }}"
+              routes:
+                - dest: '0.0.0.0/0'
+                  gateway_id: igw
+              subnets:
+                - "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1] }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+
+            - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.2 }}"
+              routes:
+                - dest: '0.0.0.0/0'
+                  gateway_id: igw
+              subnets:
+                - "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2] }}"
               vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
