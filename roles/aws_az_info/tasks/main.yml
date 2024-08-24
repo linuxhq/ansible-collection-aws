@@ -1,0 +1,55 @@
+---
+- name: Ensure information about availability zones is gathered
+  tags:
+    - always
+    - aws_az_info
+  amazon.aws.aws_az_info:
+    filters: "{{ aws_az_info_filters }}"
+    validate_certs: true
+  register: __aws_az_info_query
+
+- name: Ensure list of aws availability zones is generated
+  tags:
+    - always
+    - aws_az_info
+  ansible.builtin.set_fact:
+    _aws_az_info_list:
+      "{{ __aws_az_info_query.availability_zones |
+          d([]) }}"
+
+- name: Ensure lists of aws availability zone names is generated
+  tags:
+    - always
+    - aws_az_info
+  ansible.builtin.set_fact:
+    _aws_az_info_list_l:
+      "{{ _aws_az_info_list_l |
+          d([]) +
+          [_az.zone_name] }}"
+    _aws_az_info_list_s:
+      "{{ _aws_az_info_list_s |
+          d([]) +
+          [_az.zone_name[-1]] }}"
+  loop: "{{ _aws_az_info_list }}"
+  loop_control:
+    label: "{{ _az.zone_name }}"
+    loop_var: _az
+  when:
+    - _az.zone_name is defined
+
+- name: Ensure dictionaries of aws availability zones is generated
+  tags:
+    - always
+    - aws_az_info
+  ansible.builtin.set_fact:
+    _aws_az_info_zone_id:
+      "{{ _aws_az_info_zone_id |
+          d({}) |
+          combine({_az.zone_name: _az.zone_id}) }}"
+  loop: "{{ _aws_az_info_list }}"
+  loop_control:
+    label: "{{ _az.zone_name | d(none) }}"
+    loop_var: _az
+  when:
+    - _az.zone_name is defined
+...
