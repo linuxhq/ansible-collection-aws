@@ -1,10 +1,9 @@
 ---
-allow_duplicates: true
 dependencies: []
 galaxy_info:
-  role_name: ec2_vpc_subnet_info
+  role_name: iam_user
   author: Taylor Kimball
-  description: Gather information about virtual private cloud subnets
+  description: Manage aws iam users
   license: GPLv3
   min_ansible_version: 2.15.0
   namespace: linuxhq
@@ -18,8 +17,6 @@ galaxy_info:
   galaxy_tags:
     - amazon
     - aws
-    - ec2
-    - info
-    - subnet
-    - vpc
+    - iam
+    - user
 ...

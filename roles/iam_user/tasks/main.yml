@@ -1,0 +1,23 @@
+---
+- name: Ensure virtual private cloud internet gateways are present
+  tags:
+    - ec2_vpc_igw
+  amazon.aws.ec2_vpc_igw:
+    detach_vpc: "{{ _igw.detach_vpc | d(omit) }}"
+    force_attach: "{{ _igw.force_attach | d(omit) }}"
+    purge_tags: "{{ _igw.purge_tags | d(true) }}"
+    state: present
+    tags:
+      "{{ _igw.tags |
+          d({}) |
+          combine({'Name': _igw.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _igw.vpc_id }}"
+  loop: "{{ ec2_vpc_igw_list }}"
+  loop_control:
+    label: "{{ _igw.name | d(none) }}"
+    loop_var: _igw
+  when:
+    - _igw.name is defined
+    - _igw.vpc_id is defined
+...
