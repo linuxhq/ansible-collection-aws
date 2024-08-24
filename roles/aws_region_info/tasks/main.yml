@@ -10,10 +10,12 @@
 
 - name: Ensure list of aws regions is generated
   tags:
+    - always
     - aws_region_info
   ansible.builtin.set_fact:
     _aws_region_info_list:
-      "{{ __aws_region_info_query.regions }}"
+      "{{ __aws_region_info_query.regions |
+          d([]) }}"
 
 - name: Ensure dictionaries of aws regions is generated
   tags:
