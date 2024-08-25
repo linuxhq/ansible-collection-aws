@@ -15,14 +15,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Ensure ansible package is present
-        run: sudo apt-get install -y ansible
-
-      - name: Ensure ansible galaxy requirements are present
-        run: ansible-galaxy install -r requirements.yml
-
       - name: Ensure ansible-lint-action is present
         uses: ansible/ansible-lint@v24
+        env:
+          ANSIBLE_COLLECTIONS_PATH=./collections
 
   yamllint:
     name: yamllint
