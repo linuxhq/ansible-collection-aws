@@ -21,6 +21,7 @@ Available variables are listed below, along with default values:
 
     _efs_info_file_system_id
     _efs_info_filesystem_address
+    _efs_info_list
     _efs_info_mount_point
     _efs_info_mount_targets
 

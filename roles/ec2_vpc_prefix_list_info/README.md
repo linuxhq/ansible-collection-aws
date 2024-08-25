@@ -1,8 +1,8 @@
-# ec2\_security\_group\_info
+# ec2\_vpc\_prefix\_list\_info
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Gather information about ec2 security groups
+Gather information about virtual private cloud prefix lists
 
 ## Requirements
 
@@ -10,18 +10,13 @@ None
 
 ## Role Variables
 
-Available variables are listed below, along with default values:
-
-    ec2_security_group_info_filters: {}
+None
 
 ## Return Values
 
-    _ec2_security_group_info_group_id
-    _ec2_security_group_info_group_name
-    _ec2_security_group_info_ip_permissions
-    _ec2_security_group_info_ip_permissions_egress
-    _ec2_security_group_info_list
-    _ec2_security_group_info_vpc_id
+    _ec2_vpc_prefix_list_info_cidrs
+    _ec2_vpc_prefix_list_info_list
+    _ec2_vpc_prefix_list_info_prefix_list_id
 
 ## Dependencies
 
@@ -32,7 +27,7 @@ None
     - hosts: aws
       connection: local
       roles:
-        - linuxhq.aws.ec2_security_group_info
+        - linuxhq.aws.ec2_vpc_prefix_list_info
 
 ## License
 

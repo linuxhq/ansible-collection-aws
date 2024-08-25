@@ -19,6 +19,7 @@ Available variables are listed below, along with default values:
 
     _ec2_vpc_dhcp_option_info_dhcp_configurations
     _ec2_vpc_dhcp_option_info_dhcp_options_id
+    _ec2_vpc_dhcp_option_info_list
 
 ## Dependencies
 

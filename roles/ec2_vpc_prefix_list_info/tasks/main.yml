@@ -1,0 +1,40 @@
+---
+- name: Ensure information about virtual private cloud prefix lists is gathered
+  tags:
+    - ec2_vpc_prefix_list_info
+  ansible.builtin.command:
+    cmd: >
+      aws ec2 describe-prefix-lists
+             --query 'PrefixLists'
+  register: __ec2_vpc_prefix_list_info_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of virtual private cloud prefix lists is generated
+  tags:
+    - ec2_vpc_prefix_list_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_prefix_list_info_list:
+      "{{ (__ec2_vpc_prefix_list_info_query.stdout |
+          from_json) |
+          d([]) }}"
+
+- name: Ensure dictionaries of virtual private cloud prefix list information is generated
+  tags:
+    - ec2_vpc_prefix_list_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_prefix_list_info_cidrs:
+      "{{ _ec2_vpc_prefix_list_info_cidrs |
+          default({}) |
+          combine({_pl.PrefixListName: _pl.Cidrs}) }}"
+    _ec2_vpc_prefix_list_info_prefix_list_id:
+      "{{ _ec2_vpc_prefix_list_info_prefix_list_id |
+          default({}) |
+          combine({_pl.PrefixListName: _pl.PrefixListId}) }}"
+  loop: "{{ _ec2_vpc_prefix_list_info_list }}"
+  loop_control:
+    label: "{{ _pl.PrefixListName | d(none) }}"
+    loop_var: _pl
+  when:
+    - _pl.PrefixListName is defined
+...
