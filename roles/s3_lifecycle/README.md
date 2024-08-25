@@ -1,8 +1,8 @@
-# s3\_bucket
+# s3\_lifecycle
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Manage aws simple storage service buckets
+Manage aws simple storage service bucket lifecycle rules
 
 ## Requirements
 
@@ -12,11 +12,11 @@ None
 
 Available variables are listed below, along with default values:
 
-    s3_bucket_list: []
+    s3_lifecycle_list: []
 
 ## Return Values
 
-    _s3_bucket_list
+    _s3_lifecycle_list
 
 ## Dependencies
 
@@ -27,27 +27,25 @@ None
     - hosts: aws
       connection: local
       roles:
-        - role: linuxhq.aws.s3_bucket
-          s3_bucket_list:
+        - role: linuxhq.aws.s3_lifecycle
+          s3_lifecycle_list:
             - name: "{{ _aws_caller_info_account }}-{{ aws_region }}-linuxhq-backups"
-              accelerate_enabled: true
-              policy:
-                Version: '2012-10-17'
-                Statement:
-                  - Effect: Deny
-                    Action: s3:*
-                    Principal: '*'
-                    Resource:
-                      - "arn:aws:s3:::{{ _aws_caller_info_account }}-{{ aws_region }}-linuxhq-backups"
-                      - "arn:aws:s3:::{{ _aws_caller_info_account }}-{{ aws_region }}-linuxhq-backups/*"
-                    Condition:
-                      Bool:
-                        'aws:SecureTransport': false
-              public_access:
-                block_public_acls: true
-                block_public_policy: true
-                ignore_public_acls: true
-                restrict_public_buckets: true
+              rules:
+                - rule_id: linuxhq-30d-glacier
+                  transition_days: 30
+                  prefix: 30d/
+                  status: enabled
+                  storage_class: glacier
+                - rule_id: linuxhq-90d-glacier
+                  transition_days: 90
+                  prefix: 90d/
+                  status: enabled
+                  storage_class: glacier
+                - rule_id: linuxhq-365d-glacier
+                  transition_days: 365
+                  prefix: 365d/
+                  status: enabled
+                  storage_class: glacier
 
 ## License
 
