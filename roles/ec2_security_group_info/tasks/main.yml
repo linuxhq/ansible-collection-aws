@@ -1,0 +1,48 @@
+---
+- name: Ensure information about ec2 security groups is gathered
+  tags:
+    - ec2_security_group_info
+  amazon.aws.ec2_security_group_info:
+    filters: "{{ ec2_security_group_info_filters }}"
+    validate_certs: true
+  register: __ec2_security_group_info_query
+
+- name: Ensure list of virtual private clouds is generated
+  tags:
+    - ec2_security_group_info
+  ansible.builtin.set_fact:
+    _ec2_security_group_info_list:
+      "{{ __ec2_security_group_info_query.security_groups |
+          d([]) }}"
+
+- name: Ensure dictionaries of virtual private cloud information is generated
+  tags:
+    - ec2_security_group_info
+  ansible.builtin.set_fact:
+    _ec2_security_group_info_group_id:
+      "{{ _ec2_security_group_info_group_id |
+          default({}) |
+          combine({_sg.tags.Name: _sg.group_id}) }}"
+    _ec2_security_group_info_group_name:
+      "{{ _ec2_security_group_info_group_name |
+          default({}) |
+          combine({_sg.tags.Name: _sg.group_name}) }}"
+    _ec2_security_group_info_ip_permissions:
+      "{{ _ec2_security_group_info_ip_permissions |
+          default({}) |
+          combine({_sg.tags.Name: _sg.ip_permissions}) }}"
+    _ec2_security_group_info_ip_permissions_egress:
+      "{{ _ec2_security_group_info_ip_permissions_egress |
+          default({}) |
+          combine({_sg.tags.Name: _sg.ip_permissions_egress}) }}"
+    _ec2_security_group_info_vpc_id:
+      "{{ _ec2_security_group_info_vpc_id |
+          default({}) |
+          combine({_sg.tags.Name: _sg.vpc_id}) }}"
+  loop: "{{ _ec2_security_group_info_list }}"
+  loop_control:
+    label: "{{ _sg.tags.Name | d(none) }}"
+    loop_var: _sg
+  when:
+    - _sg.tags.Name is defined
+...
