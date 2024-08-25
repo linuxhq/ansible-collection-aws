@@ -19,6 +19,7 @@ Available variables are listed below, along with default values:
 
     _ec2_vpc_nat_gateway_info_allocation_id
     _ec2_vpc_nat_gateway_info_association_id
+    _ec2_vpc_nat_gateway_info_list
     _ec2_vpc_nat_gateway_info_nat_gateway_id
     _ec2_vpc_nat_gateway_info_network_interface_id
     _ec2_vpc_nat_gateway_info_private_ip

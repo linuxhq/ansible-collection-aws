@@ -17,6 +17,7 @@ Available variables are listed below, along with default values:
 ## Return Values
 
     _ec2_vpc_route_table_info_associations
+    _ec2_vpc_route_table_info_list
     _ec2_vpc_route_table_info_propagating_vgws
     _ec2_vpc_route_table_info_route_table_id
     _ec2_vpc_route_table_info_routes
