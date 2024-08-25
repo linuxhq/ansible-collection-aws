@@ -1,6 +1,7 @@
 ---
 dependencies:
-  - { role: linuxhq.aws.ec2_vpc_dhcp_option_info, tags: ec2_vpc_net }
+  - role: linuxhq.aws.ec2_vpc_dhcp_option_info
+    tags: ec2_vpc_net
 galaxy_info:
   role_name: ec2_vpc_net
   author: Taylor Kimball
