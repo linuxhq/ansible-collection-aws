@@ -1,0 +1,48 @@
+---
+- name: Ensure information about virtual private cloud route tables is gathered
+  tags:
+    - ec2_vpc_route_table_info
+  amazon.aws.ec2_vpc_route_table_info:
+    filters: "{{ ec2_vpc_route_table_info_filters }}"
+    validate_certs: true
+  register: __ec2_vpc_route_table_info_query
+
+- name: Ensure list of virtual private cloud route tables is generated
+  tags:
+    - ec2_vpc_route_table_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_route_table_info_list:
+      "{{ __ec2_vpc_route_table_info_query.route_tables |
+          d([]) }}"
+
+- name: Ensure dictionaries of virtual private cloud route table information is generated
+  tags:
+    - ec2_vpc_route_table_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_route_table_info_associations:
+      "{{ _ec2_vpc_route_table_info_associations |
+          default({}) |
+          combine({_rtb.tags.Name: _rtb.associations}) }}"
+    _ec2_vpc_route_table_info_propagating_vgws:
+      "{{ _ec2_vpc_route_table_info_propagating_vgws |
+          default({}) |
+          combine({_rtb.tags.Name: _rtb.propagating_vgws}) }}"
+    _ec2_vpc_route_table_info_route_table_id:
+      "{{ _ec2_vpc_route_table_info_route_table_id |
+          default({}) |
+          combine({_rtb.tags.Name: _rtb.route_table_id}) }}"
+    _ec2_vpc_route_table_info_routes:
+      "{{ _ec2_vpc_route_table_info_routes |
+          default({}) |
+          combine({_rtb.tags.Name: _rtb.routes}) }}"
+    _ec2_vpc_route_table_info_vpc_id:
+      "{{ _ec2_vpc_route_table_info_vpc_id |
+          default({}) |
+          combine({_rtb.tags.Name: _rtb.vpc_id}) }}"
+  loop: "{{ _ec2_vpc_route_table_info_list }}"
+  loop_control:
+    label: "{{ _rtb.tags.Name | d(none) }}"
+    loop_var: _rtb
+  when:
+    - _rtb.tags.Name is defined
+...
