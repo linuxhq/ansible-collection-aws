@@ -15,12 +15,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Ensure ansible-lint config is present
-        shell: bash
-        run: |
-          cp ansible/.ansible-lint .
-          cp ansible/requirements.yml .
-
       - name: Ensure ansible-lint-action is present
         uses: ansible/ansible-lint@v24
 
