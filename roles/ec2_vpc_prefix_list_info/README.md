@@ -6,7 +6,7 @@ Gather information about virtual private cloud prefix lists
 
 ## Requirements
 
-None
+* [awscli](https://pypi.org/project/awscli)
 
 ## Role Variables
 

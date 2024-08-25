@@ -29,10 +29,10 @@ Available variables are listed below, along with default values:
       roles:
         - role: linuxhq.aws.ec2_vpc_subnet
           ec2_vpc_subnet_list:
-            - name: molecule-a
-              az: "{{ aws_region ~ 'a' }}"
-              cidr: 192.168.0.0/24
-              vpc_id: "{{ _ec2_vpc_net_info_id['molecule'] }}"
+            - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.0 }}"
+              az: "{{ aws_region ~ _aws_az_info_list_s.0 }}"
+              cidr: "{{ aws_network | ansible.utils.ipsubnet(27, 0) }}"
+              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
 
 ## License
 
