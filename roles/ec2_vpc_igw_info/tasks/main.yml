@@ -8,7 +8,7 @@
     validate_certs: true
   register: __ec2_vpc_igw_info_query
 
-- name: Ensure list of virtual private clouds is generated
+- name: Ensure list of virtual private cloud internet gateways is generated
   tags:
     - ec2_vpc_igw_info
   ansible.builtin.set_fact:
