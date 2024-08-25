@@ -17,11 +17,10 @@ A collection of aws roles
 
     ansible-galaxy collection install linuxhq.aws
 
-## Molecule
+## Environment
 
-    /usr/bin/python3 -m venv venv
+    make
     source venv/bin/activate
-    pip3 install -r requirements.txt
 
 # Playbook
 
