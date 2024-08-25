@@ -8,3 +8,4 @@ molecule==5.1.0
 molecule-plugins==23.5.0
 requests<2.29
 urllib3<2
+yamllint==1.35.1
