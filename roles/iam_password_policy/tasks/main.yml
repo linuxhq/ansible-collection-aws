@@ -1,0 +1,17 @@
+---
+- name: Ensure iam password policy is present
+  tags:
+    - iam_password_policy
+  amazon.aws.iam_password_policy:
+    allow_pw_change: "{{ iam_password_policy_allow_pw_change }}"
+    min_pw_length: "{{ iam_password_policy_min_pw_length }}"
+    pw_expire: "{{ iam_password_policy_pw_expire }}"
+    pw_max_age: "{{ iam_password_policy_pw_max_age }}"
+    pw_reuse_prevent: "{{ iam_password_policy_pw_reuse_prevent }}"
+    require_lowercase: "{{ iam_password_policy_require_lowercase }}"
+    require_numbers: "{{ iam_password_policy_require_numbers }}"
+    require_symbols: "{{ iam_password_policy_require_symbols }}"
+    require_uppercase: "{{ iam_password_policy_require_uppercase }}"
+    state: present
+    validate_certs: true
+...

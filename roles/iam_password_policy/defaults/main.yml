@@ -1,0 +1,11 @@
+---
+iam_password_policy_allow_pw_change: false
+iam_password_policy_min_pw_length: 6
+iam_password_policy_pw_expire: false
+iam_password_policy_pw_max_age: 0
+iam_password_policy_pw_reuse_prevent: 0
+iam_password_policy_require_lowercase: false
+iam_password_policy_require_numbers: false
+iam_password_policy_require_symbols: false
+iam_password_policy_require_uppercase: false
+...
