@@ -1,0 +1,36 @@
+---
+- name: Ensure iam account alias is gathered
+  tags:
+    - iam_account_alias
+  ansible.builtin.command:
+    cmd: >
+      aws iam list-account-aliases
+              --query AccountAliases
+  register: __iam_account_alias_query
+  when:
+    - iam_account_alias_name is not none
+  changed_when: false
+
+- name: Ensure iam account alias list is generated
+  tags:
+    - iam_account_alias
+  ansible.builtin.set_fact:
+    _iam_account_alias_list:
+      "{{ (__iam_account_alias_query.stdout |
+          from_json) |
+          d([]) }}"
+  when:
+    - iam_account_alias_name is not none
+
+- name: Ensure iam account alias is present
+  tags:
+    - iam_account_alias
+  ansible.builtin.command:
+    cmd: >
+      aws iam create-account-alias
+              --account-alias "{{ iam_account_alias_name }}"
+  when:
+    - iam_account_alias_name is not none
+    - iam_account_alias_name not in _iam_account_alias_list
+  changed_when: true
+...
