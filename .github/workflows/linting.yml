@@ -15,10 +15,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Ensure collections are present
+        run: ansible-galaxy collection install -r requirements.yml -p collections
+
       - name: Ensure ansible-lint-action is present
         uses: ansible/ansible-lint@v24
-        with:
-          requirements_file: requirements.yml
 
 
   yamllint:
