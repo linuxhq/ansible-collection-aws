@@ -1,0 +1,35 @@
+---
+- name: Ensure iam inline policies are present
+  tags:
+    - iam_policy
+  amazon.aws.iam_policy:
+    iam_name: "{{ _policy.iam_name }}"
+    iam_type: "{{ _policy.iam_type }}"
+    policy_json: "{{ _policy.policy_json | to_json }}"
+    policy_name: "{{ _policy.policy_name }}"
+    skip_duplicates: "{{ _policy.skip_duplicates | d(false) }}"
+    state: present
+    validate_certs: true
+  register: __iam_policy_results
+  loop: "{{ iam_policy_list }}"
+  loop_control:
+    label: "{{ _policy.policy_name | d(none) }}"
+    loop_var: _policy
+  when:
+    - _policy.iam_name is defined
+    - _policy.iam_type is defined
+    - _policy.policy_json is defined
+    - _policy.policy_json | length > 0
+    - _policy.policy_name is defined
+
+- name: Ensure iam inline policy results list is generated
+  tags:
+    - iam_policy
+  ansible.builtin.set_fact:
+    _iam_policy_list:
+      "{{ __iam_policy_results.results |
+          map(attribute='policy_names', default=[]) |
+          list |
+          flatten |
+          d([]) }}"
+...

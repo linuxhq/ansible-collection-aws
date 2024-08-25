@@ -25,7 +25,7 @@
     - _policy.policy is defined
     - _policy.policy | length > 0
 
-- name: Ensure iam managed policies results list is generated
+- name: Ensure iam managed policy results list is generated
   tags:
     - iam_managed_policy
   ansible.builtin.set_fact:

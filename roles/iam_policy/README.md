@@ -1,8 +1,8 @@
-# efs
+# iam\_policy
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Manage aws elastic filesystems
+Manage aws identity and access management inline policies
 
 ## Requirements
 
@@ -12,34 +12,46 @@ None
 
 Available variables are listed below, along with default values:
 
-    efs_list: []
+    iam_policy_list: []
 
 ## Return Values
 
-    _efs_list
+    _iam_policy_list
 
 ## Dependencies
 
-* [linuxhq.aws.ec2\_vpc\_net\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_net_info)
-* [linuxhq.aws.ec2\_vpc\_subnet\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_subnet_info)
+None
 
 ## Example Playbook
 
     - hosts: aws
       connection: local
       roles:
-        - role: linuxhq.aws.efs
-          efs_list:
-            - name: "{{ aws_vpc }}-efs"
-              encrypt: true
-              targets:
-                - subnet_id:
-                    "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0] }}"
-                - subnet_id:
-                    "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1] }}"
-                - subnet_id:
-                    "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2] }}"
-              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+        - role: linuxhq.aws.iam_policy
+          iam_policy_list:
+            - iam_name: linuxhq
+              iam_type: user
+              policy_json:
+                Version: '2012-10-17'
+                Statement:
+                  - Effect: Allow
+                    Action:
+                      - ec2:*
+                    Resource:
+                      - '*'
+              policy_name: LinuxHQEC2FullAccess
+
+            - iam_name: backups
+              iam_type: group
+              policy_json:
+                Version: '2012-10-17'
+                Statement:
+                  - Effect: Allow
+                    Action:
+                      - rds:*
+                    Resource:
+                      - '*'
+              policy_name: LinuxHQRDSFullAccess
 
 ## License
 
