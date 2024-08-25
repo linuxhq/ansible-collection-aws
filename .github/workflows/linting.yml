@@ -17,6 +17,9 @@ jobs:
 
       - name: Ensure ansible-lint-action is present
         uses: ansible/ansible-lint@v24
+        with:
+          requirements_file: requirements.yml
+
 
   yamllint:
     name: yamllint
