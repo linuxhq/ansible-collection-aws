@@ -77,6 +77,7 @@
     validate_certs: true
     wait: "{{ _efs.wait | d(false) }}"
     wait_timeout: "{{ _efs.wait_timeout | d(0) }}"
+  register: __efs_results
   loop: "{{ efs_list }}"
   loop_control:
     label: "{{ _efs.name | d(none) }}"
@@ -90,4 +91,14 @@
     - _efs.name is defined
     - _efs.targets is defined
     - _efs.targets | length > 0
+
+- name: Ensure elastic filesystem result list is generated
+  tags:
+    - efs
+  ansible.builtin.set_fact:
+    _efs_list:
+      "{{ __efs_results.results |
+          map(attribute='efs', default=[]) |
+          list |
+          d([]) }}"
 ...
