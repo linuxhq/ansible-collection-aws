@@ -1,0 +1,47 @@
+---
+- name: Ensure simple storage service buckets are present
+  tags:
+    - s3_bucket
+  amazon.aws.s3_bucket:
+    accelerate_enabled: "{{ _bucket.accelerate_enabled | d(false) }}"
+    acl: "{{ _bucket.acl | d(omit) }}"
+    bucket_key_enabled: "{{ _bucket.bucket_key_enabled | d(omit) }}"
+    ceph: "{{ _bucket.ceph | d(false) }}"
+    delete_object_ownership: "{{ _bucket.delete_object_ownership | d(omit) }}"
+    delete_public_access: "{{ _bucket.delete_public_access | d(omit) }}"
+    dualstack: "{{ _bucket.dualstack | d(false) }}"
+    encryption: "{{ _bucket.encryption | d(omit) }}"
+    encryption_key_id: "{{ _bucket.encryption_key_id | d(omit) }}"
+    name: "{{ _bucket.name }}"
+    object_lock_default_retention: "{{ _bucket.object_lock_default_retention | d(omit) }}"
+    object_lock_enabled: "{{ _bucket.object_lock_enabled | d(omit) }}"
+    object_ownership: "{{ _bucket.object_ownership | d(omit) }}"
+    policy: "{{ (_bucket.policy | to_json) | d(omit) }}"
+    public_access: "{{ _bucket.public_access | d(omit) }}"
+    purge_tags: "{{ _bucket.purge_tags | d(true) }}"
+    requester_pays: "{{ _bucket.requester_pays | d(omit) }}"
+    state: present
+    tags:
+      "{{ _bucket.tags |
+          d({}) |
+          combine({'Name': _bucket.name}) }}"
+    validate_bucket_name: "{{ _bucket.validate_bucket_name | d(true) }}"
+    validate_certs: true
+    versioning: "{{ _bucket.versioning | d(omit) }}"
+  register: __s3_bucket_results
+  loop: "{{ s3_bucket_list }}"
+  loop_control:
+    label: "{{ _bucket.name | d(none) }}"
+    loop_var: _bucket
+  when:
+    - _bucket.name is defined
+
+- name: Ensure simple storage service bucket results list is generated
+  tags:
+    - s3_bucket
+  ansible.builtin.set_fact:
+    _s3_bucket_list:
+      "{{ __s3_bucket_results.results |
+          list |
+          d([]) }}"
+...
