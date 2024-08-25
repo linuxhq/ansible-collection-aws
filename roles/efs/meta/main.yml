@@ -1,0 +1,25 @@
+---
+dependencies:
+  - role: linuxhq.aws.ec2_vpc_net_info
+    tags: efs
+  - role: linuxhq.aws.ec2_vpc_subnet_info
+    tags: efs
+galaxy_info:
+  role_name: efs
+  author: Taylor Kimball
+  description: Manage aws elastic filesystems
+  license: GPLv3
+  min_ansible_version: 2.15.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - efs
+...
