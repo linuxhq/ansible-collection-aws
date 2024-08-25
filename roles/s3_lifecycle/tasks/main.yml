@@ -1,0 +1,48 @@
+---
+- name: Ensure simple storage service bucket lifecycle rules are present
+  tags:
+    - s3_lifecycle
+  community.aws.s3_lifecycle:
+    abort_incomplete_multipart_upload_days: "{{ _lifecycle.1.abort_incomplete_multipart_upload_days | d(omit) }}"
+    expiration_date: "{{ _lifecycle.1.expiration_date | d(omit) }}"
+    expiration_days: "{{ _lifecycle.1.expiration_days | d(omit) }}"
+    expire_object_delete_marker: "{{ _lifecycle.1.expire_object_delete_marker | d(omit) }}"
+    name: "{{ _lifecycle.0.name }}"
+    noncurrent_version_expiration_days: "{{ _lifecycle.1.noncurrent_version_expiration_days | d(omit) }}"
+    noncurrent_version_keep_newer: "{{ _lifecycle.1.noncurrent_version_keep_newer | d(omit) }}"
+    noncurrent_version_storage_class: "{{ _lifecycle.1.noncurrent_version_storage_class | d('glacier') }}"
+    noncurrent_version_transition_days: "{{ _lifecycle.1.noncurrent_version_transition_days | d(omit) }}"
+    noncurrent_version_transitions: "{{ _lifecycle.1.noncurrent_version_transitions | d(omit) }}"
+    prefix: "{{ _lifecycle.1.prefix | d(omit) }}"
+    purge_transitions: "{{ _lifecycle.1.purge_transitions | d(true) }}"
+    rule_id: "{{ _lifecycle.1.rule_id }}"
+    state: present
+    status: "{{ _lifecycle.1.status | d('enabled') }}"
+    storage_class: "{{ _lifecycle.1.storage_class | d('glacier') }}"
+    transition_date: "{{ _lifecycle.1.transition_date | d(omit) }}"
+    transition_days: "{{ _lifecycle.1.transition_days | d(omit) }}"
+    transitions: "{{ _lifecycle.1.transitions | d(omit) }}"
+    validate_certs: true
+    wait: "{{ _lifecycle.0.wait | d(false) }}"
+  register: __s3_lifecycle_results
+  loop:
+    "{{ q('ansible.builtin.subelements',
+          s3_lifecycle_list,
+          'rules',
+          {'skip_missing': true}) }}"
+  loop_control:
+    label: "{{ _lifecycle.1.rule_id | d(none) }}"
+    loop_var: _lifecycle
+  when:
+    - _lifecycle.0.name is defined
+    - _lifecycle.1.rule_id is defined
+
+- name: Ensure simple storage service bucket lifecycle rule results list is generated
+  tags:
+    - s3_lifecycle
+  ansible.builtin.set_fact:
+    _s3_lifecycle_list:
+      "{{ __s3_lifecycle_results.results |
+          list |
+          d([]) }}"
+...
