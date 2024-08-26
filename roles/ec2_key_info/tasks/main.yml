@@ -1,0 +1,47 @@
+---
+- name: Ensure information about ec2 keys is gathered
+  tags:
+    - ec2_key_info
+  amazon.aws.ec2_key_info:
+    filters: "{{ ec2_key_info_filters }}"
+    ids: "{{ ec2_key_info_ids }}"
+    include_public_key: "{{ ec2_key_info_include_public_key }}"
+    names: "{{ ec2_key_info_names }}"
+    validate_certs: true
+  register: __ec2_key_info_query
+
+- name: Ensure list of ec2 keys is generated
+  tags:
+    - ec2_key_info
+  ansible.builtin.set_fact:
+    _ec2_key_info_list:
+      "{{ __ec2_key_info_query.keypairs |
+          d([]) }}"
+
+- name: Ensure dictionaries of ec2 key information is generated
+  tags:
+    - ec2_key_info
+  ansible.builtin.set_fact:
+    _ec2_key_info_key_fingerprint:
+      "{{ _ec2_key_info_key_fingerprint |
+          default({}) |
+          combine({_key.key_name: _key.key_fingerprint}) }}"
+    _ec2_key_info_key_pair_id:
+      "{{ _ec2_key_info_key_pair_id |
+          default({}) |
+          combine({_key.key_name: _key.key_pair_id}) }}"
+    _ec2_key_info_key_type:
+      "{{ _ec2_key_info_key_type |
+          default({}) |
+          combine({_key.key_name: _key.key_type}) }}"
+    _ec2_key_info_public_key:
+      "{{ _ec2_key_info_public_key |
+          default({}) |
+          combine({_key.key_name: _key.public_key | d(none)}) }}"
+  loop: "{{ _ec2_key_info_list }}"
+  loop_control:
+    label: "{{ _key.key_name | d(none) }}"
+    loop_var: _key
+  when:
+    - _key.key_name is defined
+...
