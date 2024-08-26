@@ -1,0 +1,112 @@
+---
+- name: Ensure service quota local region information is gathered
+  tags:
+    - service_quota
+  amazon.aws.aws_az_info:
+    validate_certs: true
+  register: _service_quota_az_info
+
+- name: Ensure servie quota local region fact is present
+  tags:
+    - service_quota
+  ansible.builtin.set_fact:
+    __service_quota_region:
+      "{{ _service_quota_az_info.availability_zones |
+          map(attribute='region_name') |
+          list |
+          unique |
+          first }}"
+
+- name: Ensure service quota values are gathered
+  tags:
+    - service_quota
+  ansible.builtin.command:
+    cmd: >
+      aws service-quotas get-service-quota
+                         --quota-code "{{ _quota.1.quota_code }}"
+                         --region "{{ _quota.1.region | d(__service_quota_region) }}"
+                         --query Quota
+                         --service-code "{{ _quota.0.service_code }}"
+  register: __service_quota_get
+  loop:
+    "{{ q('ansible.builtin.subelements',
+          service_quota_list,
+          'quotas',
+          {'skip_missing': true}) }}"
+  loop_control:
+    label: "{{ _quota.1.quota_code | d(none) }}"
+    loop_var: _quota
+  changed_when: false
+  check_mode: false
+
+- name: Ensure dictionary of quota values is generated
+  tags:
+    - service_quota
+  ansible.builtin.set_fact:
+    __service_quota_values:
+      "{{ __service_quota_values |
+          d({}) |
+          combine({_service_quota_code:
+                   _service_quota_value}) }}"
+  loop: "{{ __service_quota_get.results }}"
+  loop_control:
+    label: "{{ _service_quota_code | d(none) }}"
+    loop_var: _quota
+  vars:
+    _service_quota_code:
+      "{{ (_quota.stdout | from_json).QuotaCode }}"
+    _service_quota_value:
+      "{{ (_quota.stdout | from_json).Value }}"
+
+- name: Ensure service quota requests history is gathered
+  tags:
+    - service_quota
+  ansible.builtin.command:
+    cmd: >
+      aws service-quotas list-requested-service-quota-change-history
+                         --query RequestedQuotas
+  register: __service_quota_history
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of service quota requests is generated
+  tags:
+    - service_quota
+  ansible.builtin.set_fact:
+    __service_quota_requested:
+      "{{ __service_quota_requested |
+          d([]) +
+          [_request.QuotaCode] }}"
+  loop:
+    "{{ (__service_quota_history.stdout | from_json) |
+        d([]) }}"
+  loop_control:
+    label: "{{ _request.QuotaCode | d(none) }}"
+    loop_var: _request
+  when:
+    - _request.Status == 'CASE_OPENED' or
+      _request.Status == 'PENDING'
+
+- name: Ensure service quota request is submitted
+  tags:
+    - service_quota
+  ansible.builtin.command:
+    cmd: >
+      aws service-quotas request-service-quota-increase
+                         --desired-value '{{ _request.1.value }}'
+                         --quota-code "{{ _request.1.quota_code }}"
+                         --region "{{ _request.1.region | d(__service_quota_region) }}"
+                         --service-code "{{ _request.0.service_code }}"
+  loop:
+    "{{ q('ansible.builtin.subelements',
+          service_quota_list,
+          'quotas',
+          {'skip_missing': true}) }}"
+  loop_control:
+    label: "{{ _request.1.quota_code | d(none) }}"
+    loop_var: _request
+  when:
+    - _request.1.quota_code not in __service_quota_requested
+    - _request.1.value | float > __service_quota_values[_request.1.quota_code] | float
+  changed_when: true
+...
