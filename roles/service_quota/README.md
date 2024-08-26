@@ -10,8 +10,6 @@ Manage aws service quotas
 
 ## Role Variables
 
-Available variables are listed below, along with default values:
-
     service_quota_list: []
 
 ## Return Values

@@ -10,8 +10,6 @@ None
 
 ## Role Variables
 
-Available variables are listed below, along with default values:
-
     ec2_vpc_nat_gateway_list: []
 
 ## Return Values

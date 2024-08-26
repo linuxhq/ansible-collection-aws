@@ -10,8 +10,6 @@ Manage aws identity and access management account alias
 
 ## Role Variables
 
-Available variables are listed below, along with default values:
-
     iam_account_alias_name: null
 
 ## Return Values

@@ -10,8 +10,6 @@ None
 
 ## Role Variables
 
-Available variables are listed below, along with default values:
-
     ec2_key_info_filters: {}
     ec2_key_info_ids: []
     ec2_key_info_include_public_key: false
