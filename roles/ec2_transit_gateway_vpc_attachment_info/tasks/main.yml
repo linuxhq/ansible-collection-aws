@@ -7,7 +7,7 @@
     validate_certs: true
   register: __ec2_transit_gateway_vpc_attachment_info_query
 
-- name: Ensure list of virtual private clouds is generated
+- name: Ensure list of ec2 transit gateway vpc attachments is generated
   tags:
     - ec2_transit_gateway_vpc_attachment_info
   ansible.builtin.set_fact:
@@ -15,7 +15,7 @@
       "{{ __ec2_transit_gateway_vpc_attachment_info_query.attachments |
           d([]) }}"
 
-- name: Ensure dictionaries of virtual private cloud information is generated
+- name: Ensure dictionaries of ec2 transit gateway vpc attachment information is generated
   tags:
     - ec2_transit_gateway_vpc_attachment_info
   ansible.builtin.set_fact:
