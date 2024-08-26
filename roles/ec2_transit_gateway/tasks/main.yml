@@ -1,0 +1,57 @@
+---
+- name: Ensure ec2 transit gateways are present
+  tags:
+    - ec2_transit_gateway
+  community.aws.ec2_transit_gateway:
+    asn: "{{ _tgw.asn | d(omit) }}"
+    auto_associate: "{{ _tgw.auto_associate | d(true) }}"
+    auto_attach: "{{ _tgw.auto_attach | d(false) }}"
+    auto_propagate: "{{ _tgw.auto_propagate | d(true) }}"
+    description: "{{ _tgw.description | d(_tgw.name) }}"
+    dns_support: "{{ _tgw.dns_support | d(true) }}"
+    purge_tags: "{{ _tgw.purge_tags | d(true) }}"
+    state: present
+    tags:
+      "{{ _tgw.tags |
+          d({}) |
+          combine({'Name': _tgw.name}) }}"
+    validate_certs: true
+    vpn_ecmp_support: "{{ _tgw.vpn_ecmp_support | d(true) }}"
+    wait: "{{ _tgw.wait | d(true) }}"
+    wait_timeout: "{{ _tgw.wait_timeout | d(300) }}"
+  register: __ec2_transit_gateway_results
+  loop: "{{ ec2_transit_gateway_list }}"
+  loop_control:
+    label: "{{ _tgw.name | d(none) }}"
+    loop_var: _tgw
+  when:
+    - _tgw.name is defined
+
+- name: Ensure list of ec2 transit gateway results is generated
+  tags:
+    - ec2_transit_gateway
+  ansible.builtin.set_fact:
+    _ec2_transit_gateway_list:
+      "{{ __ec2_transit_gateway_results.results |
+          map(attribute='transit_gateway', default=[]) |
+          list |
+          d([]) }}"
+
+- name: Ensure ec2 transit gateway route table is tagged with name
+  tags:
+    - ec2_transit_gateway
+  amazon.aws.ec2_tag:
+    purge_tags: false
+    resource: "{{ _tgw.options.association_default_route_table_id }}"
+    state: present
+    tags:
+      Name: "{{ _tgw.tags.Name }}"
+    validate_certs: true
+  loop: "{{ _ec2_transit_gateway_list }}"
+  loop_control:
+    label: "{{ _tgw.tags.Name }}"
+    loop_var: _tgw
+  when:
+    - _tgw.tags.Name is defined
+    - _tgw.options.association_default_route_table_id is defined
+...
