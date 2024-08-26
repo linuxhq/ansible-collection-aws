@@ -17,7 +17,7 @@ Available variables are listed below, along with default values:
 
 ## Return Values
 
-    _ec2_transit_gateway_list
+    _ec2_transit_gateway_info_list
     _ec2_transit_gateway_info_options
     _ec2_transit_gateway_info_state
     _ec2_transit_gateway_info_transit_gateway_arn
