@@ -6,7 +6,7 @@
     validate_certs: true
   register: __service_quota_az_info
 
-- name: Ensure servie quota local region fact is present
+- name: Ensure service quota local region fact is present
   tags:
     - service_quota
   ansible.builtin.set_fact:
