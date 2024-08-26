@@ -10,8 +10,6 @@ None
 
 ## Role Variables
 
-Available variables are listed below, along with default values:
-
     efs_info_id: null
     efs_info_name: null
     efs_info_tags: {}

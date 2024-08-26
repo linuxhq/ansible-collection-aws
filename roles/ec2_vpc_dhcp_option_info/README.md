@@ -10,8 +10,6 @@ None
 
 ## Role Variables
 
-Available variables are listed below, along with default values:
-
     ec2_vpc_dhcp_option_info_dhcp_options_ids: []
     ec2_vpc_dhcp_option_info_filters: {}
 

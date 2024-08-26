@@ -10,8 +10,6 @@ None
 
 ## Role Variables
 
-Available variables are listed below, along with default values:
-
     ec2_transit_gateway_info_filters: {}
     ec2_transit_gateway_info_transit_gateway_ids: []
 

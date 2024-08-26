@@ -10,8 +10,6 @@ None
 
 ## Role Variables
 
-Available variables are listed below, along with default values:
-
     iam_password_policy_allow_pw_change: false
     iam_password_policy_min_pw_length: 6
     iam_password_policy_pw_expire: false
