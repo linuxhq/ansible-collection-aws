@@ -4,14 +4,14 @@
     - service_quota
   amazon.aws.aws_az_info:
     validate_certs: true
-  register: _service_quota_az_info
+  register: __service_quota_az_info
 
 - name: Ensure servie quota local region fact is present
   tags:
     - service_quota
   ansible.builtin.set_fact:
     __service_quota_region:
-      "{{ _service_quota_az_info.availability_zones |
+      "{{ __service_quota_az_info.availability_zones |
           map(attribute='region_name') |
           list |
           unique |
