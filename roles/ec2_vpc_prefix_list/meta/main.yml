@@ -1,13 +1,9 @@
 ---
-dependencies:
-  - role: linuxhq.aws.ec2_vpc_prefix_list_info
-    tags: ec2_security_group
-  - role: linuxhq.aws.ec2_vpc_net_info
-    tags: ec2_security_group
+dependencies: []
 galaxy_info:
-  role_name: ec2_security_group
+  role_name: ec2_vpc_prefix_list
   author: Taylor Kimball
-  description: Manage aws ec2 security groups
+  description: Manage aws virtual private cloud prefix lists
   license: GPLv3
   min_ansible_version: 2.15.0
   namespace: linuxhq
@@ -22,6 +18,7 @@ galaxy_info:
     - amazon
     - aws
     - ec2
-    - group
-    - security
+    - list
+    - prefix
+    - vpc
 ...

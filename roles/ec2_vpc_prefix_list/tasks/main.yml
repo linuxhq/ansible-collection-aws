@@ -1,0 +1,134 @@
+---
+- name: Ensure virtual private cloud prefix list info tasks are executed
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.include_tasks:
+    file: info.yml
+
+- name: Ensure virtual private cloud prefix lists are present
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.command:
+    cmd: >
+      aws ec2 create-managed-prefix-list
+              --address-family "{{ _pl.address_family | d('IPv4') }}"
+              --entries '{{ __ec2_vpc_prefix_list_dict_kv | to_json }}'
+              --max-entries "{{ _pl.entries | length }}"
+              --prefix-list-name "{{ _pl.name }}"
+  loop: "{{ ec2_vpc_prefix_list_entries }}"
+  loop_control:
+    label: "{{ _pl.name | d(none) }}"
+    loop_var: _pl
+  vars:
+    __ec2_vpc_prefix_list_dict_kv:
+      "{{ _pl.entries |
+          map('community.general.dict_kv', 'Cidr') }}"
+  when:
+    - _pl.name is defined
+    - _pl.name not in __ec2_vpc_prefix_list_names
+    - _pl.entries is defined
+    - _pl.entries | length > 0
+  changed_when: true
+
+- name: Ensure virtual private cloud prefix list info and state tasks are executed
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.include_tasks:
+    file: "{{ _include }}"
+  loop:
+    - info.yml
+    - state.yml
+  loop_control:
+    label: "{{ _include }}"
+    loop_var: _include
+
+- name: Ensure virutal private cloud prefix list entries are removed
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.command:
+    cmd: >
+      aws ec2 modify-managed-prefix-list
+              --current-version "{{ __ec2_vpc_prefix_list_version[_pl.name] }}"
+              --prefix-list-id "{{ __ec2_vpc_prefix_list_id[_pl.name] }}"
+              --remove-entries '{{ __ec2_vpc_prefix_list_remove_entries | to_json }}'
+  loop: "{{ ec2_vpc_prefix_list_entries }}"
+  loop_control:
+    label: "{{ _pl.name | d(none) }}"
+    loop_var: _pl
+  vars:
+    __ec2_vpc_prefix_list_remove_entries:
+      "{{ __ec2_vpc_prefix_list_entries[_pl.name] |
+          difference(_pl.entries) |
+          map('community.general.dict_kv', 'Cidr') }}"
+  when:
+    - _pl.name is defined
+    - _pl.entries is defined
+    - _pl.entries | length > 0
+    - __ec2_vpc_prefix_list_entries[_pl.name] is defined
+    - __ec2_vpc_prefix_list_remove_entries | length > 0
+  changed_when: true
+
+- name: Ensure virtual private cloud prefix list info and state tasks are executed
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.include_tasks:
+    file: state.yml
+
+- name: Ensure virtual private cloud prefix list max entries are modified
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.command:
+    cmd: >
+      aws ec2 modify-managed-prefix-list
+              --max-entries "{{ _pl.entries | length }}"
+              --prefix-list-id "{{ __ec2_vpc_prefix_list_id[_pl.name] }}"
+  loop: "{{ ec2_vpc_prefix_list_entries }}"
+  loop_control:
+    label: "{{ _pl.name | d(none) }}"
+    loop_var: _pl
+  when:
+    - _pl.name is defined
+    - _pl.entries is defined
+    - _pl.entries | length > 0
+    - __ec2_vpc_prefix_list_max_entries[_pl.name] is defined
+    - _pl.entries | length != __ec2_vpc_prefix_list_max_entries[_pl.name]
+  changed_when: true
+
+- name: Ensure virtual private cloud prefix list info and state tasks are executed
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.include_tasks:
+    file: "{{ _include }}"
+  loop:
+    - info.yml
+    - state.yml
+  loop_control:
+    label: "{{ _include }}"
+    loop_var: _include
+
+- name: Ensure virtual private cloud prefix list entries are added
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.command:
+    cmd: >
+      aws ec2 modify-managed-prefix-list
+              --add-entries '{{ __ec2_vpc_prefix_list_add_entries | to_json }}'
+              --current-version "{{ __ec2_vpc_prefix_list_version[_pl.name] }}"
+              --prefix-list-id "{{ __ec2_vpc_prefix_list_id[_pl.name] }}"
+  loop: "{{ ec2_vpc_prefix_list_entries }}"
+  loop_control:
+    label: "{{ _pl.name | d(none) }}"
+    loop_var: _pl
+  vars:
+    __ec2_vpc_prefix_list_add_entries:
+      "{{ _pl.entries |
+          difference(__ec2_vpc_prefix_list_entries[_pl.name]) |
+          map('community.general.dict_kv', 'Cidr') }}"
+  when:
+    - _pl.name is defined
+    - _pl.entries is defined
+    - _pl.entries | length > 0
+    - __ec2_vpc_prefix_list_entries[_pl.name] is defined
+    - __ec2_vpc_prefix_list_add_entries | length > 0
+  changed_when: true
+...

@@ -1,0 +1,23 @@
+---
+- name: Ensure virtual private cloud prefix list state is complete
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.command:
+    cmd: >
+      aws ec2 describe-managed-prefix-lists
+              --output text
+              --prefix-list-ids "{{ __ec2_vpc_prefix_list_id[_pl.name] }}"
+              --query 'PrefixLists[].State'
+  register: __ec2_vpc_prefix_list_state
+  loop: "{{ ec2_vpc_prefix_list_entries }}"
+  loop_control:
+    label: "{{ _pl.name | d(none) }}"
+    loop_var: _pl
+  when:
+    - _pl.name is defined
+    - __ec2_vpc_prefix_list_id[_pl.name] is defined
+  until:
+    - __ec2_vpc_prefix_list_state.stdout == 'create-complete' or
+      __ec2_vpc_prefix_list_state.stdout == 'modify-complete'
+  changed_when: false
+...
