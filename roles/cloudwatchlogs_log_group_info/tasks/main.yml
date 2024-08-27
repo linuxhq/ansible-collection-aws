@@ -1,0 +1,40 @@
+---
+- name: Ensure information about cloudwatchlogs log groups is gathered
+  tags:
+    - cloudwatchlogs_log_group_info
+  amazon.aws.cloudwatchlogs_log_group_info:
+    log_group_name: "{{ cloudwatchlogs_log_group_info_log_group_name or omit }}"
+    validate_certs: true
+  register: __cloudwatchlogs_log_group_info_query
+
+- name: Ensure list of cloudwatchlogs log groups is generated
+  tags:
+    - cloudwatchlogs_log_group_info
+  ansible.builtin.set_fact:
+    _cloudwatchlogs_log_group_info_list:
+      "{{ __cloudwatchlogs_log_group_info_query.log_groups |
+          d([]) }}"
+
+- name: Ensure dictionaries of cloudwatchlogs log groups information is generated
+  tags:
+    - cloudwatchlogs_log_group_info
+  ansible.builtin.set_fact:
+    _cloudwatchlogs_log_group_info_arn:
+      "{{ _cloudwatchlogs_log_group_info_arn |
+          default({}) |
+          combine({_log_group.log_group_name: _log_group.arn}) }}"
+    _cloudwatchlogs_log_group_info_metric_filter_count:
+      "{{ _cloudwatchlogs_log_group_info_metric_filter_count |
+          default({}) |
+          combine({_log_group.log_group_name: _log_group.metric_filter_count}) }}"
+    _cloudwatchlogs_log_group_info_log_stored_bytes:
+      "{{ _cloudwatchlogs_log_group_info_log_stored_bytes |
+          default({}) |
+          combine({_log_group.log_group_name: _log_group.stored_bytes}) }}"
+  loop: "{{ _cloudwatchlogs_log_group_info_list }}"
+  loop_control:
+    label: "{{ _log_group.log_group_name | d(none) }}"
+    loop_var: _log_group
+  when:
+    - _log_group.log_group_name is defined
+...

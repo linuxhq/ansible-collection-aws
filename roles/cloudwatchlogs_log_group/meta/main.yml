@@ -1,0 +1,25 @@
+---
+dependencies:
+  - role: linuxhq.aws.kms_key_info
+    tags: cloudwatchlogs_log_group
+galaxy_info:
+  role_name: cloudwatchlogs_log_group
+  author: Taylor Kimball
+  description: Manage cloudwatchlogs log groups
+  license: GPLv3
+  min_ansible_version: 2.15.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - cloudwatch
+    - group
+    - log
+...

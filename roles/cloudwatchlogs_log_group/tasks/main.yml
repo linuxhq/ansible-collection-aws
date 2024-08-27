@@ -1,0 +1,35 @@
+---
+- name: Ensure cloudwatchlogs log groups are present
+  tags:
+    - cloudwatchlogs_log_group
+  amazon.aws.cloudwatchlogs_log_group:
+    kms_log_group_id: "{{ _log_group.kms_log_group_id | d(omit) }}"
+    log_group_name: "{{ _log_group.name }}"
+    overwrite: "{{ _log_group.overwrite | d(false) }}"
+    purge_retention_policy: "{{ _log_group.purge_retention_policy | d(omit) }}"
+    purge_tags: "{{ _log_group.purge_tags | d(true) }}"
+    retention: "{{ _log_group.retention | d(omit) }}"
+    state: present
+    tags:
+      "{{ _log_group.tags |
+          d({}) |
+          combine({'Name': _log_group.name}) }}"
+    validate_certs: true
+  register: __cloudwatchlogs_log_group_results
+  loop: "{{ cloudwatchlogs_log_group_list }}"
+  loop_control:
+    label: "{{ _log_group.name | d(none) }}"
+    loop_var: _log_group
+  when:
+    - _log_group.name is defined
+
+- name: Ensure list of cloudwatchlogs log group results is generated
+  tags:
+    - cloudwatchlogs_log_group
+  ansible.builtin.set_fact:
+    _cloudwatchlogs_log_group_list:
+      "{{ __cloudwatchlogs_log_group_results.results |
+          map(attribute='log_groups', default=[]) |
+          flatten |
+          d([]) }}"
+...
