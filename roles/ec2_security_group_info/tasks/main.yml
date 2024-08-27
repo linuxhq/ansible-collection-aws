@@ -7,7 +7,7 @@
     validate_certs: true
   register: __ec2_security_group_info_query
 
-- name: Ensure list of virtual private clouds is generated
+- name: Ensure list of ec2 security groups is generated
   tags:
     - ec2_security_group_info
   ansible.builtin.set_fact:
@@ -15,7 +15,7 @@
       "{{ __ec2_security_group_info_query.security_groups |
           d([]) }}"
 
-- name: Ensure dictionaries of virtual private cloud information is generated
+- name: Ensure dictionaries of ec2 security group information is generated
   tags:
     - ec2_security_group_info
   ansible.builtin.set_fact:
