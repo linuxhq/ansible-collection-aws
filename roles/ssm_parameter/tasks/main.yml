@@ -1,0 +1,37 @@
+---
+- name: Ensure systems manager parameters are present
+  tags:
+    - ssm_parameter
+  community.aws.ssm_parameter:
+    description: "{{ _parameter.description | d(_parameter.name) }}"
+    name: "{{ _parameter.name }}"
+    overwrite_value: "{{ _parameter.overwrite_value | d('changed') }}"
+    purge_tags: "{{ _parameter.purge_tags | d(true) }}"
+    state: present
+    string_type: "{{ _parameter.string_type | d('String') }}"
+    tags:
+      "{{ _parameter.tags |
+          d({}) |
+          combine({'Name': _parameter.name}) }}"
+    tier: "{{ _parameter.tier | d('Standard') }}"
+    validate_certs: true
+    value: "{{ _parameter.value }}"
+  register: __ssm_parameter_results
+  loop: "{{ ssm_parameter_list }}"
+  loop_control:
+    label: "{{ _parameter.name | d(none) }}"
+    loop_var: _parameter
+  when:
+    - _parameter.name is defined
+    - _parameter.value is defined
+
+- name: Ensure list of systems manager parameter results is generated
+  tags:
+    - ssm_parameter
+  ansible.builtin.set_fact:
+    _ssm_parameter_list:
+      "{{ __ssm_parameter_results.results |
+          map(attribute='parameter_metadata', default=[]) |
+          list |
+          d([]) }}"
+...

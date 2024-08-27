@@ -14,7 +14,6 @@ None
 
 ## Return Values
 
-    _ec2_vpc_prefix_list_info_cidrs
     _ec2_vpc_prefix_list_info_list
     _ec2_vpc_prefix_list_info_prefix_list_id
 
