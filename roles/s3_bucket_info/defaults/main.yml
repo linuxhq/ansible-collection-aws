@@ -1,0 +1,6 @@
+---
+s3_bucket_info_bucket_facts: {}
+s3_bucket_info_name: null
+s3_bucket_info_name_filter: null
+s3_bucket_info_transform_location: false
+...
