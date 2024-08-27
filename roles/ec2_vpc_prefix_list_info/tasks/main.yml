@@ -4,7 +4,7 @@
     - ec2_vpc_prefix_list_info
   ansible.builtin.command:
     cmd: >
-      aws ec2 describe-prefix-lists
+      aws ec2 describe-managed-prefix-lists
              --query 'PrefixLists'
   register: __ec2_vpc_prefix_list_info_query
   changed_when: false
@@ -23,10 +23,6 @@
   tags:
     - ec2_vpc_prefix_list_info
   ansible.builtin.set_fact:
-    _ec2_vpc_prefix_list_info_cidrs:
-      "{{ _ec2_vpc_prefix_list_info_cidrs |
-          default({}) |
-          combine({_pl.PrefixListName: _pl.Cidrs}) }}"
     _ec2_vpc_prefix_list_info_prefix_list_id:
       "{{ _ec2_vpc_prefix_list_info_prefix_list_id |
           default({}) |
