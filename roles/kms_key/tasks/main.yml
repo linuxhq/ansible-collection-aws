@@ -28,7 +28,7 @@
   when:
     - _key.name is defined
 
-- name: Ensure list of ec2 key results is generated
+- name: Ensure list of kms key results is generated
   tags:
     - kms_key
   ansible.builtin.set_fact:
