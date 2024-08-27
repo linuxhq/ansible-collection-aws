@@ -1,0 +1,71 @@
+---
+- name: Ensure information about kms keys is gathered
+  tags:
+    - kms_key_info
+  amazon.aws.kms_key_info:
+    alias: "{{ kms_key_info_alias or omit }}"
+    filters: "{{ kms_key_info_filters }}"
+    key_id: "{{ kms_key_info_key_id or omit }}"
+    pending_deletion: "{{ kms_key_info_pending_deletion }}"
+    validate_certs: true
+  register: __kms_key_info_query
+
+- name: Ensure list of kms keys is generated
+  tags:
+    - kms_key_info
+  ansible.builtin.set_fact:
+    _kms_key_info_list:
+      "{{ __kms_key_info_query.kms_keys |
+          d([]) }}"
+
+- name: Ensure dictionaries of kms key information is generated
+  tags:
+    - kms_key_info
+  ansible.builtin.set_fact:
+    _kms_key_info_aliases:
+      "{{ _kms_key_info_aliases |
+          default({}) |
+          combine({_key.aliases[0]: _key.aliases}) }}"
+    _kms_key_info_enable_key_rotation:
+      "{{ _kms_key_info_enable_key_rotation |
+          default({}) |
+          combine({_key.aliases[0]: _key.enable_key_rotation}) }}"
+    _kms_key_info_enabled:
+      "{{ _kms_key_info_enabled |
+          default({}) |
+          combine({_key.aliases[0]: _key.enabled}) }}"
+    _kms_key_info_grants:
+      "{{ _kms_key_info_grants |
+          default({}) |
+          combine({_key.aliases[0]: _key.grants}) }}"
+    _kms_key_info_key_arn:
+      "{{ _kms_key_info_key_arn |
+          default({}) |
+          combine({_key.aliases[0]: _key.key_arn}) }}"
+    _kms_key_info_key_id:
+      "{{ _kms_key_info_key_id |
+          default({}) |
+          combine({_key.aliases[0]: _key.key_id}) }}"
+    _kms_key_info_key_policies:
+      "{{ _kms_key_info_key_policies |
+          default({}) |
+          combine({_key.aliases[0]: _key.key_policies}) }}"
+    _kms_key_info_key_state:
+      "{{ _kms_key_info_key_state |
+          default({}) |
+          combine({_key.aliases[0]: _key.key_state}) }}"
+    _kms_key_info_key_usage:
+      "{{ _kms_key_info_key_usage |
+          default({}) |
+          combine({_key.aliases[0]: _key.key_usage}) }}"
+    _kms_key_info_origin:
+      "{{ _kms_key_info_origin |
+          default({}) |
+          combine({_key.aliases[0]: _key.origin}) }}"
+  loop: "{{ _kms_key_info_list }}"
+  loop_control:
+    label: "{{ _key.aliases[0] | d(none) }}"
+    loop_var: _key
+  when:
+    - _key.aliases[0] is defined
+...
