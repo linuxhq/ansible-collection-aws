@@ -32,14 +32,22 @@ None
       roles:
         - role: linuxhq.aws.ec2_vpc_prefix_list
           ec2_vpc_prefix_list_entries:
-            - name: cloudflare
+            - name: cloudflare-ipv4
               entries:
-                - 1.1.1.1/32
-                - 1.1.1.2/32
+                "{{ lookup('ansible.builtin.url',
+                           'https://www.cloudflare.com/ips-v4',
+                           wantlist=true) }}"
 
-            - name: linuxhq
+            - name: cloudflare-ipv6
+              address_family: IPv6
               entries:
-                - 192.168.0.0/24
+                "{{ lookup('ansible.builtin.url',
+                           'https://www.cloudflare.com/ips-v6',
+                           wantlist=true) }}"
+
+            - name: "{{ aws_vpc }}"
+              entries:
+                - "{{ aws_network }}"
 
 ## License
 
