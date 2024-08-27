@@ -34,6 +34,7 @@ None
     _s3_bucket_info_bucket_versioning
     _s3_bucket_info_bucket_website
     _s3_bucket_info_creation_date
+    _s3_bucket_info_list
     _s3_bucket_info_public_access_block
 
 ## Dependencies
