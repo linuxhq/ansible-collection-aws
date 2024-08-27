@@ -1,0 +1,110 @@
+---
+- name: Ensure identity and access management groups are gathered
+  tags:
+    - iam_policy_info
+  ansible.builtin.command:
+    cmd: >
+      aws iam list-groups
+              --query 'Groups[].GroupName'
+  register: __iam_policy_info_group_names
+  changed_when: false
+  check_mode: false
+
+- name: Ensure identity and access management users are gathered
+  tags:
+    - iam_policy_info
+  ansible.builtin.command:
+    cmd: >
+      aws iam list-users
+              --query 'Users[].UserName'
+  register: __iam_policy_info_user_names
+  changed_when: false
+  check_mode: false
+
+- name: Ensure identity and access management return values are formatted
+  tags:
+    - iam_policy_info
+  ansible.builtin.set_fact:
+    __iam_policy_info_groups:
+      "{{ (__iam_policy_info_group_names.stdout |
+          from_json) |
+          list |
+          d([]) }}"
+    __iam_policy_info_users:
+      "{{ (__iam_policy_info_user_names.stdout |
+          from_json) |
+          list |
+          d([]) }}"
+
+- name: Ensure identity and access management group inline policies are gathered
+  tags:
+    - iam_policy_info
+  amazon.aws.iam_policy_info:
+    iam_name: "{{ _group }}"
+    iam_type: group
+    validate_certs: true
+  register: __iam_policy_info_group_list
+  loop: "{{ __iam_policy_info_groups }}"
+  loop_control:
+    label: "{{ _group }}"
+    loop_var: _group
+
+- name: Ensure identity and access management user inline policies are gathered
+  tags:
+    - iam_policy_info
+  amazon.aws.iam_policy_info:
+    iam_name: "{{ _user }}"
+    iam_type: user
+    validate_certs: true
+  register: __iam_policy_info_user_list
+  loop: "{{ __iam_policy_info_users }}"
+  loop_control:
+    label: "{{ _user }}"
+    loop_var: _user
+
+- name: Ensure dictionaries of group inline policy information is generated
+  tags:
+    - iam_policy_info
+  ansible.builtin.set_fact:
+    _iam_policy_info_group_all_policy_names:
+      "{{ _iam_policy_info_group_all_policy_names |
+          d({}) |
+          combine({_group.group_name: _group.all_policy_names}) }}"
+    _iam_policy_info_group_policies:
+      "{{ _iam_policy_info_group_policies |
+          d({}) |
+          combine({_group.group_name: _group.policies}) }}"
+    _iam_policy_info_group_policy_names:
+      "{{ _iam_policy_info_group_policy_names |
+          d({}) |
+          combine({_group.group_name: _group.policy_names}) }}"
+  loop: "{{ __iam_policy_info_group_list.results }}"
+  loop_control:
+    label: "{{ _group.group_name | d(none) }}"
+    loop_var: _group
+  when:
+    - _group.group_name is defined
+
+- name: Ensure dictionaries of user inline policy information is generated
+  tags:
+    - iam_policy_info
+  ansible.builtin.set_fact:
+    _iam_policy_info_user_all_policy_names:
+      "{{ _iam_policy_info_user_all_policy_names |
+          d({}) |
+          combine({_user.user_name: _user.all_policy_names}) }}"
+    _iam_policy_info_user_policies:
+      "{{ _iam_policy_info_user_policies |
+          d({}) |
+          combine({_user.user_name: _user.policies}) }}"
+    _iam_policy_info_user_policy_names:
+      "{{ _iam_policy_info_user_policy_names |
+          d({}) |
+          combine({_user.user_name: _user.policy_names}) }}"
+  loop: "{{ __iam_policy_info_user_list.results }}"
+  loop_control:
+    label: "{{ _user.user_name | d(none) }}"
+    loop_var: _user
+  when:
+    - _user.user_name is defined
+...
