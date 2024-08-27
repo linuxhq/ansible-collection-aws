@@ -1,0 +1,39 @@
+---
+- name: Ensure key management service keys are present
+  tags:
+    - kms_key
+  amazon.aws.kms_key:
+    alias: "{{ _key.name }}"
+    description: "{{ _key.description | d(_key.name) }}"
+    enable_key_rotation: "{{ _key.enable_key_rotation | d(omit) }}"
+    enabled: "{{ _key.enabled | d(true) }}"
+    grants: "{{ _key.grants | d(omit) }}"
+    key_spec: "{{ _key.key_spec | d('SYMMETRIC_DEFAULT') }}"
+    key_usage: "{{ _key.key_usage | d('ENCRYPT_DECRYPT') }}"
+    multi_region: "{{ _key.multi_region | d(false) }}"
+    policy: "{{ _key.policy | d(omit) }}"
+    purge_grants: "{{ _key.purge_grants | d(false) }}"
+    purge_tags: "{{ _key.purge_tags | d(true) }}"
+    state: present
+    tags:
+      "{{ _key.tags |
+          d({}) |
+          combine({'Name': _key.name}) }}"
+    validate_certs: true
+  register: __kms_key_results
+  loop: "{{ kms_key_list }}"
+  loop_control:
+    label: "{{ _key.name | d(none) }}"
+    loop_var: _key
+  when:
+    - _key.name is defined
+
+- name: Ensure list of ec2 key results is generated
+  tags:
+    - kms_key
+  ansible.builtin.set_fact:
+    _kms_key_list:
+      "{{ __kms_key_results.results |
+          list |
+          d([]) }}"
+...
