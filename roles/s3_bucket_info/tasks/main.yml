@@ -1,0 +1,120 @@
+---
+- name: Ensure information about simple storage service buckets is gathered
+  tags:
+    - s3_bucket_info
+  amazon.aws.s3_bucket_info:
+    bucket_facts: "{{ s3_bucket_info_bucket_facts }}"
+    name: "{{ s3_bucket_info_name or omit }}"
+    name_filter: "{{ s3_bucket_info_name_filter or omit }}"
+    transform_location: "{{ s3_bucket_info_transform_location }}"
+  register: __s3_bucket_info_query
+
+- name: Ensure list of simple storage service buckets is generated
+  tags:
+    - s3_bucket_info
+  ansible.builtin.set_fact:
+    _s3_bucket_info_list:
+      "{{ __s3_bucket_info_query.buckets |
+          d([]) }}"
+
+- name: Ensure dictionaries of simple storage service bucket information is generated
+  tags:
+    - s3_bucket_info
+  ansible.builtin.set_fact:
+    _s3_bucket_info_bucket_accelerate_configuration:
+      "{{ _s3_bucket_info_bucket_accelerate_configuration |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.key_bucket_accelerate_configuration | d({})}) }}"
+    _s3_bucket_info_bucket_acl:
+      "{{ _s3_bucket_info_bucket_acl |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_acl | d({})}) }}"
+    _s3_bucket_info_bucket_cors:
+      "{{ _s3_bucket_info_bucket_cors |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_cors | d({})}) }}"
+    _s3_bucket_info_bucket_encryption:
+      "{{ _s3_bucket_info_bucket_encryption |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_encryption | d({})}) }}"
+    _s3_bucket_info_bucket_lifecycle_configuration:
+      "{{ _s3_bucket_info_bucket_lifecycle_configuration |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_lifecycle_configuration | d({})}) }}"
+    _s3_bucket_info_bucket_location:
+      "{{ _s3_bucket_info_bucket_location |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_location | d({})}) }}"
+    _s3_bucket_info_bucket_logging:
+      "{{ _s3_bucket_info_bucket_logging |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_logging | d({})}) }}"
+    _s3_bucket_info_bucket_notification_configuration:
+      "{{ _s3_bucket_info_bucket_notification_configuration |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_notification_configuration | d({})}) }}"
+    _s3_bucket_info_bucket_ownership_controls:
+      "{{ _s3_bucket_info_bucket_ownership_controls |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_ownership_controls | d({})}) }}"
+    _s3_bucket_info_bucket_policy:
+      "{{ _s3_bucket_info_bucket_policy |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_policy | d({})}) }}"
+    _s3_bucket_info_bucket_policy_status:
+      "{{ _s3_bucket_info_bucket_policy_status |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_policy_status | d({})}) }}"
+    _s3_bucket_info_bucket_replication:
+      "{{ _s3_bucket_info_bucket_replication |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_replication | d({})}) }}"
+    _s3_bucket_info_bucket_request_payment:
+      "{{ _s3_bucket_info_bucket_request_payment |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_request_payment | d({})}) }}"
+    _s3_bucket_info_bucket_tagging:
+      "{{ _s3_bucket_info_bucket_tagging |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_tagging | d({})}) }}"
+    _s3_bucket_info_bucket_versioning:
+      "{{ _s3_bucket_info_bucket_versioning |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_versioning | d({})}) }}"
+    _s3_bucket_info_bucket_website:
+      "{{ _s3_bucket_info_bucket_website |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.bucket_website | d({})}) }}"
+    _s3_bucket_info_creation_date:
+      "{{ _s3_bucket_info_creation_date |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.creation_date}) }}"
+    _s3_bucket_info_public_access_block:
+      "{{ _s3_bucket_info_public_access_block |
+          default({}) |
+          combine({_bucket.name:
+                   _bucket.public_access_block | d({})}) }}"
+  loop: "{{ _s3_bucket_info_list }}"
+  loop_control:
+    label: "{{ _bucket.name | d(none) }}"
+    loop_var: _bucket
+  when:
+    - _bucket.name is defined
+...
