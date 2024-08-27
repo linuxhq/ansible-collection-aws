@@ -68,7 +68,7 @@
     - __ec2_vpc_prefix_list_remove_entries | length > 0
   changed_when: true
 
-- name: Ensure virtual private cloud prefix list info and state tasks are executed
+- name: Ensure virtual private cloud prefix list state tasks are executed
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.include_tasks:
