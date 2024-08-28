@@ -1,0 +1,144 @@
+---
+- name: Ensure route53 resolver default security group rules are generated
+  tags:
+    - route53_resolver
+  ansible.builtin.set_fact:
+    __route53_resolver_rules:
+      - cidr_ip: 0.0.0.0/0
+        ports:
+          - 53
+          - 443
+        proto: tcp
+      - cidr_ip: 0.0.0.0/0
+        ports:
+          - 53
+        proto: udp
+    __route53_resolver_rules_egress:
+      - cidr_ip: 0.0.0.0/0
+        proto: -1
+  when:
+    - route53_resolver_list | length > 0
+
+- name: Ensure route53 resolver security groups are present
+  tags:
+    - route53_resolver
+  amazon.aws.ec2_security_group:
+    description: "{{ _sg.description | d(_sg.name) }}"
+    name: "{{ _sg.name }}"
+    purge_rules: true
+    purge_rules_egress: true
+    purge_tags: true
+    rules: "{{ _sg.rules | d(__route53_resolver_rules) }}"
+    rules_egress: "{{ _sg.rules_egress | d(__route53_resolver_rules_egress) }}"
+    state: present
+    tags:
+      "{{ _sg.tags |
+          d({}) |
+          combine({'Name': _sg.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _sg.vpc_id }}"
+  loop: "{{ route53_resolver_list }}"
+  loop_control:
+    label: "{{ _sg.name | d(none) }}"
+    loop_var: _sg
+  when:
+    - _sg.name is defined
+    - _sg.vpc_id is defined
+
+- name: Ensure route53 resolver security group information is gathered
+  tags:
+    - route53_resolver
+  amazon.aws.ec2_security_group_info:
+    filters:
+      group-name: "{{ route53_resolver_list |
+                      map(attribute='name', default=[]) }}"
+  register: __route53_resolver_security_group_list
+
+- name: Ensure dictionary of route53 resolver security group ids is generated
+  tags:
+    - route53_resolver
+  ansible.builtin.set_fact:
+    __route53_resolver_security_group_id:
+      "{{ __route53_resolver_security_group_list.security_groups |
+          items2dict(key_name='group_name', value_name='group_id') }}"
+
+- name: Ensure route53 resolver info tasks are executed
+  tags:
+    - route53_resolver
+  ansible.builtin.include_tasks:
+    file: info.yml
+
+- name: Ensure route53 resolver endpoints are present
+  tags:
+    - route53_resolver
+  ansible.builtin.command:
+    cmd: >
+      aws route53resolver create-resolver-endpoint
+                          --creator-request-id "{{ _resolver.name }}"
+                          --direction "{{ _resolver.direction | upper }}"
+                          --ip-addresses '{{ _resolver.ip_addresses | to_json }}'
+                          --name "{{ _resolver.name }}"
+                          --resolver-endpoint-type "{{ _resolver.resolver_endpoint_type | d('ipv4') | upper }}"
+                          --security-group-ids "{{ __route53_resolver_security_group_id[_resolver.name] }}"
+  register: __route53_resolver_create
+  loop: "{{ route53_resolver_list }}"
+  loop_control:
+    label: "{{ _resolver.name }}"
+    loop_var: _resolver
+  when:
+    - _resolver.name is defined
+    - _resolver.name not in __route53_resolver_endpoints.keys()
+    - _resolver.direction is defined
+    - _resolver.ip_addresses is defined
+    - _resolver.ip_addresses | length > 0
+    - __route53_resolver_security_group_id[_resolver.name] is defined
+  changed_when: true
+
+- name: Ensure route53 resolver info tasks are executed
+  tags:
+    - route53_resolver
+  ansible.builtin.include_tasks:
+    file: info.yml
+
+- name: Ensure route53 resolver endpoints are operational
+  tags:
+    - route53_resolver
+  ansible.builtin.command:
+    cmd: >
+      aws route53resolver get-resolver-endpoint
+                          --output text
+                          --query 'ResolverEndpoint.Status'
+                          --resolver-endpoint-id "{{ __route53_resolver_endpoints[_resolver.name] }}"
+  register: __route53_resolver_get
+  loop: "{{ route53_resolver_list }}"
+  loop_control:
+    label: "{{ _resolver.name }}"
+    loop_var: _resolver
+  when:
+    - _resolver.name is defined
+    - __route53_resolver_endpoints[_resolver.name] is defined
+  until:
+    - __route53_resolver_get.stdout is defined
+    - __route53_resolver_get.stdout == 'OPERATIONAL'
+  delay: 5
+  retries: 60
+  changed_when: false
+
+- name: Ensure route53 resolver endpoints are updated
+  tags:
+    - route53_resolver
+  ansible.builtin.command:
+    cmd: >
+      aws route53resolver update-resolver-endpoint
+                          --name "{{ _resolver.name }}"
+                          --resolver-endpoint-type "{{ _resolver.resolver_endpoint_type | d('ipv4') | upper }}"
+                          --resolver-endpoint-id "{{ __route53_resolver_endpoints[_resolver.name] }}"
+  loop: "{{ route53_resolver_list }}"
+  loop_control:
+    label: "{{ _resolver.name }}"
+    loop_var: _resolver
+  when:
+    - _resolver.name is defined
+    - __route53_resolver_endpoints[_resolver.name] is defined
+  changed_when: true
+...

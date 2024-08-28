@@ -1,0 +1,21 @@
+---
+- name: Ensure list of route53 resolvers is gathered
+  tags:
+    - route53_resolver
+  ansible.builtin.command:
+    cmd: >
+      aws route53resolver list-resolver-endpoints
+                          --query 'ResolverEndpoints[].{key: Name, value: Id}'
+  register: __route53_resolver_endpoints_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure dictionary of route53 resolver names and ids is generated
+  tags:
+    - route53_resolver
+  ansible.builtin.set_fact:
+    __route53_resolver_endpoints:
+      "{{ (__route53_resolver_endpoints_query.stdout |
+          from_json) |
+          items2dict }}"
+...
