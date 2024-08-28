@@ -14,12 +14,7 @@ Manage aws virtual private cloud prefix lists
 
 ## Return Values
 
-    __ec2_vpc_prefix_list_all
-    __ec2_vpc_prefix_list_entries
-    __ec2_vpc_prefix_list_id
-    __ec2_vpc_prefix_list_max_entries
-    __ec2_vpc_prefix_list_names
-    __ec2_vpc_prefix_list_version
+None
 
 ## Dependencies
 
