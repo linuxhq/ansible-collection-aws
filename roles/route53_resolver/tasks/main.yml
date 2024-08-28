@@ -52,6 +52,7 @@
     filters:
       group-name: "{{ route53_resolver_list |
                       map(attribute='name', default=[]) }}"
+    validate_certs: true
   register: __route53_resolver_security_group_list
 
 - name: Ensure dictionary of route53 resolver security group ids is generated
