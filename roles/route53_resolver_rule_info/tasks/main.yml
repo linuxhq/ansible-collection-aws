@@ -1,0 +1,53 @@
+---
+- name: Ensure list of route53 resolver rules is gathered
+  tags:
+    - route53_resolver_rule_info
+  ansible.builtin.command:
+    cmd: >
+      aws route53resolver list-resolver-rules
+                          --query 'ResolverRules'
+  register: __route53_resolver_rule_info_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of route53 resolver rules is generated
+  tags:
+    - route53_resolver_rule_info
+  ansible.builtin.set_fact:
+    _route53_resolver_rule_info_list:
+      "{{ (__route53_resolver_rule_info_query.stdout |
+          from_json) |
+          list |
+          d([]) }}"
+
+- name: Ensure dictionaries of route53 resolver rule information is generated
+  tags:
+    - route53_resolver_rule_info
+  ansible.builtin.set_fact:
+    _route53_resolver_rule_info_domain_name:
+      "{{ _route53_resolver_rule_info_domain_name |
+          d({}) |
+          combine({_rule.Name: _rule.DomainName}) }}"
+    _route53_resolver_rule_info_id:
+      "{{ _route53_resolver_rule_info_id |
+          d({}) |
+          combine({_rule.Name: _rule.Id}) }}"
+    _route53_resolver_rule_info_resolver_endpoint_id:
+      "{{ _route53_resolver_rule_info_resolver_endpoint_id |
+          d({}) |
+          combine({_rule.Name: _rule.ResolverEndpointId | d(none)}) }}"
+    _route53_resolver_rule_info_rule_type:
+      "{{ _route53_resolver_rule_info_rule_type |
+          d({}) |
+          combine({_rule.Name: _rule.RuleType}) }}"
+    _route53_resolver_rule_info_target_ips:
+      "{{ _route53_resolver_rule_info_target_ips |
+          d({}) |
+          combine({_rule.Name: _rule.TargetIps | d(none)}) }}"
+  loop: "{{ _route53_resolver_rule_info_list }}"
+  loop_control:
+    label: "{{ _rule.Name | d(none) }}"
+    loop_var: _rule
+  when:
+    - _rule.Name is defined
+...
