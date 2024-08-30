@@ -84,7 +84,7 @@
   register: __route53_resolver_create
   loop: "{{ route53_resolver_list }}"
   loop_control:
-    label: "{{ _resolver.name }}"
+    label: "{{ _resolver.name | d(none) }}"
     loop_var: _resolver
   when:
     - _resolver.name is defined
@@ -113,7 +113,7 @@
   register: __route53_resolver_get
   loop: "{{ route53_resolver_list }}"
   loop_control:
-    label: "{{ _resolver.name }}"
+    label: "{{ _resolver.name | d(none) }}"
     loop_var: _resolver
   when:
     - _resolver.name is defined
@@ -136,7 +136,7 @@
                           --resolver-endpoint-id "{{ __route53_resolver_endpoints[_resolver.name] }}"
   loop: "{{ route53_resolver_list }}"
   loop_control:
-    label: "{{ _resolver.name }}"
+    label: "{{ _resolver.name | d(none) }}"
     loop_var: _resolver
   when:
     - _resolver.name is defined
