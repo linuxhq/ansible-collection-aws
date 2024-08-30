@@ -1,0 +1,25 @@
+---
+allow_duplicates: true
+dependencies: []
+galaxy_info:
+  role_name: route53_resolver_rule_info
+  author: Taylor Kimball
+  description: Gather information about route53 resolver rules
+  license: GPLv3
+  min_ansible_version: 2.15.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - info
+    - resolver
+    - route53
+    - rule
+...

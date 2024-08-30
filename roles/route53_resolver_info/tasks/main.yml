@@ -5,7 +5,7 @@
   ansible.builtin.command:
     cmd: >
       aws route53resolver list-resolver-endpoints
-                          --query 'ResolverEndpoints[].{key: Name, value: Id}'
+                          --query 'ResolverEndpoints'
   register: __route53_resolver_info_query
   changed_when: false
   check_mode: false
@@ -24,8 +24,38 @@
   tags:
     - route53_resolver_info
   ansible.builtin.set_fact:
+    _route53_resolver_info_direction:
+      "{{ _route53_resolver_info_direction |
+          d({}) |
+          combine({_resolver.Name: _resolver.Direction}) }}"
+    _route53_resolver_info_host_vpc_id:
+      "{{ _route53_resolver_info_host_vpc_id |
+          d({}) |
+          combine({_resolver.Name: _resolver.HostVPCId}) }}"
     _route53_resolver_info_id:
-      "{{ _route53_resolver_info_list |
-          items2dict |
-          d({}) }}"
+      "{{ _route53_resolver_info_id |
+          d({}) |
+          combine({_resolver.Name: _resolver.Id}) }}"
+    _route53_resolver_info_ip_address_count:
+      "{{ _route53_resolver_info_ip_address_count |
+          d({}) |
+          combine({_resolver.Name: _resolver.IpAddressCount}) }}"
+    _route53_resolver_info_resolver_endpoint_type:
+      "{{ _route53_resolver_info_resolver_endpoint_type |
+          d({}) |
+          combine({_resolver.Name: _resolver.ResolverEndpointType}) }}"
+    _route53_resolver_info_security_group_ids:
+      "{{ _route53_resolver_info_security_group_ids |
+          d({}) |
+          combine({_resolver.Name: _resolver.SecurityGroupIds}) }}"
+    _route53_resolver_info_status:
+      "{{ _route53_resolver_info_status |
+          d({}) |
+          combine({_resolver.Name: _resolver.Status}) }}"
+  loop: "{{ _route53_resolver_info_list }}"
+  loop_control:
+    label: "{{ _resolver.Name | d(none) }}"
+    loop_var: _resolver
+  when:
+    - _resolver.Name is defined
 ...

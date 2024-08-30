@@ -1,8 +1,8 @@
-# route53\_resolver\_info
+# route53\_resolver\_rule\_info
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Gather information about route53 resolvers
+Gather information about route53 resolver rules
 
 ## Requirements
 
@@ -14,14 +14,12 @@ None
 
 ## Return Values
 
-    _route53_resolver_info_direction
-    _route53_resolver_info_host_vpc_id
-    _route53_resolver_info_id
-    _route53_resolver_info_ip_address_count
-    _route53_resolver_info_list
-    _route53_resolver_info_resolver_endpoint_type
-    _route53_resolver_info_security_group_ids
-    _route53_resolver_info_status
+    _route53_resolver_rule_info_domain_name
+    _route53_resolver_rule_info_id
+    _route53_resolver_rule_info_list
+    _route53_resolver_rule_info_resolver_endpoint_id
+    _route53_resolver_rule_info_rule_type
+    _route53_resolver_rule_info_target_ips
 
 ## Dependencies
 
@@ -32,7 +30,7 @@ None
     - hosts: aws
       connection: local
       roles:
-        - linuxhq.aws.route53_resolver_info
+        - linuxhq.aws.route53_resolver_rule_info
 
 ## License
 
