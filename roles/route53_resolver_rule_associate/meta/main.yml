@@ -1,0 +1,28 @@
+---
+dependencies:
+  - role: linuxhq.aws.ec2_vpc_net_info
+    tags: route53_resolver_rule_associate
+  - role: linuxhq.aws.route53_resolver_rule_info
+    tags: route53_resolver_rule_associate
+galaxy_info:
+  role_name: route53_resolver_rule_associate
+  author: Taylor Kimball
+  description: Manage aws route53 resolver rule associations
+  license: GPLv3
+  min_ansible_version: 2.15.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - associate
+    - amazon
+    - aws
+    - resolver
+    - route53
+    - rule
+...
