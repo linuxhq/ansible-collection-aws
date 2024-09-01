@@ -19,6 +19,7 @@ None
 ## Dependencies
 
 * [linuxhq.aws.ec2\_vpc\_net\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_net_info)
+* [linuxhq.aws.ec2\_vpc\_prefix\_list\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_prefix_list_info)
 
 ## Example Playbook
 
