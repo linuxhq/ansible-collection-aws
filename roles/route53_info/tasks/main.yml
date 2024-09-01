@@ -1,0 +1,43 @@
+---
+- name: Ensure information about route53 hosted zones is gathered
+  tags:
+    - route53_info
+  amazon.aws.route53_info:
+    query: hosted_zone
+    validate_certs: true
+  register: __route53_info_hosted_zone_query
+
+- name: Ensure list of route53 hosted zones is generated
+  tags:
+    - route53_info
+  ansible.builtin.set_fact:
+    _route53_info_hosted_zones:
+      "{{ __route53_info_hosted_zone_query.hosted_zones |
+          d([]) }}"
+
+- name: Ensure information about route53 record sets is gathered
+  tags:
+    - route53_info
+  amazon.aws.route53_info:
+    hosted_zone_id: "{{ _zone.id }}"
+    query: record_sets
+    validate_certs: true
+  register: __route53_info_record_sets_query
+  loop: "{{ _route53_info_hosted_zones }}"
+  loop_control:
+    label: "{{ _zone.name }}"
+    loop_var: _zone
+  when:
+    - _zone.id is defined
+    - _zone.name is defined
+
+- name: Ensure list of route53 record sets is generated
+  tags:
+    - route53_info
+  ansible.builtin.set_fact:
+    _route53_info_record_sets:
+      "{{ __route53_info_record_sets_query.results |
+          map(attribute='resource_record_sets', default=[]) |
+          flatten |
+          d([]) }}"
+...
