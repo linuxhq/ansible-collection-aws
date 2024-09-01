@@ -1,0 +1,56 @@
+---
+- name: Ensure route53 delegation sets are gathered
+  tags:
+    - route53_delegation_set
+  ansible.builtin.command:
+    cmd: >
+      aws route53 list-reusable-delegation-sets
+                  --query DelegationSets
+  register: __route53_delegation_set_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of delegation sets is generated
+  tags:
+    - route53_delegation_set
+  ansible.builtin.set_fact:
+    __route53_delegation_set_list:
+      "{{ (__route53_delegation_set_query.stdout |
+          from_json) |
+          list |
+          d([]) }}"
+
+- name: Ensure dictionary of delegation set name and ids is generated
+  tags:
+    - route53_delegation_set
+  ansible.builtin.set_fact:
+    __route53_delegation_set_id:
+      "{{ __route53_delegation_set_id |
+          d({}) |
+          combine({_delegationset.CallerReference:
+                   _delegationset.Id}) }}"
+  loop: "{{ __route53_delegation_set_list }}"
+  loop_control:
+    label: "{{ _delegationset.CallerReference | d(none) }}"
+    loop_var: _delegationset
+  when:
+    - _delegationset.CallerReference is defined
+    - _delegationset.Id is defined
+
+- name: Ensure route53 delegation sets are present
+  tags:
+    - route53_delegation_set
+  ansible.builtin.command:
+    cmd: >
+      aws route53 create-reusable-delegation-set
+                  --caller-reference "{{ _delegationset.name }}"
+  loop: "{{ route53_delegation_set_list }}"
+  loop_control:
+    label: "{{ _delegationset.name | d(none) }}"
+    loop_var: _delegationset
+  when:
+    - _delegationset.name is defined
+    - __route53_delegation_set_id is not defined or
+      _delegationset.name not in __route53_delegation_set_id.keys()
+  changed_when: true
+...
