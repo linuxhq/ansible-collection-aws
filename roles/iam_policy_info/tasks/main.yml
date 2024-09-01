@@ -46,7 +46,7 @@
   register: __iam_policy_info_group_list
   loop: "{{ __iam_policy_info_groups }}"
   loop_control:
-    label: "{{ _group }}"
+    label: "{{ _group | d(none) }}"
     loop_var: _group
 
 - name: Ensure identity and access management user inline policies are gathered
@@ -59,7 +59,7 @@
   register: __iam_policy_info_user_list
   loop: "{{ __iam_policy_info_users }}"
   loop_control:
-    label: "{{ _user }}"
+    label: "{{ _user | d(none) }}"
     loop_var: _user
 
 - name: Ensure dictionaries of group inline policy information is generated

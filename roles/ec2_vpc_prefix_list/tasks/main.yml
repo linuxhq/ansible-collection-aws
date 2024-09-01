@@ -39,7 +39,7 @@
     - info.yml
     - state.yml
   loop_control:
-    label: "{{ _include }}"
+    label: "{{ _include | d(none) }}"
     loop_var: _include
 
 - name: Ensure virutal private cloud prefix list entries are removed
@@ -103,7 +103,7 @@
     - info.yml
     - state.yml
   loop_control:
-    label: "{{ _include }}"
+    label: "{{ _include | d(none) }}"
     loop_var: _include
 
 - name: Ensure virtual private cloud prefix list entries are added
