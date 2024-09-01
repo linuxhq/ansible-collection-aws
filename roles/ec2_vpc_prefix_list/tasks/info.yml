@@ -61,7 +61,7 @@
   register: __ec2_vpc_prefix_list_get
   loop: "{{ __ec2_vpc_prefix_list_names }}"
   loop_control:
-    label: "{{ _pl }}"
+    label: "{{ _pl | d(none) }}"
     loop_var: _pl
   when:
     - _pl in __ec2_vpc_prefix_list_names

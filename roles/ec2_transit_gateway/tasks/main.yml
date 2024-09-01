@@ -49,7 +49,7 @@
     validate_certs: true
   loop: "{{ _ec2_transit_gateway_list }}"
   loop_control:
-    label: "{{ _tgw.tags.Name }}"
+    label: "{{ _tgw.tags.Name | d(none) }}"
     loop_var: _tgw
   when:
     - _tgw.tags.Name is defined

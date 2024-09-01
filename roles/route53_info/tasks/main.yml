@@ -25,7 +25,7 @@
   register: __route53_info_record_sets_query
   loop: "{{ _route53_info_hosted_zones }}"
   loop_control:
-    label: "{{ _zone.name }}"
+    label: "{{ _zone.name | d(none) }}"
     loop_var: _zone
   when:
     - _zone.id is defined

@@ -32,7 +32,7 @@
           [_az.zone_name[-1]] }}"
   loop: "{{ _aws_az_info_list }}"
   loop_control:
-    label: "{{ _az.zone_name }}"
+    label: "{{ _az.zone_name | d(none) }}"
     loop_var: _az
   when:
     - _az.zone_name is defined
