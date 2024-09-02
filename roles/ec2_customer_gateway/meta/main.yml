@@ -1,0 +1,23 @@
+---
+dependencies: []
+galaxy_info:
+  role_name: ec2_customer_gateway
+  author: Taylor Kimball
+  description: Manage aws ec2 customer gateways
+  license: GPLv3
+  min_ansible_version: 2.15.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - customer
+    - ec2
+    - gateway
+...

@@ -1,0 +1,49 @@
+---
+- name: Ensure information about ec2 customer gateways is gathered
+  tags:
+    - ec2_customer_gateway_info
+  community.aws.ec2_customer_gateway_info:
+    customer_gateway_ids: "{{ ec2_customer_gateway_info_customer_gateway_ids or omit }}"
+    filters: "{{ ec2_customer_gateway_info_filters or omit }}"
+    validate_certs: true
+  register: __ec2_customer_gateway_info_query
+
+- name: Ensure list of ec2 customer gateways is generated
+  tags:
+    - ec2_customer_gateway_info
+  ansible.builtin.set_fact:
+    _ec2_customer_gateway_info_list:
+      "{{ __ec2_customer_gateway_info_query.customer_gateways |
+          d([]) }}"
+
+- name: Ensure dictionaries of ec2 customer gateway information is generated
+  tags:
+    - ec2_customer_gateway_info
+  ansible.builtin.set_fact:
+    _ec2_customer_gateway_info_bgp_asn:
+      "{{ _ec2_customer_gateway_info_bgp_asn |
+          default({}) |
+          combine({_cgw.customer_gateway_name: _cgw.bgp_asn}) }}"
+    _ec2_customer_gateway_info_customer_gateway_id:
+      "{{ _ec2_customer_gateway_info_customer_gateway_id |
+          default({}) |
+          combine({_cgw.customer_gateway_name: _cgw.customer_gateway_id}) }}"
+    _ec2_customer_gateway_info_ip_address:
+      "{{ _ec2_customer_gateway_info_ip_address |
+          default({}) |
+          combine({_cgw.customer_gateway_name: _cgw.ip_address}) }}"
+    _ec2_customer_gateway_info_state:
+      "{{ _ec2_customer_gateway_info_state |
+          default({}) |
+          combine({_cgw.customer_gateway_name: _cgw.state}) }}"
+    _ec2_customer_gateway_info_type:
+      "{{ _ec2_customer_gateway_info_type |
+          default({}) |
+          combine({_cgw.customer_gateway_name: _cgw.type}) }}"
+  loop: "{{ _ec2_customer_gateway_info_list }}"
+  loop_control:
+    label: "{{ _cgw.customer_gateway_name | d(none) }}"
+    loop_var: _cgw
+  when:
+    - _cgw.customer_gateway_name is defined
+...
