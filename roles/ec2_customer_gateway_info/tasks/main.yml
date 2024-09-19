@@ -16,30 +16,16 @@
       "{{ __ec2_customer_gateway_info_query.customer_gateways |
           d([]) }}"
 
-- name: Ensure dictionaries of ec2 customer gateway information is generated
+- name: Ensure dict of ec2 customer gateways is generated
   tags:
     - ec2_customer_gateway_info
   ansible.builtin.set_fact:
-    _ec2_customer_gateway_info_bgp_asn:
-      "{{ _ec2_customer_gateway_info_bgp_asn |
-          default({}) |
-          combine({_cgw.customer_gateway_name: _cgw.bgp_asn}) }}"
-    _ec2_customer_gateway_info_customer_gateway_id:
-      "{{ _ec2_customer_gateway_info_customer_gateway_id |
-          default({}) |
-          combine({_cgw.customer_gateway_name: _cgw.customer_gateway_id}) }}"
-    _ec2_customer_gateway_info_ip_address:
-      "{{ _ec2_customer_gateway_info_ip_address |
-          default({}) |
-          combine({_cgw.customer_gateway_name: _cgw.ip_address}) }}"
-    _ec2_customer_gateway_info_state:
-      "{{ _ec2_customer_gateway_info_state |
-          default({}) |
-          combine({_cgw.customer_gateway_name: _cgw.state}) }}"
-    _ec2_customer_gateway_info_type:
-      "{{ _ec2_customer_gateway_info_type |
-          default({}) |
-          combine({_cgw.customer_gateway_name: _cgw.type}) }}"
+    _ec2_customer_gateway_info_dict:
+      "{{ _ec2_customer_gateway_info_dict |
+          d({}) |
+          combine({_cgw.customer_gateway_name:
+                   _cgw |
+                   ansible.utils.remove_keys('customer_gateway_name')}) }}"
   loop: "{{ _ec2_customer_gateway_info_list }}"
   loop_control:
     label: "{{ _cgw.customer_gateway_name | d(none) }}"
