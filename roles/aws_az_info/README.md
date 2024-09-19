@@ -14,10 +14,10 @@ None
 
 ## Return Values
 
+    _aws_az_info_dict
     _aws_az_info_list
     _aws_az_info_list_l
     _aws_az_info_list_s
-    _aws_az_info_zone_id
 
 ## Dependencies
 
