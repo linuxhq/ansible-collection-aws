@@ -1,0 +1,102 @@
+---
+- name: Ensure information about eks cluster names is gathered
+  tags:
+    - eks_cluster_info
+  ansible.builtin.command:
+    cmd: >
+      aws eks list-clusters
+              --query clusters
+  register: __eks_cluster_info_query_list
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of eks clusters is generated
+  tags:
+    - eks_cluster_info
+  ansible.builtin.set_fact:
+    _eks_cluster_info_names:
+      "{{ (__eks_cluster_info_query_list.stdout |
+          from_json) |
+          d([]) }}"
+
+- name: Ensure information about eks cluster details is gathered
+  tags:
+    - eks_cluster_info
+  ansible.builtin.command:
+    cmd: >
+      aws eks describe-cluster
+              --name "{{ _cluster }}"
+              --query cluster
+  register: __eks_cluster_info_query_describe
+  loop: "{{ _eks_cluster_info_names }}"
+  loop_control:
+    label: "{{ _cluster | d(none) }}"
+    loop_var: _cluster
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of eks cluster information is generated
+  tags:
+    - eks_cluster_info
+  ansible.builtin.set_fact:
+    _eks_cluster_info_list:
+      "{{ _eks_cluster_info_list |
+          d([]) +
+          [_cluster.stdout | from_json] }}"
+  loop: "{{ __eks_cluster_info_query_describe.results }}"
+  loop_control:
+    label: "{{ _cluster._cluster | d(none) }}"
+    loop_var: _cluster
+
+- name: Ensure dictionaires of eks cluster information is generated
+  tags:
+    - eks_cluster_info
+  ansible.builtin.set_fact:
+    _eks_cluster_info_arn:
+      "{{ _eks_cluster_info_arn |
+          d({}) |
+           combine({_cluster.name: _cluster.arn}) }}"
+    _eks_cluster_info_endpoint:
+      "{{ _eks_cluster_info_endpoint |
+          d({}) |
+          combine({_cluster.name: _cluster.endpoint}) }}"
+    _eks_cluster_info_identity_oidc_issuer:
+      "{{ _eks_cluster_info_identity_oidc_issuer |
+          d({}) |
+          combine({_cluster.name: _cluster.identity.oidc.issuer}) }}"
+    _eks_cluster_info_kubernetes_network_config:
+      "{{ _eks_cluster_info_kubernetes_network_config |
+          d({}) |
+          combine({_cluster.name: _cluster.kubernetesNetworkConfig}) }}"
+    _eks_cluster_info_logging:
+      "{{ _eks_cluster_info_logging |
+          d({}) |
+          combine({_cluster.name: _cluster.logging}) }}"
+    _eks_cluster_info_platform_version:
+      "{{ _eks_cluster_info_platform_version |
+          d({}) |
+          combine({_cluster.name: _cluster.platformVersion}) }}"
+    _eks_cluster_info_resources_vpc_config:
+      "{{ _eks_cluster_info_resources_vpc_config |
+          d({}) |
+          combine({_cluster.name: _cluster.resourcesVpcConfig}) }}"
+    _eks_cluster_info_role_arn:
+      "{{ _eks_cluster_info_role_arn |
+          d({}) |
+          combine({_cluster.name: _cluster.roleArn}) }}"
+    _eks_cluster_info_status:
+      "{{ _eks_cluster_info_status |
+          d({}) |
+          combine({_cluster.name: _cluster.status}) }}"
+    _eks_cluster_info_version:
+      "{{ _eks_cluster_info_version |
+          d({}) |
+          combine({_cluster.name: _cluster.version}) }}"
+  loop: "{{ _eks_cluster_info_list |
+            d([]) }}"
+  loop_control:
+    label: "{{ _cluster.name | d(none) }}"
+    loop_var: _cluster
+  when:
+    - _cluster.name is defined
+...
