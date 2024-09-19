@@ -15,12 +15,8 @@ None
 
 ## Return Values
 
-    _ec2_customer_gateway_info_bgp_asn
-    _ec2_customer_gateway_info_customer_gateway_id
-    _ec2_customer_gateway_info_ip_address
+    _ec2_customer_gateway_info_dict
     _ec2_customer_gateway_info_list
-    _ec2_customer_gateway_info_state
-    _ec2_customer_gateway_info_type
 
 ## Dependencies
 
