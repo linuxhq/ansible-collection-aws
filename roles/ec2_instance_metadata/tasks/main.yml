@@ -1,0 +1,13 @@
+---
+- name: Ensure ec2 instance metadata defaults are present
+  tags:
+    - ec2_instance_metadata
+  ansible.builtin.command:
+    cmd: >
+      aws ec2 modify-instance-metadata-defaults
+              --http-endpoint "{{ ec2_instance_metadata_http_endpoint }}"
+              --http-put-response-hop-limit "{{ ec2_instance_metadata_http_put_response_hop_limit }}"
+              --http-tokens "{{ ec2_instance_metadata_http_tokens }}"
+              --instance-metadata-tags "{{ ec2_instance_metadata_instance_metadata_tags }}"
+  changed_when: false
+...
