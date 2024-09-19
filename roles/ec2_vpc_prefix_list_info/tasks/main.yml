@@ -19,14 +19,16 @@
           from_json) |
           d([]) }}"
 
-- name: Ensure dictionaries of virtual private cloud prefix list information is generated
+- name: Ensure dict of virtual private cloud prefix lists is generated
   tags:
     - ec2_vpc_prefix_list_info
   ansible.builtin.set_fact:
-    _ec2_vpc_prefix_list_info_prefix_list_id:
-      "{{ _ec2_vpc_prefix_list_info_prefix_list_id |
-          default({}) |
-          combine({_pl.PrefixListName: _pl.PrefixListId}) }}"
+    _ec2_vpc_prefix_list_info_dict:
+      "{{ _ec2_vpc_prefix_list_info_dict |
+          d({}) |
+          combine({_pl.PrefixListName:
+                   _pl |
+                   ansible.utils.remove_keys('PrefixListName')}) }}"
   loop: "{{ _ec2_vpc_prefix_list_info_list }}"
   loop_control:
     label: "{{ _pl.PrefixListName | d(none) }}"

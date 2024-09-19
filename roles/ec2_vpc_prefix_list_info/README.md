@@ -14,8 +14,8 @@ None
 
 ## Return Values
 
+    _ec2_vpc_prefix_list_info_dict
     _ec2_vpc_prefix_list_info_list
-    _ec2_vpc_prefix_list_info_prefix_list_id
 
 ## Dependencies
 
