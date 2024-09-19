@@ -18,50 +18,14 @@
       "{{ __kms_key_info_query.kms_keys |
           d([]) }}"
 
-- name: Ensure dictionaries of kms key information is generated
+- name: Ensure dict of kms keys is generated
   tags:
     - kms_key_info
   ansible.builtin.set_fact:
-    _kms_key_info_aliases:
-      "{{ _kms_key_info_aliases |
+    _kms_key_info_dict:
+      "{{ _kms_key_info_dict |
           default({}) |
-          combine({_key.aliases[0]: _key.aliases}) }}"
-    _kms_key_info_enable_key_rotation:
-      "{{ _kms_key_info_enable_key_rotation |
-          default({}) |
-          combine({_key.aliases[0]: _key.enable_key_rotation}) }}"
-    _kms_key_info_enabled:
-      "{{ _kms_key_info_enabled |
-          default({}) |
-          combine({_key.aliases[0]: _key.enabled}) }}"
-    _kms_key_info_grants:
-      "{{ _kms_key_info_grants |
-          default({}) |
-          combine({_key.aliases[0]: _key.grants}) }}"
-    _kms_key_info_key_arn:
-      "{{ _kms_key_info_key_arn |
-          default({}) |
-          combine({_key.aliases[0]: _key.key_arn}) }}"
-    _kms_key_info_key_id:
-      "{{ _kms_key_info_key_id |
-          default({}) |
-          combine({_key.aliases[0]: _key.key_id}) }}"
-    _kms_key_info_key_policies:
-      "{{ _kms_key_info_key_policies |
-          default({}) |
-          combine({_key.aliases[0]: _key.key_policies}) }}"
-    _kms_key_info_key_state:
-      "{{ _kms_key_info_key_state |
-          default({}) |
-          combine({_key.aliases[0]: _key.key_state}) }}"
-    _kms_key_info_key_usage:
-      "{{ _kms_key_info_key_usage |
-          default({}) |
-          combine({_key.aliases[0]: _key.key_usage}) }}"
-    _kms_key_info_origin:
-      "{{ _kms_key_info_origin |
-          default({}) |
-          combine({_key.aliases[0]: _key.origin}) }}"
+          combine({_key.aliases[0]: _key}) }}"
   loop: "{{ _kms_key_info_list }}"
   loop_control:
     label: "{{ _key.aliases[0] | d(none) }}"

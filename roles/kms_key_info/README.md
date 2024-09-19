@@ -17,17 +17,8 @@ None
 
 ## Return Values
 
-    _kms_key_info_aliases
-    _kms_key_info_enable_key_rotation
-    _kms_key_info_enabled
-    _kms_key_info_grants
-    _kms_key_info_key_arn
-    _kms_key_info_key_id
-    _kms_key_info_key_policies
-    _kms_key_info_key_state
-    _kms_key_info_key_usage
+    _kms_key_info_dict
     _kms_key_info_list
-    _kms_key_info_origin
 
 ## Dependencies
 
