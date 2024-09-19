@@ -9,6 +9,11 @@ A collection of aws roles
 
 # Collection
 
+## Environment
+
+    make
+    source venv/bin/activate
+
 ## Build
 
     ansible-galaxy collection build
@@ -16,11 +21,6 @@ A collection of aws roles
 ## Install
 
     ansible-galaxy collection install linuxhq.aws
-
-## Environment
-
-    make
-    source venv/bin/activate
 
 # Playbook
 
