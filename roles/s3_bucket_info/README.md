@@ -17,25 +17,8 @@ None
 
 ## Return Values
 
-    _s3_bucket_info_bucket_accelerate_configuration
-    _s3_bucket_info_bucket_acl
-    _s3_bucket_info_bucket_cors
-    _s3_bucket_info_bucket_encryption
-    _s3_bucket_info_bucket_lifecycle_configuration
-    _s3_bucket_info_bucket_location
-    _s3_bucket_info_bucket_logging
-    _s3_bucket_info_bucket_notification_configuration
-    _s3_bucket_info_bucket_ownership_controls
-    _s3_bucket_info_bucket_policy
-    _s3_bucket_info_bucket_policy_status
-    _s3_bucket_info_bucket_replication
-    _s3_bucket_info_bucket_request_payment
-    _s3_bucket_info_bucket_tagging
-    _s3_bucket_info_bucket_versioning
-    _s3_bucket_info_bucket_website
-    _s3_bucket_info_creation_date
+    _s3_bucket_info_dict
     _s3_bucket_info_list
-    _s3_bucket_info_public_access_block
 
 ## Dependencies
 
