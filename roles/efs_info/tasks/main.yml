@@ -18,26 +18,14 @@
       "{{ __efs_info_query.efs |
           d([]) }}"
 
-- name: Ensure dictionaries of elastic filesystem information is generated
+- name: Ensure dict of elastic filesystems is generated
   tags:
     - efs_info
   ansible.builtin.set_fact:
-    _efs_info_file_system_id:
-      "{{ _efs_info_file_system_id |
-          default({}) |
-          combine({_fs.tags.Name: _fs.file_system_id}) }}"
-    _efs_info_filesystem_address:
-      "{{ _efs_info_filesystem_address |
-          default({}) |
-          combine({_fs.tags.Name: _fs.filesystem_address}) }}"
-    _efs_info_mount_point:
-      "{{ _efs_info_mount_point |
-          default({}) |
-          combine({_fs.tags.Name: _fs.mount_point}) }}"
-    _efs_info_mount_targets:
-      "{{ _efs_info_mount_targets |
-          default({}) |
-          combine({_fs.tags.Name: _fs.mount_targets}) }}"
+    _efs_info_dict:
+      "{{ _efs_info_dict |
+          d({}) |
+          combine({_fs.tags.Name: _fs}) }}"
   loop: "{{ _efs_info_list }}"
   loop_control:
     label: "{{ _fs.tags.Name | d(none) }}"
