@@ -37,15 +37,17 @@
   when:
     - _az.zone_name is defined
 
-- name: Ensure dictionaries of aws availability zones is generated
+- name: Ensure dict of aws availability zones is generated
   tags:
     - always
     - aws_az_info
   ansible.builtin.set_fact:
-    _aws_az_info_zone_id:
-      "{{ _aws_az_info_zone_id |
+    _aws_az_info_dict:
+      "{{ _aws_az_info_dict |
           d({}) |
-          combine({_az.zone_name: _az.zone_id}) }}"
+          combine({_az.zone_name:
+                   _az |
+                   ansible.utils.remove_keys('zone_name')}) }}"
   loop: "{{ _aws_az_info_list }}"
   loop_control:
     label: "{{ _az.zone_name | d(none) }}"
