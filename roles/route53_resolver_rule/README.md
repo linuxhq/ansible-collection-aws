@@ -29,7 +29,7 @@ None
           route53_resolver_rule_list:
             - name: "{{ aws_vpc }}-cloudflare"
               domain_name: linuxhq.net
-              resolver_endpoint_id: "{{ _route53_resolver_info_id[aws_vpc ~ '-outbound'] }}"
+              resolver_endpoint_id: "{{ _route53_resolver_info_dict[aws_vpc ~ '-outbound'].Id }}"
               rule_type: forward
               target_ips:
                 - Ip: 1.1.1.1

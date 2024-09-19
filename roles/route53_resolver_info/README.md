@@ -14,14 +14,8 @@ None
 
 ## Return Values
 
-    _route53_resolver_info_direction
-    _route53_resolver_info_host_vpc_id
-    _route53_resolver_info_id
-    _route53_resolver_info_ip_address_count
+    _route53_resolver_info_dict
     _route53_resolver_info_list
-    _route53_resolver_info_resolver_endpoint_type
-    _route53_resolver_info_security_group_ids
-    _route53_resolver_info_status
 
 ## Dependencies
 
