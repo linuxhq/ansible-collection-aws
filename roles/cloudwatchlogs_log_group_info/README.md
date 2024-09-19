@@ -14,10 +14,8 @@ None
 
 ## Return Values
 
-    _cloudwatchlogs_log_group_info_arn
+    _cloudwatchlogs_log_group_info_dict
     _cloudwatchlogs_log_group_info_list
-    _cloudwatchlogs_log_group_info_metric_filter_count
-    _cloudwatchlogs_log_group_info_log_stored_bytes
 
 ## Dependencies
 
