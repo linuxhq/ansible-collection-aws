@@ -14,12 +14,8 @@ None
 
 ## Return Values
 
-    _iam_policy_info_group_all_policy_names
-    _iam_policy_info_group_policies
-    _iam_policy_info_group_policy_names
-    _iam_policy_info_user_all_policy_names
-    _iam_policy_info_user_policies
-    _iam_policy_info_user_policy_names
+    _iam_policy_info_group_dict
+    _iam_policy_info_user_dict
 
 ## Dependencies
 
