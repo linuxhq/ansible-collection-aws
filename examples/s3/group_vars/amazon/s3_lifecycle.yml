@@ -1,0 +1,20 @@
+---
+s3_lifecycle_list:
+  - name: "{{ aws_vpc }}-global-bucket"
+    rules:
+      - rule_id: "{{ aws_vpc }}-30d-glacier"
+        transition_days: 30
+        prefix: 30d/
+        status: enabled
+        storage_class: glacier
+      - rule_id: "{{ aws_vpc }}-90d-glacier"
+        transition_days: 90
+        prefix: 90d/
+        status: enabled
+        storage_class: glacier
+      - rule_id: "{{ aws_vpc }}-365d-glacier"
+        transition_days: 365
+        prefix: 365d/
+        status: enabled
+        storage_class: glacier
+...

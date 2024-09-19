@@ -16,7 +16,7 @@
     object_lock_default_retention: "{{ _bucket.object_lock_default_retention | d(omit) }}"
     object_lock_enabled: "{{ _bucket.object_lock_enabled | d(omit) }}"
     object_ownership: "{{ _bucket.object_ownership | d(omit) }}"
-    policy: "{{ (_bucket.policy | to_json) | d(omit) }}"
+    policy: "{{ _bucket.policy | to_json if _bucket.policy is defined else omit }}"
     public_access: "{{ _bucket.public_access | d(omit) }}"
     purge_tags: "{{ _bucket.purge_tags | d(true) }}"
     requester_pays: "{{ _bucket.requester_pays | d(omit) }}"
