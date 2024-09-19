@@ -1,0 +1,16 @@
+---
+- name: Ensure vpc playbook is executed
+  hosts: amazon
+  roles:
+    - linuxhq.aws.aws_caller_info
+    - linuxhq.aws.aws_region_info
+    - linuxhq.aws.aws_az_info
+    - linuxhq.aws.ec2_vpc_dhcp_option
+    - linuxhq.aws.ec2_vpc_net
+    - linuxhq.aws.ec2_vpc_igw
+    - linuxhq.aws.ec2_vpc_subnet
+    - linuxhq.aws.ec2_vpc_nat_gateway
+    - linuxhq.aws.ec2_vpc_route_table
+    - linuxhq.aws.ec2_key
+    - linuxhq.aws.ec2_security_group
+...

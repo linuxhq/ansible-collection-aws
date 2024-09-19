@@ -1,0 +1,6 @@
+---
+ec2_vpc_net_list:
+  - name: "{{ aws_vpc }}"
+    cidr_block: "{{ aws_network }}"
+    dhcp_options_id: "{{ _ec2_vpc_dhcp_option_info_dict[aws_vpc].dhcp_options_id }}"
+...
