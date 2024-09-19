@@ -1,6 +1,5 @@
 ---
 # This playbook assumes you already have a vpc provisioned
-
 - name: Ensure route53 playbook is executed
   hosts: amazon
   roles:

@@ -1,0 +1,4 @@
+---
+s3_website_list:
+  - name: "{{ aws_vpc }}-global-bucket"
+...

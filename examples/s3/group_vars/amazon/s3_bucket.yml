@@ -1,0 +1,22 @@
+---
+s3_bucket_list:
+  - name: "{{ aws_vpc }}-global-bucket"
+    accelerate_enabled: true
+    policy:
+      Version: '2012-10-17'
+      Statement:
+        - Effect: Deny
+          Action: s3:*
+          Principal: '*'
+          Resource:
+            - "arn:aws:s3:::{{ aws_vpc }}-global-bucket"
+            - "arn:aws:s3:::{{ aws_vpc }}-global-bucket/*"
+          Condition:
+            Bool:
+              'aws:SecureTransport': false
+    public_access:
+      block_public_acls: true
+      block_public_policy: true
+      ignore_public_acls: true
+      restrict_public_buckets: true
+...

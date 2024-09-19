@@ -1,0 +1,28 @@
+---
+- name: Ensure simple storage service bucket websites are present
+  tags:
+    - s3_website
+  community.aws.s3_website:
+    error_key: "{{ _website.error_key | d(omit) }}"
+    name: "{{ _website.name }}"
+    redirect_all_requests: "{{ _website.redirect_all_requests | d(omit) }}"
+    state: present
+    suffix: "{{ _website.suffix | d('index.html') }}"
+    validate_certs: true
+  register: __s3_website_results
+  loop: "{{ s3_website_list }}"
+  loop_control:
+    label: "{{ _website.name | d(none) }}"
+    loop_var: _website
+  when:
+    - _website.name is defined
+
+- name: Ensure simple storage service bucket website results list is generated
+  tags:
+    - s3_website
+  ansible.builtin.set_fact:
+    _s3_website_list:
+      "{{ __s3_website_results.results |
+          list |
+          d([]) }}"
+...
