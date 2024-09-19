@@ -17,11 +17,8 @@ None
 
 ## Return Values
 
-    _efs_info_file_system_id
-    _efs_info_filesystem_address
+    _efs_info_dict
     _efs_info_list
-    _efs_info_mount_point
-    _efs_info_mount_targets
 
 ## Dependencies
 
