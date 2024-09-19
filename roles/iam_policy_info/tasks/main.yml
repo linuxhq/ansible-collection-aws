@@ -62,22 +62,16 @@
     label: "{{ _user | d(none) }}"
     loop_var: _user
 
-- name: Ensure dictionaries of group inline policy information is generated
+- name: Ensure dict of group inline policy information is generated
   tags:
     - iam_policy_info
   ansible.builtin.set_fact:
-    _iam_policy_info_group_all_policy_names:
-      "{{ _iam_policy_info_group_all_policy_names |
+    _iam_policy_info_group_dict:
+      "{{ _iam_policy_info_group_dict |
           d({}) |
-          combine({_group.group_name: _group.all_policy_names}) }}"
-    _iam_policy_info_group_policies:
-      "{{ _iam_policy_info_group_policies |
-          d({}) |
-          combine({_group.group_name: _group.policies}) }}"
-    _iam_policy_info_group_policy_names:
-      "{{ _iam_policy_info_group_policy_names |
-          d({}) |
-          combine({_group.group_name: _group.policy_names}) }}"
+          combine({_group.group_name: {'all_policy_names': _group.all_policy_names,
+                                       'policies': _group.policies,
+                                       'policy_names': _group.policy_names}}) }}"
   loop: "{{ __iam_policy_info_group_list.results }}"
   loop_control:
     label: "{{ _group.group_name | d(none) }}"
@@ -85,22 +79,16 @@
   when:
     - _group.group_name is defined
 
-- name: Ensure dictionaries of user inline policy information is generated
+- name: Ensure dict of user inline policy information is generated
   tags:
     - iam_policy_info
   ansible.builtin.set_fact:
-    _iam_policy_info_user_all_policy_names:
-      "{{ _iam_policy_info_user_all_policy_names |
+    _iam_policy_info_user_dict:
+      "{{ _iam_policy_info_user_dict |
           d({}) |
-          combine({_user.user_name: _user.all_policy_names}) }}"
-    _iam_policy_info_user_policies:
-      "{{ _iam_policy_info_user_policies |
-          d({}) |
-          combine({_user.user_name: _user.policies}) }}"
-    _iam_policy_info_user_policy_names:
-      "{{ _iam_policy_info_user_policy_names |
-          d({}) |
-          combine({_user.user_name: _user.policy_names}) }}"
+          combine({_user.user_name: {'all_policy_names': _user.all_policy_names,
+                                     'policies': _user.policies,
+                                     'policy_names': _user.policy_names}}) }}"
   loop: "{{ __iam_policy_info_user_list.results }}"
   loop_control:
     label: "{{ _user.user_name | d(none) }}"
