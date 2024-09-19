@@ -14,9 +14,8 @@ None
 
 ## Return Values
 
-    _route53_delegation_set_info_id
+    _route53_delegation_set_info_dict
     _route53_delegation_set_info_list
-    _route53_delegation_set_info_name_servers
 
 ## Dependencies
 

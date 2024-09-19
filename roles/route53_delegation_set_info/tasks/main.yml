@@ -20,20 +20,16 @@
           list |
           d([]) }}"
 
-- name: Ensure dictionaries of route53 delegation set information is generated
+- name: Ensure dict of route53 delegation sets is generated
   tags:
     - route53_delegation_set_info
   ansible.builtin.set_fact:
-    _route53_delegation_set_info_id:
-      "{{ _route53_delegation_set_info_id |
+    _route53_delegation_set_info_dict:
+      "{{ _route53_delegation_set_info_dict |
           d({}) |
           combine({_delegationset.CallerReference:
-                   _delegationset.Id}) }}"
-    _route53_delegation_set_info_name_servers:
-      "{{ _route53_delegation_set_info_name_servers |
-          d({}) |
-          combine({_delegationset.CallerReference:
-                   _delegationset.NameServers}) }}"
+                   _delegationset |
+                   ansible.utils.remove_keys('CallerReference')}) }}"
   loop: "{{ _route53_delegation_set_info_list }}"
   loop_control:
     label: "{{ _delegationset.CallerReference | d(none) }}"
