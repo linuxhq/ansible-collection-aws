@@ -15,11 +15,8 @@ None
 
 ## Return Values
 
+    _ec2_transit_gateway_info_dict
     _ec2_transit_gateway_info_list
-    _ec2_transit_gateway_info_options
-    _ec2_transit_gateway_info_state
-    _ec2_transit_gateway_info_transit_gateway_arn
-    _ec2_transit_gateway_info_transit_gateway_id
 
 ## Dependencies
 
