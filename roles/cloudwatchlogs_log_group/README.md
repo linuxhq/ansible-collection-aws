@@ -28,7 +28,7 @@ None
         - role: linuxhq.aws.cloudwatchlogs_log_group
           cloudwatchlogs_log_group_list:
             - name: linuxhq-log-group
-              kms_key_id: "{{ _kms_key_info_key_arn['linuxhq/logs'] }}"
+              kms_key_id: "{{ _kms_key_info_dict['linuxhq/logs'].key_arn }}"
               retention: 90
 
 ## License

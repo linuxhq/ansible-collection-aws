@@ -32,12 +32,12 @@ None
               encrypt: true
               targets:
                 - subnet_id:
-                    "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0] }}"
+                    "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0].id }}"
                 - subnet_id:
-                    "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1] }}"
+                    "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1].id }}"
                 - subnet_id:
-                    "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2] }}"
-              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+                    "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2].id }}"
+              vpc_id: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
 
 ## License
 

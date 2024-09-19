@@ -27,8 +27,9 @@ None
       roles:
         - role: linuxhq.aws.ec2_vpc_net
           ec2_vpc_net_list:
-            - name: molecule
-              cidr_block: 192.168.0.0/24
+            - name: "{{ aws_vpc }}"
+              cidr_block: "{{ aws_network }}"
+              dhcp_options_id: "{{ _ec2_vpc_dhcp_option_info_dict[aws_vpc].dhcp_options_id }}"
 
 ## License
 
