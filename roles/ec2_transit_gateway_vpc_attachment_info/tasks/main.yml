@@ -15,38 +15,14 @@
       "{{ __ec2_transit_gateway_vpc_attachment_info_query.attachments |
           d([]) }}"
 
-- name: Ensure dictionaries of ec2 transit gateway vpc attachment information is generated
+- name: Ensure dict of ec2 transit gateway vpc attachments is generated
   tags:
     - ec2_transit_gateway_vpc_attachment_info
   ansible.builtin.set_fact:
-    _ec2_transit_gateway_vpc_attachment_info_options:
-      "{{ _ec2_transit_gateway_vpc_attachment_info_options |
-          default({}) |
-          combine({_tgw_attach.tags.Name: _tgw_attach.options}) }}"
-    _ec2_transit_gateway_vpc_attachment_info_state:
-      "{{ _ec2_transit_gateway_vpc_attachment_info_state |
-          default({}) |
-          combine({_tgw_attach.tags.Name: _tgw_attach.state}) }}"
-    _ec2_transit_gateway_vpc_attachment_info_subnet_ids:
-      "{{ _ec2_transit_gateway_vpc_attachment_info_subnet_ids |
-          default({}) |
-          combine({_tgw_attach.tags.Name: _tgw_attach.subnet_ids}) }}"
-    _ec2_transit_gateway_vpc_attachment_info_transit_gateway_attachment_id:
-      "{{ _ec2_transit_gateway_vpc_attachment_info_transit_gateway_attachment_id |
-          default({}) |
-          combine({_tgw_attach.tags.Name: _tgw_attach.transit_gateway_attachment_id}) }}"
-    _ec2_transit_gateway_vpc_attachment_info_transit_gateway_id:
-      "{{ _ec2_transit_gateway_vpc_attachment_info_transit_gateway_id |
-          default({}) |
-          combine({_tgw_attach.tags.Name: _tgw_attach.transit_gateway_id}) }}"
-    _ec2_transit_gateway_vpc_attachment_info_vpc_id:
-      "{{ _ec2_transit_gateway_vpc_attachment_info_vpc_id |
-          default({}) |
-          combine({_tgw_attach.tags.Name: _tgw_attach.vpc_id}) }}"
-    _ec2_transit_gateway_vpc_attachment_info_vpc_owner_id:
-      "{{ _ec2_transit_gateway_vpc_attachment_info_vpc_owner_id |
-          default({}) |
-          combine({_tgw_attach.tags.Name: _tgw_attach.vpc_owner_id}) }}"
+    _ec2_transit_gateway_vpc_attachment_info_dict:
+      "{{ _ec2_transit_gateway_vpc_attachment_info_dict |
+          d({}) |
+          combine({_tgw_attach.tags.Name: _tgw_attach}) }}"
   loop: "{{ _ec2_transit_gateway_vpc_attachment_info_list }}"
   loop_control:
     label: "{{ _tgw_attach.tags.Name | d(none) }}"

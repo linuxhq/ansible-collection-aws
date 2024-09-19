@@ -14,14 +14,8 @@ None
 
 ## Return Values
 
+    _ec2_transit_gateway_vpc_attachment_info_dict
     _ec2_transit_gateway_vpc_attachment_info_list
-    _ec2_transit_gateway_vpc_attachment_info_options
-    _ec2_transit_gateway_vpc_attachment_info_state
-    _ec2_transit_gateway_vpc_attachment_info_subnet_ids
-    _ec2_transit_gateway_vpc_attachment_info_transit_gateway_attachment_id
-    _ec2_transit_gateway_vpc_attachment_info_transit_gateway_id
-    _ec2_transit_gateway_vpc_attachment_info_vpc_id
-    _ec2_transit_gateway_vpc_attachment_info_vpc_owner_id
 
 ## Dependencies
 
