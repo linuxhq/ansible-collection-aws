@@ -17,7 +17,7 @@
       "{{ __aws_region_info_query.regions |
           d([]) }}"
 
-- name: Ensure dictionaries of aws regions is generated
+- name: Ensure dict of aws regions is generated
   tags:
     - always
     - aws_region_info
