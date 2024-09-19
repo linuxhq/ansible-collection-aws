@@ -31,22 +31,22 @@ None
             - name: "{{ aws_vpc }}-outbound"
               direction: outbound
               ip_addresses:
-                - SubnetId: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0] }}"
+                - SubnetId: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0].id }}"
                   Ip:
                     "{{ aws_network |
                         ansible.utils.ipsubnet(27, 3) |
                         ansible.utils.ipaddr('last_usable') }}"
-                - SubnetId: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1] }}"
+                - SubnetId: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1].id }}"
                   Ip:
                     "{{ aws_network |
                         ansible.utils.ipsubnet(27, 4) |
                         ansible.utils.ipaddr('last_usable') }}"
-                - SubnetId: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2] }}"
+                - SubnetId: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2].id }}"
                   Ip:
                     "{{ aws_network |
                         ansible.utils.ipsubnet(27, 5) |
                         ansible.utils.ipaddr('last_usable') }}"
-              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+              vpc_id: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
 
 ## License
 

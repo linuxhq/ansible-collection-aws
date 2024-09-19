@@ -14,12 +14,8 @@ None
 
 ## Return Values
 
-    _route53_resolver_rule_info_domain_name
-    _route53_resolver_rule_info_id
+    _route53_resolver_rule_info_dict
     _route53_resolver_rule_info_list
-    _route53_resolver_rule_info_resolver_endpoint_id
-    _route53_resolver_rule_info_rule_type
-    _route53_resolver_rule_info_target_ips
 
 ## Dependencies
 

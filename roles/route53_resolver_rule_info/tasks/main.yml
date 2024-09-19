@@ -20,30 +20,16 @@
           list |
           d([]) }}"
 
-- name: Ensure dictionaries of route53 resolver rule information is generated
+- name: Ensure dict of route53 resolver rules is generated
   tags:
     - route53_resolver_rule_info
   ansible.builtin.set_fact:
-    _route53_resolver_rule_info_domain_name:
-      "{{ _route53_resolver_rule_info_domain_name |
+    _route53_resolver_rule_info_dict:
+      "{{ _route53_resolver_rule_info_dict |
           d({}) |
-          combine({_rule.Name: _rule.DomainName}) }}"
-    _route53_resolver_rule_info_id:
-      "{{ _route53_resolver_rule_info_id |
-          d({}) |
-          combine({_rule.Name: _rule.Id}) }}"
-    _route53_resolver_rule_info_resolver_endpoint_id:
-      "{{ _route53_resolver_rule_info_resolver_endpoint_id |
-          d({}) |
-          combine({_rule.Name: _rule.ResolverEndpointId | d(none)}) }}"
-    _route53_resolver_rule_info_rule_type:
-      "{{ _route53_resolver_rule_info_rule_type |
-          d({}) |
-          combine({_rule.Name: _rule.RuleType}) }}"
-    _route53_resolver_rule_info_target_ips:
-      "{{ _route53_resolver_rule_info_target_ips |
-          d({}) |
-          combine({_rule.Name: _rule.TargetIps | d(none)}) }}"
+          combine({_rule.Name:
+                   _rule |
+                   ansible.utils.remove_keys('Name')}) }}"
   loop: "{{ _route53_resolver_rule_info_list }}"
   loop_control:
     label: "{{ _rule.Name | d(none) }}"

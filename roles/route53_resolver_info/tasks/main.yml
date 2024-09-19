@@ -20,38 +20,16 @@
           list |
           d([]) }}"
 
-- name: Ensure dictionaries of route53 resolver information is generated
+- name: Ensure dict of route53 resolvers is generated
   tags:
     - route53_resolver_info
   ansible.builtin.set_fact:
-    _route53_resolver_info_direction:
-      "{{ _route53_resolver_info_direction |
+    _route53_resolver_info_dict:
+      "{{ _route53_resolver_info_dict |
           d({}) |
-          combine({_resolver.Name: _resolver.Direction}) }}"
-    _route53_resolver_info_host_vpc_id:
-      "{{ _route53_resolver_info_host_vpc_id |
-          d({}) |
-          combine({_resolver.Name: _resolver.HostVPCId}) }}"
-    _route53_resolver_info_id:
-      "{{ _route53_resolver_info_id |
-          d({}) |
-          combine({_resolver.Name: _resolver.Id}) }}"
-    _route53_resolver_info_ip_address_count:
-      "{{ _route53_resolver_info_ip_address_count |
-          d({}) |
-          combine({_resolver.Name: _resolver.IpAddressCount}) }}"
-    _route53_resolver_info_resolver_endpoint_type:
-      "{{ _route53_resolver_info_resolver_endpoint_type |
-          d({}) |
-          combine({_resolver.Name: _resolver.ResolverEndpointType}) }}"
-    _route53_resolver_info_security_group_ids:
-      "{{ _route53_resolver_info_security_group_ids |
-          d({}) |
-          combine({_resolver.Name: _resolver.SecurityGroupIds}) }}"
-    _route53_resolver_info_status:
-      "{{ _route53_resolver_info_status |
-          d({}) |
-          combine({_resolver.Name: _resolver.Status}) }}"
+          combine({_resolver.Name:
+                   _resolver |
+                   ansible.utils.remove_keys('Name')}) }}"
   loop: "{{ _route53_resolver_info_list }}"
   loop_control:
     label: "{{ _resolver.Name | d(none) }}"

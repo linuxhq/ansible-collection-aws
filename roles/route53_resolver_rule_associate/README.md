@@ -29,8 +29,8 @@ None
         - role: linuxhq.aws.route53_resolver_rule_associate
           route53_resolver_rule_associate_list:
             - name: "{{ aws_vpc }}"
-              resolver_rule_id: "{{ _route53_resolver_rule_info_id[aws_vpc ~ '-cloudflare'] }}"
-              vpc_id: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+              resolver_rule_id: "{{ _route53_resolver_rule_info_dict[aws_vpc ~ '-cloudflare'].Id }}"
+              vpc_id: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
 
 ## License
 
