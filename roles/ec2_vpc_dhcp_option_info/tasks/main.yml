@@ -16,18 +16,14 @@
       "{{ __ec2_vpc_dhcp_option_info_query.dhcp_options |
           d([]) }}"
 
-- name: Ensure dictionaries of virtual private cloud dhcp option information is generated
+- name: Ensure dict of virtual private cloud dhcp options is generated
   tags:
     - ec2_vpc_dhcp_option_info
   ansible.builtin.set_fact:
-    _ec2_vpc_dhcp_option_info_dhcp_configurations:
-      "{{ _ec2_vpc_dhcp_option_info_dhcp_configurations |
-          default({}) |
-          combine({_dopt.tags.Name: _dopt.dhcp_configurations}) }}"
-    _ec2_vpc_dhcp_option_info_dhcp_options_id:
-      "{{ _ec2_vpc_dhcp_option_info_dhcp_options_id |
-          default({}) |
-          combine({_dopt.tags.Name: _dopt.dhcp_options_id}) }}"
+    _ec2_vpc_dhcp_option_info_dict:
+      "{{ _ec2_vpc_dhcp_option_info_dict |
+          d({}) |
+          combine({_dopt.tags.Name: _dopt}) }}"
   loop: "{{ _ec2_vpc_dhcp_option_info_list }}"
   loop_control:
     label: "{{ _dopt.tags.Name | d(none) }}"
