@@ -30,10 +30,10 @@ None
           ec2_transit_gateway_vpc_attachment_list:
             - name: "{{ aws_vpc }}"
               subnets:
-                - "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0] }}"
-                - "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1] }}"
-                - "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2] }}"
-              transit_gateway: "{{ _ec2_transit_gateway_info_transit_gateway_id[aws_vpc] }}"
+                - "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0].id }}"
+                - "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1].id }}"
+                - "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2].id }}"
+              transit_gateway: "{{ _ec2_transit_gateway_info_dict[aws_vpc].transit_gateway_id }}"
 
 ## License
 

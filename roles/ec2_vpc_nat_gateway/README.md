@@ -29,19 +29,18 @@ None
           ec2_vpc_nat_gateway_list:
             - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.0 }}"
               if_exist_do_not_create: true
-              subnet_id: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0] }}"
+              subnet_id: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0].id }}"
               wait: true
 
             - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.1 }}"
               if_exist_do_not_create: true
-              subnet_id: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1] }}"
+              subnet_id: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1].id }}"
               wait: true
 
             - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.2 }}"
               if_exist_do_not_create: true
-              subnet_id: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2] }}"
+              subnet_id: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2].id }}"
               wait: true
-
 
 ## License
 

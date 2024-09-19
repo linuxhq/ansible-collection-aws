@@ -35,64 +35,64 @@ None
               value: "{{ aws_region }}"
 
             - name: /linuxhq/vpc/id
-              value: "{{ _ec2_vpc_net_info_id[aws_vpc] }}"
+              value: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
 
             - name: /linuxhq/igw/id
-              value: "{{ _ec2_vpc_igw_info_internet_gateway_id[aws_vpc] }}"
+              value: "{{ _ec2_vpc_igw_info_dict[aws_vpc].internet_gateway_id }}"
 
             - name: "/linuxhq/subnet/pub/{{ _aws_az_info_list_s.0 }}/id"
-              value: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0] }}"
+              value: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0].id }}"
 
             - name: "/linuxhq/subnet/pub/{{ _aws_az_info_list_s.1 }}/id"
-              value: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1] }}"
+              value: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1].id }}"
 
             - name: "/linuxhq/subnet/pub/{{ _aws_az_info_list_s.2 }}/id"
-              value: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2] }}"
+              value: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2].id }}"
 
             - name: "/linuxhq/subnet/pvt/{{ _aws_az_info_list_s.0 }}/id"
-              value: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0] }}"
+              value: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0].id }}"
 
             - name: "/linuxhq/subnet/pvt/{{ _aws_az_info_list_s.1 }}/id"
-              value: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1] }}"
+              value: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1].id }}"
 
             - name: "/linuxhq/subnet/pvt/{{ _aws_az_info_list_s.2 }}/id"
-              value: "{{ _ec2_vpc_subnet_info_subnet_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2] }}"
+              value: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2].id }}"
 
             - name: "/linuxhq/nat/pub/{{ _aws_az_info_list_s.0 }}/id"
-              value: "{{ _ec2_vpc_nat_gateway_info_nat_gateway_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0] }}"
+              value: "{{ _ec2_vpc_nat_gateway_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0].nat_gateway_id }}"
 
             - name: "/linuxhq/nat/pub/{{ _aws_az_info_list_s.1 }}/id"
-              value: "{{ _ec2_vpc_nat_gateway_info_nat_gateway_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1] }}"
+              value: "{{ _ec2_vpc_nat_gateway_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1].nat_gateway_id }}"
 
             - name: "/linuxhq/nat/pub/{{ _aws_az_info_list_s.2 }}/id"
-              value: "{{ _ec2_vpc_nat_gateway_info_nat_gateway_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2] }}"
+              value: "{{ _ec2_vpc_nat_gateway_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2].nat_gateway_id }}"
 
             - name: "/linuxhq/rtb/pub/{{ _aws_az_info_list_s.0 }}/id"
-              value: "{{ _ec2_vpc_route_table_info_route_table_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0] }}"
+              value: "{{ _ec2_vpc_route_table_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0].route_table_id }}"
 
             - name: "/linuxhq/rtb/pub/{{ _aws_az_info_list_s.1 }}/id"
-              value: "{{ _ec2_vpc_route_table_info_route_table_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1] }}"
+              value: "{{ _ec2_vpc_route_table_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1].route_table_id }}"
 
             - name: "/linuxhq/rtb/pub/{{ _aws_az_info_list_s.2 }}/id"
-              value: "{{ _ec2_vpc_route_table_info_route_table_id[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2] }}"
+              value: "{{ _ec2_vpc_route_table_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2].route_table_id }}"
 
             - name: "/linuxhq/rtb/pvt/{{ _aws_az_info_list_s.0 }}/id"
-              value: "{{ _ec2_vpc_route_table_info_route_table_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0] }}"
+              value: "{{ _ec2_vpc_route_table_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0].route_table_id }}"
 
             - name: "/linuxhq/rtb/pvt/{{ _aws_az_info_list_s.1 }}/id"
-              value: "{{ _ec2_vpc_route_table_info_route_table_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1] }}"
+              value: "{{ _ec2_vpc_route_table_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1].route_table_id }}"
 
             - name: "/linuxhq/rtb/pvt/{{ _aws_az_info_list_s.2 }}/id"
-              value: "{{ _ec2_vpc_route_table_info_route_table_id[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2] }}"
+              value: "{{ _ec2_vpc_route_table_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2].route_table_id }}"
 
             - name: /linuxhq/pl/cloudflare-ipv4
-              value: "{{ _ec2_vpc_prefix_list_info_prefix_list_id['cloudflare-ipv4'] }}"
+              value: "{{ _ec2_vpc_prefix_list_info_dict['cloudflare-ipv4'].PrefixListId }}"
 
             - name: /linuxhq/pl/cloudflare-ipv6
-              value: "{{ _ec2_vpc_prefix_list_info_prefix_list_id['cloudflare-ipv6'] }}"
+              value: "{{ _ec2_vpc_prefix_list_info_dict['cloudflare-ipv6'].PrefixListId }}"
 
             - name: /linuxhq/pl/linuxhq
-              value: "{{ _ec2_vpc_prefix_list_info_prefix_list_id['linuxhq'] }}"
+              value: "{{ _ec2_vpc_prefix_list_info_dict['linuxhq'].PrefixListId }}"
 
 ## License
 
