@@ -18,26 +18,16 @@
       "{{ __ec2_key_info_query.keypairs |
           d([]) }}"
 
-- name: Ensure dictionaries of ec2 key information is generated
+- name: Ensure dict of ec2 keys is generated
   tags:
     - ec2_key_info
   ansible.builtin.set_fact:
-    _ec2_key_info_key_fingerprint:
-      "{{ _ec2_key_info_key_fingerprint |
+    _ec2_key_info_dict:
+      "{{ _ec2_key_info_dict |
           default({}) |
-          combine({_key.key_name: _key.key_fingerprint}) }}"
-    _ec2_key_info_key_pair_id:
-      "{{ _ec2_key_info_key_pair_id |
-          default({}) |
-          combine({_key.key_name: _key.key_pair_id}) }}"
-    _ec2_key_info_key_type:
-      "{{ _ec2_key_info_key_type |
-          default({}) |
-          combine({_key.key_name: _key.key_type}) }}"
-    _ec2_key_info_public_key:
-      "{{ _ec2_key_info_public_key |
-          default({}) |
-          combine({_key.key_name: _key.public_key | d(none)}) }}"
+          combine({_key.key_name:
+                   _key |
+                   ansible.utils.remove_keys('key_name')}) }}"
   loop: "{{ _ec2_key_info_list }}"
   loop_control:
     label: "{{ _key.key_name | d(none) }}"

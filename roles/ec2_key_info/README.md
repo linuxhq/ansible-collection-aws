@@ -17,11 +17,8 @@ None
 
 ## Return Values
 
-    _ec2_key_info_key_fingerprint
-    _ec2_key_info_key_pair_id
-    _ec2_key_info_key_type
+    _ec2_key_info_dict
     _ec2_key_info_list
-    _ec2_key_info_public_key
 
 ## Dependencies
 
