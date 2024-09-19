@@ -22,10 +22,12 @@
     - always
     - aws_region_info
   ansible.builtin.set_fact:
-    _aws_region_info_endpoint:
-      "{{ _aws_region_info_endpoint |
+    _aws_region_info_dict:
+      "{{ _aws_region_info_dict |
           d({}) |
-          combine({_region.region_name: _region.endpoint}) }}"
+          combine({_region.region_name:
+                   _region |
+                   ansible.utils.remove_keys('region_name')}) }}"
   loop: "{{ _aws_region_info_list }}"
   loop_control:
     label: "{{ _region.region_name | d(none) }}"

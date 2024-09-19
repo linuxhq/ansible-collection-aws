@@ -16,22 +16,14 @@
       "{{ __ec2_vpc_net_info_query.vpcs |
           d([]) }}"
 
-- name: Ensure dictionaries of virtual private cloud information is generated
+- name: Ensure dict of virtual private clouds is generated
   tags:
     - ec2_vpc_net_info
   ansible.builtin.set_fact:
-    _ec2_vpc_net_info_cidr_block:
-      "{{ _ec2_vpc_net_info_cidr_block |
-          default({}) |
-          combine({_vpc.tags.Name: _vpc.cidr_block}) }}"
-    _ec2_vpc_net_info_dhcp_options_id:
-      "{{ _ec2_vpc_net_info_dhcp_options_id |
-          default({}) |
-          combine({_vpc.tags.Name: _vpc.dhcp_options_id}) }}"
-    _ec2_vpc_net_info_id:
-      "{{ _ec2_vpc_net_info_id |
-          default({}) |
-          combine({_vpc.tags.Name: _vpc.id}) }}"
+    _ec2_vpc_net_info_dict:
+      "{{ _ec2_vpc_net_info_dict |
+          d({}) |
+          combine({_vpc.tags.Name: _vpc}) }}"
   loop: "{{ _ec2_vpc_net_info_list }}"
   loop_control:
     label: "{{ _vpc.tags.Name | d(none) }}"

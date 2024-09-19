@@ -15,8 +15,7 @@ None
 
 ## Return Values
 
-    _ec2_vpc_igw_info_attachments
-    _ec2_vpc_igw_info_internet_gateway_id
+    _ec2_vpc_igw_info_dict
     _ec2_vpc_igw_info_list
 
 ## Dependencies

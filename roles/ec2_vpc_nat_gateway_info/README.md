@@ -15,16 +15,8 @@ None
 
 ## Return Values
 
-    _ec2_vpc_nat_gateway_info_allocation_id
-    _ec2_vpc_nat_gateway_info_association_id
+    _ec2_vpc_nat_gateway_info_dict
     _ec2_vpc_nat_gateway_info_list
-    _ec2_vpc_nat_gateway_info_nat_gateway_id
-    _ec2_vpc_nat_gateway_info_network_interface_id
-    _ec2_vpc_nat_gateway_info_private_ip
-    _ec2_vpc_nat_gateway_info_public_ip
-    _ec2_vpc_nat_gateway_info_state
-    _ec2_vpc_nat_gateway_info_subnet_id
-    _ec2_vpc_nat_gateway_info_vpc_id
 
 ## Dependencies
 

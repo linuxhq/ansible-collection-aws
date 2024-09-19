@@ -15,9 +15,7 @@ None
 
 ## Return Values
 
-    _ec2_vpc_net_info_cidr_block
-    _ec2_vpc_net_info_dhcp_options_id
-    _ec2_vpc_net_info_id
+    _ec2_vpc_net_info_dict
     _ec2_vpc_net_info_list
 
 ## Dependencies
