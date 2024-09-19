@@ -16,18 +16,14 @@
       "{{ __ec2_vpc_igw_info_query.internet_gateways |
           d([]) }}"
 
-- name: Ensure dictionaries of virtual private cloud internet gateway information is generated
+- name: Ensure dict of virtual private cloud internet gateways is generated
   tags:
     - ec2_vpc_igw_info
   ansible.builtin.set_fact:
-    _ec2_vpc_igw_info_attachments:
-      "{{ _ec2_vpc_igw_info_attachments |
-          default({}) |
-          combine({_igw.tags.Name: _igw.attachments}) }}"
-    _ec2_vpc_igw_info_internet_gateway_id:
-      "{{ _ec2_vpc_igw_info_internet_gateway_id |
-          default({}) |
-          combine({_igw.tags.Name: _igw.internet_gateway_id}) }}"
+    _ec2_vpc_igw_info_dict:
+      "{{ _ec2_vpc_igw_info_dict |
+          d({}) |
+          combine({_igw.tags.Name: _igw}) }}"
   loop: "{{ _ec2_vpc_igw_info_list }}"
   loop_control:
     label: "{{ _igw.tags.Name | d(none) }}"

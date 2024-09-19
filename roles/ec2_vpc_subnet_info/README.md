@@ -15,13 +15,8 @@ None
 
 ## Return Values
 
-    _ec2_vpc_subnet_info_availability_zone
-    _ec2_vpc_subnet_info_availability_zone_id
-    _ec2_vpc_subnet_info_cidr_block
+    _ec2_vpc_subnet_info_dict
     _ec2_vpc_subnet_info_list
-    _ec2_vpc_subnet_info_subnet_arn
-    _ec2_vpc_subnet_info_subnet_id
-    _ec2_vpc_subnet_info_vpc_id
 
 ## Dependencies
 

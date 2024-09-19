@@ -16,46 +16,14 @@
       "{{ __ec2_vpc_nat_gateway_info_query.result |
           d([]) }}"
 
-- name: Ensure dictionaries of virtual private cloud nat gateway information is generated
+- name: Ensure dict of virtual private cloud nat gateways is generated
   tags:
     - ec2_vpc_nat_gateway_info
   ansible.builtin.set_fact:
-    _ec2_vpc_nat_gateway_info_allocation_id:
-      "{{ _ec2_vpc_nat_gateway_info_allocation_id |
+    _ec2_vpc_nat_gateway_info_dict:
+      "{{ _ec2_vpc_nat_gateway_info_dict |
           default({}) |
-          combine({_nat.tags.Name: _nat.nat_gateway_addresses[0].allocation_id}) }}"
-    _ec2_vpc_nat_gateway_info_association_id:
-      "{{ _ec2_vpc_nat_gateway_info_association_id |
-          default({}) |
-          combine({_nat.tags.Name: _nat.nat_gateway_addresses[0].association_id}) }}"
-    _ec2_vpc_nat_gateway_info_nat_gateway_id:
-      "{{ _ec2_vpc_nat_gateway_info_nat_gateway_id |
-          default({}) |
-          combine({_nat.tags.Name: _nat.nat_gateway_id}) }}"
-    _ec2_vpc_nat_gateway_info_network_interface_id:
-      "{{ _ec2_vpc_nat_gateway_info_network_interface_id |
-          default({}) |
-          combine({_nat.tags.Name: _nat.nat_gateway_addresses[0].network_interface_id}) }}"
-    _ec2_vpc_nat_gateway_info_private_ip:
-      "{{ _ec2_vpc_nat_gateway_info_private_ip |
-          default({}) |
-          combine({_nat.tags.Name: _nat.nat_gateway_addresses[0].private_ip}) }}"
-    _ec2_vpc_nat_gateway_info_public_ip:
-      "{{ _ec2_vpc_nat_gateway_info_public_ip |
-          default({}) |
-          combine({_nat.tags.Name: _nat.nat_gateway_addresses[0].public_ip}) }}"
-    _ec2_vpc_nat_gateway_info_state:
-      "{{ _ec2_vpc_nat_gateway_info_state |
-          default({}) |
-          combine({_nat.tags.Name: _nat.state}) }}"
-    _ec2_vpc_nat_gateway_info_subnet_id:
-      "{{ _ec2_vpc_nat_gateway_info_subnet_id |
-          default({}) |
-          combine({_nat.tags.Name: _nat.subnet_id}) }}"
-    _ec2_vpc_nat_gateway_info_vpc_id:
-      "{{ _ec2_vpc_nat_gateway_info_vpc_id |
-          default({}) |
-          combine({_nat.tags.Name: _nat.vpc_id}) }}"
+          combine({_nat.tags.Name: _nat}) }}"
   loop: "{{ _ec2_vpc_nat_gateway_info_list }}"
   loop_control:
     label: "{{ _nat.tags.Name | d(none) }}"

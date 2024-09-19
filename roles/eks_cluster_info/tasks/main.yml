@@ -10,7 +10,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure list of eks cluster names is generated
+- name: Ensure list of eks clusters is generated
   tags:
     - eks_cluster_info
   ansible.builtin.set_fact:
@@ -35,7 +35,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure list of eks cluster details is generated
+- name: Ensure list of eks cluster information is generated
   tags:
     - eks_cluster_info
   ansible.builtin.set_fact:

@@ -14,7 +14,7 @@ None
 
 ## Return Values
 
-    _aws_region_info_endpoint
+    _aws_region_info_dict
     _aws_region_info_list
 
 ## Dependencies
