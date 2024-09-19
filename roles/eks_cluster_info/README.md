@@ -14,18 +14,8 @@ None
 
 ## Return Values
 
-    _eks_cluster_info_arn
-    _eks_cluster_info_endpoint
-    _eks_cluster_info_identity_oidc_issuer
-    _eks_cluster_info_kubernetes_network_config
+    _eks_cluster_info_dict
     _eks_cluster_info_list
-    _eks_cluster_info_logging
-    _eks_cluster_info_names
-    _eks_cluster_info_platform_version
-    _eks_cluster_info_resources_vpc_config
-    _eks_cluster_info_role_arn
-    _eks_cluster_info_status
-    _eks_cluster_info_version
 
 ## Dependencies
 
