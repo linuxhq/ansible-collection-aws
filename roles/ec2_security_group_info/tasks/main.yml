@@ -15,30 +15,14 @@
       "{{ __ec2_security_group_info_query.security_groups |
           d([]) }}"
 
-- name: Ensure dictionaries of ec2 security group information is generated
+- name: Ensure dict of ec2 security groups is generated
   tags:
     - ec2_security_group_info
   ansible.builtin.set_fact:
-    _ec2_security_group_info_group_id:
-      "{{ _ec2_security_group_info_group_id |
+    _ec2_security_group_info_dict:
+      "{{ _ec2_security_group_info_dict |
           default({}) |
-          combine({_sg.tags.Name: _sg.group_id}) }}"
-    _ec2_security_group_info_group_name:
-      "{{ _ec2_security_group_info_group_name |
-          default({}) |
-          combine({_sg.tags.Name: _sg.group_name}) }}"
-    _ec2_security_group_info_ip_permissions:
-      "{{ _ec2_security_group_info_ip_permissions |
-          default({}) |
-          combine({_sg.tags.Name: _sg.ip_permissions}) }}"
-    _ec2_security_group_info_ip_permissions_egress:
-      "{{ _ec2_security_group_info_ip_permissions_egress |
-          default({}) |
-          combine({_sg.tags.Name: _sg.ip_permissions_egress}) }}"
-    _ec2_security_group_info_vpc_id:
-      "{{ _ec2_security_group_info_vpc_id |
-          default({}) |
-          combine({_sg.tags.Name: _sg.vpc_id}) }}"
+          combine({_sg.tags.Name: _sg}) }}"
   loop: "{{ _ec2_security_group_info_list }}"
   loop_control:
     label: "{{ _sg.tags.Name | d(none) }}"

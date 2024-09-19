@@ -14,12 +14,8 @@ None
 
 ## Return Values
 
-    _ec2_security_group_info_group_id
-    _ec2_security_group_info_group_name
-    _ec2_security_group_info_ip_permissions
-    _ec2_security_group_info_ip_permissions_egress
+    _ec2_security_group_info_dict
     _ec2_security_group_info_list
-    _ec2_security_group_info_vpc_id
 
 ## Dependencies
 
