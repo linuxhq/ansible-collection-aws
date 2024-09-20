@@ -1,0 +1,71 @@
+---
+- name: Ensure information about amazon machine images is gathered
+  tags:
+    - ec2_ami_info
+  amazon.aws.ec2_ami_info:
+    describe_image_attributes: "{{ _ami.describe_image_attributes | d(false) }}"
+    executable_users: "{{ _ami.executable_users | d(omit) }}"
+    filters: "{{ _ami.filters | d({}) | combine({'name': _ami.name ~ '*'}) }}"
+    owners: "{{ _ami.owners | d(omit) }}"
+    validate_certs: true
+  register: __ec2_ami_info_query
+  loop: "{{ ec2_ami_info_list }}"
+  loop_control:
+    label: "{{ _ami.name }}"
+    loop_var: _ami
+  when:
+    - _ami.name is defined
+
+- name: Ensure list of amazon machine images is generated
+  tags:
+    - ec2_ami_info
+  ansible.builtin.set_fact:
+    _ec2_ami_info_list:
+      "{{ __ec2_ami_info_query.results |
+          map(attribute='images', default=[]) |
+          flatten |
+          sort(attribute='name') }}"
+
+- name: Ensure dict of amazon machine images is generated
+  tags:
+    - ec2_ami_info
+  ansible.builtin.set_fact:
+    _ec2_ami_info_dict:
+      "{{ _ec2_ami_info_dict |
+          d({}) |
+          combine({_ami.name:
+                   _ami |
+                   ansible.utils.remove_keys('name')}) }}"
+  loop: "{{ _ec2_ami_info_list }}"
+  loop_control:
+    label: "{{ _ami.name }}"
+    loop_var: _ami
+  when:
+    - _ami.name is defined
+
+- name: Ensure dict of latest amazon machine image names is generated
+  tags:
+    - ec2_ami_info
+  ansible.builtin.set_fact:
+    _ec2_ami_info_latest:
+      "{{ _ec2_ami_info_latest |
+          d({}) |
+          combine({_ami.name:
+                   _ec2_ami_info_dict[_latest].image_id}) }}"
+  loop: "{{ ec2_ami_info_list }}"
+  loop_control:
+    label: "{{ _ami.name | d(none) }}"
+    loop_var: _ami
+  vars:
+    _latest:
+      "{{ (_ec2_ami_info_dict.keys() |
+          select('match', _ami.name) |
+          list |
+          d([]) |
+          community.general.version_sort)[-1] |
+          d(none) }}"
+  when:
+    - _ami.name is defined
+    - _latest is not none
+    - _latest != ''
+...
