@@ -43,7 +43,7 @@
   when:
     - _ami.name is defined
 
-- name: Ensure dict of latest amazon machine image names is generated
+- name: Ensure dict of latest amazon machine image ids is generated
   tags:
     - ec2_ami_info
   ansible.builtin.set_fact:
