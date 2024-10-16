@@ -16,8 +16,9 @@
   ansible.builtin.set_fact:
     _route53_resolver_info_list:
       "{{ (__route53_resolver_info_query.stdout |
-          from_json) |
-          list |
+          from_json |
+          selectattr('Name', 'defined') |
+          list) |
           d([]) }}"
 
 - name: Ensure dict of route53 resolvers is generated
@@ -25,15 +26,7 @@
     - route53_resolver_info
   ansible.builtin.set_fact:
     _route53_resolver_info_dict:
-      "{{ _route53_resolver_info_dict |
-          d({}) |
-          combine({_resolver.Name:
-                   _resolver |
-                   ansible.utils.remove_keys('Name')}) }}"
-  loop: "{{ _route53_resolver_info_list }}"
-  loop_control:
-    label: "{{ _resolver.Name | d(none) }}"
-    loop_var: _resolver
-  when:
-    - _resolver.Name is defined
+      "{{ dict(_route53_resolver_info_list |
+               json_query('[].Name') |
+               zip(_route53_resolver_info_list)) }}"
 ...

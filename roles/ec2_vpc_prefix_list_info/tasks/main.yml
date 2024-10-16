@@ -16,7 +16,8 @@
   ansible.builtin.set_fact:
     _ec2_vpc_prefix_list_info_list:
       "{{ (__ec2_vpc_prefix_list_info_query.stdout |
-          from_json) |
+          from_json |
+          selectattr('PrefixListName', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of virtual private cloud prefix lists is generated
@@ -24,15 +25,7 @@
     - ec2_vpc_prefix_list_info
   ansible.builtin.set_fact:
     _ec2_vpc_prefix_list_info_dict:
-      "{{ _ec2_vpc_prefix_list_info_dict |
-          d({}) |
-          combine({_pl.PrefixListName:
-                   _pl |
-                   ansible.utils.remove_keys('PrefixListName')}) }}"
-  loop: "{{ _ec2_vpc_prefix_list_info_list }}"
-  loop_control:
-    label: "{{ _pl.PrefixListName | d(none) }}"
-    loop_var: _pl
-  when:
-    - _pl.PrefixListName is defined
+      "{{ dict(_ec2_vpc_prefix_list_info_list |
+               json_query('[].PrefixListName') |
+               zip(_ec2_vpc_prefix_list_info_list)) }}"
 ...

@@ -14,7 +14,8 @@
     - aws_region_info
   ansible.builtin.set_fact:
     _aws_region_info_list:
-      "{{ __aws_region_info_query.regions |
+      "{{ (__aws_region_info_query.regions |
+          selectattr('region_name', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of aws regions is generated
@@ -23,15 +24,7 @@
     - aws_region_info
   ansible.builtin.set_fact:
     _aws_region_info_dict:
-      "{{ _aws_region_info_dict |
-          d({}) |
-          combine({_region.region_name:
-                   _region |
-                   ansible.utils.remove_keys('region_name')}) }}"
-  loop: "{{ _aws_region_info_list }}"
-  loop_control:
-    label: "{{ _region.region_name | d(none) }}"
-    loop_var: _region
-  when:
-    - _region.region_name is defined
+      "{{ dict(_aws_region_info_list |
+               json_query('[].region_name') |
+               zip(_aws_region_info_list)) }}"
 ...

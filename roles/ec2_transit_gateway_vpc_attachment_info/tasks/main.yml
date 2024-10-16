@@ -12,7 +12,8 @@
     - ec2_transit_gateway_vpc_attachment_info
   ansible.builtin.set_fact:
     _ec2_transit_gateway_vpc_attachment_info_list:
-      "{{ __ec2_transit_gateway_vpc_attachment_info_query.attachments |
+      "{{ (__ec2_transit_gateway_vpc_attachment_info_query.attachments |
+          selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of ec2 transit gateway vpc attachments is generated
@@ -20,13 +21,7 @@
     - ec2_transit_gateway_vpc_attachment_info
   ansible.builtin.set_fact:
     _ec2_transit_gateway_vpc_attachment_info_dict:
-      "{{ _ec2_transit_gateway_vpc_attachment_info_dict |
-          d({}) |
-          combine({_tgw_attach.tags.Name: _tgw_attach}) }}"
-  loop: "{{ _ec2_transit_gateway_vpc_attachment_info_list }}"
-  loop_control:
-    label: "{{ _tgw_attach.tags.Name | d(none) }}"
-    loop_var: _tgw_attach
-  when:
-    - _tgw_attach.tags.Name is defined
+      "{{ dict(_ec2_transit_gateway_vpc_attachment_info_list |
+               json_query('[].tags.Name') |
+               zip(_ec2_transit_gateway_vpc_attachment_info_list)) }}"
 ...

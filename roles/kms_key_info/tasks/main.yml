@@ -15,7 +15,8 @@
     - kms_key_info
   ansible.builtin.set_fact:
     _kms_key_info_list:
-      "{{ __kms_key_info_query.kms_keys |
+      "{{ (__kms_key_info_query.kms_keys |
+          selectattr('aliases.0', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of kms keys is generated
@@ -23,13 +24,7 @@
     - kms_key_info
   ansible.builtin.set_fact:
     _kms_key_info_dict:
-      "{{ _kms_key_info_dict |
-          default({}) |
-          combine({_key.aliases[0]: _key}) }}"
-  loop: "{{ _kms_key_info_list }}"
-  loop_control:
-    label: "{{ _key.aliases[0] | d(none) }}"
-    loop_var: _key
-  when:
-    - _key.aliases[0] is defined
+      "{{ dict(_kms_key_info_list |
+               json_query('[].aliases[0]') |
+               zip(_kms_key_info_list)) }}"
 ...

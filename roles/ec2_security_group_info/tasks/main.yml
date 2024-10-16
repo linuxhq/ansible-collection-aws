@@ -12,7 +12,8 @@
     - ec2_security_group_info
   ansible.builtin.set_fact:
     _ec2_security_group_info_list:
-      "{{ __ec2_security_group_info_query.security_groups |
+      "{{ (__ec2_security_group_info_query.security_groups |
+          selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of ec2 security groups is generated
@@ -20,13 +21,7 @@
     - ec2_security_group_info
   ansible.builtin.set_fact:
     _ec2_security_group_info_dict:
-      "{{ _ec2_security_group_info_dict |
-          default({}) |
-          combine({_sg.tags.Name: _sg}) }}"
-  loop: "{{ _ec2_security_group_info_list }}"
-  loop_control:
-    label: "{{ _sg.tags.Name | d(none) }}"
-    loop_var: _sg
-  when:
-    - _sg.tags.Name is defined
+      "{{ dict(_ec2_security_group_info_list |
+               json_query('[].tags.Name') |
+               zip(_ec2_security_group_info_list)) }}"
 ...

@@ -14,28 +14,22 @@
     - aws_az_info
   ansible.builtin.set_fact:
     _aws_az_info_list:
-      "{{ __aws_az_info_query.availability_zones |
+      "{{ (__aws_az_info_query.availability_zones |
+          selectattr('zone_name', 'defined')) |
           d([]) }}"
 
-- name: Ensure lists of aws availability zone names is generated
+- name: Ensure long and short lists of aws availability zones are generated
   tags:
     - always
     - aws_az_info
   ansible.builtin.set_fact:
     _aws_az_info_list_l:
-      "{{ _aws_az_info_list_l |
-          d([]) +
-          [_az.zone_name] }}"
+      "{{ _aws_az_info_list |
+          map(attribute='zone_name', default=[]) }}"
     _aws_az_info_list_s:
-      "{{ _aws_az_info_list_s |
-          d([]) +
-          [_az.zone_name[-1]] }}"
-  loop: "{{ _aws_az_info_list }}"
-  loop_control:
-    label: "{{ _az.zone_name | d(none) }}"
-    loop_var: _az
-  when:
-    - _az.zone_name is defined
+      "{{ _aws_az_info_list |
+          map(attribute='zone_name', default=[]) |
+          map('regex_replace', '.*([a-z]{1}$)', '\\1') }}"
 
 - name: Ensure dict of aws availability zones is generated
   tags:
@@ -43,15 +37,7 @@
     - aws_az_info
   ansible.builtin.set_fact:
     _aws_az_info_dict:
-      "{{ _aws_az_info_dict |
-          d({}) |
-          combine({_az.zone_name:
-                   _az |
-                   ansible.utils.remove_keys('zone_name')}) }}"
-  loop: "{{ _aws_az_info_list }}"
-  loop_control:
-    label: "{{ _az.zone_name | d(none) }}"
-    loop_var: _az
-  when:
-    - _az.zone_name is defined
+      "{{ dict(_aws_az_info_list |
+               json_query('[].zone_name') |
+               zip(_aws_az_info_list)) }}"
 ...
