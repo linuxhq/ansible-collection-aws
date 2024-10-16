@@ -21,15 +21,8 @@
     - ec2_customer_gateway_info
   ansible.builtin.set_fact:
     _ec2_customer_gateway_info_dict:
-      "{{ _ec2_customer_gateway_info_dict |
-          d({}) |
-          combine({_cgw.customer_gateway_name:
-                   _cgw |
-                   ansible.utils.remove_keys('customer_gateway_name')}) }}"
-  loop: "{{ _ec2_customer_gateway_info_list }}"
-  loop_control:
-    label: "{{ _cgw.customer_gateway_name | d(none) }}"
-    loop_var: _cgw
-  when:
-    - _cgw.customer_gateway_name is defined
+      "{{ dict(_ec2_customer_gateway_info_list |
+               json_query('[].customer_gateway_name') |
+               zip(_ec2_customer_gateway_info_list)) |
+          ansible.utils.remove_keys('customer_gateway_name') }}"
 ...
