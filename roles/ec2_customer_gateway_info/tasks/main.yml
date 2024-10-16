@@ -13,7 +13,8 @@
     - ec2_customer_gateway_info
   ansible.builtin.set_fact:
     _ec2_customer_gateway_info_list:
-      "{{ __ec2_customer_gateway_info_query.customer_gateways |
+      "{{ (__ec2_customer_gateway_info_query.customer_gateways |
+          selectattr('customer_gateway_name', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of ec2 customer gateways is generated
@@ -23,6 +24,5 @@
     _ec2_customer_gateway_info_dict:
       "{{ dict(_ec2_customer_gateway_info_list |
                json_query('[].customer_gateway_name') |
-               zip(_ec2_customer_gateway_info_list)) |
-          ansible.utils.remove_keys('customer_gateway_name') }}"
+               zip(_ec2_customer_gateway_info_list)) }}"
 ...

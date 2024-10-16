@@ -15,7 +15,8 @@
     - efs_info
   ansible.builtin.set_fact:
     _efs_info_list:
-      "{{ __efs_info_query.efs |
+      "{{ (__efs_info_query.efs |
+          selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of elastic filesystems is generated
@@ -23,13 +24,7 @@
     - efs_info
   ansible.builtin.set_fact:
     _efs_info_dict:
-      "{{ _efs_info_dict |
-          d({}) |
-          combine({_fs.tags.Name: _fs}) }}"
-  loop: "{{ _efs_info_list }}"
-  loop_control:
-    label: "{{ _fs.tags.Name | d(none) }}"
-    loop_var: _fs
-  when:
-    - _fs.tags.Name is defined
+      "{{ dict(_efs_info_list |
+               json_query('[].tags.Name') |
+               zip(_efs_info_list)) }}"
 ...

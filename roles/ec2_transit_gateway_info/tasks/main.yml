@@ -13,7 +13,8 @@
     - ec2_transit_gateway_info
   ansible.builtin.set_fact:
     _ec2_transit_gateway_info_list:
-      "{{ __ec2_transit_gateway_info_query.transit_gateways |
+      "{{ (__ec2_transit_gateway_info_query.transit_gateways |
+          selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of ec2 transit gateways is generated
@@ -21,13 +22,7 @@
     - ec2_transit_gateway_info
   ansible.builtin.set_fact:
     _ec2_transit_gateway_info_dict:
-      "{{ _ec2_transit_gateway_info_dict |
-          d({}) |
-          combine({_tgw.tags.Name: _tgw}) }}"
-  loop: "{{ _ec2_transit_gateway_info_list }}"
-  loop_control:
-    label: "{{ _tgw.tags.Name | d(none) }}"
-    loop_var: _tgw
-  when:
-    - _tgw.tags.Name is defined
+      "{{ dict(_ec2_transit_gateway_info_list |
+               json_query('[].tags.Name') |
+               zip(_ec2_transit_gateway_info_list)) }}"
 ...

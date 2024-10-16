@@ -13,7 +13,8 @@
     - ec2_vpc_subnet_info
   ansible.builtin.set_fact:
     _ec2_vpc_subnet_info_list:
-      "{{ __ec2_vpc_subnet_info_query.subnets |
+      "{{ (__ec2_vpc_subnet_info_query.subnets |
+          selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of virtual private cloud subnets is generated
@@ -21,13 +22,7 @@
     - ec2_vpc_subnet_info
   ansible.builtin.set_fact:
     _ec2_vpc_subnet_info_dict:
-      "{{ _ec2_vpc_subnet_info_dict |
-          d({}) |
-          combine({_subnet.tags.Name: _subnet}) }}"
-  loop: "{{ _ec2_vpc_subnet_info_list }}"
-  loop_control:
-    label: "{{ _subnet.tags.Name | d(none) }}"
-    loop_var: _subnet
-  when:
-    - _subnet.tags.Name is defined
+      "{{ dict(_ec2_vpc_subnet_info_list |
+               json_query('[].tags.Name') |
+               zip(_ec2_vpc_subnet_info_list)) }}"
 ...

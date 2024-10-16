@@ -12,7 +12,8 @@
     - ec2_vpc_route_table_info
   ansible.builtin.set_fact:
     _ec2_vpc_route_table_info_list:
-      "{{ __ec2_vpc_route_table_info_query.route_tables |
+      "{{ (__ec2_vpc_route_table_info_query.route_tables |
+          selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of virtual private cloud route tables is generated
@@ -20,13 +21,7 @@
     - ec2_vpc_route_table_info
   ansible.builtin.set_fact:
     _ec2_vpc_route_table_info_dict:
-      "{{ _ec2_vpc_route_table_info_dict |
-          d({}) |
-          combine({_rtb.tags.Name: _rtb}) }}"
-  loop: "{{ _ec2_vpc_route_table_info_list }}"
-  loop_control:
-    label: "{{ _rtb.tags.Name | d(none) }}"
-    loop_var: _rtb
-  when:
-    - _rtb.tags.Name is defined
+      "{{ dict(_ec2_vpc_route_table_info_list |
+               json_query('[].tags.Name') |
+               zip(_ec2_vpc_route_table_info_list)) }}"
 ...

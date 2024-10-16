@@ -14,7 +14,8 @@
     - s3_bucket_info
   ansible.builtin.set_fact:
     _s3_bucket_info_list:
-      "{{ __s3_bucket_info_query.buckets |
+      "{{ (__s3_bucket_info_query.buckets |
+          selectattr('name', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of simple storage service buckets is generated
@@ -22,15 +23,7 @@
     - s3_bucket_info
   ansible.builtin.set_fact:
     _s3_bucket_info_dict:
-      "{{ _s3_bucket_info_dict |
-          d({}) |
-          combine({_bucket.name:
-                   _bucket |
-                   ansible.utils.remove_keys('name')}) }}"
-  loop: "{{ _s3_bucket_info_list }}"
-  loop_control:
-    label: "{{ _bucket.name | d(none) }}"
-    loop_var: _bucket
-  when:
-    - _bucket.name is defined
+      "{{ dict(_s3_bucket_info_list |
+               json_query('[].name') |
+               zip(_s3_bucket_info_list)) }}"
 ...

@@ -15,7 +15,8 @@
     - ec2_key_info
   ansible.builtin.set_fact:
     _ec2_key_info_list:
-      "{{ __ec2_key_info_query.keypairs |
+      "{{ (__ec2_key_info_query.keypairs |
+          selectattr('key_name', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of ec2 keys is generated
@@ -23,15 +24,7 @@
     - ec2_key_info
   ansible.builtin.set_fact:
     _ec2_key_info_dict:
-      "{{ _ec2_key_info_dict |
-          default({}) |
-          combine({_key.key_name:
-                   _key |
-                   ansible.utils.remove_keys('key_name')}) }}"
-  loop: "{{ _ec2_key_info_list }}"
-  loop_control:
-    label: "{{ _key.key_name | d(none) }}"
-    loop_var: _key
-  when:
-    - _key.key_name is defined
+      "{{ dict(_ec2_key_info_list |
+               json_query('[].key_name') |
+               zip(_ec2_key_info_list)) }}"
 ...

@@ -16,8 +16,9 @@
   ansible.builtin.set_fact:
     _route53_delegation_set_info_list:
       "{{ (__route53_delegation_set_info_query.stdout |
-          from_json) |
-          list |
+          from_json |
+          selectattr('CallerReference', 'defined') |
+          list) |
           d([]) }}"
 
 - name: Ensure dict of route53 delegation sets is generated
@@ -25,15 +26,7 @@
     - route53_delegation_set_info
   ansible.builtin.set_fact:
     _route53_delegation_set_info_dict:
-      "{{ _route53_delegation_set_info_dict |
-          d({}) |
-          combine({_delegationset.CallerReference:
-                   _delegationset |
-                   ansible.utils.remove_keys('CallerReference')}) }}"
-  loop: "{{ _route53_delegation_set_info_list }}"
-  loop_control:
-    label: "{{ _delegationset.CallerReference | d(none) }}"
-    loop_var: _delegationset
-  when:
-    - _delegationset.CallerReference is defined
+      "{{ dict(_route53_delegation_set_info_list |
+               json_query('[].CallerReference') |
+               zip(_route53_delegation_set_info_list)) }}"
 ...

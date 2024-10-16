@@ -12,7 +12,8 @@
     - cloudwatchlogs_log_group_info
   ansible.builtin.set_fact:
     _cloudwatchlogs_log_group_info_list:
-      "{{ __cloudwatchlogs_log_group_info_query.log_groups |
+      "{{ (__cloudwatchlogs_log_group_info_query.log_groups |
+          selectattr('log_group_name', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of cloudwatchlogs log groups is generated
@@ -20,15 +21,7 @@
     - cloudwatchlogs_log_group_info
   ansible.builtin.set_fact:
     _cloudwatchlogs_log_group_info_dict:
-      "{{ _cloudwatchlogs_log_group_info_dict |
-          d({}) |
-          combine({_log_group.log_group_name:
-                   _log_group |
-                   ansible.utils.remove_keys('log_group_name')}) }}"
-  loop: "{{ _cloudwatchlogs_log_group_info_list }}"
-  loop_control:
-    label: "{{ _log_group.log_group_name | d(none) }}"
-    loop_var: _log_group
-  when:
-    - _log_group.log_group_name is defined
+      "{{ dict(_cloudwatchlogs_log_group_info_list |
+               json_query('[].log_group_name') |
+               zip(_cloudwatchlogs_log_group_info_list)) }}"
 ...
