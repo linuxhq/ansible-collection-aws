@@ -14,7 +14,7 @@ None
 
 ## Return Values
 
-    _route53_zone_associate_list
+None
 
 ## Dependencies
 
