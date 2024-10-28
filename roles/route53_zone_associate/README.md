@@ -6,7 +6,7 @@ Manage aws route53 private zone virtual private cloud associations
 
 ## Requirements
 
-None
+* [awscli](https://pypi.org/project/awscli)
 
 ## Role Variables
 
