@@ -5,7 +5,7 @@ dependencies:
 galaxy_info:
   role_name: cloudwatchlogs_log_group
   author: Taylor Kimball
-  description: Manage cloudwatchlogs log groups
+  description: Manage aws cloudwatchlogs log groups
   license: GPLv3
   min_ansible_version: 2.15.0
   namespace: linuxhq

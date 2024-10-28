@@ -3,7 +3,7 @@ dependencies: []
 galaxy_info:
   role_name: ec2_instance_metadata
   author: Taylor Kimball
-  description: Manage ec2 instance metadata defaults
+  description: Manage aws ec2 instance metadata defaults
   license: GPLv3
   min_ansible_version: 2.15.0
   namespace: linuxhq

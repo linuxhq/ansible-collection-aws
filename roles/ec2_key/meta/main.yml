@@ -3,7 +3,7 @@ dependencies: []
 galaxy_info:
   role_name: ec2_key
   author: Taylor Kimball
-  description: Manage imported aws ec2 keys
+  description: Manage aws imported ec2 keys
   license: GPLv3
   min_ansible_version: 2.15.0
   namespace: linuxhq
