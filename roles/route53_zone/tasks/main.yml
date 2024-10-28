@@ -1,0 +1,60 @@
+---
+- name: Ensure route53 public zones are present
+  tags:
+    - route53_zone
+  amazon.aws.route53_zone:
+    comment: "{{ _zone.comment | d(omit) }}"
+    delegation_set_id: "{{ _zone.delegation_set_id | d(omit) }}"
+    purge_tags: "{{ _zone.purge_tags | d(true) }}"
+    state: present
+    tags:
+      "{{ _zone.tags |
+          d({}) |
+          combine({'Name': _zone.zone}) }}"
+    validate_certs: true
+    zone: "{{ _zone.zone }}"
+  register: __route53_zone_public
+  loop: "{{ route53_zone_list }}"
+  loop_control:
+    label: "{{ _zone.zone | d(none) }}"
+    loop_var: _zone
+  when:
+    - _zone.zone is defined
+    - _zone.vpc_id is not defined
+    - _zone.vpc_region is not defined
+    - _zone.vpcs is not defined
+
+- name: Ensure route53 public zones are present
+  tags:
+    - route53_zone
+  amazon.aws.route53_zone:
+    comment: "{{ _zone.comment | d(omit) }}"
+    purge_tags: "{{ _zone.purge_tags | d(true) }}"
+    state: present
+    tags:
+      "{{ _zone.tags |
+          d({}) |
+          combine({'Name': _zone.zone}) }}"
+    validate_certs: true
+    vpc_id: "{{ _zone.vpc_id | d(omit) }}"
+    vpc_region: "{{ _zone.vpc_region }}"
+    zone: "{{ _zone.zone }}"
+  register: __route53_zone_private
+  loop: "{{ route53_zone_list }}"
+  loop_control:
+    label: "{{ _zone.zone | d(none) }}"
+    loop_var: _zone
+  when:
+    - _zone.zone is defined
+    - _zone.vpc_id is defined
+    - _zone.vpc_region is defined
+
+- name: Ensure virtual private cloud result list is generated
+  tags:
+    - route53_zone
+  ansible.builtin.set_fact:
+    _route53_zone_list:
+      "{{ (__route53_zone_public.results +
+          __route53_zone_private.results) |
+          rejectattr('skipped', 'defined') }}"
+...

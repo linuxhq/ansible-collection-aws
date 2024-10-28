@@ -11,9 +11,19 @@
   tags:
     - route53_info
   ansible.builtin.set_fact:
-    _route53_info_hosted_zones:
+    _route53_info_hosted_zone_list:
       "{{ __route53_info_hosted_zone_query.hosted_zones |
           d([]) }}"
+
+- name: Ensure dict of route53 hosted zones is generated
+  tags:
+    - route53_info
+  ansible.builtin.set_fact:
+    _route53_info_hosted_zone_dict:
+      "{{ dict(_route53_info_hosted_zone_list |
+               json_query('[].name') |
+               map('regex_replace', '[.]$', '') |
+               zip(_route53_info_hosted_zone_list)) }}"
 
 - name: Ensure information about route53 record sets is gathered
   tags:
@@ -23,7 +33,7 @@
     query: record_sets
     validate_certs: true
   register: __route53_info_record_sets_query
-  loop: "{{ _route53_info_hosted_zones }}"
+  loop: "{{ _route53_info_hosted_zone_list }}"
   loop_control:
     label: "{{ _zone.name | d(none) }}"
     loop_var: _zone

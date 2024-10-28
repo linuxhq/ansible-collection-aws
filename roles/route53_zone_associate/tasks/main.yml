@@ -1,0 +1,24 @@
+---
+- name: Ensure route53 private zones are associated
+  tags:
+    - route53_zone_associate
+  ansible.builtin.command:
+    cmd: >
+      aws route53 associate-vpc-with-hosted-zone
+                  --hosted-zone-id "{{ _zone.hosted_zone_id }}"
+                  --vpc '{{ __route53_zone_associate | to_json }}'
+  loop: "{{ route53_zone_associate_list }}"
+  loop_control:
+    label: "{{ _zone.id | d(none) }}"
+    loop_var: _zone
+  vars:
+    __route53_zone_associate:
+      VPCId: "{{ _zone.vpc_id }}"
+      VPCRegion: "{{ _zone.vpc_region }}"
+  changed_when: false
+  failed_when: false
+  when:
+    - _zone.hosted_zone_id is defined
+    - _zone.vpc_id is defined
+    - _zone.vpc_region is defined
+...
