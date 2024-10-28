@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Manage imported aws ec2 keys
+Manage aws imported ec2 keys
 
 ## Requirements
 
