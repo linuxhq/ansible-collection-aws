@@ -13,7 +13,7 @@
           combine({'Name': _zone.zone}) }}"
     validate_certs: true
     zone: "{{ _zone.zone }}"
-  register: __route53_zone_public
+  register: __route53_zone_pub
   loop: "{{ route53_zone_list }}"
   loop_control:
     label: "{{ _zone.zone | d(none) }}"
@@ -24,7 +24,7 @@
     - _zone.vpc_region is not defined
     - _zone.vpcs is not defined
 
-- name: Ensure route53 public zones are present
+- name: Ensure route53 private zones are present
   tags:
     - route53_zone
   amazon.aws.route53_zone:
@@ -39,7 +39,7 @@
     vpc_id: "{{ _zone.vpc_id | d(omit) }}"
     vpc_region: "{{ _zone.vpc_region }}"
     zone: "{{ _zone.zone }}"
-  register: __route53_zone_private
+  register: __route53_zone_pvt
   loop: "{{ route53_zone_list }}"
   loop_control:
     label: "{{ _zone.zone | d(none) }}"
@@ -54,7 +54,7 @@
     - route53_zone
   ansible.builtin.set_fact:
     _route53_zone_list:
-      "{{ (__route53_zone_public.results +
-          __route53_zone_private.results) |
+      "{{ (__route53_zone_pub.results +
+           __route53_zone_pvt.results) |
           rejectattr('skipped', 'defined') }}"
 ...
