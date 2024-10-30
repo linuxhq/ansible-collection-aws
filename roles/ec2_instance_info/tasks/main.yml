@@ -1,0 +1,29 @@
+---
+- name: Ensure information about ec2 instances is gathered
+  tags:
+    - ec2_instance_info
+  amazon.aws.ec2_instance_info:
+    filters: "{{ ec2_instance_info_filters or omit }}"
+    include_attributes: "{{ ec2_instance_info_include_attributes }}"
+    instance_ids: "{{ ec2_instance_info_instance_ids or omit }}"
+    minimum_uptime: "{{ ec2_instance_info_minimum_uptime or omit }}"
+    validate_certs: true
+  register: __ec2_instance_info_query
+
+- name: Ensure list of ec2 instances is generated
+  tags:
+    - ec2_instance_info
+  ansible.builtin.set_fact:
+    _ec2_instance_info_list:
+      "{{ __ec2_instance_info_query.instances |
+          d([]) }}"
+
+- name: Ensure dict of ec2 instances is generated
+  tags:
+    - ec2_instance_info
+  ansible.builtin.set_fact:
+    _ec2_instance_info_dict:
+      "{{ dict(_ec2_instance_info_list |
+               json_query('[].tags.Name') |
+               zip(_ec2_instance_info_list)) }}"
+...

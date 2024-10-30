@@ -1,0 +1,24 @@
+---
+allow_duplicates: true
+dependencies: []
+galaxy_info:
+  role_name: ec2_instance_info
+  author: Taylor Kimball
+  description: Gather information about ec2 instances
+  license: GPLv3
+  min_ansible_version: 2.15.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - ec2
+    - info
+    - instance
+...
