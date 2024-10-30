@@ -1,0 +1,6 @@
+---
+ec2_instance_info_filters: {}
+ec2_instance_info_include_attributes: []
+ec2_instance_info_instance_ids: []
+ec2_instance_info_minimum_uptime: null
+...
