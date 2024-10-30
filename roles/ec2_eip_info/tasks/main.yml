@@ -1,0 +1,26 @@
+---
+- name: Ensure information about ec2 elastic ips is gathered
+  tags:
+    - ec2_eip_info
+  amazon.aws.ec2_eip_info:
+    filters: "{{ ec2_eip_info_filters }}"
+    validate_certs: true
+  register: __ec2_eip_info_query
+
+- name: Ensure list of ec2 elastic ips is generated
+  tags:
+    - ec2_eip_info
+  ansible.builtin.set_fact:
+    _ec2_eip_info_list:
+      "{{ __ec2_eip_info_query.addresses |
+          d([]) }}"
+
+- name: Ensure dict of ec2 elastic ips is generated
+  tags:
+    - ec2_eip_info
+  ansible.builtin.set_fact:
+    _ec2_eip_info_dict:
+      "{{ dict(_ec2_eip_info_list |
+               json_query('[].tags.Name') |
+               zip(_ec2_eip_info_list)) }}"
+...
