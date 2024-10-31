@@ -1,0 +1,30 @@
+---
+- name: Ensure information about wafv2 ip sets is gathered
+  tags:
+    - wafv2_ip_set_info
+  community.aws.wafv2_ip_set_info:
+    name: "{{ wafv2_ip_set_info_name }}"
+    scope: "{{ wafv2_ip_set_info_scope | upper }}"
+    validate_certs: true
+  register: __wafv2_ip_set_info_query
+  when:
+    - wafv2_ip_set_info_name is not none
+    - wafv2_ip_set_info_scope is not none
+
+- name: Ensure list of wafv2 ip sets is generated
+  tags:
+    - wafv2_ip_set_info
+  ansible.builtin.set_fact:
+    _wafv2_ip_set_info_list:
+      "{{ [__wafv2_ip_set_info_query] |
+          d([]) }}"
+
+- name: Ensure dict of wafv2 ip sets is generated
+  tags:
+    - wafv2_ip_set_info
+  ansible.builtin.set_fact:
+    _wafv2_ip_set_info_dict:
+      "{{ dict(_wafv2_ip_set_info_list |
+               json_query('[].name') |
+               zip(_wafv2_ip_set_info_list)) }}"
+...
