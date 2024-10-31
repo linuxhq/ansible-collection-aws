@@ -26,6 +26,19 @@ None
       connection: local
       roles:
         - role: linuxhq.aws.wafv2_ip_set
+          wafv2_ip_set_list:
+            - name: linuxhq-cloudflare
+              addresses:
+                - 1.1.1.1/32
+              ip_address_version: ipv4
+              scope: regional
+
+            - name: linuxhq-google
+              addresses:
+                - 8.8.8.8/32
+                - 8.8.8.4/32
+              ip_address_version: ipv4
+              scope: regional
 
 ## License
 

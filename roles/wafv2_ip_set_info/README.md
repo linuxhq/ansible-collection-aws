@@ -27,7 +27,9 @@ None
     - hosts: aws
       connection: local
       roles:
-        - linuxhq.aws.wafv2_ip_set_info
+        - role: linuxhq.aws.wafv2_ip_set_info
+          wafv2_ip_set_info_name: linuxhq-google
+          wafv2_ip_set_info_scope: regional
 
 ## License
 
