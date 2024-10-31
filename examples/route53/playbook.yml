@@ -1,5 +1,6 @@
 ---
 # This playbook assumes you already have a vpc provisioned
+
 - name: Ensure route53 playbook is executed
   hosts: amazon
   roles:
@@ -7,6 +8,8 @@
     - linuxhq.aws.aws_region_info
     - linuxhq.aws.aws_az_info
     - linuxhq.aws.route53_delegation_set
+    - linuxhq.aws.route53_zone
+    - linuxhq.aws.route53_record
     - linuxhq.aws.route53_resolver
     - linuxhq.aws.route53_resolver_rule
     - linuxhq.aws.route53_resolver_rule_associate
