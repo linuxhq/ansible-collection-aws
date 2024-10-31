@@ -1,0 +1,37 @@
+---
+- name: Ensure wafv2 ip sets are present
+  tags:
+    - wafv2_ip_set
+  community.aws.wafv2_ip_set:
+    addresses: "{{ _ipset.addresses }}"
+    description: "{{ _ipset.description | d(_ipset.name) }}"
+    ip_address_version: "{{ _ipset.ip_address_version | upper }}"
+    name: "{{ _ipset.name }}"
+    purge_addresses: "{{ _ipset.purge_addresses | d(true) }}"
+    purge_tags: "{{ _ipset.purge_tags | d(true) }}"
+    scope: "{{ _ipset.scope | upper }}"
+    state: present
+    tags:
+      "{{ _ipset.tags |
+          d({}) |
+          combine({'Name': _ipset.name}) }}"
+    validate_certs: true
+  register: __wafv2_ip_set_results
+  loop: "{{ wafv2_ip_set_list }}"
+  loop_control:
+    label: "{{ _ipset.name | d(none) }}"
+    loop_var: _ipset
+  when:
+    - _ipset.addresses is defined
+    - _ipset.ip_address_version is defined
+    - _ipset.name is defined
+    - _ipset.scope is defined
+
+- name: Ensure list of wafv2 ip set results is generated
+  tags:
+    - wafv2_ip_set
+  ansible.builtin.set_fact:
+    _wafv2_ip_set_list:
+      "{{ __wafv2_ip_set_results.results |
+          d([]) }}"
+...
