@@ -1,0 +1,28 @@
+---
+- name: Ensure information about ec2 launch templates is gathered
+  tags:
+    - ec2_launch_template_info
+  amazon.aws.ec2_launch_template_info:
+    filters: "{{ ec2_launch_template_info_filters }}"
+    launch_template_ids: "{{ ec2_launch_template_info_launch_template_ids or omit }}"
+    validate_certs: true
+  register: __ec2_launch_template_info_query
+
+- name: Ensure list of ec2 launch templates is generated
+  tags:
+    - ec2_launch_template_info
+  ansible.builtin.set_fact:
+    _ec2_launch_template_info_list:
+      "{{ (__ec2_launch_template_info_query.launch_templates |
+          selectattr('launch_template_name', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of ec2 launch templates is generated
+  tags:
+    - ec2_launch_template_info
+  ansible.builtin.set_fact:
+    _ec2_launch_template_info_dict:
+      "{{ dict(_ec2_launch_template_info_list |
+               json_query('[].launch_template_name') |
+               zip(_ec2_launch_template_info_list)) }}"
+...

@@ -2,7 +2,7 @@
 - name: Ensure information about ec2 transit gateways is gathered
   tags:
     - ec2_transit_gateway_info
-  community.aws.ec2_transit_gateway_info:
+  amazon.aws.ec2_transit_gateway_info:
     filters: "{{ ec2_transit_gateway_info_filters }}"
     transit_gateway_ids: "{{ ec2_transit_gateway_info_transit_gateway_ids }}"
     validate_certs: true

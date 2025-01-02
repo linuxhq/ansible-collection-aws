@@ -1,0 +1,57 @@
+---
+- name: Ensure ec2 launch templates are present
+  tags:
+    - ec2_launch_template
+  amazon.aws.ec2_launch_template:
+    block_device_mappings: "{{ _lt.block_device_mappings | d(omit) }}"
+    cpu_options: "{{ _lt.cpu_options | d(omit) }}"
+    credit_specification: "{{ _lt.credit_specification | d(omit) }}"
+    default_version: "{{ _lt.default_version | d('latest') }}"
+    disable_api_termination: "{{ _lt.disable_api_termination | d(omit) }}"
+    ebs_optimized: "{{ _lt.ebs_optimized | d(omit) }}"
+    elastic_gpu_specifications: "{{ _lt.elastic_gpu_specifications | d(omit) }}"
+    iam_instance_profile: "{{ _lt.iam_instance_profile | d(omit) }}"
+    image_id: "{{ _lt.image_id }}"
+    instance_initiated_shutdown_behavior: "{{ _lt.instance_initiated_shutdown_behavior | d(omit) }}"
+    instance_market_options: "{{ _lt.instance_market_options | d(omit) }}"
+    instance_type: "{{ _lt.instance_type }}"
+    kernel_id: "{{ _lt.kernel_id | d(omit) }}"
+    key_name: "{{ _lt.key_name | d(omit) }}"
+    metadata_options: "{{ _lt.metadata_options | d(omit) }}"
+    monitoring: "{{ _lt.monitoring | d(omit) }}"
+    network_interfaces: "{{ _lt.network_interfaces | d(omit) }}"
+    placement: "{{ _lt.placement | d(omit) }}"
+    purge_tags: "{{ _lt.purge_tags | d(true) }}"
+    ram_disk_id: "{{ _lt.ram_disk_id | d(omit) }}"
+    security_group_ids: "{{ _lt.security_group_ids | d(omit) }}"
+    security_groups: "{{ _lt.security_groups | d(omit) }}"
+    source_version: "{{ _lt.source_version | d('latest') }}"
+    state: present
+    tag_specifications: "{{ _lt.tag_specifications | d(omit) }}"
+    tags: "{{ _lt.tags | d(omit) }}"
+    template_name: "{{ _lt.template_name }}"
+    user_data: "{{ _lt.user_data | d(omit) }}"
+    validate_certs: true
+    version_description: "{{ _lt.version_description | d(omit) }}"
+  register: __ec2_launch_template_results
+  loop: "{{ ec2_launch_template_list }}"
+  loop_control:
+    label: "{{ _lt.template_name | d(none) }}"
+    loop_var: _lt
+  when:
+    - _lt.image_id is defined
+    - _lt.instance_type is defined
+    - _lt.template_name is defined
+
+- name: Ensure list of ec2 launch template results is generated
+  tags:
+    - ec2_launch_template
+  ansible.builtin.set_fact:
+    _ec2_launch_template_list:
+      "{{ __ec2_launch_template_results.results |
+          json_query('[].{default_template: default_template,
+                          latest_template: latest_template,
+                          template: template}') |
+          list |
+          d([]) }}"
+...

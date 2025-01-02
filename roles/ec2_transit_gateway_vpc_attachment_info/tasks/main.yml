@@ -2,7 +2,7 @@
 - name: Ensure information about ec2 transit gateway vpc attachments is gathered
   tags:
     - ec2_transit_gateway_vpc_attachment_info
-  community.aws.ec2_transit_gateway_vpc_attachment_info:
+  amazon.aws.ec2_transit_gateway_vpc_attachment_info:
     filters: "{{ ec2_transit_gateway_vpc_attachment_info_filters }}"
     validate_certs: true
   register: __ec2_transit_gateway_vpc_attachment_info_query
