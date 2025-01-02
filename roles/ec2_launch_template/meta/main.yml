@@ -1,0 +1,27 @@
+---
+dependencies:
+  - role: linuxhq.aws.ec2_ami_info
+    tags: ec2_launch_template
+  - role: linuxhq.aws.ec2_security_group_info
+    tags: ec2_launch_template
+galaxy_info:
+  role_name: ec2_launch_template
+  author: Taylor Kimball
+  description: Manage aws ec2 launch templates
+  license: GPLv3
+  min_ansible_version: 2.15.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - ec2
+    - launch
+    - template
+...

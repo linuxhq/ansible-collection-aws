@@ -2,7 +2,7 @@
 - name: Ensure ec2 transit gateways are present
   tags:
     - ec2_transit_gateway
-  community.aws.ec2_transit_gateway:
+  amazon.aws.ec2_transit_gateway:
     asn: "{{ _tgw.asn | d(omit) }}"
     auto_associate: "{{ _tgw.auto_associate | d(true) }}"
     auto_attach: "{{ _tgw.auto_attach | d(false) }}"

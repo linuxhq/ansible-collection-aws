@@ -2,7 +2,7 @@
 - name: Ensure ec2 transit gateway vpc attachments are present
   tags:
     - ec2_transit_gateway_vpc_attachment
-  community.aws.ec2_transit_gateway_vpc_attachment:
+  amazon.aws.ec2_transit_gateway_vpc_attachment:
     appliance_mode_support: "{{ _tgw_attach.appliance_mode_support | d(omit) }}"
     dns_support: "{{ _tgw_attach.dns_support | d(omit) }}"
     ipv6_support: "{{ _tgw_attach.ipv6_support | d(omit) }}"
