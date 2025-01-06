@@ -1,0 +1,30 @@
+---
+- name: Ensure ec2 placement groups are present
+  tags:
+    - ec2_placement_group
+  amazon.aws.ec2_placement_group:
+    name: "{{ _pg.name }}"
+    partition_count: "{{ _pg.partition_count | d(omit) }}"
+    state: present
+    strategy: "{{ _pg.strategy }}"
+    tags: "{{ _pg.tags | d(omit) }}"
+    validate_certs: true
+  register: __ec2_placement_group_results
+  loop: "{{ ec2_placement_group_list }}"
+  loop_control:
+    label: "{{ _pg.name | d(none) }}"
+    loop_var: _pg
+  when:
+    - _pg.name is defined
+    - _pg.strategy is defined
+
+- name: Ensure list of ec2 placement group results is generated
+  tags:
+    - ec2_placement_group
+  ansible.builtin.set_fact:
+    _ec2_placement_group_list:
+      "{{ __ec2_placement_group_results.results |
+          json_query('[].placement_group') |
+          list |
+          d([]) }}"
+...
