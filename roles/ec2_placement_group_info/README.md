@@ -6,7 +6,7 @@ Gather information about ec2 placement groups
 
 ## Requirements
 
-None
+* [awscli](https://pypi.org/project/awscli)
 
 ## Role Variables
 
