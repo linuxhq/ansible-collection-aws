@@ -55,7 +55,6 @@
     device_index: "{{ _eni.1.device_index | d(0) }}"
     eni_id: "{{ __ec2_eni_dict[_eni.1.name] }}"
     instance_id: "{{ _eni.1.instance_id }}"
-    source_dest_check: "{{ _eni.1.source_dest_check | d(omit) }}"
     validate_certs: true
   loop: "{{ q('ansible.builtin.subelements',
               ec2_eni_list,
