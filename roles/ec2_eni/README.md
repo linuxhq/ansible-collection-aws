@@ -26,10 +26,20 @@ None
 
 The playbook and inventory seen below will do the following:
 
-- Create network interface `linuxhq-eni-a-1` in `linuxhq-pvt-a` subnet
-- Create network interface `linuxhq-eni-a-2` in `linuxhq-pvt-a` subnet and attach to `linuxhq-instance-a-1`
-- Create network interface `linuxhq-eni-b-1` in `linuxhq-pvt-b` subnet
-- Create network interface `linuxhq-eni-b-2` in `linuxhq-pvt-b` subnet and attach to `linuxhq-instance-b-1`
+* Create network interface `linuxhq-eni-a-1`
+  * Subnet: `linuxhq-pvt-a`
+  * Security Groups: `linuxhq-ssh`
+* Create network interface `linuxhq-eni-a-2`
+  * Subnet `linuxhq-pvt-a`
+  * Security Groups: `linuxhq-ssh` and `linuxhq-https`
+  * Attachment: `linuxhq-instance-a-1`
+* Create network interface `linuxhq-eni-b-1`
+  * Subnet: `linuxhq-pvt-b`
+  * Security Groups: `linuxhq-ssh`
+* Create network interface `linuxhq-eni-b-2`
+  * Subnet `linuxhq-pvt-b`
+  * Security Groups: `linuxhq-ssh` and `linuxhq-https`
+  * Attachment: `linuxhq-instance-b-1`
 
 ```
     - hosts: aws
