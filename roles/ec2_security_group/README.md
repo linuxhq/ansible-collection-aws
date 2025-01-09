@@ -28,27 +28,27 @@ None
       roles:
         - role: linuxhq.aws.ec2_security_group
           ec2_security_group_list:
-            - name: "{{ aws_vpc }}-ssh"
-              rules:
-                - cidr_ip: 0.0.0.0/0
-                  ports:
-                    - 22
-                  proto: tcp
-              rules_egress:
-                - cidr_ip: 0.0.0.0/0
-                  proto: -1
-              vpc_id: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
+            - vpc_id: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
+              security_groups:
+                - name: "{{ aws_vpc }}-ssh"
+                  rules:
+                    - cidr_ip: 0.0.0.0/0
+                      ports:
+                        - 22
+                      proto: tcp
+                  rules_egress:
+                    - cidr_ip: 0.0.0.0/0
+                      proto: -1
 
-            - name: "{{ aws_vpc }}-https"
-              rules:
-                - cidr_ip: 0.0.0.0/0
-                  ports:
-                    - 443
-                  proto: tcp
-              rules_egress:
-                - cidr_ip: 0.0.0.0/0
-                  proto: -1
-              vpc_id: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
+                - name: "{{ aws_vpc }}-https"
+                  rules:
+                    - cidr_ip: 0.0.0.0/0
+                      ports:
+                        - 443
+                      proto: tcp
+                  rules_egress:
+                    - cidr_ip: 0.0.0.0/0
+                      proto: -1
 
 ## License
 
