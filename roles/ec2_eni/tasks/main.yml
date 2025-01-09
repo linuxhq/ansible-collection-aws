@@ -1,0 +1,72 @@
+---
+- name: Ensure ec2 network interfaces are managed
+  tags:
+    - ec2_eni
+  amazon.aws.ec2_eni:
+    description: "{{ _eni.1.description | d(_eni.1.name) }}"
+    name: "{{ _eni.1.name }}"
+    private_ip_address: "{{ _eni.1.private_ip_address }}"
+    purge_secondary_private_ip_addresses:
+      "{{ _eni.1.purge_secondary_private_ip_addresses | d(omit) }}"
+    purge_tags: "{{ _eni.1.purge_tags | d(true) }}"
+    secondary_private_ip_address_count:
+      "{{ _eni.1.secondary_private_ip_address_count | d(omit) }}"
+    secondary_private_ip_addresses:
+      "{{ _eni.1.secondary_private_ip_addresses | d(omit) }}"
+    security_groups:
+      "{{ _eni.1.security_groups | d(_eni.0.security_groups) }}"
+    state: present
+    subnet_id: "{{ _eni.0.subnet_id }}"
+    tags:
+      "{{ _eni.1.tags |
+          d({}) |
+          combine({'Name': _eni.1.name}) }}"
+    validate_certs: true
+  register: __ec2_eni_results
+  loop: "{{ q('ansible.builtin.subelements',
+              ec2_eni_list,
+              'network_interfaces',
+              {'skip_missing': true}) }}"
+  loop_control:
+    label: "{{ _eni.1.name | d(none) }}"
+    loop_var: _eni
+  when:
+    - _eni.1.name is defined
+    - _eni.1.private_ip_address is defined
+    - _eni.0.security_groups is defined or
+      _eni.1.security_groups is defined
+    - _eni.0.subnet_id is defined
+
+- name: Ensure ec2 network interfaces dict is generated
+  tags:
+    - ec2_eni
+  ansible.builtin.set_fact:
+    __ec2_eni_dict:
+      "{{ __ec2_eni_results.results |
+          json_query('[].interface.{key: name, value: id}') |
+          items2dict |
+          d({}) }}"
+
+- name: Ensure ec2 network interfaces are attached
+  tags:
+    - ec2_eni
+  amazon.aws.ec2_eni:
+    attached: true
+    delete_on_termination: "{{ _eni.1.delete_on_termination | d(omit) }}"
+    device_index: "{{ _eni.1.device_index | d(0) }}"
+    eni_id: "{{ __ec2_eni_dict[_eni.1.name] }}"
+    instance_id: "{{ _eni.1.instance_id }}"
+    source_dest_check: "{{ _eni.1.source_dest_check | d(omit) }}"
+    validate_certs: true
+  loop: "{{ q('ansible.builtin.subelements',
+              ec2_eni_list,
+              'network_interfaces',
+              {'skip_missing': true}) }}"
+  loop_control:
+    label: "{{ _eni.1.name | d(none) }}"
+    loop_var: _eni
+  when:
+    - _eni.1.name is defined
+    - _eni.1.instance_id is defined
+    - __ec2_eni_dict[_eni.1.name] is defined
+...

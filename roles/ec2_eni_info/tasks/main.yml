@@ -1,0 +1,28 @@
+---
+- name: Ensure information about ec2 network interfaces is gathered
+  tags:
+    - ec2_eni_info
+  amazon.aws.ec2_eni_info:
+    eni_id: "{{ ec2_eni_info_eni_id or omit }}"
+    filters: "{{ ec2_eni_info_filters or omit }}"
+    validate_certs: true
+  register: __ec2_eni_info_query
+
+- name: Ensure list of ec2 enis is generated
+  tags:
+    - ec2_eni_info
+  ansible.builtin.set_fact:
+    _ec2_eni_info_list:
+      "{{ (__ec2_eni_info_query.network_interfaces |
+          selectattr('name', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of ec2 enis is generated
+  tags:
+    - ec2_eni_info
+  ansible.builtin.set_fact:
+    _ec2_eni_info_dict:
+      "{{ dict(_ec2_eni_info_list |
+               json_query('[].name') |
+               zip(_ec2_eni_info_list)) }}"
+...
