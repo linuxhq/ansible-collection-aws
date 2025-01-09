@@ -31,11 +31,11 @@
     label: "{{ _eni.1.name | d(none) }}"
     loop_var: _eni
   when:
+    - _eni.0.subnet_id is defined
     - _eni.1.name is defined
     - _eni.1.private_ip_address is defined
     - _eni.0.security_groups is defined or
       _eni.1.security_groups is defined
-    - _eni.0.subnet_id is defined
 
 - name: Ensure dict of ec2 network interfaces is generated
   tags:
