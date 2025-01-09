@@ -52,7 +52,6 @@
     - ec2_eni
   amazon.aws.ec2_eni:
     attached: true
-    delete_on_termination: "{{ _eni.1.delete_on_termination | d(omit) }}"
     device_index: "{{ _eni.1.device_index | d(0) }}"
     eni_id: "{{ __ec2_eni_dict[_eni.1.name] }}"
     instance_id: "{{ _eni.1.instance_id }}"

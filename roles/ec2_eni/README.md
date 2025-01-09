@@ -24,6 +24,13 @@ None
 
 ## Example Playbook
 
+The playbook seen below will do the following:
+
+- Create network interface `linuxhq-eni-a-1` in `linuxhq-pvt-a` subnet
+- Create network interface `linuxhq-eni-a-2` in `linuxhq-pvt-a` subnet and attach to `linuxhq-instance-a-1`
+- Create network interface `linuxhq-eni-b-1` in `linuxhq-pvt-b` subnet
+- Create network interface `linuxhq-eni-b-2` in `linuxhq-pvt-b` subnet and attach to `linuxhq-instance-b-1`
+
     - hosts: aws
       connection: local
       roles:
@@ -33,12 +40,12 @@ None
               security_groups:
                 - "{{ _ec2_security_group_info_dict['linuxhq-ssh'].group_id }}"
               network_interfaces:
-                - name: linuxhq-eni-1
+                - name: linuxhq-eni-a-1
                   private_ip_address: 192.168.0.100
-                - name: linuxhq-eni-2
-                  delete_on_termination: true
+
+                - name: linuxhq-eni-a-2
                   device_index: 1
-                  instance_id: "{{ _ec2_instance_info_dict['linuxhq-instance-1'].instance_id }}"
+                  instance_id: "{{ _ec2_instance_info_dict['linuxhq-instance-a-1'].instance_id }}"
                   private_ip_address: 192.168.0.101
                   secondary_private_ip_addresses:
                     - 192.168.0.102
@@ -46,6 +53,22 @@ None
                     - "{{ _ec2_security_group_info_dict['linuxhq-ssh'].group_id }}"
                     - "{{ _ec2_security_group_info_dict['linuxhq-https'].group_id }}"
 
+            - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pvt-b'].id }}"
+              security_groups:
+                - "{{ _ec2_security_group_info_dict['linuxhq-ssh'].group_id }}"
+              network_interfaces:
+                - name: linuxhq-eni-b-1
+                  private_ip_address: 192.168.0.132
+
+                - name: linuxhq-eni-b-2
+                  device_index: 1
+                  instance_id: "{{ _ec2_instance_info_dict['linuxhq-instance-b-1'].instance_id }}"
+                  private_ip_address: 192.168.0.133
+                  secondary_private_ip_addresses:
+                    - 192.168.0.134
+                  security_groups:
+                    - "{{ _ec2_security_group_info_dict['linuxhq-ssh'].group_id }}"
+                    - "{{ _ec2_security_group_info_dict['linuxhq-https'].group_id }}"
 
 ## License
 
