@@ -37,7 +37,7 @@
       _eni.1.security_groups is defined
     - _eni.0.subnet_id is defined
 
-- name: Ensure ec2 network interfaces dict is generated
+- name: Ensure dict of ec2 network interfaces is generated
   tags:
     - ec2_eni
   ansible.builtin.set_fact:

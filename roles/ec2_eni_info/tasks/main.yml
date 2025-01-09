@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about ec2 network interfaces is gathered
+- name: Ensure information about ec2 enis is gathered
   tags:
     - ec2_eni_info
   amazon.aws.ec2_eni_info:
