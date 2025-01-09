@@ -24,13 +24,14 @@ None
 
 ## Example Playbook
 
-The playbook seen below will do the following:
+The playbook and inventory seen below will do the following:
 
 - Create network interface `linuxhq-eni-a-1` in `linuxhq-pvt-a` subnet
 - Create network interface `linuxhq-eni-a-2` in `linuxhq-pvt-a` subnet and attach to `linuxhq-instance-a-1`
 - Create network interface `linuxhq-eni-b-1` in `linuxhq-pvt-b` subnet
 - Create network interface `linuxhq-eni-b-2` in `linuxhq-pvt-b` subnet and attach to `linuxhq-instance-b-1`
 
+```
     - hosts: aws
       connection: local
       roles:
@@ -69,6 +70,7 @@ The playbook seen below will do the following:
                   security_groups:
                     - "{{ _ec2_security_group_info_dict['linuxhq-ssh'].group_id }}"
                     - "{{ _ec2_security_group_info_dict['linuxhq-https'].group_id }}"
+```
 
 ## License
 
