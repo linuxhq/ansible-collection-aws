@@ -13,13 +13,13 @@
     region: "{{ _subnet.1.region | d(omit) }}"
     state: present
     tags:
-      "{{ _subnet.tags |
+      "{{ _subnet.1.tags |
           d({}) |
           combine({'Name': _subnet.1.name}) }}"
     validate_certs: true
     vpc_id: "{{ _subnet.0.vpc_id }}"
-    wait: "{{ _subnet.0.wait | d(true) }}"
-    wait_timeout: "{{ _subnet.wait_timeout | d(300) }}"
+    wait: "{{ _subnet.1.wait | d(true) }}"
+    wait_timeout: "{{ _subnet.1.wait_timeout | d(300) }}"
   register: __ec2_vpc_subnet_results
   loop: "{{ q('ansible.builtin.subelements',
               ec2_vpc_subnet_list,
