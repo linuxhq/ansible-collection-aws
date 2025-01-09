@@ -3,32 +3,35 @@
   tags:
     - ec2_vpc_subnet
   amazon.aws.ec2_vpc_subnet:
-    assign_instances_ipv6: "{{ _subnet.assign_instances_ipv6 | d(false) }}"
-    az: "{{ _subnet.az | d(omit) }}"
-    cidr: "{{ _subnet.cidr }}"
-    ipv6_cidr: "{{ _subnet.ipv6_cidr | d(omit) }}"
-    map_public: "{{ _subnet.map_public | d(false) }}"
-    outpost_arn: "{{ _subnet.outpost_arn | d(omit) }}"
-    purge_tags: "{{ _subnet.purge_tags | d(true) }}"
-    region: "{{ _subnet.region | d(omit) }}"
+    assign_instances_ipv6: "{{ _subnet.1.assign_instances_ipv6 | d(false) }}"
+    az: "{{ _subnet.1.az | d(omit) }}"
+    cidr: "{{ _subnet.1.cidr }}"
+    ipv6_cidr: "{{ _subnet.1.ipv6_cidr | d(omit) }}"
+    map_public: "{{ _subnet.1.map_public | d(false) }}"
+    outpost_arn: "{{ _subnet.1.outpost_arn | d(omit) }}"
+    purge_tags: "{{ _subnet.1.purge_tags | d(true) }}"
+    region: "{{ _subnet.1.region | d(omit) }}"
     state: present
     tags:
       "{{ _subnet.tags |
           d({}) |
-          combine({'Name': _subnet.name}) }}"
+          combine({'Name': _subnet.1.name}) }}"
     validate_certs: true
-    vpc_id: "{{ _subnet.vpc_id }}"
-    wait: "{{ _subnet.wait | d(true) }}"
+    vpc_id: "{{ _subnet.0.vpc_id }}"
+    wait: "{{ _subnet.0.wait | d(true) }}"
     wait_timeout: "{{ _subnet.wait_timeout | d(300) }}"
   register: __ec2_vpc_subnet_results
-  loop: "{{ ec2_vpc_subnet_list }}"
+  loop: "{{ q('ansible.builtin.subelements',
+              ec2_vpc_subnet_list,
+              'subnets',
+              {'skip_missing': true}) }}"
   loop_control:
-    label: "{{ _subnet.name | d(none) }}"
+    label: "{{ _subnet.1.name | d(none) }}"
     loop_var: _subnet
   when:
-    - _subnet.cidr is defined
-    - _subnet.name is defined
-    - _subnet.vpc_id is defined
+    - _subnet.0.vpc_id
+    - _subnet.1.cidr is defined
+    - _subnet.1.name is defined
 
 - name: Ensure virtual private cloud subnet result list is generated
   tags:
