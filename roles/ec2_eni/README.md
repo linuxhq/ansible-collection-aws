@@ -30,14 +30,14 @@ The playbook and inventory seen below will do the following:
   * Subnet: `linuxhq-pvt-a`
   * Security Groups: `linuxhq-ssh`
 * Create network interface `linuxhq-eni-a-2`
-  * Subnet `linuxhq-pvt-a`
+  * Subnet: `linuxhq-pvt-a`
   * Security Groups: `linuxhq-ssh` and `linuxhq-https`
   * Attachment: `linuxhq-instance-a-1`
 * Create network interface `linuxhq-eni-b-1`
   * Subnet: `linuxhq-pvt-b`
   * Security Groups: `linuxhq-ssh`
 * Create network interface `linuxhq-eni-b-2`
-  * Subnet `linuxhq-pvt-b`
+  * Subnet: `linuxhq-pvt-b`
   * Security Groups: `linuxhq-ssh` and `linuxhq-https`
   * Attachment: `linuxhq-instance-b-1`
 
