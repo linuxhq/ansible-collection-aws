@@ -15,10 +15,11 @@
           combine({'Name': _sg.1.name}) }}"
     validate_certs: true
     vpc_id: "{{ _sg.0.vpc_id }}"
-  loop: "{{ q('ansible.builtin.subelements',
-              ec2_security_group_list,
-              'security_groups',
-              {'skip_missing': true}) }}"
+  loop:
+    "{{ q('ansible.builtin.subelements',
+          ec2_security_group_list,
+          'security_groups',
+          {'skip_missing': true}) }}"
   loop_control:
     label: "{{ _sg.1.name | d(none) }}"
     loop_var: _sg

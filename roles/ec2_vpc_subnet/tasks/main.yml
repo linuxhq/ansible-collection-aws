@@ -21,10 +21,11 @@
     wait: "{{ _subnet.1.wait | d(true) }}"
     wait_timeout: "{{ _subnet.1.wait_timeout | d(300) }}"
   register: __ec2_vpc_subnet_results
-  loop: "{{ q('ansible.builtin.subelements',
-              ec2_vpc_subnet_list,
-              'subnets',
-              {'skip_missing': true}) }}"
+  loop:
+    "{{ q('ansible.builtin.subelements',
+          ec2_vpc_subnet_list,
+          'subnets',
+          {'skip_missing': true}) }}"
   loop_control:
     label: "{{ _subnet.1.name | d(none) }}"
     loop_var: _subnet
