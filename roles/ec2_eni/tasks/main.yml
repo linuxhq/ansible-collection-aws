@@ -23,10 +23,11 @@
           combine({'Name': _eni.1.name}) }}"
     validate_certs: true
   register: __ec2_eni_results
-  loop: "{{ q('ansible.builtin.subelements',
-              ec2_eni_list,
-              'network_interfaces',
-              {'skip_missing': true}) }}"
+  loop:
+    "{{ q('ansible.builtin.subelements',
+          ec2_eni_list,
+          'network_interfaces',
+          {'skip_missing': true}) }}"
   loop_control:
     label: "{{ _eni.1.name | d(none) }}"
     loop_var: _eni

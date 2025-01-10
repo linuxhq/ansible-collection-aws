@@ -10,10 +10,11 @@
     tags: "{{ _pg.1.tags | d(omit) }}"
     validate_certs: true
   register: __ec2_placement_group_results
-  loop: "{{ q('ansible.builtin.subelements',
-              ec2_placement_group_list,
-              'placement_groups',
-              {'skip_missing': true}) }}"
+  loop:
+    "{{ q('ansible.builtin.subelements',
+          ec2_placement_group_list,
+          'placement_groups',
+          {'skip_missing': true}) }}"
   loop_control:
     label: "{{ _pg.1.name | d(none) }}"
     loop_var: _pg
