@@ -3,20 +3,23 @@
   tags:
     - ec2_placement_group
   amazon.aws.ec2_placement_group:
-    name: "{{ _pg.name }}"
-    partition_count: "{{ _pg.partition_count | d(omit) }}"
+    name: "{{ _pg.1.name }}"
+    partition_count: "{{ _pg.1.partition_count | d(omit) }}"
     state: present
-    strategy: "{{ _pg.strategy }}"
-    tags: "{{ _pg.tags | d(omit) }}"
+    strategy: "{{ _pg.0.strategy }}"
+    tags: "{{ _pg.1.tags | d(omit) }}"
     validate_certs: true
   register: __ec2_placement_group_results
-  loop: "{{ ec2_placement_group_list }}"
+  loop: "{{ q('ansible.builtin.subelements',
+              ec2_placement_group_list,
+              'placement_groups',
+              {'skip_missing': true}) }}"
   loop_control:
-    label: "{{ _pg.name | d(none) }}"
+    label: "{{ _pg.1.name | d(none) }}"
     loop_var: _pg
   when:
-    - _pg.name is defined
-    - _pg.strategy is defined
+    - _pg.0.strategy is defined
+    - _pg.1.name is defined
 
 - name: Ensure list of ec2 placement group results is generated
   tags:
