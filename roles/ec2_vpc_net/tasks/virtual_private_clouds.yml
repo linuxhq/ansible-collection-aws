@@ -27,7 +27,7 @@
     - _vpc.cidr_block is defined
     - _vpc.name is defined
   changed_when: false
-  async: "{{ ec2_vpc_net_async }}"
+  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_net_async) }}"
   poll: "{{ ec2_vpc_net_poll }}"
 
 - name: Ensure virtual private cloud present jobs are complete
