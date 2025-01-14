@@ -1,57 +1,16 @@
 ---
-- name: Ensure virtual private clouds are present
+- name: Ensure virtual private clouds are batched
   tags:
     - ec2_vpc_net
-  amazon.aws.ec2_vpc_net:
-    cidr_block: "{{ _vpc.cidr_block }}"
-    dhcp_opts_id: "{{ _vpc.dhcp_opts_id | d(omit) }}"
-    dns_hostnames: "{{ _vpc.dns_hostnames | d(true) }}"
-    dns_support: "{{ _vpc.dns_support | d(true) }}"
-    multi_ok: "{{ _vpc.multi_ok | d(false) }}"
-    name: "{{ _vpc.name }}"
-    purge_cidrs: "{{ _vpc.purge_cidrs | d(false) }}"
-    purge_tags: "{{ _vpc.purge_tags | d(true) }}"
-    state: present
-    tags:
-      "{{ _vpc.tags |
-          d({}) |
-          combine({'Name': _vpc.name}) }}"
-    tenancy: "{{ _vpc.tenancy | d('default') }}"
-    validate_certs: true
-  register: __ec2_vpc_net_results
-  loop: "{{ ec2_vpc_net_list }}"
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_vpc_net
+    file: virtual_private_clouds.yml
+  loop:
+    "{{ ec2_vpc_net_list |
+        batch(ec2_vpc_net_batch) }}"
   loop_control:
-    label: "{{ _vpc.name | d(none) }}"
-    loop_var: _vpc
-  when:
-    - _vpc.cidr_block is defined
-    - _vpc.name is defined
-
-- name: Ensure virtual private cloud result list is generated
-  tags:
-    - ec2_vpc_net
-  ansible.builtin.set_fact:
-    _ec2_vpc_net_list:
-      "{{ __ec2_vpc_net_results.results |
-          map(attribute='vpc', default=[]) |
-          list |
-          d([]) }}"
-
-- name: Ensure virtual private cloud dhcp options are tagged with name
-  tags:
-    - ec2_vpc_net
-  amazon.aws.ec2_tag:
-    purge_tags: false
-    resource: "{{ _resource.dhcp_options_id }}"
-    state: present
-    tags:
-      Name: "{{ _resource.tags.Name }}"
-    validate_certs: true
-  loop: "{{ _ec2_vpc_net_list }}"
-  loop_control:
-    label: "{{ _resource.dhcp_options_id | d(none) }}"
-    loop_var: _resource
-  when:
-    - _resource.dhcp_options_id is defined
-    - _resource.tags.Name is defined
+    label: "{{ __ec2_vpc_net_list | length }}"
+    loop_var: __ec2_vpc_net_list
 ...
