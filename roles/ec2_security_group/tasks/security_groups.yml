@@ -1,0 +1,97 @@
+---
+- name: Ensure ec2 security groups are present
+  tags:
+    - ec2_security_group
+  amazon.aws.ec2_security_group:
+    description: "{{ _sg.1.description | d(_sg.1.name) }}"
+    name: "{{ _sg.1.name }}"
+    purge_rules: false
+    purge_rules_egress: false
+    purge_tags: true
+    state: present
+    tags:
+      "{{ _sg.1.tags |
+          d({}) |
+          combine({'Name': _sg.1.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _sg.0.vpc_id }}"
+  register: __ec2_security_group_present
+  loop: "{{ __ec2_security_group_list }}"
+  loop_control:
+    label: "{{ _sg.1.name | d(none) }}"
+    loop_var: _sg
+  when:
+    - _sg.0.vpc_id is defined
+    - _sg.1.name is defined
+  changed_when: false
+  async: "{{ ec2_security_group_async }}"
+  poll: "{{ ec2_security_group_poll }}"
+
+- name: Ensure ec2 security groups present jobs are complete
+  tags:
+    - ec2_security_group
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_security_group_present_result
+  loop: "{{ __ec2_security_group_present.results }}"
+  loop_control:
+    label: "{{ _jid._sg[1].name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_security_group_present_result.finished
+  retries: "{{ ec2_security_group_retries }}"
+  delay: "{{ ec2_security_group_delay }}"
+
+- name: Ensure ec2 security groups are populated
+  tags:
+    - ec2_security_group
+  amazon.aws.ec2_security_group:
+    description: "{{ _sg.1.description | d(_sg.1.name) }}"
+    name: "{{ _sg.1.name }}"
+    purge_rules: true
+    purge_rules_egress: true
+    purge_tags: true
+    rules: "{{ _sg.1.rules }}"
+    rules_egress: "{{ _sg.1.rules_egress }}"
+    state: present
+    tags:
+      "{{ _sg.1.tags |
+          d({}) |
+          combine({'Name': _sg.1.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _sg.0.vpc_id }}"
+  register: __ec2_security_group_populated
+  loop: "{{ __ec2_security_group_list }}"
+  loop_control:
+    label: "{{ _sg.1.name | d(none) }}"
+    loop_var: _sg
+  when:
+    - _sg.0.vpc_id is defined
+    - _sg.1.name is defined
+    - _sg.1.rules is defined
+    - _sg.1.rules | length > 0
+    - _sg.1.rules_egress is defined
+    - _sg.1.rules_egress | length > 0
+  changed_when: false
+  async: "{{ ec2_security_group_async }}"
+  poll: "{{ ec2_security_group_poll }}"
+
+- name: Ensure ec2 security groups populated jobs are complete
+  tags:
+    - ec2_security_group
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_security_group_populated_result
+  loop: "{{ __ec2_security_group_populated.results }}"
+  loop_control:
+    label: "{{ _jid._sg[1].name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_security_group_populated_result.finished
+  retries: "{{ ec2_security_group_retries }}"
+  delay: "{{ ec2_security_group_delay }}"
+...
