@@ -11,10 +11,15 @@ None
 ## Role Variables
 
     ec2_vpc_route_table_list: []
+    ec2_vpc_route_table_async: 300
+    ec2_vpc_route_table_batch: 10
+    ec2_vpc_route_table_delay: 3
+    ec2_vpc_route_table_poll: 0
+    ec2_vpc_route_table_retries: 100
 
 ## Return Values
 
-    _ec2_vpc_route_table_list
+None
 
 ## Dependencies
 

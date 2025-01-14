@@ -1,0 +1,54 @@
+---
+- name: Ensure virtual private cloud route tables are present
+  tags:
+    - ec2_vpc_route_table
+  amazon.aws.ec2_vpc_route_table:
+    gateway_id: "{{ _rtb.1.gateway_id | d(omit) }}"
+    propagating_vgw_ids: "{{ _rtb.1.propagating_vgw_ids | d([]) }}"
+    purge_routes: "{{ _rtb.1.purge_routes | d(true) }}"
+    purge_subnets: "{{ _rtb.1.purge_subnets | d(true) }}"
+    purge_tags: "{{ _rtb.1.purge_tags | d(true) }}"
+    routes: "{{ _rtb.1.routes }}"
+    state: present
+    subnets: "{{ _rtb.1.subnets }}"
+    tags:
+      "{{ _rtb.1.tags |
+          d({}) |
+          combine({'Name': _rtb.1.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _rtb.0.vpc_id }}"
+  register: __ec2_vpc_route_table_present
+  loop:
+    "{{ q('ansible.builtin.subelements',
+          ec2_vpc_route_table_list,
+          'route_tables',
+          {'skip_missing': true}) }}"
+  loop_control:
+    label: "{{ _rtb.1.name | d(none) }}"
+    loop_var: _rtb
+  when:
+    - _rtb.0.vpc_id is defined
+    - _rtb.1.name is defined
+    - _rtb.1.routes is defined
+    - _rtb.1.subnets is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_route_table_async) }}"
+  poll: "{{ ec2_vpc_route_table_poll }}"
+
+- name: Ensure virtual private cloud route tables present jobs are complete
+  tags:
+    - ec2_vpc_route_table
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_vpc_route_table_present_result
+  loop: "{{ __ec2_vpc_route_table_present.results }}"
+  loop_control:
+    label: "{{ _jid._rtb[1].name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_vpc_route_table_present_result.finished
+  retries: "{{ ec2_vpc_route_table_retries }}"
+  delay: "{{ ec2_vpc_route_table_delay }}"
+...

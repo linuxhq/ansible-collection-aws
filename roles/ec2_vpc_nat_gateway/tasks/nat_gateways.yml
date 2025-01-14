@@ -1,0 +1,137 @@
+---
+- name: Ensure virtual private cloud nat gateways are present
+  tags:
+    - ec2_vpc_nat_gateway
+  amazon.aws.ec2_vpc_nat_gateway:
+    allocation_id: "{{ _nat.allocation_id | d(omit) }}"
+    connectivity_type: "{{ _nat.connectivity_type | d('public') }}"
+    default_create: "{{ _nat.default_create | d(false) }}"
+    eip_address: "{{ _nat.eip_address | d(omit) }}"
+    if_exist_do_not_create: "{{ _nat.if_exist_do_not_create | d(false) }}"
+    purge_tags: "{{ _nat.purge_tags | d(true) }}"
+    release_eip: "{{ _nat.release_eip | d(false) }}"
+    state: present
+    subnet_id: "{{ _nat.subnet_id }}"
+    tags:
+      "{{ _nat.tags |
+          d({}) |
+          combine({'Name': _nat.name}) }}"
+    validate_certs: true
+    wait: "{{ _nat.wait | d(false) }}"
+    wait_timeout: "{{ _nat.wait_timeout | d(320) }}"
+  register: __ec2_vpc_nat_gateway_present
+  loop: "{{ ec2_vpc_nat_gateway_list }}"
+  loop_control:
+    label: "{{ _nat.name | d(none) }}"
+    loop_var: _nat
+  when:
+    - _nat.name is defined
+    - _nat.subnet_id is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_nat_gateway_async) }}"
+  poll: "{{ ec2_vpc_nat_gateway_poll }}"
+
+- name: Ensure virtual private cloud nat gateways present jobs are complete
+  tags:
+    - ec2_vpc_nat_gateway
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_vpc_nat_gateway_present_result
+  loop: "{{ __ec2_vpc_nat_gateway_present.results }}"
+  loop_control:
+    label: "{{ _jid._nat.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_vpc_nat_gateway_present_result.finished
+  retries: "{{ ec2_vpc_nat_gateway_retries }}"
+  delay: "{{ ec2_vpc_nat_gateway_delay }}"
+
+- name: Ensure virtual private cloud nat gateway results list is generated
+  tags:
+    - ec2_vpc_nat_gateway
+  ansible.builtin.set_fact:
+    __ec2_vpc_nat_gateway_list:
+      "{{ __ec2_vpc_nat_gateway_present_result.results |
+          list |
+          d([]) }}"
+
+- name: Ensure virtual private cloud nat gateway elastic ip allocations are tagged with name
+  tags:
+    - ec2_vpc_nat_gateway
+  amazon.aws.ec2_tag:
+    purge_tags: false
+    resource: "{{ _eipalloc.nat_gateway_addresses[0].allocation_id }}"
+    state: present
+    tags:
+      Name: "{{ _eipalloc.tags.Name }}"
+    validate_certs: true
+  register: __ec2_vpc_nat_gateway_eip_alloc_present
+  loop: "{{ __ec2_vpc_nat_gateway_list }}"
+  loop_control:
+    label: "{{ _eipalloc.tags.Name | d(none) }}"
+    loop_var: _eipalloc
+  when:
+    - _eipalloc.tags.Name is defined
+    - _eipalloc.nat_gateway_addresses[0].allocation_id is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_nat_gateway_async) }}"
+  poll: "{{ ec2_vpc_nat_gateway_poll }}"
+
+- name: Ensure virtual private cloud nat gateway elastic ip allocations present jobs are complete
+  tags:
+    - ec2_vpc_nat_gateway
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_vpc_nat_gateway_eip_alloc_present_result
+  loop: "{{ __ec2_vpc_nat_gateway_eip_alloc_present.results }}"
+  loop_control:
+    label: "{{ _jid._eipalloc.tags.Name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_vpc_nat_gateway_eip_alloc_present_result.finished
+  retries: "{{ ec2_vpc_nat_gateway_retries }}"
+  delay: "{{ ec2_vpc_nat_gateway_delay }}"
+
+- name: Ensure virtual private cloud nat gateway network interfaces are tagged with name
+  tags:
+    - ec2_vpc_nat_gateway
+  amazon.aws.ec2_tag:
+    purge_tags: false
+    resource: "{{ _eni.nat_gateway_addresses[0].network_interface_id }}"
+    state: present
+    tags:
+      Name: "{{ _eni.tags.Name }}"
+    validate_certs: true
+  register: __ec2_vpc_nat_gateway_eni_present
+  loop: "{{ __ec2_vpc_nat_gateway_list }}"
+  loop_control:
+    label: "{{ _eni.tags.Name | d(none) }}"
+    loop_var: _eni
+  when:
+    - _eni.tags.Name is defined
+    - _eni.nat_gateway_addresses[0].network_interface_id is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_nat_gateway_async) }}"
+  poll: "{{ ec2_vpc_nat_gateway_poll }}"
+
+- name: Ensure virtual private cloud nat gateway network interfaces present jobs are complete
+  tags:
+    - ec2_vpc_nat_gateway
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_vpc_nat_gateway_eni_present_result
+  loop: "{{ __ec2_vpc_nat_gateway_eni_present.results }}"
+  loop_control:
+    label: "{{ _jid._eni.tags.Name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_vpc_nat_gateway_eni_present_result.finished
+  retries: "{{ ec2_vpc_nat_gateway_retries }}"
+  delay: "{{ ec2_vpc_nat_gateway_delay }}"
+...
