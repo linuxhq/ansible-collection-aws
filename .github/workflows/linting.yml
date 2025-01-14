@@ -16,7 +16,7 @@ jobs:
           fetch-depth: 0
 
       - name: Ensure ansible-lint-action is present
-        uses: ansible/ansible-lint@v24.12.2
+        uses: ansible/ansible-lint@v24.10.0
 
   yamllint:
     name: yamllint
