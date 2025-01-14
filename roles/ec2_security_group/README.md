@@ -11,10 +11,15 @@ None
 ## Role Variables
 
     ec2_security_group_list: []
+    ec2_security_group_async: 300
+    ec2_security_group_batch: 10
+    ec2_security_group_delay: 3
+    ec2_security_group_poll: 0
+    ec2_security_group_retries: 100
 
 ## Return Values
 
-    _ec2_security_group_list
+None
 
 ## Dependencies
 
@@ -29,7 +34,6 @@ None
         - role: linuxhq.aws.ec2_security_group
           ec2_security_group_list:
             - vpc_id: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
-              security_groups:
                 - name: "{{ aws_vpc }}-ssh"
                   rules:
                     - cidr_ip: 0.0.0.0/0
