@@ -1,0 +1,56 @@
+---
+- name: Ensure virtual private cloud subnets are present
+  tags:
+    - ec2_vpc_subnet
+  amazon.aws.ec2_vpc_subnet:
+    assign_instances_ipv6: "{{ _subnet.1.assign_instances_ipv6 | d(false) }}"
+    az: "{{ _subnet.1.az | d(omit) }}"
+    cidr: "{{ _subnet.1.cidr }}"
+    ipv6_cidr: "{{ _subnet.1.ipv6_cidr | d(omit) }}"
+    map_public: "{{ _subnet.1.map_public | d(false) }}"
+    outpost_arn: "{{ _subnet.1.outpost_arn | d(omit) }}"
+    purge_tags: "{{ _subnet.1.purge_tags | d(true) }}"
+    region: "{{ _subnet.1.region | d(omit) }}"
+    state: present
+    tags:
+      "{{ _subnet.1.tags |
+          d({}) |
+          combine({'Name': _subnet.1.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _subnet.0.vpc_id }}"
+    wait: "{{ _subnet.1.wait | d(true) }}"
+    wait_timeout: "{{ _subnet.1.wait_timeout | d(300) }}"
+  register: __ec2_vpc_subnet_present
+  loop:
+    "{{ q('ansible.builtin.subelements',
+          ec2_vpc_subnet_list,
+          'subnets',
+          {'skip_missing': true}) }}"
+  loop_control:
+    label: "{{ _subnet.1.name | d(none) }}"
+    loop_var: _subnet
+  when:
+    - _subnet.0.vpc_id
+    - _subnet.1.cidr is defined
+    - _subnet.1.name is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_subnet_async) }}"
+  poll: "{{ ec2_vpc_subnet_poll }}"
+
+- name: Ensure virtual private cloud subnets present jobs are complete
+  tags:
+    - ec2_vpc_subnet
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_vpc_subnet_present_result
+  loop: "{{ __ec2_vpc_subnet_present.results }}"
+  loop_control:
+    label: "{{ _jid._subnet[1].name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_vpc_subnet_present_result.finished
+  retries: "{{ ec2_vpc_subnet_retries }}"
+  delay: "{{ ec2_vpc_subnet_delay }}"
+...

@@ -24,7 +24,7 @@
     - _sg.0.vpc_id is defined
     - _sg.1.name is defined
   changed_when: false
-  async: "{{ ec2_security_group_async }}"
+  async: "{{ ansible_check_mode | ternary(0, ec2_security_group_async) }}"
   poll: "{{ ec2_security_group_poll }}"
 
 - name: Ensure ec2 security groups present jobs are complete
@@ -75,7 +75,7 @@
     - _sg.1.rules_egress is defined
     - _sg.1.rules_egress | length > 0
   changed_when: false
-  async: "{{ ec2_security_group_async }}"
+  async: "{{ ansible_check_mode | ternary(0, ec2_security_group_async) }}"
   poll: "{{ ec2_security_group_poll }}"
 
 - name: Ensure ec2 security groups populated jobs are complete

@@ -1,46 +1,19 @@
 ---
-- name: Ensure virtual private cloud subnets are present
+- name: Ensure virtual private cloud subnets are batched
   tags:
     - ec2_vpc_subnet
-  amazon.aws.ec2_vpc_subnet:
-    assign_instances_ipv6: "{{ _subnet.1.assign_instances_ipv6 | d(false) }}"
-    az: "{{ _subnet.1.az | d(omit) }}"
-    cidr: "{{ _subnet.1.cidr }}"
-    ipv6_cidr: "{{ _subnet.1.ipv6_cidr | d(omit) }}"
-    map_public: "{{ _subnet.1.map_public | d(false) }}"
-    outpost_arn: "{{ _subnet.1.outpost_arn | d(omit) }}"
-    purge_tags: "{{ _subnet.1.purge_tags | d(true) }}"
-    region: "{{ _subnet.1.region | d(omit) }}"
-    state: present
-    tags:
-      "{{ _subnet.1.tags |
-          d({}) |
-          combine({'Name': _subnet.1.name}) }}"
-    validate_certs: true
-    vpc_id: "{{ _subnet.0.vpc_id }}"
-    wait: "{{ _subnet.1.wait | d(true) }}"
-    wait_timeout: "{{ _subnet.1.wait_timeout | d(300) }}"
-  register: __ec2_vpc_subnet_results
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_vpc_subnet
+    file: subnets.yml
   loop:
     "{{ q('ansible.builtin.subelements',
           ec2_vpc_subnet_list,
           'subnets',
-          {'skip_missing': true}) }}"
+          {'skip_missing': true}) |
+        batch(ec2_vpc_subnet_batch) }}"
   loop_control:
-    label: "{{ _subnet.1.name | d(none) }}"
-    loop_var: _subnet
-  when:
-    - _subnet.0.vpc_id
-    - _subnet.1.cidr is defined
-    - _subnet.1.name is defined
-
-- name: Ensure virtual private cloud subnet result list is generated
-  tags:
-    - ec2_vpc_subnet
-  ansible.builtin.set_fact:
-    _ec2_vpc_subnet_list:
-      "{{ __ec2_vpc_subnet_results.results |
-          map(attribute='subnet', default=[]) |
-          list |
-          d([]) }}"
+    label: "{{ __ec2_vpc_subnet_list | length }}"
+    loop_var: __ec2_vpc_subnet_list
 ...
