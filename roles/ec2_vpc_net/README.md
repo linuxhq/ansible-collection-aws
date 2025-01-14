@@ -11,10 +11,15 @@ None
 ## Role Variables
 
     ec2_vpc_net_list: []
+    ec2_vpc_net_async: 300
+    ec2_vpc_net_batch: 10
+    ec2_vpc_net_delay: 3
+    ec2_vpc_net_poll: 0
+    ec2_vpc_net_retries: 100
 
 ## Return Values
 
-    _ec2_vpc_net_list
+None
 
 ## Dependencies
 
