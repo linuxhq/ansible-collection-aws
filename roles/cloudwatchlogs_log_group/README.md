@@ -23,7 +23,7 @@ None
 
 ## Dependencies
 
-None
+* [linuxhq.aws.kms\_key\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/kms_key_info)
 
 ## Example Playbook
 
