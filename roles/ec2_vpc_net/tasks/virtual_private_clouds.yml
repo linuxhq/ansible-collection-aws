@@ -1,5 +1,5 @@
 ---
-- name: Ensure virtual private clouds are present
+- name: Ensure virtual private clouds are managed
   tags:
     - ec2_vpc_net
   amazon.aws.ec2_vpc_net:
@@ -11,14 +11,14 @@
     name: "{{ _vpc.name }}"
     purge_cidrs: "{{ _vpc.purge_cidrs | d(false) }}"
     purge_tags: "{{ _vpc.purge_tags | d(true) }}"
-    state: present
+    state: "{{ _vpc.state | d('present') }}"
     tags:
       "{{ _vpc.tags |
           d({}) |
           combine({'Name': _vpc.name}) }}"
     tenancy: "{{ _vpc.tenancy | d('default') }}"
     validate_certs: true
-  register: __ec2_vpc_net_present
+  register: __ec2_vpc_net_result
   loop: "{{ __ec2_vpc_net_list }}"
   loop_control:
     label: "{{ _vpc.name | d(none) }}"
@@ -30,20 +30,20 @@
   async: "{{ ansible_check_mode | ternary(0, ec2_vpc_net_async) }}"
   poll: "{{ ec2_vpc_net_poll }}"
 
-- name: Ensure virtual private cloud present jobs are complete
+- name: Ensure managed virtual private cloud jobs are complete
   tags:
     - ec2_vpc_net
   ansible.builtin.async_status:
     jid: "{{ _jid.ansible_job_id }}"
-  register: __ec2_vpc_net_present_result
-  loop: "{{ __ec2_vpc_net_present.results }}"
+  register: __ec2_vpc_net_status
+  loop: "{{ __ec2_vpc_net_result.results }}"
   loop_control:
     label: "{{ _jid._vpc.name | d(none) }}"
     loop_var: _jid
   when:
     - _jid.ansible_job_id is defined
   until:
-    - __ec2_vpc_net_present_result.finished
+    - __ec2_vpc_net_status.finished
   retries: "{{ ec2_vpc_net_retries }}"
   delay: "{{ ec2_vpc_net_delay }}"
 ...
