@@ -1,5 +1,5 @@
 ---
-- name: Ensure cloudwatchlogs log groups are present
+- name: Ensure cloudwatchlogs log groups are managed
   tags:
     - cloudwatchlogs_log_group
   amazon.aws.cloudwatchlogs_log_group:
@@ -9,13 +9,13 @@
     purge_retention_policy: "{{ _log_group.purge_retention_policy | d(omit) }}"
     purge_tags: "{{ _log_group.purge_tags | d(true) }}"
     retention: "{{ _log_group.retention | d(omit) }}"
-    state: present
+    state: "{{ _log_group.state | d('present') }}"
     tags:
       "{{ _log_group.tags |
           d({}) |
           combine({'Name': _log_group.name}) }}"
     validate_certs: true
-  register: __cloudwatchlogs_log_group_present
+  register: __cloudwatchlogs_log_group_result
   loop: "{{ __cloudwatchlogs_log_group_list }}"
   loop_control:
     label: "{{ _log_group.name | d(none) }}"
@@ -26,20 +26,20 @@
   async: "{{ ansible_check_mode | ternary(0, cloudwatchlogs_log_group_async) }}"
   poll: "{{ cloudwatchlogs_log_group_poll }}"
 
-- name: Ensure cloudwatchlogs log groups present jobs are complete
+- name: Ensure cloudwatchlogs log groups managed jobs are complete
   tags:
     - cloudwatchlogs_log_group
   ansible.builtin.async_status:
     jid: "{{ _jid.ansible_job_id }}"
-  register: __cloudwatchlogs_log_group_present_result
-  loop: "{{ __cloudwatchlogs_log_group_present.results }}"
+  register: __cloudwatchlogs_log_group_status
+  loop: "{{ __cloudwatchlogs_log_group_result.results }}"
   loop_control:
     label: "{{ _jid._log_group.name | d(none) }}"
     loop_var: _jid
   when:
     - _jid.ansible_job_id is defined
   until:
-    - __cloudwatchlogs_log_group_present_result.finished
+    - __cloudwatchlogs_log_group_status.finished
   retries: "{{ cloudwatchlogs_log_group_retries }}"
   delay: "{{ cloudwatchlogs_log_group_delay }}"
 ...
