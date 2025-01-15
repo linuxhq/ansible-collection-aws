@@ -1,5 +1,5 @@
 ---
-- name: Ensure virtual private cloud subnets are present
+- name: Ensure virtual private cloud subnets are managed
   tags:
     - ec2_vpc_subnet
   amazon.aws.ec2_vpc_subnet:
@@ -11,7 +11,7 @@
     outpost_arn: "{{ _subnet.1.outpost_arn | d(omit) }}"
     purge_tags: "{{ _subnet.1.purge_tags | d(true) }}"
     region: "{{ _subnet.1.region | d(omit) }}"
-    state: present
+    state: "{{ _subnet.1.state | d('present') }}"
     tags:
       "{{ _subnet.1.tags |
           d({}) |
@@ -37,7 +37,7 @@
   async: "{{ ansible_check_mode | ternary(0, ec2_vpc_subnet_async) }}"
   poll: "{{ ec2_vpc_subnet_poll }}"
 
-- name: Ensure virtual private cloud subnets present jobs are complete
+- name: Ensure managed virtual private cloud subnet jobs are complete
   tags:
     - ec2_vpc_subnet
   ansible.builtin.async_status:

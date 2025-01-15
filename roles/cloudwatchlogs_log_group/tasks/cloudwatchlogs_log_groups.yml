@@ -26,7 +26,7 @@
   async: "{{ ansible_check_mode | ternary(0, cloudwatchlogs_log_group_async) }}"
   poll: "{{ cloudwatchlogs_log_group_poll }}"
 
-- name: Ensure cloudwatchlogs log groups managed jobs are complete
+- name: Ensure managed cloudwatchlogs log group jobs are complete
   tags:
     - cloudwatchlogs_log_group
   ansible.builtin.async_status:
