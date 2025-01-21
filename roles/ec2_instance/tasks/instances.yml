@@ -1,0 +1,78 @@
+---
+- name: Ensure ec2 instances are managed
+  tags:
+    - ec2_instance
+  amazon.aws.ec2_instance:
+    aap_callback: "{{ _i.aap_callback | d(omit) }}"
+    cpu_credit_specification: "{{ _i.cpu_credit_specification | d(omit) }}"
+    cpu_options: "{{ _i.cpu_options | d(omit) }}"
+    detailed_monitoring: "{{ _i.detailed_monitoring | d(omit) }}"
+    ebs_optimized: "{{ _i.ebs_optimized | d(omit) }}"
+    exact_count: "{{ _i.exact_count | d(omit) }}"
+    filters: "{{ _i.filters | d(omit) }}"
+    hibernation_options: "{{ _i.hibernation_options | d(false) }}"
+    iam_instance_profile: "{{ _i.iam_instance_profile | d(omit) }}"
+    image: "{{ _i.image | d(omit) }}"
+    image_id: "{{ _i.image_id | d(omit) }}"
+    instance_initiated_shutdown_behavior: "{{ _i.instance_initiated_shutdown_behavior | d(omit) }}"
+    instance_type: "{{ _i.instance_type | d(omit) }}"
+    key_name: "{{ _i.key_name | d(omit) }}"
+    launch_template: "{{ _i.launch_template | d(omit) }}"
+    license_specifications: "{{ _i.license_specifications | d(omit) }}"
+    metadata_options: "{{ _i.metadata_options | d(omit) }}"
+    name: "{{ _i.name }}"
+    network: "{{ _i.network | d(omit) }}"
+    network_interfaces: "{{ _i.network_interfaces | d(omit) }}"
+    network_interfaces_ids: "{{ _i.network_interfaces_ids | d(omit) }}"
+    placement: "{{ _i.placement | d(omit) }}"
+    placement_group: "{{ _i.placement_group | d(omit) }}"
+    purge_tags: "{{ _i.purge_tags | d(true) }}"
+    security_group: "{{ _i.security_group | d(omit) }}"
+    security_groups: "{{ _i.security_groups | d(omit) }}"
+    source_dest_check: "{{ _i.source_dest_check | d(omit) }}"
+    state: "{{ _i.state | d('running') }}"
+    tags:
+      "{{ _i.tags |
+          d({}) |
+          combine({'Name': _i.name}) }}"
+    tenancy: "{{ _i.tenancy | d(omit) }}"
+    termination_protection: "{{ _i.termination_protection | d(omit) }}"
+    user_data: "{{ _i.user_data | d(omit) }}"
+    validate_certs: true
+    volumes: "{{ _i.volumes | d(omit) }}"
+    vpc_subnet_id: "{{ _i.vpc_subnet_id | d(omit) }}"
+    wait: "{{ _i.wait | d(true) }}"
+    wait_timeout: "{{ _i.wait_timeout | d(600) }}"
+  register: __ec2_instance_result
+  loop: "{{ ec2_instance_list }}"
+  loop_control:
+    label: "{{ _i.name | d(none) }}"
+    loop_var: _i
+  when:
+    - _i.image_id is defined or
+      _i.launch_template is defined
+    - _i.instance_type is defined or
+      _i.launch_template is defined
+    - _i.name is defined
+    - _i.vpc_subnet_id is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_instance_async) }}"
+  poll: "{{ ec2_instance_poll }}"
+
+- name: Ensure managed ec2 instance jobs are complete
+  tags:
+    - ec2_instance
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_instance_status
+  loop: "{{ __ec2_instance_result.results }}"
+  loop_control:
+    label: "{{ _jid._i.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_instance_status.finished
+  retries: "{{ ec2_instance_retries }}"
+  delay: "{{ ec2_instance_delay }}"
+...

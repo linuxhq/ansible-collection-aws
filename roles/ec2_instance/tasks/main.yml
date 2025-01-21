@@ -1,0 +1,16 @@
+---
+- name: Ensure ec2 instances are batched
+  tags:
+    - ec2_instance
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_instance
+    file: instances.yml
+  loop:
+    "{{ ec2_instance_list |
+        batch(ec2_instance_batch) }}"
+  loop_control:
+    label: "{{ __ec2_instance_list | length }}"
+    loop_var: __ec2_instance_list
+...

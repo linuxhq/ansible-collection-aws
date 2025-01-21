@@ -1,0 +1,44 @@
+---
+- name: Ensure ec2 vpc subnet role is tested
+  hosts: localhost
+  connection: local
+  vars:
+    ec2_vpc_net_list:
+      - name: linuxhq-test
+        cidr_block: 10.0.0.0/16
+
+    ec2_vpc_subnet_list:
+      - vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq-test'].id }}"
+        subnets:
+          - name: linuxhq-test-a
+            az: us-west-2a
+            cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 0) }}"
+          - name: linuxhq-test-b
+            az: us-west-2b
+            cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 1) }}"
+          - name: linuxhq-test-c
+            az: us-west-2c
+            cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 2) }}"
+
+  roles:
+    - linuxhq.aws.ec2_vpc_net
+    - linuxhq.aws.ec2_vpc_subnet
+
+  post_tasks:
+    - name: Ensure ec2 vpc lists are formatted
+      ansible.builtin.set_fact:
+        ec2_vpc_net_list:
+          "{{ ec2_vpc_net_list |
+              map('combine', {'state': 'absent'}) }}"
+        ec2_vpc_subnet_list:
+          "{{ ec2_vpc_subnet_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure ec2 vpc subnet role is imported
+      ansible.builtin.import_role:
+        name: linuxhq.aws.ec2_vpc_subnet
+
+    - name: Ensure ec2 vpc net role is imported
+      ansible.builtin.import_role:
+        name: linuxhq.aws.ec2_vpc_net
+...
