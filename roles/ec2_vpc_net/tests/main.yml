@@ -1,0 +1,23 @@
+---
+- name: Ensure ec2 vpc net role is tested
+  hosts: localhost
+  connection: local
+  vars:
+    ec2_vpc_net_list:
+      - name: linuxhq-test
+        cidr_block: 10.0.0.0/16
+
+  roles:
+    - linuxhq.aws.ec2_vpc_net
+
+  post_tasks:
+    - name: Ensure ec2 vpc net list is formatted
+      ansible.builtin.set_fact:
+        ec2_vpc_net_list:
+          "{{ ec2_vpc_net_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure ec2 vpc net role is imported
+      ansible.builtin.import_role:
+        name: linuxhq.aws.ec2_vpc_net
+...

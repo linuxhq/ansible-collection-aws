@@ -1,0 +1,45 @@
+---
+- name: Ensure ec2 instance role is tested
+  hosts: localhost
+  connection: local
+  vars:
+    ec2_ami_info_list:
+      - name: 'AlmaLinux OS 9'
+        filters:
+          owner-alias: aws-marketplace
+          product-code: 3kukoxmnoighcsbjd0u4nq9ds
+          product-code.type: marketplace
+          is-public: true
+          virtualization-type: hvm
+
+    ec2_instance_list:
+      - name: linuxhq-a
+        exact_count: 3
+        image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
+        instance_type: t3.small
+        vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pvt-a'].id }}"
+      - name: linuxhq-b
+        exact_count: 3
+        image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
+        instance_type: t3.small
+        vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pvt-b'].id }}"
+      - name: linuxhq-c
+        exact_count: 3
+        image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
+        instance_type: t3.small
+        vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pvt-c'].id }}"
+
+  roles:
+    - linuxhq.aws.ec2_instance
+
+  post_tasks:
+    - name: Ensure ec2 instance list is formatted
+      ansible.builtin.set_fact:
+        ec2_instance_list:
+          "{{ ec2_instance_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure ec2 instance role is imported
+      ansible.builtin.import_role:
+        name: linuxhq.aws.ec2_instance
+...

@@ -11,7 +11,7 @@
     outpost_arn: "{{ _subnet.1.outpost_arn | d(omit) }}"
     purge_tags: "{{ _subnet.1.purge_tags | d(true) }}"
     region: "{{ _subnet.1.region | d(omit) }}"
-    state: "{{ _subnet.1.state | d('present') }}"
+    state: "{{ _subnet.0.state | d('present') }}"
     tags:
       "{{ _subnet.1.tags |
           d({}) |
