@@ -1,0 +1,44 @@
+---
+- name: Ensure virtual private cloud internet gateways are managed
+  tags:
+    - ec2_vpc_igw
+  amazon.aws.ec2_vpc_igw:
+    detach_vpc: "{{ _igw.detach_vpc | d(omit) }}"
+    force_attach: "{{ _igw.force_attach | d(omit) }}"
+    purge_tags: "{{ _igw.purge_tags | d(true) }}"
+    state: "{{ _igw.state | d('present') }}"
+    tags:
+      "{{ _igw.tags |
+          d({}) |
+          combine({'Name': _igw.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _igw.vpc_id }}"
+  register: __ec2_vpc_igw_result
+  loop: "{{ __ec2_vpc_igw_list }}"
+  loop_control:
+    label: "{{ _igw.name | d(none) }}"
+    loop_var: _igw
+  when:
+    - _igw.name is defined
+    - _igw.vpc_id is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_igw_async) }}"
+  poll: "{{ ec2_vpc_igw_poll }}"
+
+- name: Ensure managed virtual private cloud internet gateway jobs are complete
+  tags:
+    - ec2_vpc_igw
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_vpc_igw_status
+  loop: "{{ __ec2_vpc_igw_result.results }}"
+  loop_control:
+    label: "{{ _jid._igw.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_vpc_igw_status.finished
+  retries: "{{ ec2_vpc_igw_retries }}"
+  delay: "{{ ec2_vpc_igw_delay }}"
+...
