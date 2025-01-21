@@ -34,18 +34,18 @@
             cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 5) }}"
 
     ec2_vpc_nat_gateway_list:
-        - name: linuxhq-test-pub-a
-          if_exist_do_not_create: true
-          subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pub-a'].id }}"
-          wait: true
-        - name: linuxhq-test-pub-b
-          if_exist_do_not_create: true
-          subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pub-b'].id }}"
-          wait: true
-        - name: linuxhq-test-pub-c
-          if_exist_do_not_create: true
-          subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pub-c'].id }}"
-          wait: true
+      - name: linuxhq-test-pub-a
+        if_exist_do_not_create: true
+        subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pub-a'].id }}"
+        wait: true
+      - name: linuxhq-test-pub-b
+        if_exist_do_not_create: true
+        subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pub-b'].id }}"
+        wait: true
+      - name: linuxhq-test-pub-c
+        if_exist_do_not_create: true
+        subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pub-c'].id }}"
+        wait: true
 
   roles:
     - linuxhq.aws.ec2_vpc_net
