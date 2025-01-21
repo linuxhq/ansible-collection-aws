@@ -6,7 +6,7 @@ galaxy_info:
   author: Taylor Kimball
   description: Gather information about key management service keys
   license: GPLv3
-  min_ansible_version: 2.15.0
+  min_ansible_version: 2.18.0
   namespace: linuxhq
   platforms:
     - name: GenericLinux
