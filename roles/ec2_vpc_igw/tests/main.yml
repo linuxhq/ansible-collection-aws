@@ -4,12 +4,12 @@
   connection: local
   vars:
     ec2_vpc_net_list:
-      - name: linuxhq-test
+      - name: linuxhq
         cidr_block: 10.0.0.0/16
 
     ec2_vpc_igw_list:
-      - name: linuxhq-test
-        vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq-test'].id }}"
+      - name: linuxhq
+        vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
 
   roles:
     - linuxhq.aws.ec2_vpc_net

@@ -4,19 +4,19 @@
   connection: local
   vars:
     ec2_vpc_net_list:
-      - name: linuxhq-test
+      - name: linuxhq
         cidr_block: 10.0.0.0/16
 
     ec2_vpc_subnet_list:
-      - vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq-test'].id }}"
+      - vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
         subnets:
-          - name: linuxhq-test-a
+          - name: linuxhq-a
             az: us-west-2a
             cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 0) }}"
-          - name: linuxhq-test-b
+          - name: linuxhq-b
             az: us-west-2b
             cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 1) }}"
-          - name: linuxhq-test-c
+          - name: linuxhq-c
             az: us-west-2c
             cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 2) }}"
 

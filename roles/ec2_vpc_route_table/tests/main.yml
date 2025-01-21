@@ -4,32 +4,32 @@
   connection: local
   vars:
     ec2_vpc_net_list:
-      - name: linuxhq-test
+      - name: linuxhq
         cidr_block: 10.0.0.0/16
 
     ec2_vpc_igw_list:
-      - name: linuxhq-test
-        vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq-test'].id }}"
+      - name: linuxhq
+        vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
 
     ec2_vpc_subnet_list:
-      - vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq-test'].id }}"
+      - vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
         subnets:
-          - name: linuxhq-test-pub-a
+          - name: linuxhq-pub-a
             az: us-west-2a
             cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 0) }}"
-          - name: linuxhq-test-pub-b
+          - name: linuxhq-pub-b
             az: us-west-2b
             cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 1) }}"
-          - name: linuxhq-test-pub-c
+          - name: linuxhq-pub-c
             az: us-west-2c
             cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 2) }}"
-          - name: linuxhq-test-pvt-a
+          - name: linuxhq-pvt-a
             az: us-west-2a
             cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 3) }}"
-          - name: linuxhq-test-pvt-b
+          - name: linuxhq-pvt-b
             az: us-west-2b
             cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 4) }}"
-          - name: linuxhq-test-pvt-c
+          - name: linuxhq-pvt-c
             az: us-west-2c
             cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 5) }}"
 
@@ -38,51 +38,51 @@
         - available
 
     ec2_vpc_nat_gateway_list:
-      - name: linuxhq-test-pub-a
+      - name: linuxhq-pub-a
         if_exist_do_not_create: true
-        subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pub-a'].id }}"
+        subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-a'].id }}"
         wait: true
-      - name: linuxhq-test-pub-b
+      - name: linuxhq-pub-b
         if_exist_do_not_create: true
-        subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pub-b'].id }}"
+        subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-b'].id }}"
         wait: true
-      - name: linuxhq-test-pub-c
+      - name: linuxhq-pub-c
         if_exist_do_not_create: true
-        subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pub-c'].id }}"
+        subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-c'].id }}"
         wait: true
 
     ec2_vpc_route_table_list:
-      - vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq-test'].id }}"
+      - vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
         route_tables:
-          - name: "linuxhq-test-pub"
+          - name: "linuxhq-pub"
             routes:
               - dest: '0.0.0.0/0'
                 gateway_id: igw
             subnets:
-              - "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pub-a'].id }}"
-              - "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pub-b'].id }}"
-              - "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pub-c'].id }}"
+              - "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-a'].id }}"
+              - "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-b'].id }}"
+              - "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-c'].id }}"
 
-          - name: "linuxhq-test-pvt-a"
+          - name: "linuxhq-pvt-a"
             routes:
               - dest: '0.0.0.0/0'
-                gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['linuxhq-test-pub-a'].nat_gateway_id }}"
+                gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['linuxhq-pub-a'].nat_gateway_id }}"
             subnets:
-              - "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pvt-a'].id }}"
+              - "{{ _ec2_vpc_subnet_info_dict['linuxhq-pvt-a'].id }}"
 
-          - name: "linuxhq-test-pvt-b"
+          - name: "linuxhq-pvt-b"
             routes:
               - dest: '0.0.0.0/0'
-                gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['linuxhq-test-pub-b'].nat_gateway_id }}"
+                gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['linuxhq-pub-b'].nat_gateway_id }}"
             subnets:
-              - "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pvt-b'].id }}"
+              - "{{ _ec2_vpc_subnet_info_dict['linuxhq-pvt-b'].id }}"
 
-          - name: "linuxhq-test-pvt-c"
+          - name: "linuxhq-pvt-c"
             routes:
               - dest: '0.0.0.0/0'
-                gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['linuxhq-test-pub-c'].nat_gateway_id }}"
+                gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['linuxhq-pub-c'].nat_gateway_id }}"
             subnets:
-              - "{{ _ec2_vpc_subnet_info_dict['linuxhq-test-pvt-c'].id }}"
+              - "{{ _ec2_vpc_subnet_info_dict['linuxhq-pvt-c'].id }}"
 
   roles:
     - linuxhq.aws.ec2_vpc_net
@@ -105,7 +105,7 @@
               map('combine', {'state': 'absent'}) }}"
         ec2_vpc_nat_gateway_list:
           "{{ _ec2_vpc_nat_gateway_info_list |
-              selectattr('tags.Name', 'search', 'linuxhq-test-pub') |
+              selectattr('tags.Name', 'search', 'linuxhq-pub') |
               json_query('[].{name: tags.Name,
                               nat_gateway_id: nat_gateway_id}') |
               map('combine', {'release_eip': true,
