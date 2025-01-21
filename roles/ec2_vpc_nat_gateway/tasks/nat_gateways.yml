@@ -20,7 +20,7 @@
     validate_certs: true
     wait: "{{ _nat.wait | d(false) }}"
     wait_timeout: "{{ _nat.wait_timeout | d(320) }}"
-  register: __ec2_vpc_nat_gateway_present
+  register: __ec2_vpc_nat_gateway_result
   loop: "{{ ec2_vpc_nat_gateway_list }}"
   loop_control:
     label: "{{ _nat.name | d(none) }}"
@@ -38,15 +38,15 @@
     - ec2_vpc_nat_gateway
   ansible.builtin.async_status:
     jid: "{{ _jid.ansible_job_id }}"
-  register: __ec2_vpc_nat_gateway_present_result
-  loop: "{{ __ec2_vpc_nat_gateway_present.results }}"
+  register: __ec2_vpc_nat_gateway_status
+  loop: "{{ __ec2_vpc_nat_gateway_result.results }}"
   loop_control:
     label: "{{ _jid._nat.name | d(none) }}"
     loop_var: _jid
   when:
     - _jid.ansible_job_id is defined
   until:
-    - __ec2_vpc_nat_gateway_present_result.finished
+    - __ec2_vpc_nat_gateway_status.finished
   retries: "{{ ec2_vpc_nat_gateway_retries }}"
   delay: "{{ ec2_vpc_nat_gateway_delay }}"
 ...
