@@ -1,0 +1,48 @@
+---
+- name: Ensure virtual private cloud dhcp options are managed
+  tags:
+    - ec2_vpc_dhcp_option
+  amazon.aws.ec2_vpc_dhcp_option:
+    delete_old: "{{ _dopt.delete_old | d(true) }}"
+    dns_servers: "{{ _dopt.dns_servers | d(omit) }}"
+    domain_name: "{{ _dopt.domain_name | d(omit) }}"
+    inherit_existing: "{{ _dopt.inherit_existing | d(false) }}"
+    netbios_name_servers: "{{ _dopt.netbios_name_servers | d(omit) }}"
+    netbios_node_type: "{{ _dopt.netbios_node_type | d(omit) }}"
+    ntp_servers: "{{ _dopt.ntp_servers | d(omit) }}"
+    purge_tags: "{{ _dopt.purge_tags | d(true) }}"
+    state: "{{ _dopt.state | d('present') }}"
+    tags:
+      "{{ _dopt.tags |
+          d({}) |
+          combine({'Name': _dopt.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _dopt.vpc_id | d(omit) }}"
+  register: __ec2_vpc_dhcp_option_result
+  loop: "{{ ec2_vpc_dhcp_option_list }}"
+  loop_control:
+    label: "{{ _dopt.name | d(none) }}"
+    loop_var: _dopt
+  when:
+    - _dopt.name is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_dhcp_option_async) }}"
+  poll: "{{ ec2_vpc_dhcp_option_poll }}"
+
+- name: Ensure managed virtual private cloud dhcp option jobs are complete
+  tags:
+    - ec2_vpc_dhcp_option
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_vpc_dhcp_option_status
+  loop: "{{ __ec2_vpc_dhcp_option_result.results }}"
+  loop_control:
+    label: "{{ _jid._dopt.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_vpc_dhcp_option_status.finished
+  retries: "{{ ec2_vpc_dhcp_option_retries }}"
+  delay: "{{ ec2_vpc_dhcp_option_delay }}"
+...
