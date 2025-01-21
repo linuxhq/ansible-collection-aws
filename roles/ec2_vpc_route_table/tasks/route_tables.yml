@@ -17,7 +17,7 @@
           combine({'Name': _rtb.1.name}) }}"
     validate_certs: true
     vpc_id: "{{ _rtb.0.vpc_id }}"
-  register: __ec2_vpc_route_table_present
+  register: __ec2_vpc_route_table_result
   loop:
     "{{ q('ansible.builtin.subelements',
           ec2_vpc_route_table_list,
@@ -40,15 +40,15 @@
     - ec2_vpc_route_table
   ansible.builtin.async_status:
     jid: "{{ _jid.ansible_job_id }}"
-  register: __ec2_vpc_route_table_present_result
-  loop: "{{ __ec2_vpc_route_table_present.results }}"
+  register: __ec2_vpc_route_table_status
+  loop: "{{ __ec2_vpc_route_table_result.results }}"
   loop_control:
     label: "{{ _jid._rtb[1].name | d(none) }}"
     loop_var: _jid
   when:
     - _jid.ansible_job_id is defined
   until:
-    - __ec2_vpc_route_table_present_result.finished
+    - __ec2_vpc_route_table_status.finished
   retries: "{{ ec2_vpc_route_table_retries }}"
   delay: "{{ ec2_vpc_route_table_delay }}"
 ...
