@@ -9,7 +9,7 @@
     purge_subnets: "{{ _rtb.1.purge_subnets | d(true) }}"
     purge_tags: "{{ _rtb.1.purge_tags | d(true) }}"
     routes: "{{ _rtb.1.routes }}"
-    state: present
+    state: "{{ _rtb.0.state | d('present') }}"
     subnets: "{{ _rtb.1.subnets }}"
     tags:
       "{{ _rtb.1.tags |
