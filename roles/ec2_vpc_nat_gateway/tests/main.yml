@@ -1,5 +1,5 @@
 ---
-- name: Ensure ec2 vpc nat gateway role is tested
+- name: Ensure test play is executed
   hosts: localhost
   connection: local
   vars:
@@ -33,6 +33,10 @@
             az: us-west-2c
             cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 5) }}"
 
+    ec2_vpc_nat_gateway_info_filters:
+      state:
+        - available
+
     ec2_vpc_nat_gateway_list:
       - name: linuxhq-test-pub-a
         if_exist_do_not_create: true
@@ -52,17 +56,10 @@
     - linuxhq.aws.ec2_vpc_igw
     - linuxhq.aws.ec2_vpc_subnet
     - linuxhq.aws.ec2_vpc_nat_gateway
+    - linuxhq.aws.ec2_vpc_nat_gateway_info
 
   post_tasks:
-    - name: Ensure ec2 vpc nat gateway info role is imported
-      ansible.builtin.import_role:
-        name: linuxhq.aws.ec2_vpc_nat_gateway_info
-      vars:
-        ec2_vpc_nat_gateway_info_filters:
-          state:
-            - available
-
-    - name: Ensure ec2 vpc lists are formatted
+    - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_vpc_net_list:
           "{{ ec2_vpc_net_list |
@@ -82,19 +79,15 @@
                               'state': 'absent',
                               'wait': true}) }}"
 
-    - name: Ensure ec2 vpc nat gateway role is imported
-      ansible.builtin.import_role:
-        name: linuxhq.aws.ec2_vpc_nat_gateway
-
-    - name: Ensure ec2 vpc subnet role is imported
-      ansible.builtin.import_role:
-        name: linuxhq.aws.ec2_vpc_subnet
-
-    - name: Ensure ec2 vpc igw role is imported
-      ansible.builtin.import_role:
-        name: linuxhq.aws.ec2_vpc_igw
-
-    - name: Ensure ec2 vpc net role is imported
-      ansible.builtin.import_role:
-        name: linuxhq.aws.ec2_vpc_net
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - linuxhq.aws.ec2_vpc_nat_gateway
+        - linuxhq.aws.ec2_vpc_subnet
+        - linuxhq.aws.ec2_vpc_igw
+        - linuxhq.aws.ec2_vpc_net
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
 ...

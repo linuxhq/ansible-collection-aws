@@ -1,5 +1,5 @@
 ---
-- name: Ensure ec2 vpc igw role is tested
+- name: Ensure test play is executed
   hosts: localhost
   connection: local
   vars:
@@ -16,7 +16,7 @@
     - linuxhq.aws.ec2_vpc_igw
 
   post_tasks:
-    - name: Ensure ec2 vpc lists are formatted
+    - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_vpc_net_list:
           "{{ ec2_vpc_net_list |
@@ -25,11 +25,13 @@
           "{{ ec2_vpc_igw_list |
               map('combine', {'state': 'absent'}) }}"
 
-    - name: Ensure ec2 vpc igw role is imported
-      ansible.builtin.import_role:
-        name: linuxhq.aws.ec2_vpc_igw
-
-    - name: Ensure ec2 vpc net role is imported
-      ansible.builtin.import_role:
-        name: linuxhq.aws.ec2_vpc_net
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - linuxhq.aws.ec2_vpc_igw
+        - linuxhq.aws.ec2_vpc_net
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
 ...
