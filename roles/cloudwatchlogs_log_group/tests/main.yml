@@ -1,0 +1,30 @@
+---
+- name: Ensure test play is executed
+  hosts: localhost
+  connection: local
+  vars:
+    cloudwatchlogs_log_group_list:
+      - name: linuxhq-http
+        retention: 90
+      - name: linuxhq-https
+        retention: 120
+
+  roles:
+    - linuxhq.aws.cloudwatchlogs_log_group
+
+  post_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        cloudwatchlogs_log_group_list:
+          "{{ cloudwatchlogs_log_group_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - linuxhq.aws.cloudwatchlogs_log_group
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
+...
