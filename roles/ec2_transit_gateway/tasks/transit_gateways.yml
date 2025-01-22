@@ -1,0 +1,72 @@
+---
+- name: Ensure ec2 transit gateways are managed
+  tags:
+    - ec2_transit_gateway
+  amazon.aws.ec2_transit_gateway:
+    asn: "{{ _tgw.asn | d(omit) }}"
+    auto_associate: "{{ _tgw.auto_associate | d(true) }}"
+    auto_attach: "{{ _tgw.auto_attach | d(false) }}"
+    auto_propagate: "{{ _tgw.auto_propagate | d(true) }}"
+    description: "{{ _tgw.description | d(_tgw.name) }}"
+    dns_support: "{{ _tgw.dns_support | d(true) }}"
+    purge_tags: "{{ _tgw.purge_tags | d(true) }}"
+    state: "{{ _tgw.state | d('present') }}"
+    tags:
+      "{{ _tgw.tags |
+          d({}) |
+          combine({'Name': _tgw.name}) }}"
+    validate_certs: true
+    vpn_ecmp_support: "{{ _tgw.vpn_ecmp_support | d(true) }}"
+    wait: "{{ _tgw.wait | d(true) }}"
+    wait_timeout: "{{ _tgw.wait_timeout | d(300) }}"
+  register: __ec2_transit_gateway_result
+  loop: "{{ __ec2_transit_gateway_list }}"
+  loop_control:
+    label: "{{ _tgw.name | d(none) }}"
+    loop_var: _tgw
+  when:
+    - _tgw.name is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_transit_gateway_async) }}"
+  poll: "{{ ec2_transit_gateway_poll }}"
+
+- name: Ensure managed ec2 transit gateway jobs are complete
+  tags:
+    - ec2_transit_gateway
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_transit_gateway_status
+  loop: "{{ __ec2_transit_gateway_result.results }}"
+  loop_control:
+    label: "{{ _jid._tgw.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_transit_gateway_status.finished
+  retries: "{{ ec2_transit_gateway_retries }}"
+  delay: "{{ ec2_transit_gateway_delay }}"
+
+- name: Ensure ec2 transit gateway route table is tagged with name
+  tags:
+    - ec2_transit_gateway
+  amazon.aws.ec2_tag:
+    purge_tags: false
+    resource: "{{ _tgw.options.association_default_route_table_id }}"
+    state: present
+    tags:
+      Name: "{{ _tgw.tags.Name }}"
+    validate_certs: true
+  loop:
+    "{{ __ec2_transit_gateway_status.results |
+        map(attribute='transit_gateway') |
+        list |
+        d([]) }}"
+  loop_control:
+    label: "{{ _tgw.tags.Name | d(none) }}"
+    loop_var: _tgw
+  when:
+    - _tgw.tags.Name is defined
+    - _tgw.options.association_default_route_table_id is defined
+    - _tgw.state == 'available'
+...

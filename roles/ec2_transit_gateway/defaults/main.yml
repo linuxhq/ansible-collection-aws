@@ -1,3 +1,8 @@
 ---
 ec2_transit_gateway_list: []
+ec2_transit_gateway_async: 300
+ec2_transit_gateway_batch: 10
+ec2_transit_gateway_delay: 3
+ec2_transit_gateway_poll: 0
+ec2_transit_gateway_retries: 100
 ...
