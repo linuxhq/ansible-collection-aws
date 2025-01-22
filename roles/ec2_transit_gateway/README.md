@@ -11,10 +11,15 @@ None
 ## Role Variables
 
     ec2_transit_gateway_list: []
+    ec2_transit_gateway_async: 300
+    ec2_transit_gateway_batch: 10
+    ec2_transit_gateway_delay: 3
+    ec2_transit_gateway_poll: 0
+    ec2_transit_gateway_retries: 100
 
 ## Return Values
 
-    _ec2_transit_gateway_list
+None
 
 ## Dependencies
 
@@ -27,7 +32,7 @@ None
       roles:
         - role: linuxhq.aws.ec2_transit_gateway
           ec2_transit_gateway_list:
-            - name: "{{ aws_vpc }}"
+            - name: linuxhq
 
 ## License
 
