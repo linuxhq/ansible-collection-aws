@@ -4,8 +4,18 @@
   connection: local
   vars:
     ec2_vpc_net_list:
-      - name: linuxhq
+      - name: linuxhq-00
         cidr_block: 10.0.0.0/16
+      - name: linuxhq-01
+        cidr_block: 10.1.0.0/16
+      - name: linuxhq-02
+        cidr_block: 10.2.0.0/16
+      - name: linuxhq-03
+        cidr_block: 10.3.0.0/16
+      - name: linuxhq-04
+        cidr_block: 10.4.0.0/16
+      - name: linuxhq-05
+        cidr_block: 10.5.0.0/16
 
   roles:
     - linuxhq.aws.ec2_vpc_net
