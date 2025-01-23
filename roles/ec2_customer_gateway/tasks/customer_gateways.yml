@@ -21,7 +21,7 @@
   async: "{{ ansible_check_mode | ternary(0, ec2_customer_gateway_async) }}"
   poll: "{{ ec2_customer_gateway_poll }}"
 
-- name: Ensure managed virtual private cloud jobs are complete
+- name: Ensure managed ec2 customer gateway jobs are complete
   tags:
     - ec2_customer_gateway
   ansible.builtin.async_status:
