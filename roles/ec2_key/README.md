@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Manage aws imported ec2 keys
+Manage aws ec2 keys
 
 ## Requirements
 
@@ -11,10 +11,15 @@ None
 ## Role Variables
 
     ec2_key_list: []
+    ec2_key_async: 300
+    ec2_key_batch: 10
+    ec2_key_delay: 3
+    ec2_key_poll: 0
+    ec2_key_retries: 100
 
 ## Return Values
 
-    _ec2_key_list
+None
 
 ## Dependencies
 
