@@ -11,6 +11,6 @@
     "{{ ec2_vpc_nat_gateway_list |
         batch(ec2_vpc_nat_gateway_batch) }}"
   loop_control:
-    label: "{{ __ec2_vpc_nat_gatweay_list | length }}"
-    loop_var: __ec2_vpc_nat_gatweay_list
+    label: "{{ __ec2_vpc_nat_gateway_list | length }}"
+    loop_var: __ec2_vpc_nat_gateway_list
 ...

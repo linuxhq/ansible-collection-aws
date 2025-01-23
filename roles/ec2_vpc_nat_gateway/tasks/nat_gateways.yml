@@ -21,7 +21,7 @@
     wait: "{{ _nat.wait | d(false) }}"
     wait_timeout: "{{ _nat.wait_timeout | d(320) }}"
   register: __ec2_vpc_nat_gateway_result
-  loop: "{{ ec2_vpc_nat_gateway_list }}"
+  loop: "{{ __ec2_vpc_nat_gateway_list }}"
   loop_control:
     label: "{{ _nat.name | d(none) }}"
     loop_var: _nat

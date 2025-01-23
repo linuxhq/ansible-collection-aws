@@ -1,5 +1,5 @@
 ---
-- name: Ensure virtual private cloud route tables are present
+- name: Ensure virtual private cloud route tables are managed
   tags:
     - ec2_vpc_route_table
   amazon.aws.ec2_vpc_route_table:
@@ -18,11 +18,7 @@
     validate_certs: true
     vpc_id: "{{ _rtb.0.vpc_id }}"
   register: __ec2_vpc_route_table_result
-  loop:
-    "{{ q('ansible.builtin.subelements',
-          ec2_vpc_route_table_list,
-          'route_tables',
-          {'skip_missing': true}) }}"
+  loop: "{{ __ec2_vpc_route_table_list }}"
   loop_control:
     label: "{{ _rtb.1.name | d(none) }}"
     loop_var: _rtb
@@ -35,7 +31,7 @@
   async: "{{ ansible_check_mode | ternary(0, ec2_vpc_route_table_async) }}"
   poll: "{{ ec2_vpc_route_table_poll }}"
 
-- name: Ensure virtual private cloud route tables present jobs are complete
+- name: Ensure managed virtual private cloud route table jobs are complete
   tags:
     - ec2_vpc_route_table
   ansible.builtin.async_status:

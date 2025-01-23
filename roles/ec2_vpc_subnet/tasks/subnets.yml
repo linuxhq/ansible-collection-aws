@@ -20,12 +20,8 @@
     vpc_id: "{{ _subnet.0.vpc_id }}"
     wait: "{{ _subnet.0.wait | d(true) }}"
     wait_timeout: "{{ _subnet.0.wait_timeout | d(300) }}"
-  register: __ec2_vpc_subnet_present
-  loop:
-    "{{ q('ansible.builtin.subelements',
-          ec2_vpc_subnet_list,
-          'subnets',
-          {'skip_missing': true}) }}"
+  register: __ec2_vpc_subnet_result
+  loop: "{{ __ec2_vpc_subnet_list }}"
   loop_control:
     label: "{{ _subnet.1.name | d(none) }}"
     loop_var: _subnet
@@ -42,15 +38,15 @@
     - ec2_vpc_subnet
   ansible.builtin.async_status:
     jid: "{{ _jid.ansible_job_id }}"
-  register: __ec2_vpc_subnet_present_result
-  loop: "{{ __ec2_vpc_subnet_present.results }}"
+  register: __ec2_vpc_subnet_status
+  loop: "{{ __ec2_vpc_subnet_result.results }}"
   loop_control:
     label: "{{ _jid._subnet[1].name | d(none) }}"
     loop_var: _jid
   when:
     - _jid.ansible_job_id is defined
   until:
-    - __ec2_vpc_subnet_present_result.finished
+    - __ec2_vpc_subnet_status.finished
   retries: "{{ ec2_vpc_subnet_retries }}"
   delay: "{{ ec2_vpc_subnet_delay }}"
 ...

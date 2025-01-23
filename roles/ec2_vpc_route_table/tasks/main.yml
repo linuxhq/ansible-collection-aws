@@ -8,7 +8,10 @@
         - ec2_vpc_route_table
     file: route_tables.yml
   loop:
-    "{{ ec2_vpc_route_table_list |
+    "{{ q('ansible.builtin.subelements',
+          ec2_vpc_route_table_list,
+          'route_tables',
+          {'skip_missing': true}) |
         batch(ec2_vpc_route_table_batch) }}"
   loop_control:
     label: "{{ __ec2_vpc_route_table_list | length }}"
