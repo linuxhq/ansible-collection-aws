@@ -1,0 +1,30 @@
+---
+- name: Ensure test play is executed
+  hosts: localhost
+  connection: local
+  vars:
+    ec2_customer_gateway_list:
+      - name: linuxhq-cgw-1
+        ip_address: 104.21.4.212
+      - name: linuxhq-cgw-2
+        ip_address: 172.67.132.128
+
+  roles:
+    - linuxhq.aws.ec2_customer_gateway
+
+  post_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        ec2_customer_gateway_list:
+          "{{ ec2_customer_gateway_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - linuxhq.aws.ec2_customer_gateway
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
+...
