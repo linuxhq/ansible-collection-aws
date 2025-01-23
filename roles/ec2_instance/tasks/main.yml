@@ -6,7 +6,7 @@
     apply:
       tags:
         - ec2_instance
-    file: instances.yml
+    file: include.yml
   loop:
     "{{ ec2_instance_list |
         batch(ec2_instance_batch) }}"

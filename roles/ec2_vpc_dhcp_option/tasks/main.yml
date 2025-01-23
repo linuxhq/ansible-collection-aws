@@ -6,7 +6,7 @@
     apply:
       tags:
         - ec2_vpc_dhcp_option
-    file: dhcp_options.yml
+    file: include.yml
   loop:
     "{{ ec2_vpc_dhcp_option_list |
         batch(ec2_vpc_dhcp_option_batch) }}"

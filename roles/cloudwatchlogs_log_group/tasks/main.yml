@@ -6,7 +6,7 @@
     apply:
       tags:
         - cloudwatchlogs_log_group
-    file: cloudwatchlogs_log_groups.yml
+    file: include.yml
   loop:
     "{{ cloudwatchlogs_log_group_list |
         batch(cloudwatchlogs_log_group_batch) }}"

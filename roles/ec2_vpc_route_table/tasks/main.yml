@@ -6,7 +6,7 @@
     apply:
       tags:
         - ec2_vpc_route_table
-    file: route_tables.yml
+    file: include.yml
   loop:
     "{{ q('ansible.builtin.subelements',
           ec2_vpc_route_table_list,

@@ -6,7 +6,7 @@
     apply:
       tags:
         - ec2_vpc_nat_gateway
-    file: nat_gateways.yml
+    file: include.yml
   loop:
     "{{ ec2_vpc_nat_gateway_list |
         batch(ec2_vpc_nat_gateway_batch) }}"
