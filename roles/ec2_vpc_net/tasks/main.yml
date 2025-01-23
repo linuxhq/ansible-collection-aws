@@ -6,7 +6,7 @@
     apply:
       tags:
         - ec2_vpc_net
-    file: virtual_private_clouds.yml
+    file: include.yml
   loop:
     "{{ ec2_vpc_net_list |
         batch(ec2_vpc_net_batch) }}"

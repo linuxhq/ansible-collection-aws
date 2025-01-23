@@ -6,7 +6,7 @@
     apply:
       tags:
         - ec2_customer_gateway
-    file: customer_gateways.yml
+    file: include.yml
   loop:
     "{{ ec2_customer_gateway_list |
         batch(ec2_customer_gateway_batch) }}"

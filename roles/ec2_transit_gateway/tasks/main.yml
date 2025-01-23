@@ -6,7 +6,7 @@
     apply:
       tags:
         - ec2_transit_gateway
-    file: transit_gateways.yml
+    file: include.yml
   loop:
     "{{ ec2_transit_gateway_list |
         batch(ec2_transit_gateway_batch) }}"

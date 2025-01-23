@@ -6,7 +6,7 @@
     apply:
       tags:
         - ec2_vpc_subnet
-    file: subnets.yml
+    file: include.yml
   loop:
     "{{ q('ansible.builtin.subelements',
           ec2_vpc_subnet_list,

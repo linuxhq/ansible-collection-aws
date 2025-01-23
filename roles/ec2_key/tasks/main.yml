@@ -6,7 +6,7 @@
     apply:
       tags:
         - ec2_key
-    file: keys.yml
+    file: include.yml
   loop:
     "{{ ec2_key_list |
         batch(ec2_key_batch) }}"

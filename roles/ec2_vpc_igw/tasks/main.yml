@@ -6,7 +6,7 @@
     apply:
       tags:
         - ec2_vpc_igw
-    file: internet_gateways.yml
+    file: include.yml
   loop:
     "{{ ec2_vpc_igw_list |
         batch(ec2_vpc_igw_batch) }}"

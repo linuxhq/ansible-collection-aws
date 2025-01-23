@@ -6,7 +6,7 @@
     apply:
       tags:
         - ec2_security_group
-    file: security_groups.yml
+    file: include.yml
   loop:
     "{{ q('ansible.builtin.subelements',
           ec2_security_group_list,
