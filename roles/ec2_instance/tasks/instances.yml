@@ -44,7 +44,7 @@
     wait: "{{ _i.wait | d(true) }}"
     wait_timeout: "{{ _i.wait_timeout | d(600) }}"
   register: __ec2_instance_result
-  loop: "{{ ec2_instance_list }}"
+  loop: "{{ __ec2_instance_list }}"
   loop_control:
     label: "{{ _i.name | d(none) }}"
     loop_var: _i

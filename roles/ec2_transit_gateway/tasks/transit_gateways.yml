@@ -19,7 +19,7 @@
     vpn_ecmp_support: "{{ _tgw.vpn_ecmp_support | d(true) }}"
     wait: "{{ _tgw.wait | d(true) }}"
     wait_timeout: "{{ _tgw.wait_timeout | d(300) }}"
-  register: __ec2_transit_gateway_result
+  register: __ec2_transit_gateway_create_result
   loop: "{{ __ec2_transit_gateway_list }}"
   loop_control:
     label: "{{ _tgw.name | d(none) }}"
@@ -35,19 +35,19 @@
     - ec2_transit_gateway
   ansible.builtin.async_status:
     jid: "{{ _jid.ansible_job_id }}"
-  register: __ec2_transit_gateway_status
-  loop: "{{ __ec2_transit_gateway_result.results }}"
+  register: __ec2_transit_gateway_create_status
+  loop: "{{ __ec2_transit_gateway_create_result.results }}"
   loop_control:
     label: "{{ _jid._tgw.name | d(none) }}"
     loop_var: _jid
   when:
     - _jid.ansible_job_id is defined
   until:
-    - __ec2_transit_gateway_status.finished
+    - __ec2_transit_gateway_create_status.finished
   retries: "{{ ec2_transit_gateway_retries }}"
   delay: "{{ ec2_transit_gateway_delay }}"
 
-- name: Ensure ec2 transit gateway route table is tagged with name
+- name: Ensure ec2 transit gateway route table name tags are managed
   tags:
     - ec2_transit_gateway
   amazon.aws.ec2_tag:
@@ -57,10 +57,11 @@
     tags:
       Name: "{{ _tgw.tags.Name }}"
     validate_certs: true
+  register: __ec2_transit_gateway_tag_result
   loop:
-    "{{ __ec2_transit_gateway_status.results |
+    "{{ (__ec2_transit_gateway_create_status.results |
         map(attribute='transit_gateway') |
-        list |
+        list) |
         d([]) }}"
   loop_control:
     label: "{{ _tgw.tags.Name | d(none) }}"
@@ -69,4 +70,24 @@
     - _tgw.tags.Name is defined
     - _tgw.options.association_default_route_table_id is defined
     - _tgw.state == 'available'
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_transit_gateway_async) }}"
+  poll: "{{ ec2_transit_gateway_poll }}"
+
+- name: Ensure managed ec2 transit gateway name tag jobs are complete
+  tags:
+    - ec2_transit_gateway
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_transit_gateway_tag_status
+  loop: "{{ __ec2_transit_gateway_tag_result.results }}"
+  loop_control:
+    label: "{{ _jid._tgw.tags.Name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_transit_gateway_tag_status.finished
+  retries: "{{ ec2_transit_gateway_retries }}"
+  delay: "{{ ec2_transit_gateway_delay }}"
 ...

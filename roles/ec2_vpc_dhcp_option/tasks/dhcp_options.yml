@@ -19,7 +19,7 @@
     validate_certs: true
     vpc_id: "{{ _dopt.vpc_id | d(omit) }}"
   register: __ec2_vpc_dhcp_option_result
-  loop: "{{ ec2_vpc_dhcp_option_list }}"
+  loop: "{{ __ec2_vpc_dhcp_option_list }}"
   loop_control:
     label: "{{ _dopt.name | d(none) }}"
     loop_var: _dopt
