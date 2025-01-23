@@ -11,10 +11,15 @@ None
 ## Role Variables
 
     ec2_placement_group_list: []
+    ec2_placement_group_async: 300
+    ec2_placement_group_batch: 10
+    ec2_placement_group_delay: 3
+    ec2_placement_group_poll: 0
+    ec2_placement_group_retries: 100
 
 ## Return Values
 
-    _ec2_placement_group_list
+None
 
 ## Dependencies
 
