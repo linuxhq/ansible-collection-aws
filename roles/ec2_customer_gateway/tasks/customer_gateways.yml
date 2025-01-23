@@ -1,0 +1,40 @@
+---
+- name: Ensure ec2 customer gateways are managed
+  tags:
+    - ec2_customer_gateway
+  community.aws.ec2_customer_gateway:
+    bgp_asn: "{{ _cgw.bgp_asn | d(65000) }}"
+    ip_address: "{{ _cgw.ip_address }}"
+    name: "{{ _cgw.name }}"
+    routing: "{{ _cgw.routing | d('dynamic') }}"
+    state: "{{ _cgw.state | d('present') }}"
+    validate_certs: true
+  register: __ec2_customer_gateway_result
+  loop: "{{ __ec2_customer_gateway_list }}"
+  loop_control:
+    label: "{{ _cgw.name | d(none) }}"
+    loop_var: _cgw
+  when:
+    - _cgw.ip_address is defined
+    - _cgw.name is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_customer_gateway_async) }}"
+  poll: "{{ ec2_customer_gateway_poll }}"
+
+- name: Ensure managed virtual private cloud jobs are complete
+  tags:
+    - ec2_customer_gateway
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_customer_gateway_status
+  loop: "{{ __ec2_customer_gateway_result.results }}"
+  loop_control:
+    label: "{{ _jid._cgw.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_customer_gateway_status.finished
+  retries: "{{ ec2_customer_gateway_retries }}"
+  delay: "{{ ec2_customer_gateway_delay }}"
+...

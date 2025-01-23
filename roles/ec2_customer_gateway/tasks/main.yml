@@ -1,30 +1,16 @@
 ---
-- name: Ensure ec2 customer gateways are present
+- name: Ensure ec2 customer gateways are batched
   tags:
     - ec2_customer_gateway
-  community.aws.ec2_customer_gateway:
-    bgp_asn: "{{ _cgw.bgp_asn | d(65000) }}"
-    ip_address: "{{ _cgw.ip_address }}"
-    name: "{{ _cgw.name }}"
-    routing: "{{ _cgw.routing | d('dynamic') }}"
-    state: present
-    validate_certs: true
-  register: __ec2_customer_gateway_results
-  loop: "{{ ec2_customer_gateway_list }}"
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_customer_gateway
+    file: customer_gateways.yml
+  loop:
+    "{{ ec2_customer_gateway_list |
+        batch(ec2_customer_gateway_batch) }}"
   loop_control:
-    label: "{{ _cgw.name | d(none) }}"
-    loop_var: _cgw
-  when:
-    - _cgw.ip_address is defined
-    - _cgw.name is defined
-
-- name: Ensure list of ec2 customer gateway results is generated
-  tags:
-    - ec2_customer_gateway
-  ansible.builtin.set_fact:
-    _ec2_customer_gateway_list:
-      "{{ __ec2_customer_gateway_results.results |
-          map(attribute='gateway.customer_gateway', default=[]) |
-          list |
-          d([]) }}"
+    label: "{{ __ec2_customer_gateway_list | length }}"
+    loop_var: __ec2_customer_gateway_list
 ...
