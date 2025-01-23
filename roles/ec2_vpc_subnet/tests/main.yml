@@ -10,15 +10,42 @@
     ec2_vpc_subnet_list:
       - vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
         subnets:
-          - name: linuxhq-a
+          - name: linuxhq-a-00
             az: us-west-2a
             cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 0) }}"
-          - name: linuxhq-b
-            az: us-west-2b
+          - name: linuxhq-a-01
+            az: us-west-2a
             cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 1) }}"
-          - name: linuxhq-c
-            az: us-west-2c
+          - name: linuxhq-a-02
+            az: us-west-2a
             cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 2) }}"
+          - name: linuxhq-a-03
+            az: us-west-2a
+            cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 3) }}"
+          - name: linuxhq-b-00
+            az: us-west-2b
+            cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 4) }}"
+          - name: linuxhq-b-01
+            az: us-west-2b
+            cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 5) }}"
+          - name: linuxhq-b-02
+            az: us-west-2b
+            cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 6) }}"
+          - name: linuxhq-b-03
+            az: us-west-2b
+            cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 7) }}"
+          - name: linuxhq-c-00
+            az: us-west-2c
+            cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 8) }}"
+          - name: linuxhq-c-01
+            az: us-west-2c
+            cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 9) }}"
+          - name: linuxhq-c-02
+            az: us-west-2c
+            cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 10) }}"
+          - name: linuxhq-c-03
+            az: us-west-2c
+            cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24, 11) }}"
 
   roles:
     - linuxhq.aws.ec2_vpc_net
