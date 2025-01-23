@@ -1,0 +1,44 @@
+---
+- name: Ensure ec2 keys are managed
+  tags:
+    - ec2_key
+  amazon.aws.ec2_key:
+    force: "{{ _key.force | d(true) }}"
+    key_material: "{{ _key.key_material }}"
+    name: "{{ _key.name }}"
+    purge_tags: "{{ _key.purge_tags | d(true) }}"
+    state: "{{ _key.state | d('present') }}"
+    tags:
+      "{{ _key.tags |
+          d({}) |
+          combine({'Name': _key.name}) }}"
+    validate_certs: true
+  register: __ec2_key_result
+  loop: "{{ __ec2_key_list }}"
+  loop_control:
+    label: "{{ _key.name | d(none) }}"
+    loop_var: _key
+  when:
+    - _key.key_material is defined
+    - _key.name is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_key_async) }}"
+  poll: "{{ ec2_key_poll }}"
+
+- name: Ensure managed ec2 key jobs are complete
+  tags:
+    - ec2_key
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_key_status
+  loop: "{{ __ec2_key_result.results }}"
+  loop_control:
+    label: "{{ _jid._key.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_key_status.finished
+  retries: "{{ ec2_key_retries }}"
+  delay: "{{ ec2_key_delay }}"
+...
