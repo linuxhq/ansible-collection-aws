@@ -4,7 +4,11 @@
   connection: local
   vars:
     ec2_transit_gateway_list:
-      - name: linuxhq
+      - name: linuxhq-00
+      - name: linuxhq-01
+      - name: linuxhq-02
+      - name: linuxhq-03
+      - name: linuxhq-04
 
   roles:
     - linuxhq.aws.ec2_transit_gateway
