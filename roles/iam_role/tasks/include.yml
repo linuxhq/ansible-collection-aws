@@ -1,0 +1,53 @@
+---
+- name: Ensure iam roles are managed
+  tags:
+    - iam_role
+  amazon.aws.iam_role:
+    assume_role_policy_document: "{{ _role.assume_role_policy_document }}"
+    boundary: "{{ _role.boundary | d(omit) }}"
+    create_instance_profile: "{{ _role.create_instance_profile | d(true) }}"
+    delete_instance_profile: "{{ _role.delete_instance_profile | d(false) }}"
+    description: "{{ _role.description | d(_role.name) }}"
+    managed_policies: "{{ _role.managed_policies | d(omit) }}"
+    max_session_duration: "{{ _role.max_session_duration | d(omit) }}"
+    name: "{{ _role.name }}"
+    path: "{{ _role.path | d(omit) }}"
+    purge_policies: "{{ _role.purge_policies | d(true) }}"
+    purge_tags: "{{ _role.purge_tags | d(true) }}"
+    state: "{{ _role.state | d('present') }}"
+    tags:
+      "{{ _role.tags |
+          d({}) |
+          combine({'Name': _role.name}) }}"
+    validate_certs: true
+    wait: "{{ _role.wait | d(true) }}"
+    wait_timeout: "{{ _role.wait_timeout | d(120) }}"
+  register: __iam_role_result
+  loop: "{{ __iam_role_list }}"
+  loop_control:
+    label: "{{ _role.name | d(none) }}"
+    loop_var: _role
+  when:
+    - _role.assume_role_policy_document is defined
+    - _role.name is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, iam_role_async) }}"
+  poll: "{{ iam_role_poll }}"
+
+- name: Ensure managed iam role jobs are complete
+  tags:
+    - iam_role
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __iam_role_status
+  loop: "{{ __iam_role_result.results }}"
+  loop_control:
+    label: "{{ _jid._role.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __iam_role_status.finished
+  retries: "{{ iam_role_retries }}"
+  delay: "{{ iam_role_delay }}"
+...
