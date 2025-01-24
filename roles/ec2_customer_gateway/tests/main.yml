@@ -4,10 +4,34 @@
   connection: local
   vars:
     ec2_customer_gateway_list:
-      - name: linuxhq-cgw-1
-        ip_address: 104.21.4.212
-      - name: linuxhq-cgw-2
-        ip_address: 172.67.132.128
+      - name: linuxhq-cgw-01
+        ip_address: 52.93.22.49
+      - name: linuxhq-cgw-02
+        ip_address: 52.93.22.50
+      - name: linuxhq-cgw-03
+        ip_address: 52.93.22.51
+      - name: linuxhq-cgw-04
+        ip_address: 52.93.22.52
+      - name: linuxhq-cgw-05
+        ip_address: 52.93.22.53
+      - name: linuxhq-cgw-06
+        ip_address: 52.93.22.54
+      - name: linuxhq-cgw-07
+        ip_address: 52.93.22.55
+      - name: linuxhq-cgw-08
+        ip_address: 52.93.22.56
+      - name: linuxhq-cgw-09
+        ip_address: 52.93.22.57
+      - name: linuxhq-cgw-10
+        ip_address: 52.93.22.58
+      - name: linuxhq-cgw-11
+        ip_address: 52.93.22.59
+      - name: linuxhq-cgw-12
+        ip_address: 52.93.22.60
+      - name: linuxhq-cgw-13
+        ip_address: 52.93.22.61
+      - name: linuxhq-cgw-14
+        ip_address: 52.93.22.62
 
   roles:
     - linuxhq.aws.ec2_customer_gateway

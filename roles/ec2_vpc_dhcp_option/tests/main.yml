@@ -4,7 +4,55 @@
   connection: local
   vars:
     ec2_vpc_dhcp_option_list:
-      - name: linuxhq
+      - name: linuxhq-00
+        dns_servers:
+          - 1.1.1.1
+          - 1.1.1.2
+      - name: linuxhq-01
+        dns_servers:
+          - 1.1.1.1
+          - 1.1.1.2
+      - name: linuxhq-02
+        dns_servers:
+          - 1.1.1.1
+          - 1.1.1.2
+      - name: linuxhq-03
+        dns_servers:
+          - 1.1.1.1
+          - 1.1.1.2
+      - name: linuxhq-04
+        dns_servers:
+          - 1.1.1.1
+          - 1.1.1.2
+      - name: linuxhq-05
+        dns_servers:
+          - 1.1.1.1
+          - 1.1.1.2
+      - name: linuxhq-06
+        dns_servers:
+          - 1.1.1.1
+          - 1.1.1.2
+      - name: linuxhq-07
+        dns_servers:
+          - 1.1.1.1
+          - 1.1.1.2
+      - name: linuxhq-08
+        dns_servers:
+          - 1.1.1.1
+          - 1.1.1.2
+      - name: linuxhq-09
+        dns_servers:
+          - 1.1.1.1
+          - 1.1.1.2
+      - name: linuxhq-10
+        dns_servers:
+          - 1.1.1.1
+          - 1.1.1.2
+      - name: linuxhq-11
+        dns_servers:
+          - 1.1.1.1
+          - 1.1.1.2
+      - name: linuxhq-12
         dns_servers:
           - 1.1.1.1
           - 1.1.1.2
