@@ -15,7 +15,8 @@
     - ec2_instance_info
   ansible.builtin.set_fact:
     _ec2_instance_info_list:
-      "{{ __ec2_instance_info_query.instances |
+      "{{ (__ec2_instance_info_query.instances |
+          selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of ec2 instances is generated
