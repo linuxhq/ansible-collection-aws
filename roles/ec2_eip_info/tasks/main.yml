@@ -12,7 +12,8 @@
     - ec2_eip_info
   ansible.builtin.set_fact:
     _ec2_eip_info_list:
-      "{{ __ec2_eip_info_query.addresses |
+      "{{ (__ec2_eip_info_query.addresses |
+          selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of ec2 elastic ips is generated
