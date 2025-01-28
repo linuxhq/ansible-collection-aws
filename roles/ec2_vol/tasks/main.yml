@@ -1,0 +1,19 @@
+---
+- name: Ensure ec2 volumes are batched
+  tags:
+    - ec2_vol
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_vol
+    file: include.yml
+  loop:
+    "{{ q('ansible.builtin.subelements',
+          ec2_vol_list,
+          'volumes',
+          {'skip_missing': true}) |
+        batch(ec2_vol_batch) }}"
+  loop_control:
+    label: "{{ __ec2_vol_list | length }}"
+    loop_var: __ec2_vol_list
+...

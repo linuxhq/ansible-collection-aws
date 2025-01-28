@@ -1,0 +1,56 @@
+---
+- name: Ensure ec2 volumes are managed
+  tags:
+    - ec2_vol
+  amazon.aws.ec2_vol:
+    delete_on_termination: "{{ _vol.1.delete_on_termination | d(false) }}"
+    device_name: "{{ _vol.1.device_name | d(omit) }}"
+    encrypted: "{{ _vol.1.encrypted | d(false) }}"
+    id: "{{ _vol.1.id | d(omit) }}"
+    instance: "{{ _vol.0.instance }}"
+    iops: "{{ _vol.1.iops | d(omit) }}"
+    kms_key_id: "{{ _vol.1.kms_key_id | d(omit) }}"
+    multi_attach: "{{ _vol.1.multi_attach | d(omit) }}"
+    name: "{{ _vol.1.name }}"
+    purge_tags: "{{ _vol.1.purge_tags | d(true) }}"
+    snapshot: "{{ _vol.1.snapshot | d(omit) }}"
+    state: "{{ _vol.0.state | d('present') }}"
+    tags:
+      "{{ _vol.1.tags |
+          d({}) |
+          combine({'Name': _vol.1.name}) }}"
+    throughput: "{{ _vol.1.throughput | d(omit) }}"
+    validate_certs: true
+    volume_size: "{{ _vol.1.volume_size }}"
+    volume_type: "{{ _vol.1.volume_type | d('standard') }}"
+    zone: "{{ _vol.1.zone | d(omit) }}"
+  register: __ec2_vol_result
+  loop: "{{ __ec2_vol_list }}"
+  loop_control:
+    label: "{{ _vol.1.name | d(none) }}"
+    loop_var: _vol
+  when:
+    - _vol.0.instance is defined
+    - _vol.1.name is defined
+    - _vol.1.volume_size is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_vol_async) }}"
+  poll: "{{ ec2_vol_poll }}"
+
+- name: Ensure managed ec2 volume jobs are complete
+  tags:
+    - ec2_vol
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_vol_status
+  loop: "{{ __ec2_vol_result.results }}"
+  loop_control:
+    label: "{{ _jid._vol.1.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_vol_status.finished
+  retries: "{{ ec2_vol_retries }}"
+  delay: "{{ ec2_vol_delay }}"
+...
