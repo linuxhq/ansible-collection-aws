@@ -1,0 +1,27 @@
+---
+- name: Ensure information about ec2 volumes is gathered
+  tags:
+    - ec2_vol_info
+  amazon.aws.ec2_vol_info:
+    filters: "{{ ec2_vol_info_filters }}"
+    validate_certs: true
+  register: __ec2_vol_info_query
+
+- name: Ensure list of ec2 volumes is generated
+  tags:
+    - ec2_vol_info
+  ansible.builtin.set_fact:
+    _ec2_vol_info_list:
+      "{{ (__ec2_vol_info_query.volumes |
+          selectattr('tags.Name', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of ec2 volumes is generated
+  tags:
+    - ec2_vol_info
+  ansible.builtin.set_fact:
+    _ec2_vol_info_dict:
+      "{{ dict(_ec2_vol_info_list |
+               json_query('[].tags.Name') |
+               zip(_ec2_vol_info_list)) }}"
+...
