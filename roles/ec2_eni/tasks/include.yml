@@ -1,0 +1,60 @@
+---
+- name: Ensure ec2 network interfaces are managed
+  tags:
+    - ec2_eni
+  amazon.aws.ec2_eni:
+    attached:
+      "{{ _eni.1.instance_id is defined | ternary(true, false) }}"
+    description: "{{ _eni.1.description | d(_eni.1.name) }}"
+    device_index: "{{ _eni.1.device_index | d(0) }}"
+    force_detach: "{{ _eni.0.force_detach | d(omit) }}"
+    eni_id: "{{ _eni.1.eni_id | d(omit) }}"
+    instance_id: "{{ _eni.1.instance_id | d(omit) }}"
+    name: "{{ _eni.1.name }}"
+    private_ip_address: "{{ _eni.1.private_ip_address }}"
+    purge_secondary_private_ip_addresses:
+      "{{ _eni.1.purge_secondary_private_ip_addresses | d(omit) }}"
+    purge_tags: "{{ _eni.1.purge_tags | d(true) }}"
+    secondary_private_ip_address_count:
+      "{{ _eni.1.secondary_private_ip_address_count | d(omit) }}"
+    secondary_private_ip_addresses:
+      "{{ _eni.1.secondary_private_ip_addresses | d(omit) }}"
+    security_groups:
+      "{{ _eni.1.security_groups | d(omit) }}"
+    state: "{{ _eni.0.state | d('present') }}"
+    subnet_id: "{{ _eni.0.subnet_id }}"
+    tags:
+      "{{ _eni.1.tags |
+          d({}) |
+          combine({'Name': _eni.1.name}) }}"
+    validate_certs: true
+  register: __ec2_eni_result
+  loop: "{{ __ec2_eni_list }}"
+  loop_control:
+    label: "{{ _eni.1.name | d(none) }}"
+    loop_var: _eni
+  when:
+    - _eni.0.subnet_id is defined
+    - _eni.1.name is defined
+    - _eni.1.private_ip_address is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_eni_async) }}"
+  poll: "{{ ec2_eni_poll }}"
+
+- name: Ensure managed ec2 network interface jobs are complete
+  tags:
+    - ec2_eni
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_eni_status
+  loop: "{{ __ec2_eni_result.results }}"
+  loop_control:
+    label: "{{ _jid._eni.1.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_eni_status.finished
+  retries: "{{ ec2_eni_retries }}"
+  delay: "{{ ec2_eni_delay }}"
+...

@@ -11,6 +11,11 @@ None
 ## Role Variables
 
     ec2_eni_list: []
+    ec2_eni_async: 300
+    ec2_eni_batch: 10
+    ec2_eni_delay: 3
+    ec2_eni_poll: 0
+    ec2_eni_retries: 100
 
 ## Return Values
 
@@ -24,63 +29,54 @@ None
 
 ## Example Playbook
 
-The playbook and inventory seen below will do the following:
-
-* Create network interface `linuxhq-eni-a-1`
-  * Subnet: `linuxhq-pvt-a`
-  * Security Groups: `linuxhq-ssh`
-* Create network interface `linuxhq-eni-a-2`
-  * Subnet: `linuxhq-pvt-a`
-  * Security Groups: `linuxhq-ssh` and `linuxhq-https`
-  * Attachment: `linuxhq-instance-a-1`
-* Create network interface `linuxhq-eni-b-1`
-  * Subnet: `linuxhq-pvt-b`
-  * Security Groups: `linuxhq-ssh`
-* Create network interface `linuxhq-eni-b-2`
-  * Subnet: `linuxhq-pvt-b`
-  * Security Groups: `linuxhq-ssh` and `linuxhq-https`
-  * Attachment: `linuxhq-instance-b-1`
-
-```
     - hosts: aws
       connection: local
       roles:
         - role: linuxhq.aws.ec2_eni
           ec2_eni_list:
             - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pvt-a'].id }}"
-              security_groups:
-                - "{{ _ec2_security_group_info_dict['linuxhq-ssh'].group_id }}"
               network_interfaces:
-                - name: linuxhq-eni-a-1
-                  private_ip_address: 192.168.0.100
+                - name: linuxhq-eni-1
+                  private_ip_address:
+                    "{{ ec2_vpc_subnet_list.0.subnets.0.cidr |
+                        ansible.utils.ipaddr(10) |
+                        ansible.utils.ipaddr('address') }}"
 
-                - name: linuxhq-eni-a-2
+                - name: linuxhq-eni-2
+                  private_ip_address:
+                    "{{ ec2_vpc_subnet_list.0.subnets.0.cidr |
+                        ansible.utils.ipaddr(11) |
+                        ansible.utils.ipaddr('address') }}"
+
+                - name: linuxhq-eni-3
                   device_index: 1
-                  instance_id: "{{ _ec2_instance_info_dict['linuxhq-instance-a-1'].instance_id }}"
-                  private_ip_address: 192.168.0.101
+                  instance_id: "{{ _ec2_instance_info_dict['linuxhq-1'].instance_id }}"
+                  private_ip_address:
+                    "{{ ec2_vpc_subnet_list.0.subnets.0.cidr |
+                        ansible.utils.ipaddr(20) |
+                        ansible.utils.ipaddr('address') }}"
                   secondary_private_ip_addresses:
-                    - 192.168.0.102
+                    - "{{ ec2_vpc_subnet_list.0.subnets.0.cidr |
+                          ansible.utils.ipaddr(21) |
+                          ansible.utils.ipaddr('address') }}"
                   security_groups:
                     - "{{ _ec2_security_group_info_dict['linuxhq-ssh'].group_id }}"
                     - "{{ _ec2_security_group_info_dict['linuxhq-https'].group_id }}"
 
-            - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pvt-b'].id }}"
-              security_groups:
-                - "{{ _ec2_security_group_info_dict['linuxhq-ssh'].group_id }}"
-              network_interfaces:
-                - name: linuxhq-eni-b-1
-                  private_ip_address: 192.168.0.132
-
-                - name: linuxhq-eni-b-2
+                - name: linuxhq-eni-4
                   device_index: 1
-                  instance_id: "{{ _ec2_instance_info_dict['linuxhq-instance-b-1'].instance_id }}"
-                  private_ip_address: 192.168.0.133
+                  instance_id: "{{ _ec2_instance_info_dict['linuxhq-2'].instance_id }}"
+                  private_ip_address:
+                    "{{ ec2_vpc_subnet_list.0.subnets.0.cidr |
+                        ansible.utils.ipaddr(30) |
+                        ansible.utils.ipaddr('address') }}"
                   secondary_private_ip_addresses:
-                    - 192.168.0.134
+                    - "{{ ec2_vpc_subnet_list.0.subnets.0.cidr |
+                          ansible.utils.ipaddr(31) |
+                          ansible.utils.ipaddr('address') }}"
                   security_groups:
                     - "{{ _ec2_security_group_info_dict['linuxhq-ssh'].group_id }}"
                     - "{{ _ec2_security_group_info_dict['linuxhq-https'].group_id }}"
-```
 
 ## License
 
