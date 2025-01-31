@@ -1,0 +1,31 @@
+---
+- name: Ensure information about notifications hubs is gathered
+  tags:
+    - notifications_hub_info
+  ansible.builtin.command:
+    cmd: >
+      aws notifications list-notification-hubs
+        --query notificationHubs
+  register: __notifications_hub_info_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of notifications hubs is generated
+  tags:
+    - notifications_hub_info
+  ansible.builtin.set_fact:
+    _notifications_hub_info_list:
+      "{{ (__notifications_hub_info_query.stdout |
+          from_json |
+          selectattr('notificationHubRegion', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of notifications hubs is generated
+  tags:
+    - notifications_hub_info
+  ansible.builtin.set_fact:
+    _notifications_hub_info_dict:
+      "{{ dict(_notifications_hub_info_list |
+               json_query('[].notificationHubRegion') |
+               zip(_notifications_hub_info_list)) }}"
+...

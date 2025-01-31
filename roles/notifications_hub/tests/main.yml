@@ -1,0 +1,29 @@
+---
+- name: Ensure test play is executed
+  hosts: localhost
+  connection: local
+  vars:
+    notifications_hub_list:
+      - region: us-east-1
+      - region: us-west-1
+
+  roles:
+    - linuxhq.aws.notifications_hub
+
+  post_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        notifications_hub_list:
+          "{{ notifications_hub_list |
+              rejectattr('region', 'eq', 'us-east-1') |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - linuxhq.aws.notifications_hub
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
+...
