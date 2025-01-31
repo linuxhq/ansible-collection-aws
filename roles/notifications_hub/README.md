@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Manage aws notifications hub
+Manage aws notifications hubs
 
 ## Requirements
 
