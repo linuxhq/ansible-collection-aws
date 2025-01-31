@@ -1,0 +1,19 @@
+---
+- name: Ensure test play is executed
+  hosts: localhost
+  connection: local
+
+  roles:
+    - linuxhq.aws.notifications_contacts_info
+
+  post_tasks:
+    - name: Ensure list is displayed
+      ansible.builtin.debug:
+        msg: |
+          {{ _notifications_contacts_info_list }}
+
+    - name: Ensure dict is displayed
+      ansible.builtin.debug:
+        msg: |
+          {{ _notifications_contacts_info_dict }}
+...
