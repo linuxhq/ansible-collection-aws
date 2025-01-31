@@ -1,4 +1,0 @@
----
-route53_delegation_set_list:
-  - name: "{{ aws_vpc }}-all"
-...
