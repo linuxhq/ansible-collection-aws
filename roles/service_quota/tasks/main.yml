@@ -23,10 +23,10 @@
   ansible.builtin.command:
     cmd: >
       aws service-quotas get-service-quota
-                         --quota-code "{{ _quota.1.quota_code }}"
-                         --region "{{ _quota.1.region | d(__service_quota_region) }}"
-                         --query Quota
-                         --service-code "{{ _quota.0.service_code }}"
+        --quota-code "{{ _quota.1.quota_code }}"
+        --region "{{ _quota.1.region | d(__service_quota_region) }}"
+        --query Quota
+        --service-code "{{ _quota.0.service_code }}"
   register: __service_quota_get
   loop:
     "{{ q('ansible.builtin.subelements',
@@ -64,7 +64,7 @@
   ansible.builtin.command:
     cmd: >
       aws service-quotas list-requested-service-quota-change-history
-                         --query RequestedQuotas
+        --query RequestedQuotas
   register: __service_quota_history
   changed_when: false
   check_mode: false
@@ -93,10 +93,10 @@
   ansible.builtin.command:
     cmd: >
       aws service-quotas request-service-quota-increase
-                         --desired-value '{{ _request.1.value }}'
-                         --quota-code "{{ _request.1.quota_code }}"
-                         --region "{{ _request.1.region | d(__service_quota_region) }}"
-                         --service-code "{{ _request.0.service_code }}"
+        --desired-value '{{ _request.1.value }}'
+        --quota-code "{{ _request.1.quota_code }}"
+        --region "{{ _request.1.region | d(__service_quota_region) }}"
+        --service-code "{{ _request.0.service_code }}"
   loop:
     "{{ q('ansible.builtin.subelements',
           service_quota_list,

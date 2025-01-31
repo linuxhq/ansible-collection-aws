@@ -75,12 +75,12 @@
   ansible.builtin.command:
     cmd: >
       aws route53resolver create-resolver-endpoint
-                          --creator-request-id "{{ _resolver.name }}"
-                          --direction "{{ _resolver.direction | upper }}"
-                          --ip-addresses '{{ _resolver.ip_addresses | to_json }}'
-                          --name "{{ _resolver.name }}"
-                          --resolver-endpoint-type "{{ _resolver.resolver_endpoint_type | d('ipv4') | upper }}"
-                          --security-group-ids "{{ __route53_resolver_security_group_id[_resolver.name] }}"
+        --creator-request-id "{{ _resolver.name }}"
+        --direction "{{ _resolver.direction | upper }}"
+        --ip-addresses '{{ _resolver.ip_addresses | to_json }}'
+        --name "{{ _resolver.name }}"
+        --resolver-endpoint-type "{{ _resolver.resolver_endpoint_type | d('ipv4') | upper }}"
+        --security-group-ids "{{ __route53_resolver_security_group_id[_resolver.name] }}"
   register: __route53_resolver_create
   loop: "{{ route53_resolver_list }}"
   loop_control:
@@ -107,9 +107,9 @@
   ansible.builtin.command:
     cmd: >
       aws route53resolver get-resolver-endpoint
-                          --output text
-                          --query 'ResolverEndpoint.Status'
-                          --resolver-endpoint-id "{{ __route53_resolver_endpoints[_resolver.name] }}"
+        --output text
+        --query 'ResolverEndpoint.Status'
+        --resolver-endpoint-id "{{ __route53_resolver_endpoints[_resolver.name] }}"
   register: __route53_resolver_get
   loop: "{{ route53_resolver_list }}"
   loop_control:
@@ -131,9 +131,9 @@
   ansible.builtin.command:
     cmd: >
       aws route53resolver update-resolver-endpoint
-                          --name "{{ _resolver.name }}"
-                          --resolver-endpoint-type "{{ _resolver.resolver_endpoint_type | d('ipv4') | upper }}"
-                          --resolver-endpoint-id "{{ __route53_resolver_endpoints[_resolver.name] }}"
+        --name "{{ _resolver.name }}"
+        --resolver-endpoint-type "{{ _resolver.resolver_endpoint_type | d('ipv4') | upper }}"
+        --resolver-endpoint-id "{{ __route53_resolver_endpoints[_resolver.name] }}"
   loop: "{{ route53_resolver_list }}"
   loop_control:
     label: "{{ _resolver.name | d(none) }}"

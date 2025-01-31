@@ -5,7 +5,7 @@
   ansible.builtin.command:
     cmd: >
       aws eks list-clusters
-              --query clusters
+        --query clusters
   register: __eks_cluster_info_query_list
   changed_when: false
   check_mode: false
@@ -25,8 +25,8 @@
   ansible.builtin.command:
     cmd: >
       aws eks describe-cluster
-              --name "{{ _cluster }}"
-              --query cluster
+        --name "{{ _cluster }}"
+        --query cluster
   register: __eks_cluster_info_query_describe
   loop: "{{ _eks_cluster_info_names }}"
   loop_control:

@@ -5,8 +5,8 @@
   ansible.builtin.command:
     cmd: >
       aws route53 associate-vpc-with-hosted-zone
-                  --hosted-zone-id "{{ _zone.hosted_zone_id }}"
-                  --vpc '{{ __route53_zone_associate | to_json }}'
+        --hosted-zone-id "{{ _zone.hosted_zone_id }}"
+        --vpc '{{ __route53_zone_associate | to_json }}'
   loop: "{{ route53_zone_associate_list }}"
   loop_control:
     label: "{{ _zone.id | d(none) }}"

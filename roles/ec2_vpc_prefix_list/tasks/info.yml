@@ -5,7 +5,7 @@
   ansible.builtin.command:
     cmd: >
       aws ec2 describe-managed-prefix-lists
-              --query 'PrefixLists[?OwnerId!=`AWS`]'
+        --query 'PrefixLists[?OwnerId!=`AWS`]'
   register: __ec2_vpc_prefix_list_describe
   changed_when: false
   check_mode: false
@@ -56,8 +56,8 @@
   ansible.builtin.command:
     cmd: >
       aws ec2 get-managed-prefix-list-entries
-              --prefix-list-id "{{ __ec2_vpc_prefix_list_id[_pl] }}"
-              --query Entries
+        --prefix-list-id "{{ __ec2_vpc_prefix_list_id[_pl] }}"
+        --query Entries
   register: __ec2_vpc_prefix_list_get
   loop: "{{ __ec2_vpc_prefix_list_names }}"
   loop_control:

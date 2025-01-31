@@ -5,7 +5,7 @@
   ansible.builtin.command:
     cmd: >
       aws iam list-account-aliases
-              --query AccountAliases
+        --query AccountAliases
   register: __iam_account_alias_query
   when:
     - iam_account_alias_name is not none
@@ -29,7 +29,7 @@
   ansible.builtin.command:
     cmd: >
       aws iam create-account-alias
-              --account-alias "{{ iam_account_alias_name }}"
+        --account-alias "{{ iam_account_alias_name }}"
   when:
     - iam_account_alias_name is not none
     - iam_account_alias_name not in _iam_account_alias_list
