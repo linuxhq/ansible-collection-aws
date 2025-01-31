@@ -1,0 +1,22 @@
+---
+dependencies: []
+galaxy_info:
+  role_name: notifications_hub
+  author: Taylor Kimball
+  description: Manage aws notifications hubs
+  license: GPLv3
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - hub
+    - notifications
+...

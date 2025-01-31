@@ -1,0 +1,56 @@
+---
+- name: Ensure list of notifications hubs is gathered
+  tags:
+    - notifications_hub
+  ansible.builtin.command:
+    cmd: >
+      aws notifications list-notification-hubs
+        --query
+          'notificationHubs[].{
+            key: notificationHubRegion,
+            value: statusSummary
+          }'
+  register: __notifications_hub_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure dict of notifications hubs is generated
+  tags:
+    - notifications_hub
+  ansible.builtin.set_fact:
+    __notifications_hub_dict:
+      "{{ (__notifications_hub_query.stdout |
+          from_json |
+          items2dict) |
+          d({}) }}"
+
+- name: Ensure present notifications hubs are batched
+  tags:
+    - notifications_hub
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - notifications_hub
+    file: present.yml
+  loop:
+    "{{ notifications_hub_list |
+        batch(notifications_hub_batch) }}"
+  loop_control:
+    label: "{{ __notifications_hub_list | length }}"
+    loop_var: __notifications_hub_list
+
+- name: Ensure absent notifications hubs are batched
+  tags:
+    - notifications_hub
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - notifications_hub
+    file: absent.yml
+  loop:
+    "{{ notifications_hub_list |
+        batch(notifications_hub_batch) }}"
+  loop_control:
+    label: "{{ __notifications_hub_list | length }}"
+    loop_var: __notifications_hub_list
+...
