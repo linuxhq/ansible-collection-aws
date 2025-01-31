@@ -1,0 +1,31 @@
+---
+- name: Ensure information about notifications contacts is gathered
+  tags:
+    - notifications_contacts_info
+  ansible.builtin.command:
+    cmd: >
+      aws notificationscontacts list-email-contacts
+                                --query emailContacts
+  register: __notifications_contacts_info_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of notifications contacts is generated
+  tags:
+    - notifications_contacts_info
+  ansible.builtin.set_fact:
+    _notifications_contacts_info_list:
+      "{{ (__notifications_contacts_info_query.stdout |
+          from_json |
+          selectattr('address', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of notifications contacts is generated
+  tags:
+    - notifications_contacts_info
+  ansible.builtin.set_fact:
+    _notifications_contacts_info_dict:
+      "{{ dict(_notifications_contacts_info_list |
+               json_query('[].address') |
+               zip(_notifications_contacts_info_list)) }}"
+...
