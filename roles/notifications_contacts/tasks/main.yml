@@ -1,0 +1,52 @@
+---
+- name: Ensure list of notifications contacts is gathered
+  tags:
+    - notifications_contacts
+  ansible.builtin.command:
+    cmd: >
+      aws notificationscontacts list-email-contacts
+        --query 'emailContacts[].{key: address, value: arn}'
+  register: __notifications_contacts_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure dict of notifications contacts is generated
+  tags:
+    - notifications_contacts
+  ansible.builtin.set_fact:
+    __notifications_contacts_dict:
+      "{{ (__notifications_contacts_query.stdout |
+          from_json |
+          items2dict) |
+          d({}) }}"
+
+- name: Ensure present notifications contacts are batched
+  tags:
+    - notifications_contacts
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - notifications_contacts
+    file: present.yml
+  loop:
+    "{{ notifications_contacts_list |
+        batch(notifications_contacts_batch) }}"
+  loop_control:
+    label: "{{ __notifications_contacts_list | length }}"
+    loop_var: __notifications_contacts_list
+
+- name: Ensure absent notifications contacts are batched
+  tags:
+    - notifications_contacts
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - notifications_contacts
+    file: absent.yml
+  loop:
+    "{{ notifications_contacts_list |
+        batch(notifications_contacts_batch) }}"
+  loop_control:
+    label: "{{ __notifications_contacts_list | length }}"
+    loop_var: __notifications_contacts_list
+...

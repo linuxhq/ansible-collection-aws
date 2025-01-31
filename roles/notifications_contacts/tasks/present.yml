@@ -1,0 +1,42 @@
+---
+- name: Ensure notifications contacts are present
+  tags:
+    - notifications_contacts
+  ansible.builtin.command:
+    cmd: >
+      aws notificationscontacts create-email-contact
+        --name "{{ _emailcontact.name }}"
+        --email-address "{{ _emailcontact.email_address }}"
+  register: __notifications_contacts_result_create
+  loop: "{{ __notifications_contacts_list }}"
+  loop_control:
+    label: "{{ _emailcontact.email_address | d(none) }}"
+    loop_var: _emailcontact
+  when:
+    - _emailcontact.name is defined
+    - _emailcontact.email_address is defined
+    - _emailcontact.email_address not in __notifications_contacts_dict.keys()
+    - _emailcontact.state is not defined or
+      _emailcontact.state == 'present'
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, notifications_contacts_async) }}"
+  poll: "{{ notifications_contacts_poll }}"
+
+- name: Ensure present notifications contacts jobs are complete
+  tags:
+    - notifications_contacts
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __notifications_contacts_status_create
+  loop: "{{ __notifications_contacts_result_create.results }}"
+  loop_control:
+    label: "{{ _jid._emailcontact.email_address | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  changed_when: true
+  until:
+    - __notifications_contacts_status_create.finished
+  retries: "{{ notifications_contacts_retries }}"
+  delay: "{{ notifications_contacts_delay }}"
+...
