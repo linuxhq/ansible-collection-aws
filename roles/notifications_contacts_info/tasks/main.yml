@@ -5,7 +5,7 @@
   ansible.builtin.command:
     cmd: >
       aws notificationscontacts list-email-contacts
-                                --query emailContacts
+        --query emailContacts
   register: __notifications_contacts_info_query
   changed_when: false
   check_mode: false
