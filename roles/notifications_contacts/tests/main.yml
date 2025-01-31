@@ -1,0 +1,50 @@
+---
+- name: Ensure test play is executed
+  hosts: localhost
+  connection: local
+  vars:
+    notifications_contacts_list:
+      - name: linuxhq-dummy01
+        email_address: dummy01@linuxhq.org
+      - name: linuxhq-dummy02
+        email_address: dummy02@linuxhq.org
+      - name: linuxhq-dummy03
+        email_address: dummy03@linuxhq.org
+      - name: linuxhq-dummy04
+        email_address: dummy04@linuxhq.org
+      - name: linuxhq-dummy05
+        email_address: dummy05@linuxhq.org
+      - name: linuxhq-dummy06
+        email_address: dummy06@linuxhq.org
+      - name: linuxhq-dummy07
+        email_address: dummy07@linuxhq.org
+      - name: linuxhq-dummy08
+        email_address: dummy08@linuxhq.org
+      - name: linuxhq-dummy09
+        email_address: dummy09@linuxhq.org
+      - name: linuxhq-dummy10
+        email_address: dummy10@linuxhq.org
+      - name: linuxhq-dummy11
+        email_address: dummy11@linuxhq.org
+      - name: linuxhq-dummy12
+        email_address: dummy12@linuxhq.org
+
+  roles:
+    - linuxhq.aws.notifications_contacts
+
+  post_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        notifications_contacts_list:
+          "{{ notifications_contacts_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - linuxhq.aws.notifications_contacts
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
+...

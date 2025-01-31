@@ -1,0 +1,40 @@
+---
+- name: Ensure notifications contacts are absent
+  tags:
+    - notifications_contacts
+  ansible.builtin.command:
+    cmd: >
+      aws notificationscontacts delete-email-contact
+        --arn "{{ __notifications_contacts_dict[_emailcontact.email_address] }}"
+  register: __notifications_contacts_result_delete
+  loop: "{{ __notifications_contacts_list }}"
+  loop_control:
+    label: "{{ _emailcontact.email_address | d(none) }}"
+    loop_var: _emailcontact
+  when:
+    - _emailcontact.email_address is defined
+    - _emailcontact.email_address in __notifications_contacts_dict.keys()
+    - _emailcontact.state is defined and
+      _emailcontact.state == 'absent'
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, notifications_contacts_async) }}"
+  poll: "{{ notifications_contacts_poll }}"
+
+- name: Ensure absent notifications contacts jobs are complete
+  tags:
+    - notifications_contacts
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __notifications_contacts_status_delete
+  loop: "{{ __notifications_contacts_result_delete.results }}"
+  loop_control:
+    label: "{{ _jid._emailcontact.email_address | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  changed_when: true
+  until:
+    - __notifications_contacts_status_delete.finished
+  retries: "{{ notifications_contacts_retries }}"
+  delay: "{{ notifications_contacts_delay }}"
+...
