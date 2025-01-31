@@ -5,7 +5,7 @@
   ansible.builtin.command:
     cmd: >
       aws iam list-groups
-              --query 'Groups[].GroupName'
+        --query 'Groups[].GroupName'
   register: __iam_policy_info_group_names
   changed_when: false
   check_mode: false
@@ -16,7 +16,7 @@
   ansible.builtin.command:
     cmd: >
       aws iam list-users
-              --query 'Users[].UserName'
+        --query 'Users[].UserName'
   register: __iam_policy_info_user_names
   changed_when: false
   check_mode: false

@@ -11,10 +11,10 @@
   ansible.builtin.command:
     cmd: >
       aws ec2 create-managed-prefix-list
-              --address-family "{{ _pl.address_family | d('IPv4') }}"
-              --entries '{{ __ec2_vpc_prefix_list_dict_kv | to_json }}'
-              --max-entries "{{ _pl.entries | length }}"
-              --prefix-list-name "{{ _pl.name }}"
+        --address-family "{{ _pl.address_family | d('IPv4') }}"
+        --entries '{{ __ec2_vpc_prefix_list_dict_kv | to_json }}'
+        --max-entries "{{ _pl.entries | length }}"
+        --prefix-list-name "{{ _pl.name }}"
   loop: "{{ ec2_vpc_prefix_list_entries }}"
   loop_control:
     label: "{{ _pl.name | d(none) }}"
@@ -48,9 +48,9 @@
   ansible.builtin.command:
     cmd: >
       aws ec2 modify-managed-prefix-list
-              --current-version "{{ __ec2_vpc_prefix_list_version[_pl.name] }}"
-              --prefix-list-id "{{ __ec2_vpc_prefix_list_id[_pl.name] }}"
-              --remove-entries '{{ __ec2_vpc_prefix_list_remove_entries | to_json }}'
+        --current-version "{{ __ec2_vpc_prefix_list_version[_pl.name] }}"
+        --prefix-list-id "{{ __ec2_vpc_prefix_list_id[_pl.name] }}"
+        --remove-entries '{{ __ec2_vpc_prefix_list_remove_entries | to_json }}'
   loop: "{{ ec2_vpc_prefix_list_entries }}"
   loop_control:
     label: "{{ _pl.name | d(none) }}"
@@ -80,8 +80,8 @@
   ansible.builtin.command:
     cmd: >
       aws ec2 modify-managed-prefix-list
-              --max-entries "{{ _pl.entries | length }}"
-              --prefix-list-id "{{ __ec2_vpc_prefix_list_id[_pl.name] }}"
+        --max-entries "{{ _pl.entries | length }}"
+        --prefix-list-id "{{ __ec2_vpc_prefix_list_id[_pl.name] }}"
   loop: "{{ ec2_vpc_prefix_list_entries }}"
   loop_control:
     label: "{{ _pl.name | d(none) }}"
@@ -112,9 +112,9 @@
   ansible.builtin.command:
     cmd: >
       aws ec2 modify-managed-prefix-list
-              --add-entries '{{ __ec2_vpc_prefix_list_add_entries | to_json }}'
-              --current-version "{{ __ec2_vpc_prefix_list_version[_pl.name] }}"
-              --prefix-list-id "{{ __ec2_vpc_prefix_list_id[_pl.name] }}"
+        --add-entries '{{ __ec2_vpc_prefix_list_add_entries | to_json }}'
+        --current-version "{{ __ec2_vpc_prefix_list_version[_pl.name] }}"
+        --prefix-list-id "{{ __ec2_vpc_prefix_list_id[_pl.name] }}"
   loop: "{{ ec2_vpc_prefix_list_entries }}"
   loop_control:
     label: "{{ _pl.name | d(none) }}"

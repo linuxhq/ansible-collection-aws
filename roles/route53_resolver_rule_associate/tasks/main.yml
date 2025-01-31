@@ -5,7 +5,7 @@
   ansible.builtin.command:
     cmd: >
       aws route53resolver list-resolver-rule-associations
-                          --query ResolverRuleAssociations
+        --query ResolverRuleAssociations
   register: __route53_resolver_rule_associate_query
   changed_when: false
   check_mode: false
@@ -42,9 +42,9 @@
   ansible.builtin.command:
     cmd: >
       aws route53resolver associate-resolver-rule
-                          --name "{{ _associate.name }}"
-                          --resolver-rule-id "{{ _associate.resolver_rule_id }}"
-                          --vpc-id "{{ _associate.vpc_id }}"
+        --name "{{ _associate.name }}"
+        --resolver-rule-id "{{ _associate.resolver_rule_id }}"
+        --vpc-id "{{ _associate.vpc_id }}"
   loop: "{{ route53_resolver_rule_associate_list }}"
   loop_control:
     label: "{{ _associate.name | d(none) }}"

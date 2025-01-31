@@ -5,9 +5,9 @@
   ansible.builtin.command:
     cmd: >
       aws ec2 describe-managed-prefix-lists
-              --output text
-              --prefix-list-ids "{{ __ec2_vpc_prefix_list_id[_pl.name] }}"
-              --query 'PrefixLists[].State'
+        --output text
+        --prefix-list-ids "{{ __ec2_vpc_prefix_list_id[_pl.name] }}"
+        --query 'PrefixLists[].State'
   register: __ec2_vpc_prefix_list_state
   loop: "{{ ec2_vpc_prefix_list_entries }}"
   loop_control:
