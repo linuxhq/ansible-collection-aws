@@ -22,6 +22,6 @@ A collection of aws roles
 
     ansible-galaxy collection install linuxhq.aws
 
-# Playbook
+# Playbooks
 
-Example inventory and playbooks can be found [here](https://github.com/linuxhq/ansible-collection-aws/tree/main/examples)
+All roles have test plays that provide example playbooks

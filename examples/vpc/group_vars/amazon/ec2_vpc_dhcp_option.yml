@@ -1,7 +1,0 @@
----
-ec2_vpc_dhcp_option_list:
-  - name: "{{ aws_vpc }}"
-    dns_servers:
-      - 1.1.1.1
-      - 1.1.1.2
-...
