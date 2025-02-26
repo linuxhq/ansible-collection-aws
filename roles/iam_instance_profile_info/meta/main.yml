@@ -1,0 +1,25 @@
+---
+allow_duplicates: true
+dependencies: []
+galaxy_info:
+  role_name: iam_instance_profile_info
+  author: Taylor Kimball
+  description: Gather information about identity and access management instance profiles
+  license: GPLv3
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - iam
+    - info
+    - instance
+    - profile
+...
