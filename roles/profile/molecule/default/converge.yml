@@ -1,0 +1,34 @@
+---
+- name: Converge
+  hosts: all
+  roles:
+    - role: profile
+      tags:
+        - molecule-idempotence-notest
+
+    - role: profile
+      profile_list:
+        - name: linuxhq
+          config:
+            output: json
+            region: us-east-1
+          credentials:
+            aws_access_key_id:
+              "{{ lookup('ansible.builtin.ini',
+                         'aws_access_key_id',
+                         file='~/.aws/credentials',
+                         section='linuxhq') }}"
+            aws_secret_access_key:
+              "{{ lookup('ansible.builtin.ini',
+                         'aws_secret_access_key',
+                         file='~/.aws/credentials',
+                         section='linuxhq') }}"
+
+        - name: dummy
+          config:
+            output: yaml
+            region: us-west-1
+          credentials:
+            aws_access_key_id: DUMMY012345678901234
+            aws_secret_access_key: DuMmYDuMmYDuMmYDuMmYDuMmYDuMmYDuMmYDuMmY
+...

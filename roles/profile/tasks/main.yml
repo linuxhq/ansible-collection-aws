@@ -1,0 +1,25 @@
+---
+- name: Ensure aws profile configuration directory is present
+  tags:
+    - profile
+  ansible.builtin.file:
+    mode: '0700'
+    path: "{{ profile_dir }}"
+    state: directory
+
+- name: Ensure aws profile config is managed
+  tags:
+    - profile
+  ansible.builtin.template:
+    dest: "{{ profile_dir }}/config"
+    mode: '0600'
+    src: config.j2
+
+- name: Ensure aws profile credentials is managed
+  tags:
+    - profile
+  ansible.builtin.template:
+    dest: "{{ profile_dir }}/credentials"
+    mode: '0600'
+    src: credentials.j2
+...
