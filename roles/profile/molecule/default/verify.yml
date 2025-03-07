@@ -25,6 +25,5 @@
       tags:
         - profile
       ansible.builtin.debug:
-        msg: |
-          {{ __profile_account.stdout }}
+        msg: "{{ __profile_account.stdout }}"
 ...
