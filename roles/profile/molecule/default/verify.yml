@@ -2,17 +2,29 @@
 - name: Verify
   hosts: all
   tasks:
-    - name: Ensure rush stat information is gathered
+    - name: Ensure profile awscli2 package is present
       tags:
-        - rush
-      ansible.builtin.stat:
-        path: /usr/sbin/rush
-      register: _stat
+        - profile
+      become: true
+      ansible.builtin.dnf:
+        name: awscli2
+        state: present
 
-    - name: Ensure rush stat information is verified
+    - name: Ensure profile awscli2 command is executed
       tags:
-        - rush
-      ansible.builtin.assert:
-        that:
-          - _stat.stat.exists | bool
+        - profile
+      ansible.builtin.command:
+        cmd:
+          aws sts get-caller-identity
+            --output text
+            --query Account
+      register: __profile_account
+      changed_when: false
+
+    - name: Ensure profile account is displayed
+      tags:
+        - profile
+      ansible.builtin.debug:
+        msg: |
+          {{ __profile_account.stdout }}
 ...

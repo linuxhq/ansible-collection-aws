@@ -8,7 +8,7 @@
 
     - role: profile
       profile_list:
-        - name: linuxhq
+        - name: default
           config:
             output: json
             region: us-east-1
