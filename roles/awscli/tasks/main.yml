@@ -1,0 +1,44 @@
+---
+- name: Ensure awscli virtual environment packages are present
+  tags:
+    - awscli
+  become: true
+  ansible.builtin.apt:
+    name: python3-venv
+    state: present
+    update_cache: true
+  when:
+    - ansible_os_family == 'Debian'
+
+- name: Ensure awscli virtual environment packages are present
+  tags:
+    - awscli
+  become: true
+  ansible.builtin.dnf:
+    name: python3
+    state: present
+  when:
+    - ansible_os_family == 'RedHat'
+
+- name: Ensure awscli virtual environment is present
+  tags:
+    - awscli
+  become: "{{ awscli_become | bool }}"
+  ansible.builtin.pip:
+    extra_args: --upgrade
+    name:
+      - pip
+    state: present
+    virtualenv: "{{ awscli_path }}"
+    virtualenv_command: /usr/bin/python3 -m venv
+
+- name: Ensure awscli virtual environment is populated
+  tags:
+    - awscli
+  become: "{{ awscli_become | bool }}"
+  ansible.builtin.pip:
+    name: "{{ awscli_requirements }}"
+    state: present
+    virtualenv: "{{ awscli_path }}"
+    virtualenv_command: /usr/bin/python3 -m venv
+...
