@@ -14,6 +14,8 @@ None
     awscli_path: /usr/local/awscli
     awscli_requirements:
       - awscli
+      - botocore
+      - boto3
 
 ## Return Values
 
