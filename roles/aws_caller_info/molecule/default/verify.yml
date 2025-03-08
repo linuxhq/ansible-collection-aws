@@ -8,13 +8,13 @@
     - aws_caller_info
 
   post_tasks:
-    - name: Ensure aws caller info information is displayed
+    - name: Ensure aws caller info is verified
       tags:
         - aws_caller_info
-      ansible.builtin.debug:
-        msg: |
-          {{ _aws_caller_info_account | to_nice_yaml }}
-          {{ _aws_caller_info_account_alias | to_nice_yaml }}
-          {{ _aws_caller_info_arn | to_nice_yaml }}
-          {{ _aws_caller_info_user_id | to_nice_yaml }}
+      ansible.builtin.assert:
+        that:
+          - _aws_caller_info_account is defined
+          - _aws_caller_info_account_alias == 'linuxhq'
+          - _aws_caller_info_arn is defined
+          - _aws_caller_info_user_id is defined
 ...

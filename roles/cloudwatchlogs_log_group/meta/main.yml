@@ -1,6 +1,6 @@
 ---
 dependencies:
-  - role: linuxhq.aws.kms_key_info
+  - role: kms_key_info
     tags: cloudwatchlogs_log_group
 galaxy_info:
   role_name: cloudwatchlogs_log_group

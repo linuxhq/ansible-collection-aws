@@ -1,0 +1,43 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - cloudwatchlogs_log_group_info
+
+  post_tasks:
+    - name: Ensure cloudwatchlogs log group info is verified
+      tags:
+        - cloudwatchlogs_log_group_info
+      ansible.builtin.assert:
+        that:
+          - _cloudwatchlogs_log_group_info_dict['linuxhq-30d'] is defined
+          - _cloudwatchlogs_log_group_info_dict['linuxhq-30d'].arn is defined
+          - _cloudwatchlogs_log_group_info_dict['linuxhq-30d'].log_group_name is defined
+          - _cloudwatchlogs_log_group_info_dict['linuxhq-30d'].retention_in_days == 30
+          - _cloudwatchlogs_log_group_info_dict['linuxhq-90d'] is defined
+          - _cloudwatchlogs_log_group_info_dict['linuxhq-90d'].arn is defined
+          - _cloudwatchlogs_log_group_info_dict['linuxhq-90d'].log_group_name is defined
+          - _cloudwatchlogs_log_group_info_dict['linuxhq-90d'].retention_in_days == 90
+
+    - name: Ensure inventory lists are formatted
+      tags:
+        - cloudwatchlogs_log_group_info
+      ansible.builtin.set_fact:
+        cloudwatchlogs_log_group_list:
+          "{{ cloudwatchlogs_log_group_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      tags:
+        - cloudwatchlogs_log_group_info
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - cloudwatchlogs_log_group
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
+...
