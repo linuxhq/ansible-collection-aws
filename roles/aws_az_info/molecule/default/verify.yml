@@ -8,13 +8,15 @@
     - aws_az_info
 
   post_tasks:
-    - name: Ensure aws az info information is displayed
+    - name: Ensure aws az info is verified
       tags:
         - aws_az_info
-      ansible.builtin.debug:
-        msg: |
-          {{ _aws_az_info_dict | to_nice_yaml }}
-          {{ _aws_az_info_list | to_nice_yaml }}
-          {{ _aws_az_info_list_l | to_nice_yaml }}
-          {{ _aws_az_info_list_s | to_nice_yaml }}
+      ansible.builtin.assert:
+        that:
+          - _aws_az_info_dict['us-east-1a'] is defined
+          - _aws_az_info_dict['us-east-1b'] is defined
+          - _aws_az_info_dict['us-east-1c'] is defined
+          - _aws_az_info_dict['us-east-1d'] is defined
+          - _aws_az_info_dict['us-east-1e'] is defined
+          - _aws_az_info_dict['us-east-1f'] is defined
 ...

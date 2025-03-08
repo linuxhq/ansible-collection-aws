@@ -2,19 +2,19 @@
 - name: Verify
   hosts: all
   environment:
-    PATH: "/usr/local/awscli/bin:{{ ansible_env.PATH }}"
-  vars:
-    ansible_python_interpreter: /usr/local/awscli/bin/python
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
 
   roles:
     - aws_region_info
 
   post_tasks:
-    - name: Ensure aws region info information is displayed
+    - name: Ensure aws region info is verified
       tags:
         - aws_region_info
-      ansible.builtin.debug:
-        msg: |
-          {{ _aws_region_info_dict | to_nice_yaml }}
-          {{ _aws_region_info_list | to_nice_yaml }}
+      ansible.builtin.assert:
+        that:
+          - _aws_region_info_dict['us-east-1'] is defined
+          - _aws_region_info_dict['us-east-2'] is defined
+          - _aws_region_info_dict['us-west-1'] is defined
+          - _aws_region_info_dict['us-west-2'] is defined
 ...
