@@ -1,0 +1,23 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/usr/local/awscli/bin:{{ ansible_env.PATH }}"
+
+  vars:
+    ansible_python_interpreter: /usr/local/awscli/bin/python
+
+  roles:
+    - aws_az_info
+
+  post_tasks:
+    - name: Ensure aws az info information is displayed
+      tags:
+        - aws_az_info
+      ansible.builtin.debug:
+        msg: |
+          {{ _aws_az_info_dict | to_nice_yaml }}
+          {{ _aws_az_info_list | to_nice_yaml }}
+          {{ _aws_az_info_list_l | to_nice_yaml }}
+          {{ _aws_az_info_list_s | to_nice_yaml }}
+...
