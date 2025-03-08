@@ -1,0 +1,23 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/usr/local/awscli/bin:{{ ansible_env.PATH }}"
+
+  vars:
+    ansible_python_interpreter: /usr/local/awscli/bin/python
+
+  roles:
+    - aws_caller_info
+
+  post_tasks:
+    - name: Ensure aws caller info information is displayed
+      tags:
+        - aws_caller_info
+      ansible.builtin.debug:
+        msg: |
+          {{ _aws_caller_info_account | to_nice_yaml }}
+          {{ _aws_caller_info_account_alias | to_nice_yaml }}
+          {{ _aws_caller_info_arn | to_nice_yaml }}
+          {{ _aws_caller_info_user_id | to_nice_yaml }}
+...
