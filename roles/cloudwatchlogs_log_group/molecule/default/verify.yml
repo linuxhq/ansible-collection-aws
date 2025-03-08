@@ -6,7 +6,7 @@
   vars:
     ansible_python_interpreter: /usr/local/awscli/bin/python
 
-  tasks:
+  pre_tasks:
     - name: Ensure inventory lists are formatted
       tags:
         - cloudwatchlogs_log_group
@@ -15,14 +15,6 @@
           "{{ cloudwatchlogs_log_group_list |
               map('combine', {'state': 'absent'}) }}"
 
-    - name: Ensure roles are included
-      tags:
-        - cloudwatchlogs_log_group
-      ansible.builtin.include_role:
-        name: "{{ _role }}"
-      loop:
-        - cloudwatchlogs_log_group
-      loop_control:
-        label: "{{ _role }}"
-        loop_var: _role
+  roles:
+    - cloudwatchlogs_log_group
 ...
