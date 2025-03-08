@@ -2,9 +2,7 @@
 - name: Verify
   hosts: all
   environment:
-    PATH: "/usr/local/awscli/bin:{{ ansible_env.PATH }}"
-  vars:
-    ansible_python_interpreter: /usr/local/awscli/bin/python
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
 
   roles:
     - aws_az_info

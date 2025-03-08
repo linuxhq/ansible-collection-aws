@@ -2,9 +2,10 @@
 - name: Verify
   hosts: all
   environment:
-    PATH: "/usr/local/awscli/bin:{{ ansible_env.PATH }}"
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
   tasks:
-    - name: Ensure awscli command is executed
+    - name: Ensure awscli version is gathered
       tags:
         - awscli
       ansible.builtin.command:

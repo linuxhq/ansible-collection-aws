@@ -1,37 +1,14 @@
 ---
 - name: Converge
   hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
   roles:
-    - role: awscli
-      tags:
-        - molecule-idempotence-notest
-
-    - role: profile
-      tags:
-        - molecule-idempotence-notest
-      profile_list:
-        - name: default
-          config:
-            output: json
-            region: us-east-1
-          credentials:
-            aws_access_key_id:
-              "{{ lookup('ansible.builtin.ini',
-                         'aws_access_key_id',
-                         file='~/.aws/credentials',
-                         section='linuxhq') }}"
-            aws_secret_access_key:
-              "{{ lookup('ansible.builtin.ini',
-                         'aws_secret_access_key',
-                         file='~/.aws/credentials',
-                         section='linuxhq') }}"
-
     - role: cloudwatchlogs_log_group
-      ansible_python_interpreter: /usr/local/awscli/bin/python
       cloudwatchlogs_log_group_list: []
       tags:
         - molecule-idempotence-notest
 
-    - role: cloudwatchlogs_log_group
-      ansible_python_interpreter: /usr/local/awscli/bin/python
+    - cloudwatchlogs_log_group
 ...
