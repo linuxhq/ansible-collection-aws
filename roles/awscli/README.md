@@ -11,7 +11,7 @@ None
 ## Role Variables
 
     awscli_become: true
-    awscli_path: /usr/local/awscli
+    awscli_path: /opt/awscli
     awscli_requirements:
       - awscli
       - botocore

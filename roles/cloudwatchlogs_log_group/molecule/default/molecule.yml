@@ -19,6 +19,7 @@ provisioner:
   inventory:
     group_vars:
       all:
+        ansible_python_interpreter: /opt/awscli/bin/python
         cloudwatchlogs_log_group_list:
           - name: linuxhq-http
             retention: 90
