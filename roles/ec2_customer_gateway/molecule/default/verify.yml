@@ -1,0 +1,18 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  pre_tasks:
+    - name: Ensure inventory lists are formatted
+      tags:
+        - ec2_customer_gateway
+      ansible.builtin.set_fact:
+        ec2_customer_gateway_list:
+          "{{ ec2_customer_gateway_list |
+              map('combine', {'state': 'absent'}) }}"
+
+  roles:
+    - ec2_customer_gateway
+...
