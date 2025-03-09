@@ -1,0 +1,63 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - ec2_customer_gateway_info
+
+  post_tasks:
+    - name: Ensure ec2 customer gateway info is verified
+      tags:
+        - ec2_customer_gateway_info
+      ansible.builtin.assert:
+        that:
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-01'] is defined
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-01'].ip_address == ec2_customer_gateway_list.0.ip_address
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-02'] is defined
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-02'].ip_address == ec2_customer_gateway_list.1.ip_address
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-03'] is defined
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-03'].ip_address == ec2_customer_gateway_list.2.ip_address
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-04'] is defined
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-04'].ip_address == ec2_customer_gateway_list.3.ip_address
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-05'] is defined
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-05'].ip_address == ec2_customer_gateway_list.4.ip_address
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-06'] is defined
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-06'].ip_address == ec2_customer_gateway_list.5.ip_address
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-07'] is defined
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-07'].ip_address == ec2_customer_gateway_list.6.ip_address
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-08'] is defined
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-08'].ip_address == ec2_customer_gateway_list.7.ip_address
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-09'] is defined
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-09'].ip_address == ec2_customer_gateway_list.8.ip_address
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-10'] is defined
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-10'].ip_address == ec2_customer_gateway_list.9.ip_address
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-11'] is defined
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-11'].ip_address == ec2_customer_gateway_list.10.ip_address
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-12'] is defined
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-12'].ip_address == ec2_customer_gateway_list.11.ip_address
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-13'] is defined
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-13'].ip_address == ec2_customer_gateway_list.12.ip_address
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-14'] is defined
+          - _ec2_customer_gateway_info_dict['linuxhq-cgw-14'].ip_address == ec2_customer_gateway_list.13.ip_address
+
+    - name: Ensure inventory lists are formatted
+      tags:
+        - ec2_customer_gateway_info
+      ansible.builtin.set_fact:
+        ec2_customer_gateway_list:
+          "{{ ec2_customer_gateway_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      tags:
+        - ec2_customer_gateway_info
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - ec2_customer_gateway
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
+...
