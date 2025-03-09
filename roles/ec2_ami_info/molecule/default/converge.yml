@@ -1,0 +1,9 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - ec2_ami_info
+...
