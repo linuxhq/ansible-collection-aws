@@ -1,0 +1,29 @@
+---
+dependencies:
+  - role: linuxhq.aws.ec2_eni_info
+    tags: ec2_eip
+  - role: linuxhq.aws.ec2_instance_info
+    tags: ec2_eip
+galaxy_info:
+  role_name: ec2_eip
+  author: Taylor Kimball
+  description: Manage aws ec2 elastic ip addresses
+  license: GPLv3
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - address
+    - amazon
+    - aws
+    - ec2
+    - eip
+    - elastic
+    - ip
+...
