@@ -62,7 +62,8 @@
           select('match', _ami.name) |
           list |
           d([]) |
-          community.general.version_sort)[-1] |
+          community.general.version_sort |
+          last) |
           d(none) }}"
   when:
     - _ami.name is defined

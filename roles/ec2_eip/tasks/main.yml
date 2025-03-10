@@ -1,0 +1,16 @@
+---
+- name: Ensure ec2 elastic ip addresses are batched
+  tags:
+    - ec2_eip
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_eip
+    file: include.yml
+  loop:
+    "{{ ec2_eip_list |
+        batch(ec2_eip_batch) }}"
+  loop_control:
+    label: "{{ __ec2_eip_list | length }}"
+    loop_var: __ec2_eip_list
+...
