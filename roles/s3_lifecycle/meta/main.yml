@@ -4,7 +4,7 @@ galaxy_info:
   role_name: s3_lifecycle
   author: Taylor Kimball
   description: Manage aws simple storage service bucket lifecycle rules
-  license: GPLv3
+  license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq
   platforms:

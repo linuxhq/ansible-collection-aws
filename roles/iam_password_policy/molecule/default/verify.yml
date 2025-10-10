@@ -1,0 +1,40 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+  tasks:
+    - name: Ensure iam password policy information is gathered
+      tags:
+        - iam_password_policy
+      ansible.builtin.command:
+        cmd: >
+          aws iam get-account-password-policy
+            --query PasswordPolicy
+      register: __iam_password_policy_query
+      changed_when: false
+
+    - name: Ensure iam password policy information is formatted
+      tags:
+        - iam_password_policy
+      ansible.builtin.set_fact:
+        __iam_password_policy_dict:
+          "{{ __iam_password_policy_query.stdout |
+              from_json |
+              d({}) }}"
+
+    - name: Ensure iam password policy information is verified
+      tags:
+        - iam_password_policy
+      ansible.builtin.assert:
+        that:
+          - __iam_password_policy_dict.AllowUsersToChangePassword == iam_password_policy_allow_pw_change
+          - __iam_password_policy_dict.HardExpiry == iam_password_policy_pw_expire
+          - __iam_password_policy_dict.MaxPasswordAge == iam_password_policy_pw_max_age
+          - __iam_password_policy_dict.MinimumPasswordLength == iam_password_policy_min_pw_length
+          - __iam_password_policy_dict.PasswordReusePrevention == iam_password_policy_pw_reuse_prevent
+          - __iam_password_policy_dict.RequireLowercaseCharacters == iam_password_policy_require_lowercase
+          - __iam_password_policy_dict.RequireNumbers == iam_password_policy_require_numbers
+          - __iam_password_policy_dict.RequireSymbols == iam_password_policy_require_symbols
+          - __iam_password_policy_dict.RequireUppercaseCharacters == iam_password_policy_require_uppercase
+...

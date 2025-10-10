@@ -19,6 +19,7 @@ None
     iam_password_policy_require_numbers: false
     iam_password_policy_require_symbols: false
     iam_password_policy_require_uppercase: false
+    iam_password_policy_state: present
 
 ## Return Values
 
@@ -35,8 +36,10 @@ None
       roles:
         - role: linuxhq.aws.iam_password_policy
           iam_password_policy_allow_pw_change: true
-          iam_password_policy_min_pw_length: 24
-          iam_password_policy_pw_reuse_prevent: 10
+          iam_password_policy_min_pw_length: 12
+          iam_password_policy_pw_expire: false
+          iam_password_policy_pw_max_age: 90
+          iam_password_policy_pw_reuse_prevent: 24
           iam_password_policy_require_lowercase: true
           iam_password_policy_require_numbers: true
           iam_password_policy_require_symbols: true
@@ -44,7 +47,7 @@ None
 
 ## License
 
-Copyright (C) 2025 Linux HeadQuarters
+Copyright (c) Linux HeadQuarters
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

@@ -1,5 +1,5 @@
 ---
-- name: Ensure iam password policy is present
+- name: Ensure iam password policy is managed
   tags:
     - iam_password_policy
   amazon.aws.iam_password_policy:
@@ -12,6 +12,6 @@
     require_numbers: "{{ iam_password_policy_require_numbers }}"
     require_symbols: "{{ iam_password_policy_require_symbols }}"
     require_uppercase: "{{ iam_password_policy_require_uppercase }}"
-    state: present
+    state: "{{ iam_password_policy_state }}"
     validate_certs: true
 ...

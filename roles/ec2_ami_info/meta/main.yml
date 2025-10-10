@@ -4,7 +4,7 @@ galaxy_info:
   role_name: ec2_ami_info
   author: Taylor Kimball
   description: Gather information about ec2 amazon machine images
-  license: GPLv3
+  license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq
   platforms:

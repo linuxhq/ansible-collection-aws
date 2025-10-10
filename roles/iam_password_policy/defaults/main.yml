@@ -8,4 +8,5 @@ iam_password_policy_require_lowercase: false
 iam_password_policy_require_numbers: false
 iam_password_policy_require_symbols: false
 iam_password_policy_require_uppercase: false
+iam_password_policy_state: present
 ...
