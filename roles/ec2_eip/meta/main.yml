@@ -8,7 +8,7 @@ galaxy_info:
   role_name: ec2_eip
   author: Taylor Kimball
   description: Manage aws ec2 elastic ip addresses
-  license: GPLv3
+  license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq
   platforms:

@@ -6,7 +6,7 @@ galaxy_info:
   role_name: route53_resolver_rule
   author: Taylor Kimball
   description: Manage aws route53 resolver rules
-  license: GPLv3
+  license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq
   platforms:

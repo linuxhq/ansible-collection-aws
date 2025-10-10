@@ -1,0 +1,37 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        iam_password_policy_allow_pw_change: true
+        iam_password_policy_min_pw_length: 12
+        iam_password_policy_pw_expire: false
+        iam_password_policy_pw_max_age: 90
+        iam_password_policy_pw_reuse_prevent: 24
+        iam_password_policy_require_lowercase: true
+        iam_password_policy_require_numbers: true
+        iam_password_policy_require_symbols: true
+        iam_password_policy_require_uppercase: true
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...

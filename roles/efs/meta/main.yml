@@ -8,7 +8,7 @@ galaxy_info:
   role_name: efs
   author: Taylor Kimball
   description: Manage aws elastic filesystems
-  license: GPLv3
+  license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq
   platforms:
