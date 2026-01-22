@@ -1,8 +1,8 @@
 ---
 dependencies:
-  - role: linuxhq.aws.ec2_vpc_net_info
+  - role: ec2_vpc_net_info
     tags: route53_resolver_rule_associate
-  - role: linuxhq.aws.route53_resolver_rule_info
+  - role: route53_resolver_rule_info
     tags: route53_resolver_rule_associate
 galaxy_info:
   role_name: route53_resolver_rule_associate

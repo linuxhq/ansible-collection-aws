@@ -1,8 +1,8 @@
 ---
 dependencies:
-  - role: linuxhq.aws.ec2_eni_info
+  - role: ec2_eni_info
     tags: ec2_eip
-  - role: linuxhq.aws.ec2_instance_info
+  - role: ec2_instance_info
     tags: ec2_eip
 galaxy_info:
   role_name: ec2_eip

@@ -1,10 +1,10 @@
 ---
 dependencies:
-  - role: linuxhq.aws.ec2_instance_info
+  - role: ec2_instance_info
     tags: ec2_eni
-  - role: linuxhq.aws.ec2_security_group_info
+  - role: ec2_security_group_info
     tags: ec2_eni
-  - role: linuxhq.aws.ec2_vpc_subnet_info
+  - role: ec2_vpc_subnet_info
     tags: ec2_eni
 galaxy_info:
   role_name: ec2_eni

@@ -1,8 +1,8 @@
 ---
 dependencies:
-  - role: linuxhq.aws.ec2_transit_gateway_info
+  - role: ec2_transit_gateway_info
     tags: ec2_transit_gateway_vpc_attachment
-  - role: linuxhq.aws.ec2_vpc_subnet_info
+  - role: ec2_vpc_subnet_info
     tags: ec2_transit_gateway_vpc_attachment
 galaxy_info:
   role_name: ec2_transit_gateway_vpc_attachment

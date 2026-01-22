@@ -1,8 +1,8 @@
 ---
 dependencies:
-  - role: linuxhq.aws.ec2_vpc_prefix_list_info
+  - role: ec2_vpc_prefix_list_info
     tags: ec2_security_group
-  - role: linuxhq.aws.ec2_vpc_net_info
+  - role: ec2_vpc_net_info
     tags: ec2_security_group
 galaxy_info:
   role_name: ec2_security_group
