@@ -1,6 +1,6 @@
 ---
 dependencies:
-  - role: linuxhq.aws.ec2_vpc_net_info
+  - role: ec2_vpc_net_info
     tags: route53_record
 galaxy_info:
   role_name: route53_record

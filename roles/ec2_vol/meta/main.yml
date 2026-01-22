@@ -1,6 +1,6 @@
 ---
 dependencies:
-  - role: linuxhq.aws.ec2_instance_info
+  - role: ec2_instance_info
     tags: ec2_vol
 galaxy_info:
   role_name: ec2_vol

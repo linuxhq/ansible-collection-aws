@@ -1,6 +1,6 @@
 ---
 dependencies:
-  - role: linuxhq.aws.route53_resolver_info
+  - role: route53_resolver_info
     tags: route53_resolver_rule
 galaxy_info:
   role_name: route53_resolver_rule

@@ -1,8 +1,8 @@
 ---
 dependencies:
-  - role: linuxhq.aws.ec2_ami_info
+  - role: ec2_ami_info
     tags: ec2_launch_template
-  - role: linuxhq.aws.ec2_security_group_info
+  - role: ec2_security_group_info
     tags: ec2_launch_template
 galaxy_info:
   role_name: ec2_launch_template

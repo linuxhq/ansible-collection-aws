@@ -1,8 +1,8 @@
 ---
 dependencies:
-  - role: linuxhq.aws.ec2_vpc_net_info
+  - role: ec2_vpc_net_info
     tags: route53_zone
-  - role: linuxhq.aws.route53_delegation_set_info
+  - role: route53_delegation_set_info
     tags: route53_zone
 galaxy_info:
   role_name: route53_zone
