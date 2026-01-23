@@ -1,6 +1,6 @@
 # .gitignore
 
-.ansible
+.ansible/
 .DS_Store
 galaxy_cache
 tmp
