@@ -1,0 +1,98 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        ec2_vpc_dhcp_option_list:
+          - name: linuxhq-00
+            dns_servers:
+              - 1.1.1.1
+              - 1.1.1.2
+          - name: linuxhq-01
+            dns_servers:
+              - 1.1.1.1
+              - 1.1.1.2
+          - name: linuxhq-02
+            dns_servers:
+              - 1.1.1.1
+              - 1.1.1.2
+          - name: linuxhq-03
+            dns_servers:
+              - 1.1.1.1
+              - 1.1.1.2
+          - name: linuxhq-04
+            dns_servers:
+              - 1.1.1.1
+              - 1.1.1.2
+          - name: linuxhq-05
+            dns_servers:
+              - 1.1.1.1
+              - 1.1.1.2
+          - name: linuxhq-06
+            dns_servers:
+              - 1.1.1.1
+              - 1.1.1.2
+          - name: linuxhq-07
+            dns_servers:
+              - 1.1.1.1
+              - 1.1.1.2
+          - name: linuxhq-08
+            dns_servers:
+              - 1.1.1.1
+              - 1.1.1.2
+          - name: linuxhq-09
+            dns_servers:
+              - 1.1.1.1
+              - 1.1.1.2
+          - name: linuxhq-10
+            dns_servers:
+              - 1.1.1.1
+              - 1.1.1.2
+          - name: linuxhq-11
+            dns_servers:
+              - 1.1.1.1
+              - 1.1.1.2
+          - name: linuxhq-12
+            dns_servers:
+              - 1.1.1.1
+              - 1.1.1.2
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...
