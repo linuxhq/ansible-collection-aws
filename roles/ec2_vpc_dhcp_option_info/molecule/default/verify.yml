@@ -29,7 +29,7 @@
 
     - name: Ensure inventory lists are formatted
       tags:
-        - ec2_vpc_dhcp_option
+        - ec2_vpc_dhcp_option_info
       ansible.builtin.set_fact:
         ec2_vpc_dhcp_option_list:
           "{{ ec2_vpc_dhcp_option_list |
