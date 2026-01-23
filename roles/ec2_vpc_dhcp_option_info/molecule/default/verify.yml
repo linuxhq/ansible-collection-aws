@@ -1,0 +1,48 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - ec2_vpc_dhcp_option_info
+
+  post_tasks:
+    - name: Ensure ec2 vpc net info is verified
+      tags:
+        - ec2_vpc_dhcp_option_info
+      ansible.builtin.assert:
+        that:
+          - _ec2_vpc_dhcp_option_info_dict['linuxhq-00'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['linuxhq-01'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['linuxhq-02'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['linuxhq-03'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['linuxhq-04'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['linuxhq-05'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['linuxhq-06'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['linuxhq-07'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['linuxhq-08'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['linuxhq-09'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['linuxhq-10'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['linuxhq-11'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['linuxhq-12'].dhcp_options_id is defined
+
+    - name: Ensure inventory lists are formatted
+      tags:
+        - ec2_vpc_dhcp_option
+      ansible.builtin.set_fact:
+        ec2_vpc_dhcp_option_list:
+          "{{ ec2_vpc_dhcp_option_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      tags:
+        - ec2_vpc_dhcp_option_info
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - ec2_vpc_dhcp_option
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
+...
