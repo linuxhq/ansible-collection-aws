@@ -1,0 +1,92 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        ec2_vpc_net_list:
+          - name: linuxhq
+            cidr_block: 10.0.0.0/16
+
+        ec2_vpc_igw_list:
+          - name: linuxhq
+            vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
+
+        ec2_vpc_subnet_list:
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
+            subnets:
+              - name: linuxhq-pub-a
+                az: us-east-1a
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,0) }}"
+              - name: linuxhq-pub-b
+                az: us-east-1b
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,1) }}"
+              - name: linuxhq-pub-c
+                az: us-east-1c
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,2) }}"
+              - name: linuxhq-pvt-a
+                az: us-east-1a
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,3) }}"
+              - name: linuxhq-pvt-b
+                az: us-east-1b
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,4) }}"
+              - name: linuxhq-pvt-c
+                az: us-east-1c
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,5) }}"
+
+        ec2_vpc_nat_gateway_info_filters:
+          state:
+            - available
+
+        ec2_vpc_nat_gateway_list:
+          - name: linuxhq-pub-a
+            if_exist_do_not_create: true
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-a'].id }}"
+            wait: true
+          - name: linuxhq-pub-b
+            if_exist_do_not_create: true
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-b'].id }}"
+            wait: true
+          - name: linuxhq-pub-c
+            if_exist_do_not_create: true
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-c'].id }}"
+            wait: true
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...

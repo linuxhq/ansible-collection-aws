@@ -1,0 +1,50 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - ec2_vpc_nat_gateway_info
+    - ec2_vpc_net_info
+
+  post_tasks:
+    - name: Ensure inventory lists are formatted
+      tags:
+        - ec2_vpc_nat_gateway
+      ansible.builtin.set_fact:
+        ec2_vpc_net_list:
+          "{{ ec2_vpc_net_list |
+              map('combine', {'state': 'absent'}) }}"
+        ec2_vpc_igw_list:
+          "{{ ec2_vpc_igw_list |
+              map('combine', {'state': 'absent'}) }}"
+        ec2_vpc_subnet_list:
+          "{{ ec2_vpc_subnet_list |
+              map('combine', {'state': 'absent'}) }}"
+        ec2_vpc_nat_gateway_list:
+          "{{ _ec2_vpc_nat_gateway_info_list |
+              selectattr('tags.Name', 'search', 'linuxhq-pub') |
+              json_query('[].{
+                name: tags.Name,
+                nat_gateway_id: nat_gateway_id
+              }') |
+              map('combine',
+                  {'release_eip': true,
+                   'state': 'absent',
+                   'wait': true}) }}"
+
+    - name: Ensure roles are included
+      tags:
+        - ec2_vpc_nat_gateway
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - linuxhq.aws.ec2_vpc_nat_gateway
+        - linuxhq.aws.ec2_vpc_subnet
+        - linuxhq.aws.ec2_vpc_igw
+        - linuxhq.aws.ec2_vpc_net
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
+...
