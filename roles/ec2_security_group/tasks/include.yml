@@ -8,7 +8,7 @@
     purge_rules: false
     purge_rules_egress: false
     purge_tags: true
-    state: "{{ _sg.0.state | d('present') }}"
+    state: "{{ _sg.1.state | d('present') }}"
     tags:
       "{{ _sg.1.tags |
           d({}) |
@@ -55,7 +55,7 @@
     purge_tags: true
     rules: "{{ _sg.1.rules }}"
     rules_egress: "{{ _sg.1.rules_egress }}"
-    state: "{{ _sg.0.state | d('present') }}"
+    state: "{{ _sg.1.state | d('present') }}"
     tags:
       "{{ _sg.1.tags |
           d({}) |
