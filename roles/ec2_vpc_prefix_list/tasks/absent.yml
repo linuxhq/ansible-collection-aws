@@ -1,0 +1,12 @@
+---
+- name: Ensure virtual private cloud prefix lists are absent
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.command:
+    cmd: >
+      aws ec2 delete-managed-prefix-list
+        --prefix-list-id "{{ __ec2_vpc_prefix_list_dict[_pl.name].PrefixListId }}"
+  when:
+    - _pl.name in __ec2_vpc_prefix_list_dict.keys()
+  changed_when: true
+...

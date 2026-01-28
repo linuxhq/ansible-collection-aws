@@ -1,111 +1,75 @@
 ---
-- name: Ensure virtual private cloud prefix lists are gathered
+- name: Ensure information about virtual private cloud prefix lists is gathered
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.command:
     cmd: >
       aws ec2 describe-managed-prefix-lists
         --query 'PrefixLists[?OwnerId!=`AWS`]'
-  register: __ec2_vpc_prefix_list_describe
+  register: __ec2_vpc_prefix_list_query_lists
   changed_when: false
   check_mode: false
 
-- name: Ensure virtual private cloud prefix lists are generated
+- name: Ensure list of virtual private cloud prefix lists is generated
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.set_fact:
-    __ec2_vpc_prefix_list_all:
-      "{{ (__ec2_vpc_prefix_list_describe.stdout |
-          from_json) |
-          list |
-          d([]) }}"
-    __ec2_vpc_prefix_list_names:
-      "{{ (__ec2_vpc_prefix_list_describe.stdout |
-          from_json) |
-          map(attribute='PrefixListName', default=[]) |
-          list |
+    __ec2_vpc_prefix_list_lists:
+      "{{ (__ec2_vpc_prefix_list_query_lists.stdout |
+          from_json |
+          selectattr('PrefixListName', 'defined')) |
           d([]) }}"
 
-- name: Ensure virtual private cloud prefix list dictionaries are generated
-  tags:
-    - ec2_vpc_prefix_list
-  ansible.builtin.set_fact:
-    __ec2_vpc_prefix_list_id:
-      "{{ __ec2_vpc_prefix_list_id |
-          d({}) |
-          combine({_pl.PrefixListName:
-                   _pl.PrefixListId}) }}"
-    __ec2_vpc_prefix_list_max_entries:
-      "{{ __ec2_vpc_prefix_list_max_entries |
-          d({}) |
-          combine({_pl.PrefixListName:
-                   _pl.MaxEntries}) }}"
-    __ec2_vpc_prefix_list_version:
-      "{{ __ec2_vpc_prefix_list_version |
-          d({}) |
-          combine({_pl.PrefixListName:
-                   _pl.Version}) }}"
-  loop: "{{ __ec2_vpc_prefix_list_all }}"
-  loop_control:
-    label: "{{ _pl.PrefixListName | d(none) }}"
-    loop_var: _pl
-
-- name: Ensure virtual private cloud prefix list entries are gathered
+- name: Ensure information about virtual private cloud prefix list entries are gathered
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.command:
     cmd: >
       aws ec2 get-managed-prefix-list-entries
-        --prefix-list-id "{{ __ec2_vpc_prefix_list_id[_pl] }}"
+        --prefix-list-id "{{ _info.PrefixListId }}"
         --query Entries
-  register: __ec2_vpc_prefix_list_get
-  loop: "{{ __ec2_vpc_prefix_list_names }}"
+  register: __ec2_vpc_prefix_list_query_entries
+  loop: "{{ __ec2_vpc_prefix_list_lists }}"
   loop_control:
-    label: "{{ _pl | d(none) }}"
-    loop_var: _pl
-  when:
-    - _pl in __ec2_vpc_prefix_list_names
+    label: "{{ _info.PrefixListId | d(none) }}"
+    loop_var: _info
   changed_when: false
   check_mode: false
 
-- name: Ensure virtual private cloud prefix list entries dictionary is generated
+- name: Ensure list of virtual private cloud prefix list entries is generated
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.set_fact:
     __ec2_vpc_prefix_list_entries:
       "{{ __ec2_vpc_prefix_list_entries |
-          d({}) |
-          combine({_entry._pl:
-                   __ec2_vpc_prefix_list_entries_formatted}) }}"
-  loop: "{{ __ec2_vpc_prefix_list_get.results |
-            d([]) }}"
+          d([]) +
+          [{
+            'PrefixListName': _entry._info.PrefixListName,
+            'Entries': _entry.stdout | from_json
+          }] }}"
+  loop: "{{ __ec2_vpc_prefix_list_query_entries.results | d([]) }}"
   loop_control:
-    label: "{{ _entry._pl | d(none) }}"
+    label: "{{ _entry._info.PrefixListName | d(none) }}"
     loop_var: _entry
-  vars:
-    __ec2_vpc_prefix_list_entries_formatted:
-      "{{ (_entry.stdout |
-          from_json) |
-          map(attribute='Cidr', default=[]) |
-          list |
-          d([]) }}"
 
-- name: Ensure virtual private cloud prefix list info variables are displayed
+- name: Ensure list of virtual private cloud prefix lists is generated
   tags:
     - ec2_vpc_prefix_list
-  ansible.builtin.debug:
-    msg:
-      __ec2_vpc_prefix_list_all:
-        "{{ __ec2_vpc_prefix_list_all | d([]) }}"
-      __ec2_vpc_prefix_list_entries:
-        "{{ __ec2_vpc_prefix_list_entries | d({}) }}"
-      __ec2_vpc_prefix_list_id:
-        "{{ __ec2_vpc_prefix_list_id | d({}) }}"
-      __ec2_vpc_prefix_list_max_entries:
-        "{{ __ec2_vpc_prefix_list_max_entries | d({}) }}"
-      __ec2_vpc_prefix_list_names:
-        "{{ __ec2_vpc_prefix_list_names | d([]) }}"
-      __ec2_vpc_prefix_list_version:
-        "{{ __ec2_vpc_prefix_list_version | d({}) }}"
-    verbosity: 1
+  ansible.builtin.set_fact:
+    __ec2_vpc_prefix_list_list:
+      "{{ __ec2_vpc_prefix_list_lists |
+          community.general.lists_mergeby(
+            __ec2_vpc_prefix_list_entries | d([]),
+           'PrefixListName'
+          )
+      }}"
+
+- name: Ensure dict of virtual private cloud prefix lists is generated
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.set_fact:
+    __ec2_vpc_prefix_list_dict:
+      "{{ dict(__ec2_vpc_prefix_list_list |
+               json_query('[].PrefixListName') |
+               zip(__ec2_vpc_prefix_list_list)) }}"
 ...
