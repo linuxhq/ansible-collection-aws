@@ -27,22 +27,21 @@ None
       roles:
         - role: linuxhq.aws.ec2_vpc_prefix_list
           ec2_vpc_prefix_list_entries:
-            - name: cloudflare-ipv4
+            - name: linuxhq-localhost
               entries:
-                "{{ lookup('ansible.builtin.url',
-                           'https://www.cloudflare.com/ips-v4',
-                           wantlist=true) }}"
+                - Cidr: 127.0.0.1/32
+                - Cidr: 127.0.0.2/32
+                - Cidr: 127.0.0.3/32
+                - Cidr: 127.0.0.4/32
+                - Cidr: 127.0.0.5/32
 
-            - name: cloudflare-ipv6
-              address_family: IPv6
+            - name: linuxhq-private
               entries:
-                "{{ lookup('ansible.builtin.url',
-                           'https://www.cloudflare.com/ips-v6',
-                           wantlist=true) }}"
-
-            - name: "{{ aws_vpc }}"
-              entries:
-                - "{{ aws_network }}"
+                - Cidr: 192.168.1.0/24
+                - Cidr: 192.168.2.0/24
+                - Cidr: 192.168.3.0/24
+                - Cidr: 192.168.4.0/24
+                - Cidr: 192.168.5.0/24
 
 ## License
 

@@ -1,0 +1,94 @@
+---
+- name: Ensure virtual private cloud prefix lists are present
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.command:
+    cmd: >
+      aws ec2 create-managed-prefix-list
+        --address-family "{{ _pl.address_family | d('IPv4') }}"
+        --entries '{{ _pl.entries | to_json }}'
+        --max-entries "{{ _pl.entries | length }}"
+        --prefix-list-name "{{ _pl.name }}"
+  when:
+    - _pl.name not in __ec2_vpc_prefix_list_dict.keys()
+  changed_when: true
+
+- name: Ensure virtual private cloud prefix list info tasks are executed
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_vpc_prefix_list
+    file: info.yml
+
+- name: Ensure virutal private cloud prefix list entries are removed
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.command:
+    cmd: >
+      aws ec2 modify-managed-prefix-list
+        --current-version "{{ __ec2_vpc_prefix_list_dict[_pl.name].Version }}"
+        --prefix-list-id "{{ __ec2_vpc_prefix_list_dict[_pl.name].PrefixListId }}"
+        --remove-entries '{{ __ec2_vpc_prefix_list_difference | to_json }}'
+  vars:
+    __ec2_vpc_prefix_list_difference:
+      "{{ __ec2_vpc_prefix_list_dict[_pl.name].Entries |
+          difference(_pl.entries) }}"
+  when:
+    - __ec2_vpc_prefix_list_difference | length > 0
+  changed_when: true
+
+- name: Ensure virtual private cloud prefix list info and state tasks are executed
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_vpc_prefix_list
+    file: "{{ _include }}.yml"
+  loop:
+    - info
+    - state
+  loop_control:
+    label: "{{ _include | d(none) }}"
+    loop_var: _include
+
+- name: Ensure virtual private cloud prefix list max entries are modified
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.command:
+    cmd: >
+      aws ec2 modify-managed-prefix-list
+        --max-entries "{{ _pl.entries | length }}"
+        --prefix-list-id "{{ __ec2_vpc_prefix_list_dict[_pl.name].PrefixListId }}"
+  when:
+    - _pl.entries | length != __ec2_vpc_prefix_list_dict[_pl.name].MaxEntries
+  changed_when: true
+
+- name: Ensure virtual private cloud prefix list state tasks are executed
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_vpc_prefix_list
+    file: state.yml
+
+- name: Ensure virtual private cloud prefix list entries are added
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.command:
+    cmd: >
+      aws ec2 modify-managed-prefix-list
+        --add-entries '{{ __ec2_vpc_prefix_list_difference | to_json }}'
+        --current-version "{{ __ec2_vpc_prefix_list_dict[_pl.name].Version }}"
+        --prefix-list-id "{{ __ec2_vpc_prefix_list_dict[_pl.name].PrefixListId }}"
+  vars:
+    __ec2_vpc_prefix_list_difference:
+      "{{ _pl.entries |
+          difference(__ec2_vpc_prefix_list_dict[_pl.name].Entries) }}"
+  when:
+    - __ec2_vpc_prefix_list_difference | length > 0
+  changed_when: true
+...

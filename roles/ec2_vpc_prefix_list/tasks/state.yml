@@ -6,18 +6,12 @@
     cmd: >
       aws ec2 describe-managed-prefix-lists
         --output text
-        --prefix-list-ids "{{ __ec2_vpc_prefix_list_id[_pl.name] }}"
+        --prefix-list-ids "{{ __ec2_vpc_prefix_list_dict[_pl.name].PrefixListId }}"
         --query 'PrefixLists[].State'
   register: __ec2_vpc_prefix_list_state
-  loop: "{{ ec2_vpc_prefix_list_entries }}"
-  loop_control:
-    label: "{{ _pl.name | d(none) }}"
-    loop_var: _pl
-  when:
-    - _pl.name is defined
-    - __ec2_vpc_prefix_list_id[_pl.name] is defined
   until:
     - __ec2_vpc_prefix_list_state.stdout == 'create-complete' or
       __ec2_vpc_prefix_list_state.stdout == 'modify-complete'
   changed_when: false
+  check_mode: false
 ...

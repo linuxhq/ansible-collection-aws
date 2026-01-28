@@ -1,0 +1,60 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        ec2_vpc_prefix_list_entries:
+          - name: linuxhq-localhost
+            entries:
+              - Cidr: 127.0.0.1/32
+              - Cidr: 127.0.0.2/32
+              - Cidr: 127.0.0.3/32
+              - Cidr: 127.0.0.4/32
+              - Cidr: 127.0.0.5/32
+          - name: linuxhq-private
+            entries:
+              - Cidr: 192.168.1.0/24
+              - Cidr: 192.168.2.0/24
+              - Cidr: 192.168.3.0/24
+              - Cidr: 192.168.4.0/24
+              - Cidr: 192.168.5.0/24
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...
