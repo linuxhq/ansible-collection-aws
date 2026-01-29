@@ -10,11 +10,16 @@ None
 
 ## Role Variables
 
+    iam_managed_policy_async: 300
+    iam_managed_policy_batch: 10
+    iam_managed_policy_delay: 3
     iam_managed_policy_list: []
+    iam_managed_policy_poll: 0
+    iam_managed_policy_retries: 100
 
 ## Return Values
 
-    _iam_managed_policy_list
+None
 
 ## Dependencies
 
@@ -27,26 +32,21 @@ None
       roles:
         - role: linuxhq.aws.iam_managed_policy
           iam_managed_policy_list:
-            - name: LinuxHQS3KopiaReadWrite
+            - name: linuxhq-admin
               policy:
                 Version: '2012-10-17'
                 Statement:
                   - Effect: Allow
-                    Action:
-                      - iam:GetUser
-                    Resource:
-                      - "arn:aws:iam::{{ _aws_caller_info_account }}:user/kopia"
+                    Action: '*'
+                    Resource: '*'
+
+            - name: linuxhq-s3
+              policy:
+                Version: '2012-10-17'
+                Statement:
                   - Effect: Allow
-                    Action:
-                      - s3:*
-                    Resource:
-                      - "arn:aws:s3:::{{ _aws_caller_info_account }}-{{ aws_region }}-kopia"
-                      - "arn:aws:s3:::{{ _aws_caller_info_account }}-{{ aws_region }}-kopia/*"
-                  - Effect: Allow
-                    Action:
-                      - s3:ListAllMyBuckets
-                    Resource:
-                      - '*'
+                    Action: 's3:*'
+                    Resource: '*'
 
 ## License
 

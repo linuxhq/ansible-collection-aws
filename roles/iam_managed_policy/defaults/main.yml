@@ -1,3 +1,8 @@
 ---
+iam_managed_policy_async: 300
+iam_managed_policy_batch: 10
+iam_managed_policy_delay: 3
 iam_managed_policy_list: []
+iam_managed_policy_poll: 0
+iam_managed_policy_retries: 100
 ...
