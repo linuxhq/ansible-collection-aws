@@ -1,0 +1,50 @@
+---
+- name: Ensure iam users are present
+  tags:
+    - iam_user
+  amazon.aws.iam_user:
+    managed_policies: "{{ _user.managed_policies | d([]) }}"
+    name: "{{ _user.name }}"
+    password: "{{ _user.password | d(omit) }}"
+    password_reset_required: "{{ _user.password_reset_required | d(false) }}"
+    path: "{{ _user.path | d(omit) }}"
+    purge_policies: "{{ _user.purge_policies | d(false) }}"
+    purge_tags: "{{ _user.purge_tags | d(true) }}"
+    remove_password: "{{ _user.remove_password | d(omit) }}"
+    state: "{{ _user.state | d('present') }}"
+    tags:
+      "{{ _user.tags |
+          d({}) |
+          combine({'Name': _user.name}) }}"
+    update_password: "{{ _user.update_password | d('always') }}"
+    validate_certs: true
+    wait: "{{ _user.wait | d(true) }}"
+    wait_timeout: "{{ _user.wait_timeout | d(120) }}"
+  register: __iam_user_result
+  loop: "{{ iam_user_list }}"
+  loop_control:
+    label: "{{ _user.name | d(none) }}"
+    loop_var: _user
+  when:
+    - _user.name is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, iam_user_async) }}"
+  poll: "{{ iam_user_poll }}"
+
+- name: Ensure managed iam user jobs are complete
+  tags:
+    - iam_user
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __iam_user_status
+  loop: "{{ __iam_user_result.results }}"
+  loop_control:
+    label: "{{ _jid._user.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __iam_user_status.finished | bool
+  retries: "{{ iam_user_retries }}"
+  delay: "{{ iam_user_delay }}"
+...

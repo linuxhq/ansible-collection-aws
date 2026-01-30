@@ -1,0 +1,52 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        iam_user_list:
+          - name: linuxhq-admin
+            purge_policies: true
+          - name: linuxhq-kopia
+            purge_policies: true
+          - name: linuxhq-molecule
+            purge_policies: true
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...
