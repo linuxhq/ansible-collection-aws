@@ -1,0 +1,83 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        iam_role_assume_role_policy_document:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: ec2.amazonaws.com
+              Action:
+                - sts:AssumeRole
+
+        iam_role_managed_policy_list:
+          - AmazonEC2ReadOnlyAccess
+          - AmazonVPCReadOnlyAccess
+
+        iam_role_name_list:
+          - name: linuxhq-role-00
+          - name: linuxhq-role-01
+          - name: linuxhq-role-02
+          - name: linuxhq-role-03
+          - name: linuxhq-role-04
+          - name: linuxhq-role-05
+          - name: linuxhq-role-06
+          - name: linuxhq-role-07
+          - name: linuxhq-role-08
+          - name: linuxhq-role-09
+          - name: linuxhq-role-10
+          - name: linuxhq-role-11
+          - name: linuxhq-role-12
+
+        iam_role_list:
+          "{{ iam_role_name_list |
+              map(
+                'combine', {
+                  'assume_role_policy_document': iam_role_assume_role_policy_document,
+                  'create_instance_profile': false,
+                  'delete_instance_profile': true,
+                  'managed_policies': iam_role_managed_policy_list
+                }
+              ) }}"
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...
