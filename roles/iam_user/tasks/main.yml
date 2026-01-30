@@ -1,40 +1,16 @@
 ---
-- name: Ensure iam users are present
+- name: Ensure iam users are batched
   tags:
     - iam_user
-  amazon.aws.iam_user:
-    managed_policies: "{{ _user.managed_policies | d([]) }}"
-    name: "{{ _user.name }}"
-    password: "{{ _user.password | d(omit) }}"
-    password_reset_required: "{{ _user.password_reset_required | d(false) }}"
-    path: "{{ _user.path | d(omit) }}"
-    purge_policies: "{{ _user.purge_policies | d(false) }}"
-    purge_tags: "{{ _user.purge_tags | d(true) }}"
-    remove_password: "{{ _user.remove_password | d(omit) }}"
-    state: present
-    tags:
-      "{{ _user.tags |
-          d({}) |
-          combine({'Name': _user.name}) }}"
-    update_password: "{{ _user.update_password | d('always') }}"
-    validate_certs: true
-    wait: "{{ _user.wait | d(true) }}"
-    wait_timeout: "{{ _user.wait_timeout | d(120) }}"
-  register: __iam_user_results
-  loop: "{{ iam_user_list }}"
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - iam_user
+    file: include.yml
+  loop:
+    "{{ iam_user_list |
+        batch(iam_user_batch) }}"
   loop_control:
-    label: "{{ _user.name | d(none) }}"
-    loop_var: _user
-  when:
-    - _user.name is defined
-
-- name: Ensure iam user results list is generated
-  tags:
-    - iam_user
-  ansible.builtin.set_fact:
-    _iam_user_list:
-      "{{ __iam_user_results.results |
-          map(attribute='user', default=[]) |
-          list |
-          d([]) }}"
+    label: "{{ __iam_user_list | length }}"
+    loop_var: __iam_user_list
 ...

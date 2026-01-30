@@ -1,0 +1,38 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - iam_user_info
+
+  post_tasks:
+    - name: Ensure ec2 vpc net info is verified
+      tags:
+        - iam_user_info
+      ansible.builtin.assert:
+        that:
+          - _iam_user_info_dict['linuxhq-admin'].user_id is defined
+          - _iam_user_info_dict['linuxhq-kopia'].user_id is defined
+          - _iam_user_info_dict['linuxhq-molecule'].user_id is defined
+
+    - name: Ensure inventory lists are formatted
+      tags:
+        - iam_user_info
+      ansible.builtin.set_fact:
+        iam_user_list:
+          "{{ iam_user_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      tags:
+        - iam_user_info
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - iam_user
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
+...

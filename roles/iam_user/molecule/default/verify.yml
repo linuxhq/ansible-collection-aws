@@ -1,0 +1,18 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  pre_tasks:
+    - name: Ensure inventory lists are formatted
+      tags:
+        - iam_user
+      ansible.builtin.set_fact:
+        iam_user_list:
+          "{{ iam_user_list |
+              map('combine', {'state': 'absent'}) }}"
+
+  roles:
+    - iam_user
+...

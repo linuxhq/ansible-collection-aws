@@ -1,0 +1,29 @@
+---
+- name: Ensure information about iam users is gathered
+  tags:
+    - iam_user_info
+  amazon.aws.iam_user_info:
+    group: "{{ iam_user_info_group or omit }}"
+    name: "{{ iam_user_info_name or omit }}"
+    path_prefix: "{{ iam_user_info_path_prefix or omit }}"
+    validate_certs: true
+  register: __iam_user_info_query
+
+- name: Ensure list of iam users is generated
+  tags:
+    - iam_user_info
+  ansible.builtin.set_fact:
+    _iam_user_info_list:
+      "{{ (__iam_user_info_query.iam_users |
+          selectattr('user_name', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of iam users is generated
+  tags:
+    - iam_user_info
+  ansible.builtin.set_fact:
+    _iam_user_info_dict:
+      "{{ dict(_iam_user_info_list |
+               json_query('[].user_name') |
+               zip(_iam_user_info_list)) }}"
+...

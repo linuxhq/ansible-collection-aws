@@ -1,8 +1,8 @@
-# iam\_user
+# iam\_user\_info
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Manage aws iam users
+Gather information about iam users
 
 ## Requirements
 
@@ -10,16 +10,14 @@ None
 
 ## Role Variables
 
-    iam_user_async: 300
-    iam_user_batch: 10
-    iam_user_delay: 3
-    iam_user_list: []
-    iam_user_poll: 0
-    iam_user_retries: 100
+    iam_user_info_group: null
+    iam_user_info_name: null
+    iam_user_info_path_prefix: null
 
 ## Return Values
 
-None
+    _iam_user_info_dict
+    _iam_user_info_list
 
 ## Dependencies
 
@@ -30,14 +28,7 @@ None
     - hosts: aws
       connection: local
       roles:
-        - role: linuxhq.aws.iam_user
-          iam_user_list:
-            - name: linuxhq-admin
-              purge_policies: true
-            - name: linuxhq-kopia
-              purge_policies: true
-            - name: linuxhq-molecule
-              purge_policies: true
+        - linuxhq.aws.iam_user_info
 
 ## License
 
