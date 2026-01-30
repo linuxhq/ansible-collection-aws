@@ -32,27 +32,27 @@ None
       roles:
         - role: linuxhq.aws.iam_group
           iam_group_list:
-             - name: admin
-               managed_policies:
-                 - AdministratorAccess
-               purge_policies: true
-               users:
-                 - linuxhq
+            - name: linuxhq-admin
+              managed_policies:
+                - AdministratorAccess
+              purge_policies: true
+              users:
+                - linuxhq-admin
 
-             - name: backups
-               managed_policies:
-                 - LinuxHQS3KopiaReadWrite
-               purge_policies: true
-               users:
-                 - kopia
+            - name: linuxhq-kopia
+              managed_policies:
+                - AmazonS3FullAccess
+              purge_policies: true
+              users:
+                - linuxhq-kopia
 
-             - name: development
-               managed_policies:
-                 - AmazonEC2FullAccess
-                 - AmazonVPCReadOnlyAccess
-               purge_policies: true
-               users:
-                 - molecule
+            - name: linuxhq-molecule
+              managed_policies:
+                - AmazonEC2FullAccess
+                - AmazonVPCReadOnlyAccess
+              purge_policies: true
+              users:
+                - linuxhq-molecule
 
 ## License
 
