@@ -1,5 +1,5 @@
 ---
-- name: Ensure iam groups are present
+- name: Ensure iam groups are managed
   tags:
     - iam_group
   amazon.aws.iam_group:
@@ -8,24 +8,34 @@
     path: "{{ _group.path | d(omit) }}"
     purge_policies: "{{ _group.purge_policies | d(false) }}"
     purge_users: "{{ _group.purge_policies | d(false) }}"
-    state: present
+    state: "{{ _group.state | d('present') }}"
     users: "{{ _group.users | d([]) }}"
     validate_certs: true
-  register: __iam_group_results
+  register: __iam_group_result
   loop: "{{ iam_group_list }}"
   loop_control:
     label: "{{ _group.name | d(none) }}"
     loop_var: _group
   when:
     - _group.name is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, iam_group_async) }}"
+  poll: "{{ iam_group_poll }}"
 
-- name: Ensure iam group results list is generated
+- name: Ensure managed iam group jobs are complete
   tags:
     - iam_group
-  ansible.builtin.set_fact:
-    _iam_group_list:
-      "{{ __iam_group_results.results |
-          map(attribute='iam_group', default=[]) |
-          list |
-          d([]) }}"
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __iam_group_status
+  loop: "{{ __iam_group_result.results }}"
+  loop_control:
+    label: "{{ _jid._group.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __iam_group_status.finished | bool
+  retries: "{{ iam_group_retries }}"
+  delay: "{{ iam_group_delay }}"
 ...

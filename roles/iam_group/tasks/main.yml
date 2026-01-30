@@ -1,0 +1,16 @@
+---
+- name: Ensure iam groups are batched
+  tags:
+    - iam_group
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - iam_group
+    file: include.yml
+  loop:
+    "{{ iam_group_list |
+        batch(iam_group_batch) }}"
+  loop_control:
+    label: "{{ __iam_group_list | length }}"
+    loop_var: __iam_group_list
+...
