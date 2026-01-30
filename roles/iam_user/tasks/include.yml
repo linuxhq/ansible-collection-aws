@@ -1,5 +1,5 @@
 ---
-- name: Ensure iam users are present
+- name: Ensure iam users are managed
   tags:
     - iam_user
   amazon.aws.iam_user:

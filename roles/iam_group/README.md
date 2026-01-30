@@ -10,11 +10,16 @@ None
 
 ## Role Variables
 
+    iam_group_async: 300
+    iam_group_batch: 10
+    iam_group_delay: 3
     iam_group_list: []
+    iam_group_poll: 0
+    iam_group_retries: 100
 
 ## Return Values
 
-    _iam_group_list
+None
 
 ## Dependencies
 
