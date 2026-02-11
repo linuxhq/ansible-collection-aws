@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about aws credentials is gathered
+- name: Ensure information about aws credentials is generated
   tags:
     - always
     - aws_credentials_info

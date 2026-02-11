@@ -26,7 +26,6 @@ None
     _aws_credentials_info_aws_session_token
     _aws_credentials_info_{{ key }}
 
-
 ## Dependencies
 
 None
