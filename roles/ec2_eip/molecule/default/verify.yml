@@ -11,8 +11,7 @@
       ansible.builtin.set_fact:
         ec2_eip_list:
           "{{ ec2_eip_list |
-              map('combine',
-                  {'state': 'absent'}) }}"
+              map('combine', {'state': 'absent'}) }}"
 
   roles:
     - ec2_eip
