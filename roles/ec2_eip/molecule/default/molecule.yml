@@ -85,6 +85,22 @@ provisioner:
             instance_type: t3.small
             vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq'].id }}"
 
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
 verifier:
   name: ansible
   options:

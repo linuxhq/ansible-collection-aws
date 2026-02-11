@@ -84,6 +84,7 @@ scenario:
     - syntax
     - create
     - prepare
+    - check
     - converge
     - check
     - idempotence

@@ -72,7 +72,7 @@
   when:
     - _jid.ansible_job_id is defined
   until:
-    - __ec2_instance_status.finished
+    - __ec2_instance_status.finished | bool
   retries: "{{ ec2_instance_retries }}"
   delay: "{{ ec2_instance_delay }}"
 ...

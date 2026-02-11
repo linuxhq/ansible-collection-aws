@@ -39,7 +39,7 @@
   when:
     - _jid.ansible_job_id is defined
   until:
-    - __cloudwatchlogs_log_group_status.finished
+    - __cloudwatchlogs_log_group_status.finished | bool
   retries: "{{ cloudwatchlogs_log_group_retries }}"
   delay: "{{ cloudwatchlogs_log_group_delay }}"
 ...

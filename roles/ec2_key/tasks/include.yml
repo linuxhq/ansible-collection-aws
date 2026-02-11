@@ -38,7 +38,7 @@
   when:
     - _jid.ansible_job_id is defined
   until:
-    - __ec2_key_status.finished
+    - __ec2_key_status.finished | bool
   retries: "{{ ec2_key_retries }}"
   delay: "{{ ec2_key_delay }}"
 ...

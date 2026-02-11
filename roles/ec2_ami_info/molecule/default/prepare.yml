@@ -18,10 +18,10 @@
               "{{ lookup('ansible.builtin.ini',
                          'aws_access_key_id',
                          file='~/.aws/credentials',
-                         section='default') }}"
+                         section='molecule') }}"
             aws_secret_access_key:
               "{{ lookup('ansible.builtin.ini',
                          'aws_secret_access_key',
                          file='~/.aws/credentials',
-                         section='default') }}"
+                         section='molecule') }}"
 ...

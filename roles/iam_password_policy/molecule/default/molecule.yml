@@ -32,6 +32,22 @@ provisioner:
         iam_password_policy_require_symbols: true
         iam_password_policy_require_uppercase: true
 
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
 verifier:
   name: ansible
   options:

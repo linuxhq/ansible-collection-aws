@@ -35,7 +35,7 @@
     - _jid.ansible_job_id is defined
   changed_when: true
   until:
-    - __notifications_hub_status_deregister.finished
+    - __notifications_hub_status_deregister.finished | bool
   retries: "{{ notifications_hub_retries }}"
   delay: "{{ notifications_hub_delay }}"
 ...
