@@ -23,67 +23,12 @@ provisioner:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
 
-        ec2_ami_info_list:
-          - name: 'AlmaLinux OS 9'
-            filters:
-              owner-alias: aws-marketplace
-              product-code: 3kukoxmnoighcsbjd0u4nq9ds
-              product-code.type: marketplace
-              is-public: true
-              virtualization-type: hvm
-
         ec2_eip_list:
           - name: linuxhq-eip-01
-            device_id: "{{ _ec2_instance_info_dict['linuxhq-1'].instance_id }}"
-            in_vpc: true
           - name: linuxhq-eip-02
-            device_id: "{{ _ec2_instance_info_dict['linuxhq-2'].instance_id }}"
-            in_vpc: true
           - name: linuxhq-eip-03
-            device_id: "{{ _ec2_instance_info_dict['linuxhq-3'].instance_id }}"
-            in_vpc: true
           - name: linuxhq-eip-04
-            device_id: "{{ _ec2_instance_info_dict['linuxhq-4'].instance_id }}"
-            in_vpc: true
           - name: linuxhq-eip-05
-            device_id: "{{ _ec2_instance_info_dict['linuxhq-5'].instance_id }}"
-            in_vpc: true
-
-        ec2_vpc_igw_list:
-          - name: linuxhq
-            vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
-
-        ec2_vpc_net_list:
-          - name: linuxhq
-            cidr_block: 192.168.0.0/24
-
-        ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
-            subnets:
-              - name: linuxhq
-                cidr: 192.168.0.0/24
-
-        ec2_instance_list:
-          - name: linuxhq-1
-            image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
-            instance_type: t3.small
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq'].id }}"
-          - name: linuxhq-2
-            image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
-            instance_type: t3.small
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq'].id }}"
-          - name: linuxhq-3
-            image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
-            instance_type: t3.small
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq'].id }}"
-          - name: linuxhq-4
-            image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
-            instance_type: t3.small
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq'].id }}"
-          - name: linuxhq-5
-            image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
-            instance_type: t3.small
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq'].id }}"
 
 scenario:
   test_sequence:

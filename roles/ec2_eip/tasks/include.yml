@@ -1,49 +1,91 @@
 ---
-- name: Ensure ec2 elastic ip addresses are managed
+- name: Ensure ec2 elastic ip addresses are present
   tags:
     - ec2_eip
   amazon.aws.ec2_eip:
     allow_reassociation: "{{ _eip.allow_reassociation | d(false) }}"
-    device_id: "{{ _eip.device_id }}"
+    device_id: "{{ _eip.device_id | d(omit) }}"
     in_vpc: "{{ _eip.in_vpc | d(false) }}"
     private_ip_address: "{{ _eip.private_ip_address | d(omit) }}"
     purge_tags: "{{ _eip.purge_tags | d(true) }}"
     release_on_disassociation: "{{ _eip.release_on_disassociation | d(false) }}"
-    reuse_existing_ip_allowed: true
-    state: "{{ _eip.state | d('present') }}"
-    tag_name: Name
-    tag_value: "{{ _eip.name }}"
+    reuse_existing_ip_allowed: "{{ _eip.reuse_existing_ip_allowed | d(false) }}"
+    state: present
+    tag_name: "{{ _eip.tag_name | d(omit) }}"
+    tag_value: "{{ _eip.tag_value | d(omit) }}"
     tags:
       "{{ _eip.tags |
           d({}) |
           combine({'Name': _eip.name}) }}"
     validate_certs: true
-  register: __ec2_eip_result
+  register: __ec2_eip_result_present
   loop: "{{ __ec2_eip_list }}"
   loop_control:
     label: "{{ _eip.name | d(none) }}"
     loop_var: _eip
   when:
-    - _eip.device_id is defined
     - _eip.name is defined
+    - _eip.name not in __ec2_eip_dict.keys()
+    - _eip.state is not defined or
+      _eip.state == 'present'
   changed_when: false
   async: "{{ ansible_check_mode | ternary(0, ec2_eip_async) }}"
   poll: "{{ ec2_eip_poll }}"
 
-- name: Ensure managed ec2 elastic ip address jobs are complete
+- name: Ensure present ec2 elastic ip address jobs are complete
   tags:
     - ec2_eip
   ansible.builtin.async_status:
     jid: "{{ _jid.ansible_job_id }}"
-  register: __ec2_eip_status
-  loop: "{{ __ec2_eip_result.results }}"
+  register: __ec2_eip_status_present
+  loop: "{{ __ec2_eip_result_present.results }}"
   loop_control:
     label: "{{ _jid._eip.name | d(none) }}"
     loop_var: _jid
   when:
     - _jid.ansible_job_id is defined
   until:
-    - __ec2_eip_status.finished | bool
+    - __ec2_eip_status_present.finished | bool
+  retries: "{{ ec2_eip_retries }}"
+  delay: "{{ ec2_eip_delay }}"
+
+- name: Ensure ec2 elastic ip addresses are absent
+  tags:
+    - ec2_eip
+  amazon.aws.ec2_eip:
+    device_id: "{{ _eip.device_id | d(omit) }}"
+    ip: "{{ __ec2_eip_dict[_eip.name] }}"
+    state: absent
+    validate_certs: true
+  register: __ec2_eip_result_absent
+  loop: "{{ __ec2_eip_list }}"
+  loop_control:
+    label: "{{ _eip.name | d(none) }}"
+    loop_var: _eip
+  when:
+    - _eip.name is defined
+    - _eip.name in __ec2_eip_dict.keys()
+    - _eip.state is defined
+    - _eip.state == 'absent'
+    - __ec2_eip_dict[_eip.name] is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_eip_async) }}"
+  poll: "{{ ec2_eip_poll }}"
+
+- name: Ensure absent ec2 elastic ip address jobs are complete
+  tags:
+    - ec2_eip
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_eip_status_absent
+  loop: "{{ __ec2_eip_result_absent.results }}"
+  loop_control:
+    label: "{{ _jid._eip.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_eip_status_absent.finished | bool
   retries: "{{ ec2_eip_retries }}"
   delay: "{{ ec2_eip_delay }}"
 ...
