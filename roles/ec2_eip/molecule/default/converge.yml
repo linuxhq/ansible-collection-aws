@@ -10,21 +10,5 @@
       tags:
         - molecule-idempotence-notest
 
-    - role: ec2_vpc_net
-      tags:
-        - molecule-idempotence-notest
-
-    - role: ec2_vpc_igw
-      tags:
-        - molecule-idempotence-notest
-
-    - role: ec2_vpc_subnet
-      tags:
-        - molecule-idempotence-notest
-
-    - role: ec2_instance
-      tags:
-        - molecule-idempotence-notest
-
     - ec2_eip
 ...

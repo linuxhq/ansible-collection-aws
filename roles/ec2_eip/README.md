@@ -10,10 +10,10 @@ None
 
 ## Role Variables
 
-    ec2_eip_list: []
     ec2_eip_async: 300
     ec2_eip_batch: 10
     ec2_eip_delay: 3
+    ec2_eip_list: []
     ec2_eip_poll: 0
     ec2_eip_retries: 100
 
@@ -34,20 +34,10 @@ None
         - role: linuxhq.aws.ec2_eip
           ec2_eip_list:
             - name: linuxhq-eip-01
-              device_id: "{{ _ec2_instance_info_dict['linuxhq-1'].instance_id }}"
-              in_vpc: true
             - name: linuxhq-eip-02
-              device_id: "{{ _ec2_instance_info_dict['linuxhq-2'].instance_id }}"
-              in_vpc: true
             - name: linuxhq-eip-03
-              device_id: "{{ _ec2_instance_info_dict['linuxhq-3'].instance_id }}"
-              in_vpc: true
             - name: linuxhq-eip-04
-              device_id: "{{ _ec2_instance_info_dict['linuxhq-4'].instance_id }}"
-              in_vpc: true
             - name: linuxhq-eip-05
-              device_id: "{{ _ec2_instance_info_dict['linuxhq-5'].instance_id }}"
-              in_vpc: true
 
 ## License
 
