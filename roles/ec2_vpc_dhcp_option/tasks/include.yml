@@ -42,7 +42,7 @@
   when:
     - _jid.ansible_job_id is defined
   until:
-    - __ec2_vpc_dhcp_option_status.finished
+    - __ec2_vpc_dhcp_option_status.finished | bool
   retries: "{{ ec2_vpc_dhcp_option_retries }}"
   delay: "{{ ec2_vpc_dhcp_option_delay }}"
 ...

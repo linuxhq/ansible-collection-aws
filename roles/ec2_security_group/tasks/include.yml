@@ -40,7 +40,7 @@
   when:
     - _jid.ansible_job_id is defined
   until:
-    - __ec2_security_group_create_status.finished
+    - __ec2_security_group_create_status.finished | bool
   retries: "{{ ec2_security_group_retries }}"
   delay: "{{ ec2_security_group_delay }}"
 
@@ -91,7 +91,7 @@
   when:
     - _jid.ansible_job_id is defined
   until:
-    - __ec2_security_group_rule_status.finished
+    - __ec2_security_group_rule_status.finished | bool
   retries: "{{ ec2_security_group_retries }}"
   delay: "{{ ec2_security_group_delay }}"
 ...

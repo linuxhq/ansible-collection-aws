@@ -52,6 +52,22 @@ provisioner:
           - name: linuxhq-cgw-14
             ip_address: 52.93.22.62
 
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
 verifier:
   name: ansible
   options:

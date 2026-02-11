@@ -44,7 +44,7 @@
   when:
     - _jid.ansible_job_id is defined
   until:
-    - __ec2_vpc_route_table_status.finished
+    - __ec2_vpc_route_table_status.finished | bool
   retries: "{{ ec2_vpc_route_table_retries }}"
   delay: "{{ ec2_vpc_route_table_delay }}"
 ...
