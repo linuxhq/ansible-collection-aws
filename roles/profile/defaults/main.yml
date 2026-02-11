@@ -1,4 +1,5 @@
 ---
 profile_dir: '~/.aws'
+profile_no_log: false
 profile_list: []
 ...

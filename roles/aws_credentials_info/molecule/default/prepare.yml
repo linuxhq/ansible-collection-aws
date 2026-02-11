@@ -1,13 +1,11 @@
 ---
-- name: Converge
+- name: Prepare
   hosts: all
-  environment:
-    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
 
   roles:
-    - role: profile
-      tags:
-        - molecule-idempotence-notest
+    - awscli
 
     - role: profile
       profile_list:
@@ -20,18 +18,10 @@
               "{{ lookup('ansible.builtin.ini',
                          'aws_access_key_id',
                          file='~/.aws/credentials',
-                         section='default') }}"
+                         section='molecule') }}"
             aws_secret_access_key:
               "{{ lookup('ansible.builtin.ini',
                          'aws_secret_access_key',
                          file='~/.aws/credentials',
-                         section='default') }}"
-
-        - name: dummy
-          config:
-            output: yaml
-            region: us-west-1
-          credentials:
-            aws_access_key_id: DUMMY012345678901234
-            aws_secret_access_key: DuMmYDuMmYDuMmYDuMmYDuMmYDuMmYDuMmYDuMmY
+                         section='molecule') }}"
 ...

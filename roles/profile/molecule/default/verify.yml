@@ -1,16 +1,11 @@
 ---
 - name: Verify
   hosts: all
-  tasks:
-    - name: Ensure profile awscli2 package is present
-      tags:
-        - profile
-      become: true
-      ansible.builtin.dnf:
-        name: awscli2
-        state: present
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
 
-    - name: Ensure profile awscli2 command is executed
+  tasks:
+    - name: Ensure profile awscli command is executed
       tags:
         - profile
       ansible.builtin.command:

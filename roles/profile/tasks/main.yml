@@ -18,6 +18,7 @@
 - name: Ensure aws profile credentials is managed
   tags:
     - profile
+  no_log: "{{ profile_no_log }}"
   ansible.builtin.template:
     dest: "{{ profile_dir }}/credentials"
     mode: '0600'

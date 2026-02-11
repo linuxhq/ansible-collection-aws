@@ -1,0 +1,24 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - aws_credentials_info
+
+  post_tasks:
+    - name: Ensure aws credentials info is verified
+      tags:
+        - aws_credentials_info
+      ansible.builtin.assert:
+        that:
+          - _aws_credentials_info_aws_access_key_id is defined
+          - _aws_credentials_info_aws_access_key_id | length > 0
+          - _aws_credentials_info_aws_secret_access_key is defined
+          - _aws_credentials_info_aws_secret_access_key | length > 0
+          - _aws_credentials_info_aws_security_token is defined
+          - _aws_credentials_info_aws_security_token == ''
+          - _aws_credentials_info_aws_session_token is defined
+          - _aws_credentials_info_aws_session_token == ''
+...
