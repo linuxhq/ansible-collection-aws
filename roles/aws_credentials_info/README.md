@@ -1,8 +1,8 @@
-# profile
+# aws\_credentials\_info
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Manage aws profile config and credentials
+Gather information about aws credentials
 
 ## Requirements
 
@@ -10,13 +10,22 @@ None
 
 ## Role Variables
 
-    profile_dir: '~/.aws'
-    profile_no_log: false
-    profile_list: []
+    aws_credentials_info_file: ~/.aws/credentials
+    aws_credentials_info_keys:
+      - aws_access_key_id
+      - aws_secret_access_key
+      - aws_security_token
+      - aws_session_token
+    aws_credentials_info_profile: default
 
 ## Return Values
 
-None
+    _aws_credentials_info_aws_access_key_id
+    _aws_credentials_info_aws_secret_access_key
+    _aws_credentials_info_aws_security_token
+    _aws_credentials_info_aws_session_token
+    _aws_credentials_info_{{ key }}
+
 
 ## Dependencies
 
@@ -25,24 +34,9 @@ None
 ## Example Playbook
 
     - hosts: aws
+      connection: local
       roles:
-        - role: linuxhq.aws.profile
-          profile_list:
-            - name: linuxhq
-              config:
-                output: json
-                region: us-east-1
-              credentials:
-                aws_access_key_id:
-                  "{{ lookup('ansible.builtin.ini',
-                             'aws_access_key_id',
-                             file='~/.aws/credentials',
-                             section='linuxhq') }}"
-                aws_secret_access_key:
-                  "{{ lookup('ansible.builtin.ini',
-                             'aws_secret_access_key',
-                             file='~/.aws/credentials',
-                             section='linuxhq') }}"
+        - linuxhq.aws.aws_credentials_info
 
 ## License
 

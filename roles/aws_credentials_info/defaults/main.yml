@@ -1,0 +1,9 @@
+---
+aws_credentials_info_file: ~/.aws/credentials
+aws_credentials_info_keys:
+  - aws_access_key_id
+  - aws_secret_access_key
+  - aws_security_token
+  - aws_session_token
+aws_credentials_info_profile: default
+...
