@@ -8,7 +8,7 @@
     - aws_az_info
 
   post_tasks:
-    - name: Ensure aws az info is verified
+    - name: Ensure info is verified
       tags:
         - aws_az_info
       ansible.builtin.assert:

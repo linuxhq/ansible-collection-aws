@@ -8,7 +8,7 @@
     - ec2_transit_gateway_info
 
   post_tasks:
-    - name: Ensure ec2 transit gateway info is verified
+    - name: Ensure info is verified
       tags:
         - ec2_transit_gateway_info
       ansible.builtin.assert:

@@ -8,7 +8,7 @@
     - ec2_ami_info
 
   post_tasks:
-    - name: Ensure ec2 ami info is verified
+    - name: Ensure info is verified
       tags:
         - ec2_ami_info
       ansible.builtin.assert:

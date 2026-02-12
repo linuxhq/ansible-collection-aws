@@ -8,7 +8,7 @@
     - aws_credentials_info
 
   post_tasks:
-    - name: Ensure aws credentials info is verified
+    - name: Ensure info is verified
       tags:
         - aws_credentials_info
       ansible.builtin.assert:

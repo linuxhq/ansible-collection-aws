@@ -8,7 +8,7 @@
     - cloudwatchlogs_log_group_info
 
   post_tasks:
-    - name: Ensure cloudwatchlogs log group info is verified
+    - name: Ensure info is verified
       tags:
         - cloudwatchlogs_log_group_info
       ansible.builtin.assert:

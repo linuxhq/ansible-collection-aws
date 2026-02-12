@@ -11,7 +11,7 @@
     - ec2_vpc_subnet_info
 
   post_tasks:
-    - name: Ensure ec2 instance info is verified
+    - name: Ensure info is verified
       tags:
         - ec2_instance_info
       ansible.builtin.assert:

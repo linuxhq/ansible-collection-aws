@@ -8,7 +8,7 @@
     - ec2_vpc_prefix_list_info
 
   post_tasks:
-    - name: Ensure ec2 vpc prefix list info is verified
+    - name: Ensure info is verified
       tags:
         - ec2_vpc_prefix_list_info
       ansible.builtin.assert:

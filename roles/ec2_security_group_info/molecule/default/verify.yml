@@ -9,7 +9,7 @@
     - ec2_vpc_net_info
 
   post_tasks:
-    - name: Ensure ec2 security group info is verified
+    - name: Ensure info is verified
       tags:
         - ec2_security_group_info
       ansible.builtin.assert:
