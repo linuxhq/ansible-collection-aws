@@ -1,8 +1,0 @@
----
-ec2_eni_list: []
-ec2_eni_async: 300
-ec2_eni_batch: 10
-ec2_eni_delay: 3
-ec2_eni_poll: 0
-ec2_eni_retries: 100
-...

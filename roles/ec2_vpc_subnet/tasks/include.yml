@@ -26,7 +26,7 @@
     label: "{{ _subnet.1.name | d(none) }}"
     loop_var: _subnet
   when:
-    - _subnet.0.vpc_id
+    - _subnet.0.vpc_id is defined
     - _subnet.1.cidr is defined
     - _subnet.1.name is defined
   changed_when: false

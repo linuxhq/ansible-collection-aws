@@ -1,31 +1,69 @@
 ---
-- name: Ensure ec2 elastic ip information is gathered
-  tags:
-    - ec2_eip
-  amazon.aws.ec2_eip_info:
-    validate_certs: true
-  register: __ec2_eip_query
-
-- name: Ensure list of elastic ip information is generated
-  tags:
-    - ec2_eip
-  ansible.builtin.set_fact:
-    __ec2_eip_dict:
-      "{{ __ec2_eip_query.addresses |
-          json_query('[].{
-            key: tags.Name,
-            value: public_ip
-          }') |
-          items2dict }}"
-
-- name: Ensure ec2 elastic ip addresses are managed
+- name: Ensure ec2 elastic ip info tasks are executed
   tags:
     - ec2_eip
   ansible.builtin.include_tasks:
     apply:
       tags:
         - ec2_eip
-    file: include.yml
+    file: info.yml
+
+- name: Ensure ec2 elastic ip present tasks are executed
+  tags:
+    - ec2_eip
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_eip
+    file: present.yml
+  loop:
+    "{{ ec2_eip_list |
+        batch(ec2_eip_batch) }}"
+  loop_control:
+    label: "{{ __ec2_eip_list | length }}"
+    loop_var: __ec2_eip_list
+
+- name: Ensure ec2 elastic ip info tasks are executed
+  tags:
+    - ec2_eip
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_eip
+    file: info.yml
+
+- name: Ensure ec2 elastic ip associate tasks are executed
+  tags:
+    - ec2_eip
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_eip
+    file: associate.yml
+  loop:
+    "{{ ec2_eip_list |
+        batch(ec2_eip_batch) }}"
+  loop_control:
+    label: "{{ __ec2_eip_list | length }}"
+    loop_var: __ec2_eip_list
+
+- name: Ensure ec2 elastic ip info tasks are executed
+  tags:
+    - ec2_eip
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_eip
+    file: info.yml
+
+- name: Ensure ec2 elastic ip absent tasks are executed
+  tags:
+    - ec2_eip
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_eip
+    file: absent.yml
   loop:
     "{{ ec2_eip_list |
         batch(ec2_eip_batch) }}"
