@@ -8,6 +8,7 @@
     - role: ec2_vpc_net
       tags:
         - molecule-idempotence-notest
+      check_mode: false
 
     - role: ec2_vpc_subnet
       ec2_vpc_subnet_list: []

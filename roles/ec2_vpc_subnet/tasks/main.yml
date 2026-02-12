@@ -16,5 +16,4 @@
   loop_control:
     label: "{{ __ec2_vpc_subnet_list | length }}"
     loop_var: __ec2_vpc_subnet_list
-  ignore_errors: "{{ ansible_check_mode }}"
 ...
