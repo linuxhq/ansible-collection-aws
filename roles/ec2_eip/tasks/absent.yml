@@ -1,0 +1,41 @@
+---
+- name: Ensure ec2 elastic ip addresses are absent
+  tags:
+    - ec2_eip
+  amazon.aws.ec2_eip:
+    device_id: "{{ _eip.device_id | d(omit) }}"
+    ip: "{{ __ec2_eip_dict[_eip.name] }}"
+    state: absent
+    validate_certs: true
+  register: __ec2_eip_result_absent
+  loop: "{{ __ec2_eip_list }}"
+  loop_control:
+    label: "{{ _eip.name | d(none) }}"
+    loop_var: _eip
+  when:
+    - _eip.name is defined
+    - _eip.name in __ec2_eip_dict.keys()
+    - _eip.state is defined
+    - _eip.state == 'absent'
+    - __ec2_eip_dict[_eip.name] is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_eip_async) }}"
+  poll: "{{ ec2_eip_poll }}"
+
+- name: Ensure absent ec2 elastic ip address jobs are complete
+  tags:
+    - ec2_eip
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_eip_status_absent
+  loop: "{{ __ec2_eip_result_absent.results }}"
+  loop_control:
+    label: "{{ _jid._eip.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_eip_status_absent.finished | bool
+  retries: "{{ ec2_eip_retries }}"
+  delay: "{{ ec2_eip_delay }}"
+...

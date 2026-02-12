@@ -1,0 +1,43 @@
+---
+- name: Ensure ec2 elastic ip addresses are present
+  tags:
+    - ec2_eip
+  amazon.aws.ec2_eip:
+    purge_tags: "{{ _eip.purge_tags | d(true) }}"
+    state: present
+    tags:
+      "{{ _eip.tags |
+          d({}) |
+          combine({'Name': _eip.name}) }}"
+    validate_certs: true
+  register: __ec2_eip_result_present
+  loop: "{{ __ec2_eip_list }}"
+  loop_control:
+    label: "{{ _eip.name | d(none) }}"
+    loop_var: _eip
+  when:
+    - _eip.name is defined
+    - _eip.name not in __ec2_eip_dict.keys()
+    - _eip.state is not defined or
+      _eip.state == 'present'
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_eip_async) }}"
+  poll: "{{ ec2_eip_poll }}"
+
+- name: Ensure present ec2 elastic ip address jobs are complete
+  tags:
+    - ec2_eip
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_eip_status_present
+  loop: "{{ __ec2_eip_result_present.results }}"
+  loop_control:
+    label: "{{ _jid._eip.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_eip_status_present.finished | bool
+  retries: "{{ ec2_eip_retries }}"
+  delay: "{{ ec2_eip_delay }}"
+...

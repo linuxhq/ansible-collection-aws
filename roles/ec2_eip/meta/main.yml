@@ -1,7 +1,5 @@
 ---
 dependencies:
-  - role: ec2_eni_info
-    tags: ec2_eip
   - role: ec2_instance_info
     tags: ec2_eip
 galaxy_info:

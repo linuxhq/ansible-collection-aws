@@ -23,7 +23,6 @@ None
 
 ## Dependencies
 
-* [linuxhq.aws.ec2\_eni\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_eni_info)
 * [linuxhq.aws.ec2\_instance\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_instance_info)
 
 ## Example Playbook
