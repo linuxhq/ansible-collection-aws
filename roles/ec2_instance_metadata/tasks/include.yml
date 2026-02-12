@@ -1,0 +1,39 @@
+---
+- name: Ensure ec2 instance metadata region defaults are managed
+  tags:
+    - ec2_instance_metadata
+  ansible.builtin.command:
+    cmd: >
+      aws ec2 modify-instance-metadata-defaults
+        --http-endpoint "{{ ec2_instance_metadata_http_endpoint }}"
+        --http-put-response-hop-limit "{{ ec2_instance_metadata_http_put_response_hop_limit }}"
+        --http-tokens "{{ ec2_instance_metadata_http_tokens }}"
+        --instance-metadata-tags "{{ ec2_instance_metadata_instance_metadata_tags }}"
+        --region "{{ _region }}"
+  register: __ec2_instance_metadata_result
+  loop: "{{ __ec2_instance_metadata_regions }}"
+  loop_control:
+    label: "{{ _region | d(none) }}"
+    loop_var: _region
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_instance_metadata_async) }}"
+  poll: "{{ ec2_instance_metadata_poll }}"
+
+- name: Ensure managed ec2 instance metadata region jobs are complete
+  tags:
+    - ec2_instance_metadata
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_instance_metadata_status
+  loop: "{{ __ec2_instance_metadata_result.results }}"
+  loop_control:
+    label: "{{ _jid._region | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  changed_when: false
+  until:
+    - __ec2_instance_metadata_status.finished | bool
+  retries: "{{ ec2_instance_metadata_retries }}"
+  delay: "{{ ec2_instance_metadata_delay }}"
+...

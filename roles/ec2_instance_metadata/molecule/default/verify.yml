@@ -1,0 +1,45 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - aws_region_info
+
+  tasks:
+    - name: Ensure ec2 instance metadata region defaults are gathered
+      tags:
+        - ec2_instance_metadata
+      ansible.builtin.command:
+        cmd: >
+          aws ec2 get-instance-metadata-defaults
+            --region "{{ _region }}"
+      register: __ec2_instance_metadata_result
+      loop:
+        "{{ _aws_region_info_dict.keys() |
+            d([]) }}"
+      loop_control:
+        label: "{{ _region | d(none) }}"
+        loop_var: _region
+      changed_when: false
+
+    - name: Ensure ec2 instance metadata region defaults is verified
+      tags:
+        - ec2_instance_metadata
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - (_region.stdout | from_json).AccountLevel.HttpTokens ==
+              ec2_instance_metadata_http_tokens
+          - (_region.stdout | from_json).AccountLevel.HttpPutResponseHopLimit ==
+              ec2_instance_metadata_http_put_response_hop_limit
+          - (_region.stdout | from_json).AccountLevel.HttpEndpoint ==
+              ec2_instance_metadata_http_endpoint
+          - (_region.stdout | from_json).AccountLevel.InstanceMetadataTags ==
+              ec2_instance_metadata_instance_metadata_tags
+      loop: "{{ __ec2_instance_metadata_result.results }}"
+      loop_control:
+        label: "{{ _region._region | d(none) }}"
+        loop_var: _region
+...
