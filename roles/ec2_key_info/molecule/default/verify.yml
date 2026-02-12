@@ -1,0 +1,61 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - ec2_key_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      tags:
+        - ec2_key_info
+      ansible.builtin.assert:
+        that:
+          - _ec2_key_info_dict['linuxhq-key-00'].key_pair_id is defined
+          - _ec2_key_info_dict['linuxhq-key-00'].key_type == 'ed25519'
+          - _ec2_key_info_dict['linuxhq-key-01'].key_pair_id is defined
+          - _ec2_key_info_dict['linuxhq-key-01'].key_type == 'ed25519'
+          - _ec2_key_info_dict['linuxhq-key-02'].key_pair_id is defined
+          - _ec2_key_info_dict['linuxhq-key-02'].key_type == 'ed25519'
+          - _ec2_key_info_dict['linuxhq-key-03'].key_pair_id is defined
+          - _ec2_key_info_dict['linuxhq-key-03'].key_type == 'ed25519'
+          - _ec2_key_info_dict['linuxhq-key-04'].key_pair_id is defined
+          - _ec2_key_info_dict['linuxhq-key-04'].key_type == 'ed25519'
+          - _ec2_key_info_dict['linuxhq-key-05'].key_pair_id is defined
+          - _ec2_key_info_dict['linuxhq-key-05'].key_type == 'ed25519'
+          - _ec2_key_info_dict['linuxhq-key-06'].key_pair_id is defined
+          - _ec2_key_info_dict['linuxhq-key-06'].key_type == 'ed25519'
+          - _ec2_key_info_dict['linuxhq-key-07'].key_pair_id is defined
+          - _ec2_key_info_dict['linuxhq-key-07'].key_type == 'ed25519'
+          - _ec2_key_info_dict['linuxhq-key-08'].key_pair_id is defined
+          - _ec2_key_info_dict['linuxhq-key-08'].key_type == 'ed25519'
+          - _ec2_key_info_dict['linuxhq-key-09'].key_pair_id is defined
+          - _ec2_key_info_dict['linuxhq-key-09'].key_type == 'ed25519'
+          - _ec2_key_info_dict['linuxhq-key-10'].key_pair_id is defined
+          - _ec2_key_info_dict['linuxhq-key-10'].key_type == 'ed25519'
+          - _ec2_key_info_dict['linuxhq-key-11'].key_pair_id is defined
+          - _ec2_key_info_dict['linuxhq-key-11'].key_type == 'ed25519'
+          - _ec2_key_info_dict['linuxhq-key-12'].key_pair_id is defined
+          - _ec2_key_info_dict['linuxhq-key-12'].key_type == 'ed25519'
+
+    - name: Ensure inventory lists are formatted
+      tags:
+        - ec2_key_info
+      ansible.builtin.set_fact:
+        ec2_key_list:
+          "{{ ec2_key_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      tags:
+        - ec2_key_info
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - ec2_key
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
+...
