@@ -10,10 +10,10 @@ None
 
 ## Role Variables
 
-    ec2_instance_list: []
     ec2_instance_async: 600
     ec2_instance_batch: 10
     ec2_instance_delay: 3
+    ec2_instance_list: []
     ec2_instance_poll: 0
     ec2_instance_retries: 300
 
