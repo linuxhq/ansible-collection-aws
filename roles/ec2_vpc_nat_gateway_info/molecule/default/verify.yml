@@ -9,7 +9,7 @@
     - ec2_vpc_net_info
 
   post_tasks:
-    - name: Ensure ec2 vpc nat gateway info is verified
+    - name: Ensure info is verified
       tags:
         - ec2_vpc_nat_gateway_info
       ansible.builtin.assert:

@@ -8,7 +8,7 @@
     - iam_user_info
 
   post_tasks:
-    - name: Ensure ec2 vpc net info is verified
+    - name: Ensure info is verified
       tags:
         - iam_user_info
       ansible.builtin.assert:

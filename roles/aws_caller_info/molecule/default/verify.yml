@@ -8,7 +8,7 @@
     - aws_caller_info
 
   post_tasks:
-    - name: Ensure aws caller info is verified
+    - name: Ensure info is verified
       tags:
         - aws_caller_info
       ansible.builtin.assert:

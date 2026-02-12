@@ -8,7 +8,7 @@
     - aws_region_info
 
   post_tasks:
-    - name: Ensure aws region info is verified
+    - name: Ensure info is verified
       tags:
         - aws_region_info
       ansible.builtin.assert:
