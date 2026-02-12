@@ -10,10 +10,17 @@ Manage aws ec2 instance metadata defaults
 
 ## Role Variables
 
+    ec2_instance_metadata_async: 300
+    ec2_instance_metadata_batch: 10
+    ec2_instance_metadata_delay: 3
     ec2_instance_metadata_http_endpoint: enabled
     ec2_instance_metadata_http_tokens: required
     ec2_instance_metadata_http_put_response_hop_limit: 2
     ec2_instance_metadata_instance_metadata_tags: disabled
+    ec2_instance_metadata_poll: 0
+    ec2_instance_metadata_regions:
+      - us-east-1
+    ec2_instance_metadata_retries: 100
 
 ## Return Values
 
@@ -21,14 +28,18 @@ None
 
 ## Dependencies
 
-None
+* [linuxhq.aws.aws\_region\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/aws_region_info)
 
 ## Example Playbook
 
     - hosts: aws
       connection: local
       roles:
-        - linuxhq.aws.ec2_instance_metadata
+        - role: linuxhq.aws.ec2_instance_metadata
+          ec2_instance_metadata_regions:
+            "{{ (_aws_region_info_list |
+                map(attribute='region_name')) |
+                d(['us-east-1']) }}"
 
 ## License
 
