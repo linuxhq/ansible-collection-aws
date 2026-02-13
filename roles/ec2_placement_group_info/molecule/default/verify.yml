@@ -1,0 +1,125 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - ec2_placement_group_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      tags:
+        - ec2_placement_group_info
+      ansible.builtin.assert:
+        that:
+          - _ec2_placement_group_info_dict['linuxhq-cluster-1'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-cluster-1'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-cluster-1'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-cluster-1'].Strategy == 'cluster'
+          - _ec2_placement_group_info_dict['linuxhq-cluster-2'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-cluster-2'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-cluster-2'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-cluster-2'].Strategy == 'cluster'
+          - _ec2_placement_group_info_dict['linuxhq-cluster-3'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-cluster-3'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-cluster-3'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-cluster-3'].Strategy == 'cluster'
+          - _ec2_placement_group_info_dict['linuxhq-cluster-4'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-cluster-4'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-cluster-4'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-cluster-4'].Strategy == 'cluster'
+          - _ec2_placement_group_info_dict['linuxhq-cluster-5'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-cluster-5'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-cluster-5'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-cluster-5'].Strategy == 'cluster'
+          - _ec2_placement_group_info_dict['linuxhq-cluster-6'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-cluster-6'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-cluster-6'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-cluster-6'].Strategy == 'cluster'
+          - _ec2_placement_group_info_dict['linuxhq-partition-1'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-1'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-1'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-partition-1'].Strategy == 'partition'
+          - _ec2_placement_group_info_dict['linuxhq-partition-2'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-2'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-2'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-partition-2'].Strategy == 'partition'
+          - _ec2_placement_group_info_dict['linuxhq-partition-3'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-3'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-3'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-partition-3'].Strategy == 'partition'
+          - _ec2_placement_group_info_dict['linuxhq-partition-4'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-4'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-4'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-partition-4'].Strategy == 'partition'
+          - _ec2_placement_group_info_dict['linuxhq-partition-5'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-5'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-5'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-partition-5'].Strategy == 'partition'
+          - _ec2_placement_group_info_dict['linuxhq-partition-6'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-6'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-6'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-partition-6'].Strategy == 'partition'
+          - _ec2_placement_group_info_dict['linuxhq-partition-7'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-7'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-7'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-partition-7'].Strategy == 'partition'
+          - _ec2_placement_group_info_dict['linuxhq-partition-8'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-8'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-8'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-partition-8'].Strategy == 'partition'
+          - _ec2_placement_group_info_dict['linuxhq-partition-9'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-9'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-partition-9'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-partition-9'].Strategy == 'partition'
+          - _ec2_placement_group_info_dict['linuxhq-spread-1'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-spread-1'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-spread-1'].SpreadLevel == 'rack'
+          - _ec2_placement_group_info_dict['linuxhq-spread-1'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-spread-1'].Strategy == 'spread'
+          - _ec2_placement_group_info_dict['linuxhq-spread-2'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-spread-2'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-spread-2'].SpreadLevel == 'rack'
+          - _ec2_placement_group_info_dict['linuxhq-spread-2'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-spread-2'].Strategy == 'spread'
+          - _ec2_placement_group_info_dict['linuxhq-spread-3'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-spread-3'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-spread-3'].SpreadLevel == 'rack'
+          - _ec2_placement_group_info_dict['linuxhq-spread-3'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-spread-3'].Strategy == 'spread'
+          - _ec2_placement_group_info_dict['linuxhq-spread-4'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-spread-4'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-spread-4'].SpreadLevel == 'rack'
+          - _ec2_placement_group_info_dict['linuxhq-spread-4'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-spread-4'].Strategy == 'spread'
+          - _ec2_placement_group_info_dict['linuxhq-spread-5'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-spread-5'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-spread-5'].SpreadLevel == 'rack'
+          - _ec2_placement_group_info_dict['linuxhq-spread-5'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-spread-5'].Strategy == 'spread'
+          - _ec2_placement_group_info_dict['linuxhq-spread-6'].GroupArn is defined
+          - _ec2_placement_group_info_dict['linuxhq-spread-6'].GroupId is defined
+          - _ec2_placement_group_info_dict['linuxhq-spread-6'].SpreadLevel == 'rack'
+          - _ec2_placement_group_info_dict['linuxhq-spread-6'].State == 'available'
+          - _ec2_placement_group_info_dict['linuxhq-spread-6'].Strategy == 'spread'
+
+    - name: Ensure inventory lists are formatted
+      tags:
+        - ec2_placement_group_info
+      ansible.builtin.set_fact:
+        ec2_placement_group_list:
+          "{{ ec2_placement_group_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      tags:
+        - ec2_placement_group_info
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - ec2_placement_group
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
+...
