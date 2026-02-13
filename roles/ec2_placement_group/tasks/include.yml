@@ -1,5 +1,5 @@
 ---
-- name: Ensure ec2 placement groups are present
+- name: Ensure ec2 placement groups are managed
   tags:
     - ec2_placement_group
   amazon.aws.ec2_placement_group:
