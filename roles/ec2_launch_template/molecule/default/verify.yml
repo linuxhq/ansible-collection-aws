@@ -1,0 +1,41 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - ec2_ami_info
+    - ec2_security_group_info
+    - ec2_vpc_net_info
+
+  post_tasks:
+    - name: Ensure inventory lists are formatted
+      tags:
+        - ec2_launch_template
+      ansible.builtin.set_fact:
+        ec2_launch_template_list:
+          "{{ ec2_launch_template_list |
+              map('combine', {'state': 'absent'}) }}"
+        ec2_security_group_list:
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
+            security_groups:
+              "{{ ec2_security_group_list.0.security_groups |
+                  map('combine', {'state': 'absent'}) }}"
+        ec2_vpc_net_list:
+          "{{ ec2_vpc_net_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      tags:
+        - ec2_launch_template_info
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - ec2_launch_template
+        - ec2_security_group
+        - ec2_vpc_net
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
+...
