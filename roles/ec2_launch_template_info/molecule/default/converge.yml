@@ -1,0 +1,24 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - role: ec2_vpc_net
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_security_group
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_launch_template
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - ec2_launch_template_info
+...
