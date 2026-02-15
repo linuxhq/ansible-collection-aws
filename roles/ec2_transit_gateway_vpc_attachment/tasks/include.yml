@@ -1,0 +1,52 @@
+---
+- name: Ensure ec2 transit gateway vpc attachments are managed
+  tags:
+    - ec2_transit_gateway_vpc_attachment
+  amazon.aws.ec2_transit_gateway_vpc_attachment:
+    appliance_mode_support: "{{ _tgw_attach.appliance_mode_support | d(omit) }}"
+    dns_support: "{{ _tgw_attach.dns_support | d(omit) }}"
+    ipv6_support: "{{ _tgw_attach.ipv6_support | d(omit) }}"
+    name: "{{ _tgw_attach.name }}"
+    purge_subnets: "{{ _tgw_attach.purge_subnets | d(true) }}"
+    purge_tags: "{{ _tgw_attach.purge_tags | d(true) }}"
+    state: "{{ _tgw_attach.state | d('present') }}"
+    subnets: "{{ _tgw_attach.subnets }}"
+    tags:
+      "{{ _tgw_attach.tags |
+          d({}) |
+          combine({'Name': _tgw_attach.name}) }}"
+    transit_gateway: "{{ _tgw_attach.transit_gateway }}"
+    validate_certs: true
+    wait: "{{ _tgw_attach.wait | d(true) }}"
+    wait_timeout: "{{ _tgw_attach.wait_timeout | d(600) }}"
+  register: __ec2_transit_gateway_vpc_attachment_result
+  loop: "{{ __ec2_transit_gateway_vpc_attachment_list }}"
+  loop_control:
+    label: "{{ _tgw_attach.name | d(none) }}"
+    loop_var: _tgw_attach
+  when:
+    - _tgw_attach.name is defined
+    - _tgw_attach.subnets is defined
+    - _tgw_attach.subnets | length > 0
+    - _tgw_attach.transit_gateway is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, ec2_transit_gateway_vpc_attachment_async) }}"
+  poll: "{{ ec2_transit_gateway_vpc_attachment_poll }}"
+
+- name: Ensure managed ec2 transit gateway vpc attachment jobs are complete
+  tags:
+    - ec2_transit_gateway_vpc_attachment
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_transit_gateway_vpc_attachment_status
+  loop: "{{ __ec2_transit_gateway_vpc_attachment_result.results }}"
+  loop_control:
+    label: "{{ _jid._tgw_attach.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_transit_gateway_vpc_attachment_status.finished | bool
+  retries: "{{ ec2_transit_gateway_vpc_attachment_retries }}"
+  delay: "{{ ec2_transit_gateway_vpc_attachment_delay }}"
+...

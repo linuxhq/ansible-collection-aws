@@ -10,11 +10,16 @@ None
 
 ## Role Variables
 
+    ec2_transit_gateway_vpc_attachment_async: 300
+    ec2_transit_gateway_vpc_attachment_batch: 10
+    ec2_transit_gateway_vpc_attachment_delay: 3
     ec2_transit_gateway_vpc_attachment_list: []
+    ec2_transit_gateway_vpc_attachment_poll: 0
+    ec2_transit_gateway_vpc_attachment_retries: 100
 
 ## Return Values
 
-    _ec2_transit_gateway_vpc_attachment_list
+None
 
 ## Dependencies
 
@@ -28,12 +33,10 @@ None
       roles:
         - role: linuxhq.aws.ec2_transit_gateway_vpc_attachment
           ec2_transit_gateway_vpc_attachment_list:
-            - name: "{{ aws_vpc }}"
+            - name: linuxhq
               subnets:
-                - "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2].id }}"
-              transit_gateway: "{{ _ec2_transit_gateway_info_dict[aws_vpc].transit_gateway_id }}"
+                - "{{ _ec2_vpc_subnet_info_dict['linuxhq'].id }}"
+              transit_gateway: "{{ _ec2_transit_gateway_info_dict['linuxhq'].transit_gateway_id }}"
 
 ## License
 

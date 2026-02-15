@@ -6,8 +6,6 @@
 
   tasks:
     - name: Ensure profile awscli command is executed
-      tags:
-        - profile
       ansible.builtin.command:
         cmd:
           aws sts get-caller-identity
@@ -17,8 +15,6 @@
       changed_when: false
 
     - name: Ensure profile account is displayed
-      tags:
-        - profile
       ansible.builtin.debug:
         msg: "{{ __profile_account.stdout }}"
 ...

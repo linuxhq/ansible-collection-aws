@@ -6,8 +6,6 @@
 
   pre_tasks:
     - name: Ensure inventory lists are formatted
-      tags:
-        - ec2_vpc_dhcp_option
       ansible.builtin.set_fact:
         ec2_vpc_dhcp_option_list:
           "{{ ec2_vpc_dhcp_option_list |

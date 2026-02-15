@@ -6,8 +6,6 @@
 
   pre_tasks:
     - name: Ensure inventory lists are formatted
-      tags:
-        - iam_group
       ansible.builtin.set_fact:
         iam_group_list:
           "{{ iam_group_list |

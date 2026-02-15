@@ -6,8 +6,6 @@
 
   tasks:
     - name: Ensure awscli version is gathered
-      tags:
-        - awscli
       ansible.builtin.command:
         cmd: >
           aws --version
@@ -15,8 +13,6 @@
       changed_when: false
 
     - name: Ensure awscli version is displayed
-      tags:
-        - awscli
       ansible.builtin.debug:
         msg: "{{ __awscli_version.stdout }}"
 ...

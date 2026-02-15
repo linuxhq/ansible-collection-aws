@@ -1,43 +1,16 @@
 ---
-- name: Ensure ec2 transit gateway vpc attachments are present
+- name: Ensure ec2 transit gateway vpc attachments are batched
   tags:
     - ec2_transit_gateway_vpc_attachment
-  amazon.aws.ec2_transit_gateway_vpc_attachment:
-    appliance_mode_support: "{{ _tgw_attach.appliance_mode_support | d(omit) }}"
-    dns_support: "{{ _tgw_attach.dns_support | d(omit) }}"
-    ipv6_support: "{{ _tgw_attach.ipv6_support | d(omit) }}"
-    name: "{{ _tgw_attach.name }}"
-    purge_subnets: "{{ _tgw_attach.purge_subnets | d(true) }}"
-    purge_tags: "{{ _tgw_attach.purge_tags | d(true) }}"
-    state: present
-    subnets: "{{ _tgw_attach.subnets }}"
-    tags:
-      "{{ _tgw_attach.tags |
-          d({}) |
-          combine({'Name': _tgw_attach.name}) }}"
-    transit_gateway: "{{ _tgw_attach.transit_gateway }}"
-    validate_certs: true
-    wait: "{{ _tgw_attach.wait | d(true) }}"
-    wait_timeout: "{{ _tgw_attach.wait_timeout | d(600) }}"
-  register: __ec2_transit_gateway_vpc_attachment_results
-  loop: "{{ ec2_transit_gateway_vpc_attachment_list }}"
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_transit_gateway_vpc_attachment
+    file: include.yml
+  loop:
+    "{{ ec2_transit_gateway_vpc_attachment_list |
+        batch(ec2_transit_gateway_vpc_attachment_batch) }}"
   loop_control:
-    label: "{{ _tgw_attach.name | d(none) }}"
-    loop_var: _tgw_attach
-  when:
-    - _tgw_attach.name is defined
-    - _tgw_attach.subnets is defined
-    - _tgw_attach.subnets | length > 0
-    - _tgw_attach.transit_gateway is defined
-
-- name: Ensure list of ec2 transit gateway vpc attachment results is generated
-  tags:
-    - ec2_transit_gateway_vpc_attachment
-  ansible.builtin.set_fact:
-    _ec2_transit_gateway_vpc_attachment_list:
-      "{{ __ec2_transit_gateway_vpc_attachment_results.results |
-          map(attribute='attachments', default=[]) |
-          list |
-          flatten |
-          d([]) }}"
+    label: "{{ __ec2_transit_gateway_vpc_attachment_list | length }}"
+    loop_var: __ec2_transit_gateway_vpc_attachment_list
 ...

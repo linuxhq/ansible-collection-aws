@@ -9,8 +9,6 @@
 
   tasks:
     - name: Ensure ec2 instance metadata region defaults are gathered
-      tags:
-        - ec2_instance_metadata
       ansible.builtin.command:
         cmd: >
           aws ec2 get-instance-metadata-defaults
@@ -25,8 +23,6 @@
       changed_when: false
 
     - name: Ensure ec2 instance metadata region defaults is verified
-      tags:
-        - ec2_instance_metadata
       ansible.builtin.assert:
         quiet: true
         that:

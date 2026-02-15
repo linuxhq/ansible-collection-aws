@@ -5,8 +5,6 @@
     PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
   tasks:
     - name: Ensure iam password policy information is gathered
-      tags:
-        - iam_password_policy
       ansible.builtin.command:
         cmd: >
           aws iam get-account-password-policy
@@ -15,8 +13,6 @@
       changed_when: false
 
     - name: Ensure iam password policy information is formatted
-      tags:
-        - iam_password_policy
       ansible.builtin.set_fact:
         __iam_password_policy_dict:
           "{{ __iam_password_policy_query.stdout |
@@ -24,8 +20,6 @@
               d({}) }}"
 
     - name: Ensure iam password policy information is verified
-      tags:
-        - iam_password_policy
       ansible.builtin.assert:
         that:
           - __iam_password_policy_dict.AllowUsersToChangePassword == iam_password_policy_allow_pw_change

@@ -6,8 +6,6 @@
 
   pre_tasks:
     - name: Ensure inventory lists are formatted
-      tags:
-        - ec2_customer_gateway
       ansible.builtin.set_fact:
         ec2_customer_gateway_list:
           "{{ ec2_customer_gateway_list |

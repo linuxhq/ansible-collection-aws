@@ -10,8 +10,6 @@
 
   post_tasks:
     - name: Ensure inventory lists are formatted
-      tags:
-        - ec2_vpc_nat_gateway
       ansible.builtin.set_fact:
         ec2_vpc_net_list:
           "{{ ec2_vpc_net_list |
@@ -35,15 +33,13 @@
                    'wait': true}) }}"
 
     - name: Ensure roles are included
-      tags:
-        - ec2_vpc_nat_gateway
       ansible.builtin.include_role:
         name: "{{ _role }}"
       loop:
-        - linuxhq.aws.ec2_vpc_nat_gateway
-        - linuxhq.aws.ec2_vpc_subnet
-        - linuxhq.aws.ec2_vpc_igw
-        - linuxhq.aws.ec2_vpc_net
+        - ec2_vpc_nat_gateway
+        - ec2_vpc_subnet
+        - ec2_vpc_igw
+        - ec2_vpc_net
       loop_control:
         label: "{{ _role }}"
         loop_var: _role

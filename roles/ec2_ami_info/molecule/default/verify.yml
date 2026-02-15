@@ -9,8 +9,6 @@
 
   post_tasks:
     - name: Ensure info is verified
-      tags:
-        - ec2_ami_info
       ansible.builtin.assert:
         that:
           - _ec2_ami_info_dict | length > 0

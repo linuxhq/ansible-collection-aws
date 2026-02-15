@@ -9,8 +9,6 @@
 
   post_tasks:
     - name: Ensure info is verified
-      tags:
-        - aws_caller_info
       ansible.builtin.assert:
         that:
           - _aws_caller_info_account is defined
