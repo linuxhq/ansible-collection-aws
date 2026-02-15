@@ -6,8 +6,6 @@
 
   pre_tasks:
     - name: Ensure inventory lists are formatted
-      tags:
-        - cloudwatchlogs_log_group
       ansible.builtin.set_fact:
         cloudwatchlogs_log_group_list:
           "{{ cloudwatchlogs_log_group_list |

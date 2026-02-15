@@ -9,8 +9,6 @@
 
   post_tasks:
     - name: Ensure info is verified
-      tags:
-        - aws_region_info
       ansible.builtin.assert:
         that:
           - _aws_region_info_dict['us-east-1'] is defined

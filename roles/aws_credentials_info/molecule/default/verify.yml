@@ -9,8 +9,6 @@
 
   post_tasks:
     - name: Ensure info is verified
-      tags:
-        - aws_credentials_info
       ansible.builtin.assert:
         that:
           - _aws_credentials_info_aws_access_key_id is defined

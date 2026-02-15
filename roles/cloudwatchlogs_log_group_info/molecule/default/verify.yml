@@ -9,8 +9,6 @@
 
   post_tasks:
     - name: Ensure info is verified
-      tags:
-        - cloudwatchlogs_log_group_info
       ansible.builtin.assert:
         that:
           - _cloudwatchlogs_log_group_info_dict['linuxhq-30d'] is defined
@@ -23,16 +21,12 @@
           - _cloudwatchlogs_log_group_info_dict['linuxhq-90d'].retention_in_days == 90
 
     - name: Ensure inventory lists are formatted
-      tags:
-        - cloudwatchlogs_log_group_info
       ansible.builtin.set_fact:
         cloudwatchlogs_log_group_list:
           "{{ cloudwatchlogs_log_group_list |
               map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included
-      tags:
-        - cloudwatchlogs_log_group_info
       ansible.builtin.include_role:
         name: "{{ _role }}"
       loop:

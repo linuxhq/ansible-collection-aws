@@ -6,8 +6,6 @@
 
   pre_tasks:
     - name: Ensure inventory lists are formatted
-      tags:
-        - iam_managed_policy
       ansible.builtin.set_fact:
         iam_managed_policy_list:
           "{{ iam_managed_policy_list |

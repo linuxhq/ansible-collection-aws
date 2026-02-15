@@ -11,8 +11,6 @@
 
   post_tasks:
     - name: Ensure inventory lists are formatted
-      tags:
-        - ec2_instance
       ansible.builtin.set_fact:
         ec2_instance_list:
           "{{ ec2_instance_list |
@@ -25,8 +23,6 @@
               map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included
-      tags:
-        - ec2_instance
       ansible.builtin.include_role:
         name: "{{ _role }}"
       loop:
