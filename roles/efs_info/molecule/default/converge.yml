@@ -10,25 +10,15 @@
         - molecule-idempotence-notest
       check_mode: false
 
-    - role: ec2_vpc_igw
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
     - role: ec2_vpc_subnet
       tags:
         - molecule-idempotence-notest
       check_mode: false
 
-    - role: ec2_vpc_nat_gateway
+    - role: efs
       tags:
         - molecule-idempotence-notest
       check_mode: false
 
-    - role: ec2_vpc_route_table
-      ec2_vpc_route_table_list: []
-      tags:
-        - molecule-idempotence-notest
-
-    - ec2_vpc_route_table
+    - efs_info
 ...

@@ -59,14 +59,17 @@ provisioner:
         ec2_vpc_nat_gateway_list:
           - name: linuxhq-pub-a
             if_exist_do_not_create: true
+            release_eip: true
             subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-a'].id }}"
             wait: true
           - name: linuxhq-pub-b
             if_exist_do_not_create: true
+            release_eip: true
             subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-b'].id }}"
             wait: true
           - name: linuxhq-pub-c
             if_exist_do_not_create: true
+            release_eip: true
             subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-c'].id }}"
             wait: true
 

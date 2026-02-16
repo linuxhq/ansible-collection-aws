@@ -1,0 +1,35 @@
+---
+- name: Ensure elastic filesystem present tasks are included
+  tags:
+    - efs
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - efs
+    file: "{{ _order }}"
+  loop:
+    - security_group.yml
+    - efs.yml
+  loop_control:
+    label: "{{ _order | d(none) }}"
+    loop_var: _order
+  when:
+    - _efs.state == 'present'
+
+- name: Ensure elastic filesystem absent tasks are included
+  tags:
+    - efs
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - efs
+    file: "{{ _order }}"
+  loop:
+    - efs.yml
+    - security_group.yml
+  loop_control:
+    label: "{{ _order | d(none) }}"
+    loop_var: _order
+  when:
+    - _efs.state == 'absent'
+...

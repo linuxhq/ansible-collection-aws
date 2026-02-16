@@ -1,0 +1,34 @@
+---
+- name: Ensure elastic filesystem security groups are managed
+  tags:
+    - efs
+  amazon.aws.ec2_security_group:
+    description: "{{ _efs.description | d(_efs.name) }}"
+    name: "{{ _efs.name }}"
+    purge_rules: true
+    purge_rules_egress: true
+    purge_tags: true
+    rules: "{{ _efs.rules | d(__efs_rules) }}"
+    rules_egress: "{{ _efs.rules_egress | d(__efs_rules_egress) }}"
+    state: "{{ _efs.state | d('present') }}"
+    tags:
+      "{{ _efs.tags |
+          d({}) |
+          combine({'Name': _efs.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _efs.vpc_id }}"
+  register: __efs_security_group_result
+  when:
+    - _efs.name is defined
+    - _efs.vpc_id is defined
+
+- name: Ensure list of efs targets is generated
+  tags:
+    - efs
+  ansible.builtin.set_fact:
+    __efs_targets:
+      "{{ _efs.targets |
+          map('combine',
+              {'security_groups':
+              [__efs_security_group_result.group_id]}) }}"
+...

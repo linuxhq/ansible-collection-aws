@@ -8,22 +8,27 @@
     - role: ec2_vpc_net
       tags:
         - molecule-idempotence-notest
+      check_mode: false
 
     - role: ec2_vpc_igw
       tags:
         - molecule-idempotence-notest
+      check_mode: false
 
     - role: ec2_vpc_subnet
       tags:
         - molecule-idempotence-notest
+      check_mode: false
 
     - role: ec2_vpc_nat_gateway
       tags:
         - molecule-idempotence-notest
+      check_mode: false
 
     - role: ec2_vpc_route_table
       tags:
         - molecule-idempotence-notest
+      check_mode: false
 
     - ec2_vpc_route_table_info
 ...
