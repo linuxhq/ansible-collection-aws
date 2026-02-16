@@ -14,7 +14,7 @@ None
 
 ## Return Values
 
-    _efs_list
+None
 
 ## Dependencies
 
@@ -28,16 +28,31 @@ None
       roles:
         - role: linuxhq.aws.efs
           efs_list:
-            - name: "{{ aws_vpc }}-efs"
+            - name: linuxhq-efs1
               encrypt: true
               targets:
-                - subnet_id:
-                    "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0].id }}"
-                - subnet_id:
-                    "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1].id }}"
-                - subnet_id:
-                    "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2].id }}"
-              vpc_id: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-a'].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-b'].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-c'].id }}"
+              vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
+
+            - name: linuxhq-efs2
+              encrypt: true
+              rules:
+                - cidr_ip: 10.0.0.0/8
+                  ports:
+                    - 2049
+                  proto: tcp
+              rules_egress:
+                - cidr_ip: 10.0.0.0/8
+                  ports:
+                    - 0-65535
+                  proto: tcp
+              targets:
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-a'].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-b'].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-c'].id }}"
+              vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
 
 ## License
 

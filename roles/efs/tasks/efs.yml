@@ -1,0 +1,27 @@
+---
+- name: Ensure elastic filesystems are managed
+  tags:
+    - efs
+  community.aws.efs:
+    encrypt: "{{ _efs.encrypt | d(false) }}"
+    kms_key_id: "{{ _efs.kms_key_id | d(omit) }}"
+    name: "{{ _efs.name }}"
+    performance_mode: "{{ _efs.performance_mode | d('general_purpose') }}"
+    provisioned_throughput_in_mibps: "{{ _efs.provisioned_throughput_in_mibps | d(omit) }}"
+    purge_tags: "{{ _efs.purge_tags | d(true) }}"
+    state: "{{ _efs.state | d('present') }}"
+    tags:
+      "{{ _efs.tags |
+          d({}) |
+          combine({'Name': _efs.name}) }}"
+    targets: "{{ __efs_targets | d([]) }}"
+    throughput_mode: "{{ _efs.throughput_mode | d(omit) }}"
+    transition_to_ia: "{{ _efs.transition_to_ia | d(omit) }}"
+    validate_certs: true
+    wait: "{{ _efs.wait | d(false) }}"
+    wait_timeout: "{{ _efs.wait_timeout | d(0) }}"
+  when:
+    - _efs.name is defined
+    - _efs.targets is defined
+    - _efs.targets | length > 0
+...
