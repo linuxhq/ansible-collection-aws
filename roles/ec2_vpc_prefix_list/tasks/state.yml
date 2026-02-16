@@ -12,6 +12,7 @@
   until:
     - __ec2_vpc_prefix_list_state.stdout == 'create-complete' or
       __ec2_vpc_prefix_list_state.stdout == 'modify-complete'
+  when:
+    - not ansible_check_mode
   changed_when: false
-  check_mode: false
 ...

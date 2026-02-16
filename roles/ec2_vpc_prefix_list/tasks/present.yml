@@ -10,6 +10,7 @@
         --max-entries "{{ _pl.entries | length }}"
         --prefix-list-name "{{ _pl.name }}"
   when:
+    - not ansible_check_mode
     - _pl.name not in __ec2_vpc_prefix_list_dict.keys()
   changed_when: true
 
@@ -36,6 +37,7 @@
       "{{ __ec2_vpc_prefix_list_dict[_pl.name].Entries |
           difference(_pl.entries) }}"
   when:
+    - not ansible_check_mode
     - __ec2_vpc_prefix_list_difference | length > 0
   changed_when: true
 
@@ -63,6 +65,7 @@
         --max-entries "{{ _pl.entries | length }}"
         --prefix-list-id "{{ __ec2_vpc_prefix_list_dict[_pl.name].PrefixListId }}"
   when:
+    - not ansible_check_mode
     - _pl.entries | length != __ec2_vpc_prefix_list_dict[_pl.name].MaxEntries
   changed_when: true
 
@@ -89,6 +92,7 @@
       "{{ _pl.entries |
           difference(__ec2_vpc_prefix_list_dict[_pl.name].Entries) }}"
   when:
+    - not ansible_check_mode
     - __ec2_vpc_prefix_list_difference | length > 0
   changed_when: true
 ...

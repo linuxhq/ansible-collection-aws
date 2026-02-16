@@ -8,6 +8,7 @@
     - role: ec2_vpc_prefix_list
       tags:
         - molecule-idempotence-notest
+      check_mode: false
 
     - ec2_vpc_prefix_list_info
 ...
