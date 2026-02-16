@@ -10,10 +10,10 @@ None
 
 ## Role Variables
 
-    ec2_vol_list: []
     ec2_vol_async: 300
     ec2_vol_batch: 10
     ec2_vol_delay: 3
+    ec2_vol_list: []
     ec2_vol_poll: 0
     ec2_vol_retries: 100
 
