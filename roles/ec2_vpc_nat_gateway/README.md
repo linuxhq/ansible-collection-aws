@@ -10,10 +10,10 @@ None
 
 ## Role Variables
 
-    ec2_vpc_nat_gateway_list: []
     ec2_vpc_nat_gateway_async: 300
     ec2_vpc_nat_gateway_batch: 10
     ec2_vpc_nat_gateway_delay: 3
+    ec2_vpc_nat_gateway_list: []
     ec2_vpc_nat_gateway_poll: 0
     ec2_vpc_nat_gateway_retries: 100
 
@@ -32,19 +32,20 @@ None
       roles:
         - role: linuxhq.aws.ec2_vpc_nat_gateway
           ec2_vpc_nat_gateway_list:
-            - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.0 }}"
+            - name: linuxhq-pub-a
               if_exist_do_not_create: true
-              subnet_id: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0].id }}"
+              release_eip: true
+              subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-a'].id }}"
               wait: true
-
-            - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.1 }}"
+            - name: linuxhq-pub-b
               if_exist_do_not_create: true
-              subnet_id: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1].id }}"
+              release_eip: true
+              subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-b'].id }}"
               wait: true
-
-            - name: "{{ aws_vpc }}-pub-{{ _aws_az_info_list_s.2 }}"
+            - name: linuxhq-pub-c
               if_exist_do_not_create: true
-              subnet_id: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2].id }}"
+              release_eip: true
+              subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-c'].id }}"
               wait: true
 
 ## License

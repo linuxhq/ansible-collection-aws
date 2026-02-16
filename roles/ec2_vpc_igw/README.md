@@ -10,10 +10,10 @@ None
 
 ## Role Variables
 
-    ec2_vpc_igw_list: []
     ec2_vpc_igw_async: 300
     ec2_vpc_igw_batch: 10
     ec2_vpc_igw_delay: 3
+    ec2_vpc_igw_list: []
     ec2_vpc_igw_poll: 0
     ec2_vpc_igw_retries: 100
 

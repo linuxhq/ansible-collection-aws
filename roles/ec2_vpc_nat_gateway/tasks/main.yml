@@ -1,4 +1,27 @@
 ---
+- name: Ensure virtual private cloud nat gateway information is gathered
+  tags:
+    - ec2_vpc_nat_gateway
+  amazon.aws.ec2_vpc_nat_gateway_info:
+    filters:
+      state:
+        - available
+    validate_certs: true
+  register: __ec2_vpc_nat_gateway_info
+
+- name: Ensure dict of virtual private cloud nat gateway information is generated
+  tags:
+    - ec2_vpc_nat_gateway
+  ansible.builtin.set_fact:
+    __ec2_vpc_nat_gateway_dict:
+      "{{ __ec2_vpc_nat_gateway_info.result |
+          selectattr('tags.Name', 'defined') |
+          json_query('[].{
+            key: tags.Name,
+            value: nat_gateway_id
+          }') |
+          items2dict }}"
+
 - name: Ensure virtual private cloud nat gateways are batched
   tags:
     - ec2_vpc_nat_gateway

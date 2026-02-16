@@ -10,10 +10,10 @@ None
 
 ## Role Variables
 
-    ec2_customer_gateway_list: []
     ec2_customer_gateway_async: 300
     ec2_customer_gateway_batch: 10
     ec2_customer_gateway_delay: 3
+    ec2_customer_gateway_list: []
     ec2_customer_gateway_poll: 0
     ec2_customer_gateway_retries: 100
 

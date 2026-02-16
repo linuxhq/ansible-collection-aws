@@ -10,10 +10,10 @@ None
 
 ## Role Variables
 
-    ec2_vpc_dhcp_option_list: []
     ec2_vpc_dhcp_option_async: 300
     ec2_vpc_dhcp_option_batch: 10
     ec2_vpc_dhcp_option_delay: 3
+    ec2_vpc_dhcp_option_list: []
     ec2_vpc_dhcp_option_poll: 0
     ec2_vpc_dhcp_option_retries: 100
 

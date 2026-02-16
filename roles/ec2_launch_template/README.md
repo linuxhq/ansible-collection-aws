@@ -10,10 +10,10 @@ None
 
 ## Role Variables
 
-    ec2_launch_template_list: []
     ec2_launch_template_async: 300
     ec2_launch_template_batch: 10
     ec2_launch_template_delay: 3
+    ec2_launch_template_list: []
     ec2_launch_template_poll: 0
     ec2_launch_template_retries: 100
 

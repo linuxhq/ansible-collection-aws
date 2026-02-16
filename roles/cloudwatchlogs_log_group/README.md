@@ -10,10 +10,10 @@ None
 
 ## Role Variables
 
-    cloudwatchlogs_log_group_list: []
     cloudwatchlogs_log_group_async: 300
     cloudwatchlogs_log_group_batch: 10
     cloudwatchlogs_log_group_delay: 3
+    cloudwatchlogs_log_group_list: []
     cloudwatchlogs_log_group_poll: 0
     cloudwatchlogs_log_group_retries: 100
 
