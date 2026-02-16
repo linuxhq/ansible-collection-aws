@@ -6,7 +6,7 @@
     delete_on_termination: "{{ _vol.1.delete_on_termination | d(false) }}"
     device_name: "{{ _vol.1.device_name | d(omit) }}"
     encrypted: "{{ _vol.1.encrypted | d(false) }}"
-    id: "{{ (__ec2_vol_dict[_vol.1.name] is defined) | ternary(__ec2_vol_dict[_vol.1.name], omit) }}"
+    id: "{{ __ec2_vol_dict[_vol.1.name] | d(omit) }}"
     instance: "{{ _vol.0.instance }}"
     iops: "{{ _vol.1.iops | d(omit) }}"
     kms_key_id: "{{ _vol.1.kms_key_id | d(omit) }}"

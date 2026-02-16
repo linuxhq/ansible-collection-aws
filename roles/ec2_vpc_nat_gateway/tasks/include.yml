@@ -8,7 +8,7 @@
     default_create: "{{ _nat.default_create | d(false) }}"
     eip_address: "{{ _nat.eip_address | d(omit) }}"
     if_exist_do_not_create: "{{ _nat.if_exist_do_not_create | d(false) }}"
-    nat_gateway_id: "{{ _nat.nat_gateway_id | d(omit) }}"
+    nat_gateway_id: "{{ __ec2_vpc_nat_gateway_dict[_nat.name] | d(omit) }}"
     purge_tags: "{{ _nat.purge_tags | d(true) }}"
     release_eip: "{{ _nat.release_eip | d(false) }}"
     state: "{{ _nat.state | d('present') }}"
