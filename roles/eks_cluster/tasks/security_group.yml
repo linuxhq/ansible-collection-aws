@@ -1,0 +1,30 @@
+---
+- name: Ensure elastic kubernetes service security groups are managed
+  tags:
+    - eks_cluster
+  amazon.aws.ec2_security_group:
+    description: "{{ _eks_cluster.description | d(_eks_cluster.name) }}"
+    name: "{{ _eks_cluster.name }}"
+    purge_rules: true
+    purge_rules_egress: true
+    purge_tags: true
+    rules: "{{ _eks_cluster.rules | d(__eks_cluster_rules) }}"
+    rules_egress: "{{ _eks_cluster.rules_egress | d(__eks_cluster_rules_egress) }}"
+    state: "{{ _eks_cluster.state | d('present') }}"
+    tags:
+      "{{ _eks_cluster.tags |
+          d({}) |
+          combine({'Name': _eks_cluster.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _eks_cluster.vpc_id }}"
+  register: __eks_cluster_security_group_result
+
+- name: Ensure list of elastic kubernetes service security group is generated
+  tags:
+    - eks_cluster
+  ansible.builtin.set_fact:
+    __eks_cluster_security_group:
+      "{{ [__eks_cluster_security_group_result.group_id] }}"
+  when:
+    - _eks_cluster.state == 'present'
+...

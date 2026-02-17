@@ -1,0 +1,18 @@
+---
+- name: Ensure elastic kubernetes service clusters are managed
+  tags:
+    - eks_cluster
+  community.aws.eks_cluster:
+    name: "{{ _eks_cluster.name }}"
+    role_arn: "{{ __eks_cluster_iam_role_arn | d(omit) }}"
+    security_groups: "{{ __eks_cluster_security_group | d(omit) }}"
+    state: "{{ _eks_cluster.state | d('present') }}"
+    subnets: "{{ _eks_cluster.subnets }}"
+    tags:
+      "{{ _eks_cluster.tags |
+          d({}) |
+          combine({'Name': _eks_cluster.name}) }}"
+    version: "{{ _eks_cluster.version }}"
+    wait: true
+    wait_timeout: 1200
+...

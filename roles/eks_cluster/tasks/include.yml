@@ -1,0 +1,37 @@
+---
+- name: Ensure elastic kubernetes service present tasks are included
+  tags:
+    - eks_cluster
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - eks_cluster
+    file: "{{ _order }}"
+  loop:
+    - iam_role.yml
+    - security_group.yml
+    - eks_cluster.yml
+  loop_control:
+    label: "{{ _order | d(none) }}"
+    loop_var: _order
+  when:
+    - _eks_cluster.state == 'present'
+
+- name: Ensure elastic kubernetes service absent tasks are included
+  tags:
+    - eks_cluster
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - eks_cluster
+    file: "{{ _order }}"
+  loop:
+    - eks_cluster.yml
+    - security_group.yml
+    - iam_role.yml
+  loop_control:
+    label: "{{ _order | d(none) }}"
+    loop_var: _order
+  when:
+    - _eks_cluster.state == 'absent'
+...

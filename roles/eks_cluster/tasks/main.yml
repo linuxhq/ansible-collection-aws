@@ -1,0 +1,38 @@
+---
+- name: Ensure elastic kubernetes service defaults are generated
+  tags:
+    - eks_cluster
+  ansible.builtin.set_fact:
+    __eks_cluster_list:
+      "{{ [{'state': 'present'}] |
+          product(eks_cluster_list) |
+          map('combine') |
+          list }}"
+    __eks_cluster_rules:
+      - cidr_ip: 0.0.0.0/0
+        ports:
+          - 443
+        proto: tcp
+    __eks_cluster_rules_egress:
+      - cidr_ip: 0.0.0.0/0
+        proto: -1
+
+- name: Ensure elastic kubernetes service tasks are included
+  tags:
+    - eks_cluster
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - eks_cluster
+    file: include.yml
+  loop: "{{ __eks_cluster_list }}"
+  loop_control:
+    label: "{{ _eks_cluster.name | d(none) }}"
+    loop_var: _eks_cluster
+  when:
+    - _eks_cluster.name is defined
+    - _eks_cluster.subnets is defined
+    - _eks_cluster.subnets | length > 0
+    - _eks_cluster.version is defined
+    - _eks_cluster.vpc_id is defined
+...

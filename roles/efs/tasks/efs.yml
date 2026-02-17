@@ -20,8 +20,4 @@
     validate_certs: true
     wait: "{{ _efs.wait | d(false) }}"
     wait_timeout: "{{ _efs.wait_timeout | d(0) }}"
-  when:
-    - _efs.name is defined
-    - _efs.targets is defined
-    - _efs.targets | length > 0
 ...

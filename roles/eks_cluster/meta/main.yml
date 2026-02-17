@@ -1,0 +1,27 @@
+---
+dependencies:
+  - role: ec2_vpc_net_info
+    tags: eks_cluster
+  - role: ec2_vpc_subnet_info
+    tags: eks_cluster
+galaxy_info:
+  role_name: eks_cluster
+  author: Taylor Kimball
+  description: Manage aws elastic kubernetes service clusters
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - cluster
+    - eks
+    - kubernetes
+...
