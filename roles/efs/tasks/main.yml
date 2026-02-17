@@ -29,4 +29,9 @@
   loop_control:
     label: "{{ _efs.name | d(none) }}"
     loop_var: _efs
+  when:
+    - _efs.name is defined
+    - _efs.targets is defined
+    - _efs.targets | length > 0
+    - _efs.vpc_id is defined
 ...

@@ -18,9 +18,6 @@
     validate_certs: true
     vpc_id: "{{ _efs.vpc_id }}"
   register: __efs_security_group_result
-  when:
-    - _efs.name is defined
-    - _efs.vpc_id is defined
 
 - name: Ensure list of efs targets is generated
   tags:

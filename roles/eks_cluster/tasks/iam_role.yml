@@ -1,0 +1,37 @@
+---
+- name: Ensure elastic kubernetes service iam role is managed
+  tags:
+    - eks_cluster
+  amazon.aws.iam_role:
+    assume_role_policy_document:
+      Version: '2012-10-17'
+      Statement:
+        - Effect: Allow
+          Principal:
+            Service: eks.amazonaws.com
+          Action:
+            - sts:AssumeRole
+    create_instance_profile: true
+    delete_instance_profile: true
+    description: "{{ _eks_cluster.description | d(_eks_cluster.name) }}"
+    managed_policies: "{{ _eks_cluster.iam_managed_policies | d(['AmazonEKSClusterPolicy']) }}"
+    name: "{{ _eks_cluster.iam_role_name | d(_eks_cluster.name) }}"
+    purge_policies: true
+    purge_tags: true
+    state: "{{ _eks_cluster.state | d('present') }}"
+    tags:
+      "{{ _eks_cluster.tags |
+          d({}) |
+          combine({'Name': _eks_cluster.name}) }}"
+    validate_certs: true
+  register: __eks_cluster_iam_role_result
+
+- name: Ensure string of elastic kubernetes service iam role arn is generated
+  tags:
+    - eks_cluster
+  ansible.builtin.set_fact:
+    __eks_cluster_iam_role_arn:
+      "{{ __eks_cluster_iam_role_result.iam_role.arn }}"
+  when:
+    - _eks_cluster.state == 'present'
+...
