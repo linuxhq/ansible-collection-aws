@@ -27,4 +27,5 @@
       "{{ [__eks_cluster_security_group_result.group_id] }}"
   when:
     - _eks_cluster.state == 'present'
+    - not ansible_check_mode
 ...
