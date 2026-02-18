@@ -11,6 +11,7 @@ Manage aws identity and access management account alias
 ## Role Variables
 
     iam_account_alias_name: null
+    iam_account_alias_state: present
 
 ## Return Values
 
@@ -26,7 +27,7 @@ None
       connection: local
       roles:
         - role: linuxhq.aws.iam_account_alias
-          iam_account_alias_name: linuxhq
+          iam_account_alias_name: "molecule-{{ ansible_date_time.date }}"
 
 ## License
 

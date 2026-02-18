@@ -1,3 +1,4 @@
 ---
 iam_account_alias_name: null
+iam_account_alias_state: present
 ...

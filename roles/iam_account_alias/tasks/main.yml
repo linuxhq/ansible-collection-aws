@@ -16,7 +16,7 @@
   tags:
     - iam_account_alias
   ansible.builtin.set_fact:
-    _iam_account_alias_list:
+    __iam_account_alias_list:
       "{{ (__iam_account_alias_query.stdout |
           from_json) |
           d([]) }}"
@@ -32,6 +32,20 @@
         --account-alias "{{ iam_account_alias_name }}"
   when:
     - iam_account_alias_name is not none
-    - iam_account_alias_name not in _iam_account_alias_list
+    - iam_account_alias_name not in __iam_account_alias_list
+    - iam_account_alias_state == 'present'
+  changed_when: true
+
+- name: Ensure iam account alias is absent
+  tags:
+    - iam_account_alias
+  ansible.builtin.command:
+    cmd: >
+      aws iam delete-account-alias
+        --account-alias "{{ iam_account_alias_name }}"
+  when:
+    - iam_account_alias_name is not none
+    - iam_account_alias_name in __iam_account_alias_list
+    - iam_account_alias_state == 'absent'
   changed_when: true
 ...
