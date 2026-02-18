@@ -1,0 +1,21 @@
+---
+- name: Ensure iam account alias information is gathered
+  tags:
+    - iam_account_alias_info
+  ansible.builtin.command:
+    cmd: >
+      aws iam list-account-aliases
+        --query AccountAliases
+  register: __iam_account_alias_info_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of iam account alias information is generated
+  tags:
+    - iam_account_alias_info
+  ansible.builtin.set_fact:
+    _iam_account_alias_info_list:
+      "{{ (__iam_account_alias_info_query.stdout |
+          from_json) |
+          d([]) }}"
+...

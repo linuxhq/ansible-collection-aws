@@ -1,0 +1,24 @@
+---
+dependencies: []
+galaxy_info:
+  role_name: iam_account_alias_info
+  author: Taylor Kimball
+  description: Gather information about identity and access management account alias
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - account
+    - alias
+    - amazon
+    - aws
+    - iam
+    - info
+...
