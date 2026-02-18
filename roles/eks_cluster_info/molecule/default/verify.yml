@@ -1,0 +1,47 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - ec2_vpc_net_info
+    - ec2_vpc_subnet_info
+    - eks_cluster_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _eks_cluster_info_dict['molecule-eks1'].arn is defined
+          - _eks_cluster_info_dict['molecule-eks1'].endpoint is defined
+          - _eks_cluster_info_dict['molecule-eks1'].status == 'ACTIVE'
+          - _eks_cluster_info_dict['molecule-eks1'].version == '1.34'
+          - _eks_cluster_info_dict['molecule-eks2'].arn is defined
+          - _eks_cluster_info_dict['molecule-eks2'].endpoint is defined
+          - _eks_cluster_info_dict['molecule-eks2'].status == 'ACTIVE'
+          - _eks_cluster_info_dict['molecule-eks2'].version == '1.35'
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        ec2_vpc_net_list:
+          "{{ ec2_vpc_net_list |
+              map('combine', {'state': 'absent'}) }}"
+        ec2_vpc_subnet_list:
+          "{{ ec2_vpc_subnet_list |
+              map('combine', {'state': 'absent'}) }}"
+        eks_cluster_list:
+          "{{ eks_cluster_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - eks_cluster
+        - ec2_vpc_subnet
+        - ec2_vpc_net
+      loop_control:
+        label: "{{ _role }}"
+        loop_var: _role
+...

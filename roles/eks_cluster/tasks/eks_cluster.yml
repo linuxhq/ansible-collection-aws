@@ -15,4 +15,6 @@
     version: "{{ _eks_cluster.version }}"
     wait: true
     wait_timeout: 1200
+  when:
+    - not ansible_check_mode
 ...

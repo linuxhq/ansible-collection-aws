@@ -34,4 +34,5 @@
       "{{ __eks_cluster_iam_role_result.iam_role.arn }}"
   when:
     - _eks_cluster.state == 'present'
+    - not ansible_check_mode
 ...
