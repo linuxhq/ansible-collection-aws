@@ -7,6 +7,7 @@
     dhcp_opts_id: "{{ _vpc.dhcp_opts_id | d(omit) }}"
     dns_hostnames: "{{ _vpc.dns_hostnames | d(true) }}"
     dns_support: "{{ _vpc.dns_support | d(true) }}"
+    ipv6_cidr: "{{ _vpc.ipv6_cidr | d(false) }}"
     multi_ok: "{{ _vpc.multi_ok | d(false) }}"
     name: "{{ _vpc.name }}"
     purge_cidrs: "{{ _vpc.purge_cidrs | d(false) }}"
