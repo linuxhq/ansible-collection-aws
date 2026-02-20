@@ -1,7 +1,6 @@
 ---
 - name: Ensure information about user and account is gathered
   tags:
-    - always
     - aws_caller_info
   amazon.aws.aws_caller_info:
     validate_certs: true
@@ -9,7 +8,6 @@
 
 - name: Ensure strings of user and caller information is generated
   tags:
-    - always
     - aws_caller_info
   ansible.builtin.set_fact:
     _aws_caller_info_account: "{{ __aws_caller_info_query.account }}"

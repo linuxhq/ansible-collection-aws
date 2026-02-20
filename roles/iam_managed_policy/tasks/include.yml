@@ -16,7 +16,7 @@
           combine({'Name': _policy.name}) }}"
     validate_certs: true
   register: __iam_managed_policy_result
-  loop: "{{ iam_managed_policy_list }}"
+  loop: "{{ __iam_managed_policy_list }}"
   loop_control:
     label: "{{ _policy.name | d(none) }}"
     loop_var: _policy
