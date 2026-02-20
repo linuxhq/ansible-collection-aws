@@ -1,0 +1,23 @@
+---
+dependencies: []
+galaxy_info:
+  role_name: iam_instance_profile
+  author: Taylor Kimball
+  description: Manage aws iam instance profiles
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - iam
+    - instance
+    - profile
+...

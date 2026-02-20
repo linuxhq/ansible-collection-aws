@@ -1,0 +1,19 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - role: iam_role
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: iam_instance_profile
+      iam_instance_profile_list: []
+      tags:
+        - molecule-idempotence-notest
+
+    - iam_instance_profile
+...
