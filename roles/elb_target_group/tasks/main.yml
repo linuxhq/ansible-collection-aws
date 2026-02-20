@@ -1,0 +1,16 @@
+---
+- name: Ensure elastic load balancer target groups are batched
+  tags:
+    - elb_target_group
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - elb_target_group
+    file: include.yml
+  loop:
+    "{{ elb_target_group_list |
+        batch(elb_target_group_batch) }}"
+  loop_control:
+    label: "{{ __elb_target_group_list | length }}"
+    loop_var: __elb_target_group_list
+...

@@ -1,0 +1,30 @@
+---
+- name: Ensure information about elastic load balancer target groups is gathered
+  tags:
+    - elb_target_group_info
+  community.aws.elb_target_group_info:
+    collect_targets_health: "{{ elb_target_group_info_collect_targets_health }}"
+    load_balancer_arn: "{{ elb_target_group_info_load_balancer_arn or omit }}"
+    names: "{{ elb_target_group_info_names or omit }}"
+    target_group_arns: "{{ elb_target_group_info_target_group_arns or omit }}"
+    validate_certs: true
+  register: __elb_target_group_info_query
+
+- name: Ensure list elastic load balancer target groups is generated
+  tags:
+    - elb_target_group_info
+  ansible.builtin.set_fact:
+    _elb_target_group_info_list:
+      "{{ (__elb_target_group_info_query.target_groups |
+          selectattr('target_group_name', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict elastic load balancer target groups is generated
+  tags:
+    - elb_target_group_info
+  ansible.builtin.set_fact:
+    _elb_target_group_info_dict:
+      "{{ dict(_elb_target_group_info_list |
+               json_query('[].target_group_name') |
+               zip(_elb_target_group_info_list)) }}"
+...

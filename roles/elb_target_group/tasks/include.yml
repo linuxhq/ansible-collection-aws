@@ -1,0 +1,69 @@
+---
+- name: Ensure elastic load balancer target groups are managed
+  tags:
+    - elb_target_group
+  community.aws.elb_target_group:
+    deregistration_connection_termination: "{{ _tg.deregistration_connection_termination | d(false) }}"
+    deregistration_delay_timeout: "{{ _tg.deregistration_delay_timeout | d(omit) }}"
+    health_check_interval: "{{ _tg.health_check_interval | d(omit) }}"
+    health_check_path: "{{ _tg.health_check_path | d(omit) }}"
+    health_check_port: "{{ _tg.health_check_port | d(omit) }}"
+    health_check_protocol: "{{ _tg.health_check_protocol | d(omit) }}"
+    health_check_timeout: "{{ _tg.health_check_timeout | d(omit) }}"
+    healthy_threshold_count: "{{ _tg.healthy_threshold_count | d(omit) }}"
+    load_balancing_algorithm_type: "{{ _tg.load_balancing_algorithm_type | d('round_robin') }}"
+    modify_targets: "{{ _tg.modify_targets | d(true) }}"
+    name: "{{ _tg.name }}"
+    port: "{{ _tg.port }}"
+    preserve_client_ip_enabled: "{{ _tg.preserve_client_ip_enabled | d(omit) }}"
+    protocol: "{{ _tg.protocol }}"
+    protocol_version: "{{ _tg.protocol_version | d(omit) }}"
+    proxy_protocol_v2_enabled: "{{ _tg.proxy_protocol_v2_enabled | d(omit) }}"
+    purge_tags: "{{ _tg.purge_tags | d(true) }}"
+    state: "{{ _tg.state | d('present') }}"
+    stickiness_app_cookie_duration: "{{ _tg.stickiness_app_cookie_duration | d(omit) }}"
+    stickiness_app_cookie_name: "{{ _tg.stickiness_app_cookie_name | d(omit) }}"
+    stickiness_enabled: "{{ _tg.stickiness_enabled | d(omit) }}"
+    stickiness_lb_cookie_duration: "{{ _tg.stickiness_lb_cookie_duration | d(omit) }}"
+    stickiness_type: "{{ _tg.stickiness_type | d(omit) }}"
+    successful_response_codes: "{{ _tg.successful_response_codes | d(omit) }}"
+    tags:
+      "{{ _tg.tags |
+          d({}) |
+          combine({'Name': _tg.name}) }}"
+    target_type: "{{ _tg.target_type | d('instance') }}"
+    unhealthy_threshold_count: "{{ _tg.unhealthy_threshold_count | d(omit) }}"
+    validate_certs: true
+    vpc_id: "{{ _tg.vpc_id | d(omit) }}"
+    wait: "{{ _tg.wait | d(false) }}"
+    wait_timeout: "{{ _tg.wait_timeout | d(200) }}"
+  register: __elb_target_group_result
+  loop: "{{ __elb_target_group_list }}"
+  loop_control:
+    label: "{{ _tg.name | d(none) }}"
+    loop_var: _tg
+  when:
+    - _tg.name is defined
+    - _tg.port is defined
+    - _tg.protocol is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, elb_target_group_async) }}"
+  poll: "{{ elb_target_group_poll }}"
+
+- name: Ensure managed elastic load balancer target group jobs are complete
+  tags:
+    - elb_target_group
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __elb_target_group_status
+  loop: "{{ __elb_target_group_result.results }}"
+  loop_control:
+    label: "{{ _jid._tg.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __elb_target_group_status.finished | bool
+  retries: "{{ elb_target_group_retries }}"
+  delay: "{{ elb_target_group_delay }}"
+...
