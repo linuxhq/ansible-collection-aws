@@ -2,6 +2,8 @@
 dependencies:
   - role: ec2_ami_info
     tags: ec2_instance
+  - role: ec2_security_group_info
+    tags: ec2_instance
   - role: ec2_vpc_subnet_info
     tags: ec2_instance
 galaxy_info:
