@@ -53,8 +53,8 @@
     purge_rules: true
     purge_rules_egress: true
     purge_tags: true
-    rules: "{{ _sg.1.rules }}"
-    rules_egress: "{{ _sg.1.rules_egress }}"
+    rules: "{{ _sg.1.rules | d(omit)  }}"
+    rules_egress: "{{ _sg.1.rules_egress | d(omit) }}"
     state: "{{ _sg.1.state | d('present') }}"
     tags:
       "{{ _sg.1.tags |
@@ -70,10 +70,6 @@
   when:
     - _sg.0.vpc_id is defined
     - _sg.1.name is defined
-    - _sg.1.rules is defined
-    - _sg.1.rules | length > 0
-    - _sg.1.rules_egress is defined
-    - _sg.1.rules_egress | length > 0
   changed_when: false
   async: "{{ ansible_check_mode | ternary(0, ec2_security_group_async) }}"
   poll: "{{ ec2_security_group_poll }}"

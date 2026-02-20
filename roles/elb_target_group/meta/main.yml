@@ -1,0 +1,27 @@
+---
+dependencies:
+  - role: ec2_instance_info
+    tags: elb_target_group
+  - role: ec2_vpc_net_info
+    tags: elb_target_group
+galaxy_info:
+  role_name: elb_target_group
+  author: Taylor Kimball
+  description: Manage aws elastic load balancer target groups
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - elb
+    - group
+    - target
+...
