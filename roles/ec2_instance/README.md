@@ -24,6 +24,7 @@ None
 ## Dependencies
 
 * [linuxhq.aws.ec2\_ami\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_ami_info)
+* [linuxhq.aws.ec2\_security\_group\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_security_group_info)
 * [linuxhq.aws.ec2\_vpc\_subnet\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_subnet_info)
 
 ## Example Playbook
