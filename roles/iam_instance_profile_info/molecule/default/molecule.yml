@@ -1,0 +1,77 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        iam_role_list:
+          - name: molecule-role-ec2
+            assume_role_policy_document:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Principal:
+                    Service: ec2.amazonaws.com
+                  Action:
+                    - sts:AssumeRole
+            create_instance_profile: false
+            managed_policies:
+              - AmazonEC2ReadOnlyAccess
+          - name: molecule-role-vpc
+            assume_role_policy_document:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Principal:
+                    Service: ec2.amazonaws.com
+                  Action:
+                    - sts:AssumeRole
+            create_instance_profile: false
+            managed_policies:
+              - AmazonVPCReadOnlyAccess
+
+        iam_instance_profile_list:
+          - name: molecule-instance-profile-ec2
+            role: molecule-role-ec2
+          - name: molecule-instance-profile-vpc
+            role: molecule-role-vpc
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...

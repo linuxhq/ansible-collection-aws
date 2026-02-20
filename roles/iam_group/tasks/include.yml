@@ -7,7 +7,7 @@
     name: "{{ _group.name }}"
     path: "{{ _group.path | d(omit) }}"
     purge_policies: "{{ _group.purge_policies | d(false) }}"
-    purge_users: "{{ _group.purge_policies | d(false) }}"
+    purge_users: "{{ _group.purge_users | d(false) }}"
     state: "{{ _group.state | d('present') }}"
     users: "{{ _group.users | d([]) }}"
     validate_certs: true

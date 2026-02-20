@@ -2,12 +2,11 @@
 - name: Ensure identity and access management instance profiles are gathered
   tags:
     - iam_instance_profile_info
-  ansible.builtin.command:
-    cmd: >
-      aws iam list-instance-profiles
-        --query InstanceProfiles
+  amazon.aws.iam_instance_profile_info:
+    name: "{{ iam_instance_profile_info_name or omit }}"
+    path_prefix: "{{ iam_instance_profile_info_path_prefix }}"
+    validate_certs: true
   register: __iam_instance_profile_info_query
-  changed_when: false
   check_mode: false
 
 - name: Ensure list of identity and access management instance profiles is generated
@@ -15,9 +14,8 @@
     - iam_instance_profile_info
   ansible.builtin.set_fact:
     _iam_instance_profile_info_list:
-      "{{ (__iam_instance_profile_info_query.stdout |
-          from_json |
-          selectattr('InstanceProfileName', 'defined')) |
+      "{{ (__iam_instance_profile_info_query.iam_instance_profiles |
+          selectattr('instance_profile_name', 'defined')) |
           d([]) }}"
 
 - name: Ensure dict of identity and access management instance profiles is generated
@@ -26,6 +24,6 @@
   ansible.builtin.set_fact:
     _iam_instance_profile_info_dict:
       "{{ dict(_iam_instance_profile_info_list |
-               json_query('[].InstanceProfileName') |
+               json_query('[].instance_profile_name') |
                zip(_iam_instance_profile_info_list)) }}"
 ...

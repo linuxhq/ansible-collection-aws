@@ -1,0 +1,16 @@
+---
+- name: Ensure iam instance profiles are batched
+  tags:
+    - iam_instance_profile
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - iam_instance_profile
+    file: include.yml
+  loop:
+    "{{ iam_instance_profile_list |
+        batch(iam_instance_profile_batch) }}"
+  loop_control:
+    label: "{{ __iam_instance_profile_list | length }}"
+    loop_var: __iam_instance_profile_list
+...
