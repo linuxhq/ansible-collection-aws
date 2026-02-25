@@ -18,6 +18,7 @@ None
 
 ## Dependencies
 
+* [linuxhq.aws.acm\_certificate\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/acm_certificate_info)
 * [linuxhq.aws.ec2\_vpc\_nat\_gateway\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_nat_gateway_info)
 * [linuxhq.aws.ec2\_vpc\_net\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_net_info)
 * [linuxhq.aws.ec2\_vpc\_prefix\_list\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_prefix_list_info)
