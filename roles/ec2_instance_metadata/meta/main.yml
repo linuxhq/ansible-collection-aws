@@ -1,7 +1,5 @@
 ---
-dependencies:
-  - role: aws_region_info
-    tags: ec2_instance_metadata
+dependencies: []
 galaxy_info:
   role_name: ec2_instance_metadata
   author: Taylor Kimball

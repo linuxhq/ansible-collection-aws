@@ -28,7 +28,7 @@ None
 
 ## Dependencies
 
-* [linuxhq.aws.aws\_region\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/aws_region_info)
+None
 
 ## Example Playbook
 
