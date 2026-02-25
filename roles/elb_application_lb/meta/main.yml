@@ -2,6 +2,8 @@
 dependencies:
   - role: acm_certificate_info
     tags: elb_application_lb
+  - role: elb_target_group_info
+    tags: elb_application_lb
   - role: ec2_vpc_nat_gateway_info
     tags: elb_application_lb
   - role: ec2_vpc_net_info

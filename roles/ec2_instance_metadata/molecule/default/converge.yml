@@ -5,6 +5,11 @@
     PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
 
   roles:
+    - role: aws_region_info
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
     - role: ec2_instance_metadata
       ec2_instance_metadata_regions:
         - us-east-1

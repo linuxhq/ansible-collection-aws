@@ -1,6 +1,7 @@
 ---
 - name: Ensure information about user and account is gathered
   tags:
+    - always
     - aws_caller_info
   amazon.aws.aws_caller_info:
     validate_certs: true
