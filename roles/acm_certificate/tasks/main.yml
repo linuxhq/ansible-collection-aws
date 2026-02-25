@@ -1,0 +1,68 @@
+---
+- name: Ensure acm certificate manager certificate info tasks are included
+  tags:
+    - acm_certificate
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - acm_certificate
+    file: info.yml
+
+- name: Ensure aws certificate manager certificate amazon issued tasks are included
+  tags:
+    - acm_certificate
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - acm_certificate
+    file: amazon_issued.yml
+  loop: "{{ acm_certificate_list }}"
+  loop_control:
+    label: "{{ _certificate.domain_name | d(none) }}"
+    loop_var: _certificate
+  when:
+    - _certificate.domain_name is defined
+    - _certificate.state is not defined or
+      _certificate.state == 'present'
+    - _certificate.type is defined
+    - _certificate.type == 'amazon_issued'
+    - _certificate.zone is defined
+
+- name: Ensure aws certificate manager certificate imported tasks are included
+  tags:
+    - acm_certificate
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - acm_certificate
+    file: imported.yml
+  loop: "{{ acm_certificate_list }}"
+  loop_control:
+    label: "{{ _certificate.domain_name | d(none) }}"
+    loop_var: _certificate
+  when:
+    - _certificate.certificate is defined
+    - _certificate.domain_name is defined
+    - _certificate.private_key is defined
+    - _certificate.state is not defined or
+      _certificate.state == 'present'
+    - _certificate.type is defined
+    - _certificate.type == 'imported'
+
+- name: Ensure aws certificate manager certificate absent tasks are included
+  tags:
+    - acm_certificate
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - acm_certificate
+    file: absent.yml
+  loop: "{{ acm_certificate_list }}"
+  loop_control:
+    label: "{{ _certificate.domain_name | d(none) }}"
+    loop_var: _certificate
+  when:
+    - _certificate.domain_name is defined
+    - _certificate.state is defined
+    - _certificate.state == 'absent'
+...

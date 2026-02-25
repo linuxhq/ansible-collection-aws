@@ -1,0 +1,13 @@
+---
+- name: Ensure acm certificate manager certificate is imported
+  tags:
+    - acm_certificate
+  community.aws.acm_certificate:
+    certificate: "{{ _certificate.certificate }}"
+    certificate_chain: "{{ _certificate.certificate_chain | d(omit) }}"
+    domain_name: "{{ _certificate.domain_name }}"
+    name_tag: "{{ _certificate.domain_name }}"
+    private_key: "{{ _certificate.private_key }}"
+    state: present
+    validate_certs: true
+...

@@ -1,0 +1,65 @@
+---
+- name: Ensure acm certificate manager certificate is requested
+  tags:
+    - acm_certificate
+  ansible.builtin.command:
+    cmd: >
+      aws acm request-certificate
+        --domain-name "{{ _certificate.domain_name }}"
+        --validation-method DNS
+        {% if _certificate.subject_alternative_names is defined and
+              _certificate.subject_alternative_names | length > 0 %}
+        --subject-alternative-names {{ _certificate.subject_alternative_names | join(' ') }}
+        {% endif %}
+  register: __acm_certificate_request
+  when:
+    - _certificate.domain_name not in __acm_certificate_dict.keys()
+  changed_when: true
+
+- name: Ensure acm certificate manager certificate pause is executed
+  tags:
+    - acm_certificate
+  ansible.builtin.pause:
+    seconds: 10
+  when:
+    - __acm_certificate_request is not skipped
+
+- name: Ensure acm certificate manager certificate info tasks are included
+  tags:
+    - acm_certificate
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - acm_certificate
+    file: info.yml
+
+- name: Ensure acm certificate manager certificate resource records are available
+  tags:
+    - acm_certificate
+  community.aws.acm_certificate_info:
+    certificate_arn: "{{ __acm_certificate_dict[_certificate.domain_name].certificate_arn }}"
+    validate_certs: true
+  register: __acm_certificate_status
+  when:
+    - not ansible_check_mode
+  until:
+    - __acm_certificate_status.certificates.0.domain_validation_options.0.resource_record is defined
+  delay: 5
+  retries: 60
+
+- name: Ensure acm certificate manager certificate resource records are present
+  tags:
+    - acm_certificate
+  amazon.aws.route53:
+    record: "{{ _dns.resource_record.name }}"
+    state: present
+    type: "{{ _dns.resource_record.type }}"
+    value: "{{ _dns.resource_record.value }}"
+    zone: "{{ _certificate.zone }}"
+  loop: "{{ __acm_certificate_status.certificates.0.domain_validation_options }}"
+  loop_control:
+    label: "{{ _dns.resource_record.name | d(none) }}"
+    loop_var: _dns
+  when:
+    - not ansible_check_mode
+...
