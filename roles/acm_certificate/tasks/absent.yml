@@ -1,0 +1,24 @@
+---
+- name: Ensure acm certificate manager certificate resource records are absent
+  tags:
+    - acm_certificate
+  amazon.aws.route53:
+    record: "{{ _dns.resource_record.name }}"
+    state: absent
+    type: "{{ _dns.resource_record.type }}"
+    value: "{{ _dns.resource_record.value }}"
+    zone: "{{ _certificate.zone }}"
+  loop: "{{ __acm_certificate_dict[_certificate.domain_name].domain_validation_options | d([]) }}"
+  loop_control:
+    label: "{{ _dns.resource_record.name | d(none) }}"
+    loop_var: _dns
+  when:
+    - _certificate.type == 'amazon_issued'
+
+- name: Ensure acm certificate manager certificate is absent
+  tags:
+    - acm_certificate
+  community.aws.acm_certificate:
+    domain_name: "{{ _certificate.domain_name }}"
+    state: absent
+...
