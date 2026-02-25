@@ -1,0 +1,31 @@
+---
+- name: Ensure information about elastic load balancer application load balancers is gathered
+  tags:
+    - elb_application_lb_info
+  amazon.aws.elb_application_lb_info:
+    include_attributes: "{{ elb_application_lb_info_include_attributes }}"
+    include_listener_rules: "{{ elb_application_lb_info_include_listener_rules }}"
+    include_listeners: "{{ elb_application_lb_info_include_listeners }}"
+    load_balancer_arns: "{{ elb_application_lb_info_load_balancer_arns or omit }}"
+    names: "{{ elb_application_lb_info_names or omit }}"
+    validate_certs: true
+  register: __elb_application_lb_info_query
+
+- name: Ensure list of elastic load balancer application load balancers is generated
+  tags:
+    - elb_application_lb_info
+  ansible.builtin.set_fact:
+    _elb_application_lb_info_list:
+      "{{ (__elb_application_lb_info_query.load_balancers |
+          selectattr('load_balancer_name', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of elastic load balancer application load balancers is generated
+  tags:
+    - elb_application_lb_info
+  ansible.builtin.set_fact:
+    _elb_application_lb_info_dict:
+      "{{ dict(_elb_application_lb_info_list |
+               json_query('[].load_balancer_name') |
+               zip(_elb_application_lb_info_list)) }}"
+...

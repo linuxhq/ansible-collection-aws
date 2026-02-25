@@ -15,7 +15,7 @@
     label: "{{ _order | d(none) }}"
     loop_var: _order
   when:
-    - _eks_cluster.state == 'present'
+    - _cluster.state == 'present'
 
 - name: Ensure elastic kubernetes service absent tasks are included
   tags:
@@ -33,5 +33,5 @@
     label: "{{ _order | d(none) }}"
     loop_var: _order
   when:
-    - _eks_cluster.state == 'absent'
+    - _cluster.state == 'absent'
 ...

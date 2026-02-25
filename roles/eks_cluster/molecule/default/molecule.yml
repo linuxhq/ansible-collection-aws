@@ -47,6 +47,7 @@ provisioner:
               - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
             version: 1.34
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            wait: true
 
           - name: molecule-eks2
             iam_managed_policies:
@@ -69,6 +70,7 @@ provisioner:
               - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
             version: 1.35
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            wait: true
 
 scenario:
   test_sequence:

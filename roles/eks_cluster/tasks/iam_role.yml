@@ -13,16 +13,16 @@
             - sts:AssumeRole
     create_instance_profile: true
     delete_instance_profile: true
-    description: "{{ _eks_cluster.description | d(_eks_cluster.name) }}"
-    managed_policies: "{{ _eks_cluster.iam_managed_policies | d(['AmazonEKSClusterPolicy']) }}"
-    name: "{{ _eks_cluster.iam_role_name | d(_eks_cluster.name) }}"
+    description: "{{ _cluster.description | d(_cluster.name) }}"
+    managed_policies: "{{ _cluster.iam_managed_policies | d(['AmazonEKSClusterPolicy']) }}"
+    name: "{{ _cluster.iam_role_name | d(_cluster.name) }}"
     purge_policies: true
     purge_tags: true
-    state: "{{ _eks_cluster.state | d('present') }}"
+    state: "{{ _cluster.state | d('present') }}"
     tags:
-      "{{ _eks_cluster.tags |
+      "{{ _cluster.tags |
           d({}) |
-          combine({'Name': _eks_cluster.name}) }}"
+          combine({'Name': _cluster.name}) }}"
     validate_certs: true
   register: __eks_cluster_iam_role_result
 
@@ -33,6 +33,6 @@
     __eks_cluster_iam_role_arn:
       "{{ __eks_cluster_iam_role_result.iam_role.arn }}"
   when:
-    - _eks_cluster.state == 'present'
+    - _cluster.state == 'present'
     - not ansible_check_mode
 ...

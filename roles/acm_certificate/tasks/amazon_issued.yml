@@ -1,5 +1,5 @@
 ---
-- name: Ensure acm certificate manager certificate is requested
+- name: Ensure aws certificate manager certificate is requested
   tags:
     - acm_certificate
   ansible.builtin.command:
@@ -16,7 +16,7 @@
     - _certificate.domain_name not in __acm_certificate_dict.keys()
   changed_when: true
 
-- name: Ensure acm certificate manager certificate pause is executed
+- name: Ensure aws certificate manager certificate pause is executed
   tags:
     - acm_certificate
   ansible.builtin.pause:
@@ -24,7 +24,7 @@
   when:
     - __acm_certificate_request is not skipped
 
-- name: Ensure acm certificate manager certificate info tasks are included
+- name: Ensure aws certificate manager certificate info tasks are included
   tags:
     - acm_certificate
   ansible.builtin.include_tasks:
@@ -33,7 +33,7 @@
         - acm_certificate
     file: info.yml
 
-- name: Ensure acm certificate manager certificate resource records are available
+- name: Ensure aws certificate manager certificate resource records are available
   tags:
     - acm_certificate
   community.aws.acm_certificate_info:
@@ -47,7 +47,7 @@
   delay: 5
   retries: 60
 
-- name: Ensure acm certificate manager certificate resource records are present
+- name: Ensure aws certificate manager certificate resource records are present
   tags:
     - acm_certificate
   amazon.aws.route53:

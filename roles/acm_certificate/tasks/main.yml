@@ -1,5 +1,5 @@
 ---
-- name: Ensure acm certificate manager certificate info tasks are included
+- name: Ensure aws certificate manager certificate info tasks are included
   tags:
     - acm_certificate
   ansible.builtin.include_tasks:

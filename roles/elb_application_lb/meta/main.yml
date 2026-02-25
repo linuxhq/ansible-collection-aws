@@ -1,0 +1,32 @@
+---
+dependencies:
+  - role: ec2_vpc_nat_gateway_info
+    tags: elb_application_lb
+  - role: ec2_vpc_net_info
+    tags: elb_application_lb
+  - role: ec2_vpc_prefix_list_info
+    tags: elb_application_lb
+  - role: ec2_vpc_subnet_info
+    tags: elb_application_lb
+galaxy_info:
+  role_name: elb_application_lb
+  author: Taylor Kimball
+  description: Manage aws elastic load balancer application load balancers
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - application
+    - aws
+    - balancer
+    - elb
+    - load
+...

@@ -1,0 +1,35 @@
+---
+- name: Ensure elastic load balancer application load balancer present tasks are included
+  tags:
+    - elb_application_lb
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - elb_application_lb
+    file: "{{ _order }}"
+  loop:
+    - security_group.yml
+    - elb_application_lb.yml
+  loop_control:
+    label: "{{ _order | d(none) }}"
+    loop_var: _order
+  when:
+    - _loadbalancer.state == 'present'
+
+- name: Ensure elastic load balancer application load balancer absent tasks are included
+  tags:
+    - elb_application_lb
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - elb_application_lb
+    file: "{{ _order }}"
+  loop:
+    - elb_application_lb.yml
+    - security_group.yml
+  loop_control:
+    label: "{{ _order | d(none) }}"
+    loop_var: _order
+  when:
+    - _loadbalancer.state == 'absent'
+...

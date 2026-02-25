@@ -1,5 +1,5 @@
 ---
-- name: Ensure acm certificate manager certificate is imported
+- name: Ensure aws certificate manager certificate is imported
   tags:
     - acm_certificate
   community.aws.acm_certificate:

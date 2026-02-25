@@ -1,12 +1,12 @@
 ---
-- name: Ensure acm certificate manager certificate information is gathered
+- name: Ensure aws certificate manager certificate information is gathered
   tags:
     - acm_certificate
   community.aws.acm_certificate_info:
     validate_certs: true
   register: __acm_certificate_query
 
-- name: Ensure list of acm certificate manager certificates is generated
+- name: Ensure list of aws certificate manager certificates is generated
   tags:
     - acm_certificate
   ansible.builtin.set_fact:
@@ -15,7 +15,7 @@
           selectattr('domain_name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of acm certificate manager certificates is generated
+- name: Ensure dict of aws certificate manager certificates is generated
   tags:
     - acm_certificate
   ansible.builtin.set_fact:

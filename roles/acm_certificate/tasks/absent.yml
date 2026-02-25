@@ -1,5 +1,5 @@
 ---
-- name: Ensure acm certificate manager certificate resource records are absent
+- name: Ensure aws certificate manager certificate resource records are absent
   tags:
     - acm_certificate
   amazon.aws.route53:
@@ -15,7 +15,7 @@
   when:
     - _certificate.type == 'amazon_issued'
 
-- name: Ensure acm certificate manager certificate is absent
+- name: Ensure aws certificate manager certificate is absent
   tags:
     - acm_certificate
   community.aws.acm_certificate:
