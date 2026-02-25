@@ -1,0 +1,40 @@
+---
+- name: Ensure elastic load balancer application load balancer defaults are generated
+  tags:
+    - elb_application_lb
+  ansible.builtin.set_fact:
+    __elb_application_lb_list:
+      "{{ [{'state': 'present'}] |
+          product(elb_application_lb_list) |
+          map('combine') |
+          list }}"
+    __elb_application_lb_rules:
+      - cidr_ip: 0.0.0.0/0
+        ports:
+          - 80
+          - 443
+        proto: tcp
+    __elb_application_lb_rules_egress:
+      - cidr_ip: 0.0.0.0/0
+        proto: -1
+
+- name: Ensure elastic load balancer application load balancer tasks are included
+  tags:
+    - elb_application_lb
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - elb_application_lb
+    file: include.yml
+  loop: "{{ __elb_application_lb_list }}"
+  loop_control:
+    label: "{{ _loadbalancer.name | d(none) }}"
+    loop_var: _loadbalancer
+  when:
+    - _loadbalancer.name is defined
+    - _loadbalancer.listeners is defined
+    - _loadbalancer.listeners | length > 0
+    - _loadbalancer.subnets is defined
+    - _loadbalancer.subnets | length > 0
+    - _loadbalancer.vpc_id is defined
+...

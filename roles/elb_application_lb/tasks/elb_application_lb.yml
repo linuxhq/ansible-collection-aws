@@ -1,0 +1,35 @@
+---
+- name: Ensure elastic load balancer application load balancers are managed
+  tags:
+    - elb_application_lb
+  amazon.aws.elb_application_lb:
+    access_logs_enabled: "{{ _loadbalancer.access_logs_enabled | d(omit) }}"
+    access_logs_s3_bucket: "{{ _loadbalancer.access_logs_s3_bucket | d(omit) }}"
+    access_logs_s3_prefix: "{{ _loadbalancer.access_logs_s3_prefix | d(omit) }}"
+    deletion_protection: "{{ _loadbalancer.deletion_protection | d(false) }}"
+    http2: "{{ _loadbalancer.http2 | d(true) }}"
+    http_desync_mitigation_mode: "{{ _loadbalancer.http_desync_mitigation_mode | d('defensive') }}"
+    http_drop_invalid_header_fields: "{{ _loadbalancer.http_drop_invalid_header_fields | d(false) }}"
+    http_x_amzn_tls_version_and_cipher_suite: "{{ _loadbalancer.http_x_amzn_tls_version_and_cipher_suite | d(false) }}"
+    http_xff_client_port: "{{ _loadbalancer.http_xff_client_port | d(false) }}"
+    idle_timeout: "{{ _loadbalancer.idle_timeout | d(omit) }}"
+    ip_address_type: "{{ _loadbalancer.ip_address_type | d('ipv4') }}"
+    listeners: "{{ _loadbalancer.listeners }}"
+    name: "{{ _loadbalancer.name }}"
+    purge_listeners: "{{ _loadbalancer.purge_listeners | d(true) }}"
+    purge_rules: "{{ _loadbalancer.purge_rules | d(true) }}"
+    purge_tags: "{{ _loadbalancer.purge_tags | d(true) }}"
+    security_groups: "{{ __elb_application_lb_security_group | d(omit) }}"
+    state: "{{ _loadbalancer.state }}"
+    subnets: "{{ _loadbalancer.subnets }}"
+    tags:
+      "{{ _loadbalancer.tags |
+          d({}) |
+          combine({'Name': _loadbalancer.name}) }}"
+    validate_certs: true
+    waf_fail_open: "{{ _loadbalancer.waf_fail_open | d(false) }}"
+    wait: "{{ _loadbalancer.wait | d(false) }}"
+    wait_timeout: "{{ _loadbalancer.wait_timeout | d(omit) }}"
+  when:
+    - not ansible_check_mode
+...

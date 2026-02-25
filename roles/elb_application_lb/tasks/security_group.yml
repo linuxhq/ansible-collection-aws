@@ -1,0 +1,35 @@
+---
+- name: Ensure elastic load balancer application load balancer security groups are managed
+  tags:
+    - elb_application_lb
+  amazon.aws.ec2_security_group:
+    description: "{{ _loadbalancer.description | d(_loadbalancer.name) }}"
+    name: "{{ _loadbalancer.name }}"
+    purge_rules: true
+    purge_rules_egress: true
+    purge_tags: true
+    rules: "{{ _loadbalancer.rules | d(__elb_application_lb_rules) }}"
+    rules_egress: "{{ _loadbalancer.rules_egress | d(__elb_application_lb_rules_egress) }}"
+    state: "{{ _loadbalancer.state }}"
+    tags:
+      "{{ _loadbalancer.tags |
+          d({}) |
+          combine({'Name': _loadbalancer.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _loadbalancer.vpc_id }}"
+  register: __elb_application_lb_security_group_result
+  until:
+    - __elb_application_lb_security_group_result is success
+  delay: 5
+  retries: 60
+
+- name: Ensure list of elastic load balancer application load balancer security groups is generated
+  tags:
+    - elb_application_lb
+  ansible.builtin.set_fact:
+    __elb_application_lb_security_group:
+      "{{ [__elb_application_lb_security_group_result.group_id] }}"
+  when:
+    - _loadbalancer.state == 'present'
+    - not ansible_check_mode
+...

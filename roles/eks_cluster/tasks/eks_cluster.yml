@@ -3,18 +3,19 @@
   tags:
     - eks_cluster
   community.aws.eks_cluster:
-    name: "{{ _eks_cluster.name }}"
+    name: "{{ _cluster.name }}"
     role_arn: "{{ __eks_cluster_iam_role_arn | d(omit) }}"
     security_groups: "{{ __eks_cluster_security_group | d(omit) }}"
-    state: "{{ _eks_cluster.state | d('present') }}"
-    subnets: "{{ _eks_cluster.subnets }}"
+    state: "{{ _cluster.state }}"
+    subnets: "{{ _cluster.subnets }}"
     tags:
-      "{{ _eks_cluster.tags |
+      "{{ _cluster.tags |
           d({}) |
-          combine({'Name': _eks_cluster.name}) }}"
-    version: "{{ _eks_cluster.version }}"
-    wait: true
-    wait_timeout: 1200
+          combine({'Name': _cluster.name}) }}"
+    validate_certs: true
+    version: "{{ _cluster.version }}"
+    wait: "{{ _cluster.wait | d(false) }}"
+    wait_timeout: "{{ _cluster.wait_timeout | d(1200) }}"
   when:
     - not ansible_check_mode
 ...

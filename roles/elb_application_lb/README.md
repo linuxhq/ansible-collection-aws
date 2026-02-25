@@ -1,8 +1,8 @@
-# eks\_cluster
+# elb\_application\_lb
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Manage aws elastic kubernetes service clusters
+Manage aws elastic load balancer application load balancers
 
 ## Requirements
 
@@ -10,7 +10,7 @@ None
 
 ## Role Variables
 
-    eks_cluster_list: []
+    elb_application_lb_list: []
 
 ## Return Values
 
@@ -18,7 +18,9 @@ None
 
 ## Dependencies
 
+* [linuxhq.aws.ec2\_vpc\_nat\_gateway\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_nat_gateway_info)
 * [linuxhq.aws.ec2\_vpc\_net\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_net_info)
+* [linuxhq.aws.ec2\_vpc\_prefix\_list\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_prefix_list_info)
 * [linuxhq.aws.ec2\_vpc\_subnet\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_subnet_info)
 
 ## Example Playbook
@@ -26,39 +28,38 @@ None
     - hosts: aws
       connection: local
       roles:
-        - role: linuxhq.aws.eks_cluster
-          eks_cluster_list:
-            - name: molecule-eks1
+        - role: linuxhq.aws.elb_application_lb
+          elb_application_lb_list:
+            - name: molecule-http-80
               subnets:
                 - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
-              version: 1.34
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+              listeners:
+                - Protocol: HTTP
+                  Port: 80
+                  DefaultActions:
+                    - Type: forward
+                      TargetGroupName: molecule-http-8080
               vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
-              wait: true
 
-            - name: molecule-eks2
-              iam_managed_policies:
-                - AmazonEKSClusterPolicy
-                - AmazonS3FullAccess
-              iam_role_name: MoleculeEksClusterRole
+            - name: molecule-http-81
               rules:
-                - cidr_ip: 10.0.0.0/8
-                  ports:
-                    - 443
+                - cidr_ip: 0.0.0.0/0
+                  ports: 81
                   proto: tcp
               rules_egress:
-                - cidr_ip: 10.0.0.0/8
-                  ports:
-                    - 0-65535
-                  proto: tcp
+                - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
+                  proto: -1
               subnets:
                 - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
-              version: 1.35
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+              listeners:
+                - Protocol: HTTP
+                  Port: 81
+                  DefaultActions:
+                    - Type: forward
+                      TargetGroupName: molecule-http-8081
               vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
-              wait: true
 
 ## License
 

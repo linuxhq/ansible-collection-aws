@@ -1,0 +1,7 @@
+---
+elb_application_lb_info_include_attributes: true
+elb_application_lb_info_include_listener_rules: true
+elb_application_lb_info_include_listeners: true
+elb_application_lb_info_load_balancer_arns: []
+elb_application_lb_info_names: []
+...
