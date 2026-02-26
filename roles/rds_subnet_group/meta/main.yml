@@ -1,0 +1,25 @@
+---
+dependencies:
+  - role: ec2_vpc_subnet_info
+    tags: rds_subnet_group
+galaxy_info:
+  role_name: rds_subnet_group
+  author: Taylor Kimball
+  description: Manage aws relational database service subnet groups
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - group
+    - rds
+    - subnet
+...

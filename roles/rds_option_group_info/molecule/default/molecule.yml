@@ -1,0 +1,85 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        rds_option_group_list:
+          - engine_name: mariadb
+            major_engine_version: 10.6
+            option_group_name: mariadb106
+            options:
+              - option_name: MARIADB_AUDIT_PLUGIN
+                option_settings:
+                  - name: SERVER_AUDIT_FILE_ROTATE_SIZE
+                    value: '1000000'
+                  - name: SERVER_AUDIT_FILE_ROTATIONS
+                    value: '30'
+                  - name: SERVER_AUDIT_QUERY_LOG_LIMIT
+                    value: '1024'
+
+          - engine_name: mariadb
+            major_engine_version: 11.4
+            option_group_name: mariadb114
+            options:
+              - option_name: MARIADB_AUDIT_PLUGIN
+                option_settings:
+                  - name: SERVER_AUDIT_FILE_ROTATE_SIZE
+                    value: '1000000'
+                  - name: SERVER_AUDIT_FILE_ROTATIONS
+                    value: '30'
+                  - name: SERVER_AUDIT_QUERY_LOG_LIMIT
+                    value: '1024'
+
+          - engine_name: mariadb
+            major_engine_version: 11.8
+            option_group_name: mariadb118
+            options:
+              - option_name: MARIADB_AUDIT_PLUGIN
+                option_settings:
+                  - name: SERVER_AUDIT_FILE_ROTATE_SIZE
+                    value: '1000000'
+                  - name: SERVER_AUDIT_FILE_ROTATIONS
+                    value: '30'
+                  - name: SERVER_AUDIT_QUERY_LOG_LIMIT
+                    value: '1024'
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...

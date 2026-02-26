@@ -9,6 +9,7 @@
 
 - name: Ensure strings of user and caller information is generated
   tags:
+    - always
     - aws_caller_info
   ansible.builtin.set_fact:
     _aws_caller_info_account: "{{ __aws_caller_info_query.account }}"

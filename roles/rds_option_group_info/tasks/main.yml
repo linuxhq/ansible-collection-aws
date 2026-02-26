@@ -1,0 +1,31 @@
+---
+- name: Ensure information about aws relational database service option groups is gathered
+  tags:
+    - rds_option_group_info
+  amazon.aws.rds_option_group_info:
+    engine_name: "{{ rds_option_group_info_engine_name or omit }}"
+    engine_version: "{{ rds_option_group_info_major_engine_version or omit }}"
+    marker: "{{ rds_option_group_info_marker or omit }}"
+    max_records: "{{ rds_option_group_info_max_records }}"
+    option_group_name: "{{ rds_option_group_info_option_group_name or omit }}"
+    validate_certs: true
+  register: __rds_option_group_info_query
+
+- name: Ensure list of aws relational database service option groups is generated
+  tags:
+    - rds_option_group_info
+  ansible.builtin.set_fact:
+    _rds_option_group_info_list:
+      "{{ (__rds_option_group_info_query.result |
+          selectattr('option_group_name', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of aws relational database service option groups is generated
+  tags:
+    - rds_option_group_info
+  ansible.builtin.set_fact:
+    _rds_option_group_info_dict:
+      "{{ dict(_rds_option_group_info_list |
+               json_query('[].option_group_name') |
+               zip(_rds_option_group_info_list)) }}"
+...

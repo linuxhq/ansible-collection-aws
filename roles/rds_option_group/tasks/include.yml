@@ -1,0 +1,50 @@
+---
+- name: Ensure aws relational database service option groups are managed
+  tags:
+    - rds_option_group
+  amazon.aws.rds_option_group:
+    apply_immediately: "{{ _og.apply_immediately | d(false) }}"
+    engine_name: "{{ _og.engine_name }}"
+    major_engine_version: "{{ _og.major_engine_version }}"
+    option_group_description: "{{ _og.option_group_description | d(_og.option_group_name) }}"
+    option_group_name: "{{ _og.option_group_name }}"
+    options: "{{ _og.options }}"
+    purge_tags: "{{ _og.purge_tags | d(true) }}"
+    state: "{{ _og.state | d('present') }}"
+    tags:
+      "{{ _og.tags |
+          d({}) |
+          combine({'Name': _og.option_group_name}) }}"
+    validate_certs: true
+    wait: "{{ _og.wait | d(true) }}"
+  register: __rds_option_group_result
+  loop: "{{ __rds_option_group_list }}"
+  loop_control:
+    label: "{{ _og.option_group_name | d(none) }}"
+    loop_var: _og
+  when:
+    - _og.engine_name is defined
+    - _og.major_engine_version is defined
+    - _og.option_group_name is defined
+    - _og.options is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, rds_option_group_async) }}"
+  poll: "{{ rds_option_group_poll }}"
+
+- name: Ensure managed relational database service option groups jobs are complete
+  tags:
+    - rds_option_group
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __rds_option_group_status
+  loop: "{{ __rds_option_group_result.results }}"
+  loop_control:
+    label: "{{ _jid._og.option_group_name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __rds_option_group_status.finished | bool
+  retries: "{{ rds_option_group_retries }}"
+  delay: "{{ rds_option_group_delay }}"
+...

@@ -1,0 +1,8 @@
+---
+rds_instance_param_group_async: 300
+rds_instance_param_group_batch: 10
+rds_instance_param_group_delay: 3
+rds_instance_param_group_list: []
+rds_instance_param_group_poll: 0
+rds_instance_param_group_retries: 100
+...

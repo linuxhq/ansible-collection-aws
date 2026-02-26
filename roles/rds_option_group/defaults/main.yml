@@ -1,0 +1,8 @@
+---
+rds_option_group_async: 300
+rds_option_group_batch: 10
+rds_option_group_delay: 3
+rds_option_group_list: []
+rds_option_group_poll: 0
+rds_option_group_retries: 100
+...
