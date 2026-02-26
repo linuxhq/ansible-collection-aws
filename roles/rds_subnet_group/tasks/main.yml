@@ -1,0 +1,16 @@
+---
+- name: Ensure aws relational database service subnet groups are batched
+  tags:
+    - rds_subnet_group
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - rds_subnet_group
+    file: include.yml
+  loop:
+    "{{ rds_subnet_group_list |
+        batch(rds_subnet_group_batch) }}"
+  loop_control:
+    label: "{{ __rds_subnet_group_list | length }}"
+    loop_var: __rds_subnet_group_list
+...

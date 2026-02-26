@@ -1,0 +1,44 @@
+---
+- name: Ensure aws relational database service subnet groups are managed
+  tags:
+    - rds_subnet_group
+  amazon.aws.rds_subnet_group:
+    description: "{{ _subgrp.description | d(_subgrp.name) }}"
+    name: "{{ _subgrp.name }}"
+    purge_tags: "{{ _subgrp.purge_tags | d(true) }}"
+    state: "{{ _subgrp.state | d('present') }}"
+    subnets: "{{ _subgrp.subnets }}"
+    tags:
+      "{{ _subgrp.tags |
+          d({}) |
+          combine({'Name': _subgrp.name}) }}"
+    validate_certs: true
+  register: __rds_subnet_group_result
+  loop: "{{ __rds_subnet_group_list }}"
+  loop_control:
+    label: "{{ _subgrp.name | d(none) }}"
+    loop_var: _subgrp
+  when:
+    - _subgrp.name is defined
+    - _subgrp.subnets is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, rds_subnet_group_async) }}"
+  poll: "{{ rds_subnet_group_poll }}"
+
+- name: Ensure managed relational database service subnet groups jobs are complete
+  tags:
+    - rds_subnet_group
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __rds_subnet_group_status
+  loop: "{{ __rds_subnet_group_result.results }}"
+  loop_control:
+    label: "{{ _jid._subgrp.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __rds_subnet_group_status.finished | bool
+  retries: "{{ rds_subnet_group_retries }}"
+  delay: "{{ rds_subnet_group_delay }}"
+...

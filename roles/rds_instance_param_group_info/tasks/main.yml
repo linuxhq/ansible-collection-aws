@@ -1,0 +1,27 @@
+---
+- name: Ensure information about aws relational database service instance parameter groups is gathered
+  tags:
+    - rds_instance_param_group_info
+  amazon.aws.rds_instance_param_group_info:
+    db_parameter_group_name: "{{ rds_instance_param_group_info_db_parameter_group_name or omit }}"
+    validate_certs: true
+  register: __rds_instance_param_group_info_query
+
+- name: Ensure list of aws relational database service instance parameter groups is generated
+  tags:
+    - rds_instance_param_group_info
+  ansible.builtin.set_fact:
+    _rds_instance_param_group_info_list:
+      "{{ (__rds_instance_param_group_info_query.db_instance_parameter_groups |
+          selectattr('db_parameter_group_name', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of aws relational database service instance parameter groups is generated
+  tags:
+    - rds_instance_param_group_info
+  ansible.builtin.set_fact:
+    _rds_instance_param_group_info_dict:
+      "{{ dict(_rds_instance_param_group_info_list |
+               json_query('[].db_parameter_group_name') |
+               zip(_rds_instance_param_group_info_list)) }}"
+...

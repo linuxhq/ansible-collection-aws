@@ -1,0 +1,31 @@
+---
+- name: Ensure information about aws relational database service subnet groups is gathered
+  tags:
+    - rds_subnet_group_info
+  ansible.builtin.command:
+    cmd: >
+      aws rds describe-db-subnet-groups
+        --query DBSubnetGroups
+  register: __rds_subnet_group_info_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of aws relational database service subnet groups is generated
+  tags:
+    - rds_subnet_group_info
+  ansible.builtin.set_fact:
+    _rds_subnet_group_info_list:
+      "{{ (__rds_subnet_group_info_query.stdout |
+          from_json |
+          selectattr('DBSubnetGroupName', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of aws relational database service subnet groups is generated
+  tags:
+    - rds_subnet_group_info
+  ansible.builtin.set_fact:
+    _rds_subnet_group_info_dict:
+      "{{ dict(_rds_subnet_group_info_list |
+               json_query('[].DBSubnetGroupName') |
+               zip(_rds_subnet_group_info_list)) }}"
+...

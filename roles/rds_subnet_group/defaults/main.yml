@@ -1,0 +1,8 @@
+---
+rds_subnet_group_async: 300
+rds_subnet_group_batch: 10
+rds_subnet_group_delay: 3
+rds_subnet_group_list: []
+rds_subnet_group_poll: 0
+rds_subnet_group_retries: 100
+...

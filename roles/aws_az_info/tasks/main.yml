@@ -10,6 +10,7 @@
 
 - name: Ensure list of aws availability zones is generated
   tags:
+    - always
     - aws_az_info
   ansible.builtin.set_fact:
     _aws_az_info_list:

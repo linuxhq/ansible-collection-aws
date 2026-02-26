@@ -1,0 +1,91 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        rds_instance_param_group_list:
+          - name: mariadb106
+            engine: mariadb10.5
+            immediate: true
+            params:
+              character_set_client: utf8mb4
+              character_set_connection: utf8mb4
+              character_set_database: utf8mb4
+              character_set_results: utf8mb4
+              character_set_server: utf8mb4
+              collation_connection: utf8mb4_general_ci
+              collation_server: utf8mb4_general_ci
+              init_connect: SET NAMES utf8mb4 COLLATE utf8mb4_general_ci
+              log_warnings: 2
+              max_allowed_packet: 33554432
+
+          - name: mariadb114
+            engine: mariadb11.4
+            immediate: true
+            params:
+              character_set_client: utf8mb4
+              character_set_connection: utf8mb4
+              character_set_database: utf8mb4
+              character_set_results: utf8mb4
+              character_set_server: utf8mb4
+              collation_connection: utf8mb4_general_ci
+              collation_server: utf8mb4_general_ci
+              init_connect: SET NAMES utf8mb4 COLLATE utf8mb4_general_ci
+              log_warnings: 2
+              max_allowed_packet: 33554432
+
+          - name: mariadb118
+            engine: mariadb11.8
+            immediate: true
+            params:
+              character_set_client: utf8mb4
+              character_set_connection: utf8mb4
+              character_set_database: utf8mb4
+              character_set_results: utf8mb4
+              character_set_server: utf8mb4
+              collation_connection: utf8mb4_general_ci
+              collation_server: utf8mb4_general_ci
+              init_connect: SET NAMES utf8mb4 COLLATE utf8mb4_general_ci
+              log_warnings: 2
+              max_allowed_packet: 33554432
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...

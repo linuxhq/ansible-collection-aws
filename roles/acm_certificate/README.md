@@ -6,7 +6,7 @@ Manage aws certificate manager certificates
 
 ## Requirements
 
-None
+* [awscli](https://pypi.org/project/awscli)
 
 ## Role Variables
 

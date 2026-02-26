@@ -1,0 +1,16 @@
+---
+- name: Ensure aws relational database service instance parameter groups are batched
+  tags:
+    - rds_instance_param_group
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - rds_instance_param_group
+    file: include.yml
+  loop:
+    "{{ rds_instance_param_group_list |
+        batch(rds_instance_param_group_batch) }}"
+  loop_control:
+    label: "{{ __rds_instance_param_group_list | length }}"
+    loop_var: __rds_instance_param_group_list
+...

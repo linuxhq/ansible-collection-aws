@@ -1,0 +1,14 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - role: rds_option_group
+      rds_option_group_list: []
+      tags:
+        - molecule-idempotence-notest
+
+    - rds_option_group
+...
