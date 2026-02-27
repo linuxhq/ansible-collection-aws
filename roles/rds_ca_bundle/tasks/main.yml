@@ -1,0 +1,53 @@
+---
+- name: Ensure aws relational database service certificate authority defaults are generated
+  tags:
+    - rds_ca_bundle
+  ansible.builtin.set_fact:
+    __rds_ca_bundle_list:
+      "{{ [{'state': 'present'}] |
+          product(rds_ca_bundle_list) |
+          map('combine') |
+          list }}"
+
+- name: Ensure aws relational database service certificate authority bundles are present
+  tags:
+    - rds_ca_bundle
+  become: true
+  ansible.builtin.get_url:
+    dest: "/etc/pki/ca-trust/source/anchors/{{ _bundle.url | basename }}"
+    group: root
+    mode: '0644'
+    owner: root
+    url: "{{ _bundle.url }}"
+  loop: "{{ __rds_ca_bundle_list }}"
+  loop_control:
+    label: "{{ _bundle.url | d(none) }}"
+    loop_var: _bundle
+  when:
+    - _bundle.state == 'present'
+    - _bundle.url is defined
+
+- name: Ensure aws relational database service certificate authority bundles are absent
+  tags:
+    - rds_ca_bundle
+  become: true
+  ansible.builtin.file:
+    path: "/etc/pki/ca-trust/source/anchors/{{ _bundle.url | basename }}"
+    state: absent
+  loop: "{{ __rds_ca_bundle_list }}"
+  loop_control:
+    label: "{{ _bundle.url | d(none) }}"
+    loop_var: _bundle
+  when:
+    - _bundle.state == 'absent'
+    - _bundle.url is defined
+
+- name: Ensure aws relational database service certificate authority bundles are updated
+  tags:
+    - rds_ca_bundle
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      update-ca-trust extract
+  changed_when: false
+...

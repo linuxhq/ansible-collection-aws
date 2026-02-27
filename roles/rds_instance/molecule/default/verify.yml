@@ -26,8 +26,7 @@
               map('combine', {'state': 'absent'}) }}"
         rds_instance_list:
           "{{ rds_instance_list |
-              map('combine',
-                  {'state': 'absent', 'wait': true}) }}"
+              map('combine', {'state': 'absent'}) }}"
         rds_instance_param_group_list:
           "{{ rds_instance_param_group_list |
               map('combine', {'state': 'absent'}) }}"
