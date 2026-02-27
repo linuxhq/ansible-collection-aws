@@ -1,4 +1,5 @@
 ---
+allow_duplicates: false
 dependencies: []
 galaxy_info:
   role_name: ec2_ami_info

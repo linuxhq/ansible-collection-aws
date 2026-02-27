@@ -1,0 +1,62 @@
+---
+- name: Ensure aws relational database service instance is managed
+  tags:
+    - rds_instance
+  amazon.aws.rds_instance:
+    allocated_storage: "{{ _db.allocated_storage | d(omit) }}"
+    allow_major_version_upgrade: "{{ _db.allow_major_version_upgrade | d(omit) }}"
+    apply_immediately: "{{ _db.apply_immediately | d(false) }}"
+    auto_minor_version_upgrade: "{{ _db.auto_minor_version_upgrade | d(omit) }}"
+    backup_retention_period: "{{ _db.backup_retention_period | d(omit) }}"
+    ca_certificate_identifier: "{{ _db.ca_certificate_identifier | d(omit) }}"
+    character_set_name: "{{ _db.character_set_name | d(omit) }}"
+    copy_tags_to_snapshot: "{{ _db.copy_tags_to_snapshot | d(omit) }}"
+    db_cluster_identifier: "{{ _db.db_cluster_identifier | d(omit) }}"
+    db_instance_class: "{{ _db.db_instance_class }}"
+    db_instance_identifier: "{{ _db.db_instance_identifier }}"
+    db_name: "{{ _db.db_name | d(omit) }}"
+    db_parameter_group_name: "{{ _db.db_parameter_group_name | d(omit) }}"
+    db_subnet_group_name: "{{ _db.db_subnet_group_name | d(omit) }}"
+    deletion_protection: "{{ _db.deletion_protection | d(omit) }}"
+    enable_cloudwatch_logs_exports: "{{ _db.enable_cloudwatch_logs_exports | d(omit) }}"
+    enable_iam_database_authentication: "{{ _db.enable_iam_database_authentication | d(omit) }}"
+    enable_performance_insights: "{{ _db.enable_performance_insights | d(omit) }}"
+    engine: "{{ _db.engine }}"
+    engine_version: "{{ _db.engine_version | d(omit) }}"
+    final_db_snapshot_identifier: "{{ _db.final_db_snapshot_identifier | d(omit) }}"
+    iops: "{{ _db.iops | d(omit) }}"
+    kms_key_id: "{{ _db.kms_key_id | d(omit) }}"
+    license_model: "{{ _db.license_model | d(omit) }}"
+    master_user_password: "{{ _db.master_user_password }}"
+    master_username: "{{ _db.master_username }}"
+    max_allocated_storage: "{{ _db.max_allocated_storage | d(omit) }}"
+    monitoring_interval: "{{ _db.monitoring_interval | d(omit) }}"
+    monitoring_role_arn: "{{ _db.monitoring_role_arn | d(omit) }}"
+    multi_az: "{{ _db.multi_az | d(omit) }}"
+    multi_tenant: "{{ _db.multi_tenant | d(omit) }}"
+    option_group_name: "{{ _db.option_group_name | d(omit) }}"
+    performance_insights_kms_key_id: "{{ _db.performance_insights_kms_key_id | d(omit) }}"
+    performance_insights_retention_period: "{{ _db.performance_insights_retention_period | d(omit) }}"
+    preferred_backup_window: "{{ _db.preferred_backup_window | d(omit) }}"
+    preferred_maintenance_window: "{{ _db.preferred_maintenance_window | d(omit) }}"
+    processor_features: "{{ _db.processor_features | d(omit) }}"
+    publicly_accessible: "{{ _db.publicly_accessible | d(omit) }}"
+    purge_cloudwatch_logs_exports: "{{ _db.purge_cloudwatch_logs_exports | d(true) }}"
+    purge_security_groups: "{{ _db.purge_security_groups | d(true) }}"
+    purge_tags: "{{ _db.purge_tags | d(true) }}"
+    skip_final_snapshot: "{{ _db.skip_final_snapshot | d(false) }}"
+    state: "{{ _db.state }}"
+    storage_encrypted: "{{ _db.storage_encrypted | d(omit) }}"
+    storage_throughput: "{{ _db.storage_throughput | d(omit) }}"
+    storage_type: "{{ _db.storage_type | d(omit) }}"
+    tags:
+      "{{ _db.tags |
+          d({}) |
+          combine({'Name': _db.db_instance_identifier}) }}"
+    timezone: "{{ _db.timezone | d(omit) }}"
+    validate_certs: true
+    vpc_security_group_ids: "{{ __rds_instance_security_group | d(omit) }}"
+    wait: "{{ _db.wait | d(true) }}"
+  when:
+    - not ansible_check_mode
+...

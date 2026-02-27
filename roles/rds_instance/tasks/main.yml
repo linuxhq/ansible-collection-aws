@@ -1,0 +1,52 @@
+---
+- name: Ensure aws relational database service instance defaults are generated
+  tags:
+    - rds_instance
+  ansible.builtin.set_fact:
+    __rds_instance_list:
+      "{{ [{'state': 'present'}] |
+          product(rds_instance_list) |
+          map('combine') |
+          list }}"
+    __rds_instance_rules:
+      mariadb:
+        - cidr_ip: 0.0.0.0/0
+          ports:
+            - 3306
+          proto: tcp
+      oracle-se2:
+        - cidr_ip: 0.0.0.0/0
+          ports:
+            - 1521
+            - 2484
+      postgres:
+        - cidr_ip: 0.0.0.0/0
+          ports:
+            - 5432
+          proto: tcp
+    __rds_instance_rules_egress:
+      - cidr_ip: 0.0.0.0/0
+        proto: -1
+
+- name: Ensure aws relational database service instance tasks are included
+  tags:
+    - rds_instance
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - rds_instance
+    file: include.yml
+  loop: "{{ __rds_instance_list }}"
+  loop_control:
+    label: "{{ _db.name | d(none) }}"
+    loop_var: _db
+  when:
+    - _db.allocated_storage is defined
+    - _db.db_instance_class is defined
+    - _db.db_instance_identifier is defined
+    - _db.db_subnet_group_name is defined
+    - _db.engine is defined
+    - _db.master_user_password is defined
+    - _db.master_username is defined
+    - _db.vpc_id is defined
+...

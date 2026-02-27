@@ -1,10 +1,13 @@
 ---
-allow_duplicates: true
-dependencies: []
+dependencies:
+  - role: ec2_vpc_net_info
+    tags: rds_instance
+  - role: ec2_vpc_subnet_info
+    tags: rds_instance
 galaxy_info:
-  role_name: acm_certificate_info
+  role_name: rds_instance
   author: Taylor Kimball
-  description: Gather information about aws certificate manager certificates
+  description: Manage aws relational database service instances
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq
@@ -16,10 +19,10 @@ galaxy_info:
       versions:
         - all
   galaxy_tags:
-    - acm
     - amazon
     - aws
-    - certificate
-    - info
-    - manager
+    - database
+    - instance
+    - rds
+    - relational
 ...
