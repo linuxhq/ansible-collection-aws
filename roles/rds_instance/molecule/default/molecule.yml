@@ -66,7 +66,6 @@ provisioner:
             publicly_accessible: true
             skip_final_snapshot: true
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].vpc_id }}"
-            wait: false
 
           - allocated_storage: 20
             auto_minor_version_upgrade: false
@@ -101,7 +100,6 @@ provisioner:
             storage_type: gp3
             skip_final_snapshot: true
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].vpc_id }}"
-            wait: false
 
         rds_instance_param_group_list:
           - name: mariadb118
