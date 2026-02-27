@@ -1,0 +1,35 @@
+---
+- name: Ensure aws relational database service instance security group is managed
+  tags:
+    - rds_instance
+  amazon.aws.ec2_security_group:
+    description: "{{ _db.db_instance_identifier }}"
+    name: "{{ _db.db_instance_identifier }}"
+    purge_rules: true
+    purge_rules_egress: true
+    purge_tags: true
+    rules: "{{ _db.rules | d(__rds_instance_rules[_db.engine]) }}"
+    rules_egress: "{{ _db.rules_egress | d(__rds_instance_rules_egress) }}"
+    state: "{{ _db.state }}"
+    tags:
+      "{{ _db.tags |
+          d({}) |
+          combine({'Name': _db.db_instance_identifier}) }}"
+    validate_certs: true
+    vpc_id: "{{ _db.vpc_id }}"
+  register: __rds_instance_security_group_result
+  until:
+    - __rds_instance_security_group_result is success
+  delay: 5
+  retries: 60
+
+- name: Ensure list of aws relational database service instance security group is generated
+  tags:
+    - rds_instance
+  ansible.builtin.set_fact:
+    __rds_instance_security_group:
+      "{{ [__rds_instance_security_group_result.group_id] }}"
+  when:
+    - _db.state == 'present'
+    - not ansible_check_mode
+...

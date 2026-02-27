@@ -1,0 +1,35 @@
+---
+- name: Ensure aws relational database service instance present tasks are included
+  tags:
+    - rds_instance
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - rds_instance
+    file: "{{ _order }}"
+  loop:
+    - security_group.yml
+    - rds_instance.yml
+  loop_control:
+    label: "{{ _order | d(none) }}"
+    loop_var: _order
+  when:
+    - _db.state == 'present'
+
+- name: Ensure aws relational database service instance absent tasks are included
+  tags:
+    - rds_instance
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - rds_instance
+    file: "{{ _order }}"
+  loop:
+    - rds_instance.yml
+    - security_group.yml
+  loop_control:
+    label: "{{ _order | d(none) }}"
+    loop_var: _order
+  when:
+    - _db.state == 'absent'
+...

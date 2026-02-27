@@ -1,0 +1,52 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - role: aws_caller_info
+      check_mode: false
+
+    - role: iam_role
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_vpc_net
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_vpc_igw
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_vpc_subnet
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: rds_instance_param_group
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: rds_option_group
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: rds_subnet_group
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: rds_instance
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - rds_instance_info
+...
