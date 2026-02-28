@@ -1,0 +1,8 @@
+---
+secretsmanager_secret_async: 300
+secretsmanager_secret_batch: 10
+secretsmanager_secret_delay: 3
+secretsmanager_secret_list: []
+secretsmanager_secret_poll: 0
+secretsmanager_secret_retries: 100
+...

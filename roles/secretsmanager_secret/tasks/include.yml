@@ -1,0 +1,52 @@
+---
+- name: Ensure aws secrets manager secrets are managed
+  tags:
+    - secretsmanager_secret
+  community.aws.secretsmanager_secret:
+    description: "{{ _secret.description | d(_secret.name) }}"
+    kms_key_id: "{{ _secret.kms_key_id | d(omit) }}"
+    name: "{{ _secret.name }}"
+    overwrite: "{{ _secret.overwrite | d(true) }}"
+    purge_tags: "{{ _secret.purge_tags | d(true) }}"
+    recovery_window: "{{ _secret.recovery_window | d(30) }}"
+    replica: "{{ _secret.replica | d(omit) }}"
+    rotation_interval: "{{ _secret.rotation_interval | d(omit) }}"
+    rotation_lambda: "{{ _secret.rotation_lambda | d(omit) }}"
+    secret: "{{ _secret.secret | items2dict | to_json }}"
+    secret_type: "{{ _secret.secret_type | d('string') }}"
+    state: "{{ _secret.state | d('present') }}"
+    tags:
+      "{{ _secret.tags |
+          d({}) |
+          combine({'Name': _secret.name}) }}"
+    validate_certs: true
+  register: __secretsmanager_secret_result
+  loop: "{{ __secretsmanager_secret_list }}"
+  loop_control:
+    label: "{{ _secret.name | d(none) }}"
+    loop_var: _secret
+  when:
+    - _secret.name is defined
+    - _secret.secret is defined
+    - _secret.secret | length > 0
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, secretsmanager_secret_async) }}"
+  poll: "{{ secretsmanager_secret_poll }}"
+
+- name: Ensure managed secrets manager secret jobs are complete
+  tags:
+    - secretsmanager_secret
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __secretsmanager_secret_status
+  loop: "{{ __secretsmanager_secret_result.results }}"
+  loop_control:
+    label: "{{ _jid._secret.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __secretsmanager_secret_status.finished | bool
+  retries: "{{ secretsmanager_secret_retries }}"
+  delay: "{{ secretsmanager_secret_delay }}"
+...

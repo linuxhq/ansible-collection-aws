@@ -1,0 +1,14 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+
+  roles:
+    - role: secretsmanager_secret
+      secretsmanager_secret_list: []
+      tags:
+        - molecule-idempotence-notest
+
+    - secretsmanager_secret
+...

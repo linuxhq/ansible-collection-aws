@@ -1,0 +1,24 @@
+---
+dependencies:
+  - role: rds_instance_info
+    tags: secretsmanager_secret
+galaxy_info:
+  role_name: secretsmanager_secret
+  author: Taylor Kimball
+  description: Manage aws secrets manager secrets
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - manager
+    - secret
+...

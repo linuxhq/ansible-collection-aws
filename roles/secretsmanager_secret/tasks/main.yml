@@ -1,0 +1,16 @@
+---
+- name: Ensure aws secrets manager secrets are batched
+  tags:
+    - secretsmanager_secret
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - secretsmanager_secret
+    file: include.yml
+  loop:
+    "{{ secretsmanager_secret_list |
+        batch(secretsmanager_secret_batch) }}"
+  loop_control:
+    label: "{{ __secretsmanager_secret_list | length }}"
+    loop_var: __secretsmanager_secret_list
+...
