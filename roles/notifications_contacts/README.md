@@ -10,10 +10,10 @@ Manage aws notifications contacts
 
 ## Role Variables
 
-    notifications_contacts_list: []
     notifications_contacts_async: 300
     notifications_contacts_batch: 10
     notifications_contacts_delay: 3
+    notifications_contacts_list: []
     notifications_contacts_poll: 0
     notifications_contacts_retries: 100
 

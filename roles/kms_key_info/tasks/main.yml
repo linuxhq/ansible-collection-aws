@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about kms keys is gathered
+- name: Ensure information about aws key management service keys is gathered
   tags:
     - kms_key_info
   amazon.aws.kms_key_info:
@@ -10,7 +10,7 @@
     validate_certs: true
   register: __kms_key_info_query
 
-- name: Ensure list of kms keys is generated
+- name: Ensure list of aws key management service keys is generated
   tags:
     - kms_key_info
   ansible.builtin.set_fact:
@@ -19,7 +19,7 @@
           selectattr('aliases.0', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of kms keys is generated
+- name: Ensure dict of aws key management service keys is generated
   tags:
     - kms_key_info
   ansible.builtin.set_fact:

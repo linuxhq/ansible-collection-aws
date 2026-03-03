@@ -1,0 +1,91 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        iam_role_list:
+          - name: admin
+            assume_role_policy_document:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Principal:
+                    AWS: "arn:aws:iam::{{ _aws_caller_info_account }}:root"
+                  Action:
+                    - sts:AssumeRole
+            create_instance_profile: false
+            managed_policies:
+              - AdministratorAccess
+
+        kms_key_list:
+          - name: molecule-root
+            pending_window: 7
+            policy:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Principal:
+                    AWS: "arn:aws:iam::{{ _aws_caller_info_account }}:root"
+                  Action: kms:*
+                  Resource: '*'
+
+          - name: molecule-admin
+            pending_window: 7
+            policy:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Principal:
+                    AWS: "arn:aws:iam::{{ _aws_caller_info_account }}:root"
+                  Action: kms:*
+                  Resource: '*'
+                - Effect: Allow
+                  Principal:
+                    AWS: '*'
+                  Action: kms:*
+                  Resource: '*'
+                  Condition:
+                    ArnEquals:
+                      'aws:PrincipalArn':
+                        - "arn:aws:iam::{{ _aws_caller_info_account }}:role/admin"
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...

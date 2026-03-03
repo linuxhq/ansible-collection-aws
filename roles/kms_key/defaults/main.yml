@@ -1,3 +1,8 @@
 ---
+kms_key_async: 300
+kms_key_batch: 10
+kms_key_delay: 3
 kms_key_list: []
+kms_key_poll: 0
+kms_key_retries: 100
 ...

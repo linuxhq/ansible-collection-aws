@@ -10,10 +10,10 @@ Manage aws notifications hubs
 
 ## Role Variables
 
-    notifications_hub_list: []
     notifications_hub_async: 300
     notifications_hub_batch: 10
     notifications_hub_delay: 3
+    notifications_hub_list: []
     notifications_hub_poll: 0
     notifications_hub_retries: 100
 
