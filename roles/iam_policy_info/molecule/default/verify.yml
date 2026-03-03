@@ -34,12 +34,12 @@
 
     - name: Ensure roles are included
       ansible.builtin.include_role:
-        name: "{{ _role }}"
+        name: "{{ _verify }}"
       loop:
         - iam_policy
         - iam_user
         - iam_group
       loop_control:
-        label: "{{ _role }}"
-        loop_var: _role
+        label: "{{ _verify }}"
+        loop_var: _verify
 ...

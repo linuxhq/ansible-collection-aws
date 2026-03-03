@@ -1,0 +1,43 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - aws_caller_info
+    - kms_key_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _kms_key_info_dict['molecule-root'].aliases.0 == kms_key_list.0.name
+          - _kms_key_info_dict['molecule-root'].aws_account_id == _aws_caller_info_account
+          - _kms_key_info_dict['molecule-root'].key_arn is defined
+          - _kms_key_info_dict['molecule-root'].key_id is defined
+          - _kms_key_info_dict['molecule-root'].key_policies.0 == kms_key_list.0.policy
+          - _kms_key_info_dict['molecule-admin'].aliases.0 == kms_key_list.1.name
+          - _kms_key_info_dict['molecule-admin'].aws_account_id == _aws_caller_info_account
+          - _kms_key_info_dict['molecule-admin'].key_arn is defined
+          - _kms_key_info_dict['molecule-admin'].key_id is defined
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        iam_role_list:
+          "{{ iam_role_list |
+              map('combine', {'state': 'absent'}) }}"
+        kms_key_list:
+          "{{ kms_key_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - kms_key
+        - iam_role
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

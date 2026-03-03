@@ -11,8 +11,8 @@ None
 ## Role Variables
 
     profile_dir: '~/.aws'
-    profile_no_log: false
     profile_list: []
+    profile_no_log: false
 
 ## Return Values
 

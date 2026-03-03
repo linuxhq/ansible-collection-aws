@@ -1,0 +1,51 @@
+---
+- name: Ensure aws key management service keys are managed
+  tags:
+    - kms_key
+  amazon.aws.kms_key:
+    alias: "{{ _key.name }}"
+    description: "{{ _key.description | d(_key.name) }}"
+    enable_key_rotation: "{{ _key.enable_key_rotation | d(omit) }}"
+    enabled: "{{ _key.enabled | d(true) }}"
+    grants: "{{ _key.grants | d(omit) }}"
+    key_spec: "{{ _key.key_spec | d('SYMMETRIC_DEFAULT') }}"
+    key_usage: "{{ _key.key_usage | d('ENCRYPT_DECRYPT') }}"
+    multi_region: "{{ _key.multi_region | d(false) }}"
+    pending_window: "{{ _key.pending_window | d(30) }}"
+    policy: "{{ _key.policy | d(omit) }}"
+    purge_grants: "{{ _key.purge_grants | d(false) }}"
+    purge_tags: "{{ _key.purge_tags | d(true) }}"
+    state: "{{ _key.state | d('present') }}"
+    tags:
+      "{{ _key.tags |
+          d({}) |
+          combine({'Name': _key.name}) }}"
+    validate_certs: true
+  register: __kms_key_result
+  loop: "{{ kms_key_list }}"
+  loop_control:
+    label: "{{ _key.name | d(none) }}"
+    loop_var: _key
+  when:
+    - _key.name is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, kms_key_async) }}"
+  poll: "{{ kms_key_poll }}"
+
+- name: Ensure managed key management service key jobs are complete
+  tags:
+    - kms_key
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __kms_key_status
+  loop: "{{ __kms_key_result.results }}"
+  loop_control:
+    label: "{{ _jid._key.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __kms_key_status.finished | bool
+  retries: "{{ kms_key_retries }}"
+  delay: "{{ kms_key_delay }}"
+...

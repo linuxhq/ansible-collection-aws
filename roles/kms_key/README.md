@@ -10,11 +10,16 @@ None
 
 ## Role Variables
 
+    kms_key_async: 300
+    kms_key_batch: 10
+    kms_key_delay: 3
     kms_key_list: []
+    kms_key_poll: 0
+    kms_key_retries: 100
 
 ## Return Values
 
-    _kms_key_list
+None
 
 ## Dependencies
 
@@ -27,15 +32,25 @@ None
       roles:
         - role: linuxhq.aws.kms_key
           kms_key_list:
-            - name: linuxhq/ssm
-              enable_key_rotation: true
+            - name: molecule-root
               policy:
                 Version: '2012-10-17'
                 Statement:
                   - Effect: Allow
                     Principal:
-                      AWS:
-                        - "arn:aws:iam::{{ _aws_caller_info_account }}:root"
+                      AWS: 'arn:aws:iam::{{ _aws_caller_info_account }}:root'
+                    Action:
+                      - kms:*
+                    Resource:
+                      - '*'
+
+            - name: molecule-admin
+              policy:
+                Version: '2012-10-17'
+                Statement:
+                  - Effect: Allow
+                    Principal:
+                      AWS: 'arn:aws:iam::{{ _aws_caller_info_account }}:root'
                     Action:
                       - kms:*
                     Resource:
@@ -44,28 +59,13 @@ None
                     Principal:
                       AWS: '*'
                     Action:
-                      - kms:Decrypt
+                      - kms:*
                     Resource:
                       - '*'
                     Condition:
-                      ArnLike:
+                      ArnEquals:
                         'aws:PrincipalArn':
-                          - "arn:aws:iam::{{ _aws_caller_info_account }}:role/LinuxHQInstanceProfile*"
-                  - Effect: Allow
-                    Principal:
-                      Service: "logs.{{ aws_region }}.amazonaws.com"
-                    Action:
-                      - kms:Decrypt*
-                      - kms:Describe*
-                      - kms:Encrypt*
-                      - kms:GenerateKeyData*
-                      - kms:ReEncrypt*
-                    Resource:
-                      - '*'
-                    Condition:
-                      ArnLike:
-                        'kms:EncryptionContext:aws:logs:arn':
-                          "arn:aws:logs:{{ aws_region }}:{{ _aws_caller_info_account }}:log-group:/linuxhq/ssm/sessions"
+                          - 'arn:aws:iam::{{ _aws_caller_info_account }}:role/admin'
 
 ## License
 
