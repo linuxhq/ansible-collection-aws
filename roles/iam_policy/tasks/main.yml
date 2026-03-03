@@ -1,0 +1,16 @@
+---
+- name: Ensure aws identity and access management inline policies are batched
+  tags:
+    - iam_policy
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - iam_policy
+    file: include.yml
+  loop:
+    "{{ iam_policy_list |
+        batch(iam_policy_batch) }}"
+  loop_control:
+    label: "{{ __iam_policy_list | length }}"
+    loop_var: __iam_policy_list
+...

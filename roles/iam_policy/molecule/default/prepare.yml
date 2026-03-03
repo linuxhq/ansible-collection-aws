@@ -1,0 +1,27 @@
+---
+- name: Prepare
+  hosts: all
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
+  roles:
+    - awscli
+
+    - role: profile
+      profile_list:
+        - name: default
+          config:
+            output: json
+            region: us-east-1
+          credentials:
+            aws_access_key_id:
+              "{{ lookup('ansible.builtin.ini',
+                         'aws_access_key_id',
+                         file='~/.aws/credentials',
+                         section='molecule') }}"
+            aws_secret_access_key:
+              "{{ lookup('ansible.builtin.ini',
+                         'aws_secret_access_key',
+                         file='~/.aws/credentials',
+                         section='molecule') }}"
+...

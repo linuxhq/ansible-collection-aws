@@ -2,7 +2,7 @@
 - name: Verify
   hosts: all
   environment:
-    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+    PATH: '/opt/awscli/bin'
 
   roles:
     - ec2_vpc_prefix_list_info

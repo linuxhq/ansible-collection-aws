@@ -2,7 +2,7 @@
 - name: Verify
   hosts: all
   environment:
-    PATH: "/opt/awscli/bin:{{ ansible_env.PATH }}"
+    PATH: '/opt/awscli/bin'
 
   roles:
     - aws_region_info

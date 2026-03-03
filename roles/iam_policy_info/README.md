@@ -15,7 +15,9 @@ None
 ## Return Values
 
     _iam_policy_info_group_dict
+    _iam_policy_info_group_list
     _iam_policy_info_user_dict
+    _iam_policy_info_user_list
 
 ## Dependencies
 

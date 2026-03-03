@@ -1,5 +1,5 @@
 ---
-- name: Ensure iam inline policies are present
+- name: Ensure aws identity and access management inline policies are managed
   tags:
     - iam_policy
   amazon.aws.iam_policy:
@@ -8,9 +8,9 @@
     policy_json: "{{ _policy.policy_json | to_json }}"
     policy_name: "{{ _policy.policy_name }}"
     skip_duplicates: "{{ _policy.skip_duplicates | d(false) }}"
-    state: present
+    state: "{{ _policy.state | d('present') }}"
     validate_certs: true
-  register: __iam_policy_results
+  register: __iam_policy_result
   loop: "{{ iam_policy_list }}"
   loop_control:
     label: "{{ _policy.policy_name | d(none) }}"
@@ -21,15 +21,24 @@
     - _policy.policy_json is defined
     - _policy.policy_json | length > 0
     - _policy.policy_name is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, iam_policy_async) }}"
+  poll: "{{ iam_policy_poll }}"
 
-- name: Ensure iam inline policy results list is generated
+- name: Ensure managed identity and access management inline policy jobs are complete
   tags:
     - iam_policy
-  ansible.builtin.set_fact:
-    _iam_policy_list:
-      "{{ __iam_policy_results.results |
-          map(attribute='policy_names', default=[]) |
-          list |
-          flatten |
-          d([]) }}"
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __iam_policy_status
+  loop: "{{ __iam_policy_result.results }}"
+  loop_control:
+    label: "{{ _jid._policy.iam_name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __iam_policy_status.finished | bool
+  retries: "{{ iam_policy_retries }}"
+  delay: "{{ iam_policy_delay }}"
 ...
