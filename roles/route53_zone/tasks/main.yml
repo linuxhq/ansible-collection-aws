@@ -1,60 +1,16 @@
 ---
-- name: Ensure route53 public zones are present
+- name: Ensure aws route53 zones are batched
   tags:
     - route53_zone
-  amazon.aws.route53_zone:
-    comment: "{{ _zone.comment | d(omit) }}"
-    delegation_set_id: "{{ _zone.delegation_set_id | d(omit) }}"
-    purge_tags: "{{ _zone.purge_tags | d(true) }}"
-    state: present
-    tags:
-      "{{ _zone.tags |
-          d({}) |
-          combine({'Name': _zone.zone}) }}"
-    validate_certs: true
-    zone: "{{ _zone.zone }}"
-  register: __route53_zone_pub
-  loop: "{{ route53_zone_list }}"
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - route53_zone
+    file: include.yml
+  loop:
+    "{{ route53_zone_list |
+        batch(route53_zone_batch) }}"
   loop_control:
-    label: "{{ _zone.zone | d(none) }}"
-    loop_var: _zone
-  when:
-    - _zone.zone is defined
-    - _zone.vpc_id is not defined
-    - _zone.vpc_region is not defined
-    - _zone.vpcs is not defined
-
-- name: Ensure route53 private zones are present
-  tags:
-    - route53_zone
-  amazon.aws.route53_zone:
-    comment: "{{ _zone.comment | d(omit) }}"
-    purge_tags: "{{ _zone.purge_tags | d(true) }}"
-    state: present
-    tags:
-      "{{ _zone.tags |
-          d({}) |
-          combine({'Name': _zone.zone}) }}"
-    validate_certs: true
-    vpc_id: "{{ _zone.vpc_id | d(omit) }}"
-    vpc_region: "{{ _zone.vpc_region }}"
-    zone: "{{ _zone.zone }}"
-  register: __route53_zone_pvt
-  loop: "{{ route53_zone_list }}"
-  loop_control:
-    label: "{{ _zone.zone | d(none) }}"
-    loop_var: _zone
-  when:
-    - _zone.zone is defined
-    - _zone.vpc_id is defined
-    - _zone.vpc_region is defined
-
-- name: Ensure route53 zone list is generated
-  tags:
-    - route53_zone
-  ansible.builtin.set_fact:
-    _route53_zone_list:
-      "{{ (__route53_zone_pub.results +
-           __route53_zone_pvt.results) |
-          rejectattr('skipped', 'defined') }}"
+    label: "{{ __route53_zone_list | length }}"
+    loop_var: __route53_zone_list
 ...

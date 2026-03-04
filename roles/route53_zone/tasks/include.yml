@@ -1,0 +1,46 @@
+---
+- name: Ensure aws route53 zones are managed
+  tags:
+    - route53_zone
+  amazon.aws.route53_zone:
+    comment: "{{ _zone.comment | d(omit) }}"
+    delegation_set_id: "{{ _zone.delegation_set_id | d(omit) }}"
+    dnssec: "{{ _zone.dnssec | d(false) }}"
+    purge_tags: "{{ _zone.purge_tags | d(true) }}"
+    state: "{{ _zone.state | d('present') }}"
+    tags:
+      "{{ _zone.tags |
+          d({}) |
+          combine({'Name': _zone.zone}) }}"
+    validate_certs: true
+    vpc_id: "{{ _zone.vpc_id | d(omit) }}"
+    vpc_region: "{{ _zone.vpc_region | d(omit) }}"
+    zone: "{{ _zone.zone }}"
+  register: __route53_zone_result
+  loop: "{{ __route53_zone_list }}"
+  loop_control:
+    label: "{{ _zone.zone | d(none) }}"
+    loop_var: _zone
+  when:
+    - _zone.zone is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, route53_zone_async) }}"
+  poll: "{{ route53_zone_poll }}"
+
+- name: Ensure managed aws route53 zone jobs are complete
+  tags:
+    - route53_zone
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __route53_zone_status
+  loop: "{{ __route53_zone_result.results }}"
+  loop_control:
+    label: "{{ _jid._zone.zone | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __route53_zone_status.finished | bool
+  retries: "{{ route53_zone_retries }}"
+  delay: "{{ route53_zone_delay }}"
+...
