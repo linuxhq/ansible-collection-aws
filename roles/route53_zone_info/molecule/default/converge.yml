@@ -1,0 +1,19 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - role: ec2_vpc_net
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: route53_zone
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - route53_zone_info
+...

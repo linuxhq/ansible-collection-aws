@@ -1,0 +1,28 @@
+---
+- name: Ensure information about aws route53 zones is gathered
+  tags:
+    - route53_zone_info
+  amazon.aws.route53_info:
+    query: hosted_zone
+    validate_certs: true
+  register: __route53_zone_info_query
+
+- name: Ensure list of aws route53 zones is generated
+  tags:
+    - route53_info
+  ansible.builtin.set_fact:
+    _route53_zone_info_list:
+      "{{ __route53_zone_info_query.hosted_zones |
+          d([]) }}"
+
+- name: Ensure dict of aws route53 zones is generated
+  tags:
+    - route53_info
+  ansible.builtin.set_fact:
+    _route53_zone_info_dict:
+      "{{ dict(_route53_zone_info_list |
+               json_query('[].name') |
+               map('regex_replace', '[.]$', '') |
+               zip(_route53_zone_info_list)) }}"
+
+...

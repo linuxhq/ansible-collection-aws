@@ -10,11 +10,16 @@ None
 
 ## Role Variables
 
+    route53_zone_async: 300
+    route53_zone_batch: 10
+    route53_zone_delay: 3
     route53_zone_list: []
+    route53_zone_poll: 0
+    route53_zone_retries: 100
 
 ## Return Values
 
-    _route53_zone_list
+None
 
 ## Dependencies
 
@@ -28,12 +33,33 @@ None
       roles:
         - role: linuxhq.aws.route53_zone
           route53_zone_list:
-            - zone: linuxhq.net
-              delegation_set_id: "{{ _route53_delegation_set_info_dict[aws_vpc].Id }}"
+            - zone: molecule-pub-00.org
+            - zone: molecule-pub-01.org
+            - zone: molecule-pub-02.org
 
-            - zone: linuxhq.local
-              vpc_id: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
-              vpc_region: "{{ aws_region }}"
+            - zone: molecule-pvt-01.org
+              vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+              vpc_region:
+                "{{ lookup('ansible.builtin.ini',
+                           'region',
+                           file='~/.aws/config',
+                           section='profile molecule') }}"
+
+            - zone: molecule-pvt-02.org
+              vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+              vpc_region:
+                "{{ lookup('ansible.builtin.ini',
+                           'region',
+                           file='~/.aws/config',
+                           section='profile molecule') }}"
+
+            - zone: molecule-pvt-03.org
+              vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+              vpc_region:
+                "{{ lookup('ansible.builtin.ini',
+                           'region',
+                           file='~/.aws/config',
+                           section='profile molecule') }}"
 
 ## License
 
