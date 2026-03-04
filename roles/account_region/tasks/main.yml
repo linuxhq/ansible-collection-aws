@@ -1,0 +1,78 @@
+---
+- name: Ensure aws account region opt-in status defaults are generated
+  tags:
+    - account_region
+  ansible.builtin.set_fact:
+    __account_region_list:
+      "{{ [{'state': 'present'}] |
+          product(account_region_list) |
+          map('combine') |
+          list }}"
+
+- name: Ensure aws account region opt-in statuses are gathered
+  tags:
+    - account_region
+  ansible.builtin.command:
+    cmd: >
+      aws account get-region-opt-status
+        --region-name "{{ _region.name }}"
+  register: __account_region_status
+  loop: "{{ __account_region_list }}"
+  loop_control:
+    label: "{{ _region.name | d(none) }}"
+    loop_var: _region
+  when:
+    - _region.name is defined
+  changed_when: false
+  check_mode: false
+
+- name: Ensure dict of aws account region opt-in statuses is generated
+  tags:
+    - account_region
+  ansible.builtin.set_fact:
+    __account_region_dict:
+      "{{ __account_region_status.results |
+          map(attribute='stdout', default=[]) |
+          map('from_json') |
+          json_query('[].{
+            key: RegionName,
+            value: RegionOptStatus
+          }') |
+          items2dict }}"
+
+- name: Ensure aws account region opt-in present tasks are included
+  tags:
+    - account_region
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - account_region
+    file: present.yml
+  loop: "{{ __account_region_list }}"
+  loop_control:
+    label: "{{ _region.name }}"
+    loop_var: _region
+  when:
+    - _region.name is defined
+    - _region.state == 'present'
+    - __account_region_dict[_region.name] is defined
+    - __account_region_dict[_region.name] == 'DISABLED'
+
+- name: Ensure aws account region opt-in absent tasks are included
+  tags:
+    - account_region
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - account_region
+    file: absent.yml
+  loop: "{{ __account_region_list }}"
+  loop_control:
+    label: "{{ _region.name }}"
+    loop_var: _region
+  when:
+    - _region.name is defined
+    - _region.state == 'absent'
+    - __account_region_dict[_region.name] is defined
+    - __account_region_dict[_region.name] == 'ENABLED'
+...
