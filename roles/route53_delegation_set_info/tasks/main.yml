@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about route53 delegation sets is gathered
+- name: Ensure information about aws route53 delegation sets is gathered
   tags:
     - route53_delegation_set_info
   ansible.builtin.command:
@@ -10,7 +10,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure list of route53 delegation sets is generated
+- name: Ensure list of aws route53 delegation sets is generated
   tags:
     - route53_delegation_set_info
   ansible.builtin.set_fact:
@@ -21,7 +21,7 @@
           list) |
           d([]) }}"
 
-- name: Ensure dict of route53 delegation sets is generated
+- name: Ensure dict of aws route53 delegation sets is generated
   tags:
     - route53_delegation_set_info
   ansible.builtin.set_fact:
