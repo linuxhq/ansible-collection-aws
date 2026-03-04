@@ -1,0 +1,16 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  pre_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        notifications_contacts_list:
+          "{{ notifications_contacts_list |
+              map('combine', {'state': 'absent'}) }}"
+
+  roles:
+    - notifications_contacts
+...

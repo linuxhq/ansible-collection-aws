@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about notifications hubs is gathered
+- name: Ensure information about aws notifications hubs is gathered
   tags:
     - notifications_hub_info
   ansible.builtin.command:
@@ -10,7 +10,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure list of notifications hubs is generated
+- name: Ensure list of aws notifications hubs is generated
   tags:
     - notifications_hub_info
   ansible.builtin.set_fact:
@@ -20,7 +20,7 @@
           selectattr('notificationHubRegion', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of notifications hubs is generated
+- name: Ensure dict of aws notifications hubs is generated
   tags:
     - notifications_hub_info
   ansible.builtin.set_fact:

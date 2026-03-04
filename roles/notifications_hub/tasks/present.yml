@@ -1,5 +1,5 @@
 ---
-- name: Ensure notifications hubs are present
+- name: Ensure aws notifications hubs are present
   tags:
     - notifications_hub
   ansible.builtin.command:
@@ -7,27 +7,26 @@
       aws notifications register-notification-hub
         --notification-hub-region "{{ _hub.region }}"
         --region us-east-1
-  register: __notifications_hub_result_register
-  loop: "{{ __notifications_hub_list }}"
+  register: __notifications_hub_result_present
+  loop: "{{ __notifications_hub_present }}"
   loop_control:
     label: "{{ _hub.region | d(none) }}"
     loop_var: _hub
   when:
     - _hub.region is defined
     - _hub.region not in __notifications_hub_dict.keys()
-    - _hub.state is not defined or
-      _hub.state == 'present'
+    - _hub.state == 'present'
   changed_when: false
   async: "{{ ansible_check_mode | ternary(0, notifications_hub_async) }}"
   poll: "{{ notifications_hub_poll }}"
 
-- name: Ensure present notifications hub jobs are complete
+- name: Ensure present aws notifications hub jobs are complete
   tags:
     - notifications_hub
   ansible.builtin.async_status:
     jid: "{{ _jid.ansible_job_id }}"
-  register: __notifications_hub_status_register
-  loop: "{{ __notifications_hub_result_register.results }}"
+  register: __notifications_hub_status_present
+  loop: "{{ __notifications_hub_result_present.results }}"
   loop_control:
     label: "{{ _jid._hub.region | d(none) }}"
     loop_var: _jid
@@ -35,7 +34,7 @@
     - _jid.ansible_job_id is defined
   changed_when: true
   until:
-    - __notifications_hub_status_register.finished | bool
+    - __notifications_hub_status_present.finished | bool
   retries: "{{ notifications_hub_retries }}"
   delay: "{{ notifications_hub_delay }}"
 ...
