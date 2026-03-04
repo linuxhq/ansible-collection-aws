@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Gather information about route53 delegation sets
+Gather information about aws route53 delegation sets
 
 ## Requirements
 

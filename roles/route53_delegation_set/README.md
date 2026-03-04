@@ -27,7 +27,9 @@ None
       roles:
         - role: linuxhq.aws.route53_delegation_set
           route53_delegation_set_list:
-            - name: "{{ aws_vpc }}"
+            - name: molecule-01
+            - name: molecule-02
+            - name: molecule-03
 
 ## License
 

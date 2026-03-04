@@ -1,0 +1,41 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - route53_delegation_set_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].CallerReference is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].Id is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].NameServers is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].NameServers | length == 4
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].CallerReference is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].Id is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].NameServers is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].NameServers | length == 4
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].CallerReference is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].Id is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].NameServers is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].NameServers | length == 4
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        route53_delegation_set_list:
+          "{{ route53_delegation_set_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - route53_delegation_set
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...
