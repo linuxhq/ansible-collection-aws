@@ -1,5 +1,15 @@
 ---
-- name: Ensure list of notifications contacts is gathered
+- name: Ensure aws notifications contacts defaults are generated
+  tags:
+    - notifications_contacts
+  ansible.builtin.set_fact:
+    __notifications_contacts_list:
+      "{{ [{'state': 'present'}] |
+          product(notifications_contacts_list) |
+          map('combine') |
+          list }}"
+
+- name: Ensure list of aws notifications contacts is gathered
   tags:
     - notifications_contacts
   ansible.builtin.command:
@@ -10,7 +20,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure dict of notifications contacts is generated
+- name: Ensure dict of aws notifications contacts is generated
   tags:
     - notifications_contacts
   ansible.builtin.set_fact:
@@ -20,7 +30,7 @@
           items2dict) |
           d({}) }}"
 
-- name: Ensure present notifications contacts are batched
+- name: Ensure present aws notifications contacts are batched
   tags:
     - notifications_contacts
   ansible.builtin.include_tasks:
@@ -29,13 +39,13 @@
         - notifications_contacts
     file: present.yml
   loop:
-    "{{ notifications_contacts_list |
+    "{{ __notifications_contacts_list |
         batch(notifications_contacts_batch) }}"
   loop_control:
-    label: "{{ __notifications_contacts_list | length }}"
-    loop_var: __notifications_contacts_list
+    label: "{{ __notifications_contacts_present | length }}"
+    loop_var: __notifications_contacts_present
 
-- name: Ensure absent notifications contacts are batched
+- name: Ensure absent aws notifications contacts are batched
   tags:
     - notifications_contacts
   ansible.builtin.include_tasks:
@@ -44,9 +54,9 @@
         - notifications_contacts
     file: absent.yml
   loop:
-    "{{ notifications_contacts_list |
+    "{{ __notifications_contacts_list |
         batch(notifications_contacts_batch) }}"
   loop_control:
-    label: "{{ __notifications_contacts_list | length }}"
-    loop_var: __notifications_contacts_list
+    label: "{{ __notifications_contacts_absent | length }}"
+    loop_var: __notifications_contacts_absent
 ...

@@ -1,0 +1,35 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - notifications_hub_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _notifications_hub_info_dict['eu-central-1'].notificationHubRegion is defined
+          - _notifications_hub_info_dict['eu-central-1'].statusSummary.status == 'ACTIVE'
+          - _notifications_hub_info_dict['us-east-1'].notificationHubRegion is defined
+          - _notifications_hub_info_dict['us-east-1'].statusSummary.status == 'ACTIVE'
+          - _notifications_hub_info_dict['us-west-1'].notificationHubRegion is defined
+          - _notifications_hub_info_dict['us-west-1'].statusSummary.status == 'ACTIVE'
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        notifications_hub_list:
+          "{{ notifications_hub_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - notifications_hub
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

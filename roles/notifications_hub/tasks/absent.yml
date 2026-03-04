@@ -1,5 +1,5 @@
 ---
-- name: Ensure notifications hubs are absent
+- name: Ensure aws notifications hubs are absent
   tags:
     - notifications_hub
   ansible.builtin.command:
@@ -7,27 +7,26 @@
       aws notifications deregister-notification-hub
         --notification-hub-region "{{ _hub.region }}"
         --region us-east-1
-  register: __notifications_hub_result_deregister
-  loop: "{{ __notifications_hub_list }}"
+  register: __notifications_hub_result_absent
+  loop: "{{ __notifications_hub_absent }}"
   loop_control:
     label: "{{ _hub.region | d(none) }}"
     loop_var: _hub
   when:
     - _hub.region is defined
     - _hub.region in __notifications_hub_dict.keys()
-    - _hub.state is defined and
-      _hub.state == 'absent'
+    - _hub.state == 'absent'
   changed_when: false
   async: "{{ ansible_check_mode | ternary(0, notifications_hub_async) }}"
   poll: "{{ notifications_hub_poll }}"
 
-- name: Ensure absent notifications hub jobs are complete
+- name: Ensure absent aws notifications hub jobs are complete
   tags:
     - notifications_hub
   ansible.builtin.async_status:
     jid: "{{ _jid.ansible_job_id }}"
-  register: __notifications_hub_status_deregister
-  loop: "{{ __notifications_hub_result_deregister.results }}"
+  register: __notifications_hub_status_absent
+  loop: "{{ __notifications_hub_result_absent.results }}"
   loop_control:
     label: "{{ _jid._hub.region | d(none) }}"
     loop_var: _jid
@@ -35,7 +34,7 @@
     - _jid.ansible_job_id is defined
   changed_when: true
   until:
-    - __notifications_hub_status_deregister.finished | bool
+    - __notifications_hub_status_absent.finished | bool
   retries: "{{ notifications_hub_retries }}"
   delay: "{{ notifications_hub_delay }}"
 ...

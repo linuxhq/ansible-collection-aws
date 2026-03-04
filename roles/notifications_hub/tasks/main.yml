@@ -1,5 +1,5 @@
 ---
-- name: Ensure list of notifications hubs is gathered
+- name: Ensure list of aws notifications hubs is gathered
   tags:
     - notifications_hub
   ansible.builtin.command:
@@ -14,7 +14,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure dict of notifications hubs is generated
+- name: Ensure dict of aws notifications hubs is generated
   tags:
     - notifications_hub
   ansible.builtin.set_fact:
@@ -24,7 +24,29 @@
           items2dict) |
           d({}) }}"
 
-- name: Ensure present notifications hubs are batched
+- name: Ensure aws notifications hub default is present
+  tags:
+    - notifications_hub
+  ansible.builtin.command:
+    cmd: >
+      aws notifications register-notification-hub
+        --notification-hub-region us-east-1
+        --region us-east-1
+  when:
+    - "'us-east-1' not in __notifications_hub_dict.keys()"
+  changed_when: true
+
+- name: Ensure aws notifications hub list defaults are generated
+  tags:
+    - notifications_hub
+  ansible.builtin.set_fact:
+    __notifications_hub_list:
+      "{{ [{'state': 'present'}] |
+          product(notifications_hub_list) |
+          map('combine') |
+          list }}"
+
+- name: Ensure present aws notifications hubs are batched
   tags:
     - notifications_hub
   ansible.builtin.include_tasks:
@@ -33,13 +55,13 @@
         - notifications_hub
     file: present.yml
   loop:
-    "{{ notifications_hub_list |
+    "{{ __notifications_hub_list |
         batch(notifications_hub_batch) }}"
   loop_control:
-    label: "{{ __notifications_hub_list | length }}"
-    loop_var: __notifications_hub_list
+    label: "{{ __notifications_hub_present | length }}"
+    loop_var: __notifications_hub_present
 
-- name: Ensure absent notifications hubs are batched
+- name: Ensure absent aws notifications hubs are batched
   tags:
     - notifications_hub
   ansible.builtin.include_tasks:
@@ -48,9 +70,9 @@
         - notifications_hub
     file: absent.yml
   loop:
-    "{{ notifications_hub_list |
+    "{{ __notifications_hub_list |
         batch(notifications_hub_batch) }}"
   loop_control:
-    label: "{{ __notifications_hub_list | length }}"
-    loop_var: __notifications_hub_list
+    label: "{{ __notifications_hub_absent | length }}"
+    loop_var: __notifications_hub_absent
 ...

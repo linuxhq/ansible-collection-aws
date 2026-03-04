@@ -1,0 +1,77 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - notifications_contacts_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _notifications_contacts_info_dict['dummy01@molecule.org'].address is defined
+          - _notifications_contacts_info_dict['dummy01@molecule.org'].arn is defined
+          - _notifications_contacts_info_dict['dummy01@molecule.org'].name is defined
+          - _notifications_contacts_info_dict['dummy01@molecule.org'].status == 'inactive'
+          - _notifications_contacts_info_dict['dummy02@molecule.org'].address is defined
+          - _notifications_contacts_info_dict['dummy02@molecule.org'].arn is defined
+          - _notifications_contacts_info_dict['dummy02@molecule.org'].name is defined
+          - _notifications_contacts_info_dict['dummy02@molecule.org'].status == 'inactive'
+          - _notifications_contacts_info_dict['dummy03@molecule.org'].address is defined
+          - _notifications_contacts_info_dict['dummy03@molecule.org'].arn is defined
+          - _notifications_contacts_info_dict['dummy03@molecule.org'].name is defined
+          - _notifications_contacts_info_dict['dummy03@molecule.org'].status == 'inactive'
+          - _notifications_contacts_info_dict['dummy04@molecule.org'].address is defined
+          - _notifications_contacts_info_dict['dummy04@molecule.org'].arn is defined
+          - _notifications_contacts_info_dict['dummy04@molecule.org'].name is defined
+          - _notifications_contacts_info_dict['dummy04@molecule.org'].status == 'inactive'
+          - _notifications_contacts_info_dict['dummy05@molecule.org'].address is defined
+          - _notifications_contacts_info_dict['dummy05@molecule.org'].arn is defined
+          - _notifications_contacts_info_dict['dummy05@molecule.org'].name is defined
+          - _notifications_contacts_info_dict['dummy05@molecule.org'].status == 'inactive'
+          - _notifications_contacts_info_dict['dummy06@molecule.org'].address is defined
+          - _notifications_contacts_info_dict['dummy06@molecule.org'].arn is defined
+          - _notifications_contacts_info_dict['dummy06@molecule.org'].name is defined
+          - _notifications_contacts_info_dict['dummy06@molecule.org'].status == 'inactive'
+          - _notifications_contacts_info_dict['dummy07@molecule.org'].address is defined
+          - _notifications_contacts_info_dict['dummy07@molecule.org'].arn is defined
+          - _notifications_contacts_info_dict['dummy07@molecule.org'].name is defined
+          - _notifications_contacts_info_dict['dummy07@molecule.org'].status == 'inactive'
+          - _notifications_contacts_info_dict['dummy08@molecule.org'].address is defined
+          - _notifications_contacts_info_dict['dummy08@molecule.org'].arn is defined
+          - _notifications_contacts_info_dict['dummy08@molecule.org'].name is defined
+          - _notifications_contacts_info_dict['dummy08@molecule.org'].status == 'inactive'
+          - _notifications_contacts_info_dict['dummy09@molecule.org'].address is defined
+          - _notifications_contacts_info_dict['dummy09@molecule.org'].arn is defined
+          - _notifications_contacts_info_dict['dummy09@molecule.org'].name is defined
+          - _notifications_contacts_info_dict['dummy09@molecule.org'].status == 'inactive'
+          - _notifications_contacts_info_dict['dummy10@molecule.org'].address is defined
+          - _notifications_contacts_info_dict['dummy10@molecule.org'].arn is defined
+          - _notifications_contacts_info_dict['dummy10@molecule.org'].name is defined
+          - _notifications_contacts_info_dict['dummy10@molecule.org'].status == 'inactive'
+          - _notifications_contacts_info_dict['dummy11@molecule.org'].address is defined
+          - _notifications_contacts_info_dict['dummy11@molecule.org'].arn is defined
+          - _notifications_contacts_info_dict['dummy11@molecule.org'].name is defined
+          - _notifications_contacts_info_dict['dummy11@molecule.org'].status == 'inactive'
+          - _notifications_contacts_info_dict['dummy12@molecule.org'].address is defined
+          - _notifications_contacts_info_dict['dummy12@molecule.org'].arn is defined
+          - _notifications_contacts_info_dict['dummy12@molecule.org'].name is defined
+          - _notifications_contacts_info_dict['dummy12@molecule.org'].status == 'inactive'
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        notifications_contacts_list:
+          "{{ notifications_contacts_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - notifications_contacts
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

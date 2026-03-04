@@ -32,12 +32,30 @@ None
       roles:
         - role: linuxhq.aws.notifications_contacts
           notifications_contacts_list:
-            - name: aws-billing
-              email_address: aws-billing@linuxhq.org
-            - name: aws-health
-              email_address: aws-health@linuxhq.org
-            - name: aws-security
-              email_address: aws-security@linuxhq.org
+            - name: molecule-dummy01
+              email_address: dummy01@molecule.org
+            - name: molecule-dummy02
+              email_address: dummy02@molecule.org
+            - name: molecule-dummy03
+              email_address: dummy03@molecule.org
+            - name: molecule-dummy04
+              email_address: dummy04@molecule.org
+            - name: molecule-dummy05
+              email_address: dummy05@molecule.org
+            - name: molecule-dummy06
+              email_address: dummy06@molecule.org
+            - name: molecule-dummy07
+              email_address: dummy07@molecule.org
+            - name: molecule-dummy08
+              email_address: dummy08@molecule.org
+            - name: molecule-dummy09
+              email_address: dummy09@molecule.org
+            - name: molecule-dummy10
+              email_address: dummy10@molecule.org
+            - name: molecule-dummy11
+              email_address: dummy11@molecule.org
+            - name: molecule-dummy12
+              email_address: dummy12@molecule.org
 
 ## License
 

@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about notifications contacts is gathered
+- name: Ensure information about aws notifications contacts is gathered
   tags:
     - notifications_contacts_info
   ansible.builtin.command:
@@ -10,7 +10,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure list of notifications contacts is generated
+- name: Ensure list of aws notifications contacts is generated
   tags:
     - notifications_contacts_info
   ansible.builtin.set_fact:
@@ -20,7 +20,7 @@
           selectattr('address', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of notifications contacts is generated
+- name: Ensure dict of aws notifications contacts is generated
   tags:
     - notifications_contacts_info
   ansible.builtin.set_fact:

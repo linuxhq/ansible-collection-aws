@@ -1,0 +1,71 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        notifications_contacts_list:
+          - name: molecule-dummy01
+            email_address: dummy01@molecule.org
+          - name: molecule-dummy02
+            email_address: dummy02@molecule.org
+          - name: molecule-dummy03
+            email_address: dummy03@molecule.org
+          - name: molecule-dummy04
+            email_address: dummy04@molecule.org
+          - name: molecule-dummy05
+            email_address: dummy05@molecule.org
+          - name: molecule-dummy06
+            email_address: dummy06@molecule.org
+          - name: molecule-dummy07
+            email_address: dummy07@molecule.org
+          - name: molecule-dummy08
+            email_address: dummy08@molecule.org
+          - name: molecule-dummy09
+            email_address: dummy09@molecule.org
+          - name: molecule-dummy10
+            email_address: dummy10@molecule.org
+          - name: molecule-dummy11
+            email_address: dummy11@molecule.org
+          - name: molecule-dummy12
+            email_address: dummy12@molecule.org
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...

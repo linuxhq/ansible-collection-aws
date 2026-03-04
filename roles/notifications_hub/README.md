@@ -32,9 +32,8 @@ None
       roles:
         - role: linuxhq.aws.notifications_hub
           notifications_hub_list:
-            - region: us-east-1
+            - region: eu-central-1
             - region: us-west-1
-              state: absent
 
 ## License
 
