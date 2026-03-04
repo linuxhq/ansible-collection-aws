@@ -1,0 +1,25 @@
+---
+- name: Ensure aws account region opt-in status is enabled
+  tags:
+    - account_region
+  ansible.builtin.command:
+    cmd: >
+      aws account enable-region
+        --region-name "{{ _region.name }}"
+  changed_when: true
+
+- name: Ensure aws account region opt-in status is present
+  tags:
+    - account_region
+  amazon.aws.aws_region_info:
+    filters:
+      region-name: "{{ _region.name }}"
+  register: __account_region_enable
+  when:
+    - account_region_wait | bool
+    - not ansible_check_mode
+  until:
+    - __account_region_enable.regions.0 is defined
+  delay: "{{ account_region_delay }}"
+  retries: "{{ account_region_retries }}"
+...
