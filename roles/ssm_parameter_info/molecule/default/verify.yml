@@ -1,0 +1,33 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - ssm_parameter_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_parameter_info_dict['/molecule/db/admin/username'].value == ssm_parameter_list.0.value
+          - _ssm_parameter_info_dict['/molecule/db/admin/password'].value == ssm_parameter_list.1.value
+          - _ssm_parameter_info_dict['/molecule/sys/username'].value == ssm_parameter_list.2.value
+          - _ssm_parameter_info_dict['/molecule/sys/password'].value == ssm_parameter_list.3.value
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        ssm_parameter_list:
+          "{{ ssm_parameter_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - ssm_parameter
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

@@ -1,0 +1,42 @@
+---
+- name: Ensure information about aws systems manager regions is gathered
+  tags:
+    - ssm_parameter_info
+  amazon.aws.aws_az_info:
+    validate_certs: true
+  register: __ssm_parameter_info_az
+  check_mode: false
+
+- name: Ensure string of aws systems manager region is generated
+  tags:
+    - ssm_parameter_info
+  ansible.builtin.set_fact:
+    __ssm_paramter_info_region:
+      "{{ __ssm_parameter_info_az.availability_zones.0.region_name }}"
+
+- name: Ensure list of aws systems manager parameters is generated
+  tags:
+    - ssm_parameter_info
+  ansible.builtin.set_fact:
+    _ssm_parameter_info_list: >-
+      {%- set results = [] -%}
+      {%- for _parameter in (ssm_parameter_info_list | d([])) -%}
+      {%-   set _ = results.append({
+              'name': _parameter,
+              'value':
+                lookup('amazon.aws.ssm_parameter',
+                       _parameter,
+                       region=__ssm_paramter_info_region,
+                       decrypt=true)}) -%}
+      {%- endfor -%}
+      {{ results }}
+
+- name: Ensure dict of aws systems manager parameters is generated
+  tags:
+    - ssm_parameter_info
+  ansible.builtin.set_fact:
+    _ssm_parameter_info_dict:
+      "{{ dict(_ssm_parameter_info_list |
+               json_query('[].name') |
+               zip(_ssm_parameter_info_list)) }}"
+...

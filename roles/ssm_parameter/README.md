@@ -10,15 +10,25 @@ None
 
 ## Role Variables
 
+    ssm_parameter_async: 300
+    ssm_parameter_batch: 10
+    ssm_parameter_delay: 3
     ssm_parameter_list: []
+    ssm_parameter_poll: 0
+    ssm_parameter_retries: 100
 
 ## Return Values
 
-    _ssm_parameter_list
+None
 
 ## Dependencies
 
-None
+* [linuxhq.aws.ec2\_vpc\_igw\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_igw_info)
+* [linuxhq.aws.ec2\_vpc\_nat\_gateway\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_nat_gateway_info)
+* [linuxhq.aws.ec2\_vpc\_net\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_net_info)
+* [linuxhq.aws.ec2\_vpc\_prefix\_list\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_prefix_list_info)
+* [linuxhq.aws.ec2\_vpc\_route\_table\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_route_table_info)
+* [linuxhq.aws.ec2\_vpc\_subnet\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_subnet_info)
 
 ## Example Playbook
 
@@ -27,72 +37,29 @@ None
       roles:
         - role: linuxhq.aws.ssm_parameter
           ssm_parameter_list:
-            - name: /linuxhq/openssh/key/pub
-              string_type: SecureString
-              value: "{{ openssh_key_pub }}"
+            - name: /molecule/vpc/id
+              value: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
 
-            - name: /linuxhq/region
-              value: "{{ aws_region }}"
+            - name: /molecule/vpc/igw/id
+              value: "{{ _ec2_vpc_igw_info_dict['molecule'].internet_gateway_id }}"
 
-            - name: /linuxhq/vpc/id
-              value: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
+            - name: /molecule/vpc/nat/id
+              value: "{{ _ec2_vpc_nat_gateway_info_dict['molecule'].nat_gateway_id }}"
 
-            - name: /linuxhq/igw/id
-              value: "{{ _ec2_vpc_igw_info_dict[aws_vpc].internet_gateway_id }}"
+            - name: /molecule/vpc/pl/id
+              value: "{{ _ec2_vpc_prefix_list_info_dict['molecule'].PrefixListId }}"
 
-            - name: "/linuxhq/subnet/pub/{{ _aws_az_info_list_s.0 }}/id"
-              value: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0].id }}"
+            - name: /molecule/vpc/rtb/a/id
+              value: "{{ _ec2_vpc_route_table_info_dict['molecule-a'].route_table_id }}"
 
-            - name: "/linuxhq/subnet/pub/{{ _aws_az_info_list_s.1 }}/id"
-              value: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1].id }}"
+            - name: /molecule/vpc/rtb/b/id
+              value: "{{ _ec2_vpc_route_table_info_dict['molecule-b'].route_table_id }}"
 
-            - name: "/linuxhq/subnet/pub/{{ _aws_az_info_list_s.2 }}/id"
-              value: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2].id }}"
+            - name: /molecule/vpc/subnet/a/id
+              value: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
 
-            - name: "/linuxhq/subnet/pvt/{{ _aws_az_info_list_s.0 }}/id"
-              value: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0].id }}"
-
-            - name: "/linuxhq/subnet/pvt/{{ _aws_az_info_list_s.1 }}/id"
-              value: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1].id }}"
-
-            - name: "/linuxhq/subnet/pvt/{{ _aws_az_info_list_s.2 }}/id"
-              value: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2].id }}"
-
-            - name: "/linuxhq/nat/pub/{{ _aws_az_info_list_s.0 }}/id"
-              value: "{{ _ec2_vpc_nat_gateway_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0].nat_gateway_id }}"
-
-            - name: "/linuxhq/nat/pub/{{ _aws_az_info_list_s.1 }}/id"
-              value: "{{ _ec2_vpc_nat_gateway_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1].nat_gateway_id }}"
-
-            - name: "/linuxhq/nat/pub/{{ _aws_az_info_list_s.2 }}/id"
-              value: "{{ _ec2_vpc_nat_gateway_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2].nat_gateway_id }}"
-
-            - name: "/linuxhq/rtb/pub/{{ _aws_az_info_list_s.0 }}/id"
-              value: "{{ _ec2_vpc_route_table_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0].route_table_id }}"
-
-            - name: "/linuxhq/rtb/pub/{{ _aws_az_info_list_s.1 }}/id"
-              value: "{{ _ec2_vpc_route_table_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1].route_table_id }}"
-
-            - name: "/linuxhq/rtb/pub/{{ _aws_az_info_list_s.2 }}/id"
-              value: "{{ _ec2_vpc_route_table_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2].route_table_id }}"
-
-            - name: "/linuxhq/rtb/pvt/{{ _aws_az_info_list_s.0 }}/id"
-              value: "{{ _ec2_vpc_route_table_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0].route_table_id }}"
-
-            - name: "/linuxhq/rtb/pvt/{{ _aws_az_info_list_s.1 }}/id"
-              value: "{{ _ec2_vpc_route_table_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1].route_table_id }}"
-
-            - name: "/linuxhq/rtb/pvt/{{ _aws_az_info_list_s.2 }}/id"
-              value: "{{ _ec2_vpc_route_table_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2].route_table_id }}"
-
-            - name: /linuxhq/pl/cloudflare-ipv4
-              value: "{{ _ec2_vpc_prefix_list_info_dict['cloudflare-ipv4'].PrefixListId }}"
-
-            - name: /linuxhq/pl/cloudflare-ipv6
-              value: "{{ _ec2_vpc_prefix_list_info_dict['cloudflare-ipv6'].PrefixListId }}"
-
-            - name: /linuxhq/pl/linuxhq
-              value: "{{ _ec2_vpc_prefix_list_info_dict['linuxhq'].PrefixListId }}"
+            - name: /molecule/vpc/subnet/b/id
+              value: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
 
 ## License
 
