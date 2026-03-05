@@ -10,11 +10,16 @@ None
 
 ## Role Variables
 
+    wafv2_ip_set_async: 300
+    wafv2_ip_set_batch: 10
+    wafv2_ip_set_delay: 3
     wafv2_ip_set_list: []
+    wafv2_ip_set_poll: 0
+    wafv2_ip_set_retries: 100
 
 ## Return Values
 
-    _wafv2_ip_set_list
+None
 
 ## Dependencies
 
@@ -27,13 +32,13 @@ None
       roles:
         - role: linuxhq.aws.wafv2_ip_set
           wafv2_ip_set_list:
-            - name: linuxhq-cloudflare
+            - name: molecule-cloudflare
               addresses:
                 - 1.1.1.1/32
               ip_address_version: ipv4
               scope: regional
 
-            - name: linuxhq-google
+            - name: molecule-google
               addresses:
                 - 8.8.8.8/32
                 - 8.8.8.4/32

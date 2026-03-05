@@ -1,0 +1,49 @@
+---
+- name: Ensure aws wafv2 ip sets are managed
+  tags:
+    - wafv2_ip_set
+  community.aws.wafv2_ip_set:
+    addresses: "{{ _ipset.addresses }}"
+    description: "{{ _ipset.description | d(_ipset.name) }}"
+    ip_address_version: "{{ _ipset.ip_address_version | upper }}"
+    name: "{{ _ipset.name }}"
+    purge_addresses: "{{ _ipset.purge_addresses | d(true) }}"
+    purge_tags: "{{ _ipset.purge_tags | d(true) }}"
+    scope: "{{ _ipset.scope | upper }}"
+    state: "{{ _ipset.state | d('present') }}"
+    tags:
+      "{{ _ipset.tags |
+          d({}) |
+          combine({'Name': _ipset.name}) }}"
+    validate_certs: true
+  register: __wafv2_ip_set_result
+  loop: "{{ wafv2_ip_set_list }}"
+  loop_control:
+    label: "{{ _ipset.name | d(none) }}"
+    loop_var: _ipset
+  when:
+    - _ipset.addresses is defined
+    - _ipset.ip_address_version is defined
+    - _ipset.name is defined
+    - _ipset.scope is defined
+  changed_when: false
+  async: "{{ ansible_check_mode | ternary(0, wafv2_ip_set_async) }}"
+  poll: "{{ wafv2_ip_set_poll }}"
+
+- name: Ensure managed wafv2 ip set jobs are complete
+  tags:
+    - wafv2_ip_set
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __wafv2_ip_set_status
+  loop: "{{ __wafv2_ip_set_result.results }}"
+  loop_control:
+    label: "{{ _jid._ipset.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __wafv2_ip_set_status.finished | bool
+  retries: "{{ wafv2_ip_set_retries }}"
+  delay: "{{ wafv2_ip_set_delay }}"
+...
