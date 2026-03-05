@@ -1,0 +1,23 @@
+---
+dependencies: []
+galaxy_info:
+  role_name: ssm_parameter_info
+  author: Taylor Kimball
+  description: Gather information about aws systems manager key-value pairs
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - info
+    - parameter
+    - ssm
+...

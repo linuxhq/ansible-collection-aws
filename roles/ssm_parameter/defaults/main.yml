@@ -1,3 +1,8 @@
 ---
+ssm_parameter_async: 300
+ssm_parameter_batch: 10
+ssm_parameter_delay: 3
 ssm_parameter_list: []
+ssm_parameter_poll: 0
+ssm_parameter_retries: 100
 ...
