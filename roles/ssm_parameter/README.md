@@ -46,9 +46,6 @@ None
             - name: /molecule/vpc/nat/id
               value: "{{ _ec2_vpc_nat_gateway_info_dict['molecule'].nat_gateway_id }}"
 
-            - name: /molecule/vpc/pl/id
-              value: "{{ _ec2_vpc_prefix_list_info_dict['molecule'].PrefixListId }}"
-
             - name: /molecule/vpc/rtb/a/id
               value: "{{ _ec2_vpc_route_table_info_dict['molecule-a'].route_table_id }}"
 
