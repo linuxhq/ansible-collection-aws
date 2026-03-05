@@ -1,0 +1,38 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - wafv2_ip_set_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _wafv2_ip_set_info_dict['molecule-cloudflare'].ARN is defined
+          - _wafv2_ip_set_info_dict['molecule-cloudflare'].Addresses | length == 1
+          - _wafv2_ip_set_info_dict['molecule-cloudflare'].IPAddressVersion == 'IPV4'
+          - _wafv2_ip_set_info_dict['molecule-cloudflare'].Id is defined
+          - _wafv2_ip_set_info_dict['molecule-google'].ARN is defined
+          - _wafv2_ip_set_info_dict['molecule-google'].Addresses | length == 2
+          - _wafv2_ip_set_info_dict['molecule-google'].IPAddressVersion == 'IPV4'
+          - _wafv2_ip_set_info_dict['molecule-google'].Id is defined
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        wafv2_ip_set_list:
+          "{{ wafv2_ip_set_list |
+              map('combine',
+                  {'addresses': [], 'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - wafv2_ip_set
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

@@ -4,7 +4,7 @@ dependencies: []
 galaxy_info:
   role_name: wafv2_ip_set_info
   author: Taylor Kimball
-  description: Gather information about wafv2 ip sets
+  description: Gather information about aws wafv2 ip sets
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq

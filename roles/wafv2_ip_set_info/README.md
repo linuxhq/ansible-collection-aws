@@ -2,16 +2,15 @@
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Gather information about wafv2 ip sets
+Gather information about aws wafv2 ip sets
 
 ## Requirements
 
-None
+* [awscli](https://pypi.org/project/awscli)
 
 ## Role Variables
 
-    wafv2_ip_set_info_name: null
-    wafv2_ip_set_info_scope: null
+    wafv2_ip_set_info_scope: regional
 
 ## Return Values
 
@@ -27,9 +26,7 @@ None
     - hosts: aws
       connection: local
       roles:
-        - role: linuxhq.aws.wafv2_ip_set_info
-          wafv2_ip_set_info_name: linuxhq-google
-          wafv2_ip_set_info_scope: regional
+        - linuxhq.aws.wafv2_ip_set_info
 
 ## License
 
