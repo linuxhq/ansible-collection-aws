@@ -1,0 +1,14 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - role: secretsmanager_secret
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - secretsmanager_secret_info
+...

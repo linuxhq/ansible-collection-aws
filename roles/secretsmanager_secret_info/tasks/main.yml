@@ -1,0 +1,42 @@
+---
+- name: Ensure information about aws secretsmanager secret regions is gathered
+  tags:
+    - secretsmanager_secret_info
+  amazon.aws.aws_az_info:
+    validate_certs: true
+  register: __secretsmanager_secret_info_az
+  check_mode: false
+
+- name: Ensure string of aws secretsmanager secret region is generated
+  tags:
+    - secretsmanager_secret_info
+  ansible.builtin.set_fact:
+    __secretsmanager_secret_info_region:
+      "{{ __secretsmanager_secret_info_az.availability_zones.0.region_name }}"
+
+- name: Ensure list of aws secretsmanager secrets is generated
+  tags:
+    - secretsmanager_secret_info
+  ansible.builtin.set_fact:
+    _secretsmanager_secret_info_list: >-
+      {%- set results = [] -%}
+      {%- for _secret in (secretsmanager_secret_info_list | d([])) -%}
+      {%-   set _ = results.append({
+              'name': _secret.name,
+              'value':
+                lookup('amazon.aws.secretsmanager_secret',
+                       _secret.name,
+                       region=__secretsmanager_secret_info_region,
+                       nested=_secret.nested | d(false))}) -%}
+      {%- endfor -%}
+      {{ results }}
+
+- name: Ensure dict of aws secretsmanager secrets is generated
+  tags:
+    - secretsmanager_secret_info
+  ansible.builtin.set_fact:
+    _secretsmanager_secret_info_dict:
+      "{{ dict(_secretsmanager_secret_info_list |
+               json_query('[].name') |
+               zip(_secretsmanager_secret_info_list)) }}"
+...

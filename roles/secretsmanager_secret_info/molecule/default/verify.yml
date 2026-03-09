@@ -1,0 +1,35 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - secretsmanager_secret_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - (_secretsmanager_secret_info_dict['molecule-secret-1'].value | from_json)['molecule-secret-1'] ==
+              secretsmanager_secret_list.0.secret.0.value
+          - (_secretsmanager_secret_info_dict['molecule-secret-2'].value | from_json)['molecule-secret-2'] ==
+              secretsmanager_secret_list.1.secret.0.value
+          - (_secretsmanager_secret_info_dict['molecule-secret-2'].value | from_json)['molecule-secret-2a'] ==
+              secretsmanager_secret_list.1.secret.1.value
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        secretsmanager_secret_list:
+          "{{ secretsmanager_secret_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - secretsmanager_secret
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

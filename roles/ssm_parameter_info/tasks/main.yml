@@ -11,7 +11,7 @@
   tags:
     - ssm_parameter_info
   ansible.builtin.set_fact:
-    __ssm_paramter_info_region:
+    __ssm_parameter_info_region:
       "{{ __ssm_parameter_info_az.availability_zones.0.region_name }}"
 
 - name: Ensure list of aws systems manager parameters is generated
@@ -26,7 +26,7 @@
               'value':
                 lookup('amazon.aws.ssm_parameter',
                        _parameter,
-                       region=__ssm_paramter_info_region,
+                       region=__ssm_parameter_info_region,
                        decrypt=true)}) -%}
       {%- endfor -%}
       {{ results }}
