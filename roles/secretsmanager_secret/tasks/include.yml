@@ -25,13 +25,15 @@
   loop_control:
     label: "{{ _secret.name | d(none) }}"
     loop_var: _secret
+  async: "{{ ansible_check_mode | ternary(0, secretsmanager_secret_async) }}"
+  poll: "{{ secretsmanager_secret_poll }}"
   when:
     - _secret.name is defined
     - _secret.secret is defined
     - _secret.secret | length > 0
-  changed_when: false
-  async: "{{ ansible_check_mode | ternary(0, secretsmanager_secret_async) }}"
-  poll: "{{ secretsmanager_secret_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __secretsmanager_secret_result.changed | bool
 
 - name: Ensure managed secrets manager secret jobs are complete
   tags:

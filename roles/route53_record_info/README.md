@@ -1,8 +1,8 @@
-# route53\_info
+# route53\_record\_info
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Gather information about route53 hosted zones and record sets
+Gather information about aws route53 records
 
 ## Requirements
 
@@ -14,9 +14,7 @@ None
 
 ## Return Values
 
-    _route53_info_hosted_zone_dict
-    _route53_info_hosted_zone_list
-    _route53_info_record_sets
+    _route53_record_info_list
 
 ## Dependencies
 

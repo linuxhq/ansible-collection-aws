@@ -1,3 +1,8 @@
 ---
+route53_record_async: 300
+route53_record_batch: 10
+route53_record_delay: 3
 route53_record_list: []
+route53_record_poll: 0
+route53_record_retries: 100
 ...

@@ -1,5 +1,5 @@
 ---
-- name: Ensure virtual private cloud subnets are managed
+- name: Ensure aws virtual private cloud subnets are managed
   tags:
     - ec2_vpc_subnet
   amazon.aws.ec2_vpc_subnet:
@@ -25,15 +25,17 @@
   loop_control:
     label: "{{ _subnet.1.name | d(none) }}"
     loop_var: _subnet
+  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_subnet_async) }}"
+  poll: "{{ ec2_vpc_subnet_poll }}"
   when:
     - _subnet.0.vpc_id is defined
     - _subnet.1.cidr is defined
     - _subnet.1.name is defined
-  changed_when: false
-  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_subnet_async) }}"
-  poll: "{{ ec2_vpc_subnet_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_vpc_subnet_result.changed | bool
 
-- name: Ensure managed virtual private cloud subnet jobs are complete
+- name: Ensure managed aws virtual private cloud subnet jobs are complete
   tags:
     - ec2_vpc_subnet
   ansible.builtin.async_status:

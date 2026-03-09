@@ -1,0 +1,65 @@
+---
+- name: Ensure aws route53 records are managed
+  tags:
+    - route53_record
+  amazon.aws.route53:
+    alias: "{{ _record.1.alias | d(omit) }}"
+    alias_evaluate_target_health: "{{ _record.1.alias_evaluate_target_health | d(omit) }}"
+    alias_hosted_zone_id: "{{ _record.1.alias_hosted_zone_id | d(omit) }}"
+    failover: "{{ _record.1.failover | d(omit) }}"
+    geo_location: "{{ _record.1.geo_location | d(omit) }}"
+    health_check: "{{ _record.1.health_check | d(omit) }}"
+    hosted_zone_id: "{{ _record.0.hosted_zone_id | d(omit) }}"
+    identifier: "{{ _record.1.identifier | d(omit) }}"
+    overwrite: "{{ _record.1.overwrite | d(true) }}"
+    private_zone: "{{ _record.0.private_zone | d(false) }}"
+    record: "{{ _record.1.record }}"
+    retry_interval: "{{ _record.0.retry_interval | d(500) }}"
+    state: "{{ _record.1.state | d('present') }}"
+    ttl: "{{ _record.1.ttl | d(3600) }}"
+    type: "{{ _record.1.type }}"
+    validate_certs: true
+    value: "{{ _record.1.value }}"
+    vpc_id: "{{ _record.0.vpc_id | d(omit) }}"
+    wait: "{{ _record.0.wait | d(false) }}"
+    wait_timeout: "{{ _record.0.wait_timeout | d(300) }}"
+    weight: "{{ _record.1.weight | d(omit) }}"
+    zone: "{{ _record.0.zone | d(omit) }}"
+  register: __route53_record_result
+  loop:
+    "{{ q('ansible.builtin.subelements',
+          __route53_record_list,
+          'records',
+          {'skip_missing': true}) }}"
+  loop_control:
+    label: "{{ _record.1.record | d(none) }}"
+    loop_var: _record
+  async: "{{ ansible_check_mode | ternary(0, route53_record_async) }}"
+  poll: "{{ route53_record_poll }}"
+  when:
+    - _record.0.hosted_zone_id is defined or
+      _record.0.zone is defined
+    - _record.1.record is defined
+    - _record.1.type is defined
+    - _record.1.value is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __route53_record_result.changed | bool
+
+- name: Ensure managed aws route53 record jobs are complete
+  tags:
+    - route53_record
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __route53_record_status
+  loop: "{{ __route53_record_result.results }}"
+  loop_control:
+    label: "{{ _jid._record.1.record | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __route53_record_status.finished | bool
+  retries: "{{ route53_record_retries }}"
+  delay: "{{ route53_record_delay }}"
+...

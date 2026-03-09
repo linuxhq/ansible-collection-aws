@@ -10,15 +10,21 @@ None
 
 ## Role Variables
 
+    route53_record_async: 300
+    route53_record_batch: 10
+    route53_record_delay: 3
     route53_record_list: []
+    route53_record_poll: 0
+    route53_record_retries: 100
 
 ## Return Values
 
-    _route53_record_list
+None
 
 ## Dependencies
 
 * [linuxhq.aws.ec2\_vpc\_net\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_net_info)
+* [linuxhq.aws.route53\_record\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/route53_record_info)
 
 ## Example Playbook
 
@@ -27,19 +33,24 @@ None
       roles:
         - role: linuxhq.aws.route53_record
           route53_record_list:
-            - zone: linuxhq.net
+            - zone: pub.molecule.org
               records:
-                - record: irc.linuxhq.net
-                  type: CNAME
-                  value: irc.libera.chat
-
-            - zone: linuxhq.local
-              private_zone: true
-              vpc_id: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
-              records:
-                - record: irc.linuxhq.local
+                - record: molecule-1.pub.molecule.org
                   type: A
                   value: 127.0.0.1
+                - record: molecule-2.pub.molecule.org
+                  type: A
+                  value: 127.0.0.2
+
+            - zone: pvt.molecule.org
+              private_zone: true
+              records:
+                - record: molecule-1.pvt.molecule.org
+                  type: A
+                  value: 127.0.0.1
+                - record: molecule-2.pvt.molecule.org
+                  type: A
+                  value: 127.0.0.2
 
 ## License
 
