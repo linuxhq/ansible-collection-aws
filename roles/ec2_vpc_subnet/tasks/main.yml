@@ -1,5 +1,5 @@
 ---
-- name: Ensure virtual private cloud subnets are batched
+- name: Ensure aws virtual private cloud subnets are batched
   tags:
     - ec2_vpc_subnet
   ansible.builtin.include_tasks:

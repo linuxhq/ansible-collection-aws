@@ -1,0 +1,55 @@
+---
+- name: Ensure information about aws route53 zones is gathered
+  tags:
+    - route53_record_info
+  amazon.aws.route53_info:
+    query: hosted_zone
+    validate_certs: true
+  register: __route53_record_info_zone_query
+
+- name: Ensure list of aws route53 zones is generated
+  tags:
+    - route53_record_info
+  ansible.builtin.set_fact:
+    __route53_record_info_zone_list:
+      "{{ __route53_record_info_zone_query.hosted_zones |
+          d([]) }}"
+
+- name: Ensure dict of aws route53 zones is generated
+  tags:
+    - route53_record_info
+  ansible.builtin.set_fact:
+    __route53_record_info_zone_dict:
+      "{{ dict(__route53_record_info_zone_list |
+               json_query('[].name') |
+               map('regex_replace', '[.]$', '') |
+               zip(__route53_record_info_zone_list)) }}"
+
+- name: Ensure information about aws route53 records is gathered
+  tags:
+    - route53_record_info
+  amazon.aws.route53_info:
+    hosted_zone_id: "{{ _zone.id }}"
+    query: record_sets
+    validate_certs: true
+  register: __route53_record_info_record_query
+  loop: "{{ __route53_record_info_zone_list }}"
+  loop_control:
+    label: "{{ _zone.name | d(none) }}"
+    loop_var: _zone
+  when:
+    - _zone.id is defined
+    - _zone.name is defined
+
+- name: Ensure list of aws route53 records is generated
+  tags:
+    - route53_record_info
+  ansible.builtin.set_fact:
+    _route53_record_info_list:
+      "{{ __route53_record_info_record_query.results |
+          json_query('[].{
+            zone: _zone.name,
+            private_zone: _zone.config.private_zone,
+            resource_record_sets: resource_record_sets
+          }') }}"
+...

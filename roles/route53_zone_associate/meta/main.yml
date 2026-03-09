@@ -2,7 +2,7 @@
 dependencies:
   - role: ec2_vpc_net_info
     tags: route53_zone_associate
-  - role: route53_info
+  - role: route53_zone_info
     tags: route53_zone_associate
 galaxy_info:
   role_name: route53_zone_associate

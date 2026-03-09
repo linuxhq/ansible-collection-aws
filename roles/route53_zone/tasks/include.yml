@@ -21,11 +21,13 @@
   loop_control:
     label: "{{ _zone.zone | d(none) }}"
     loop_var: _zone
-  when:
-    - _zone.zone is defined
-  changed_when: false
   async: "{{ ansible_check_mode | ternary(0, route53_zone_async) }}"
   poll: "{{ route53_zone_poll }}"
+  when:
+    - _zone.zone is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __route53_zone_result.changed | bool
 
 - name: Ensure managed aws route53 zone jobs are complete
   tags:
