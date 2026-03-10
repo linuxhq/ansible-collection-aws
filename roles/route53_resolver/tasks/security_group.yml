@@ -1,0 +1,46 @@
+---
+- name: Ensure aws route53 resolver default security group rules are generated
+  tags:
+    - route53_resolver
+  ansible.builtin.set_fact:
+    __route53_resolver_rules:
+      - cidr_ip: 0.0.0.0/0
+        ports:
+          - 53
+          - 443
+        proto: tcp
+      - cidr_ip: 0.0.0.0/0
+        ports:
+          - 53
+        proto: udp
+    __route53_resolver_rules_egress:
+      - cidr_ip: 0.0.0.0/0
+        proto: -1
+
+- name: Ensure aws route53 resolver security group is managed
+  tags:
+    - route53_resolver
+  amazon.aws.ec2_security_group:
+    description: "{{ _route53resolver.description | d(_route53resolver.name) }}"
+    name: "{{ _route53resolver.name }}"
+    purge_rules: true
+    purge_rules_egress: true
+    purge_tags: true
+    rules: "{{ _route53resolver.rules | d(__route53_resolver_rules) }}"
+    rules_egress: "{{ _route53resolver.rules_egress | d(__route53_resolver_rules_egress) }}"
+    state: "{{ _route53resolver.state }}"
+    tags:
+      "{{ _route53resolver.tags |
+          d({}) |
+          combine({'Name': _route53resolver.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _route53resolver.vpc_id }}"
+  register: __route53_resolver_security_group
+
+- name: Ensure list of aws route53 resolver security group id is generated
+  tags:
+    - route53_resolver
+  ansible.builtin.set_fact:
+    __route53_resolver_security_group_id:
+      "{{ [__route53_resolver_security_group.group_id] | d([]) }}"
+...

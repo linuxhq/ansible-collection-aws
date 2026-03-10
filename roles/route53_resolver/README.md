@@ -28,25 +28,35 @@ None
       roles:
         - role: linuxhq.aws.route53_resolver
           route53_resolver_list:
-            - name: "{{ aws_vpc }}-outbound"
+            - name: molecule-cloudflare
               direction: outbound
               ip_addresses:
-                - SubnetId: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0].id }}"
-                  Ip:
-                    "{{ aws_network |
-                        ansible.utils.ipsubnet(27, 3) |
-                        ansible.utils.ipaddr('last_usable') }}"
-                - SubnetId: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1].id }}"
-                  Ip:
-                    "{{ aws_network |
-                        ansible.utils.ipsubnet(27, 4) |
-                        ansible.utils.ipaddr('last_usable') }}"
-                - SubnetId: "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2].id }}"
-                  Ip:
-                    "{{ aws_network |
-                        ansible.utils.ipsubnet(27, 5) |
-                        ansible.utils.ipaddr('last_usable') }}"
-              vpc_id: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
+                - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
+                  Ip: 192.168.0.125
+                - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
+                  Ip: 192.168.0.253
+              vpc_id: "{{ _ec2_vpc_net_info_dict[ec2_vpc_net_list.0.name].id }}"
+
+            - name: molecule-google
+              direction: outbound
+              ip_addresses:
+                - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
+                  Ip: 192.168.0.126
+                - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
+                  Ip: 192.168.0.254
+              rules:
+                - cidr_ip: 192.168.0.0/24
+                  ports:
+                    - 53
+                  proto: tcp
+                - cidr_ip: 192.168.0.0/24
+                  ports:
+                    - 53
+                  proto: udp
+              rules_egress:
+                - cidr_ip: 192.168.0.0/24
+                  proto: -1
+              vpc_id: "{{ _ec2_vpc_net_info_dict[ec2_vpc_net_list.0.name].id }}"
 
 ## License
 
