@@ -1,0 +1,35 @@
+---
+- name: Ensure aws route53 resolver present tasks are included
+  tags:
+    - route53_resolver
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - route53_resolver
+    file: "{{ _order }}.yml"
+  loop:
+    - security_group
+    - route53_resolver
+  loop_control:
+    label: "{{ _order | d(none) }}"
+    loop_var: _order
+  when:
+    - _route53resolver.state == 'present'
+
+- name: Ensure aws route53 resolver absent tasks are included
+  tags:
+    - route53_resolver
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - route53_resolver
+    file: "{{ _order }}.yml"
+  loop:
+    - route53_resolver
+    - security_group
+  loop_control:
+    label: "{{ _order | d(none) }}"
+    loop_var: _order
+  when:
+    - _route53resolver.state == 'absent'
+...

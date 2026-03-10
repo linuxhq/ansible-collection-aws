@@ -26,8 +26,8 @@
               'value':
                 lookup('amazon.aws.secretsmanager_secret',
                        _secret.name,
-                       region=__secretsmanager_secret_info_region,
-                       nested=_secret.nested | d(false))}) -%}
+                       nested=_secret.nested | d(false),
+                       region=__secretsmanager_secret_info_region)}) -%}
       {%- endfor -%}
       {{ results }}
 
