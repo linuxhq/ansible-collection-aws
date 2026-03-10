@@ -1,3 +1,5 @@
 ---
 ssm_parameter_info_list: []
+ssm_parameter_info_on_denied: error
+ssm_parameter_info_on_missing: error
 ...

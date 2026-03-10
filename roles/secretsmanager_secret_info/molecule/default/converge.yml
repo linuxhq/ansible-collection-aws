@@ -10,5 +10,10 @@
         - molecule-idempotence-notest
       check_mode: false
 
+    - role: secretsmanager_secret_info
+      secretsmanager_secret_info_list: []
+      tags:
+        - molecule-idempotence-notest
+
     - secretsmanager_secret_info
 ...

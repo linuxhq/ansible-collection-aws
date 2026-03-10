@@ -23,8 +23,7 @@ provisioner:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
         ssm_parameter_info_list:
-          "{{ ssm_parameter_list |
-              map(attribute='name', default=[]) }}"
+          "{{ ssm_parameter_list }}"
 
         ssm_parameter_list:
           - name: /molecule/db/admin/username

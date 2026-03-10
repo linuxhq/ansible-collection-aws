@@ -28,13 +28,14 @@ provisioner:
         secretsmanager_secret_list:
           - name: molecule-secret-1
             secret:
-              - key: molecule-secret-1
+              - key: molecule-key-1
                 value: WnvpxzicuneCE7PM7upC7aVNFwYoz7wE
+
           - name: molecule-secret-2
             secret:
-              - key: molecule-secret-2
+              - key: molecule-key-1
                 value: JUJMm9adCgL7FPtF7qiuHjyXYne7ivbX
-              - key: molecule-secret-2a
+              - key: molecule-key-2
                 value: ggfiFwtaauCRwwNfxJUE3oRjoHr3ETLL
 
 scenario:

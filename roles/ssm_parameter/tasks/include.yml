@@ -21,12 +21,14 @@
   loop_control:
     label: "{{ _parameter.name | d(none) }}"
     loop_var: _parameter
+  async: "{{ ansible_check_mode | ternary(0, ssm_parameter_async) }}"
+  poll: "{{ ssm_parameter_poll }}"
   when:
     - _parameter.name is defined
     - _parameter.value is defined
-  changed_when: false
-  async: "{{ ansible_check_mode | ternary(0, ssm_parameter_async) }}"
-  poll: "{{ ssm_parameter_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __ssm_parameter_result.changed | bool
 
 - name: Ensure managed aws systems manager parameter jobs are complete
   tags:
