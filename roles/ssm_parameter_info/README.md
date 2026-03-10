@@ -11,6 +11,8 @@ None
 ## Role Variables
 
     ssm_parameter_info_list: []
+    ssm_parameter_info_on_denied: error
+    ssm_parameter_info_on_missing: error
 
 ## Return Values
 
@@ -28,10 +30,10 @@ None
       roles:
         - role: linuxhq.aws.ssm_parameter_info
           ssm_parameter_info_list:
-            - /molecule/db/admin/username
-            - /molecule/db/admin/password
-            - /molecule/sys/username
-            - /molecule/sys/password
+            - name: /molecule/db/admin/username
+            - name: /molecule/db/admin/password
+            - name: /molecule/sys/username
+            - name: /molecule/sys/password
 
 ## License
 

@@ -18,18 +18,36 @@
   tags:
     - secretsmanager_secret_info
   ansible.builtin.set_fact:
-    _secretsmanager_secret_info_list: >-
-      {%- set results = [] -%}
-      {%- for _secret in (secretsmanager_secret_info_list | d([])) -%}
-      {%-   set _ = results.append({
-              'name': _secret.name,
-              'value':
-                lookup('amazon.aws.secretsmanager_secret',
-                       _secret.name,
-                       nested=_secret.nested | d(false),
-                       region=__secretsmanager_secret_info_region)}) -%}
-      {%- endfor -%}
-      {{ results }}
+    _secretsmanager_secret_info_list:
+      "{{ _secretsmanager_secret_info_list |
+          d([]) +
+          [{'name': _secret.name,
+            'value': __secretsmanager_secret_info_lookup}] }}"
+  register: _secretsmanager_secret_info_result
+  loop: "{{ secretsmanager_secret_info_list }}"
+  loop_control:
+    label: "{{ _secret.name | d(none) }}"
+    loop_var: _secret
+  when:
+    - _secret.name is defined
+  vars:
+    __secretsmanager_secret_info_lookup:
+      "{{ lookup('amazon.aws.secretsmanager_secret',
+                 _secret.name,
+                 bypath=_secret.bypath | d(false),
+                 nested=_secret.nested | d(false),
+                 on_deleted=secretsmanager_secret_info_on_deleted,
+                 on_denied=secretsmanager_secret_info_on_denied,
+                 on_missing=secretsmanager_secret_info_on_missing,
+                 region=__secretsmanager_secret_info_region) }}"
+
+- name: Ensure list of aws secretsmanager secrets is generated
+  tags:
+    - secretsmanager_secret_info
+  ansible.builtin.set_fact:
+    _secretsmanager_secret_info_list: []
+  when:
+    - _secretsmanager_secret_info_result is skipped
 
 - name: Ensure dict of aws secretsmanager secrets is generated
   tags:
