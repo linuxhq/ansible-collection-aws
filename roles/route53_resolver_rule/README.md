@@ -27,14 +27,24 @@ None
       roles:
         - role: linuxhq.aws.route53_resolver_rule
           route53_resolver_rule_list:
-            - name: "{{ aws_vpc }}-cloudflare"
-              domain_name: linuxhq.net
-              resolver_endpoint_id: "{{ _route53_resolver_info_dict[aws_vpc ~ '-outbound'].Id }}"
+            - name: molecule-cloudflare
+              domain_name: cloudflare.com
+              resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].Id }}"
               rule_type: forward
               target_ips:
                 - Ip: 1.1.1.1
                   Port: 53
                 - Ip: 1.1.1.2
+                  Port: 53
+
+            - name: molecule-google
+              domain_name: google.com
+              resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-google'].Id }}"
+              rule_type: forward
+              target_ips:
+                - Ip: 8.8.8.8
+                  Port: 53
+                - Ip: 8.8.8.4
                   Port: 53
 
 ## License

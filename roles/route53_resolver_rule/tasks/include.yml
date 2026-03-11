@@ -1,0 +1,73 @@
+---
+- name: Ensure aws route53 resolver rule is present
+  tags:
+    - route53_resolver_rule
+  ansible.builtin.command:
+    cmd: >
+      aws route53resolver create-resolver-rule
+        --creator-request-id "{{ _resolver_rule.name }}"
+        --domain-name "{{ _resolver_rule.domain_name }}"
+        --name "{{ _resolver_rule.name }}"
+        --resolver-endpoint-id "{{ _resolver_rule.resolver_endpoint_id }}"
+        --rule-type "{{ _resolver_rule.rule_type | upper }}"
+        --target-ips '{{ _resolver_rule.target_ips | to_json }}'
+  register: __route53_resolver_rule_create
+  when:
+    - _resolver_rule.name not in __route53_resolver_rule_dict.keys()
+    - _resolver_rule.state == 'present'
+  changed_when: true
+
+- name: Ensure aws route53 resolver rule status is complete
+  tags:
+    - route53_resolver_rule
+  ansible.builtin.command:
+    cmd: >
+      aws route53resolver get-resolver-rule
+        --output text
+        --query 'ResolverRule.Status'
+        --resolver-rule-id "{{ (__route53_resolver_rule_create.stdout | from_json).ResolverRule.Id }}"
+  register: __route53_resolver_rule_present
+  when:
+    - _resolver_rule.name not in __route53_resolver_rule_dict.keys()
+    - _resolver_rule.state == 'present'
+    - not ansible_check_mode
+  until:
+    - __route53_resolver_rule_present.stdout is defined
+    - __route53_resolver_rule_present.stdout == 'COMPLETE'
+  delay: 5
+  retries: 60
+  changed_when: false
+
+- name: Ensure aws route53 resolver rule is absent
+  tags:
+    - route53_resolver_rule
+  ansible.builtin.command:
+    cmd: >
+      aws route53resolver delete-resolver-rule
+        --resolver-rule-id "{{ __route53_resolver_rule_dict[_resolver_rule.name] }}"
+  when:
+    - _resolver_rule.name in __route53_resolver_rule_dict.keys()
+    - _resolver_rule.state == 'absent'
+  changed_when: true
+
+- name: Ensure aws route53 resolver rule status is deleted
+  tags:
+    - route53_resolver_rule
+  ansible.builtin.command:
+    cmd: >
+      aws route53resolver get-resolver-rule
+        --output text
+        --query 'ResolverRule.Status'
+        --resolver-rule-id "{{ __route53_resolver_rule_dict[_resolver_rule.name] }}"
+  register: __route53_resolver_rule_absent
+  when:
+    - _resolver_rule.name in __route53_resolver_rule_dict.keys()
+    - _resolver_rule.state == 'absent'
+  until:
+    - __route53_resolver_rule_absent.rc == 255
+  delay: 5
+  retries: 60
+  changed_when: false
+  failed_when:
+    - __route53_resolver_rule_absent.rc != 255
+...
