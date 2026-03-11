@@ -45,7 +45,6 @@
     cmd: >
       aws route53resolver delete-resolver-endpoint
         --resolver-endpoint-id "{{ __route53_resolver_dict[_route53resolver.name] }}"
-  register: __route53_resolver_delete
   when:
     - _route53resolver.name in __route53_resolver_dict.keys()
     - _route53resolver.state == 'absent'
@@ -59,12 +58,11 @@
       aws route53resolver get-resolver-endpoint
         --output text
         --query 'ResolverEndpoint.Status'
-        --resolver-endpoint-id "{{ (__route53_resolver_delete.stdout | from_json).ResolverEndpoint.Id }}"
+        --resolver-endpoint-id "{{ __route53_resolver_dict[_route53resolver.name] }}"
   register: __route53_resolver_absent
   when:
     - _route53resolver.name in __route53_resolver_dict.keys()
     - _route53resolver.state == 'absent'
-    - not ansible_check_mode
   until:
     - __route53_resolver_absent.rc == 255
   delay: 5
