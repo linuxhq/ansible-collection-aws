@@ -1,0 +1,93 @@
+---
+- name: Ensure aws route53 resolver rule association state is gathered
+  tags:
+    - route53_resolver_rule_associate
+  ansible.builtin.set_fact:
+    __route53_resolver_rule_associate_len:
+      "{{ __route53_resolver_rule_associate_state |
+          selectattr('ResolverRuleId',
+                     'equalto',
+                     _resolver_rule_association.resolver_rule_id) |
+          selectattr('VPCId',
+                     'equalto',
+                     _resolver_rule_association.vpc_id) |
+          list |
+          length }}"
+
+- name: Ensure aws route53 resolver rule association is present
+  tags:
+    - route53_resolver_rule_associate
+  ansible.builtin.command:
+    cmd: >
+      aws route53resolver associate-resolver-rule
+        --name "{{ _resolver_rule_association.name }}"
+        --region us-east-1
+        --resolver-rule-id "{{ _resolver_rule_association.resolver_rule_id }}"
+        --vpc-id "{{ _resolver_rule_association.vpc_id }}"
+  register: __route53_resolver_rule_associate_present
+  when:
+    - _resolver_rule_association.state == 'present'
+    - __route53_resolver_rule_associate_len == 0
+  changed_when: true
+
+- name: Ensure aws route53 resolver rule association status is complete
+  tags:
+    - route53_resolver_rule_associate
+  ansible.builtin.command:
+    cmd: >
+      aws route53resolver get-resolver-rule-association
+        --output text
+        --query 'ResolverRuleAssociation.Status'
+        --region us-east-1
+        --resolver-rule-association-id
+          "{{ (__route53_resolver_rule_associate_present.stdout | from_json).ResolverRuleAssociation.Id }}"
+  register: __route53_resolver_rule_associate_complete
+  when:
+    - _resolver_rule_association.state == 'present'
+    - __route53_resolver_rule_associate_len == 0
+    - not ansible_check_mode
+  until:
+    - __route53_resolver_rule_associate_complete.stdout is defined
+    - __route53_resolver_rule_associate_complete.stdout == 'COMPLETE'
+  delay: 5
+  retries: 60
+  changed_when: false
+
+- name: Ensure aws route53 resolver rule association is absent
+  tags:
+    - route53_resolver_rule_associate
+  ansible.builtin.command:
+    cmd: >
+      aws route53resolver disassociate-resolver-rule
+        --region us-east-1
+        --resolver-rule-id "{{ _resolver_rule_association.resolver_rule_id }}"
+        --vpc-id "{{ _resolver_rule_association.vpc_id }}"
+  register: __route53_resolver_rule_associate_absent
+  when:
+    - _resolver_rule_association.state == 'absent'
+    - __route53_resolver_rule_associate_len == 1
+  changed_when: true
+
+- name: Ensure aws route53 resolver rule association status is deleted
+  tags:
+    - route53_resolver_rule_associate
+  ansible.builtin.command:
+    cmd: >
+      aws route53resolver get-resolver-rule-association
+        --output text
+        --query 'ResolverRuleAssociation.Status'
+        --region us-east-1
+        --resolver-rule-association-id
+          "{{ (__route53_resolver_rule_associate_absent.stdout | from_json).ResolverRuleAssociation.Id }}"
+  register: __route53_resolver_rule_associate_deleted
+  when:
+    - _resolver_rule_association.state == 'absent'
+    - __route53_resolver_rule_associate_len == 1
+  until:
+    - __route53_resolver_rule_associate_deleted.rc == 255
+  delay: 5
+  retries: 60
+  changed_when: false
+  failed_when:
+    - __route53_resolver_rule_associate_deleted.rc != 255
+...

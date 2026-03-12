@@ -2,9 +2,9 @@
 allow_duplicates: true
 dependencies: []
 galaxy_info:
-  role_name: ssm_parameter_info
+  role_name: route53_resolver_rule_associate_info
   author: Taylor Kimball
-  description: Gather information about aws systems manager key-value pairs
+  description: Gather information about aws route53 resolver rule associations
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq
@@ -16,9 +16,11 @@ galaxy_info:
       versions:
         - all
   galaxy_tags:
+    - associate
     - amazon
     - aws
     - info
-    - parameter
-    - ssm
+    - resolver
+    - route53
+    - rule
 ...
