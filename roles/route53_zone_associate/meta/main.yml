@@ -7,7 +7,7 @@ dependencies:
 galaxy_info:
   role_name: route53_zone_associate
   author: Taylor Kimball
-  description: Manage aws route53 private zone virtual private cloud associations
+  description: Manage aws route53 zone associations
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq

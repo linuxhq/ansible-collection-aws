@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws route53 zones are managed
+- name: Ensure aws route53 public zones are managed
   tags:
     - route53_zone
   amazon.aws.route53_zone:
@@ -7,29 +7,29 @@
     delegation_set_id: "{{ _zone.delegation_set_id | d(omit) }}"
     dnssec: "{{ _zone.dnssec | d(false) }}"
     purge_tags: "{{ _zone.purge_tags | d(true) }}"
-    state: "{{ _zone.state | d('present') }}"
+    state: "{{ _zone.state }}"
     tags:
       "{{ _zone.tags |
           d({}) |
           combine({'Name': _zone.zone}) }}"
     validate_certs: true
-    vpc_id: "{{ _zone.vpc_id | d(omit) }}"
-    vpc_region: "{{ _zone.vpc_region | d(omit) }}"
     zone: "{{ _zone.zone }}"
   register: __route53_zone_result
-  loop: "{{ __route53_zone_list }}"
+  loop: "{{ __route53_zone_batch }}"
   loop_control:
     label: "{{ _zone.zone | d(none) }}"
     loop_var: _zone
   async: "{{ ansible_check_mode | ternary(0, route53_zone_async) }}"
   poll: "{{ route53_zone_poll }}"
   when:
+    - _zone.vpc_id is not defined
+    - _zone.vpc_region is not defined
     - _zone.zone is defined
   changed_when:
     - ansible_check_mode | bool
     - __route53_zone_result.changed | bool
 
-- name: Ensure managed aws route53 zone jobs are complete
+- name: Ensure managed aws route53 public zone managed jobs are complete
   tags:
     - route53_zone
   ansible.builtin.async_status:

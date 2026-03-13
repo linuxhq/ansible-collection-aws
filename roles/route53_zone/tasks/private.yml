@@ -1,0 +1,129 @@
+---
+- name: Ensure information about aws route53 zones is gathered
+  tags:
+    - route53_zone
+  amazon.aws.route53_info:
+    query: hosted_zone
+    validate_certs: true
+  register: __route53_zone_query
+
+- name: Ensure list of aws route53 zones is generated
+  tags:
+    - route53_zone
+  ansible.builtin.set_fact:
+    __route53_zone_private_list:
+      "{{ __route53_zone_query.hosted_zones |
+          selectattr('config.private_zone', 'equalto', true) |
+          d([]) }}"
+
+- name: Ensure dict of aws route53 zones is generated
+  tags:
+    - route53_zone
+  ansible.builtin.set_fact:
+    __route53_zone_private_dict:
+      "{{ dict(__route53_zone_private_list |
+               json_query('[].name') |
+               map('regex_replace', '[.]$', '') |
+               zip(__route53_zone_private_list)) }}"
+
+- name: Ensure aws route53 private zones are present
+  tags:
+    - route53_zone
+  amazon.aws.route53_zone:
+    comment: "{{ _zone.comment | d(omit) }}"
+    delegation_set_id: "{{ _zone.delegation_set_id | d(omit) }}"
+    dnssec: "{{ _zone.dnssec | d(false) }}"
+    purge_tags: "{{ _zone.purge_tags | d(true) }}"
+    state: present
+    tags:
+      "{{ _zone.tags |
+          d({}) |
+          combine({'Name': _zone.zone}) }}"
+    validate_certs: true
+    vpc_id: "{{ _zone.vpc_id }}"
+    vpc_region: "{{ _zone.vpc_region }}"
+    zone: "{{ _zone.zone }}"
+  register: __route53_zone_result_present
+  loop: "{{ __route53_zone_batch }}"
+  loop_control:
+    label: "{{ _zone.zone | d(none) }}"
+    loop_var: _zone
+  async: "{{ ansible_check_mode | ternary(0, route53_zone_async) }}"
+  poll: "{{ route53_zone_poll }}"
+  when:
+    - _zone.state == 'present'
+    - _zone.vpc_id is defined
+    - _zone.vpc_region is defined
+    - _zone.zone is defined
+    - _zone.zone not in __route53_zone_private_dict.keys()
+  changed_when:
+    - ansible_check_mode | bool
+    - __route53_zone_result_present.changed | bool
+
+- name: Ensure managed aws route53 private zone present jobs are complete
+  tags:
+    - route53_zone
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __route53_zone_status_present
+  loop: "{{ __route53_zone_result_present.results }}"
+  loop_control:
+    label: "{{ _jid._zone.zone | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __route53_zone_status_present.finished | bool
+  retries: "{{ route53_zone_retries }}"
+  delay: "{{ route53_zone_delay }}"
+
+- name: Ensure aws route53 private zones are absent
+  tags:
+    - route53_zone
+  amazon.aws.route53_zone:
+    comment: "{{ _zone.comment | d(omit) }}"
+    delegation_set_id: "{{ _zone.delegation_set_id | d(omit) }}"
+    dnssec: "{{ _zone.dnssec | d(false) }}"
+    purge_tags: "{{ _zone.purge_tags | d(true) }}"
+    state: absent
+    tags:
+      "{{ _zone.tags |
+          d({}) |
+          combine({'Name': _zone.zone}) }}"
+    validate_certs: true
+    vpc_id: "{{ _zone.vpc_id | d(omit) }}"
+    vpc_region: "{{ _zone.vpc_region | d(omit) }}"
+    vpcs: "{{ _zone.vpcs | d(omit) }}"
+    zone: "{{ _zone.zone }}"
+  register: __route53_zone_result_absent
+  loop: "{{ __route53_zone_batch }}"
+  loop_control:
+    label: "{{ _zone.zone | d(none) }}"
+    loop_var: _zone
+  async: "{{ ansible_check_mode | ternary(0, route53_zone_async) }}"
+  poll: "{{ route53_zone_poll }}"
+  when:
+    - _zone.state == 'absent'
+    - _zone.zone is defined
+    - _zone.zone in __route53_zone_private_dict.keys()
+  changed_when:
+    - ansible_check_mode | bool
+    - __route53_zone_result_absent.changed | bool
+
+- name: Ensure managed aws route53 private zone absent jobs are complete
+  tags:
+    - route53_zone
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __route53_zone_status_absent
+  loop: "{{ __route53_zone_result_absent.results }}"
+  loop_control:
+    label: "{{ _jid._zone.zone | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __route53_zone_status_absent.finished | bool
+  retries: "{{ route53_zone_retries }}"
+  delay: "{{ route53_zone_delay }}"
+...
