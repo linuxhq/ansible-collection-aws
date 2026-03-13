@@ -1,22 +1,55 @@
 ---
-- name: Ensure route53 private zones are associated
+- name: Ensure aws route53 zone association defaults are present
   tags:
     - route53_zone_associate
-  ansible.builtin.command:
-    cmd: >
-      aws route53 associate-vpc-with-hosted-zone
-        --hosted-zone-id "{{ _zone.hosted_zone_id }}"
-        --vpc '{{ __route53_zone_associate | to_json }}'
-  loop: "{{ route53_zone_associate_list }}"
+  ansible.builtin.set_fact:
+    __route53_zone_associate_list:
+      "{{ [{'state': 'present'}] |
+          product(route53_zone_associate_list) |
+          map('combine') |
+          list }}"
+
+- name: Ensure aws route53 zone association information is gathered
+  tags:
+    - route53_zone_associate
+  amazon.aws.route53_info:
+    hosted_zone_method: details
+    hosted_zone_id: "{{ _zone }}"
+    query: hosted_zone
+    validate_certs: true
+  register: __route53_zone_associate_details
+  loop: "{{ __route53_zone_associate_list |
+            map(attribute='hosted_zone_id', default=[]) |
+            unique }}"
   loop_control:
-    label: "{{ _zone.id | d(none) }}"
+    label: "{{ _zone | d(none) }}"
     loop_var: _zone
-  vars:
-    __route53_zone_associate:
-      VPCId: "{{ _zone.vpc_id }}"
-      VPCRegion: "{{ _zone.vpc_region }}"
-  changed_when: false
-  failed_when: false
+  check_mode: false
+
+- name: Ensure dict of aws route53 zone association information is generated
+  tags:
+    - route53_zone_associate
+  ansible.builtin.set_fact:
+    __route53_zone_associate_dict:
+      "{{ __route53_zone_associate_details.results |
+          json_query('[].{
+            key: HostedZone.Id
+            value: VPCs
+          }') |
+          items2dict }}"
+
+- name: Ensure aws route53 zone association tasks are included
+  tags:
+    - route53_zone_associate
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - route53_zone_associate
+    file: include.yml
+  loop: "{{ __route53_zone_associate_list }}"
+  loop_control:
+    label: "{{ _zone.hosted_zone_id | d(none) }}"
+    loop_var: _zone
   when:
     - _zone.hosted_zone_id is defined
     - _zone.vpc_id is defined

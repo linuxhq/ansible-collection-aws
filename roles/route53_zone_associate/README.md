@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Manage aws route53 private zone virtual private cloud associations
+Manage aws route53 zone associations
 
 ## Requirements
 
@@ -28,9 +28,37 @@ None
       roles:
         - role: linuxhq.aws.route53_zone_associate
           route53_zone_associate_list:
-            - hosted_zone_id: "{{ _route53_info_hosted_zone_dict['linuxhq.local'].id }}"
-              vpc_id: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
-              vpc_region: "{{ aws_region }}"
+            - hosted_zone_id: "{{ _route53_zone_info_dict[route53_zone_list.0.zone].id }}"
+              vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-2'].id }}"
+              vpc_region:
+                "{{ lookup('ansible.builtin.ini',
+                           'region',
+                           file='~/.aws/config',
+                           section='profile molecule') }}"
+
+            - hosted_zone_id: "{{ _route53_zone_info_dict[route53_zone_list.1.zone].id }}"
+              vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-2'].id }}"
+              vpc_region:
+                "{{ lookup('ansible.builtin.ini',
+                           'region',
+                           file='~/.aws/config',
+                           section='profile molecule') }}"
+
+            - hosted_zone_id: "{{ _route53_zone_info_dict[route53_zone_list.0.zone].id }}"
+              vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-3'].id }}"
+              vpc_region:
+                "{{ lookup('ansible.builtin.ini',
+                           'region',
+                           file='~/.aws/config',
+                           section='profile molecule') }}"
+
+            - hosted_zone_id: "{{ _route53_zone_info_dict[route53_zone_list.1.zone].id }}"
+              vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-3'].id }}"
+              vpc_region:
+                "{{ lookup('ansible.builtin.ini',
+                           'region',
+                           file='~/.aws/config',
+                           section='profile molecule') }}"
 
 ## License
 
