@@ -1,0 +1,16 @@
+---
+- name: Ensure aws elastic container registry repositories are batched
+  tags:
+    - ecs_ecr
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ecs_ecr
+    file: include.yml
+  loop:
+    "{{ ecs_ecr_list |
+        batch(ecs_ecr_batch) }}"
+  loop_control:
+    label: "{{ __ecs_ecr_list | length }}"
+    loop_var: __ecs_ecr_list
+...

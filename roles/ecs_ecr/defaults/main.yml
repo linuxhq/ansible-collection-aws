@@ -1,0 +1,8 @@
+---
+ecs_ecr_async: 300
+ecs_ecr_batch: 10
+ecs_ecr_delay: 3
+ecs_ecr_list: []
+ecs_ecr_poll: 0
+ecs_ecr_retries: 100
+...
