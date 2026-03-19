@@ -10,11 +10,16 @@ None
 
 ## Role Variables
 
+    s3_bucket_async: 300
+    s3_bucket_batch: 10
+    s3_bucket_delay: 3
     s3_bucket_list: []
+    s3_bucket_poll: 0
+    s3_bucket_retries: 100
 
 ## Return Values
 
-    _s3_bucket_list
+None
 
 ## Dependencies
 
@@ -27,7 +32,7 @@ None
       roles:
         - role: linuxhq.aws.s3_bucket
           s3_bucket_list:
-            - name: "{{ _aws_caller_info_account }}-{{ aws_region }}-linuxhq-backups"
+            - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-00"
               accelerate_enabled: true
               policy:
                 Version: '2012-10-17'
@@ -36,8 +41,8 @@ None
                     Action: s3:*
                     Principal: '*'
                     Resource:
-                      - "arn:aws:s3:::{{ _aws_caller_info_account }}-{{ aws_region }}-linuxhq-backups"
-                      - "arn:aws:s3:::{{ _aws_caller_info_account }}-{{ aws_region }}-linuxhq-backups/*"
+                      - "arn:aws:s3:::molecule-bucket-{{ ansible_facts.date_time.date }}-00"
+                      - "arn:aws:s3:::molecule-bucket-{{ ansible_facts.date_time.date }}-00/*"
                     Condition:
                       Bool:
                         'aws:SecureTransport': false

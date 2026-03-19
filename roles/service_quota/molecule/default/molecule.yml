@@ -1,0 +1,64 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        service_quota_list:
+          - service_code: ec2
+            quotas:
+              - quota_code: L-0263D0A3
+                value: '10.0'
+              - quota_code: L-1216C47A
+                value: '128.0'
+
+          - service_code: iam
+            quotas:
+              - quota_code: L-0DA4ABF3
+                region: us-east-1
+                value: '20.0'
+
+          - service_code: vpc
+            quotas:
+              - quota_code: L-0EA8095F
+                value: '125.0'
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...

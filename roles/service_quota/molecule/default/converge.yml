@@ -1,0 +1,14 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - role: service_quota
+      service_quota_list: []
+      tags:
+        - molecule-idempotence-notest
+
+    - service_quota
+...

@@ -18,5 +18,6 @@ galaxy_info:
     - amazon
     - aws
     - lifecycle
+    - rule
     - s3
 ...

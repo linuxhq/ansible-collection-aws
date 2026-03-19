@@ -1,10 +1,9 @@
 ---
-allow_duplicates: true
 dependencies: []
 galaxy_info:
-  role_name: s3_bucket_info
+  role_name: service_quota_info
   author: Taylor Kimball
-  description: Gather information about aws simple storage service buckets
+  description: Gather information about aws service quotas
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq
@@ -18,7 +17,7 @@ galaxy_info:
   galaxy_tags:
     - amazon
     - aws
-    - bucket
     - info
-    - s3
+    - quota
+    - service
 ...
