@@ -2,9 +2,9 @@
 allow_duplicates: true
 dependencies: []
 galaxy_info:
-  role_name: service_quota_info
+  role_name: ses_sandbox_info
   author: Taylor Kimball
-  description: Gather information about aws service quotas
+  description: Gather information about aws simple email service account details
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq
@@ -18,7 +18,9 @@ galaxy_info:
   galaxy_tags:
     - amazon
     - aws
+    - email
     - info
-    - quota
+    - sandbox
     - service
+    - simple
 ...
