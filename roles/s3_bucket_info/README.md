@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Gather information about simple storage service buckets
+Gather information about aws simple storage service buckets
 
 ## Requirements
 

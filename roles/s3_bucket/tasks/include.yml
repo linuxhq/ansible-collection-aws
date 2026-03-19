@@ -1,0 +1,60 @@
+---
+- name: Ensure aws simple storage service buckets are managed
+  tags:
+    - s3_bucket
+  amazon.aws.s3_bucket:
+    accelerate_enabled: "{{ _bucket.accelerate_enabled | d(false) }}"
+    acl: "{{ _bucket.acl | d(omit) }}"
+    bucket_key_enabled: "{{ _bucket.bucket_key_enabled | d(omit) }}"
+    ceph: "{{ _bucket.ceph | d(false) }}"
+    delete_object_ownership: "{{ _bucket.delete_object_ownership | d(omit) }}"
+    delete_public_access: "{{ _bucket.delete_public_access | d(omit) }}"
+    dualstack: "{{ _bucket.dualstack | d(false) }}"
+    encryption: "{{ _bucket.encryption | d(omit) }}"
+    encryption_key_id: "{{ _bucket.encryption_key_id | d(omit) }}"
+    name: "{{ _bucket.name }}"
+    object_lock_default_retention: "{{ _bucket.object_lock_default_retention | d(omit) }}"
+    object_lock_enabled: "{{ _bucket.object_lock_enabled | d(omit) }}"
+    object_ownership: "{{ _bucket.object_ownership | d(omit) }}"
+    policy: "{{ _bucket.policy | to_json if _bucket.policy is defined else omit }}"
+    public_access: "{{ _bucket.public_access | d(omit) }}"
+    purge_tags: "{{ _bucket.purge_tags | d(true) }}"
+    requester_pays: "{{ _bucket.requester_pays | d(omit) }}"
+    state: "{{ _bucket.state | d('present') }}"
+    tags:
+      "{{ _bucket.tags |
+          d({}) |
+          combine({'Name': _bucket.name}) }}"
+    validate_bucket_name: "{{ _bucket.validate_bucket_name | d(true) }}"
+    validate_certs: true
+    versioning: "{{ _bucket.versioning | d(omit) }}"
+  register: __s3_bucket_result
+  loop: "{{ __s3_bucket_list }}"
+  loop_control:
+    label: "{{ _bucket.name | d(none) }}"
+    loop_var: _bucket
+  async: "{{ ansible_check_mode | ternary(0, s3_bucket_async) }}"
+  poll: "{{ s3_bucket_poll }}"
+  when:
+    - _bucket.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __s3_bucket_result.changed | bool
+
+- name: Ensure managed aws simple storage bucket jobs are complete
+  tags:
+    - s3_bucket
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __s3_bucket_status
+  loop: "{{ __s3_bucket_result.results }}"
+  loop_control:
+    label: "{{ _jid._bucket.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __s3_bucket_status.finished | bool
+  retries: "{{ s3_bucket_retries }}"
+  delay: "{{ s3_bucket_delay }}"
+...

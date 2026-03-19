@@ -1,0 +1,41 @@
+---
+- name: Ensure aws simple storage service bucket websites are managed
+  tags:
+    - s3_website
+  community.aws.s3_website:
+    error_key: "{{ _website.error_key | d(omit) }}"
+    name: "{{ _website.name }}"
+    redirect_all_requests: "{{ _website.redirect_all_requests | d(omit) }}"
+    state: "{{ _website.state | d('present') }}"
+    suffix: "{{ _website.suffix | d('index.html') }}"
+    validate_certs: true
+  register: __s3_website_result
+  loop: "{{ __s3_website_list }}"
+  loop_control:
+    label: "{{ _website.name | d(none) }}"
+    loop_var: _website
+  async: "{{ ansible_check_mode | ternary(0, s3_website_async) }}"
+  poll: "{{ s3_website_poll }}"
+  when:
+    - _website.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __s3_website_result.changed | bool
+
+- name: Ensure managed aws simple storage bucket website jobs are complete
+  tags:
+    - s3_website
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __s3_website_status
+  loop: "{{ __s3_website_result.results }}"
+  loop_control:
+    label: "{{ _jid._website.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __s3_website_status.finished | bool
+  retries: "{{ s3_website_retries }}"
+  delay: "{{ s3_website_delay }}"
+...

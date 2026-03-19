@@ -1,0 +1,43 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - s3_bucket_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _s3_bucket_info_dict[s3_bucket_list.0.name].bucket_arn is defined
+          - _s3_bucket_info_dict[s3_bucket_list.1.name].bucket_arn is defined
+          - _s3_bucket_info_dict[s3_bucket_list.2.name].bucket_arn is defined
+          - _s3_bucket_info_dict[s3_bucket_list.3.name].bucket_arn is defined
+          - _s3_bucket_info_dict[s3_bucket_list.4.name].bucket_arn is defined
+          - _s3_bucket_info_dict[s3_bucket_list.5.name].bucket_arn is defined
+          - _s3_bucket_info_dict[s3_bucket_list.6.name].bucket_arn is defined
+          - _s3_bucket_info_dict[s3_bucket_list.7.name].bucket_arn is defined
+          - _s3_bucket_info_dict[s3_bucket_list.8.name].bucket_arn is defined
+          - _s3_bucket_info_dict[s3_bucket_list.9.name].bucket_arn is defined
+          - _s3_bucket_info_dict[s3_bucket_list.10.name].bucket_arn is defined
+          - _s3_bucket_info_dict[s3_bucket_list.11.name].bucket_arn is defined
+          - _s3_bucket_info_dict[s3_bucket_list.12.name].bucket_arn is defined
+          - _s3_bucket_info_dict[s3_bucket_list.13.name].bucket_arn is defined
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        s3_bucket_list:
+          "{{ s3_bucket_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - s3_bucket
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

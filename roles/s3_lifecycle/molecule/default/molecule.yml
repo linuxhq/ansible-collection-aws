@@ -1,0 +1,126 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        s3_bucket_list:
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-00"
+            accelerate_enabled: true
+            policy:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Deny
+                  Action: s3:*
+                  Principal: '*'
+                  Resource:
+                    - "arn:aws:s3:::molecule-bucket-{{ ansible_facts.date_time.date }}-00"
+                    - "arn:aws:s3:::molecule-bucket-{{ ansible_facts.date_time.date }}-00/*"
+                  Condition:
+                    Bool:
+                      'aws:SecureTransport': false
+            public_access:
+              block_public_acls: true
+              block_public_policy: true
+              ignore_public_acls: true
+              restrict_public_buckets: true
+
+        s3_lifecycle_list:
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-00"
+            wait: true
+            lifecycle_rules:
+              - rule_id: molecule-1d-glacier
+                transition_days: 1
+                prefix: 1d/
+                status: enabled
+                storage_class: glacier
+              - rule_id: molecule-10d-glacier
+                transition_days: 10
+                prefix: 10d/
+                status: enabled
+                storage_class: glacier
+              - rule_id: molecule-15d-glacier
+                transition_days: 15
+                prefix: 15d/
+                status: enabled
+                storage_class: glacier
+              - rule_id: molecule-30d-glacier
+                transition_days: 30
+                prefix: 30d/
+                status: enabled
+                storage_class: glacier
+              - rule_id: molecule-60d-glacier
+                transition_days: 60
+                prefix: 60d/
+                status: enabled
+                storage_class: glacier
+              - rule_id: molecule-90d-glacier
+                transition_days: 90
+                prefix: 90d/
+                status: enabled
+                storage_class: glacier
+              - rule_id: molecule-120d-glacier
+                transition_days: 120
+                prefix: 120d/
+                status: enabled
+                storage_class: glacier
+              - rule_id: molecule-240d-glacier
+                transition_days: 240
+                prefix: 240d/
+                status: enabled
+                storage_class: glacier
+              - rule_id: molecule-365d-glacier
+                transition_days: 365
+                prefix: 365d/
+                status: enabled
+                storage_class: glacier
+              - rule_id: molecule-730d-glacier
+                transition_days: 730
+                prefix: 730d/
+                status: enabled
+                storage_class: glacier
+              - rule_id: molecule-1095d-glacier
+                transition_days: 1095
+                prefix: 1095d/
+                status: enabled
+                storage_class: glacier
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...

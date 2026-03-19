@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about simple storage service buckets is gathered
+- name: Ensure information about aws simple storage service buckets is gathered
   tags:
     - s3_bucket_info
   amazon.aws.s3_bucket_info:
@@ -9,7 +9,7 @@
     transform_location: "{{ s3_bucket_info_transform_location }}"
   register: __s3_bucket_info_query
 
-- name: Ensure list of simple storage service buckets is generated
+- name: Ensure list of aws simple storage service buckets is generated
   tags:
     - s3_bucket_info
   ansible.builtin.set_fact:
@@ -18,7 +18,7 @@
           selectattr('name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of simple storage service buckets is generated
+- name: Ensure dict of aws simple storage service buckets is generated
   tags:
     - s3_bucket_info
   ansible.builtin.set_fact:

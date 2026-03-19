@@ -17,6 +17,7 @@ galaxy_info:
   galaxy_tags:
     - amazon
     - aws
+    - bucket
     - s3
     - website
 ...

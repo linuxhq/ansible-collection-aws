@@ -1,0 +1,63 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        s3_bucket_list:
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-00"
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-01"
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-02"
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-03"
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-04"
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-05"
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-06"
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-07"
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-08"
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-09"
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-10"
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-11"
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-12"
+          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-13"
+
+        s3_website_list: "{{ s3_bucket_list }}"
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...

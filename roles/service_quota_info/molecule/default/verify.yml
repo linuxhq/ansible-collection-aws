@@ -1,0 +1,42 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - service_quota_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _service_quota_info_dict['L-0263D0A3'].QuotaArn is defined
+          - _service_quota_info_dict['L-0263D0A3'].QuotaCode ==
+              service_quota_list.0.quotas.0.quota_code
+          - _service_quota_info_dict['L-0263D0A3'].ServiceCode ==
+              service_quota_list.0.service_code
+          - _service_quota_info_dict['L-0263D0A3'].Value | float ==
+              service_quota_list.0.quotas.0.value | float
+          - _service_quota_info_dict['L-1216C47A'].QuotaArn is defined
+          - _service_quota_info_dict['L-1216C47A'].QuotaCode ==
+              service_quota_list.0.quotas.1.quota_code
+          - _service_quota_info_dict['L-1216C47A'].ServiceCode ==
+              service_quota_list.0.service_code
+          - _service_quota_info_dict['L-1216C47A'].Value | float ==
+              service_quota_list.0.quotas.1.value | float
+          - _service_quota_info_dict['L-0DA4ABF3'].QuotaArn is defined
+          - _service_quota_info_dict['L-0DA4ABF3'].QuotaCode ==
+              service_quota_list.1.quotas.0.quota_code
+          - _service_quota_info_dict['L-0DA4ABF3'].ServiceCode ==
+              service_quota_list.1.service_code
+          - _service_quota_info_dict['L-0DA4ABF3'].Value | float ==
+              service_quota_list.1.quotas.0.value | float
+          - _service_quota_info_dict['L-0EA8095F'].QuotaArn is defined
+          - _service_quota_info_dict['L-0EA8095F'].QuotaCode ==
+              service_quota_list.2.quotas.0.quota_code
+          - _service_quota_info_dict['L-0EA8095F'].ServiceCode ==
+              service_quota_list.2.service_code
+          - _service_quota_info_dict['L-0EA8095F'].Value | float ==
+              service_quota_list.2.quotas.0.value | float
+...

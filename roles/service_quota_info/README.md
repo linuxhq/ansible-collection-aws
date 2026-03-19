@@ -1,8 +1,8 @@
-# service\_quota
+# service\_quota\_info
 
 [![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
 
-Manage aws service quotas
+Gather information about aws service quotas
 
 ## Requirements
 
@@ -10,11 +10,12 @@ Manage aws service quotas
 
 ## Role Variables
 
-    service_quota_list: []
+    service_quota_info_list: []
 
 ## Return Values
 
-None
+    _service_quota_info_dict
+    _service_quota_info_list
 
 ## Dependencies
 
@@ -25,25 +26,21 @@ None
     - hosts: aws
       connection: local
       roles:
-        - role: linuxhq.aws.service_quota
-          service_quota_list:
+        - role: linuxhq.aws.service_quota_info
+          service_quota_info_list:
             - service_code: ec2
               quotas:
                 - quota_code: L-0263D0A3
-                  value: '10.0'
                 - quota_code: L-1216C47A
-                  value: '128.0'
 
             - service_code: iam
               quotas:
                 - quota_code: L-0DA4ABF3
                   region: us-east-1
-                  value: '20.0'
 
             - service_code: vpc
               quotas:
                 - quota_code: L-0EA8095F
-                  value: '125.0'
 
 ## License
 

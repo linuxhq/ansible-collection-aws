@@ -1,3 +1,8 @@
 ---
+s3_website_async: 300
+s3_website_batch: 10
+s3_website_delay: 3
 s3_website_list: []
+s3_website_poll: 0
+s3_website_retries: 100
 ...

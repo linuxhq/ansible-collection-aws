@@ -1,0 +1,19 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - role: s3_bucket
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: s3_website
+      s3_website_list: []
+      tags:
+        - molecule-idempotence-notest
+
+    - s3_website
+...

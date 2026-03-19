@@ -1,0 +1,22 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  pre_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        s3_bucket_list:
+          "{{ s3_bucket_list |
+              map('combine', {'state': 'absent'}) }}"
+        s3_lifecycle_list:
+          - name: "{{ s3_lifecycle_list.0.name }}"
+            lifecycle_rules:
+              "{{ s3_lifecycle_list.0.lifecycle_rules |
+                  map('combine', {'state': 'absent'}) }}"
+
+  roles:
+    - s3_lifecycle
+    - s3_bucket
+...
