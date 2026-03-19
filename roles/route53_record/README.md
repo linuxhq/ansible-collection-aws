@@ -24,6 +24,7 @@ None
 ## Dependencies
 
 * [linuxhq.aws.ec2\_vpc\_net\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/ec2_vpc_net_info)
+* [linuxhq.aws.elb\_application\_lb\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/elb_application_lb_info)
 * [linuxhq.aws.route53\_record\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/route53_record_info)
 
 ## Example Playbook
