@@ -1,7 +1,7 @@
 ---
 - name: Ensure aws route53 zone defaults are generated
   tags:
-    - eks_cluster
+    - route53_zone
   ansible.builtin.set_fact:
     __route53_zone_list:
       "{{ [{'state': 'present'}] |
