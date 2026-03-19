@@ -16,7 +16,7 @@
     record: "{{ _record.1.record }}"
     retry_interval: "{{ _record.0.retry_interval | d(500) }}"
     state: "{{ _record.1.state | d('present') }}"
-    ttl: "{{ _record.1.ttl | d(3600) }}"
+    ttl: "{{ _record.1.ttl | d(omit) }}"
     type: "{{ _record.1.type }}"
     validate_certs: true
     value: "{{ _record.1.value }}"
