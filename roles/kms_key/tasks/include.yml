@@ -22,15 +22,17 @@
           combine({'Name': _key.name}) }}"
     validate_certs: true
   register: __kms_key_result
-  loop: "{{ kms_key_list }}"
+  loop: "{{ __kms_key_list }}"
   loop_control:
     label: "{{ _key.name | d(none) }}"
     loop_var: _key
-  when:
-    - _key.name is defined
-  changed_when: false
   async: "{{ ansible_check_mode | ternary(0, kms_key_async) }}"
   poll: "{{ kms_key_poll }}"
+  when:
+    - _key.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __kms_key_result.changed | bool
 
 - name: Ensure managed key management service key jobs are complete
   tags:
