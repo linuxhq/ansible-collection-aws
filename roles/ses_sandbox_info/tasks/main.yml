@@ -1,0 +1,20 @@
+---
+- name: Ensure information about aws simple email service account details is gathered
+  tags:
+    - ses_sandbox_info
+  ansible.builtin.command:
+    cmd: >
+      aws sesv2 get-account
+  register: __ses_sandbox_info_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure dict of aws simple email service account details is generated
+  tags:
+    - ses_sandbox_info
+  ansible.builtin.set_fact:
+    _ses_sandbox_info_dict:
+      "{{ (__ses_sandbox_info_query.stdout |
+          from_json) |
+          d({}) }}"
+...

@@ -1,0 +1,17 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - ses_sandbox
+
+    - role: ses_sandbox
+      ses_sandbox_additional_contact_email_addresses:
+        - jake@molecule.org
+        - john@molecule.org
+      ses_sandbox_use_case_description: |
+        New account creation
+      ses_sandbox_website_url: 'https://github.com/ansible/molecule'
+...

@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - ses_sandbox
+    - ses_sandbox_info
+...

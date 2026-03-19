@@ -1,0 +1,31 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - ses_sandbox_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _ses_sandbox_info_dict.DedicatedIpAutoWarmupEnabled | bool
+          - _ses_sandbox_info_dict.Details.AdditionalContactEmailAddresses.0 ==
+              ses_sandbox_additional_contact_email_addresses.0
+          - _ses_sandbox_info_dict.Details.AdditionalContactEmailAddresses.1 ==
+              ses_sandbox_additional_contact_email_addresses.1
+          - _ses_sandbox_info_dict.Details.ContactLanguage == 'EN'
+          - _ses_sandbox_info_dict.Details.MailType == 'TRANSACTIONAL'
+          - _ses_sandbox_info_dict.Details.ReviewDetails.CaseId is defined
+          - _ses_sandbox_info_dict.Details.ReviewDetails.Status is defined
+          - _ses_sandbox_info_dict.Details.UseCaseDescription is defined
+          - _ses_sandbox_info_dict.Details.WebsiteURL ==
+              ses_sandbox_website_url
+          - _ses_sandbox_info_dict.EnforcementStatus is defined
+          - _ses_sandbox_info_dict.ProductionAccessEnabled is defined
+          - _ses_sandbox_info_dict.SendQuota is defined
+          - _ses_sandbox_info_dict.SendingEnabled | bool
+          - _ses_sandbox_info_dict.SuppressionAttributes is defined
+...
