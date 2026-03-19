@@ -1,0 +1,48 @@
+---
+- name: Ensure aws elastic container registry repositories are managed
+  tags:
+    - ecs_ecr
+  community.aws.ecs_ecr:
+    encryption_configuration: "{{ _repository.encryption_configuration | d(omit) }}"
+    force_absent: "{{ _repository.force_absent | d(false) }}"
+    force_set_policy: "{{ _repository.force_set_policy | d(false) }}"
+    image_tag_mutability: "{{ _repository.image_tag_mutability | d('mutable') }}"
+    lifecycle_policy: "{{ _repository.lifecycle_policy | d(omit) }}"
+    name: "{{ _repository.name }}"
+    policy: "{{ _repository.policy | d(omit) }}"
+    purge_lifecycle_policy: "{{ _repository.purge_lifecycle_policy | d(false) }}"
+    purge_policy: "{{ _repository.purge_policy | d(false) }}"
+    registry_id: "{{ _repository.registry_id | d(omit) }}"
+    scan_on_push: "{{ _repository.scan_on_push | d(false) }}"
+    state: "{{ _repository.state | d('present') }}"
+    validate_certs: true
+  register: __ecs_ecr_result
+  loop: "{{ __ecs_ecr_list }}"
+  loop_control:
+    label: "{{ _repository.name | d(none) }}"
+    loop_var: _repository
+  async: "{{ ansible_check_mode | ternary(0, ecs_ecr_async) }}"
+  poll: "{{ ecs_ecr_poll }}"
+  when:
+    - _repository.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __ecs_ecr_result.changed | bool
+
+- name: Ensure managed aws elastic container registry repository jobs are complete
+  tags:
+    - ecs_ecr
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ecs_ecr_status
+  loop: "{{ __ecs_ecr_result.results }}"
+  loop_control:
+    label: "{{ _jid._repository.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ecs_ecr_status.finished | bool
+  retries: "{{ ecs_ecr_retries }}"
+  delay: "{{ ecs_ecr_delay }}"
+...

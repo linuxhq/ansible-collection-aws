@@ -1,0 +1,113 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - ecs_ecr_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _ecs_ecr_info_dict['molecule-00'].encryptionConfiguration.encryptionType == 'AES256'
+          - _ecs_ecr_info_dict['molecule-00'].imageScanningConfiguration.scanOnPush | bool
+          - _ecs_ecr_info_dict['molecule-00'].imageTagMutability == 'IMMUTABLE'
+          - _ecs_ecr_info_dict['molecule-00'].registryId is defined
+          - _ecs_ecr_info_dict['molecule-00'].repositoryArn is defined
+          - _ecs_ecr_info_dict['molecule-00'].repositoryName is defined
+          - _ecs_ecr_info_dict['molecule-00'].repositoryUri is defined
+          - _ecs_ecr_info_dict['molecule-01'].encryptionConfiguration.encryptionType == 'AES256'
+          - _ecs_ecr_info_dict['molecule-01'].imageScanningConfiguration.scanOnPush | bool
+          - _ecs_ecr_info_dict['molecule-01'].imageTagMutability == 'IMMUTABLE'
+          - _ecs_ecr_info_dict['molecule-01'].registryId is defined
+          - _ecs_ecr_info_dict['molecule-01'].repositoryArn is defined
+          - _ecs_ecr_info_dict['molecule-01'].repositoryName is defined
+          - _ecs_ecr_info_dict['molecule-01'].repositoryUri is defined
+          - _ecs_ecr_info_dict['molecule-02'].encryptionConfiguration.encryptionType == 'AES256'
+          - _ecs_ecr_info_dict['molecule-02'].imageScanningConfiguration.scanOnPush | bool
+          - _ecs_ecr_info_dict['molecule-02'].imageTagMutability == 'IMMUTABLE'
+          - _ecs_ecr_info_dict['molecule-02'].registryId is defined
+          - _ecs_ecr_info_dict['molecule-02'].repositoryArn is defined
+          - _ecs_ecr_info_dict['molecule-02'].repositoryName is defined
+          - _ecs_ecr_info_dict['molecule-02'].repositoryUri is defined
+          - _ecs_ecr_info_dict['molecule-03'].encryptionConfiguration.encryptionType == 'AES256'
+          - _ecs_ecr_info_dict['molecule-03'].imageScanningConfiguration.scanOnPush | bool
+          - _ecs_ecr_info_dict['molecule-03'].imageTagMutability == 'IMMUTABLE'
+          - _ecs_ecr_info_dict['molecule-03'].registryId is defined
+          - _ecs_ecr_info_dict['molecule-03'].repositoryArn is defined
+          - _ecs_ecr_info_dict['molecule-03'].repositoryName is defined
+          - _ecs_ecr_info_dict['molecule-03'].repositoryUri is defined
+          - _ecs_ecr_info_dict['molecule-04'].encryptionConfiguration.encryptionType == 'AES256'
+          - _ecs_ecr_info_dict['molecule-04'].imageScanningConfiguration.scanOnPush | bool
+          - _ecs_ecr_info_dict['molecule-04'].imageTagMutability == 'IMMUTABLE'
+          - _ecs_ecr_info_dict['molecule-04'].registryId is defined
+          - _ecs_ecr_info_dict['molecule-04'].repositoryArn is defined
+          - _ecs_ecr_info_dict['molecule-04'].repositoryName is defined
+          - _ecs_ecr_info_dict['molecule-04'].repositoryUri is defined
+          - _ecs_ecr_info_dict['molecule-05'].encryptionConfiguration.encryptionType == 'AES256'
+          - _ecs_ecr_info_dict['molecule-05'].imageScanningConfiguration.scanOnPush | bool
+          - _ecs_ecr_info_dict['molecule-05'].imageTagMutability == 'IMMUTABLE'
+          - _ecs_ecr_info_dict['molecule-05'].registryId is defined
+          - _ecs_ecr_info_dict['molecule-05'].repositoryArn is defined
+          - _ecs_ecr_info_dict['molecule-05'].repositoryName is defined
+          - _ecs_ecr_info_dict['molecule-05'].repositoryUri is defined
+          - _ecs_ecr_info_dict['molecule-06'].encryptionConfiguration.encryptionType == 'AES256'
+          - _ecs_ecr_info_dict['molecule-06'].imageScanningConfiguration.scanOnPush | bool
+          - _ecs_ecr_info_dict['molecule-06'].imageTagMutability == 'IMMUTABLE'
+          - _ecs_ecr_info_dict['molecule-06'].registryId is defined
+          - _ecs_ecr_info_dict['molecule-06'].repositoryArn is defined
+          - _ecs_ecr_info_dict['molecule-06'].repositoryName is defined
+          - _ecs_ecr_info_dict['molecule-06'].repositoryUri is defined
+          - _ecs_ecr_info_dict['molecule-07'].encryptionConfiguration.encryptionType == 'AES256'
+          - _ecs_ecr_info_dict['molecule-07'].imageScanningConfiguration.scanOnPush | bool
+          - _ecs_ecr_info_dict['molecule-07'].imageTagMutability == 'IMMUTABLE'
+          - _ecs_ecr_info_dict['molecule-07'].registryId is defined
+          - _ecs_ecr_info_dict['molecule-07'].repositoryArn is defined
+          - _ecs_ecr_info_dict['molecule-07'].repositoryName is defined
+          - _ecs_ecr_info_dict['molecule-07'].repositoryUri is defined
+          - _ecs_ecr_info_dict['molecule-08'].encryptionConfiguration.encryptionType == 'AES256'
+          - _ecs_ecr_info_dict['molecule-08'].imageScanningConfiguration.scanOnPush | bool
+          - _ecs_ecr_info_dict['molecule-08'].imageTagMutability == 'IMMUTABLE'
+          - _ecs_ecr_info_dict['molecule-08'].registryId is defined
+          - _ecs_ecr_info_dict['molecule-08'].repositoryArn is defined
+          - _ecs_ecr_info_dict['molecule-08'].repositoryName is defined
+          - _ecs_ecr_info_dict['molecule-08'].repositoryUri is defined
+          - _ecs_ecr_info_dict['molecule-09'].encryptionConfiguration.encryptionType == 'AES256'
+          - _ecs_ecr_info_dict['molecule-09'].imageScanningConfiguration.scanOnPush | bool
+          - _ecs_ecr_info_dict['molecule-09'].imageTagMutability == 'IMMUTABLE'
+          - _ecs_ecr_info_dict['molecule-09'].registryId is defined
+          - _ecs_ecr_info_dict['molecule-09'].repositoryArn is defined
+          - _ecs_ecr_info_dict['molecule-09'].repositoryName is defined
+          - _ecs_ecr_info_dict['molecule-09'].repositoryUri is defined
+          - _ecs_ecr_info_dict['molecule-10'].encryptionConfiguration.encryptionType == 'AES256'
+          - _ecs_ecr_info_dict['molecule-10'].imageScanningConfiguration.scanOnPush | bool
+          - _ecs_ecr_info_dict['molecule-10'].imageTagMutability == 'IMMUTABLE'
+          - _ecs_ecr_info_dict['molecule-10'].registryId is defined
+          - _ecs_ecr_info_dict['molecule-10'].repositoryArn is defined
+          - _ecs_ecr_info_dict['molecule-10'].repositoryName is defined
+          - _ecs_ecr_info_dict['molecule-10'].repositoryUri is defined
+          - _ecs_ecr_info_dict['molecule-11'].encryptionConfiguration.encryptionType == 'AES256'
+          - _ecs_ecr_info_dict['molecule-11'].imageScanningConfiguration.scanOnPush | bool
+          - _ecs_ecr_info_dict['molecule-11'].imageTagMutability == 'IMMUTABLE'
+          - _ecs_ecr_info_dict['molecule-11'].registryId is defined
+          - _ecs_ecr_info_dict['molecule-11'].repositoryArn is defined
+          - _ecs_ecr_info_dict['molecule-11'].repositoryName is defined
+          - _ecs_ecr_info_dict['molecule-11'].repositoryUri is defined
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        ecs_ecr_list:
+          "{{ ecs_ecr_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - ecs_ecr
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...
