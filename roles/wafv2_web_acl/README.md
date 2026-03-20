@@ -10,12 +10,7 @@ None
 
 ## Role Variables
 
-    wafv2_web_acl_async: 300
-    wafv2_web_acl_batch: 10
-    wafv2_web_acl_delay: 3
     wafv2_web_acl_list: []
-    wafv2_web_acl_poll: 0
-    wafv2_web_acl_retries: 100
 
 ## Return Values
 
