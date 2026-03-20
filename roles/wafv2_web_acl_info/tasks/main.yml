@@ -1,0 +1,62 @@
+---
+- name: Ensure information about aws wafv2 web acls is gathered
+  tags:
+    - wafv2_web_acl_info
+  ansible.builtin.command:
+    cmd: >
+      aws wafv2 list-web-acls
+        --query WebACLs
+        --scope "{{ wafv2_web_acl_info_scope | upper }}"
+  register: __wafv2_web_acl_info_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of aws wafv2 web acl ids is generated
+  tags:
+    - wafv2_web_acl_info
+  ansible.builtin.set_fact:
+    __wafv2_web_acl_info_ids:
+      "{{ (__wafv2_web_acl_info_query.stdout |
+          from_json) |
+          selectattr('Name', 'defined') |
+          d([]) }}"
+
+- name: Ensure information about aws wafv2 web acls is gathered
+  tags:
+    - wafv2_web_acl_info
+  ansible.builtin.command:
+    cmd: >
+      aws wafv2 get-web-acl
+        --id "{{ _webacl.Id }}"
+        --name "{{ _webacl.Name }}"
+        --query WebACL
+        --scope "{{ wafv2_web_acl_info_scope | upper }}"
+  register: __wafv2_web_acl_info_list
+  loop: "{{ __wafv2_web_acl_info_ids }}"
+  loop_control:
+    label: "{{ _webacl.Name | d(none) }}"
+    loop_var: _webacl
+  when:
+    - _webacl.Id is defined
+    - _webacl.Name is defined
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of aws wafv2 web acls is generated
+  tags:
+    - wafv2_web_acl_info
+  ansible.builtin.set_fact:
+    _wafv2_web_acl_info_list:
+      "{{ __wafv2_web_acl_info_list.results |
+          map(attribute='stdout') |
+          map('from_json') }}"
+
+- name: Ensure dict of aws wafv2 web acls is generated
+  tags:
+    - wafv2_web_acl_info
+  ansible.builtin.set_fact:
+    _wafv2_web_acl_info_dict:
+      "{{ dict(_wafv2_web_acl_info_list |
+               json_query('[].Name') |
+               zip(_wafv2_web_acl_info_list)) }}"
+...
