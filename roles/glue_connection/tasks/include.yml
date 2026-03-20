@@ -1,0 +1,48 @@
+---
+- name: Ensure aws glue connections are managed
+  tags:
+    - glue_connection
+  community.aws.glue_connection:
+    availability_zone: "{{ _connection.availability_zone | d(omit) }}"
+    catalog_id: "{{ _connection.catalog_id | d(omit) }}"
+    connection_properties: "{{ _connection.connection_properties }}"
+    connection_type: "{{ _connection.connection_type }}"
+    description: "{{ _connection.description | d(_connection.name) }}"
+    match_criteria: "{{ _connection.match_criteria | d(omit) }}"
+    name: "{{ _connection.name }}"
+    security_groups: "{{ _connection.security_groups | d(omit) }}"
+    state: "{{ _connection.state | d('present') }}"
+    subnet_id: "{{ _connection.subnet_id | d(omit) }}"
+    validate_certs: true
+  register: __glue_connection_result
+  loop: "{{ __glue_connection_list }}"
+  loop_control:
+    label: "{{ _connection.name | d(none) }}"
+    loop_var: _connection
+  async: "{{ ansible_check_mode | ternary(0, glue_connection_async) }}"
+  poll: "{{ glue_connection_poll }}"
+  when:
+    - _connection.connection_properties is defined
+    - _connection.connection_type is defined
+    - _connection.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __glue_connection_result.changed | bool
+
+- name: Ensure managed aws glue connection jobs are complete
+  tags:
+    - glue_connection
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __glue_connection_status
+  loop: "{{ __glue_connection_result.results }}"
+  loop_control:
+    label: "{{ _jid._connection.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __glue_connection_status.finished | bool
+  retries: "{{ glue_connection_retries }}"
+  delay: "{{ glue_connection_delay }}"
+...

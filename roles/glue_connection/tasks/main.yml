@@ -1,0 +1,16 @@
+---
+- name: Ensure aws glue connections are batched
+  tags:
+    - glue_connection
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - glue_connection
+    file: include.yml
+  loop:
+    "{{ glue_connection_list |
+        batch(glue_connection_batch) }}"
+  loop_control:
+    label: "{{ __glue_connection_list | length }}"
+    loop_var: __glue_connection_list
+...

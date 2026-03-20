@@ -1,0 +1,8 @@
+---
+glue_connection_async: 300
+glue_connection_batch: 10
+glue_connection_delay: 3
+glue_connection_list: []
+glue_connection_poll: 0
+glue_connection_retries: 100
+...
