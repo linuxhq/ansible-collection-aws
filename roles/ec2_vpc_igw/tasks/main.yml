@@ -1,5 +1,5 @@
 ---
-- name: Ensure virtual private cloud internet gateways are batched
+- name: Ensure aws virtual private cloud internet gateways are batched
   tags:
     - ec2_vpc_igw
   ansible.builtin.include_tasks:

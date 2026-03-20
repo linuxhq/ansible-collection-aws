@@ -1,0 +1,4 @@
+---
+ec2_vpc_endpoint_info_filters: {}
+ec2_vpc_endpoint_info_vpc_endpoint_ids: []
+...

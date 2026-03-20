@@ -1,0 +1,32 @@
+---
+- name: Ensure information about aws virtual private cloud endpoints is gathered
+  tags:
+    - ec2_vpc_endpoint_info
+  amazon.aws.ec2_vpc_endpoint_info:
+    filters: "{{ ec2_vpc_endpoint_info_filters }}"
+    validate_certs: true
+    vpc_endpoint_ids: "{{ ec2_vpc_endpoint_info_vpc_endpoint_ids }}"
+  register: __ec2_vpc_endpoint_info_query
+
+- name: Ensure list of aws virtual private cloud endpoints is generated
+  tags:
+    - ec2_vpc_endpoint_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_endpoint_info_list: >-
+      {%- set __ec2_vpc_endpoint_info_list = [] -%}
+      {%- for e in __ec2_vpc_endpoint_info_query.vpc_endpoints -%}
+        {%- set tags_dict = e.tags | items2dict -%}
+        {%- set endpoint = e | combine({'tags': tags_dict}) -%}
+        {%- set _ = __ec2_vpc_endpoint_info_list.append(endpoint) -%}
+      {%- endfor -%}
+      {{ __ec2_vpc_endpoint_info_list }}
+
+- name: Ensure dict of aws virtual private cloud endpoints is generated
+  tags:
+    - ec2_vpc_endpoint_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_endpoint_info_dict:
+      "{{ dict(_ec2_vpc_endpoint_info_list |
+               json_query('[].tags.Name') |
+               zip(_ec2_vpc_endpoint_info_list)) }}"
+...

@@ -1,0 +1,55 @@
+---
+- name: Ensure aws virtual private cloud endpoints are managed
+  tags:
+    - ec2_vpc_endpoint
+  amazon.aws.ec2_vpc_endpoint:
+    client_token: "{{ _vpce.client_token | d(omit) }}"
+    policy: "{{ _vpce.policy | to_json | d(omit) }}"
+    purge_tags: "{{ _vpce.purge_tags | d(true) }}"
+    route_table_ids: "{{ _vpce.route_table_ids | d(omit) }}"
+    service: "{{ _vpce.service }}"
+    state: "{{ _vpce.state | d('present') }}"
+    tags:
+      "{{ _vpce.tags |
+          d({}) |
+          combine({'Name': _vpce.name}) }}"
+    validate_certs: true
+    vpc_endpoint_id: "{{ __ec2_vpc_endpoint_dict[_vpce.name] | d(omit) }}"
+    vpc_endpoint_security_groups: "{{ _vpce.vpc_endpoint_security_groups | d(omit) }}"
+    vpc_endpoint_subnets: "{{ _vpce.vpc_endpoint_subnets | d(omit) }}"
+    vpc_endpoint_type: "{{ _vpce.vpc_endpoint_type | d('Gateway') }}"
+    vpc_id: "{{ _vpce.vpc_id }}"
+    wait: "{{ _vpce.wait | d(false) }}"
+    wait_timeout: "{{ _vpc.wait_timeout | d(320) }}"
+  register: __ec2_vpc_endpoint_result
+  loop: "{{ __ec2_vpc_endpoint_list }}"
+  loop_control:
+    label: "{{ _vpce.name | d(none) }}"
+    loop_var: _vpce
+  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_endpoint_async) }}"
+  poll: "{{ ec2_vpc_endpoint_poll }}"
+  when:
+    - _vpce.name is defined
+    - _vpce.service is defined
+    - _vpce.vpc_id is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_vpc_endpoint_result.changed | bool
+
+- name: Ensure managed aws virtual private cloud endpoint jobs are complete
+  tags:
+    - ec2_vpc_endpoint
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_vpc_endpoint_status
+  loop: "{{ __ec2_vpc_endpoint_result.results }}"
+  loop_control:
+    label: "{{ _jid._vpce.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_vpc_endpoint_status.finished | bool
+  retries: "{{ ec2_vpc_endpoint_retries }}"
+  delay: "{{ ec2_vpc_endpoint_delay }}"
+...
