@@ -3,24 +3,57 @@
   tags:
     - wafv2_web_acl
   ansible.builtin.set_fact:
-    __wafv2_web_acl_batch:
+    __wafv2_web_acl_list:
       "{{ [{'state': 'present'}] |
           product(wafv2_web_acl_list) |
           map('combine') |
           list }}"
 
-- name: Ensure aws wafv2 web acls are batched
+- name: Ensure aws wafv2 web acl state lists are generated
+  tags:
+    - wafv2_web_acl
+  ansible.builtin.set_fact:
+    __wafv2_web_acl_absent:
+      "{{ __wafv2_web_acl_list |
+          selectattr('state', 'equalto', 'absent') }}"
+    __wafv2_web_acl_present:
+      "{{ __wafv2_web_acl_list |
+          selectattr('state', 'equalto', 'present') }}"
+
+- name: Ensure aws wafv2 web acl present tasks are included
   tags:
     - wafv2_web_acl
   ansible.builtin.include_tasks:
     apply:
       tags:
         - wafv2_web_acl
-    file: include.yml
-  loop:
-    "{{ __wafv2_web_acl_batch |
-        batch(wafv2_web_acl_batch) }}"
+    file: present.yml
+  loop: "{{ __wafv2_web_acl_present }}"
   loop_control:
-    label: "{{ __wafv2_web_acl_list | length }}"
-    loop_var: __wafv2_web_acl_list
+    label: "{{ _webacl.name | d(none) }}"
+    loop_var: _webacl
+  when:
+    - _webacl.default_action is defined
+    - _webacl.name is defined
+    - _webacl.rules is defined
+    - _webacl.rules | length > 0
+    - _webacl.scope is defined
+    - _webacl.state == 'present'
+
+- name: Ensure aws wafv2 web acl absent tasks are included
+  tags:
+    - wafv2_web_acl
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - wafv2_web_acl
+    file: absent.yml
+  loop: "{{ __wafv2_web_acl_absent }}"
+  loop_control:
+    label: "{{ _webacl.name | d(none) }}"
+    loop_var: _webacl
+  when:
+    - _webacl.name is defined
+    - _webacl.scope is defined
+    - _webacl.state == 'absent'
 ...

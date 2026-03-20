@@ -1,0 +1,51 @@
+---
+- name: Ensure aws wafv2 web acl is present
+  tags:
+    - wafv2_web_acl
+  community.aws.wafv2_web_acl:
+    cloudwatch_metrics: "{{ _webacl.cloudwatch_metrics | d(true) }}"
+    custom_response_bodies: "{{ _webacl.custom_response_bodies | d(omit) }}"
+    default_action: "{{ _webacl.default_action }}"
+    description: "{{ _webacl.description | d(_webacl.name) }}"
+    metric_name: "{{ _webacl.metric_name | d(omit) }}"
+    name: "{{ _webacl.name }}"
+    purge_rules: "{{ _webacl.purge_rules | d(true) }}"
+    purge_tags: "{{ _webacl.purge_tags | d(true) }}"
+    rules: "{{ _webacl.rules }}"
+    sampled_requests: "{{ _webacl.sampled_requests | d(false) }}"
+    scope: "{{ _webacl.scope | upper }}"
+    state: present
+    tags:
+      "{{ _webacl.tags |
+          d({}) |
+          combine({'Name': _webacl.name}) }}"
+    validate_certs: true
+  register: __wafv2_web_acl_result
+
+- name: Ensure aws wafv2 web acl log group is present
+  tags:
+    - wafv2_web_acl
+  amazon.aws.cloudwatchlogs_log_group:
+    log_group_name: "aws-waf-logs-{{ _webacl.name }}"
+    state: present
+    tags:
+      "{{ _webacl.tags |
+          d({}) |
+          combine({'Name': _webacl.name}) }}"
+  register: __wafv2_web_acl_log_group
+
+- name: Ensure aws wafv2 web acl logging configuration is present
+  tags:
+    - wafv2_web_acl
+  ansible.builtin.command:
+    cmd: >
+      aws wafv2 put-logging-configuration
+        --logging-configuration '{{ __wafv2_web_acl_logging_configuration | to_json }}'
+  vars:
+    __wafv2_web_acl_logging_configuration:
+      ResourceArn: "{{ __wafv2_web_acl_result.arn }}"
+      LogDestinationConfigs: "{{ [__wafv2_web_acl_log_group.arn] }}"
+  when:
+    - not ansible_check_mode
+  changed_when: false
+...
