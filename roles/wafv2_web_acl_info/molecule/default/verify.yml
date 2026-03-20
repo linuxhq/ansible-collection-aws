@@ -1,0 +1,59 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - wafv2_web_acl_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].ARN is defined
+          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].Id is defined
+          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].Name is defined
+          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].Rules is defined
+          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].Rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-commonruleset'].ARN is defined
+          - _wafv2_web_acl_info_dict['molecule-commonruleset'].Id is defined
+          - _wafv2_web_acl_info_dict['molecule-commonruleset'].Name is defined
+          - _wafv2_web_acl_info_dict['molecule-commonruleset'].Rules is defined
+          - _wafv2_web_acl_info_dict['molecule-commonruleset'].Rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].ARN is defined
+          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].Id is defined
+          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].Name is defined
+          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].Rules is defined
+          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].Rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].ARN is defined
+          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].Id is defined
+          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].Name is defined
+          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].Rules is defined
+          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].Rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].ARN is defined
+          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].Id is defined
+          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].Name is defined
+          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].Rules is defined
+          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].Rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].ARN is defined
+          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].Id is defined
+          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].Name is defined
+          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].Rules is defined
+          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].Rules | length == 1
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        wafv2_web_acl_list:
+          "{{ wafv2_web_acl_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - wafv2_web_acl
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

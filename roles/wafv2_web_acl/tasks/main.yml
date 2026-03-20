@@ -1,0 +1,26 @@
+---
+- name: Ensure aws wafv2 web acl defaults are generated
+  tags:
+    - wafv2_web_acl
+  ansible.builtin.set_fact:
+    __wafv2_web_acl_batch:
+      "{{ [{'state': 'present'}] |
+          product(wafv2_web_acl_list) |
+          map('combine') |
+          list }}"
+
+- name: Ensure aws wafv2 web acls are batched
+  tags:
+    - wafv2_web_acl
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - wafv2_web_acl
+    file: include.yml
+  loop:
+    "{{ __wafv2_web_acl_batch |
+        batch(wafv2_web_acl_batch) }}"
+  loop_control:
+    label: "{{ __wafv2_web_acl_list | length }}"
+    loop_var: __wafv2_web_acl_list
+...

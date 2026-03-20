@@ -5,15 +5,15 @@
     PATH: '/opt/awscli/bin'
 
   roles:
-    - role: wafv2_ip_set_info
+    - role: wafv2_web_acl_info
       tags:
         - molecule-idempotence-notest
       check_mode: false
 
-    - role: wafv2_ip_set
+    - role: wafv2_web_acl
       tags:
         - molecule-idempotence-notest
       check_mode: false
 
-    - wafv2_ip_set_info
+    - wafv2_web_acl_info
 ...

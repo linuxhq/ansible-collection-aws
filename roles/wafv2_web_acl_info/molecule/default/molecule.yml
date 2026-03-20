@@ -1,0 +1,151 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        wafv2_web_acl_list:
+          - name: molecule-amazonipreputationlist
+            scope: regional
+            default_action: Allow
+            rules:
+              - name: AWS-AWSManagedRulesAmazonIpReputationList
+                priority: 0
+                override_action:
+                  none: {}
+                statement:
+                  managed_rule_group_statement:
+                    name: AWSManagedRulesAmazonIpReputationList
+                    vendor_name: AWS
+                visibility_config:
+                  cloud_watch_metrics_enabled: true
+                  metric_name: AWS-AWSManagedRulesAmazonIpReputationList
+                  sampled_requests_enabled: true
+
+          - name: molecule-commonruleset
+            scope: regional
+            default_action: Allow
+            rules:
+              - name: AWS-AWSManagedRulesCommonRuleSet
+                priority: 0
+                override_action:
+                  none: {}
+                statement:
+                  managed_rule_group_statement:
+                    name: AWSManagedRulesCommonRuleSet
+                    excluded_rules:
+                      - Name: GenericRFI_BODY
+                      - Name: SizeRestrictions_BODY
+                    vendor_name: AWS
+                visibility_config:
+                  cloud_watch_metrics_enabled: true
+                  metric_name: AWS-AWSManagedRulesCommonRuleSet
+                  sampled_requests_enabled: true
+
+          - name: molecule-knownbadinputsruleset
+            scope: regional
+            default_action: Allow
+            rules:
+              - name: AWS-AWSManagedRulesKnownBadInputsRuleSet
+                priority: 0
+                override_action:
+                  none: {}
+                statement:
+                  managed_rule_group_statement:
+                    name: AWSManagedRulesKnownBadInputsRuleSet
+                    vendor_name: AWS
+                visibility_config:
+                  cloud_watch_metrics_enabled: true
+                  metric_name: AWS-AWSManagedRulesKnownBadInputsRuleSet
+                  sampled_requests_enabled: true
+
+          - name: molecule-linuxruleset
+            scope: regional
+            default_action: Allow
+            rules:
+              - name: AWS-AWSManagedRulesLinuxRuleSet
+                priority: 0
+                override_action:
+                  none: {}
+                statement:
+                  managed_rule_group_statement:
+                    name: AWSManagedRulesLinuxRuleSet
+                    vendor_name: AWS
+                visibility_config:
+                  cloud_watch_metrics_enabled: true
+                  metric_name: AWS-AWSManagedRulesLinuxRuleSet
+                  sampled_requests_enabled: true
+
+          - name: molecule-anonymousiplist
+            scope: regional
+            default_action: Allow
+            rules:
+              - name: AWS-AWSManagedRulesAnonymousIpList
+                priority: 0
+                override_action:
+                  none: {}
+                statement:
+                  managed_rule_group_statement:
+                    name: AWSManagedRulesAnonymousIpList
+                    vendor_name: AWS
+                visibility_config:
+                  cloud_watch_metrics_enabled: true
+                  metric_name: AWS-AWSManagedRulesAnonymousIpList
+                  sampled_requests_enabled: true
+
+          - name: molecule-sqliruleset
+            scope: regional
+            default_action: Allow
+            rules:
+              - name: AWS-AWSManagedRulesSQLiRuleSet
+                priority: 0
+                override_action:
+                  none: {}
+                statement:
+                  managed_rule_group_statement:
+                    name: AWSManagedRulesSQLiRuleSet
+                    vendor_name: AWS
+                visibility_config:
+                  cloud_watch_metrics_enabled: true
+                  metric_name: AWS-AWSManagedRulesSQLiRuleSet
+                  sampled_requests_enabled: true
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...
