@@ -1,0 +1,26 @@
+---
+dependencies:
+  - role: ec2_security_group_info
+    tags: glue_connection
+  - role: ec2_vpc_subnet_info
+    tags: glue_connection
+galaxy_info:
+  role_name: glue_connection
+  author: Taylor Kimball
+  description: Manage aws glue connections
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - connection
+    - glue
+...
