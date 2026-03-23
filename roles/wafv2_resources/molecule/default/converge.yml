@@ -1,0 +1,44 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - role: ec2_vpc_net
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_vpc_igw
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_vpc_subnet
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: elb_target_group
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: elb_application_lb
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: wafv2_web_acl
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: wafv2_resources
+      wafv2_resources_list: []
+      tags:
+        - molecule-idempotence-notest
+
+    - wafv2_resources
+...

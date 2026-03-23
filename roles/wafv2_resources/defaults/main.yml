@@ -1,0 +1,8 @@
+---
+wafv2_resources_async: 300
+wafv2_resources_batch: 10
+wafv2_resources_delay: 3
+wafv2_resources_list: []
+wafv2_resources_poll: 0
+wafv2_resources_retries: 100
+...

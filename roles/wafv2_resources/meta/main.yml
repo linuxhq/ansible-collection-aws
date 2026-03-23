@@ -1,0 +1,26 @@
+---
+dependencies:
+  - role: elb_application_lb_info
+    tags: wafv2_resources
+  - role: wafv2_web_acl_info
+    tags: wafv2_resources
+galaxy_info:
+  role_name: wafv2_resources
+  author: Taylor Kimball
+  description: Manage aws wafv2 resources
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - resources
+    - wafv2
+...
