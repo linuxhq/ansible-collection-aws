@@ -1,5 +1,24 @@
 ---
-- name: Ensure elastic load balancer application load balancers are managed
+- name: Ensure aws elastic load balancer application load balancer security group is present
+  tags:
+    - elb_application_lb
+  amazon.aws.ec2_security_group:
+    description: "{{ _loadbalancer.description | d(_loadbalancer.name) }}"
+    name: "{{ _loadbalancer.name }}"
+    purge_rules: true
+    purge_rules_egress: true
+    purge_tags: true
+    rules: "{{ _loadbalancer.rules | d(__elb_application_lb_rules) }}"
+    rules_egress: "{{ _loadbalancer.rules_egress | d(__elb_application_lb_rules_egress) }}"
+    state: "{{ _loadbalancer.state }}"
+    tags:
+      "{{ _loadbalancer.tags |
+          d({}) |
+          combine({'Name': _loadbalancer.name}) }}"
+    validate_certs: true
+    vpc_id: "{{ _loadbalancer.vpc_id }}"
+
+- name: Ensure aws elastic load balancer application load balancer is present
   tags:
     - elb_application_lb
   amazon.aws.elb_application_lb:
@@ -19,7 +38,7 @@
     purge_listeners: "{{ _loadbalancer.purge_listeners | d(true) }}"
     purge_rules: "{{ _loadbalancer.purge_rules | d(true) }}"
     purge_tags: "{{ _loadbalancer.purge_tags | d(true) }}"
-    security_groups: "{{ __elb_application_lb_security_group | d(omit) }}"
+    security_groups: "{{ _loadbalancer.name if not ansible_check_mode else 'default' }}"
     state: "{{ _loadbalancer.state }}"
     subnets: "{{ _loadbalancer.subnets }}"
     tags:
@@ -30,6 +49,4 @@
     waf_fail_open: "{{ _loadbalancer.waf_fail_open | d(false) }}"
     wait: "{{ _loadbalancer.wait | d(false) }}"
     wait_timeout: "{{ _loadbalancer.wait_timeout | d(omit) }}"
-  when:
-    - not ansible_check_mode
 ...

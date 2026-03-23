@@ -1,5 +1,5 @@
 ---
-- name: Ensure elastic load balancer application load balancer defaults are generated
+- name: Ensure aws elastic load balancer application load balancer defaults are generated
   tags:
     - elb_application_lb
   ansible.builtin.set_fact:
@@ -18,15 +18,26 @@
       - cidr_ip: 0.0.0.0/0
         proto: -1
 
-- name: Ensure elastic load balancer application load balancer tasks are included
+- name: Ensure aws elastic load balancer application load balancer state lists are generated
+  tags:
+    - elb_application_lb
+  ansible.builtin.set_fact:
+    __elb_application_lb_absent:
+      "{{ __elb_application_lb_list |
+          selectattr('state', 'equalto', 'absent') }}"
+    __elb_application_lb_present:
+      "{{ __elb_application_lb_list |
+          selectattr('state', 'equalto', 'present') }}"
+
+- name: Ensure aws elastic load balancer application load balancer present tasks are included
   tags:
     - elb_application_lb
   ansible.builtin.include_tasks:
     apply:
       tags:
         - elb_application_lb
-    file: include.yml
-  loop: "{{ __elb_application_lb_list }}"
+    file: present.yml
+  loop: "{{ __elb_application_lb_present }}"
   loop_control:
     label: "{{ _loadbalancer.name | d(none) }}"
     loop_var: _loadbalancer
@@ -37,4 +48,20 @@
     - _loadbalancer.subnets is defined
     - _loadbalancer.subnets | length > 0
     - _loadbalancer.vpc_id is defined
+
+- name: Ensure aws aws elastic load balancer application load balancer absent tasks are included
+  tags:
+    - elb_application_lb
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - elb_application_lb
+    file: absent.yml
+  loop: "{{ __elb_application_lb_absent }}"
+  loop_control:
+    label: "{{ _loadbalancer.name | d(none) }}"
+    loop_var: _loadbalancer
+  when:
+    - _loadbalancer.name is defined
+    - _loadbalancer.state == 'absent'
 ...
