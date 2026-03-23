@@ -1,0 +1,42 @@
+---
+- name: Ensure aws wafv2 resources are managed
+  tags:
+    - wafv2_resources
+  community.aws.wafv2_resources:
+    arn: "{{ _resource.arn }}"
+    name: "{{ _resource.name }}"
+    scope: "{{ _resource.scope | upper }}"
+    state: "{{ _resource.state | d('present') }}"
+    validate_certs: true
+  register: __wafv2_resources_result
+  loop: "{{ __wafv2_resources_list }}"
+  loop_control:
+    label: "{{ _resource.name | d(none) }}"
+    loop_var: _resource
+  async: "{{ ansible_check_mode | ternary(0, wafv2_resources_async) }}"
+  poll: "{{ wafv2_resources_poll }}"
+  when:
+    - _resource.arn is defined
+    - _resource.name is defined
+    - _resource.scope is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __wafv2_resources_result.changed | bool
+
+- name: Ensure managed aws wafv2 resources jobs are complete
+  tags:
+    - wafv2_resources
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __wafv2_resources_status
+  loop: "{{ __wafv2_resources_result.results }}"
+  loop_control:
+    label: "{{ _jid._resource.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __wafv2_resources_status.finished | bool
+  retries: "{{ wafv2_resources_retries }}"
+  delay: "{{ wafv2_resources_delay }}"
+...

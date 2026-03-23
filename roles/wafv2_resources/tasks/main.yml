@@ -1,0 +1,16 @@
+---
+- name: Ensure aws wafv2 resources are batched
+  tags:
+    - wafv2_resources
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - wafv2_resources
+    file: include.yml
+  loop:
+    "{{ wafv2_resources_list |
+        batch(wafv2_resources_batch) }}"
+  loop_control:
+    label: "{{ __wafv2_resources_list | length }}"
+    loop_var: __wafv2_resources_list
+...

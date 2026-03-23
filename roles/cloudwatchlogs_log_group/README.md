@@ -1,7 +1,5 @@
 # cloudwatchlogs\_log\_group
 
-[![License](https://img.shields.io/badge/license-GPLv3-lightgreen)](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text)
-
 Manage aws cloudwatchlogs log groups
 
 ## Requirements
@@ -23,7 +21,7 @@ None
 
 ## Dependencies
 
-* [linuxhq.aws.kms\_key\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/kms_key_info)
+* [kms\_key\_info](../kms_key_info)
 
 ## Example Playbook
 
@@ -35,20 +33,3 @@ None
             - name: linuxhq-log-group
               kms_key_id: "{{ _kms_key_info_dict['linuxhq/logs'].key_arn }}"
               retention: 90
-
-## License
-
-Copyright (c) Linux HeadQuarters
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program. If not, see <http://www.gnu.org/licenses/>.
