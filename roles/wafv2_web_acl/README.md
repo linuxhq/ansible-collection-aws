@@ -18,7 +18,7 @@ None
 
 ## Dependencies
 
-None
+* [linuxhq.aws.wafv2\_ip\_set\_info](https://github.com/linuxhq/ansible-collection-aws/tree/main/roles/wafv2_ip_set_info)
 
 ## Example Playbook
 
