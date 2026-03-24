@@ -1,0 +1,16 @@
+---
+- name: Ensure aws simple queue service queues are batched
+  tags:
+    - sqs_queue
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - sqs_queue
+    file: include.yml
+  loop:
+    "{{ sqs_queue_list |
+        batch(sqs_queue_batch) }}"
+  loop_control:
+    label: "{{ __sqs_queue_list | length }}"
+    loop_var: __sqs_queue_list
+...

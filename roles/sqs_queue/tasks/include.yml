@@ -1,0 +1,55 @@
+---
+- name: Ensure aws simple queue service queues are managed
+  tags:
+    - sqs_queue
+  community.aws.sqs_queue:
+    content_based_deduplication: "{{ _queue.content_based_deduplication | d(false) }}"
+    delay_seconds: "{{ _queue.delay_seconds | d(omit) }}"
+    fifo_throughput_limit: "{{ _queue.fifo_throughput_limit | d(omit) }}"
+    kms_data_key_reuse_period_seconds: "{{ _queue.kms_data_key_reuse_period_seconds | d(omit) }}"
+    kms_master_key_id: "{{ _queue.kms_master_key_id | d(omit) }}"
+    maximum_message_size: "{{ _queue.maximum_message_size | d(omit) }}"
+    message_retention_period: "{{ _queue.message_retention_period | d(omit) }}"
+    name: "{{ _queue.name }}"
+    policy: "{{ _queue.policy | d(omit) }}"
+    purge_tags: "{{ _queue.purge_tags | d(true) }}"
+    queue_type: "{{ _queue.queue_type | d('standard') }}"
+    receive_message_wait_time_seconds: "{{ _queue.receive_message_wait_time_seconds | d(omit) }}"
+    redrive_policy: "{{ _queue.redrive_policy | d(omit) }}"
+    state: "{{ _queue.state | d('present') }}"
+    tags:
+      "{{ _queue.tags |
+          d({}) |
+          combine({'Name': _queue.name}) }}"
+    validate_certs: true
+    visibility_timeout: "{{ _queue.visibility_timeout | d(omit) }}"
+  register: __sqs_queue_result
+  loop: "{{ __sqs_queue_list }}"
+  loop_control:
+    label: "{{ _queue.name | d(none) }}"
+    loop_var: _queue
+  async: "{{ ansible_check_mode | ternary(0, sqs_queue_async) }}"
+  poll: "{{ sqs_queue_poll }}"
+  when:
+    - _queue.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __sqs_queue_result.changed | bool
+
+- name: Ensure managed aws simple queue service queue jobs are complete
+  tags:
+    - sqs_queue
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __sqs_queue_status
+  loop: "{{ __sqs_queue_result.results }}"
+  loop_control:
+    label: "{{ _jid._queue.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __sqs_queue_status.finished | bool
+  retries: "{{ sqs_queue_retries }}"
+  delay: "{{ sqs_queue_delay }}"
+...

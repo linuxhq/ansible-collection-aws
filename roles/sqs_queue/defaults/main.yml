@@ -1,0 +1,8 @@
+---
+sqs_queue_async: 300
+sqs_queue_batch: 10
+sqs_queue_delay: 3
+sqs_queue_list: []
+sqs_queue_poll: 0
+sqs_queue_retries: 100
+...
