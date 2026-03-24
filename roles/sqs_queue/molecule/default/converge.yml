@@ -1,0 +1,16 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - role: sqs_queue
+      sqs_queue_list: []
+      tags:
+        - molecule-idempotence-notest
+
+    - aws_az_info
+    - aws_caller_info
+    - sqs_queue
+...

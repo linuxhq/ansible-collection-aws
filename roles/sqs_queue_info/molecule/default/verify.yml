@@ -1,0 +1,37 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - aws_az_info
+    - aws_caller_info
+    - sqs_queue_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _sqs_queue_info_dict['molecule-bounce'].QueueArn is defined
+          - _sqs_queue_info_dict['molecule-bounce'].SqsManagedSseEnabled | bool
+          - _sqs_queue_info_dict['molecule-complaint'].QueueArn is defined
+          - _sqs_queue_info_dict['molecule-complaint'].SqsManagedSseEnabled | bool
+          - _sqs_queue_info_dict['molecule-delivery'].QueueArn is defined
+          - _sqs_queue_info_dict['molecule-delivery'].SqsManagedSseEnabled | bool
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        sqs_queue_list:
+          "{{ sqs_queue_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - sqs_queue
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

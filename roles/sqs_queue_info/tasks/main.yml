@@ -1,0 +1,68 @@
+---
+- name: Ensure information about aws simple queue service queue urls is gathered
+  tags:
+    - sqs_queue
+  ansible.builtin.command:
+    cmd: >
+      aws sqs list-queues
+        --query "QueueUrls || `[]`"
+  register: __sqs_queue_info_query_urls
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of aws simple queue service queue urls is generated
+  tags:
+    - sqs_queue
+  ansible.builtin.set_fact:
+    __sqs_queue_info_urls:
+      "{{ (__sqs_queue_info_query_urls.stdout |
+          from_json) |
+          d([]) }}"
+
+- name: Ensure information about aws simple queue service queue attributes is gathered
+  tags:
+    - sqs_queue
+  ansible.builtin.command:
+    cmd: >
+      aws sqs get-queue-attributes
+        --attribute-names All
+        --query Attributes
+        --queue-url "{{ _attr }}"
+  register: __sqs_queue_info_query_attr
+  loop: "{{ __sqs_queue_info_urls }}"
+  loop_control:
+    label: "{{ _attr | d(none) }}"
+    loop_var: _attr
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of aws simple queue service queue nameless information is generated
+  tags:
+    - sqs_queue
+  ansible.builtin.set_fact:
+    __sqs_queue_info_nameless:
+      "{{ __sqs_queue_info_query_attr.results |
+          map(attribute='stdout') |
+          map('from_json') |
+          d([]) }}"
+
+- name: Ensure list of aws simple queue service queue information is generated
+  tags:
+    - sqs_queue
+  ansible.builtin.set_fact:
+    _sqs_queue_info_list: >-
+      {%- set q = namespace(items=[]) -%}
+      {%- for queue in __sqs_queue_info_nameless -%}
+        {%- set _ = q.items.append(queue | combine({'Name': queue.QueueArn.split(':')[-1]})) -%}
+      {%- endfor -%}
+      {{ q.items }}
+
+- name: Ensure dict of aws simple queue service queue information is generated
+  tags:
+    - sqs_queue_info
+  ansible.builtin.set_fact:
+    _sqs_queue_info_dict:
+      "{{ dict(_sqs_queue_info_list |
+               json_query('[].Name') |
+               zip(_sqs_queue_info_list)) }}"
+...
