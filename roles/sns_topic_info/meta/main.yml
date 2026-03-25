@@ -1,0 +1,25 @@
+---
+dependencies: []
+galaxy_info:
+  role_name: sns_topic_info
+  author: Taylor Kimball
+  description: Gather information about aws simple notification service topics
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - info
+    - notification
+    - service
+    - simple
+    - topic
+...

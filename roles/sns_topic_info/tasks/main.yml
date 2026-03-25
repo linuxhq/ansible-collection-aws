@@ -1,0 +1,46 @@
+---
+- name: Ensure information about aws simple notification service topics is gathered
+  tags:
+    - sns_topic_info
+  community.aws.sns_topic_info:
+    validate_certs: true
+  register: __sns_topic_info_query_arn
+
+- name: Ensure list of aws simple notification service topic arns is generated
+  tags:
+    - sns_topic_info
+  ansible.builtin.set_fact:
+    __sns_topic_info_arn:
+      "{{ __sns_topic_info_query_arn.result }}"
+
+- name: Ensure information about aws simple notification service topics is gathered
+  tags:
+    - sns_topic_info
+  community.aws.sns_topic_info:
+    topic_arn: "{{ _arn }}"
+    validate_certs: true
+  register: __sns_topic_info_query_attr
+  loop: "{{ __sns_topic_info_arn }}"
+  loop_control:
+    label: "{{ _arn | d(none) }}"
+    loop_var: _arn
+
+- name: Ensure list of aws simple notification service topics is generated
+  tags:
+    - sns_topic_info
+  ansible.builtin.set_fact:
+    _sns_topic_info_list:
+      "{{ __sns_topic_info_query_attr.results |
+          map(attribute='result.sns_topic') |
+          selectattr('display_name', 'defined') |
+          d([]) }}"
+
+- name: Ensure dict of aws simple notification service topics is generated
+  tags:
+    - sns_topic_info
+  ansible.builtin.set_fact:
+    _sns_topic_info_dict:
+      "{{ dict(_sns_topic_info_list |
+               json_query('[].display_name') |
+               zip(_sns_topic_info_list)) }}"
+...

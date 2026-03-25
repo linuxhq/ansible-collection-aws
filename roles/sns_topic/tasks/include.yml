@@ -1,0 +1,36 @@
+---
+- name: Ensure aws simple notification service topics are managed
+  tags:
+    - sns_topic
+  community.aws.sns_topic:
+    content_based_deduplication: "{{ _topic.content_based_deduplication | d('disabled') }}"
+    delivery_policy: "{{ _topic.delivery_policy | d(omit) }}"
+    display_name: "{{ _topic.display_name  | d(_topic.name) }}"
+    name: "{{ _topic.name }}"
+    policy: "{{ _topic.policy | d(omit) }}"
+    purge_subscriptions: "{{ _topic.purge_subscriptions | d(true) }}"
+    purge_tags: "{{ _topic.purge_tags | d(true) }}"
+    state: "{{ _topic.state }}"
+    subscriptions: "{{ _topic.subscriptions | d(omit) }}"
+    tags:
+      "{{ _topic.tags |
+          d({}) |
+          combine({'Name': _topic.name}) }}"
+    topic_type: "{{ _topic.topic_type | d('standard') }}"
+    validate_certs: true
+  register: __sns_topic_result
+
+- name: Ensure aws simple notification service topic encryption is managed
+  tags:
+    - sns_topic
+  ansible.builtin.command:
+    cmd: >
+      aws sns set-topic-attributes
+        --attribute-name KmsMasterKeyId
+        --attribute-value alias/aws/sns
+        --topic-arn "{{ __sns_topic_result.sns_arn }}"
+  when:
+    - _topic.state == 'present'
+    - __sns_topic_result.sns_arn is defined
+  changed_when: false
+...

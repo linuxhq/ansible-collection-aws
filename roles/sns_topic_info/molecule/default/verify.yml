@@ -1,0 +1,47 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - aws_az_info
+    - aws_caller_info
+    - sns_topic_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _sns_topic_info_dict['molecule-bounce'].display_name is defined
+          - _sns_topic_info_dict['molecule-bounce'].kms_master_key_id == 'alias/aws/sns'
+          - _sns_topic_info_dict['molecule-bounce'].subscriptions | length == 1
+          - _sns_topic_info_dict['molecule-bounce'].topic_arn is defined
+          - _sns_topic_info_dict['molecule-complaint'].display_name is defined
+          - _sns_topic_info_dict['molecule-complaint'].kms_master_key_id == 'alias/aws/sns'
+          - _sns_topic_info_dict['molecule-complaint'].subscriptions | length == 1
+          - _sns_topic_info_dict['molecule-complaint'].topic_arn is defined
+          - _sns_topic_info_dict['molecule-delivery'].display_name is defined
+          - _sns_topic_info_dict['molecule-delivery'].kms_master_key_id == 'alias/aws/sns'
+          - _sns_topic_info_dict['molecule-delivery'].subscriptions | length == 1
+          - _sns_topic_info_dict['molecule-delivery'].topic_arn is defined
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        sns_topic_list:
+          "{{ sns_topic_list |
+              map('combine', {'state': 'absent'}) }}"
+        sqs_queue_list:
+          "{{ sqs_queue_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - sns_topic
+        - sqs_queue
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...
