@@ -5,7 +5,7 @@
   community.aws.sns_topic:
     content_based_deduplication: "{{ _topic.content_based_deduplication | d('disabled') }}"
     delivery_policy: "{{ _topic.delivery_policy | d(omit) }}"
-    display_name: "{{ _topic.display_name  | d(_topic.name) }}"
+    display_name: "{{ _topic.display_name | d(_topic.name) }}"
     name: "{{ _topic.name }}"
     policy: "{{ _topic.policy | d(omit) }}"
     purge_subscriptions: "{{ _topic.purge_subscriptions | d(true) }}"
