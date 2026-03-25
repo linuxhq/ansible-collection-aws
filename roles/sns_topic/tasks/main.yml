@@ -1,0 +1,27 @@
+---
+- name: Ensure aws simple notification service topic defaults are present
+  tags:
+    - sns_topic
+  ansible.builtin.set_fact:
+    __sns_topic_list:
+      "{{ [{'state': 'present'}] |
+          product(sns_topic_list) |
+          map('combine') |
+          list }}"
+
+- name: Ensure aws simple notification service topics tasks are included
+  tags:
+    - sns_topic
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - sns_topic
+    file: include.yml
+  loop: "{{ __sns_topic_list }}"
+  loop_control:
+    label: "{{ _topic.name | d(omit) }}"
+    loop_var: _topic
+  when:
+    - _topic.name is defined
+    - not ansible_check_mode
+...

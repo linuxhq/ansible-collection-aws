@@ -1,0 +1,22 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - aws_az_info
+    - aws_caller_info
+
+    - role: sqs_queue
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: sns_topic
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - sns_topic_info
+...
