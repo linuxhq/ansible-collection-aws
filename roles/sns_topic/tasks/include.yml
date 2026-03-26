@@ -27,9 +27,10 @@
     cmd: >
       aws sns set-topic-attributes
         --attribute-name KmsMasterKeyId
-        --attribute-value alias/aws/sns
+        --attribute-value "{{ _topic.kms_master_key_id }}"
         --topic-arn "{{ __sns_topic_result.sns_arn }}"
   when:
+    - _topic.kms_master_key_id is defined
     - _topic.state == 'present'
     - __sns_topic_result.sns_arn is defined
   changed_when: false
