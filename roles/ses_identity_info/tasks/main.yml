@@ -1,0 +1,51 @@
+---
+- name: Ensure information about aws simple email service identities is gathered
+  tags:
+    - ses_identity_info
+  ansible.builtin.command:
+    cmd: >
+      aws ses list-identities
+        --query Identities
+  register: __ses_identity_info_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure information about aws simple email service identities is gathered
+  tags:
+    - ses_identity_info
+  ansible.builtin.command:
+    cmd: >
+      aws sesv2 get-email-identity
+        --email-identity "{{ _identity }}"
+  register: __ses_identity_info_identity
+  loop:
+    "{{ (__ses_identity_info_query.stdout |
+        from_json) |
+        d([]) }}"
+  loop_control:
+    label: "{{ _identity | d(none) }}"
+    loop_var: _identity
+  changed_when: false
+  check_mode: false
+
+- name: Ensure list of aws simple email service identities is generated
+  tags:
+    - ses_identity_info
+  ansible.builtin.set_fact:
+    _ses_identity_info_list: >-
+      {%- set __ses_identity_info_list = [] -%}
+      {%- for i in __ses_identity_info_identity.results -%}
+        {%- set parsed = i.stdout | from_json -%}
+        {%- set _ = __ses_identity_info_list.append(parsed | combine({'Name': i._identity})) -%}
+      {%- endfor -%}
+      {{ __ses_identity_info_list }}
+
+- name: Ensure dict of aws simple email service identities is generated
+  tags:
+    - ses_identity_info
+  ansible.builtin.set_fact:
+    _ses_identity_info_dict:
+      "{{ dict(_ses_identity_info_list |
+               json_query('[].Name') |
+               zip(_ses_identity_info_list)) }}"
+...

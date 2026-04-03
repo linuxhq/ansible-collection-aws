@@ -1,0 +1,138 @@
+---
+- name: Ensure aws simple email service identity dkim tokens are gathered
+  tags:
+    - ses_identity
+  ansible.builtin.command:
+    cmd: >
+      aws ses verify-domain-dkim
+        --domain "{{ _identity.identity }}"
+        --query DkimTokens
+        --region "{{ __ses_identity_region }}"
+  register: __ses_identity_dkim_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure aws simple email service identity verification token is gathered
+  tags:
+    - ses_identity
+  ansible.builtin.command:
+    cmd: >
+      aws ses verify-domain-identity
+        --domain "{{ _identity.identity }}"
+        --output text
+        --query VerificationToken
+        --region "{{ __ses_identity_region }}"
+  register: __ses_identity_verification_query
+  changed_when: false
+  check_mode: false
+
+- name: Ensure aws simple email service identity txt records are gathered
+  tags:
+    - ses_identity
+  amazon.aws.route53:
+    record: "_amazonses.{{ _identity.identity }}"
+    state: get
+    type: TXT
+    zone: "{{ _identity.zone }}"
+  register: __ses_identity_txt_query
+  check_mode: false
+
+- name: Ensure aws simple email service identity dns records are generated
+  tags:
+    - ses_identity
+  ansible.builtin.set_fact:
+    __ses_identity_value_dkim:
+      "{{ (__ses_identity_dkim_query.stdout |
+          from_json) |
+          d([]) }}"
+    __ses_identity_value_txt_absent:
+      "{{ __ses_identity_txt_query.resource_record_sets.0.resource_records |
+          d([]) |
+          map(attribute='value') |
+          map('from_json') |
+          reject('eq', __ses_identity_verification_query.stdout) }}"
+    __ses_identity_value_txt_present:
+      "{{ __ses_identity_txt_query.resource_record_sets.0.resource_records |
+          d([]) |
+          map(attribute='value') |
+          map('from_json') +
+          [__ses_identity_verification_query.stdout] }}"
+
+- name: Ensure aws simple email service identity dmarc records are managed
+  tags:
+    - ses_identity
+  amazon.aws.route53:
+    record: "_dmarc.{{ _identity.identity }}"
+    state: "{{ _identity.state }}"
+    type: TXT
+    value: '"v=DMARC1; p=quarantine;"'
+    zone: "{{ _identity.zone }}"
+
+- name: Ensure aws simple email service identity dkim records are managed
+  tags:
+    - ses_identity
+  amazon.aws.route53:
+    record: "{{ _dkim }}._domainkey.{{ _identity.identity }}"
+    state: "{{ _identity.state }}"
+    type: CNAME
+    value: "{{ _dkim }}.{{ __ses_identity_dkim_domain }}.amazonses.com"
+    zone: "{{ _identity.zone }}"
+  loop: "{{ __ses_identity_value_dkim }}"
+  loop_control:
+    label: "{{ _dkim | d(none) }}"
+    loop_var: _dkim
+
+- name: Ensure aws simple email service identity spf records are managed
+  tags:
+    - ses_identity
+  amazon.aws.route53:
+    record: "{{ _identity.identity }}"
+    state: "{{ _identity.state }}"
+    type: TXT
+    value: '"v=spf1 include:amazonses.com -all"'
+    zone: "{{ _identity.zone }}"
+
+- name: Ensure aws simple email service identity txt records are present
+  tags:
+    - ses_identity
+  amazon.aws.route53:
+    overwrite: true
+    record: "_amazonses.{{ _identity.identity }}"
+    state: present
+    type: TXT
+    value:
+      "{{ __ses_identity_value_txt_present |
+          map('to_json') |
+          unique }}"
+    zone: "{{ _identity.zone }}"
+  when:
+    - _identity.state == 'present'
+
+- name: Ensure aws simple email service identity txt records are absent
+  tags:
+    - ses_identity
+  amazon.aws.route53:
+    overwrite: true
+    record: "_amazonses.{{ _identity.identity }}"
+    state: "{{ 'present' if __ses_identity_value_txt_absent | length > 0 else 'absent' }}"
+    type: TXT
+    value:
+      "{{ __ses_identity_value_txt_absent |
+          map('to_json') |
+          unique }}"
+    zone: "{{ _identity.zone }}"
+  when:
+    - _identity.state == 'absent'
+
+- name: Ensure aws simple email service identity is managed
+  tags:
+    - ses_identity
+  community.aws.ses_identity:
+    bounce_notifications: "{{ _identity.bounce_notifications | d(omit) }}"
+    complaint_notifications: "{{ _identity.complaint_notifications | d(omit) }}"
+    delivery_notifications: "{{ _identity.delivery_notifications | d(omit) }}"
+    feedback_forwarding: "{{ _identity.feedback_forwarding | d(true) }}"
+    identity: "{{ _identity.identity }}"
+    state: "{{ _identity.state }}"
+    validate_certs: true
+...

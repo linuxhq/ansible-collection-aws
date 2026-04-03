@@ -1,0 +1,59 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - aws_az_info
+    - aws_caller_info
+    - ses_identity_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _ses_identity_info_dict['molecule.org'].DkimAttributes is defined
+          - _ses_identity_info_dict['molecule.org'].DkimAttributes.Tokens | length == 3
+          - _ses_identity_info_dict['molecule.org'].IdentityType == 'DOMAIN'
+          - _ses_identity_info_dict['molecule.org'].VerificationStatus == 'PENDING'
+          - _ses_identity_info_dict['a.molecule.org'].DkimAttributes is defined
+          - _ses_identity_info_dict['a.molecule.org'].DkimAttributes.Tokens | length == 3
+          - _ses_identity_info_dict['a.molecule.org'].IdentityType == 'DOMAIN'
+          - _ses_identity_info_dict['a.molecule.org'].VerificationStatus == 'PENDING'
+          - _ses_identity_info_dict['b.molecule.org'].DkimAttributes is defined
+          - _ses_identity_info_dict['b.molecule.org'].DkimAttributes.Tokens | length == 3
+          - _ses_identity_info_dict['b.molecule.org'].IdentityType == 'DOMAIN'
+          - _ses_identity_info_dict['b.molecule.org'].VerificationStatus == 'PENDING'
+          - _ses_identity_info_dict['c.molecule.org'].DkimAttributes is defined
+          - _ses_identity_info_dict['c.molecule.org'].DkimAttributes.Tokens | length == 3
+          - _ses_identity_info_dict['c.molecule.org'].IdentityType == 'DOMAIN'
+          - _ses_identity_info_dict['c.molecule.org'].VerificationStatus == 'PENDING'
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        route53_zone_list:
+          "{{ route53_zone_list |
+              map('combine', {'state': 'absent'}) }}"
+        ses_identity_list:
+          "{{ ses_identity_list |
+              map('combine', {'state': 'absent'}) }}"
+        sns_topic_list:
+          "{{ sns_topic_list |
+              map('combine', {'state': 'absent'}) }}"
+        sqs_queue_list:
+          "{{ sqs_queue_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - ses_identity
+        - sns_topic
+        - sqs_queue
+        - route53_zone
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

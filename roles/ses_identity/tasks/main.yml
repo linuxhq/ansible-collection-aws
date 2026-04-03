@@ -1,0 +1,69 @@
+---
+- name: Ensure aws simple email service identity defaults are present
+  tags:
+    - ses_identity
+  ansible.builtin.set_fact:
+    __ses_identity_list:
+      "{{ [{'state': 'present'}] |
+          product(ses_identity_list) |
+          map('combine') |
+          list }}"
+
+- name: Ensure aws simple email service region information is gathered
+  tags:
+    - ses_identity
+  amazon.aws.aws_az_info:
+    validate_certs: true
+  register: __ses_identity_az_info
+  check_mode: false
+
+- name: Ensure aws simple email service region information is generated
+  tags:
+    - ses_identity
+  ansible.builtin.set_fact:
+    __ses_identity_region:
+      "{{ __ses_identity_az_info.availability_zones |
+          map(attribute='region_name') |
+          list |
+          unique |
+          first }}"
+
+- name: Ensure aws simple email service dkim doamin is generated
+  tags:
+    - ses_identity
+  ansible.builtin.set_fact:
+    __ses_identity_dkim_domain:
+      "{{ 'dkim.' ~ __ses_identity_region if
+          __ses_identity_region in __ses_identity_dkim_domains else
+          'dkim' }}"
+  vars:
+    __ses_identity_dkim_domains:
+      - af-south-1
+      - ap-northeast-3
+      - ap-south-2
+      - ap-southeast-3
+      - ap-southeast-5
+      - ca-west-1
+      - eu-central-2
+      - eu-south-1
+      - il-central-1
+      - me-central-1
+      - us-gov-east-1
+
+- name: Ensure aws simple email service identity tasks are included
+  tags:
+    - ses_identity
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ses_identity
+    file: include.yml
+  loop: "{{ __ses_identity_list }}"
+  loop_control:
+    label: "{{ _identity.identity | d(omit) }}"
+    loop_var: _identity
+  when:
+    - _identity.identity is defined
+    - _identity.state is defined
+    - _identity.zone is defined
+...
