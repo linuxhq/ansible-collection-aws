@@ -1,10 +1,9 @@
 ---
-allow_duplicates: true
 dependencies: []
 galaxy_info:
-  role_name: sns_topic_info
+  role_name: ses_identity
   author: Taylor Kimball
-  description: Gather information about aws simple notification service topics
+  description: Manage aws simple email service identities
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq
@@ -18,9 +17,8 @@ galaxy_info:
   galaxy_tags:
     - amazon
     - aws
-    - info
-    - notification
+    - email
+    - identity
     - service
     - simple
-    - topic
 ...
