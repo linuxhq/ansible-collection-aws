@@ -1,0 +1,16 @@
+---
+- name: Ensure aws lambda events are batched
+  tags:
+    - lambda_event
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - lambda_event
+    file: include.yml
+  loop:
+    "{{ lambda_event_list |
+        batch(lambda_event_batch) }}"
+  loop_control:
+    label: "{{ __lambda_event_list | length }}"
+    loop_var: __lambda_event_list
+...
