@@ -1,0 +1,29 @@
+---
+- name: Ensure information about aws lambda functions is gathered
+  tags:
+    - lambda_info
+  amazon.aws.lambda_info:
+    event_source_arn: "{{ lambda_info_event_source_arn or omit }}"
+    function_name: "{{ lambda_info_function_name or omit }}"
+    query: "{{ lambda_info_query or omit }}"
+    validate_certs: true
+  register: __lambda_info_query
+
+- name: Ensure list of aws lambda functions is generated
+  tags:
+    - lambda_info
+  ansible.builtin.set_fact:
+    _lambda_info_list:
+      "{{ (__lambda_info_query.functions |
+          selectattr('function_name', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of aws lambda functions is generated
+  tags:
+    - lambda_info
+  ansible.builtin.set_fact:
+    _lambda_info_dict:
+      "{{ dict(_lambda_info_list |
+               json_query('[].function_name') |
+               zip(_lambda_info_list)) }}"
+...

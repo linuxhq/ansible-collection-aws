@@ -1,0 +1,72 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        iam_role_list:
+          - name: molecule-pass
+            assume_role_policy_document:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Principal:
+                    Service: lambda.amazonaws.com
+                  Action:
+                    - sts:AssumeRole
+            create_instance_profile: false
+            delete_instance_profile: true
+            managed_policies:
+              - ReadOnlyAccess
+
+        lambda_list:
+          - name: molecule-pass
+            architecture: x86_64
+            environment_variables:
+              MOLECULE: 'true'
+            handler: lambda_function.lambda_handler
+            memory_size: 128
+            role: "arn:aws:iam::{{ _aws_caller_info_account }}:role/molecule-pass"
+            runtime: python3.11
+            tracing_mode: PassThrough
+            zip_file: "{{ role_path | d }}/files/pass.zip"
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...

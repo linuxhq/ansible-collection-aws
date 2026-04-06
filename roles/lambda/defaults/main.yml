@@ -1,0 +1,8 @@
+---
+lambda_async: 300
+lambda_batch: 10
+lambda_delay: 3
+lambda_list: []
+lambda_poll: 0
+lambda_retries: 100
+...

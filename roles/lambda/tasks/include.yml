@@ -1,0 +1,67 @@
+---
+- name: Ensure aws lambda functions are managed
+  tags:
+    - lambda
+  amazon.aws.lambda:
+    architecture: "{{ _function.architecture }}"
+    description: "{{ _function.description | d(_function.name) }}"
+    environment_variables: "{{ _function.environment_variables | d(omit) }}"
+    handler: "{{ _function.handler }}"
+    image_uri: "{{ _function.image_uri | d(omit) }}"
+    kms_key_arn: "{{ _function.kms_key_arn | d(omit) }}"
+    layers: "{{ _function.layers | d(omit) }}"
+    memory_size: "{{ _function.memory_size | d(omit) }}"
+    name: "{{ _function.name }}"
+    purge_tags: "{{ _function.purge_tags | d(true) }}"
+    role: "{{ _function.role }}"
+    runtime: "{{ _function.runtime }}"
+    s3_bucket: "{{ _function.s3_bucket | d(omit) }}"
+    s3_key: "{{ _function.s3_key | d(omit) }}"
+    s3_object_version: "{{ _function.s3_object_version | d(omit) }}"
+    state: "{{ _function.state | d('present') }}"
+    tags:
+      "{{ _function.tags |
+          d({}) |
+          combine({'Name': _function.name}) }}"
+    timeout: "{{ _function.timeout | d(omit) }}"
+    tracing_mode: "{{ _function.tracing_mode | d(omit) }}"
+    validate_certs: true
+    vpc_security_group_ids: "{{ _function.vpc_security_group_ids | d(omit) }}"
+    vpc_subnet_ids: "{{ _function.vpc_subnet_ids | d(omit) }}"
+    zip_file: "{{ _function.zip_file | d(omit) }}"
+  register: __lambda_result
+  loop: "{{ __lambda_list }}"
+  loop_control:
+    label: "{{ _function.name | d(none) }}"
+    loop_var: _function
+  async: "{{ ansible_check_mode | ternary(0, lambda_async) }}"
+  poll: "{{ lambda_poll }}"
+  when:
+    - _function.architecture is defined
+    - _function.handler is defined
+    - _function.name is defined
+    - _function.role is defined
+    - _function.image_uri is defined or
+      _function.s3_bucket is defined or
+      _function.zip_file is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __lambda_result.changed | bool
+
+- name: Ensure managed lambda function jobs are complete
+  tags:
+    - lambda
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __lambda_status
+  loop: "{{ __lambda_result.results }}"
+  loop_control:
+    label: "{{ _jid._function.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __lambda_status.finished | bool
+  retries: "{{ lambda_retries }}"
+  delay: "{{ lambda_delay }}"
+...
