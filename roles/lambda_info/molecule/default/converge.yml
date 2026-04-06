@@ -1,0 +1,25 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - aws_caller_info
+    - lambda_info
+
+    - role: iam_role
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+  post_tasks:
+    - name: Ensure roles are delegated
+      ansible.builtin.import_role:
+        name: lambda
+      delegate_to: localhost
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: lambda_info
+...

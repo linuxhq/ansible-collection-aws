@@ -1,0 +1,16 @@
+---
+- name: Ensure aws lambda functions are batched
+  tags:
+    - lambda
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - lambda
+    file: include.yml
+  loop:
+    "{{ lambda_list |
+        batch(lambda_batch) }}"
+  loop_control:
+    label: "{{ __lambda_list | length }}"
+    loop_var: __lambda_list
+...
