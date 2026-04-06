@@ -1,0 +1,168 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        iam_role_list:
+          - name: molecule-pass
+            assume_role_policy_document:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Principal:
+                    Service: lambda.amazonaws.com
+                  Action:
+                    - sts:AssumeRole
+            create_instance_profile: false
+            delete_instance_profile: true
+            managed_policies:
+              - AmazonSQSFullAccess
+              - ReadOnlyAccess
+
+        lambda_event_list:
+          - lambda_function_arn: "arn:aws:lambda:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:function:molecule-pass"
+            event_source: sqs
+            source_params:
+              batch_size: 10
+              enabled: true
+              source_arn: "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-bounce"
+
+          - lambda_function_arn: "arn:aws:lambda:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:function:molecule-pass"
+            event_source: sqs
+            source_params:
+              batch_size: 10
+              enabled: true
+              source_arn: "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-complaint"
+
+          - lambda_function_arn: "arn:aws:lambda:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:function:molecule-pass"
+            event_source: sqs
+            source_params:
+              batch_size: 10
+              enabled: true
+              source_arn: "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-delivery"
+
+        lambda_list:
+          - name: molecule-pass
+            architecture: x86_64
+            environment_variables:
+              MOLECULE: 'true'
+            handler: lambda_function.lambda_handler
+            memory_size: 128
+            role: "arn:aws:iam::{{ _aws_caller_info_account }}:role/molecule-pass"
+            runtime: python3.11
+            tracing_mode: PassThrough
+            zip_file: "{{ role_path | d }}/files/pass.zip"
+
+        sqs_queue_list:
+          - name: molecule-bounce
+            policy:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Principal:
+                    AWS:
+                      - "arn:aws:iam::{{ _aws_caller_info_account }}:root"
+                  Action:
+                    - sqs:*
+                  Resource:
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-bounce"
+                - Effect: Allow
+                  Principal:
+                    Service: sns.amazonaws.com
+                  Action:
+                    - sqs:SendMessage
+                  Resource:
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-bounce"
+                  Condition:
+                    ArnEquals:
+                      'aws:SourceArn':
+                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-bounce"
+
+          - name: molecule-complaint
+            policy:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Principal:
+                    AWS:
+                      - "arn:aws:iam::{{ _aws_caller_info_account }}:root"
+                  Action:
+                    - sqs:*
+                  Resource:
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-complaint"
+                - Effect: Allow
+                  Principal:
+                    Service: sns.amazonaws.com
+                  Action:
+                    - sqs:SendMessage
+                  Resource:
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-complaint"
+                  Condition:
+                    ArnEquals:
+                      'aws:SourceArn':
+                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-complaint"
+
+          - name: molecule-delivery
+            policy:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Principal:
+                    AWS:
+                      - "arn:aws:iam::{{ _aws_caller_info_account }}:root"
+                  Action:
+                    - sqs:*
+                  Resource:
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-delivery"
+                - Effect: Allow
+                  Principal:
+                    Service: sns.amazonaws.com
+                  Action:
+                    - sqs:SendMessage
+                  Resource:
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-delivery"
+                  Condition:
+                    ArnEquals:
+                      'aws:SourceArn':
+                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-delivery"
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...

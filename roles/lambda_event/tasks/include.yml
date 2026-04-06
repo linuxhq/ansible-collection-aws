@@ -1,0 +1,43 @@
+---
+- name: Ensure aws lambda events are managed
+  tags:
+    - lambda_event
+  amazon.aws.lambda_event:
+    alias: "{{ _event.alias | d(omit) }}"
+    event_source: "{{ _event.event_source | d('stream') }}"
+    lambda_function_arn: "{{ _event.lambda_function_arn }}"
+    source_params: "{{ _event.source_params }}"
+    state: "{{ _event.state | d('present') }}"
+    validate_certs: true
+    version: "{{ _event.version | d(omit) }}"
+  register: __lambda_event_result
+  loop: "{{ __lambda_event_list }}"
+  loop_control:
+    label: "{{ _event.lambda_function_arn | d(none) }}"
+    loop_var: _event
+  async: "{{ ansible_check_mode | ternary(0, lambda_event_async) }}"
+  poll: "{{ lambda_event_poll }}"
+  when:
+    - _event.lambda_function_arn is defined
+    - _event.source_params is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __lambda_event_result.changed | bool
+
+- name: Ensure managed lambda event jobs are complete
+  tags:
+    - lambda_event
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __lambda_event_status
+  loop: "{{ __lambda_event_result.results }}"
+  loop_control:
+    label: "{{ _jid._event.lambda_function_arn | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __lambda_event_status.finished | bool
+  retries: "{{ lambda_event_retries }}"
+  delay: "{{ lambda_event_delay }}"
+...
