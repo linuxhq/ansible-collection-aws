@@ -1,0 +1,14 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - role: ssm_association
+      ssm_association_list: []
+      tags:
+        - molecule-idempotence-notest
+
+    - ssm_association
+...
