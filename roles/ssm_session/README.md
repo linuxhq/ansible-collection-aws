@@ -8,7 +8,7 @@ Manage aws systems manager session configuration
 
 ## Role Variables
 
-    Defaults can be found in [main](main/)
+Defaults can be found in [main](main/)
 
 ## Return Values
 
