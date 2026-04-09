@@ -1,0 +1,7 @@
+---
+ssm_session_default_user: ec2-user
+ssm_session_shell_profile_linux: null
+ssm_session_shell_profile_windows: null
+ssm_session_state: present
+ssm_session_tags: {}
+...

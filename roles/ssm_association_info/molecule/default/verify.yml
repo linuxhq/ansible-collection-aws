@@ -1,0 +1,36 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - ssm_association_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].AssociationId is defined
+          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].Name ==
+              ssm_association_list.0.name
+          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].ScheduleExpression ==
+              ssm_association_list.0.schedule_expression
+          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].Targets ==
+              ssm_association_list.0.targets
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        ssm_association_list:
+          "{{ ssm_association_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - ssm_association
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

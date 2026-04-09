@@ -1,0 +1,92 @@
+---
+ssm_session_iam_policy_instance_name: ssm-instance
+ssm_session_iam_policy_instance_document:
+  Version: '2012-10-17'
+  Statement:
+    - Effect: Allow
+      Action:
+        - cloudwatch:PutMetricData
+        - ec2:DescribeTags
+        - ec2:DescribeVolumes
+        - ec2messages:AcknowledgeMessage
+        - ec2messages:DeleteMessage
+        - ec2messages:FailMessage
+        - ec2messages:GetEndpoint
+        - ec2messages:GetMessages
+        - ec2messages:SendReply
+        - kms:GenerateDataKey
+        - logs:CreateLogGroup
+        - logs:CreateLogStream
+        - logs:DescribeLogGroups
+        - logs:DescribeLogStreams
+        - logs:PutLogEvents
+        - logs:PutRetentionPolicy
+        - s3:GetEncryptionConfiguration
+        - ssm:DescribeAssociation
+        - ssm:DescribeDocument
+        - ssm:GetDeployablePatchSnapshotForInstance
+        - ssm:GetDocument
+        - ssm:GetManifest
+        - ssm:GetParameter
+        - ssm:GetParameters
+        - ssm:ListAssociations
+        - ssm:ListInstanceAssociations
+        - ssm:PutComplianceItems
+        - ssm:PutConfigurePackageResult
+        - ssm:PutInventory
+        - ssm:UpdateAssociationStatus
+        - ssm:UpdateInstanceAssociationStatus
+        - ssm:UpdateInstanceInformation
+        - ssmmessages:CreateControlChannel
+        - ssmmessages:CreateDataChannel
+        - ssmmessages:OpenControlChannel
+        - ssmmessages:OpenDataChannel
+        - xray:GetSamplingRules
+        - xray:GetSamplingStatisticSummaries
+        - xray:GetSamplingTargets
+        - xray:PutTelemetryRecords
+        - xray:PutTraceSegments
+      Resource:
+        - '*'
+    - Effect: Allow
+      Action:
+        - s3:DeleteObject
+        - s3:GetBucketLocation
+        - s3:GetObject
+        - s3:HeadObject
+        - s3:ListBucket
+        - s3:PutObject
+      Resource:
+        - "arn:aws:s3:::{{ __ssm_session_account }}-*-{{ ssm_session_bucket_ansible_name }}"
+        - "arn:aws:s3:::{{ __ssm_session_account }}-*-{{ ssm_session_bucket_ansible_name }}/*"
+        - "arn:aws:s3:::{{ __ssm_session_account }}-*-{{ ssm_session_bucket_transfer_name }}"
+        - "arn:aws:s3:::{{ __ssm_session_account }}-*-{{ ssm_session_bucket_transfer_name }}/*"
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+      Resource:
+        - "arn:aws:s3:::{{ __ssm_session_account }}-*-{{ ssm_session_bucket_sessions_name }}"
+        - "arn:aws:s3:::{{ __ssm_session_account }}-*-{{ ssm_session_bucket_sessions_name }}/*"
+
+ssm_session_iam_policy_consumer_name: ssm-consumer
+ssm_session_iam_policy_consumer_document:
+  Version: '2012-10-17'
+  Statement:
+    - Effect: Allow
+      Action:
+        - kms:GenerateDataKey
+        - s3:GetEncryptionConfiguration
+      Resource:
+        - '*'
+    - Effect: Allow
+      Action:
+        - s3:DeleteObject
+        - s3:GetBucketLocation
+        - s3:GetObject
+        - s3:HeadObject
+        - s3:ListBucket
+        - s3:PutObject
+      Resource:
+        - "arn:aws:s3:::{{ __ssm_session_account }}-*-{{ ssm_session_bucket_transfer_name }}"
+        - "arn:aws:s3:::{{ __ssm_session_account }}-*-{{ ssm_session_bucket_transfer_name }}/*"
+...

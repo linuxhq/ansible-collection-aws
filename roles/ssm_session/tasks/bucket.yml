@@ -1,0 +1,94 @@
+---
+- name: Ensure aws systems manager session simple storage service ansible bucket is managed
+  tags:
+    - ssm_session
+  amazon.aws.s3_bucket:
+    force: true
+    name: "{{ __ssm_session_account }}-{{ __ssm_session_region }}-{{ ssm_session_bucket_ansible_name }}"
+    public_access:
+      block_public_acls: true
+      block_public_policy: true
+      ignore_public_acls: true
+      restrict_public_buckets: true
+    purge_tags: true
+    region: "{{ __ssm_session_region }}"
+    state: "{{ ssm_session_state }}"
+    tags: "{{ ssm_session_tags }}"
+    validate_certs: true
+
+- name: Ensure aws systems manager session simple storage service ansible lifecycle rule is managed
+  tags:
+    - ssm_session
+  community.aws.s3_lifecycle:
+    expiration_days: "{{ ssm_session_bucket_ansible_retention }}"
+    name: "{{ __ssm_session_account }}-{{ __ssm_session_region }}-{{ ssm_session_bucket_ansible_name }}"
+    region: "{{ __ssm_session_region }}"
+    rule_id: "{{ ssm_session_bucket_ansible_name }}"
+    state: "{{ ssm_session_state }}"
+    validate_certs: true
+    wait: true
+  when:
+    - ssm_session_state == 'present'
+
+- name: Ensure aws systems manager session simple storage service sessions bucket is managed
+  tags:
+    - ssm_session
+  amazon.aws.s3_bucket:
+    force: true
+    name: "{{ __ssm_session_account }}-{{ __ssm_session_region }}-{{ ssm_session_bucket_sessions_name }}"
+    public_access:
+      block_public_acls: true
+      block_public_policy: true
+      ignore_public_acls: true
+      restrict_public_buckets: true
+    purge_tags: true
+    region: "{{ __ssm_session_region }}"
+    state: "{{ ssm_session_state }}"
+    tags: "{{ ssm_session_tags }}"
+    validate_certs: true
+
+- name: Ensure aws systems manager session simple storage service sessions lifecycle rule is managed
+  tags:
+    - ssm_session
+  community.aws.s3_lifecycle:
+    expiration_days: "{{ ssm_session_bucket_sessions_retention }}"
+    name: "{{ __ssm_session_account }}-{{ __ssm_session_region }}-{{ ssm_session_bucket_sessions_name }}"
+    region: "{{ __ssm_session_region }}"
+    rule_id: "{{ ssm_session_bucket_sessions_name }}"
+    state: "{{ ssm_session_state }}"
+    validate_certs: true
+    wait: true
+  when:
+    - ssm_session_state == 'present'
+
+- name: Ensure aws systems manager session simple storage service transfer bucket is managed
+  tags:
+    - ssm_session
+  amazon.aws.s3_bucket:
+    force: true
+    name: "{{ __ssm_session_account }}-{{ __ssm_session_region }}-{{ ssm_session_bucket_transfer_name }}"
+    public_access:
+      block_public_acls: true
+      block_public_policy: true
+      ignore_public_acls: true
+      restrict_public_buckets: true
+    purge_tags: true
+    region: "{{ __ssm_session_region }}"
+    state: "{{ ssm_session_state }}"
+    tags: "{{ ssm_session_tags }}"
+    validate_certs: true
+
+- name: Ensure aws systems manager session simple storage service transfer lifecycle rule is managed
+  tags:
+    - ssm_session
+  community.aws.s3_lifecycle:
+    expiration_days: "{{ ssm_session_bucket_transfer_retention }}"
+    name: "{{ __ssm_session_account }}-{{ __ssm_session_region }}-{{ ssm_session_bucket_transfer_name }}"
+    region: "{{ __ssm_session_region }}"
+    rule_id: "{{ ssm_session_bucket_transfer_name }}"
+    state: "{{ ssm_session_state }}"
+    validate_certs: true
+    wait: true
+  when:
+    - ssm_session_state == 'present'
+...
