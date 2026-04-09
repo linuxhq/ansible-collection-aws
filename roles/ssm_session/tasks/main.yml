@@ -1,0 +1,69 @@
+---
+- name: Ensure aws systems manager session availability zone info is gathered
+  tags:
+    - ssm_session
+  amazon.aws.aws_az_info:
+    validate_certs: true
+  register: __ssm_session_az_info
+
+- name: Ensure aws systems manager session caller info is gathered
+  tags:
+    - ssm_session
+  amazon.aws.aws_caller_info:
+    validate_certs: true
+  register: __ssm_session_caller_info
+
+- name: Ensure aws systems manager session profile information is generated
+  tags:
+    - ssm_session
+  ansible.builtin.set_fact:
+    __ssm_session_account:
+      "{{ __ssm_session_caller_info.account }}"
+    __ssm_session_region:
+      "{{ __ssm_session_az_info.availability_zones |
+          map(attribute='region_name') |
+          list |
+          unique |
+          first }}"
+
+- name: Enusre aws systems manager session consumer iam policy is managed
+  tags:
+    - ssm_session
+  amazon.aws.iam_managed_policy:
+    description: "{{ ssm_session_iam_policy_consumer_name }}"
+    name: "{{ ssm_session_iam_policy_consumer_name }}"
+    policy: "{{ ssm_session_iam_policy_consumer_document | to_json }}"
+    purge_tags: true
+    state: "{{ ssm_session_state }}"
+    tags: "{{ ssm_session_tags }}"
+    validate_certs: true
+
+- name: Enusre aws systems manager session instance iam policy is managed
+  tags:
+    - ssm_session
+  amazon.aws.iam_managed_policy:
+    description: "{{ ssm_session_iam_policy_instance_name }}"
+    name: "{{ ssm_session_iam_policy_instance_name }}"
+    policy: "{{ ssm_session_iam_policy_instance_document | to_json }}"
+    purge_tags: true
+    state: "{{ ssm_session_state }}"
+    tags: "{{ ssm_session_tags }}"
+    validate_certs: true
+
+- name: Ensure aws systems manager session regional tasks are included
+  tags:
+    - ssm_session
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ssm_session
+    file: "{{ _include }}.yml"
+  loop:
+    - encryption
+    - logging
+    - bucket
+    - document
+  loop_control:
+    label: "{{ _include | d(none) }}"
+    loop_var: _include
+...

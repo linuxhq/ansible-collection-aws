@@ -29,3 +29,8 @@ None
       connection: local
       roles:
         - role: linuxhq.aws.iam_instance_profile
+          iam_instance_profile_list:
+            - name: molecule-instance-profile-ec2
+              role: molecule-role-ec2
+            - name: molecule-instance-profile-vpc
+              role: molecule-role-vpc

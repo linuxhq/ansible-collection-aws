@@ -1,0 +1,50 @@
+---
+ssm_session_kms_key_admins: ['root']
+ssm_session_kms_key_consumers: []
+ssm_session_kms_key_name: /ssm/sessions
+ssm_session_kms_key_policy:
+  Version: '2012-10-17'
+  Statement:
+    - Effect: Allow
+      Principal:
+        AWS:
+          "{{ ssm_session_kms_key_admins |
+              map('regex_replace',
+                  '^(.*)$',
+                  'arn:aws:iam::' ~ __ssm_session_account ~ ':\\1') |
+              list }}"
+      Action:
+        - kms:*
+      Resource:
+        - '*'
+    - Effect: Allow
+      Principal:
+        AWS: '*'
+      Action:
+        - kms:Decrypt
+        - kms:DescribeKey
+      Resource:
+        - '*'
+      Condition:
+        ArnLike:
+          'aws:PrincipalArn':
+            "{{ ssm_session_kms_key_consumers |
+                map('regex_replace',
+                    '^(.*)$',
+                    'arn:aws:iam::' ~ __ssm_session_account ~ ':\\1') |
+                list }}"
+    - Effect: Allow
+      Principal:
+        Service: "logs.{{ __ssm_session_region }}.amazonaws.com"
+      Action:
+        - kms:Encrypt
+        - kms:Decrypt
+        - kms:DescribeKey
+        - kms:GenerateDataKey
+      Resource:
+        - '*'
+      Condition:
+        ArnLike:
+          'kms:EncryptionContext:aws:logs:arn':
+            "arn:aws:logs:{{ __ssm_session_region }}:{{ __ssm_session_account }}:log-group:{{ ssm_session_log_group_name }}"
+...

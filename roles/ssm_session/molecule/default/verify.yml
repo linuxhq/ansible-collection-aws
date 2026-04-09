@@ -1,0 +1,105 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  pre_tasks:
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _role }}"
+      loop:
+        - aws_caller_info
+        - aws_az_info
+        - ec2_instance_info
+      loop_control:
+        label: "{{ _role | d(none) }}"
+        loop_var: _role
+
+    - name: Ensure command is executed
+      ansible.builtin.command:
+        cmd: >
+          aws ssm send-command
+            --document-name AWS-RunShellScript
+            --parameters '{"commands": ["touch /tmp/molecule"]}'
+            --targets "Key=instanceids,Values={{ _ec2_instance_info_dict[ec2_instance_list.0.name].instance_id }}"
+
+    - name: Ensure command result is gathered
+      ansible.builtin.stat:
+        path: /tmp/molecule
+      register: __ssm_session_stat
+      vars:
+        ansible_aws_ssm_bucket_name:
+          "{{ _aws_caller_info_account }}-{{ _aws_az_info_list_l.0[:-1] }}-ssm-ansible"
+        ansible_aws_ssm_instance_id: "{{ _ec2_instance_info_dict[ec2_instance_list.0.name].instance_id }}"
+        ansible_aws_ssm_region: "{{ _aws_az_info_list_l.0[:-1] }}"
+        ansible_aws_ssm_s3_addressing_style: virtual
+        ansible_aws_ssm_timeout: 3600
+        ansible_connection: community.aws.aws_ssm
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_user: ec2-user
+
+    - name: Ensure command result is verified
+      ansible.builtin.assert:
+        that:
+          - __ssm_session_stat.stat.exists | bool
+
+  roles:
+    - ec2_ami_info
+    - ec2_vpc_nat_gateway_info
+    - ec2_vpc_net_info
+    - ec2_vpc_subnet_info
+
+  post_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        ec2_instance_list:
+          "{{ ec2_instance_list |
+              map('combine', {'state': 'absent'}) }}"
+        ec2_security_group_list:
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            security_groups:
+              "{{ ec2_security_group_list.0.security_groups |
+                  map('combine', {'state': 'absent'}) }}"
+        ec2_vpc_igw_list:
+          "{{ ec2_vpc_igw_list |
+              map('combine', {'state': 'absent'}) }}"
+        ec2_vpc_nat_gateway_list:
+          "{{ ec2_vpc_nat_gateway_list |
+              map('combine', {'state': 'absent'}) }}"
+        ec2_vpc_net_list:
+          "{{ ec2_vpc_net_list |
+              map('combine', {'state': 'absent'}) }}"
+        ec2_vpc_route_table_list:
+          "{{ ec2_vpc_route_table_list |
+              map('combine', {'state': 'absent'}) }}"
+        ec2_vpc_subnet_list:
+          "{{ ec2_vpc_subnet_list |
+              map('combine', {'state': 'absent'}) }}"
+        iam_instance_profile_list:
+          "{{ iam_instance_profile_list |
+              map('combine', {'state': 'absent'}) }}"
+        iam_role_list:
+          "{{ iam_role_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - iam_instance_profile
+        - iam_role
+        - ssm_session
+        - ec2_instance
+        - ec2_security_group
+        - ec2_vpc_route_table
+        - ec2_vpc_nat_gateway
+        - ec2_vpc_subnet
+        - ec2_vpc_igw
+        - ec2_vpc_net
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+      vars:
+        ssm_session_state: absent
+...

@@ -1,0 +1,33 @@
+---
+- name: Ensure aws systems manager session kms key is managed
+  tags:
+    - ssm_session
+  amazon.aws.kms_key:
+    alias: "{{ ssm_session_kms_key_name }}"
+    description: "{{ ssm_session_kms_key_name }}"
+    enable_key_rotation: true
+    key_spec: SYMMETRIC_DEFAULT
+    multi_region: false
+    policy: "{{ ssm_session_kms_key_policy }}"
+    purge_tags: true
+    region: "{{ __ssm_session_region }}"
+    state: "{{ ssm_session_state }}"
+    tags: "{{ ssm_session_tags }}"
+    validate_certs: true
+
+- name: Ensure aws systems manager session kms key info is gathered
+  tags:
+    - ssm_session
+  amazon.aws.kms_key_info:
+    alias: "{{ ssm_session_kms_key_name }}"
+    validate_certs: true
+  register: __ssm_session_kms_key_info
+
+- name: Ensure aws systems manager session kms key fact is generated
+  tags:
+    - ssm_session
+  ansible.builtin.set_fact:
+    __ssm_session_kms_key_id:
+      "{{ __ssm_session_kms_key_info.kms_keys.0.key_arn |
+          d(none) }}"
+...

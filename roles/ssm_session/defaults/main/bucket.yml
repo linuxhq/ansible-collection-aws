@@ -1,0 +1,8 @@
+---
+ssm_session_bucket_ansible_name: ssm-ansible
+ssm_session_bucket_ansible_retention: 1
+ssm_session_bucket_sessions_name: ssm-sessions
+ssm_session_bucket_sessions_retention: 365
+ssm_session_bucket_transfer_name: ssm-transfer
+ssm_session_bucket_transfer_retention: 1
+...

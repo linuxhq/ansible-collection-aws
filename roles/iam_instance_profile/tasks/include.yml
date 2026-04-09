@@ -18,11 +18,13 @@
   loop_control:
     label: "{{ _instance_profile.name | d(none) }}"
     loop_var: _instance_profile
-  when:
-    - _instance_profile.name is defined
-  changed_when: false
   async: "{{ ansible_check_mode | ternary(0, iam_instance_profile_async) }}"
   poll: "{{ iam_instance_profile_poll }}"
+  when:
+    - _instance_profile.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __iam_instance_profile_result.changed | bool
 
 - name: Ensure managed iam instance profile jobs are complete
   tags:

@@ -1,0 +1,14 @@
+---
+- name: Ensure aws systems manager session cloudwatchlogs log group is managed
+  tags:
+    - ssm_session
+  amazon.aws.cloudwatchlogs_log_group:
+    kms_key_id: "{{ __ssm_session_kms_key_id }}"
+    log_group_name: "{{ ssm_session_log_group_name }}"
+    purge_tags: true
+    region: "{{ __ssm_session_region }}"
+    retention: "{{ ssm_session_log_group_retention }}"
+    state: "{{ ssm_session_state }}"
+    tags: "{{ ssm_session_tags }}"
+    validate_certs: true
+...

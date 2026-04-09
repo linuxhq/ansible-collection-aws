@@ -27,12 +27,14 @@
   loop_control:
     label: "{{ _role.name | d(none) }}"
     loop_var: _role
+  async: "{{ ansible_check_mode | ternary(0, iam_role_async) }}"
+  poll: "{{ iam_role_poll }}"
   when:
     - _role.assume_role_policy_document is defined
     - _role.name is defined
-  changed_when: false
-  async: "{{ ansible_check_mode | ternary(0, iam_role_async) }}"
-  poll: "{{ iam_role_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __iam_role_result.changed | bool
 
 - name: Ensure managed iam role jobs are complete
   tags:
