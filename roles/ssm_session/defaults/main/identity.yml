@@ -1,4 +1,26 @@
 ---
+ssm_session_iam_policy_consumer_name: ssm-consumer
+ssm_session_iam_policy_consumer_document:
+  Version: '2012-10-17'
+  Statement:
+    - Effect: Allow
+      Action:
+        - kms:GenerateDataKey
+        - s3:GetEncryptionConfiguration
+      Resource:
+        - '*'
+    - Effect: Allow
+      Action:
+        - s3:DeleteObject
+        - s3:GetBucketLocation
+        - s3:GetObject
+        - s3:HeadObject
+        - s3:ListBucket
+        - s3:PutObject
+      Resource:
+        - "arn:aws:s3:::{{ __ssm_session_account }}-*-{{ ssm_session_bucket_transfer_name }}"
+        - "arn:aws:s3:::{{ __ssm_session_account }}-*-{{ ssm_session_bucket_transfer_name }}/*"
+
 ssm_session_iam_policy_instance_name: ssm-instance
 ssm_session_iam_policy_instance_document:
   Version: '2012-10-17'
@@ -67,26 +89,4 @@ ssm_session_iam_policy_instance_document:
       Resource:
         - "arn:aws:s3:::{{ __ssm_session_account }}-*-{{ ssm_session_bucket_sessions_name }}"
         - "arn:aws:s3:::{{ __ssm_session_account }}-*-{{ ssm_session_bucket_sessions_name }}/*"
-
-ssm_session_iam_policy_consumer_name: ssm-consumer
-ssm_session_iam_policy_consumer_document:
-  Version: '2012-10-17'
-  Statement:
-    - Effect: Allow
-      Action:
-        - kms:GenerateDataKey
-        - s3:GetEncryptionConfiguration
-      Resource:
-        - '*'
-    - Effect: Allow
-      Action:
-        - s3:DeleteObject
-        - s3:GetBucketLocation
-        - s3:GetObject
-        - s3:HeadObject
-        - s3:ListBucket
-        - s3:PutObject
-      Resource:
-        - "arn:aws:s3:::{{ __ssm_session_account }}-*-{{ ssm_session_bucket_transfer_name }}"
-        - "arn:aws:s3:::{{ __ssm_session_account }}-*-{{ ssm_session_bucket_transfer_name }}/*"
 ...
