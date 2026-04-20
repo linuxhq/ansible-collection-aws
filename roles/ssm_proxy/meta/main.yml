@@ -1,0 +1,25 @@
+---
+dependencies:
+  - role: eks_cluster_info
+    tags: ssm_proxy
+galaxy_info:
+  role_name: ssm_proxy
+  author: Taylor Kimball
+  description: Configure local session manager proxy to backend aws service
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - proxy
+    - session
+    - ssm
+...

@@ -1,0 +1,51 @@
+---
+- name: Ensure aws session manager proxy randomized local port is generated
+  tags:
+    - ssm_proxy
+  ansible.builtin.set_fact:
+    __ssm_proxy_port_local:
+      "{{ 65535 | ansible.builtin.random(start=1024) }}"
+
+- name: Ensure aws session manager proxy instance information is gathered
+  tags:
+    - ssm_proxy
+  amazon.aws.ec2_instance_info:
+    filters:
+      instance-state-name: running
+      'tag:Name': "{{ ssm_proxy_instance }}"
+  register: __ssm_proxy_instance
+
+- name: Ensure aws session manager proxy parameters are generated
+  tags:
+    - ssm_proxy
+  ansible.builtin.set_fact:
+    __ssm_proxy_parameters:
+      host: "{{ [ssm_proxy_host] }}"
+      portNumber: "{{ [ssm_proxy_port | string] }}"
+      localPortNumber: "{{ [__ssm_proxy_port_local | string] }}"
+
+- name: Ensure aws session manager proxy is present
+  tags:
+    - ssm_proxy
+  ansible.builtin.command:
+    cmd: >
+      aws ssm start-session
+        --document-name AWS-StartPortForwardingSessionToRemoteHost
+        --parameters '{{ __ssm_proxy_parameters | to_json }}'
+        --target "{{ __ssm_proxy_instance.instances.0.instance_id }}"
+  changed_when: false
+  async: 3600
+  poll: 0
+
+- name: Ensure aws session manager proxy local port is present
+  tags:
+    - ssm_proxy
+  ansible.builtin.wait_for:
+    connect_timeout: 5
+    delay: 0
+    host: localhost
+    port: "{{ __ssm_proxy_port_local }}"
+    sleep: 1
+    state: started
+    timeout: 60
+...

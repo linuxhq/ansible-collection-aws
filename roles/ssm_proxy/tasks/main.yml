@@ -1,0 +1,14 @@
+---
+- name: Ensure aws session manager proxy tasks are included
+  tags:
+    - ssm_proxy
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ssm_proxy
+    file: include.yml
+  when:
+    - ssm_proxy_host is not none
+    - ssm_proxy_instance is not none
+    - ssm_proxy_port is not none
+...

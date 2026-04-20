@@ -1,0 +1,71 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin:/usr/bin:/usr/local/bin'
+
+  pre_tasks:
+    - name: Ensure aws session manager proxy package is present
+      tags:
+        - ssm_proxy
+      become: true
+      ansible.builtin.dnf:
+        disable_gpg_check: true
+        name: "{{ __ssm_proxy_baseurl }}/{{ __ssm_proxy_arch[ansible_facts.architecture] }}/session-manager-plugin.rpm"
+        state: present
+      vars:
+        __ssm_proxy_baseurl: https://s3.amazonaws.com/session-manager-downloads/plugin/latest
+        __ssm_proxy_arch:
+          aarch64: linux_arm64
+          x86_64: linux_64bit
+
+  roles:
+    - role: ssm_session
+      tags:
+        - molecule-idempotence-notest
+
+    - role: iam_role
+      tags:
+        - molecule-idempotence-notest
+
+    - role: iam_instance_profile
+      tags:
+        - molecule-idempotence-notest
+
+    - role: ec2_vpc_net
+      tags:
+        - molecule-idempotence-notest
+
+    - role: ec2_vpc_igw
+      tags:
+        - molecule-idempotence-notest
+
+    - role: ec2_vpc_subnet
+      tags:
+        - molecule-idempotence-notest
+
+    - role: ec2_vpc_nat_gateway
+      tags:
+        - molecule-idempotence-notest
+
+    - role: ec2_vpc_route_table
+      tags:
+        - molecule-idempotence-notest
+
+    - role: ec2_security_group
+      tags:
+        - molecule-idempotence-notest
+
+    - role: ec2_instance
+      tags:
+        - molecule-idempotence-notest
+
+    - role: ssm_proxy
+      ssm_proxy_host: null
+      ssm_proxy_instance: null
+      ssm_proxy_port: null
+      tags:
+        - molecule-idempotence-notest
+
+    - ssm_proxy
+...
