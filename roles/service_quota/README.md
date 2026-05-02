@@ -2,10 +2,6 @@
 
 Manage aws service quotas
 
-## Requirements
-
-* [awscli](https://pypi.org/project/awscli)
-
 ## Role Variables
 
     service_quota_list: []

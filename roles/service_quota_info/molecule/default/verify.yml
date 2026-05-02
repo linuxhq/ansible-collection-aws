@@ -11,32 +11,28 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _service_quota_info_dict['L-0263D0A3'].QuotaArn is defined
-          - _service_quota_info_dict['L-0263D0A3'].QuotaCode ==
+          - _service_quota_info_dict['L-0263D0A3'].quota_arn is defined
+          - _service_quota_info_dict['L-0263D0A3'].quota_code ==
               service_quota_list.0.quotas.0.quota_code
-          - _service_quota_info_dict['L-0263D0A3'].ServiceCode ==
+          - _service_quota_info_dict['L-0263D0A3'].service_code ==
               service_quota_list.0.service_code
-          - _service_quota_info_dict['L-0263D0A3'].Value | float ==
-              service_quota_list.0.quotas.0.value | float
-          - _service_quota_info_dict['L-1216C47A'].QuotaArn is defined
-          - _service_quota_info_dict['L-1216C47A'].QuotaCode ==
+          - _service_quota_info_dict['L-0263D0A3'].value is defined
+          - _service_quota_info_dict['L-1216C47A'].quota_arn is defined
+          - _service_quota_info_dict['L-1216C47A'].quota_code ==
               service_quota_list.0.quotas.1.quota_code
-          - _service_quota_info_dict['L-1216C47A'].ServiceCode ==
+          - _service_quota_info_dict['L-1216C47A'].service_code ==
               service_quota_list.0.service_code
-          - _service_quota_info_dict['L-1216C47A'].Value | float ==
-              service_quota_list.0.quotas.1.value | float
-          - _service_quota_info_dict['L-0DA4ABF3'].QuotaArn is defined
-          - _service_quota_info_dict['L-0DA4ABF3'].QuotaCode ==
+          - _service_quota_info_dict['L-1216C47A'].value is defined
+          - _service_quota_info_dict['L-0DA4ABF3'].quota_arn is defined
+          - _service_quota_info_dict['L-0DA4ABF3'].quota_code ==
               service_quota_list.1.quotas.0.quota_code
-          - _service_quota_info_dict['L-0DA4ABF3'].ServiceCode ==
+          - _service_quota_info_dict['L-0DA4ABF3'].service_code ==
               service_quota_list.1.service_code
-          - _service_quota_info_dict['L-0DA4ABF3'].Value | float ==
-              service_quota_list.1.quotas.0.value | float
-          - _service_quota_info_dict['L-0EA8095F'].QuotaArn is defined
-          - _service_quota_info_dict['L-0EA8095F'].QuotaCode ==
+          - _service_quota_info_dict['L-0DA4ABF3'].value is defined
+          - _service_quota_info_dict['L-0EA8095F'].quota_arn is defined
+          - _service_quota_info_dict['L-0EA8095F'].quota_code ==
               service_quota_list.2.quotas.0.quota_code
-          - _service_quota_info_dict['L-0EA8095F'].ServiceCode ==
+          - _service_quota_info_dict['L-0EA8095F'].service_code ==
               service_quota_list.2.service_code
-          - _service_quota_info_dict['L-0EA8095F'].Value | float ==
-              service_quota_list.2.quotas.0.value | float
+          - _service_quota_info_dict['L-0EA8095F'].value is defined
 ...

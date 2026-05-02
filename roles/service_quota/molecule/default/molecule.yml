@@ -26,20 +26,20 @@ provisioner:
           - service_code: ec2
             quotas:
               - quota_code: L-0263D0A3
-                value: '10.0'
+                value: '15.0'
               - quota_code: L-1216C47A
-                value: '128.0'
+                value: '130.0'
 
           - service_code: iam
             quotas:
               - quota_code: L-0DA4ABF3
                 region: us-east-1
-                value: '20.0'
+                value: '25.0'
 
           - service_code: vpc
             quotas:
               - quota_code: L-0EA8095F
-                value: '125.0'
+                value: '130.0'
 
 scenario:
   test_sequence:

@@ -2,10 +2,6 @@
 
 Gather information about aws service quotas
 
-## Requirements
-
-* [awscli](https://pypi.org/project/awscli)
-
 ## Role Variables
 
     service_quota_info_list: []
