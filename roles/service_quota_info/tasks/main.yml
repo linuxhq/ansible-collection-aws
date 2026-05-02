@@ -11,22 +11,15 @@
     - service_quota_info
   ansible.builtin.set_fact:
     __service_quota_info_region:
-      "{{ __service_quota_info_availability_zone.availability_zones |
-          map(attribute='region_name') |
-          list |
-          unique |
-          first }}"
+      "{{ __service_quota_info_availability_zone.availability_zones.0.region_name }}"
 
 - name: Ensure information about aws service quota is gathered
   tags:
     - service_quota_info
-  ansible.builtin.command:
-    cmd: >
-      aws service-quotas get-service-quota
-        --query Quota
-        --quota-code "{{ _servicequota.1.quota_code }}"
-        --region "{{ _servicequota.1.region | d(__service_quota_info_region) }}"
-        --service-code "{{ _servicequota.0.service_code }}"
+  linuxhq.aws.service_quota_info:
+    quota_code: "{{ _servicequota.1.quota_code }}"
+    region: "{{ _servicequota.1.region | d(__service_quota_info_region) }}"
+    service_code: "{{ _servicequota.0.service_code }}"
   register: __service_quota_info_query
   loop:
     "{{ q('ansible.builtin.subelements',
@@ -36,8 +29,6 @@
   loop_control:
     label: "{{ _servicequota.1.quota_code | d(none) }}"
     loop_var: _servicequota
-  changed_when: false
-  check_mode: false
 
 - name: Ensure list of aws service quota information is generated
   tags:
@@ -45,8 +36,7 @@
   ansible.builtin.set_fact:
     _service_quota_info_list:
       "{{ __service_quota_info_query.results |
-          map(attribute='stdout', default=[]) |
-          map('from_json') |
+          map(attribute='quota', default=[]) |
           list }}"
 
 - name: Ensure dict of aws service quota information is generated
@@ -55,6 +45,6 @@
   ansible.builtin.set_fact:
     _service_quota_info_dict:
       "{{ dict(_service_quota_info_list |
-               json_query('[].QuotaCode') |
+               json_query('[].quota_code') |
                zip(_service_quota_info_list)) }}"
 ...

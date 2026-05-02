@@ -11,49 +11,26 @@
     - service_quota
   ansible.builtin.set_fact:
     __service_quota_region:
-      "{{ __service_quota_availability_zone.availability_zones |
-          map(attribute='region_name') |
-          list |
-          unique |
-          first }}"
+      "{{ __service_quota_availability_zone.availability_zones.0.region_name }}"
 
-- name: Ensure aws service quota request history is gathered
+- name: Ensure aws service quotas are managed
   tags:
     - service_quota
-  ansible.builtin.command:
-    cmd: >
-      aws service-quotas list-requested-service-quota-change-history
-        --query 'RequestedQuotas[?Status==`CASE_OPENED` || Status==`PENDING`].QuotaCode'
-  register: __service_quota_history
-  changed_when: false
-  check_mode: false
-
-- name: Ensure list of aws service quota requests is generated
-  tags:
-    - service_quota
-  ansible.builtin.set_fact:
-    __service_quota_request:
-      "{{ __service_quota_history.stdout | from_json }}"
-
-- name: Ensure aws service quota tasks are included
-  tags:
-    - service_quota
-  ansible.builtin.include_tasks:
-    apply:
-      tags:
-        - service_quota
-    file: include.yml
+  linuxhq.aws.service_quota:
+    quota_code: "{{ _servicequota.1.quota_code }}"
+    region: "{{ _servicequota.1.region | d(__service_quota_region) }}"
+    service_code: "{{ _servicequota.0.service_code }}"
+    value: "{{ _servicequota.1.value }}"
   loop:
     "{{ q('ansible.builtin.subelements',
           service_quota_list,
           'quotas',
           {'skip_missing': true}) }}"
   loop_control:
-    label: "{{ _servicequota.0.service_code | d(none) }}"
+    label: "{{ _servicequota.1.quota_code | d(none) }}"
     loop_var: _servicequota
   when:
     - _servicequota.0.service_code is defined
     - _servicequota.1.quota_code is defined
-    - _servicequota.1.quota_code not in __service_quota_request
     - _servicequota.1.value is defined
 ...
