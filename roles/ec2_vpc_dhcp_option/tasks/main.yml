@@ -1,5 +1,5 @@
 ---
-- name: Ensure virtual private cloud dhcp options are batched
+- name: Ensure aws virtual private cloud dhcp options are batched
   tags:
     - ec2_vpc_dhcp_option
   ansible.builtin.include_tasks:

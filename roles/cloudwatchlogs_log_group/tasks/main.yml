@@ -1,5 +1,5 @@
 ---
-- name: Ensure cloudwatchlogs log groups are batched
+- name: Ensure aws cloudwatchlogs log groups are batched
   tags:
     - cloudwatchlogs_log_group
   ansible.builtin.include_tasks:

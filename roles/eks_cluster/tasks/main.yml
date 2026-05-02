@@ -1,5 +1,5 @@
 ---
-- name: Ensure elastic kubernetes service defaults are generated
+- name: Ensure aws elastic kubernetes service defaults are generated
   tags:
     - eks_cluster
   ansible.builtin.set_fact:
@@ -17,7 +17,7 @@
       - cidr_ip: 0.0.0.0/0
         proto: -1
 
-- name: Ensure elastic kubernetes service tasks are included
+- name: Ensure aws elastic kubernetes service tasks are included
   tags:
     - eks_cluster
   ansible.builtin.include_tasks:

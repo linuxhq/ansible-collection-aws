@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about ec2 instances is gathered
+- name: Ensure information about aws instances is gathered
   tags:
     - ec2_instance_info
   amazon.aws.ec2_instance_info:
@@ -10,7 +10,7 @@
     validate_certs: true
   register: __ec2_instance_info_query
 
-- name: Ensure list of ec2 instances is generated
+- name: Ensure list of aws instances is generated
   tags:
     - ec2_instance_info
   ansible.builtin.set_fact:
@@ -19,7 +19,7 @@
           selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of ec2 instances is generated
+- name: Ensure dict of aws instances is generated
   tags:
     - ec2_instance_info
   ansible.builtin.set_fact:

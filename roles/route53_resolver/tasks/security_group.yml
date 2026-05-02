@@ -37,7 +37,7 @@
     vpc_id: "{{ _route53resolver.vpc_id }}"
   register: __route53_resolver_security_group
 
-- name: Ensure list of aws route53 resolver security group id is generated
+- name: Ensure list of aws route53 resolver security group ids is generated
   tags:
     - route53_resolver
   ansible.builtin.set_fact:

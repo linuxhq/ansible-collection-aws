@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about eks cluster names is gathered
+- name: Ensure information about aws eks cluster names is gathered
   tags:
     - eks_cluster_info
   ansible.builtin.command:
@@ -10,7 +10,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure list of eks clusters is generated
+- name: Ensure list of aws eks clusters is generated
   tags:
     - eks_cluster_info
   ansible.builtin.set_fact:
@@ -19,7 +19,7 @@
           from_json) |
           d([]) }}"
 
-- name: Ensure information about eks cluster details is gathered
+- name: Ensure information about aws eks cluster details is gathered
   tags:
     - eks_cluster_info
   ansible.builtin.command:
@@ -35,7 +35,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure list of eks cluster information is generated
+- name: Ensure list of aws eks cluster information is generated
   tags:
     - eks_cluster_info
   ansible.builtin.set_fact:
@@ -44,7 +44,7 @@
           map(attribute='stdout') |
           map('from_json') }}"
 
-- name: Ensure dict of eks cluster information is generated
+- name: Ensure dict of aws eks cluster information is generated
   tags:
     - eks_cluster_info
   ansible.builtin.set_fact:

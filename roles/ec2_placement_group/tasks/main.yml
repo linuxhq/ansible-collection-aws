@@ -1,5 +1,5 @@
 ---
-- name: Ensure ec2 placement groups are batched
+- name: Ensure aws placement groups are batched
   tags:
     - ec2_placement_group
   ansible.builtin.include_tasks:

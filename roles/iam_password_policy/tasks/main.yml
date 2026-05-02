@@ -1,5 +1,5 @@
 ---
-- name: Ensure iam password policy is managed
+- name: Ensure aws iam password policy is managed
   tags:
     - iam_password_policy
   amazon.aws.iam_password_policy:

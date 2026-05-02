@@ -1,5 +1,5 @@
 ---
-- name: Ensure ec2 launch templates are batched
+- name: Ensure aws launch templates are batched
   tags:
     - ec2_launch_template
   ansible.builtin.include_tasks:

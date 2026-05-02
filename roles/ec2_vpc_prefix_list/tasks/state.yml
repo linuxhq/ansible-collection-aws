@@ -1,5 +1,5 @@
 ---
-- name: Ensure virtual private cloud prefix list state is complete
+- name: Ensure aws virtual private cloud prefix list state is complete
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.command:

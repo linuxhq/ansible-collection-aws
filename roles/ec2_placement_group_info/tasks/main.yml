@@ -9,7 +9,7 @@
 #     validate_certs: true
 #   register: __ec2_placement_group_info_query
 
-- name: Ensure information about ec2 placement groups is gathered
+- name: Ensure information about aws placement groups is gathered
   tags:
     - ec2_placement_group_info
   ansible.builtin.command:
@@ -20,7 +20,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure registered values are formatted
+- name: Ensure list of aws placement groups is generated
   tags:
     - ec2_placement_group_info
   ansible.builtin.set_fact:
@@ -28,7 +28,7 @@
       "{{ (__ec2_placement_group_info_query.stdout | from_json) |
           d([]) }}"
 
-- name: Ensure dict of ec2 placement groups is generated
+- name: Ensure dict of aws placement groups is generated
   tags:
     - ec2_placement_group_info
   ansible.builtin.set_fact:

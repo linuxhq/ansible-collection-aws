@@ -1,5 +1,5 @@
 ---
-- name: Ensure virtual private cloud dhcp options are managed
+- name: Ensure aws virtual private cloud dhcp options are managed
   tags:
     - ec2_vpc_dhcp_option
   amazon.aws.ec2_vpc_dhcp_option:
@@ -29,7 +29,7 @@
   async: "{{ ansible_check_mode | ternary(0, ec2_vpc_dhcp_option_async) }}"
   poll: "{{ ec2_vpc_dhcp_option_poll }}"
 
-- name: Ensure managed virtual private cloud dhcp option jobs are complete
+- name: Ensure managed aws virtual private cloud dhcp option jobs are complete
   tags:
     - ec2_vpc_dhcp_option
   ansible.builtin.async_status:

@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about ec2 volumes is gathered
+- name: Ensure information about aws volumes is gathered
   tags:
     - ec2_vol_info
   amazon.aws.ec2_vol_info:
@@ -7,7 +7,7 @@
     validate_certs: true
   register: __ec2_vol_info_query
 
-- name: Ensure list of ec2 volumes is generated
+- name: Ensure list of aws volumes is generated
   tags:
     - ec2_vol_info
   ansible.builtin.set_fact:
@@ -16,7 +16,7 @@
           selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of ec2 volumes is generated
+- name: Ensure dict of aws volumes is generated
   tags:
     - ec2_vol_info
   ansible.builtin.set_fact:

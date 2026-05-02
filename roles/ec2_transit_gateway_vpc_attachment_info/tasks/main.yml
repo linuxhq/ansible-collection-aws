@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about ec2 transit gateway vpc attachments is gathered
+- name: Ensure information about aws transit gateway vpc attachments is gathered
   tags:
     - ec2_transit_gateway_vpc_attachment_info
   amazon.aws.ec2_transit_gateway_vpc_attachment_info:
@@ -7,7 +7,7 @@
     validate_certs: true
   register: __ec2_transit_gateway_vpc_attachment_info_query
 
-- name: Ensure list of ec2 transit gateway vpc attachments is generated
+- name: Ensure list of aws transit gateway vpc attachments is generated
   tags:
     - ec2_transit_gateway_vpc_attachment_info
   ansible.builtin.set_fact:
@@ -16,7 +16,7 @@
           selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of ec2 transit gateway vpc attachments is generated
+- name: Ensure dict of aws transit gateway vpc attachments is generated
   tags:
     - ec2_transit_gateway_vpc_attachment_info
   ansible.builtin.set_fact:

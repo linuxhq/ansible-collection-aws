@@ -1,5 +1,5 @@
 ---
-- name: Ensure identity and access management groups are gathered
+- name: Ensure information about aws identity and access management groups is gathered
   tags:
     - iam_policy_info
   ansible.builtin.command:
@@ -10,7 +10,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure identity and access management users are gathered
+- name: Ensure information about aws identity and access management users is gathered
   tags:
     - iam_policy_info
   ansible.builtin.command:
@@ -21,7 +21,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure identity and access management return values are formatted
+- name: Ensure list of aws identity and access management return values is generated
   tags:
     - iam_policy_info
   ansible.builtin.set_fact:
@@ -36,7 +36,7 @@
           list |
           d([]) }}"
 
-- name: Ensure identity and access management group inline policies are gathered
+- name: Ensure information about aws identity and access management group inline policies is gathered
   tags:
     - iam_policy_info
   amazon.aws.iam_policy_info:
@@ -49,7 +49,7 @@
     label: "{{ _group | d(none) }}"
     loop_var: _group
 
-- name: Ensure list of identity and access management group inline policies is generated
+- name: Ensure list of aws identity and access management group inline policies is generated
   tags:
     - iam_policy_info
   ansible.builtin.set_fact:
@@ -62,7 +62,7 @@
             policy_names: policy_names
           }') }}"
 
-- name: Ensure identity and access management user inline policies are gathered
+- name: Ensure information about aws identity and access management user inline policies is gathered
   tags:
     - iam_policy_info
   amazon.aws.iam_policy_info:
@@ -75,7 +75,7 @@
     label: "{{ _user | d(none) }}"
     loop_var: _user
 
-- name: Ensure list of identity and access management user inline policies is generated
+- name: Ensure list of aws identity and access management user inline policies is generated
   tags:
     - iam_policy_info
   ansible.builtin.set_fact:
@@ -88,7 +88,7 @@
             policy_names: policy_names
           }') }}"
 
-- name: Ensure dict of group inline policy information is generated
+- name: Ensure dict of aws group inline policy information is generated
   tags:
     - iam_policy_info
   ansible.builtin.set_fact:
@@ -97,7 +97,7 @@
                json_query('[].name') |
                zip(_iam_policy_info_group_list)) }}"
 
-- name: Ensure dict of user inline policy information is generated
+- name: Ensure dict of aws user inline policy information is generated
   tags:
     - iam_policy_info
   ansible.builtin.set_fact:

@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about ec2 elastic ips is gathered
+- name: Ensure information about aws elastic ips is gathered
   tags:
     - ec2_eip_info
   amazon.aws.ec2_eip_info:
@@ -7,7 +7,7 @@
     validate_certs: true
   register: __ec2_eip_info_query
 
-- name: Ensure list of ec2 elastic ips is generated
+- name: Ensure list of aws elastic ips is generated
   tags:
     - ec2_eip_info
   ansible.builtin.set_fact:
@@ -16,7 +16,7 @@
           selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of ec2 elastic ips is generated
+- name: Ensure dict of aws elastic ips is generated
   tags:
     - ec2_eip_info
   ansible.builtin.set_fact:

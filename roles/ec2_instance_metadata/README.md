@@ -4,7 +4,7 @@ Manage aws ec2 instance metadata defaults
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli) >= 1.32.70
+None
 
 ## Role Variables
 

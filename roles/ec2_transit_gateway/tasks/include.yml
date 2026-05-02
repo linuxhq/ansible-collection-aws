@@ -1,5 +1,5 @@
 ---
-- name: Ensure ec2 transit gateways are managed
+- name: Ensure aws transit gateways are managed
   tags:
     - ec2_transit_gateway
   amazon.aws.ec2_transit_gateway:
@@ -30,7 +30,7 @@
   async: "{{ ansible_check_mode | ternary(0, ec2_transit_gateway_async) }}"
   poll: "{{ ec2_transit_gateway_poll }}"
 
-- name: Ensure managed ec2 transit gateway jobs are complete
+- name: Ensure managed aws transit gateway jobs are complete
   tags:
     - ec2_transit_gateway
   ansible.builtin.async_status:
@@ -47,7 +47,7 @@
   retries: "{{ ec2_transit_gateway_retries }}"
   delay: "{{ ec2_transit_gateway_delay }}"
 
-- name: Ensure ec2 transit gateway route table name tags are managed
+- name: Ensure aws transit gateway route table name tags are managed
   tags:
     - ec2_transit_gateway
   amazon.aws.ec2_tag:
@@ -74,7 +74,7 @@
   async: "{{ ansible_check_mode | ternary(0, ec2_transit_gateway_async) }}"
   poll: "{{ ec2_transit_gateway_poll }}"
 
-- name: Ensure managed ec2 transit gateway name tag jobs are complete
+- name: Ensure managed aws transit gateway name tag jobs are complete
   tags:
     - ec2_transit_gateway
   ansible.builtin.async_status:

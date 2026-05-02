@@ -1,5 +1,5 @@
 ---
-- name: Ensure elastic kubernetes service present tasks are included
+- name: Ensure aws elastic kubernetes service present tasks are included
   tags:
     - eks_cluster
   ansible.builtin.include_tasks:
@@ -17,7 +17,7 @@
   when:
     - _cluster.state == 'present'
 
-- name: Ensure elastic kubernetes service absent tasks are included
+- name: Ensure aws elastic kubernetes service absent tasks are included
   tags:
     - eks_cluster
   ansible.builtin.include_tasks:

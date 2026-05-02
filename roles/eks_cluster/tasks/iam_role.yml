@@ -1,5 +1,5 @@
 ---
-- name: Ensure elastic kubernetes service iam role is managed
+- name: Ensure aws elastic kubernetes service iam role is managed
   tags:
     - eks_cluster
   amazon.aws.iam_role:
@@ -26,7 +26,7 @@
     validate_certs: true
   register: __eks_cluster_iam_role_result
 
-- name: Ensure string of elastic kubernetes service iam role arn is generated
+- name: Ensure string of aws elastic kubernetes service iam role arn is generated
   tags:
     - eks_cluster
   ansible.builtin.set_fact:

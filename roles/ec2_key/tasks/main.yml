@@ -1,5 +1,5 @@
 ---
-- name: Ensure ec2 keys are batched
+- name: Ensure aws keys are batched
   tags:
     - ec2_key
   ansible.builtin.include_tasks:

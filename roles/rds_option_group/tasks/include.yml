@@ -31,7 +31,7 @@
   async: "{{ ansible_check_mode | ternary(0, rds_option_group_async) }}"
   poll: "{{ rds_option_group_poll }}"
 
-- name: Ensure managed relational database service option groups jobs are complete
+- name: Ensure managed aws relational database service option groups jobs are complete
   tags:
     - rds_option_group
   ansible.builtin.async_status:

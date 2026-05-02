@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about ec2 keys is gathered
+- name: Ensure information about aws keys is gathered
   tags:
     - ec2_key_info
   amazon.aws.ec2_key_info:
@@ -10,7 +10,7 @@
     validate_certs: true
   register: __ec2_key_info_query
 
-- name: Ensure list of ec2 keys is generated
+- name: Ensure list of aws keys is generated
   tags:
     - ec2_key_info
   ansible.builtin.set_fact:
@@ -19,7 +19,7 @@
           selectattr('key_name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of ec2 keys is generated
+- name: Ensure dict of aws keys is generated
   tags:
     - ec2_key_info
   ansible.builtin.set_fact:

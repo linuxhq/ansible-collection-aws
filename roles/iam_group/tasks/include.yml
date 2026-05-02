@@ -1,5 +1,5 @@
 ---
-- name: Ensure iam groups are managed
+- name: Ensure aws iam groups are managed
   tags:
     - iam_group
   amazon.aws.iam_group:
@@ -22,7 +22,7 @@
   async: "{{ ansible_check_mode | ternary(0, iam_group_async) }}"
   poll: "{{ iam_group_poll }}"
 
-- name: Ensure managed iam group jobs are complete
+- name: Ensure managed aws iam group jobs are complete
   tags:
     - iam_group
   ansible.builtin.async_status:

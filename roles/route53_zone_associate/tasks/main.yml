@@ -9,7 +9,7 @@
           map('combine') |
           list }}"
 
-- name: Ensure aws route53 zone association information is gathered
+- name: Ensure information about aws route53 zone association is gathered
   tags:
     - route53_zone_associate
   amazon.aws.route53_info:

@@ -1,5 +1,5 @@
 ---
-- name: Ensure elastic load balancer target groups are managed
+- name: Ensure aws elastic load balancer target groups are managed
   tags:
     - elb_target_group
   community.aws.elb_target_group:
@@ -50,7 +50,7 @@
   async: "{{ ansible_check_mode | ternary(0, elb_target_group_async) }}"
   poll: "{{ elb_target_group_poll }}"
 
-- name: Ensure managed elastic load balancer target group jobs are complete
+- name: Ensure managed aws elastic load balancer target group jobs are complete
   tags:
     - elb_target_group
   ansible.builtin.async_status:

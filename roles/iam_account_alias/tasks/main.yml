@@ -1,5 +1,5 @@
 ---
-- name: Ensure iam account alias is gathered
+- name: Ensure aws iam account alias is gathered
   tags:
     - iam_account_alias
   ansible.builtin.command:
@@ -12,7 +12,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure iam account alias list is generated
+- name: Ensure aws iam account alias list is generated
   tags:
     - iam_account_alias
   ansible.builtin.set_fact:
@@ -23,7 +23,7 @@
   when:
     - iam_account_alias_name is not none
 
-- name: Ensure iam account alias is present
+- name: Ensure aws iam account alias is present
   tags:
     - iam_account_alias
   ansible.builtin.command:
@@ -36,7 +36,7 @@
     - iam_account_alias_state == 'present'
   changed_when: true
 
-- name: Ensure iam account alias is absent
+- name: Ensure aws iam account alias is absent
   tags:
     - iam_account_alias
   ansible.builtin.command:

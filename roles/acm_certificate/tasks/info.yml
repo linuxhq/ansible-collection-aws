@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws certificate manager certificate information is gathered
+- name: Ensure information about aws certificate manager certificate is gathered
   tags:
     - acm_certificate
   community.aws.acm_certificate_info:

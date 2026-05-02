@@ -9,33 +9,27 @@
 
   tasks:
     - name: Ensure ec2 instance metadata region defaults are gathered
-      ansible.builtin.command:
-        cmd: >
-          aws ec2 get-instance-metadata-defaults
-            --region "{{ _region }}"
+      linuxhq.aws.ec2_instance_metadata_info:
+        region: "{{ _region }}"
       register: __ec2_instance_metadata_result
-      loop:
-        "{{ _aws_region_info_dict.keys() |
-            d([]) }}"
+      loop: "{{ ec2_instance_metadata_regions }}"
       loop_control:
         label: "{{ _region | d(none) }}"
         loop_var: _region
-      changed_when: false
 
-    - name: Ensure ec2 instance metadata region defaults is verified
+    - name: Ensure gathered ec2 instance metadata result is verified
       ansible.builtin.assert:
         quiet: true
         that:
-          - (_region.stdout | from_json).AccountLevel.HttpTokens ==
-              ec2_instance_metadata_http_tokens
-          - (_region.stdout | from_json).AccountLevel.HttpPutResponseHopLimit ==
+          - not _result.changed
+          - _result.account_level.http_tokens == ec2_instance_metadata_http_tokens
+          - _result.account_level.http_put_response_hop_limit ==
               ec2_instance_metadata_http_put_response_hop_limit
-          - (_region.stdout | from_json).AccountLevel.HttpEndpoint ==
-              ec2_instance_metadata_http_endpoint
-          - (_region.stdout | from_json).AccountLevel.InstanceMetadataTags ==
+          - _result.account_level.http_endpoint == ec2_instance_metadata_http_endpoint
+          - _result.account_level.instance_metadata_tags ==
               ec2_instance_metadata_instance_metadata_tags
       loop: "{{ __ec2_instance_metadata_result.results }}"
       loop_control:
-        label: "{{ _region._region | d(none) }}"
-        loop_var: _region
+        label: "{{ _result._region | d(none) }}"
+        loop_var: _result
 ...

@@ -9,7 +9,7 @@
           map('combine') |
           list }}"
 
-- name: Ensure aws simple email service region information is gathered
+- name: Ensure information about aws simple email service region is gathered
   tags:
     - ses_identity
   amazon.aws.aws_az_info:
@@ -28,7 +28,7 @@
           unique |
           first }}"
 
-- name: Ensure aws simple email service dkim doamin is generated
+- name: Ensure aws simple email service dkim domain is generated
   tags:
     - ses_identity
   ansible.builtin.set_fact:

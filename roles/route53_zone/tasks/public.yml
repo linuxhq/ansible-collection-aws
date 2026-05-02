@@ -29,7 +29,7 @@
     - ansible_check_mode | bool
     - __route53_zone_result.changed | bool
 
-- name: Ensure managed aws route53 public zone managed jobs are complete
+- name: Ensure managed aws route53 public zone jobs are complete
   tags:
     - route53_zone
   ansible.builtin.async_status:

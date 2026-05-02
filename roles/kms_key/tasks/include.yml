@@ -34,7 +34,7 @@
     - ansible_check_mode | bool
     - __kms_key_result.changed | bool
 
-- name: Ensure managed key management service key jobs are complete
+- name: Ensure managed aws key management service key jobs are complete
   tags:
     - kms_key
   ansible.builtin.async_status:

@@ -1,5 +1,5 @@
 ---
-- name: Ensure iam roles are batched
+- name: Ensure aws iam roles are batched
   tags:
     - iam_role
   ansible.builtin.include_tasks:

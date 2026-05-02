@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about ec2 security groups is gathered
+- name: Ensure information about aws security groups is gathered
   tags:
     - ec2_security_group_info
   amazon.aws.ec2_security_group_info:
@@ -7,7 +7,7 @@
     validate_certs: true
   register: __ec2_security_group_info_query
 
-- name: Ensure list of ec2 security groups is generated
+- name: Ensure list of aws security groups is generated
   tags:
     - ec2_security_group_info
   ansible.builtin.set_fact:
@@ -16,7 +16,7 @@
           selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of ec2 security groups is generated
+- name: Ensure dict of aws security groups is generated
   tags:
     - ec2_security_group_info
   ansible.builtin.set_fact:

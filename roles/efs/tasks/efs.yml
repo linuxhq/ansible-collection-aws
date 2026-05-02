@@ -1,5 +1,5 @@
 ---
-- name: Ensure elastic filesystems are managed
+- name: Ensure aws elastic filesystems are managed
   tags:
     - efs
   community.aws.efs:

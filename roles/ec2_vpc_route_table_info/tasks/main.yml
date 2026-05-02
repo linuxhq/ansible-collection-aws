@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about virtual private cloud route tables is gathered
+- name: Ensure information about aws virtual private cloud route tables is gathered
   tags:
     - ec2_vpc_route_table_info
   amazon.aws.ec2_vpc_route_table_info:
@@ -7,7 +7,7 @@
     validate_certs: true
   register: __ec2_vpc_route_table_info_query
 
-- name: Ensure list of virtual private cloud route tables is generated
+- name: Ensure list of aws virtual private cloud route tables is generated
   tags:
     - ec2_vpc_route_table_info
   ansible.builtin.set_fact:
@@ -16,7 +16,7 @@
           selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of virtual private cloud route tables is generated
+- name: Ensure dict of aws virtual private cloud route tables is generated
   tags:
     - ec2_vpc_route_table_info
   ansible.builtin.set_fact:

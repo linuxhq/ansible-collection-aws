@@ -1,5 +1,5 @@
 ---
-- name: Ensure virtual private cloud prefix list info tasks are executed
+- name: Ensure aws virtual private cloud prefix list info tasks are executed
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.include_tasks:
@@ -8,7 +8,7 @@
         - ec2_vpc_prefix_list
     file: info.yml
 
-- name: Ensure virtual private cloud prefix list present tasks are executed
+- name: Ensure aws virtual private cloud prefix list present tasks are executed
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.include_tasks:
@@ -27,7 +27,7 @@
     - _pl.state is not defined or
       _pl.state == 'present'
 
-- name: Ensure virtual private cloud prefix list absent tasks are executed
+- name: Ensure aws virtual private cloud prefix list absent tasks are executed
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.include_tasks:

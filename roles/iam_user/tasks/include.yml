@@ -1,5 +1,5 @@
 ---
-- name: Ensure iam users are managed
+- name: Ensure aws iam users are managed
   tags:
     - iam_user
   amazon.aws.iam_user:
@@ -31,7 +31,7 @@
   async: "{{ ansible_check_mode | ternary(0, iam_user_async) }}"
   poll: "{{ iam_user_poll }}"
 
-- name: Ensure managed iam user jobs are complete
+- name: Ensure managed aws iam user jobs are complete
   tags:
     - iam_user
   ansible.builtin.async_status:

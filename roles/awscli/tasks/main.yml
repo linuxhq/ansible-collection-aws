@@ -1,5 +1,5 @@
 ---
-- name: Ensure awscli virtual environment packages are present
+- name: Ensure aws awscli virtual environment packages are present
   tags:
     - awscli
   become: true
@@ -10,7 +10,7 @@
   when:
     - ansible_facts.os_family == 'Debian'
 
-- name: Ensure awscli virtual environment packages are present
+- name: Ensure aws awscli virtual environment packages are present
   tags:
     - awscli
   become: true
@@ -20,7 +20,7 @@
   when:
     - ansible_facts.os_family == 'RedHat'
 
-- name: Ensure awscli virtual environment is present
+- name: Ensure aws awscli virtual environment is present
   tags:
     - awscli
   become: "{{ awscli_become | bool }}"
@@ -32,7 +32,7 @@
     virtualenv: "{{ awscli_path }}"
     virtualenv_command: /usr/bin/python3 -m venv
 
-- name: Ensure awscli virtual environment is populated
+- name: Ensure aws awscli virtual environment is populated
   tags:
     - awscli
   become: "{{ awscli_become | bool }}"

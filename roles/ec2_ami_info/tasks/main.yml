@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about amazon machine images is gathered
+- name: Ensure information about aws amazon machine images is gathered
   tags:
     - ec2_ami_info
   amazon.aws.ec2_ami_info:
@@ -16,7 +16,7 @@
   when:
     - _ami.name is defined
 
-- name: Ensure list of amazon machine images is generated
+- name: Ensure list of aws amazon machine images is generated
   tags:
     - ec2_ami_info
   ansible.builtin.set_fact:
@@ -26,7 +26,7 @@
           flatten |
           sort(attribute='name') }}"
 
-- name: Ensure dict of amazon machine images is generated
+- name: Ensure dict of aws amazon machine images is generated
   tags:
     - ec2_ami_info
   ansible.builtin.set_fact:
@@ -43,7 +43,7 @@
   when:
     - _ami.name is defined
 
-- name: Ensure dict of latest amazon machine image ids is generated
+- name: Ensure dict of aws latest amazon machine image ids is generated
   tags:
     - ec2_ami_info
   ansible.builtin.set_fact:

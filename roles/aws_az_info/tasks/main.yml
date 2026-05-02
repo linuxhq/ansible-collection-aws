@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about availability zones is gathered
+- name: Ensure information about aws availability zones is gathered
   tags:
     - always
     - aws_az_info

@@ -25,7 +25,7 @@
   async: "{{ ansible_check_mode | ternary(0, iam_policy_async) }}"
   poll: "{{ iam_policy_poll }}"
 
-- name: Ensure managed identity and access management inline policy jobs are complete
+- name: Ensure managed aws identity and access management inline policy jobs are complete
   tags:
     - iam_policy
   ansible.builtin.async_status:

@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about virtual private cloud prefix lists is gathered
+- name: Ensure information about aws virtual private cloud prefix lists is gathered
   tags:
     - ec2_vpc_prefix_list_info
   ansible.builtin.command:
@@ -10,7 +10,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure list of virtual private cloud prefix lists is generated
+- name: Ensure list of aws virtual private cloud prefix lists is generated
   tags:
     - ec2_vpc_prefix_list_info
   ansible.builtin.set_fact:
@@ -20,7 +20,7 @@
           selectattr('PrefixListName', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of virtual private cloud prefix lists is generated
+- name: Ensure dict of aws virtual private cloud prefix lists is generated
   tags:
     - ec2_vpc_prefix_list_info
   ansible.builtin.set_fact:

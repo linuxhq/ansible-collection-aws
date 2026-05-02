@@ -1,5 +1,5 @@
 ---
-- name: Ensure list of aws route53 resolver rules is gathered
+- name: Ensure information about aws route53 resolver rules is gathered
   tags:
     - route53_resolver_rule_info
   ansible.builtin.command:

@@ -1,5 +1,5 @@
 ---
-- name: Ensure iam instance profiles are batched
+- name: Ensure aws iam instance profiles are batched
   tags:
     - iam_instance_profile
   ansible.builtin.include_tasks:

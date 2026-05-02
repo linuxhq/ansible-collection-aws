@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about iam users is gathered
+- name: Ensure information about aws iam users is gathered
   tags:
     - iam_user_info
   amazon.aws.iam_user_info:
@@ -9,7 +9,7 @@
     validate_certs: true
   register: __iam_user_info_query
 
-- name: Ensure list of iam users is generated
+- name: Ensure list of aws iam users is generated
   tags:
     - iam_user_info
   ansible.builtin.set_fact:
@@ -18,7 +18,7 @@
           selectattr('user_name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of iam users is generated
+- name: Ensure dict of aws iam users is generated
   tags:
     - iam_user_info
   ansible.builtin.set_fact:

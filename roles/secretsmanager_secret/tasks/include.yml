@@ -35,7 +35,7 @@
     - ansible_check_mode | bool
     - __secretsmanager_secret_result.changed | bool
 
-- name: Ensure managed secrets manager secret jobs are complete
+- name: Ensure managed aws secrets manager secret jobs are complete
   tags:
     - secretsmanager_secret
   ansible.builtin.async_status:

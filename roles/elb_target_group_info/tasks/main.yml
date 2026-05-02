@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about elastic load balancer target groups is gathered
+- name: Ensure information about aws elastic load balancer target groups is gathered
   tags:
     - elb_target_group_info
   community.aws.elb_target_group_info:
@@ -10,7 +10,7 @@
     validate_certs: true
   register: __elb_target_group_info_query
 
-- name: Ensure list elastic load balancer target groups is generated
+- name: Ensure list of aws elastic load balancer target groups is generated
   tags:
     - elb_target_group_info
   ansible.builtin.set_fact:
@@ -19,7 +19,7 @@
           selectattr('target_group_name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict elastic load balancer target groups is generated
+- name: Ensure dict of aws elastic load balancer target groups is generated
   tags:
     - elb_target_group_info
   ansible.builtin.set_fact:

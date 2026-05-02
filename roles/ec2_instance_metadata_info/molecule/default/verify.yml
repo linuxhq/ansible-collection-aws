@@ -1,0 +1,27 @@
+---
+- name: Verify
+  hosts: all
+
+  roles:
+    - aws_region_info
+    - ec2_instance_metadata_info
+
+  tasks:
+    - name: Ensure ec2 instance metadata defaults are verified
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - _ec2_instance_metadata_info_dict[_region].http_tokens ==
+              ec2_instance_metadata_http_tokens
+          - _ec2_instance_metadata_info_dict[_region].http_put_response_hop_limit ==
+              ec2_instance_metadata_http_put_response_hop_limit
+          - _ec2_instance_metadata_info_dict[_region].http_endpoint ==
+              ec2_instance_metadata_http_endpoint
+          - _ec2_instance_metadata_info_dict[_region].instance_metadata_tags ==
+              ec2_instance_metadata_instance_metadata_tags
+      loop:
+        "{{ ec2_instance_metadata_info_regions }}"
+      loop_control:
+        label: "{{ _region }}"
+        loop_var: _region
+...
