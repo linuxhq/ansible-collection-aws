@@ -2,35 +2,24 @@
 - name: Ensure information about aws simple email service account details is gathered
   tags:
     - ses_sandbox
-  ansible.builtin.command:
-    cmd: >
-      aws sesv2 get-account
-        --output text
-        --query ProductionAccessEnabled
-  register: __ses_sandbox_query
-  changed_when: false
-  check_mode: false
+  linuxhq.aws.ses_sandbox_info:
+    validate_certs: true
+  register: __ses_sandbox_info_query
 
 - name: Ensure aws simple email service account details are managed
   tags:
     - ses_sandbox
-  ansible.builtin.command:
-    cmd: >
-      aws sesv2 put-account-details
-        {% if ses_sandbox_additional_contact_email_addresses | length > 0 %}
-        --additional-contact-email-address '{{ ses_sandbox_additional_contact_email_addresses | to_json }}'
-        {% endif %}
-        --contact-language "{{ ses_sandbox_contact_language | upper }}"
-        --mail-type "{{ ses_sandbox_mail_type | upper }}"
-        --production-access-enabled
-        --use-case-description '"{{ ses_sandbox_use_case_description | trim }}"'
-        --website-url "{{ ses_sandbox_website_url }}"
+  linuxhq.aws.ses_sandbox:
+    additional_contact_email_addresses: "{{ ses_sandbox_additional_contact_email_addresses }}"
+    contact_language: "{{ ses_sandbox_contact_language }}"
+    mail_type: "{{ ses_sandbox_mail_type }}"
+    use_case_description: "{{ ses_sandbox_use_case_description }}"
+    validate_certs: true
+    website_url: "{{ ses_sandbox_website_url }}"
   register: _ses_sandbox_request
   when:
-    - not __ses_sandbox_query.stdout | bool
+    - not __ses_sandbox_info_query.account.production_access_enabled | bool
+    - __ses_sandbox_info_query.account.details.review_details.status is not defined
     - ses_sandbox_use_case_description is not none
     - ses_sandbox_website_url is not none
-  changed_when:
-    - _ses_sandbox_request.rc == 0
-  failed_when: false
 ...
