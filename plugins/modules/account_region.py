@@ -44,6 +44,7 @@ options:
     type: int
 extends_documentation_fragment:
   - amazon.aws.common.modules
+  - amazon.aws.region.modules
   - amazon.aws.boto3
 """
 

@@ -11,36 +11,36 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].ARN is defined
-          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].Id is defined
-          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].Name is defined
-          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].Rules is defined
-          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].Rules | length == 1
-          - _wafv2_web_acl_info_dict['molecule-commonruleset'].ARN is defined
-          - _wafv2_web_acl_info_dict['molecule-commonruleset'].Id is defined
-          - _wafv2_web_acl_info_dict['molecule-commonruleset'].Name is defined
-          - _wafv2_web_acl_info_dict['molecule-commonruleset'].Rules is defined
-          - _wafv2_web_acl_info_dict['molecule-commonruleset'].Rules | length == 1
-          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].ARN is defined
-          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].Id is defined
-          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].Name is defined
-          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].Rules is defined
-          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].Rules | length == 1
-          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].ARN is defined
-          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].Id is defined
-          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].Name is defined
-          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].Rules is defined
-          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].Rules | length == 1
-          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].ARN is defined
-          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].Id is defined
-          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].Name is defined
-          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].Rules is defined
-          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].Rules | length == 1
-          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].ARN is defined
-          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].Id is defined
-          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].Name is defined
-          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].Rules is defined
-          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].Rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].arn is defined
+          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].id is defined
+          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].name is defined
+          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].rules is defined
+          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-commonruleset'].arn is defined
+          - _wafv2_web_acl_info_dict['molecule-commonruleset'].id is defined
+          - _wafv2_web_acl_info_dict['molecule-commonruleset'].name is defined
+          - _wafv2_web_acl_info_dict['molecule-commonruleset'].rules is defined
+          - _wafv2_web_acl_info_dict['molecule-commonruleset'].rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].arn is defined
+          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].id is defined
+          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].name is defined
+          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].rules is defined
+          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].arn is defined
+          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].id is defined
+          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].name is defined
+          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].rules is defined
+          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].arn is defined
+          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].id is defined
+          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].name is defined
+          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].rules is defined
+          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].arn is defined
+          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].id is defined
+          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].name is defined
+          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].rules is defined
+          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].rules | length == 1
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

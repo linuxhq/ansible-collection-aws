@@ -37,15 +37,9 @@
 - name: Ensure aws wafv2 web acl logging configuration is present
   tags:
     - wafv2_web_acl
-  ansible.builtin.command:
-    cmd: >
-      aws wafv2 put-logging-configuration
-        --logging-configuration '{{ __wafv2_web_acl_logging_configuration | to_json }}'
-  vars:
-    __wafv2_web_acl_logging_configuration:
-      ResourceArn: "{{ __wafv2_web_acl_result.arn }}"
-      LogDestinationConfigs: "{{ [__wafv2_web_acl_log_group.arn] }}"
+  linuxhq.aws.wafv2_web_acl_logging:
+    log_destination_configs: "{{ [__wafv2_web_acl_log_group.arn] }}"
+    resource_arn: "{{ __wafv2_web_acl_result.arn }}"
   when:
-    - not ansible_check_mode
-  changed_when: false
+    - __wafv2_web_acl_log_group.arn is defined
 ...
