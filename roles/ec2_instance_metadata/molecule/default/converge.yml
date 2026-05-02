@@ -6,8 +6,6 @@
 
   roles:
     - role: aws_region_info
-      tags:
-        - molecule-idempotence-notest
       check_mode: false
 
     - role: ec2_instance_metadata
