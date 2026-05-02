@@ -4,7 +4,7 @@ Gather information about aws simple email service account details
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli)
+None
 
 ## Role Variables
 
