@@ -78,7 +78,6 @@ import time
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 
-
 PRESENT_STATUSES = {"ENABLED", "ENABLING", "ENABLED_BY_DEFAULT"}
 ABSENT_STATUSES = {"DISABLED", "DISABLING"}
 
@@ -87,7 +86,9 @@ def get_region_opt_status(client, module, region_name):
     try:
         response = client.get_region_opt_status(RegionName=region_name)
     except Exception as e:
-        module.fail_json_aws(e, msg=f"Unable to get AWS account region opt-in status for {region_name}")
+        module.fail_json_aws(
+            e, msg=f"Unable to get AWS account region opt-in status for {region_name}"
+        )
     return response["RegionOptStatus"]
 
 
@@ -106,7 +107,11 @@ def wait_for_status(client, module, region_name, desired_statuses):
 def main() -> None:
     argument_spec = {
         "name": {"required": True, "type": "str"},
-        "state": {"choices": ["present", "absent"], "default": "present", "type": "str"},
+        "state": {
+            "choices": ["present", "absent"],
+            "default": "present",
+            "type": "str",
+        },
         "wait": {"default": False, "type": "bool"},
         "delay": {"default": 30, "type": "int"},
         "retries": {"default": 60, "type": "int"},
@@ -128,7 +133,9 @@ def main() -> None:
             try:
                 client.enable_region(RegionName=region_name)
             except Exception as e:
-                module.fail_json_aws(e, msg=f"Unable to enable AWS account region {region_name}")
+                module.fail_json_aws(
+                    e, msg=f"Unable to enable AWS account region {region_name}"
+                )
             current_status = (
                 wait_for_status(client, module, region_name, PRESENT_STATUSES)
                 if module.params["wait"]
@@ -140,7 +147,9 @@ def main() -> None:
             try:
                 client.disable_region(RegionName=region_name)
             except Exception as e:
-                module.fail_json_aws(e, msg=f"Unable to disable AWS account region {region_name}")
+                module.fail_json_aws(
+                    e, msg=f"Unable to disable AWS account region {region_name}"
+                )
             current_status = (
                 wait_for_status(client, module, region_name, ABSENT_STATUSES)
                 if module.params["wait"]
@@ -148,9 +157,13 @@ def main() -> None:
             )
     elif module.params["wait"] and not module.check_mode:
         if state == "present" and previous_status == "ENABLING":
-            current_status = wait_for_status(client, module, region_name, PRESENT_STATUSES)
+            current_status = wait_for_status(
+                client, module, region_name, PRESENT_STATUSES
+            )
         elif state == "absent" and previous_status == "DISABLING":
-            current_status = wait_for_status(client, module, region_name, ABSENT_STATUSES)
+            current_status = wait_for_status(
+                client, module, region_name, ABSENT_STATUSES
+            )
 
     module.exit_json(
         changed=changed,
