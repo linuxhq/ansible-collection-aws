@@ -23,7 +23,7 @@
   delay: 5
   retries: 60
 
-- name: Ensure list of aws relational database service instance security group is generated
+- name: Ensure list of aws relational database service instance security groups is generated
   tags:
     - rds_instance
   ansible.builtin.set_fact:

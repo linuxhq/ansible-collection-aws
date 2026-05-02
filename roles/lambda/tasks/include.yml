@@ -48,7 +48,7 @@
     - ansible_check_mode | bool
     - __lambda_result.changed | bool
 
-- name: Ensure managed lambda function jobs are complete
+- name: Ensure managed aws lambda function jobs are complete
   tags:
     - lambda
   ansible.builtin.async_status:

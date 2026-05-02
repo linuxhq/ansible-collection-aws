@@ -1,5 +1,5 @@
 ---
-- name: Ensure elastic filesystem defaults are generated
+- name: Ensure aws elastic filesystem defaults are generated
   tags:
     - efs
   ansible.builtin.set_fact:
@@ -17,7 +17,7 @@
       - cidr_ip: 0.0.0.0/0
         proto: -1
 
-- name: Ensure elastic filesystem tasks are included
+- name: Ensure aws elastic filesystem tasks are included
   tags:
     - efs
   ansible.builtin.include_tasks:

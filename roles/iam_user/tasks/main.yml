@@ -1,5 +1,5 @@
 ---
-- name: Ensure iam users are batched
+- name: Ensure aws iam users are batched
   tags:
     - iam_user
   ansible.builtin.include_tasks:

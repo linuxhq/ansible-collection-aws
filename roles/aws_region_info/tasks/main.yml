@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about regions is gathered
+- name: Ensure information about aws regions is gathered
   tags:
     - always
     - aws_region_info

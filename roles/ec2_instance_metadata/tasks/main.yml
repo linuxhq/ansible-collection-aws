@@ -1,5 +1,5 @@
 ---
-- name: Ensure ec2 instance metadata regions are batched
+- name: Ensure aws instance metadata regions are batched
   tags:
     - ec2_instance_metadata
   ansible.builtin.include_tasks:

@@ -1,5 +1,5 @@
 ---
-- name: Ensure identity and access management managed policies are batched
+- name: Ensure aws identity and access management managed policies are batched
   tags:
     - iam_managed_policy
   ansible.builtin.include_tasks:

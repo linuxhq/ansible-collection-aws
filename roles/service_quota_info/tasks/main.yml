@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws service quota availability zone information is gathered
+- name: Ensure information about aws service quota availability zone is gathered
   tags:
     - service_quota_info
   amazon.aws.aws_az_info:
@@ -17,7 +17,7 @@
           unique |
           first }}"
 
-- name: Ensure aws service quota information is gathered
+- name: Ensure information about aws service quota is gathered
   tags:
     - service_quota_info
   ansible.builtin.command:

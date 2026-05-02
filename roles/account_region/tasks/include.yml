@@ -1,0 +1,41 @@
+---
+- name: Ensure aws account regions are managed
+  tags:
+    - account_region
+  linuxhq.aws.account_region:
+    delay: "{{ account_region_delay }}"
+    name: "{{ _region.name }}"
+    retries: "{{ account_region_retries }}"
+    state: "{{ _region.state | d('present') }}"
+    wait: "{{ account_region_wait }}"
+    validate_certs: true
+  loop: "{{ __account_region_list }}"
+  loop_control:
+    label: "{{ _region.name | d(none) }}"
+    loop_var: _region
+  async: "{{ ansible_check_mode | ternary(0, account_region_async) }}"
+  poll: "{{ account_region_poll }}"
+  register: __account_region_result
+  when:
+    - _region.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __account_region_result.changed | bool
+
+- name: Ensure managed aws account region jobs are complete
+  tags:
+    - account_region
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __account_region_status
+  loop: "{{ __account_region_result.results }}"
+  loop_control:
+    label: "{{ _jid._region.name | d(none) }}"
+    loop_var: _jid
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __account_region_status.finished | bool
+  retries: "{{ account_region_retries }}"
+  delay: "{{ account_region_delay }}"
+...

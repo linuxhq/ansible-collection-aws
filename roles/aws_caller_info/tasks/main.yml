@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about user and account is gathered
+- name: Ensure information about aws user and account is gathered
   tags:
     - always
     - aws_caller_info
@@ -7,7 +7,7 @@
     validate_certs: true
   register: __aws_caller_info_query
 
-- name: Ensure strings of user and caller information is generated
+- name: Ensure strings of aws user and caller information are generated
   tags:
     - always
     - aws_caller_info

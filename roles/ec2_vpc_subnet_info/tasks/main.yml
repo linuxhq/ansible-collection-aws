@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about subnets is gathered
+- name: Ensure information about aws subnets is gathered
   tags:
     - ec2_vpc_subnet_info
   amazon.aws.ec2_vpc_subnet_info:
@@ -8,7 +8,7 @@
     validate_certs: true
   register: __ec2_vpc_subnet_info_query
 
-- name: Ensure list of virtual private cloud subnets is generated
+- name: Ensure list of aws virtual private cloud subnets is generated
   tags:
     - ec2_vpc_subnet_info
   ansible.builtin.set_fact:
@@ -17,7 +17,7 @@
           selectattr('tags.Name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of virtual private cloud subnets is generated
+- name: Ensure dict of aws virtual private cloud subnets is generated
   tags:
     - ec2_vpc_subnet_info
   ansible.builtin.set_fact:

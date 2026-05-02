@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about ec2 customer gateways is gathered
+- name: Ensure information about aws customer gateways is gathered
   tags:
     - ec2_customer_gateway_info
   community.aws.ec2_customer_gateway_info:
@@ -8,7 +8,7 @@
     validate_certs: true
   register: __ec2_customer_gateway_info_query
 
-- name: Ensure list of ec2 customer gateways is generated
+- name: Ensure list of aws customer gateways is generated
   tags:
     - ec2_customer_gateway_info
   ansible.builtin.set_fact:
@@ -17,7 +17,7 @@
           selectattr('customer_gateway_name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of ec2 customer gateways is generated
+- name: Ensure dict of aws customer gateways is generated
   tags:
     - ec2_customer_gateway_info
   ansible.builtin.set_fact:

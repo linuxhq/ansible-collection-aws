@@ -1,5 +1,5 @@
 ---
-- name: Ensure elastic filesystem present tasks are included
+- name: Ensure aws elastic filesystem present tasks are included
   tags:
     - efs
   ansible.builtin.include_tasks:
@@ -16,7 +16,7 @@
   when:
     - _efs.state == 'present'
 
-- name: Ensure elastic filesystem absent tasks are included
+- name: Ensure aws elastic filesystem absent tasks are included
   tags:
     - efs
   ansible.builtin.include_tasks:

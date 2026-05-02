@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws service quota availability zone information is gathered
+- name: Ensure information about aws service quota availability zone is gathered
   tags:
     - service_quota
   amazon.aws.aws_az_info:

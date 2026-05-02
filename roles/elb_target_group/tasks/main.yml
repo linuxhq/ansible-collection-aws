@@ -1,5 +1,5 @@
 ---
-- name: Ensure elastic load balancer target groups are batched
+- name: Ensure aws elastic load balancer target groups are batched
   tags:
     - elb_target_group
   ansible.builtin.include_tasks:

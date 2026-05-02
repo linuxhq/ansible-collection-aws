@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws virtual private cloud endpoint information is gathered
+- name: Ensure information about aws virtual private cloud endpoint is gathered
   tags:
     - ec2_vpc_endpoint
   amazon.aws.ec2_vpc_endpoint_info:

@@ -9,7 +9,7 @@
           map('combine') |
           list }}"
 
-- name: Ensure list of aws notifications contacts is gathered
+- name: Ensure information about aws notifications contacts is gathered
   tags:
     - notifications_contacts
   ansible.builtin.command:

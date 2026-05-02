@@ -1,5 +1,5 @@
 ---
-- name: Ensure elastic kubernetes service clusters are managed
+- name: Ensure aws elastic kubernetes service clusters are managed
   tags:
     - eks_cluster
   community.aws.eks_cluster:

@@ -1,5 +1,5 @@
 ---
-- name: Ensure virtual private cloud prefix lists are present
+- name: Ensure aws virtual private cloud prefix lists are present
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.command:
@@ -14,7 +14,7 @@
     - _pl.name not in __ec2_vpc_prefix_list_dict.keys()
   changed_when: true
 
-- name: Ensure virtual private cloud prefix list info tasks are executed
+- name: Ensure aws virtual private cloud prefix list info tasks are executed
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.include_tasks:
@@ -23,7 +23,7 @@
         - ec2_vpc_prefix_list
     file: info.yml
 
-- name: Ensure virutal private cloud prefix list entries are removed
+- name: Ensure aws virutal private cloud prefix list entries are removed
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.command:
@@ -41,7 +41,7 @@
     - __ec2_vpc_prefix_list_difference | length > 0
   changed_when: true
 
-- name: Ensure virtual private cloud prefix list info and state tasks are executed
+- name: Ensure aws virtual private cloud prefix list info and state tasks are executed
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.include_tasks:
@@ -56,7 +56,7 @@
     label: "{{ _include | d(none) }}"
     loop_var: _include
 
-- name: Ensure virtual private cloud prefix list max entries are modified
+- name: Ensure aws virtual private cloud prefix list max entries are modified
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.command:
@@ -69,7 +69,7 @@
     - _pl.entries | length != __ec2_vpc_prefix_list_dict[_pl.name].MaxEntries
   changed_when: true
 
-- name: Ensure virtual private cloud prefix list state tasks are executed
+- name: Ensure aws virtual private cloud prefix list state tasks are executed
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.include_tasks:
@@ -78,7 +78,7 @@
         - ec2_vpc_prefix_list
     file: state.yml
 
-- name: Ensure virtual private cloud prefix list entries are added
+- name: Ensure aws virtual private cloud prefix list entries are added
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.command:

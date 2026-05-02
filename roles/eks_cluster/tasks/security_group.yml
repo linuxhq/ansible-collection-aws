@@ -1,5 +1,5 @@
 ---
-- name: Ensure elastic kubernetes service security groups are managed
+- name: Ensure aws elastic kubernetes service security groups are managed
   tags:
     - eks_cluster
   amazon.aws.ec2_security_group:
@@ -23,7 +23,7 @@
   delay: 5
   retries: 60
 
-- name: Ensure list of elastic kubernetes service security group is generated
+- name: Ensure list of aws elastic kubernetes service security groups is generated
   tags:
     - eks_cluster
   ansible.builtin.set_fact:

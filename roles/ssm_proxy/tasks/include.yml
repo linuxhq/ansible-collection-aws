@@ -6,7 +6,7 @@
     __ssm_proxy_port_local:
       "{{ 65535 | ansible.builtin.random(start=1024) }}"
 
-- name: Ensure aws session manager proxy instance information is gathered
+- name: Ensure information about aws session manager proxy instance is gathered
   tags:
     - ssm_proxy
   amazon.aws.ec2_instance_info:

@@ -20,7 +20,7 @@
   changed_when: false
   check_mode: false
 
-- name: Ensure dict of as route53 resolver rules is generated
+- name: Ensure dict of aws route53 resolver rules is generated
   tags:
     - route53_resolver_rule
   ansible.builtin.set_fact:

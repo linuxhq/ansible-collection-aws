@@ -1,5 +1,5 @@
 ---
-- name: Ensure iam roles are managed
+- name: Ensure aws iam roles are managed
   tags:
     - iam_role
   amazon.aws.iam_role:
@@ -36,7 +36,7 @@
     - ansible_check_mode | bool
     - __iam_role_result.changed | bool
 
-- name: Ensure managed iam role jobs are complete
+- name: Ensure managed aws iam role jobs are complete
   tags:
     - iam_role
   ansible.builtin.async_status:

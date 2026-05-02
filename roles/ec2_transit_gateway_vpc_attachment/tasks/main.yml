@@ -1,5 +1,5 @@
 ---
-- name: Ensure ec2 transit gateway vpc attachments are batched
+- name: Ensure aws transit gateway vpc attachments are batched
   tags:
     - ec2_transit_gateway_vpc_attachment
   ansible.builtin.include_tasks:

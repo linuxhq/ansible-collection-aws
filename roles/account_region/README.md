@@ -4,7 +4,7 @@ Manage opt-in status of aws account regions
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli)
+None
 
 ## Role Variables
 
@@ -31,3 +31,4 @@ None
             - name: af-south-1
             - name: ap-east-1
             - name: ca-west-1
+              wait: true

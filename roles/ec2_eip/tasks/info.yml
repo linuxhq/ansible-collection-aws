@@ -1,12 +1,12 @@
 ---
-- name: Ensure ec2 elastic ip information is gathered
+- name: Ensure information about aws elastic ip is gathered
   tags:
     - ec2_eip
   amazon.aws.ec2_eip_info:
     validate_certs: true
   register: __ec2_eip_query
 
-- name: Ensure list of ec2 elastic ip information is generated
+- name: Ensure dict of aws elastic ip information is generated
   tags:
     - ec2_eip
   ansible.builtin.set_fact:

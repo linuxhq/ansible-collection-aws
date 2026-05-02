@@ -4,7 +4,7 @@ Gather information about aws elastic container registry repositories
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli)
+None
 
 ## Role Variables
 

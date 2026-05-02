@@ -25,7 +25,7 @@
   async: "{{ ansible_check_mode | ternary(0, rds_subnet_group_async) }}"
   poll: "{{ rds_subnet_group_poll }}"
 
-- name: Ensure managed relational database service subnet groups jobs are complete
+- name: Ensure managed aws relational database service subnet groups jobs are complete
   tags:
     - rds_subnet_group
   ansible.builtin.async_status:

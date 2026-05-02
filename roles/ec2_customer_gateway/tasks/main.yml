@@ -1,5 +1,5 @@
 ---
-- name: Ensure ec2 customer gateways are batched
+- name: Ensure aws customer gateways are batched
   tags:
     - ec2_customer_gateway
   ansible.builtin.include_tasks:

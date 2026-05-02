@@ -1,5 +1,5 @@
 ---
-- name: Ensure iam groups are batched
+- name: Ensure aws iam groups are batched
   tags:
     - iam_group
   ansible.builtin.include_tasks:

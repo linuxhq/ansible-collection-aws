@@ -1,0 +1,19 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - role: aws_region_info
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_instance_metadata
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - ec2_instance_metadata_info
+...

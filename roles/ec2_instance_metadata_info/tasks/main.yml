@@ -1,0 +1,31 @@
+---
+- name: Ensure information about aws instance metadata defaults is gathered
+  tags:
+    - ec2_instance_metadata_info
+  linuxhq.aws.ec2_instance_metadata_info:
+    region: "{{ _region }}"
+    validate_certs: true
+  register: __ec2_instance_metadata_info_query
+  loop: "{{ ec2_instance_metadata_info_regions }}"
+  loop_control:
+    label: "{{ _region | d(none) }}"
+    loop_var: _region
+
+- name: Ensure list of aws instance metadata defaults is generated
+  tags:
+    - ec2_instance_metadata_info
+  ansible.builtin.set_fact:
+    _ec2_instance_metadata_info_list:
+      "{{ __ec2_instance_metadata_info_query.results |
+          json_query('[].{region_name: region, account_level: account_level}') }}"
+
+- name: Ensure dict of aws instance metadata defaults is generated
+  tags:
+    - ec2_instance_metadata_info
+  ansible.builtin.set_fact:
+    _ec2_instance_metadata_info_dict:
+      "{{ dict(_ec2_instance_metadata_info_list |
+               json_query('[].region_name') |
+               zip(_ec2_instance_metadata_info_list |
+                   json_query('[].account_level'))) }}"
+...

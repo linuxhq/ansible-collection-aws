@@ -2,23 +2,18 @@
 - name: Ensure information about aws elastic container registry repositories is gathered
   tags:
     - ecs_ecr_info
-  ansible.builtin.command:
-    cmd: >
-      aws ecr describe-repositories
-        --query repositories
+  linuxhq.aws.ecs_ecr_info:
+    validate_certs: true
   register: __ecs_ecr_info_query
-  changed_when: false
-  check_mode: false
 
 - name: Ensure list of aws elastic container registry repositories is generated
   tags:
     - ecs_ecr_info
   ansible.builtin.set_fact:
     _ecs_ecr_info_list:
-      "{{ (__ecs_ecr_info_query.stdout |
-          from_json) |
-          selectattr('repositoryName', 'defined') |
-          d([]) }}"
+      "{{ __ecs_ecr_info_query.repositories |
+          d([]) |
+          selectattr('repository_name', 'defined') }}"
 
 - name: Ensure dict of aws elastic container registry repositories is generated
   tags:
@@ -26,6 +21,6 @@
   ansible.builtin.set_fact:
     _ecs_ecr_info_dict:
       "{{ dict(_ecs_ecr_info_list |
-               json_query('[].repositoryName') |
+               json_query('[].repository_name') |
                zip(_ecs_ecr_info_list)) }}"
 ...

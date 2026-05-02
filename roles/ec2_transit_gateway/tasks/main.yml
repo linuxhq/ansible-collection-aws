@@ -1,5 +1,5 @@
 ---
-- name: Ensure ec2 transit gateways are batched
+- name: Ensure aws transit gateways are batched
   tags:
     - ec2_transit_gateway
   ansible.builtin.include_tasks:

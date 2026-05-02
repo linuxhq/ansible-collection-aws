@@ -1,0 +1,4 @@
+---
+ec2_instance_metadata_info_regions:
+  - us-east-1
+...

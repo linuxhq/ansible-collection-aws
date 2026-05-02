@@ -1,5 +1,5 @@
 ---
-- name: Ensure list of aws notifications hubs is gathered
+- name: Ensure information about aws notifications hubs is gathered
   tags:
     - notifications_hub
   ansible.builtin.command:

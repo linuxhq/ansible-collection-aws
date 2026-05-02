@@ -1,5 +1,5 @@
 ---
-- name: Ensure ec2 security groups are batched
+- name: Ensure aws security groups are batched
   tags:
     - ec2_security_group
   ansible.builtin.include_tasks:
