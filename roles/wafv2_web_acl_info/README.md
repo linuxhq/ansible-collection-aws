@@ -2,10 +2,6 @@
 
 Gather information about aws wafv2 web acls
 
-## Requirements
-
-* [awscli](https://pypi.org/project/awscli)
-
 ## Role Variables
 
     wafv2_web_acl_info_scope: regional
