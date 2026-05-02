@@ -79,7 +79,6 @@ from ansible.module_utils.common.dict_transformations import camel_dict_to_snake
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 
-
 OPTION_TO_AWS_FIELD = {
     "http_endpoint": "HttpEndpoint",
     "http_put_response_hop_limit": "HttpPutResponseHopLimit",
@@ -111,16 +110,32 @@ def build_desired_update(params):
 
 def main() -> None:
     argument_spec = {
-        "http_endpoint": {"choices": ["disabled", "enabled", "no-preference"], "type": "str"},
+        "http_endpoint": {
+            "choices": ["disabled", "enabled", "no-preference"],
+            "type": "str",
+        },
         "http_put_response_hop_limit": {"type": "int"},
-        "http_tokens": {"choices": ["optional", "required", "no-preference"], "type": "str"},
-        "instance_metadata_tags": {"choices": ["disabled", "enabled", "no-preference"], "type": "str"},
+        "http_tokens": {
+            "choices": ["optional", "required", "no-preference"],
+            "type": "str",
+        },
+        "instance_metadata_tags": {
+            "choices": ["disabled", "enabled", "no-preference"],
+            "type": "str",
+        },
         "validate_certs": {"default": True, "type": "bool"},
     }
 
     module = AnsibleAWSModule(
         argument_spec=argument_spec,
-        required_one_of=[["http_endpoint", "http_put_response_hop_limit", "http_tokens", "instance_metadata_tags"]],
+        required_one_of=[
+            [
+                "http_endpoint",
+                "http_put_response_hop_limit",
+                "http_tokens",
+                "instance_metadata_tags",
+            ]
+        ],
         supports_check_mode=True,
     )
     client = module.client("ec2")
@@ -139,7 +154,9 @@ def main() -> None:
         try:
             client.modify_instance_metadata_defaults(**desired_update)
         except Exception as e:
-            module.fail_json_aws(e, msg="Unable to modify EC2 instance metadata defaults")
+            module.fail_json_aws(
+                e, msg="Unable to modify EC2 instance metadata defaults"
+            )
         current_account_level = get_account_level(client, module)
         proposed_account_level = current_account_level
 
@@ -150,7 +167,9 @@ def main() -> None:
     }
 
     if changed:
-        result["proposed_account_level"] = normalize_account_level(proposed_account_level)
+        result["proposed_account_level"] = normalize_account_level(
+            proposed_account_level
+        )
 
     module.exit_json(**result)
 

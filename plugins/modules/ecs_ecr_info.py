@@ -83,11 +83,15 @@ def main() -> None:
             if not next_token:
                 break
     except Exception as e:
-        module.fail_json_aws(e, msg="Unable to describe AWS Elastic Container Registry repositories")
+        module.fail_json_aws(
+            e, msg="Unable to describe AWS Elastic Container Registry repositories"
+        )
 
     module.exit_json(
         changed=False,
-        repositories=[camel_dict_to_snake_dict(repository) for repository in repositories],
+        repositories=[
+            camel_dict_to_snake_dict(repository) for repository in repositories
+        ],
     )
 
 
