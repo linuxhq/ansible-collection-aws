@@ -26,7 +26,7 @@ provisioner:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
         iam_managed_policy_list:
-          - name: linuxhq-admin
+          - name: molecule-admin
             policy:
               Version: '2012-10-17'
               Statement:
@@ -34,7 +34,7 @@ provisioner:
                   Action: '*'
                   Resource: '*'
 
-          - name: linuxhq-s3
+          - name: molecule-s3
             policy:
               Version: '2012-10-17'
               Statement:

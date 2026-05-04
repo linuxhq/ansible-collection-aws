@@ -26,46 +26,46 @@ provisioner:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
         ec2_vpc_net_list:
-          - name: linuxhq
+          - name: molecule
             cidr_block: 10.0.0.0/16
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             subnets:
-              - name: linuxhq-a-00
+              - name: molecule-a-00
                 az: us-east-1a
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,0) }}"
-              - name: linuxhq-a-01
+              - name: molecule-a-01
                 az: us-east-1a
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,1) }}"
-              - name: linuxhq-a-02
+              - name: molecule-a-02
                 az: us-east-1a
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,2) }}"
-              - name: linuxhq-a-03
+              - name: molecule-a-03
                 az: us-east-1a
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,3) }}"
-              - name: linuxhq-b-00
+              - name: molecule-b-00
                 az: us-east-1b
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,4) }}"
-              - name: linuxhq-b-01
+              - name: molecule-b-01
                 az: us-east-1b
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,5) }}"
-              - name: linuxhq-b-02
+              - name: molecule-b-02
                 az: us-east-1b
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,6) }}"
-              - name: linuxhq-b-03
+              - name: molecule-b-03
                 az: us-east-1b
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,7) }}"
-              - name: linuxhq-c-00
+              - name: molecule-c-00
                 az: us-east-1c
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,8) }}"
-              - name: linuxhq-c-01
+              - name: molecule-c-01
                 az: us-east-1c
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,9) }}"
-              - name: linuxhq-c-02
+              - name: molecule-c-02
                 az: us-east-1c
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,10) }}"
-              - name: linuxhq-c-03
+              - name: molecule-c-03
                 az: us-east-1c
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,11) }}"
 

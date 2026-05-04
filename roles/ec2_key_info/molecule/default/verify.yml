@@ -11,32 +11,32 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_key_info_dict['linuxhq-key-00'].key_pair_id is defined
-          - _ec2_key_info_dict['linuxhq-key-00'].key_type == 'ed25519'
-          - _ec2_key_info_dict['linuxhq-key-01'].key_pair_id is defined
-          - _ec2_key_info_dict['linuxhq-key-01'].key_type == 'ed25519'
-          - _ec2_key_info_dict['linuxhq-key-02'].key_pair_id is defined
-          - _ec2_key_info_dict['linuxhq-key-02'].key_type == 'ed25519'
-          - _ec2_key_info_dict['linuxhq-key-03'].key_pair_id is defined
-          - _ec2_key_info_dict['linuxhq-key-03'].key_type == 'ed25519'
-          - _ec2_key_info_dict['linuxhq-key-04'].key_pair_id is defined
-          - _ec2_key_info_dict['linuxhq-key-04'].key_type == 'ed25519'
-          - _ec2_key_info_dict['linuxhq-key-05'].key_pair_id is defined
-          - _ec2_key_info_dict['linuxhq-key-05'].key_type == 'ed25519'
-          - _ec2_key_info_dict['linuxhq-key-06'].key_pair_id is defined
-          - _ec2_key_info_dict['linuxhq-key-06'].key_type == 'ed25519'
-          - _ec2_key_info_dict['linuxhq-key-07'].key_pair_id is defined
-          - _ec2_key_info_dict['linuxhq-key-07'].key_type == 'ed25519'
-          - _ec2_key_info_dict['linuxhq-key-08'].key_pair_id is defined
-          - _ec2_key_info_dict['linuxhq-key-08'].key_type == 'ed25519'
-          - _ec2_key_info_dict['linuxhq-key-09'].key_pair_id is defined
-          - _ec2_key_info_dict['linuxhq-key-09'].key_type == 'ed25519'
-          - _ec2_key_info_dict['linuxhq-key-10'].key_pair_id is defined
-          - _ec2_key_info_dict['linuxhq-key-10'].key_type == 'ed25519'
-          - _ec2_key_info_dict['linuxhq-key-11'].key_pair_id is defined
-          - _ec2_key_info_dict['linuxhq-key-11'].key_type == 'ed25519'
-          - _ec2_key_info_dict['linuxhq-key-12'].key_pair_id is defined
-          - _ec2_key_info_dict['linuxhq-key-12'].key_type == 'ed25519'
+          - _ec2_key_info_dict['molecule-key-00'].key_pair_id is defined
+          - _ec2_key_info_dict['molecule-key-00'].key_type == 'ed25519'
+          - _ec2_key_info_dict['molecule-key-01'].key_pair_id is defined
+          - _ec2_key_info_dict['molecule-key-01'].key_type == 'ed25519'
+          - _ec2_key_info_dict['molecule-key-02'].key_pair_id is defined
+          - _ec2_key_info_dict['molecule-key-02'].key_type == 'ed25519'
+          - _ec2_key_info_dict['molecule-key-03'].key_pair_id is defined
+          - _ec2_key_info_dict['molecule-key-03'].key_type == 'ed25519'
+          - _ec2_key_info_dict['molecule-key-04'].key_pair_id is defined
+          - _ec2_key_info_dict['molecule-key-04'].key_type == 'ed25519'
+          - _ec2_key_info_dict['molecule-key-05'].key_pair_id is defined
+          - _ec2_key_info_dict['molecule-key-05'].key_type == 'ed25519'
+          - _ec2_key_info_dict['molecule-key-06'].key_pair_id is defined
+          - _ec2_key_info_dict['molecule-key-06'].key_type == 'ed25519'
+          - _ec2_key_info_dict['molecule-key-07'].key_pair_id is defined
+          - _ec2_key_info_dict['molecule-key-07'].key_type == 'ed25519'
+          - _ec2_key_info_dict['molecule-key-08'].key_pair_id is defined
+          - _ec2_key_info_dict['molecule-key-08'].key_type == 'ed25519'
+          - _ec2_key_info_dict['molecule-key-09'].key_pair_id is defined
+          - _ec2_key_info_dict['molecule-key-09'].key_type == 'ed25519'
+          - _ec2_key_info_dict['molecule-key-10'].key_pair_id is defined
+          - _ec2_key_info_dict['molecule-key-10'].key_type == 'ed25519'
+          - _ec2_key_info_dict['molecule-key-11'].key_pair_id is defined
+          - _ec2_key_info_dict['molecule-key-11'].key_type == 'ed25519'
+          - _ec2_key_info_dict['molecule-key-12'].key_pair_id is defined
+          - _ec2_key_info_dict['molecule-key-12'].key_type == 'ed25519'
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

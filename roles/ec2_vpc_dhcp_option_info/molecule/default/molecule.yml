@@ -26,55 +26,55 @@ provisioner:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
         ec2_vpc_dhcp_option_list:
-          - name: linuxhq-00
+          - name: molecule-00
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: linuxhq-01
+          - name: molecule-01
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: linuxhq-02
+          - name: molecule-02
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: linuxhq-03
+          - name: molecule-03
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: linuxhq-04
+          - name: molecule-04
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: linuxhq-05
+          - name: molecule-05
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: linuxhq-06
+          - name: molecule-06
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: linuxhq-07
+          - name: molecule-07
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: linuxhq-08
+          - name: molecule-08
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: linuxhq-09
+          - name: molecule-09
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: linuxhq-10
+          - name: molecule-10
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: linuxhq-11
+          - name: molecule-11
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: linuxhq-12
+          - name: molecule-12
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2

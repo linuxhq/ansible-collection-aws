@@ -13,9 +13,9 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_vpc_nat_gateway_info_dict['linuxhq-pub-a'].nat_gateway_id is defined
-          - _ec2_vpc_nat_gateway_info_dict['linuxhq-pub-b'].nat_gateway_id is defined
-          - _ec2_vpc_nat_gateway_info_dict['linuxhq-pub-c'].nat_gateway_id is defined
+          - _ec2_vpc_nat_gateway_info_dict['molecule-pub-a'].nat_gateway_id is defined
+          - _ec2_vpc_nat_gateway_info_dict['molecule-pub-b'].nat_gateway_id is defined
+          - _ec2_vpc_nat_gateway_info_dict['molecule-pub-c'].nat_gateway_id is defined
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

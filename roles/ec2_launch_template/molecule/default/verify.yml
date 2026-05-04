@@ -16,7 +16,7 @@
           "{{ ec2_launch_template_list |
               map('combine', {'state': 'absent'}) }}"
         ec2_security_group_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             security_groups:
               "{{ ec2_security_group_list.0.security_groups |
                   map('combine', {'state': 'absent'}) }}"

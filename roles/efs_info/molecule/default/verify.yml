@@ -13,14 +13,14 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _efs_info_dict['linuxhq-efs1'].encrypted | bool
-          - _efs_info_dict['linuxhq-efs1'].mount_point is defined
-          - _efs_info_dict['linuxhq-efs1'].mount_targets | length == 3
-          - _efs_info_dict['linuxhq-efs1'].performance_mode == 'generalPurpose'
-          - _efs_info_dict['linuxhq-efs2'].encrypted | bool
-          - _efs_info_dict['linuxhq-efs2'].mount_point is defined
-          - _efs_info_dict['linuxhq-efs2'].mount_targets | length == 3
-          - _efs_info_dict['linuxhq-efs2'].performance_mode == 'generalPurpose'
+          - _efs_info_dict['molecule-efs1'].encrypted | bool
+          - _efs_info_dict['molecule-efs1'].mount_point is defined
+          - _efs_info_dict['molecule-efs1'].mount_targets | length == 3
+          - _efs_info_dict['molecule-efs1'].performance_mode == 'generalPurpose'
+          - _efs_info_dict['molecule-efs2'].encrypted | bool
+          - _efs_info_dict['molecule-efs2'].mount_point is defined
+          - _efs_info_dict['molecule-efs2'].mount_targets | length == 3
+          - _efs_info_dict['molecule-efs2'].performance_mode == 'generalPurpose'
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

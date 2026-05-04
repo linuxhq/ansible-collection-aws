@@ -26,11 +26,11 @@ provisioner:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
         iam_user_list:
-          - name: linuxhq-admin
+          - name: molecule-admin
             purge_policies: true
-          - name: linuxhq-kopia
+          - name: molecule-kopia
             purge_policies: true
-          - name: linuxhq-molecule
+          - name: molecule-molecule
             purge_policies: true
 
 scenario:

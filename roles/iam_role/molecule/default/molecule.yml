@@ -39,19 +39,19 @@ provisioner:
           - AmazonVPCReadOnlyAccess
 
         iam_role_name_list:
-          - name: linuxhq-role-00
-          - name: linuxhq-role-01
-          - name: linuxhq-role-02
-          - name: linuxhq-role-03
-          - name: linuxhq-role-04
-          - name: linuxhq-role-05
-          - name: linuxhq-role-06
-          - name: linuxhq-role-07
-          - name: linuxhq-role-08
-          - name: linuxhq-role-09
-          - name: linuxhq-role-10
-          - name: linuxhq-role-11
-          - name: linuxhq-role-12
+          - name: molecule-role-00
+          - name: molecule-role-01
+          - name: molecule-role-02
+          - name: molecule-role-03
+          - name: molecule-role-04
+          - name: molecule-role-05
+          - name: molecule-role-06
+          - name: molecule-role-07
+          - name: molecule-role-08
+          - name: molecule-role-09
+          - name: molecule-role-10
+          - name: molecule-role-11
+          - name: molecule-role-12
 
         iam_role_list:
           "{{ iam_role_name_list |

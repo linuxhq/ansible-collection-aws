@@ -14,111 +14,111 @@
     - name: Ensure info without name is verified
       ansible.builtin.assert:
         that:
-          - _ec2_placement_group_info_dict['linuxhq-cluster-1'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-cluster-1'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-cluster-1'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-cluster-1'].strategy == 'cluster'
-          - _ec2_placement_group_info_dict['linuxhq-cluster-2'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-cluster-2'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-cluster-2'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-cluster-2'].strategy == 'cluster'
-          - _ec2_placement_group_info_dict['linuxhq-cluster-3'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-cluster-3'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-cluster-3'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-cluster-3'].strategy == 'cluster'
-          - _ec2_placement_group_info_dict['linuxhq-cluster-4'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-cluster-4'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-cluster-4'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-cluster-4'].strategy == 'cluster'
-          - _ec2_placement_group_info_dict['linuxhq-cluster-5'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-cluster-5'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-cluster-5'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-cluster-5'].strategy == 'cluster'
-          - _ec2_placement_group_info_dict['linuxhq-cluster-6'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-cluster-6'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-cluster-6'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-cluster-6'].strategy == 'cluster'
-          - _ec2_placement_group_info_dict['linuxhq-partition-1'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-1'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-1'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-partition-1'].strategy == 'partition'
-          - _ec2_placement_group_info_dict['linuxhq-partition-2'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-2'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-2'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-partition-2'].strategy == 'partition'
-          - _ec2_placement_group_info_dict['linuxhq-partition-3'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-3'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-3'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-partition-3'].strategy == 'partition'
-          - _ec2_placement_group_info_dict['linuxhq-partition-4'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-4'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-4'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-partition-4'].strategy == 'partition'
-          - _ec2_placement_group_info_dict['linuxhq-partition-5'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-5'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-5'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-partition-5'].strategy == 'partition'
-          - _ec2_placement_group_info_dict['linuxhq-partition-6'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-6'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-6'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-partition-6'].strategy == 'partition'
-          - _ec2_placement_group_info_dict['linuxhq-partition-7'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-7'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-7'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-partition-7'].strategy == 'partition'
-          - _ec2_placement_group_info_dict['linuxhq-partition-8'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-8'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-8'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-partition-8'].strategy == 'partition'
-          - _ec2_placement_group_info_dict['linuxhq-partition-9'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-9'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-partition-9'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-partition-9'].strategy == 'partition'
-          - _ec2_placement_group_info_dict['linuxhq-spread-1'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-spread-1'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-spread-1'].spread_level == 'rack'
-          - _ec2_placement_group_info_dict['linuxhq-spread-1'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-spread-1'].strategy == 'spread'
-          - _ec2_placement_group_info_dict['linuxhq-spread-2'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-spread-2'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-spread-2'].spread_level == 'rack'
-          - _ec2_placement_group_info_dict['linuxhq-spread-2'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-spread-2'].strategy == 'spread'
-          - _ec2_placement_group_info_dict['linuxhq-spread-3'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-spread-3'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-spread-3'].spread_level == 'rack'
-          - _ec2_placement_group_info_dict['linuxhq-spread-3'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-spread-3'].strategy == 'spread'
-          - _ec2_placement_group_info_dict['linuxhq-spread-4'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-spread-4'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-spread-4'].spread_level == 'rack'
-          - _ec2_placement_group_info_dict['linuxhq-spread-4'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-spread-4'].strategy == 'spread'
-          - _ec2_placement_group_info_dict['linuxhq-spread-5'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-spread-5'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-spread-5'].spread_level == 'rack'
-          - _ec2_placement_group_info_dict['linuxhq-spread-5'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-spread-5'].strategy == 'spread'
-          - _ec2_placement_group_info_dict['linuxhq-spread-6'].group_arn is defined
-          - _ec2_placement_group_info_dict['linuxhq-spread-6'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-spread-6'].spread_level == 'rack'
-          - _ec2_placement_group_info_dict['linuxhq-spread-6'].state == 'available'
-          - _ec2_placement_group_info_dict['linuxhq-spread-6'].strategy == 'spread'
+          - _ec2_placement_group_info_dict['molecule-cluster-1'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-cluster-1'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-cluster-1'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-cluster-1'].strategy == 'cluster'
+          - _ec2_placement_group_info_dict['molecule-cluster-2'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-cluster-2'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-cluster-2'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-cluster-2'].strategy == 'cluster'
+          - _ec2_placement_group_info_dict['molecule-cluster-3'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-cluster-3'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-cluster-3'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-cluster-3'].strategy == 'cluster'
+          - _ec2_placement_group_info_dict['molecule-cluster-4'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-cluster-4'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-cluster-4'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-cluster-4'].strategy == 'cluster'
+          - _ec2_placement_group_info_dict['molecule-cluster-5'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-cluster-5'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-cluster-5'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-cluster-5'].strategy == 'cluster'
+          - _ec2_placement_group_info_dict['molecule-cluster-6'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-cluster-6'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-cluster-6'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-cluster-6'].strategy == 'cluster'
+          - _ec2_placement_group_info_dict['molecule-partition-1'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-partition-1'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-partition-1'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-partition-1'].strategy == 'partition'
+          - _ec2_placement_group_info_dict['molecule-partition-2'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-partition-2'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-partition-2'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-partition-2'].strategy == 'partition'
+          - _ec2_placement_group_info_dict['molecule-partition-3'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-partition-3'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-partition-3'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-partition-3'].strategy == 'partition'
+          - _ec2_placement_group_info_dict['molecule-partition-4'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-partition-4'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-partition-4'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-partition-4'].strategy == 'partition'
+          - _ec2_placement_group_info_dict['molecule-partition-5'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-partition-5'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-partition-5'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-partition-5'].strategy == 'partition'
+          - _ec2_placement_group_info_dict['molecule-partition-6'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-partition-6'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-partition-6'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-partition-6'].strategy == 'partition'
+          - _ec2_placement_group_info_dict['molecule-partition-7'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-partition-7'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-partition-7'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-partition-7'].strategy == 'partition'
+          - _ec2_placement_group_info_dict['molecule-partition-8'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-partition-8'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-partition-8'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-partition-8'].strategy == 'partition'
+          - _ec2_placement_group_info_dict['molecule-partition-9'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-partition-9'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-partition-9'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-partition-9'].strategy == 'partition'
+          - _ec2_placement_group_info_dict['molecule-spread-1'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-spread-1'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-spread-1'].spread_level == 'rack'
+          - _ec2_placement_group_info_dict['molecule-spread-1'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-spread-1'].strategy == 'spread'
+          - _ec2_placement_group_info_dict['molecule-spread-2'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-spread-2'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-spread-2'].spread_level == 'rack'
+          - _ec2_placement_group_info_dict['molecule-spread-2'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-spread-2'].strategy == 'spread'
+          - _ec2_placement_group_info_dict['molecule-spread-3'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-spread-3'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-spread-3'].spread_level == 'rack'
+          - _ec2_placement_group_info_dict['molecule-spread-3'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-spread-3'].strategy == 'spread'
+          - _ec2_placement_group_info_dict['molecule-spread-4'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-spread-4'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-spread-4'].spread_level == 'rack'
+          - _ec2_placement_group_info_dict['molecule-spread-4'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-spread-4'].strategy == 'spread'
+          - _ec2_placement_group_info_dict['molecule-spread-5'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-spread-5'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-spread-5'].spread_level == 'rack'
+          - _ec2_placement_group_info_dict['molecule-spread-5'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-spread-5'].strategy == 'spread'
+          - _ec2_placement_group_info_dict['molecule-spread-6'].group_arn is defined
+          - _ec2_placement_group_info_dict['molecule-spread-6'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-spread-6'].spread_level == 'rack'
+          - _ec2_placement_group_info_dict['molecule-spread-6'].state == 'available'
+          - _ec2_placement_group_info_dict['molecule-spread-6'].strategy == 'spread'
 
     - name: Ensure role is included with name
       ansible.builtin.include_role:
         name: ec2_placement_group_info
       vars:
-        ec2_placement_group_info_name: linuxhq-cluster-1
+        ec2_placement_group_info_name: molecule-cluster-1
 
     - name: Ensure info with name is verified
       ansible.builtin.assert:
         that:
           - _ec2_placement_group_info_list | length == 1
-          - _ec2_placement_group_info_list.0.group_name == 'linuxhq-cluster-1'
-          - _ec2_placement_group_info_dict.keys() | list == ['linuxhq-cluster-1']
-          - _ec2_placement_group_info_dict['linuxhq-cluster-1'].group_id is defined
-          - _ec2_placement_group_info_dict['linuxhq-cluster-1'].strategy == 'cluster'
+          - _ec2_placement_group_info_list.0.group_name == 'molecule-cluster-1'
+          - _ec2_placement_group_info_dict.keys() | list == ['molecule-cluster-1']
+          - _ec2_placement_group_info_dict['molecule-cluster-1'].group_id is defined
+          - _ec2_placement_group_info_dict['molecule-cluster-1'].strategy == 'cluster'
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
