@@ -25,7 +25,7 @@ None
       roles:
         - role: linuxhq.aws.wafv2_web_acl
           wafv2_web_acl_list:
-            - name: molecule
+            - name: molecule-amazonipreputationlist
               scope: regional
               default_action: Allow
               rules:
@@ -41,7 +41,6 @@ None
                     cloud_watch_metrics_enabled: true
                     metric_name: AWS-AWSManagedRulesAmazonIpReputationList
                     sampled_requests_enabled: true
-
             - name: molecule-commonruleset
               scope: regional
               default_action: Allow
@@ -61,7 +60,6 @@ None
                     cloud_watch_metrics_enabled: true
                     metric_name: AWS-AWSManagedRulesCommonRuleSet
                     sampled_requests_enabled: true
-
             - name: molecule-knownbadinputsruleset
               scope: regional
               default_action: Allow
@@ -78,7 +76,6 @@ None
                     cloud_watch_metrics_enabled: true
                     metric_name: AWS-AWSManagedRulesKnownBadInputsRuleSet
                     sampled_requests_enabled: true
-
             - name: molecule-linuxruleset
               scope: regional
               default_action: Allow
@@ -95,7 +92,6 @@ None
                     cloud_watch_metrics_enabled: true
                     metric_name: AWS-AWSManagedRulesLinuxRuleSet
                     sampled_requests_enabled: true
-
             - name: molecule-anonymousiplist
               scope: regional
               default_action: Allow
@@ -112,7 +108,6 @@ None
                     cloud_watch_metrics_enabled: true
                     metric_name: AWS-AWSManagedRulesAnonymousIpList
                     sampled_requests_enabled: true
-
             - name: molecule-sqliruleset
               scope: regional
               default_action: Allow

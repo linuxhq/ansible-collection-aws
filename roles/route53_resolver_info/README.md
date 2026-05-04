@@ -25,9 +25,3 @@ None
       connection: local
       roles:
         - linuxhq.aws.route53_resolver_info
-
-    - hosts: aws
-      connection: local
-      roles:
-        - role: linuxhq.aws.route53_resolver_info
-          route53_resolver_info_name: molecule

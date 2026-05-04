@@ -30,7 +30,55 @@ None
       roles:
         - role: linuxhq.aws.ec2_vpc_dhcp_option
           ec2_vpc_dhcp_option_list:
-            - name: linuxhq
+            - name: molecule-00
+              dns_servers:
+                - 1.1.1.1
+                - 1.1.1.2
+            - name: molecule-01
+              dns_servers:
+                - 1.1.1.1
+                - 1.1.1.2
+            - name: molecule-02
+              dns_servers:
+                - 1.1.1.1
+                - 1.1.1.2
+            - name: molecule-03
+              dns_servers:
+                - 1.1.1.1
+                - 1.1.1.2
+            - name: molecule-04
+              dns_servers:
+                - 1.1.1.1
+                - 1.1.1.2
+            - name: molecule-05
+              dns_servers:
+                - 1.1.1.1
+                - 1.1.1.2
+            - name: molecule-06
+              dns_servers:
+                - 1.1.1.1
+                - 1.1.1.2
+            - name: molecule-07
+              dns_servers:
+                - 1.1.1.1
+                - 1.1.1.2
+            - name: molecule-08
+              dns_servers:
+                - 1.1.1.1
+                - 1.1.1.2
+            - name: molecule-09
+              dns_servers:
+                - 1.1.1.1
+                - 1.1.1.2
+            - name: molecule-10
+              dns_servers:
+                - 1.1.1.1
+                - 1.1.1.2
+            - name: molecule-11
+              dns_servers:
+                - 1.1.1.1
+                - 1.1.1.2
+            - name: molecule-12
               dns_servers:
                 - 1.1.1.1
                 - 1.1.1.2

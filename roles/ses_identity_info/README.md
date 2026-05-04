@@ -25,9 +25,3 @@ None
       connection: local
       roles:
         - linuxhq.aws.ses_identity_info
-
-    - hosts: aws
-      connection: local
-      roles:
-        - role: linuxhq.aws.ses_identity_info
-          ses_identity_info_name: molecule.org

@@ -20,13 +20,6 @@ None
       connection: local
       roles:
         - role: linuxhq.aws.ssm_session
-          ssm_session_kms_key_admins:
-            - root
-            - role/admin
           ssm_session_kms_key_consumers:
-            - role/instance-profile-*
-            - role/*ro
-            - role/*rw
-            - user/molecule
-          ssm_session_shell_profile_linux: |-
-            cd
+            - role/molecule-instance
+          ssm_session_shell_profile_linux: cd

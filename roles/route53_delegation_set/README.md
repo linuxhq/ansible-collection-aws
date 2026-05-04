@@ -30,6 +30,6 @@ None
       roles:
         - role: linuxhq.aws.route53_delegation_set
           route53_delegation_set_list:
-            - name: molecule-01
-            - name: molecule-02
-            - name: molecule-03
+            - name: "molecule-01-{{ ansible_facts.date_time.date }}"
+            - name: "molecule-02-{{ ansible_facts.date_time.date }}"
+            - name: "molecule-03-{{ ansible_facts.date_time.date }}"

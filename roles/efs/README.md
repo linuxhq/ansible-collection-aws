@@ -26,15 +26,15 @@ None
       roles:
         - role: linuxhq.aws.efs
           efs_list:
-            - name: linuxhq-efs1
+            - name: molecule-efs1
               encrypt: true
               targets:
-                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-a'].id }}"
-                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-b'].id }}"
-                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-c'].id }}"
-              vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+              vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
 
-            - name: linuxhq-efs2
+            - name: molecule-efs2
               encrypt: true
               rules:
                 - cidr_ip: 10.0.0.0/8
@@ -47,7 +47,7 @@ None
                     - 0-65535
                   proto: tcp
               targets:
-                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-a'].id }}"
-                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-b'].id }}"
-                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-c'].id }}"
-              vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+              vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"

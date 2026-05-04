@@ -31,17 +31,19 @@ None
       connection: local
       roles:
         - role: linuxhq.aws.ec2_instance
-          ec2_ami_info_list:
-            - name: 'AlmaLinux OS 9'
-              filters:
-                owner-alias: aws-marketplace
-                product-code: 3kukoxmnoighcsbjd0u4nq9ds
-                product-code.type: marketplace
-                is-public: true
-                virtualization-type: hvm
-
           ec2_instance_list:
-            - name: linuxhq-1
+            - name: molecule-a
+              exact_count: 3
               image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
-              instance_type: t3.small
-              vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pvt-a'].id }}"
+              instance_type: t2.medium
+              vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-a'].id }}"
+            - name: molecule-b
+              exact_count: 3
+              image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
+              instance_type: t2.medium
+              vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-b'].id }}"
+            - name: molecule-c
+              exact_count: 3
+              image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
+              instance_type: t2.medium
+              vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-c'].id }}"

@@ -33,37 +33,31 @@ None
       roles:
         - role: linuxhq.aws.ec2_vpc_route_table
           ec2_vpc_route_table_list:
-            - vpc_id: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
+            - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
               route_tables:
-                - name: "{{ aws_vpc }}-pub"
+                - name: molecule-pub
                   routes:
-                    - dest: '0.0.0.0/0'
+                    - dest: 0.0.0.0/0
                       gateway_id: igw
                   subnets:
-                    - "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0].id }}"
-                    - "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1].id }}"
-                    - "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2].id }}"
-
-                - name: "{{ aws_vpc }}-pvt-{{ _aws_az_info_list_s.0 }}"
+                    - "{{ _ec2_vpc_subnet_info_dict['molecule-pub-a'].id }}"
+                    - "{{ _ec2_vpc_subnet_info_dict['molecule-pub-b'].id }}"
+                    - "{{ _ec2_vpc_subnet_info_dict['molecule-pub-c'].id }}"
+                - name: molecule-pvt-a
                   routes:
-                    - dest: '0.0.0.0/0'
-                      gateway_id:
-                        "{{ _ec2_vpc_nat_gateway_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.0].nat_gateway_id }}"
+                    - dest: 0.0.0.0/0
+                      gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub-a'].nat_gateway_id }}"
                   subnets:
-                    - "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.0].id }}"
-
-                - name: "{{ aws_vpc }}-pvt-{{ _aws_az_info_list_s.1 }}"
+                    - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-a'].id }}"
+                - name: molecule-pvt-b
                   routes:
-                    - dest: '0.0.0.0/0'
-                      gateway_id:
-                        "{{ _ec2_vpc_nat_gateway_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.1].nat_gateway_id }}"
+                    - dest: 0.0.0.0/0
+                      gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub-b'].nat_gateway_id }}"
                   subnets:
-                    - "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.1].id }}"
-
-                - name: "{{ aws_vpc }}-pvt-{{ _aws_az_info_list_s.2 }}"
+                    - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-b'].id }}"
+                - name: molecule-pvt-c
                   routes:
-                    - dest: '0.0.0.0/0'
-                      gateway_id:
-                        "{{ _ec2_vpc_nat_gateway_info_dict[aws_vpc ~ '-pub-' ~ _aws_az_info_list_s.2].nat_gateway_id }}"
+                    - dest: 0.0.0.0/0
+                      gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub-c'].nat_gateway_id }}"
                   subnets:
-                    - "{{ _ec2_vpc_subnet_info_dict[aws_vpc ~ '-pvt-' ~ _aws_az_info_list_s.2].id }}"
+                    - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-c'].id }}"

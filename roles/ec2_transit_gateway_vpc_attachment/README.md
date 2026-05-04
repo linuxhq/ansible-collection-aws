@@ -31,7 +31,7 @@ None
       roles:
         - role: linuxhq.aws.ec2_transit_gateway_vpc_attachment
           ec2_transit_gateway_vpc_attachment_list:
-            - name: linuxhq
+            - name: molecule
               subnets:
-                - "{{ _ec2_vpc_subnet_info_dict['linuxhq'].id }}"
-              transit_gateway: "{{ _ec2_transit_gateway_info_dict['linuxhq'].transit_gateway_id }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule'].id }}"
+              transit_gateway: "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"

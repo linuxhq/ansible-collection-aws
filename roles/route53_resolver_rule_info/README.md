@@ -30,9 +30,3 @@ None
       connection: local
       roles:
         - linuxhq.aws.route53_resolver_rule_info
-
-    - hosts: aws
-      connection: local
-      roles:
-        - role: linuxhq.aws.route53_resolver_rule_info
-          route53_resolver_rule_info_name: molecule-cloudflare

@@ -30,24 +30,24 @@ None
       roles:
         - role: linuxhq.aws.iam_group
           iam_group_list:
-            - name: linuxhq-admin
+            - name: molecule-admin
               managed_policies:
                 - AdministratorAccess
               purge_policies: true
               users:
-                - linuxhq-admin
+                - molecule-admin
 
-            - name: linuxhq-kopia
+            - name: molecule-kopia
               managed_policies:
                 - AmazonS3FullAccess
               purge_policies: true
               users:
-                - linuxhq-kopia
+                - molecule-kopia
 
-            - name: linuxhq-molecule
+            - name: molecule-molecule
               managed_policies:
                 - AmazonEC2FullAccess
                 - AmazonVPCReadOnlyAccess
               purge_policies: true
               users:
-                - linuxhq-molecule
+                - molecule-molecule

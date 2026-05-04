@@ -31,23 +31,112 @@ None
       roles:
         - role: linuxhq.aws.ec2_security_group
           ec2_security_group_list:
-            - vpc_id: "{{ _ec2_vpc_net_info_dict[aws_vpc].id }}"
+            - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
               security_groups:
-                - name: "{{ aws_vpc }}-ssh"
+                - name: molecule-ftp
                   rules:
+                    - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
+                      ports:
+                        - 21
+                      proto: tcp
+                  rules_egress:
                     - cidr_ip: 0.0.0.0/0
+                      proto: -1
+                - name: molecule-ssh
+                  rules:
+                    - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
                       ports:
                         - 22
                       proto: tcp
                   rules_egress:
                     - cidr_ip: 0.0.0.0/0
                       proto: -1
-
-                - name: "{{ aws_vpc }}-https"
+                - name: molecule-telnet
                   rules:
+                    - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
+                      ports:
+                        - 23
+                      proto: tcp
+                  rules_egress:
                     - cidr_ip: 0.0.0.0/0
+                      proto: -1
+                - name: molecule-smtp
+                  rules:
+                    - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
+                      ports:
+                        - 25
+                      proto: tcp
+                  rules_egress:
+                    - cidr_ip: 0.0.0.0/0
+                      proto: -1
+                - name: molecule-domain
+                  rules:
+                    - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
+                      ports:
+                        - 53
+                      proto: tcp
+                  rules_egress:
+                    - cidr_ip: 0.0.0.0/0
+                      proto: -1
+                - name: molecule-http
+                  rules:
+                    - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
+                      ports:
+                        - 80
+                      proto: tcp
+                  rules_egress:
+                    - cidr_ip: 0.0.0.0/0
+                      proto: -1
+                - name: molecule-pop3
+                  rules:
+                    - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
+                      ports:
+                        - 110
+                      proto: tcp
+                  rules_egress:
+                    - cidr_ip: 0.0.0.0/0
+                      proto: -1
+                - name: molecule-imap
+                  rules:
+                    - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
+                      ports:
+                        - 143
+                      proto: tcp
+                  rules_egress:
+                    - cidr_ip: 0.0.0.0/0
+                      proto: -1
+                - name: molecule-ldap
+                  rules:
+                    - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
+                      ports:
+                        - 389
+                      proto: tcp
+                  rules_egress:
+                    - cidr_ip: 0.0.0.0/0
+                      proto: -1
+                - name: molecule-https
+                  rules:
+                    - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
                       ports:
                         - 443
+                      proto: tcp
+                  rules_egress:
+                    - cidr_ip: 0.0.0.0/0
+                      proto: -1
+                - name: molecule-ircd
+                  rules:
+                    - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
+                      ports:
+                        - 6667
+                      proto: tcp
+                  rules_egress:
+                    - cidr_ip: 0.0.0.0/0
+                      proto: -1
+                - name: molecule-ircs
+                  rules:
+                    - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
+                      ports:
+                        - 6697
                       proto: tcp
                   rules_egress:
                     - cidr_ip: 0.0.0.0/0

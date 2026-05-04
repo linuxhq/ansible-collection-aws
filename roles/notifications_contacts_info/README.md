@@ -25,9 +25,3 @@ None
       connection: local
       roles:
         - linuxhq.aws.notifications_contacts_info
-
-    - hosts: aws
-      connection: local
-      roles:
-        - role: linuxhq.aws.notifications_contacts_info
-          notifications_contacts_info_name: molecule-dummy01

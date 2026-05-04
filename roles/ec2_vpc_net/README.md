@@ -30,6 +30,13 @@ None
       roles:
         - role: linuxhq.aws.ec2_vpc_net
           ec2_vpc_net_list:
-            - name: "{{ aws_vpc }}"
-              cidr_block: "{{ aws_network }}"
-              dhcp_options_id: "{{ _ec2_vpc_dhcp_option_info_dict[aws_vpc].dhcp_options_id }}"
+            - name: molecule-00
+              cidr_block: 10.0.0.0/16
+            - name: molecule-01
+              cidr_block: 10.1.0.0/16
+            - name: molecule-02
+              cidr_block: 10.2.0.0/16
+            - name: molecule-03
+              cidr_block: 10.3.0.0/16
+            - name: molecule-04
+              cidr_block: 10.4.0.0/16

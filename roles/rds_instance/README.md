@@ -37,8 +37,6 @@ None
               publicly_accessible: true
               skip_final_snapshot: true
               vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].vpc_id }}"
-              wait: false
-
             - allocated_storage: 20
               auto_minor_version_upgrade: false
               ca_certificate_identifier: rds-ca-rsa2048-g1
@@ -59,7 +57,7 @@ None
               master_username: mnkes9JwUdsq
               max_allocated_storage: 40
               monitoring_interval: 60
-              monitoring_role_arn: 'arn:aws:iam::{{ _aws_caller_info_account }}:role/MoleculeRdsMonitoring'
+              monitoring_role_arn: "arn:aws:iam::{{ _aws_caller_info_account }}:role/MoleculeRdsMonitoring"
               multi_az: true
               option_group_name: mariadb118
               publicly_accessible: false
@@ -72,4 +70,3 @@ None
               storage_type: gp3
               skip_final_snapshot: true
               vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].vpc_id }}"
-              wait: false

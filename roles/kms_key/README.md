@@ -31,36 +31,31 @@ None
         - role: linuxhq.aws.kms_key
           kms_key_list:
             - name: molecule-root
+              pending_window: 7
               policy:
                 Version: '2012-10-17'
                 Statement:
                   - Effect: Allow
                     Principal:
-                      AWS: 'arn:aws:iam::{{ _aws_caller_info_account }}:root'
-                    Action:
-                      - kms:*
-                    Resource:
-                      - '*'
-
+                      AWS: "arn:aws:iam::{{ _aws_caller_info_account }}:root"
+                    Action: kms:*
+                    Resource: '*'
             - name: molecule-admin
+              pending_window: 7
               policy:
                 Version: '2012-10-17'
                 Statement:
                   - Effect: Allow
                     Principal:
-                      AWS: 'arn:aws:iam::{{ _aws_caller_info_account }}:root'
-                    Action:
-                      - kms:*
-                    Resource:
-                      - '*'
+                      AWS: "arn:aws:iam::{{ _aws_caller_info_account }}:root"
+                    Action: kms:*
+                    Resource: '*'
                   - Effect: Allow
                     Principal:
                       AWS: '*'
-                    Action:
-                      - kms:*
-                    Resource:
-                      - '*'
+                    Action: kms:*
+                    Resource: '*'
                     Condition:
                       ArnEquals:
-                        'aws:PrincipalArn':
-                          - 'arn:aws:iam::{{ _aws_caller_info_account }}:role/admin'
+                        aws:PrincipalArn:
+                          - "arn:aws:iam::{{ _aws_caller_info_account }}:role/admin"
