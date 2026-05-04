@@ -30,5 +30,5 @@ None
       roles:
         - role: linuxhq.aws.ec2_vpc_igw
           ec2_vpc_igw_list:
-            - name: linuxhq
-              vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
+            - name: molecule
+              vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"

@@ -25,9 +25,3 @@ None
       connection: local
       roles:
         - linuxhq.aws.eks_cluster_info
-
-    - hosts: aws
-      connection: local
-      roles:
-        - role: linuxhq.aws.eks_cluster_info
-          eks_cluster_info_name: molecule-eks1

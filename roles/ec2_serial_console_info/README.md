@@ -27,6 +27,5 @@ None
       roles:
         - role: linuxhq.aws.ec2_serial_console_info
           ec2_serial_console_info_regions:
-            "{{ (_aws_region_info_list |
-                map(attribute='region_name')) |
-                d(['us-east-1']) }}"
+            - us-east-1
+            - us-east-2

@@ -30,7 +30,7 @@ None
       roles:
         - role: linuxhq.aws.iam_managed_policy
           iam_managed_policy_list:
-            - name: linuxhq-admin
+            - name: molecule-admin
               policy:
                 Version: '2012-10-17'
                 Statement:
@@ -38,7 +38,7 @@ None
                     Action: '*'
                     Resource: '*'
 
-            - name: linuxhq-s3
+            - name: molecule-s3
               policy:
                 Version: '2012-10-17'
                 Statement:

@@ -21,9 +21,3 @@ None
       connection: local
       roles:
         - linuxhq.aws.ec2_vpc_prefix_list_info
-
-    - hosts: aws
-      connection: local
-      roles:
-        - role: linuxhq.aws.ec2_vpc_prefix_list_info
-          ec2_vpc_prefix_list_info_name: molecule-localhost

@@ -27,8 +27,4 @@ None
       connection: local
       roles:
         - role: linuxhq.aws.ssm_parameter_info
-          ssm_parameter_info_list:
-            - name: /molecule/db/admin/username
-            - name: /molecule/db/admin/password
-            - name: /molecule/sys/username
-            - name: /molecule/sys/password
+          ssm_parameter_info_list: "{{ ssm_parameter_list }}"

@@ -30,4 +30,8 @@ None
       roles:
         - role: linuxhq.aws.ec2_transit_gateway
           ec2_transit_gateway_list:
-            - name: linuxhq
+            - name: molecule-00
+            - name: molecule-01
+            - name: molecule-02
+            - name: molecule-03
+            - name: molecule-04

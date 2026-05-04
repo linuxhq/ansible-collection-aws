@@ -30,9 +30,9 @@ None
       roles:
         - role: linuxhq.aws.iam_user
           iam_user_list:
-            - name: linuxhq-admin
+            - name: molecule-admin
               purge_policies: true
-            - name: linuxhq-kopia
+            - name: molecule-kopia
               purge_policies: true
-            - name: linuxhq-molecule
+            - name: molecule-molecule
               purge_policies: true

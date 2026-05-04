@@ -21,9 +21,3 @@ None
       connection: local
       roles:
         - linuxhq.aws.sqs_queue_info
-
-    - hosts: aws
-      connection: local
-      roles:
-        - role: linuxhq.aws.sqs_queue_info
-          sqs_queue_info_name: molecule-bounce

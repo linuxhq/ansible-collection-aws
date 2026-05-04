@@ -30,11 +30,44 @@ None
       roles:
         - role: linuxhq.aws.ec2_vol
           ec2_vol_list:
-            - instance: "{{ _ec2_instance_info_dict['linuxhq-1'].instance_id }}"
+            - instance: "{{ _ec2_instance_info_dict['molecule-a'].instance_id }}"
               volumes:
-                - name: linuxhq-vol-a-01
+                - name: molecule-vol-a-01
                   device_name: sdf
-                  volume_size: 10
-                - name: linuxhq-vol-a-02
+                  volume_size: "{{ 10 | random(start=1) }}"
+                - name: molecule-vol-a-02
                   device_name: sdg
-                  volume_size: 50
+                  volume_size: "{{ 10 | random(start=1) }}"
+                - name: molecule-vol-a-03
+                  device_name: sdh
+                  volume_size: "{{ 10 | random(start=1) }}"
+                - name: molecule-vol-a-04
+                  device_name: sdi
+                  volume_size: "{{ 10 | random(start=1) }}"
+                - name: molecule-vol-a-05
+                  device_name: sdj
+                  volume_size: "{{ 10 | random(start=1) }}"
+                - name: molecule-vol-a-06
+                  device_name: sdk
+                  volume_size: "{{ 10 | random(start=1) }}"
+
+            - instance: "{{ _ec2_instance_info_dict['molecule-b'].instance_id }}"
+              volumes:
+                - name: molecule-vol-b-01
+                  device_name: sdf
+                  volume_size: "{{ 10 | random(start=1) }}"
+                - name: molecule-vol-b-02
+                  device_name: sdg
+                  volume_size: "{{ 10 | random(start=1) }}"
+                - name: molecule-vol-b-03
+                  device_name: sdh
+                  volume_size: "{{ 10 | random(start=1) }}"
+                - name: molecule-vol-b-04
+                  device_name: sdi
+                  volume_size: "{{ 10 | random(start=1) }}"
+                - name: molecule-vol-b-05
+                  device_name: sdj
+                  volume_size: "{{ 10 | random(start=1) }}"
+                - name: molecule-vol-b-06
+                  device_name: sdk
+                  volume_size: "{{ 10 | random(start=1) }}"

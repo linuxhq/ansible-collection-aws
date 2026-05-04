@@ -28,6 +28,4 @@ None
       connection: local
       roles:
         - role: linuxhq.aws.secretsmanager_secret_info
-          secretsmanager_secret_info_list:
-            - name: molecule-secret-1
-            - name: molecule-secret-2
+          secretsmanager_secret_info_list: "{{ secretsmanager_secret_list }}"

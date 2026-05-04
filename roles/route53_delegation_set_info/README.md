@@ -25,9 +25,3 @@ None
       connection: local
       roles:
         - linuxhq.aws.route53_delegation_set_info
-
-    - hosts: aws
-      connection: local
-      roles:
-        - role: linuxhq.aws.route53_delegation_set_info
-          route53_delegation_set_info_name: molecule-01

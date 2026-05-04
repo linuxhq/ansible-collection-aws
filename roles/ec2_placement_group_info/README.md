@@ -21,9 +21,3 @@ None
       connection: local
       roles:
         - linuxhq.aws.ec2_placement_group_info
-
-    - hosts: aws
-      connection: local
-      roles:
-        - role: linuxhq.aws.ec2_placement_group_info
-          ec2_placement_group_info_name: linuxhq-cluster-1

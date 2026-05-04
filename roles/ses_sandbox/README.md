@@ -28,9 +28,3 @@ None
       connection: local
       roles:
         - role: linuxhq.aws.ses_sandbox
-          ses_sandbox_additional_contact_email_addresses:
-            - jake@molecule.org
-            - john@molecule.org
-          ses_sandbox_use_case_description: |
-            New account creation
-          ses_sandbox_website_url: 'https://github.com/ansible/molecule'

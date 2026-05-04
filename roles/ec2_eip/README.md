@@ -30,8 +30,8 @@ None
       roles:
         - role: linuxhq.aws.ec2_eip
           ec2_eip_list:
-            - name: linuxhq-eip-01
-            - name: linuxhq-eip-02
-            - name: linuxhq-eip-03
-            - name: linuxhq-eip-04
-            - name: linuxhq-eip-05
+            - name: molecule-eip-01
+            - name: molecule-eip-02
+            - name: molecule-eip-03
+            - name: molecule-eip-04
+            - name: molecule-eip-05

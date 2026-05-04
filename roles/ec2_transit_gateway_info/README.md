@@ -25,4 +25,7 @@ None
     - hosts: aws
       connection: local
       roles:
-        - linuxhq.aws.ec2_transit_gateway_info
+        - role: linuxhq.aws.ec2_transit_gateway_info
+          ec2_transit_gateway_info_filters:
+            state:
+              - available

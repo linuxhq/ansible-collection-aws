@@ -30,7 +30,7 @@ None
       roles:
         - role: linuxhq.aws.iam_role
           iam_role_list:
-            - name: LinuxHQEKSNodeGroup
+            - name: molecule-role-00
               assume_role_policy_document:
                 Version: '2012-10-17'
                 Statement:
@@ -39,10 +39,8 @@ None
                       Service: ec2.amazonaws.com
                     Action:
                       - sts:AssumeRole
+              create_instance_profile: false
+              delete_instance_profile: true
               managed_policies:
-                - AmazonEC2ContainerRegistryReadOnly
-                - AmazonEKS_CNI_Policy
-                - AmazonEKSWorkerNodePolicy
-                - AmazonSSMManagedInstanceCore
-                - AmazonS3ReadOnlyAccess
-                - CloudWatchAgentServerPolicy
+                - AmazonEC2ReadOnlyAccess
+                - AmazonVPCReadOnlyAccess

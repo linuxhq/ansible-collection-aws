@@ -25,4 +25,4 @@ None
       connection: local
       roles:
         - role: linuxhq.aws.iam_account_alias
-          iam_account_alias_name: "molecule-{{ ansible_date_time.date }}"
+          iam_account_alias_name: "molecule-{{ ansible_facts.date_time.date }}"
