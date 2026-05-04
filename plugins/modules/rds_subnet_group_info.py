@@ -40,46 +40,45 @@ subnet_groups:
   type: list
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+    scrub_none_parameters,
+)
 
 
 def list_subnet_groups(client, module):
-    subnet_groups = []
-    marker = None
+    kwargs = scrub_none_parameters({"DBSubnetGroupName": module.params["name"]})
 
-    while True:
-        kwargs = {}
+    try:
+        response = paginated_query_with_retries(
+            client,
+            "describe_db_subnet_groups",
+            **kwargs,
+        )
+    except is_boto3_error_code("DBSubnetGroupNotFoundFault") as e:
         if module.params["name"] is not None:
-            kwargs["DBSubnetGroupName"] = module.params["name"]
-        if marker:
-            kwargs["Marker"] = marker
+            return []
+        module.fail_json_aws(
+            e,
+            msg="Unable to describe AWS RDS subnet groups",
+        )
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg="Unable to describe AWS RDS subnet groups",
+        )
 
-        try:
-            response = client.describe_db_subnet_groups(**kwargs)
-        except Exception as e:
-            if (
-                module.params["name"] is not None
-                and getattr(e, "response", {}).get("Error", {}).get("Code")
-                == "DBSubnetGroupNotFoundFault"
-            ):
-                return []
-            module.fail_json_aws(
-                e,
-                msg="Unable to describe AWS RDS subnet groups",
-            )
-
-        subnet_groups.extend(response.get("DBSubnetGroups", []))
-        marker = response.get("Marker")
-        if not marker:
-            break
-
-    return [
-        camel_dict_to_snake_dict(subnet_group)
-        for subnet_group in subnet_groups
+    subnet_groups = [
+        subnet_group
+        for subnet_group in response.get("DBSubnetGroups", [])
         if subnet_group.get("DBSubnetGroupName") is not None
     ]
+    return boto3_resource_list_to_ansible_dict(subnet_groups, force_tags=False)
 
 
 def main():

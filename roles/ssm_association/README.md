@@ -29,5 +29,5 @@ None
             - name: AWS-UpdateSSMAgent
               schedule_expression: 'cron(0 0 * * ? *)'
               targets:
-                - Key: InstanceIds
-                  Values: ['*']
+                - key: InstanceIds
+                  values: ['*']

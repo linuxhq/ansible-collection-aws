@@ -74,16 +74,17 @@ previous_region_opt_status:
 """
 
 import time
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 
 PRESENT_STATUSES = {"ENABLED", "ENABLING", "ENABLED_BY_DEFAULT"}
 ABSENT_STATUSES = {"DISABLED", "DISABLING"}
 
 
 def get_region_opt_status(client, module, region_name):
+    get_region_opt_status = AWSRetry.jittered_backoff()(client.get_region_opt_status)
     try:
-        response = client.get_region_opt_status(RegionName=region_name)
+        response = get_region_opt_status(RegionName=region_name)
     except Exception as e:
         module.fail_json_aws(
             e, msg=f"Unable to get AWS account region opt-in status for {region_name}"
@@ -92,6 +93,7 @@ def get_region_opt_status(client, module, region_name):
 
 
 def wait_for_status(client, module, region_name, desired_statuses):
+    status = None
     for _ in range(module.params["retries"]):
         status = get_region_opt_status(client, module, region_name)
         if status in desired_statuses:
@@ -128,8 +130,9 @@ def main():
     if state == "present" and previous_status == "DISABLED":
         changed = True
         if not module.check_mode:
+            enable_region = AWSRetry.jittered_backoff()(client.enable_region)
             try:
-                client.enable_region(RegionName=region_name)
+                enable_region(RegionName=region_name)
             except Exception as e:
                 module.fail_json_aws(
                     e, msg=f"Unable to enable AWS account region {region_name}"
@@ -142,8 +145,9 @@ def main():
     elif state == "absent" and previous_status == "ENABLED":
         changed = True
         if not module.check_mode:
+            disable_region = AWSRetry.jittered_backoff()(client.disable_region)
             try:
-                client.disable_region(RegionName=region_name)
+                disable_region(RegionName=region_name)
             except Exception as e:
                 module.fail_json_aws(
                     e, msg=f"Unable to disable AWS account region {region_name}"

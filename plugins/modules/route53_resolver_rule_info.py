@@ -41,69 +41,29 @@ resolver_rules:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53 import (
+    list_resolver_rule_associations,
+    list_resolver_rules,
+    normalize_resolver_rule,
+    normalize_resolver_rule_association,
+)
 
 
-def list_resolver_rules(client, module):
-    rules = []
-    next_token = None
-
-    while True:
-        kwargs = {}
-        if next_token:
-            kwargs["NextToken"] = next_token
-
-        try:
-            response = client.list_resolver_rules(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS Route53 Resolver rules",
-            )
-
-        rules.extend(response.get("ResolverRules", []))
-        next_token = response.get("NextToken")
-        if not next_token:
-            break
-
-    return rules
+def group_associations_by_rule_id(associations):
+    associations_by_rule_id = {}
+    for association in associations:
+        associations_by_rule_id.setdefault(
+            association.get("ResolverRuleId"), []
+        ).append(association)
+    return associations_by_rule_id
 
 
-def list_resolver_rule_associations(client, module):
-    associations = []
-    next_token = None
-
-    while True:
-        kwargs = {}
-        if next_token:
-            kwargs["NextToken"] = next_token
-
-        try:
-            response = client.list_resolver_rule_associations(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS Route53 Resolver rule associations",
-            )
-
-        associations.extend(response.get("ResolverRuleAssociations", []))
-        next_token = response.get("NextToken")
-        if not next_token:
-            break
-
-    return associations
-
-
-def normalize(rule, associations):
-    normalized = camel_dict_to_snake_dict(rule)
-    if "target_ips" in normalized:
-        normalized["target_ips"] = rule.get("TargetIps", [])
+def normalize_resolver_rule_with_associations(rule, associations_by_rule_id):
+    normalized = normalize_resolver_rule(rule)
     normalized["associations"] = [
-        camel_dict_to_snake_dict(association)
-        for association in associations
-        if association.get("ResolverRuleId") == rule.get("Id")
+        normalize_resolver_rule_association(association)
+        for association in associations_by_rule_id.get(rule.get("Id"), [])
     ]
     normalized["vpc_ids"] = [
         association["vpc_id"]
@@ -122,7 +82,9 @@ def main():
     )
     client = module.client("route53resolver")
     resolver_rules = list_resolver_rules(client, module)
-    resolver_rule_associations = list_resolver_rule_associations(client, module)
+    associations_by_rule_id = group_associations_by_rule_id(
+        list_resolver_rule_associations(client, module)
+    )
 
     if module.params["name"] is not None:
         resolver_rules = [
@@ -132,7 +94,8 @@ def main():
     module.exit_json(
         changed=False,
         resolver_rules=[
-            normalize(rule, resolver_rule_associations) for rule in resolver_rules
+            normalize_resolver_rule_with_associations(rule, associations_by_rule_id)
+            for rule in resolver_rules
         ],
     )
 

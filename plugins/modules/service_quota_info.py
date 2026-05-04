@@ -57,9 +57,11 @@ service_code:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.linuxhq.aws.plugins.module_utils.service_quota import (
+    get_service_quota,
+    normalize_quota,
+)
 
 
 def main():
@@ -71,23 +73,9 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("service-quotas")
 
-    try:
-        response = client.get_service_quota(
-            QuotaCode=module.params["quota_code"],
-            ServiceCode=module.params["service_code"],
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                f"Unable to get AWS service quota {module.params['quota_code']} "
-                f"for service {module.params['service_code']}"
-            ),
-        )
-
     module.exit_json(
         changed=False,
-        quota=camel_dict_to_snake_dict(response.get("Quota", {})),
+        quota=normalize_quota(get_service_quota(client, module)),
         quota_code=module.params["quota_code"],
         service_code=module.params["service_code"],
     )

@@ -78,11 +78,6 @@ name:
   description: The managed Systems Manager document name.
   returned: always
   type: str
-proposed_document:
-  description:
-    - The document values that would exist after the requested change.
-  returned: when changed and state is present
-  type: dict
 state:
   description: The requested state of the document.
   returned: always
@@ -90,26 +85,14 @@ state:
 """
 
 import json
-
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    get_document as get_ssm_document,
+)
 
 
-def is_not_found_error(error):
-    return getattr(error, "response", {}).get("Error", {}).get("Code") in (
-        "InvalidDocument",
-        "InvalidDocumentOperation",
-    )
-
-
-def build_document_response(metadata, content):
-    document = camel_dict_to_snake_dict(metadata or {})
-    document["content"] = content
-    return document
-
-
-def build_proposed_document(module):
+def build_desired_document(module):
     return {
         "content": module.params["content"],
         "document_type": module.params["document_type"],
@@ -118,47 +101,34 @@ def build_proposed_document(module):
 
 
 def get_document(client, module):
-    try:
-        response = client.get_document(
-            DocumentFormat="JSON",
-            DocumentVersion=module.params["document_version"],
-            Name=module.params["name"],
-        )
-    except Exception as e:
-        if is_not_found_error(e):
-            return None
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS Systems Manager document {module.params['name']}",
-        )
-
-    try:
-        content = json.loads(response.get("Content", "{}"))
-    except ValueError as e:
-        module.fail_json(
-            msg=f"Unable to parse AWS Systems Manager document content for {module.params['name']}",
-            error=str(e),
-        )
-
-    return build_document_response(response, content)
+    return get_ssm_document(
+        client,
+        module,
+        module.params["name"],
+        document_version=module.params["document_version"],
+        default_content={},
+        include_missing_content=True,
+    )
 
 
 def ensure_present(client, module):
     current = get_document(client, module)
-    desired = build_proposed_document(module)
+    desired = build_desired_document(module)
     changed = current is None or current.get("content") != module.params["content"]
 
     if changed and not module.check_mode:
         try:
             if current is None:
-                client.create_document(
+                create_document = AWSRetry.jittered_backoff()(client.create_document)
+                create_document(
                     Content=json.dumps(module.params["content"], sort_keys=True),
                     DocumentFormat="JSON",
                     DocumentType=module.params["document_type"],
                     Name=module.params["name"],
                 )
             else:
-                client.update_document(
+                update_document = AWSRetry.jittered_backoff()(client.update_document)
+                update_document(
                     Content=json.dumps(module.params["content"], sort_keys=True),
                     DocumentFormat="JSON",
                     DocumentVersion=module.params["document_version"],
@@ -179,8 +149,6 @@ def ensure_present(client, module):
         "name": module.params["name"],
         "state": "present",
     }
-    if changed:
-        result["proposed_document"] = desired
 
     module.exit_json(**result)
 
@@ -190,8 +158,9 @@ def ensure_absent(client, module):
     changed = current is not None
 
     if changed and not module.check_mode:
+        delete_document = AWSRetry.jittered_backoff()(client.delete_document)
         try:
-            client.delete_document(Name=module.params["name"])
+            delete_document(Name=module.params["name"])
         except Exception as e:
             module.fail_json_aws(
                 e,

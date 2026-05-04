@@ -32,42 +32,38 @@ connections:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+)
 
 
 def normalize_connection(connection):
-    normalized = camel_dict_to_snake_dict(connection)
-    if "ConnectionProperties" in connection:
-        normalized["connection_properties"] = connection["ConnectionProperties"]
-    return normalized
+    return boto3_resource_to_ansible_dict(
+        connection,
+        force_tags=False,
+        ignore_list=["ConnectionProperties"],
+    )
 
 
 def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
     client = module.client("glue")
 
-    connections = []
-    next_token = None
-
     try:
-        while True:
-            request = {}
-            if next_token:
-                request["NextToken"] = next_token
-
-            response = client.get_connections(**request)
-            connections.extend(response.get("ConnectionList", []))
-            next_token = response.get("NextToken")
-            if not next_token:
-                break
+        response = paginated_query_with_retries(client, "get_connections")
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to get AWS Glue connections")
 
     module.exit_json(
         changed=False,
-        connections=[normalize_connection(connection) for connection in connections],
+        connections=[
+            normalize_connection(connection)
+            for connection in response.get("ConnectionList", [])
+        ],
     )
 
 

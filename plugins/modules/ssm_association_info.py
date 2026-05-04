@@ -31,40 +31,11 @@ associations:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-
-
-def normalize_association(association):
-    normalized = camel_dict_to_snake_dict(association)
-    for key, target in (
-        ("Targets", "targets"),
-        ("TargetMaps", "target_maps"),
-    ):
-        if key in association:
-            normalized[target] = association[key]
-    return normalized
-
-
-def list_associations(client, module):
-    associations = []
-    next_token = None
-
-    try:
-        while True:
-            request = {}
-            if next_token:
-                request["NextToken"] = next_token
-            response = client.list_associations(**request)
-            associations.extend(response.get("Associations", []))
-            next_token = response.get("NextToken")
-            if not next_token:
-                break
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Systems Manager associations")
-
-    return associations
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    list_associations,
+    normalize_association,
+)
 
 
 def main():

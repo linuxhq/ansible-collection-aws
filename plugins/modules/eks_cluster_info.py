@@ -41,46 +41,35 @@ clusters:
   elements: dict
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-
-
-def is_not_found_error(error):
-    return getattr(error, "response", {}).get("Error", {}).get("Code") in (
-        "ResourceNotFoundException",
-    )
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+)
 
 
 def list_cluster_names(client, module):
-    names = []
-    next_token = None
-
-    while True:
-        kwargs = {}
-        if next_token:
-            kwargs["nextToken"] = next_token
-
-        try:
-            response = client.list_clusters(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS EKS clusters",
-            )
-
-        names.extend(response.get("clusters", []))
-        next_token = response.get("nextToken")
-        if not next_token:
-            break
-
-    return names
+    try:
+        response = paginated_query_with_retries(client, "list_clusters")
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg="Unable to list AWS EKS clusters",
+        )
+    return response.get("clusters", [])
 
 
 def describe_cluster(client, module, name):
+    describe_cluster = AWSRetry.jittered_backoff()(client.describe_cluster)
     try:
-        response = client.describe_cluster(name=name)
+        response = describe_cluster(name=name)
+    except is_boto3_error_code("ResourceNotFoundException"):
+        return None
     except Exception as e:
-        if is_not_found_error(e):
-            return None
         module.fail_json_aws(
             e,
             msg=f"Unable to describe AWS EKS cluster {name}",
@@ -112,7 +101,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        clusters=clusters,
+        clusters=boto3_resource_list_to_ansible_dict(clusters, force_tags=False),
     )
 
 

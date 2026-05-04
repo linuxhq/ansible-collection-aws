@@ -1,0 +1,16 @@
+---
+- name: Ensure aws ec2 serial console regions are batched
+  tags:
+    - ec2_serial_console
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_serial_console
+    file: include.yml
+  loop:
+    "{{ ec2_serial_console_regions |
+        batch(ec2_serial_console_batch) }}"
+  loop_control:
+    label: "{{ __ec2_serial_console_regions | length }}"
+    loop_var: __ec2_serial_console_regions
+...

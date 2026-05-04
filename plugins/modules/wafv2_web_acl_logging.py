@@ -66,11 +66,6 @@ logging_configuration:
     - The current AWS WAFv2 logging configuration after module execution.
   returned: when state is present
   type: dict
-proposed_logging_configuration:
-  description:
-    - The logging configuration that would be applied.
-  returned: when a change is detected and state is present
-  type: dict
 resource_arn:
   description: The ARN of the managed WAFv2 web ACL.
   returned: always
@@ -82,16 +77,34 @@ state:
 """
 
 import json
-
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
+    normalize_wafv2_resource,
+)
+
+LOGGING_CONFIGURATION_KEYS = (
+    "LogDestinationConfigs",
+    "LoggingFilter",
+    "RedactedFields",
+    "ResourceArn",
+)
 
 
-def is_not_found_error(error):
-    return (
-        getattr(error, "response", {}).get("Error", {}).get("Code")
-        == "WAFNonexistentItemException"
+def build_logging_configuration(params):
+    return scrub_none_parameters(
+        {
+            "LogDestinationConfigs": params["log_destination_configs"],
+            "LoggingFilter": params["logging_filter"],
+            "RedactedFields": params["redacted_fields"],
+            "ResourceArn": params["resource_arn"],
+        }
     )
 
 
@@ -104,12 +117,26 @@ def canonicalize(value):
     return value
 
 
+def comparable_logging_configuration(configuration):
+    if configuration is None:
+        return None
+
+    return {
+        key: value
+        for key, value in configuration.items()
+        if key in LOGGING_CONFIGURATION_KEYS
+    }
+
+
 def get_logging_configuration(client, module, resource_arn):
+    get_logging_configuration = AWSRetry.jittered_backoff()(
+        client.get_logging_configuration
+    )
     try:
-        response = client.get_logging_configuration(ResourceArn=resource_arn)
+        response = get_logging_configuration(ResourceArn=resource_arn)
+    except is_boto3_error_code("WAFNonexistentItemException"):
+        return None
     except Exception as e:
-        if is_not_found_error(e):
-            return None
         module.fail_json_aws(
             e, msg=f"Unable to get AWS WAFv2 logging configuration for {resource_arn}"
         )
@@ -117,43 +144,23 @@ def get_logging_configuration(client, module, resource_arn):
     return response.get("LoggingConfiguration")
 
 
-def build_desired_configuration(module):
-    desired = {
-        "ResourceArn": module.params["resource_arn"],
-        "LogDestinationConfigs": module.params["log_destination_configs"],
-    }
-
-    if module.params["logging_filter"] is not None:
-        desired["LoggingFilter"] = module.params["logging_filter"]
-    if module.params["redacted_fields"] is not None:
-        desired["RedactedFields"] = module.params["redacted_fields"]
-
-    return desired
+def logging_configuration_matches(current, desired):
+    return canonicalize(comparable_logging_configuration(current)) == canonicalize(
+        desired
+    )
 
 
 def ensure_present(client, module):
     current = get_logging_configuration(client, module, module.params["resource_arn"])
-    desired = build_desired_configuration(module)
-
-    comparable_current = None
-    if current is not None:
-        comparable_current = {
-            key: value
-            for key, value in current.items()
-            if key
-            in (
-                "LogDestinationConfigs",
-                "LoggingFilter",
-                "RedactedFields",
-                "ResourceArn",
-            )
-        }
-
-    changed = canonicalize(comparable_current) != canonicalize(desired)
+    desired = build_logging_configuration(module.params)
+    changed = not logging_configuration_matches(current, desired)
 
     if changed and not module.check_mode:
+        put_logging_configuration = AWSRetry.jittered_backoff()(
+            client.put_logging_configuration
+        )
         try:
-            client.put_logging_configuration(LoggingConfiguration=desired)
+            put_logging_configuration(LoggingConfiguration=desired)
         except Exception as e:
             module.fail_json_aws(
                 e,
@@ -169,11 +176,8 @@ def ensure_present(client, module):
         "changed": changed,
         "resource_arn": module.params["resource_arn"],
         "state": "present",
-        "logging_configuration": camel_dict_to_snake_dict(current or desired),
+        "logging_configuration": normalize_wafv2_resource(current or desired),
     }
-
-    if changed:
-        result["proposed_logging_configuration"] = camel_dict_to_snake_dict(desired)
 
     module.exit_json(**result)
 
@@ -183,10 +187,11 @@ def ensure_absent(client, module):
     changed = current is not None
 
     if changed and not module.check_mode:
+        delete_logging_configuration = AWSRetry.jittered_backoff()(
+            client.delete_logging_configuration
+        )
         try:
-            client.delete_logging_configuration(
-                ResourceArn=module.params["resource_arn"]
-            )
+            delete_logging_configuration(ResourceArn=module.params["resource_arn"])
         except Exception as e:
             module.fail_json_aws(
                 e,

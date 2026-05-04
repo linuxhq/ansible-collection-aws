@@ -34,19 +34,19 @@ None
             - name: molecule-cloudflare
               direction: outbound
               ip_addresses:
-                - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
-                  Ip: 192.168.0.125
-                - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
-                  Ip: 192.168.0.253
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
+                  ip: 192.168.0.125
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
+                  ip: 192.168.0.253
               security_group_ids:
                 - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
             - name: molecule-google
               direction: outbound
               ip_addresses:
-                - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
-                  Ip: 192.168.0.126
-                - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
-                  Ip: 192.168.0.254
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
+                  ip: 192.168.0.126
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
+                  ip: 192.168.0.254
               security_group_ids:
                 - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"

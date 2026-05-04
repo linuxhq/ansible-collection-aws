@@ -64,64 +64,40 @@ account:
     - Information about the AWS Simple Email Service account after the request.
   returned: always
   type: dict
-proposed_account:
-  description:
-    - Predicted AWS Simple Email Service account values after the request.
-  returned: when changed
-  type: dict
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.ses import (
+    get_account,
+    normalize_account,
+)
 
 
-def get_account(client, module):
-    try:
-        response = client.get_account()
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to get AWS Simple Email Service account details"
-        )
-    return response
-
-
-def build_request(module):
-    request = {
-        "ContactLanguage": module.params["contact_language"].upper(),
-        "MailType": module.params["mail_type"].upper(),
-        "ProductionAccessEnabled": True,
-    }
-
-    if module.params["additional_contact_email_addresses"]:
-        request["AdditionalContactEmailAddresses"] = module.params[
-            "additional_contact_email_addresses"
-        ]
-    if module.params["use_case_description"] is not None:
-        request["UseCaseDescription"] = module.params["use_case_description"].strip()
-    if module.params["website_url"] is not None:
-        request["WebsiteURL"] = module.params["website_url"]
-
-    return request
-
-
-def build_proposed_account(account, request):
-    proposed = dict(account)
-    proposed["ProductionAccessEnabled"] = True
-    details = dict(account.get("Details", {}))
-
-    for key in (
-        "AdditionalContactEmailAddresses",
-        "ContactLanguage",
-        "MailType",
-        "UseCaseDescription",
-        "WebsiteURL",
-    ):
-        if key in request:
-            details[key] = request[key]
-
-    proposed["Details"] = details
-    return proposed
+def build_request(params):
+    return scrub_none_parameters(
+        {
+            "AdditionalContactEmailAddresses": params[
+                "additional_contact_email_addresses"
+            ]
+            or None,
+            "ContactLanguage": params["contact_language"].upper(),
+            "MailType": params["mail_type"].upper(),
+            "ProductionAccessEnabled": True,
+            "UseCaseDescription": (
+                None
+                if params["use_case_description"] is None
+                else params["use_case_description"].strip()
+            ),
+            "WebsiteURL": params["website_url"],
+        }
+    )
 
 
 def main():
@@ -145,7 +121,7 @@ def main():
     client = module.client("sesv2")
 
     current_account = get_account(client, module)
-    request = build_request(module)
+    request = build_request(module.params)
 
     ready = (
         not current_account.get("ProductionAccessEnabled", False)
@@ -153,36 +129,28 @@ def main():
         and module.params["website_url"] is not None
     )
     changed = ready
-    proposed_account = build_proposed_account(current_account, request)
 
     if changed and not module.check_mode:
+        put_account_details = AWSRetry.jittered_backoff()(client.put_account_details)
         try:
-            client.put_account_details(**request)
+            put_account_details(**request)
+        except is_boto3_error_code("ConflictException"):
+            module.warn(
+                "AWS Simple Email Service account details request is already in progress"
+            )
+            current_account = get_account(client, module)
+            changed = False
         except Exception as e:
-            if (
-                getattr(e, "response", {}).get("Error", {}).get("Code")
-                == "ConflictException"
-            ):
-                module.warn(
-                    "AWS Simple Email Service account details request is already in progress"
-                )
-                current_account = get_account(client, module)
-                changed = False
-            else:
-                module.fail_json_aws(
-                    e, msg="Unable to manage AWS Simple Email Service account details"
-                )
+            module.fail_json_aws(
+                e, msg="Unable to manage AWS Simple Email Service account details"
+            )
         else:
             current_account = get_account(client, module)
-            proposed_account = current_account
 
     result = {
         "changed": changed,
-        "account": camel_dict_to_snake_dict(current_account),
+        "account": normalize_account(current_account),
     }
-
-    if changed:
-        result["proposed_account"] = camel_dict_to_snake_dict(proposed_account)
 
     module.exit_json(**result)
 

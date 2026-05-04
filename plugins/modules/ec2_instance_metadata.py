@@ -62,20 +62,21 @@ account_level:
     - The current account-level EC2 instance metadata defaults for the selected region.
   returned: always
   type: dict
-proposed_account_level:
-  description:
-    - The account-level values that would exist after the requested update.
-  returned: when a change is detected
-  type: dict
 region:
   description: The AWS region where the defaults were managed.
   returned: always
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
+    get_account_level,
+    normalize_account_level,
+)
 
 OPTION_TO_AWS_FIELD = {
     "http_endpoint": "HttpEndpoint",
@@ -85,25 +86,13 @@ OPTION_TO_AWS_FIELD = {
 }
 
 
-def get_account_level(client, module):
-    try:
-        response = client.get_instance_metadata_defaults()
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to get EC2 instance metadata defaults")
-    return response.get("AccountLevel", {})
-
-
-def normalize_account_level(account_level):
-    return camel_dict_to_snake_dict(account_level)
-
-
 def build_desired_update(params):
-    desired = {}
-    for option_name, aws_field in OPTION_TO_AWS_FIELD.items():
-        value = params.get(option_name)
-        if value is not None:
-            desired[aws_field] = value
-    return desired
+    return scrub_none_parameters(
+        {
+            aws_field: params.get(option_name)
+            for option_name, aws_field in OPTION_TO_AWS_FIELD.items()
+        }
+    )
 
 
 def main():
@@ -139,8 +128,6 @@ def main():
 
     current_account_level = get_account_level(client, module)
     desired_update = build_desired_update(module.params)
-    proposed_account_level = dict(current_account_level)
-    proposed_account_level.update(desired_update)
 
     changed = any(
         current_account_level.get(aws_field) != desired_value
@@ -148,25 +135,22 @@ def main():
     )
 
     if changed and not module.check_mode:
+        modify_instance_metadata_defaults = AWSRetry.jittered_backoff()(
+            client.modify_instance_metadata_defaults
+        )
         try:
-            client.modify_instance_metadata_defaults(**desired_update)
+            modify_instance_metadata_defaults(**desired_update)
         except Exception as e:
             module.fail_json_aws(
                 e, msg="Unable to modify EC2 instance metadata defaults"
             )
         current_account_level = get_account_level(client, module)
-        proposed_account_level = current_account_level
 
     result = {
         "changed": changed,
         "account_level": normalize_account_level(current_account_level),
         "region": module.region,
     }
-
-    if changed:
-        result["proposed_account_level"] = normalize_account_level(
-            proposed_account_level
-        )
 
     module.exit_json(**result)
 

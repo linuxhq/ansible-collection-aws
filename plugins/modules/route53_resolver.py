@@ -22,9 +22,23 @@ options:
     type: str
   ip_addresses:
     description:
-      - The resolver endpoint IP address definitions in AWS format.
+      - The resolver endpoint IP address definitions.
       - This is required when O(state=present).
     elements: dict
+    suboptions:
+      ip:
+        description:
+          - The IPv4 address for the endpoint.
+        type: str
+      ipv6:
+        description:
+          - The IPv6 address for the endpoint.
+        type: str
+      subnet_id:
+        description:
+          - The subnet ID for the endpoint IP address.
+        required: true
+        type: str
     type: list
   name:
     description:
@@ -79,10 +93,10 @@ EXAMPLES = r"""
   linuxhq.aws.route53_resolver:
     direction: outbound
     ip_addresses:
-      - SubnetId: subnet-0123456789abcdef0
-        Ip: 192.168.0.125
-      - SubnetId: subnet-0123456789abcdef1
-        Ip: 192.168.0.253
+      - subnet_id: subnet-0123456789abcdef0
+        ip: 192.168.0.125
+      - subnet_id: subnet-0123456789abcdef1
+        ip: 192.168.0.253
     name: molecule
     security_group_ids:
       - sg-0123456789abcdef0
@@ -117,56 +131,41 @@ state:
 """
 
 import time
-
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53 import (
+    list_resolver_endpoints,
+    normalize_resolver_endpoint_with_ip_addresses,
+)
 
 
-def is_not_found_error(error):
-    return getattr(error, "response", {}).get("Error", {}).get("Code") in (
-        "ResourceNotFoundException",
+def aws_ip_address(ip_address):
+    return scrub_none_parameters(
+        {
+            "Ip": ip_address.get("ip"),
+            "Ipv6": ip_address.get("ipv6"),
+            "SubnetId": ip_address.get("subnet_id"),
+        }
     )
 
 
-def list_resolver_endpoints(client, module):
-    endpoints = []
-    next_token = None
-
-    while True:
-        kwargs = {}
-        if next_token:
-            kwargs["NextToken"] = next_token
-
-        try:
-            response = client.list_resolver_endpoints(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS Route53 Resolver endpoints",
-            )
-
-        endpoints.extend(response.get("ResolverEndpoints", []))
-        next_token = response.get("NextToken")
-        if not next_token:
-            break
-
-    return endpoints
-
-
-def get_resolver_endpoint_by_name(client, module):
-    for endpoint in list_resolver_endpoints(client, module):
-        if endpoint.get("Name") == module.params["name"]:
-            return endpoint
-    return None
+def aws_ip_addresses(ip_addresses):
+    return [aws_ip_address(ip_address) for ip_address in ip_addresses]
 
 
 def get_resolver_endpoint(client, module, resolver_endpoint_id):
+    get_resolver_endpoint = AWSRetry.jittered_backoff()(client.get_resolver_endpoint)
     try:
-        response = client.get_resolver_endpoint(ResolverEndpointId=resolver_endpoint_id)
+        response = get_resolver_endpoint(ResolverEndpointId=resolver_endpoint_id)
+    except is_boto3_error_code("ResourceNotFoundException"):
+        return None
     except Exception as e:
-        if is_not_found_error(e):
-            return None
         module.fail_json_aws(
             e,
             msg=f"Unable to get AWS Route53 Resolver endpoint {resolver_endpoint_id}",
@@ -174,7 +173,16 @@ def get_resolver_endpoint(client, module, resolver_endpoint_id):
     return response.get("ResolverEndpoint")
 
 
-def wait_for_status(client, module, resolver_endpoint_id, statuses):
+def get_resolver_endpoint_by_name(client, module, name):
+    for endpoint in list_resolver_endpoints(client, module):
+        if endpoint.get("Name") == name:
+            return endpoint
+    return None
+
+
+def wait_for_resolver_endpoint_status(
+    client, module, resolver_endpoint_id, statuses, name
+):
     deadline = time.time() + module.params["wait_timeout"]
 
     while time.time() < deadline:
@@ -186,27 +194,24 @@ def wait_for_status(client, module, resolver_endpoint_id, statuses):
         time.sleep(module.params["wait_delay"])
 
     module.fail_json(
-        msg=f"Timed out waiting for AWS Route53 Resolver endpoint {module.params['name']}",
+        msg=f"Timed out waiting for AWS Route53 Resolver endpoint {name}",
         resolver_endpoint_id=resolver_endpoint_id,
     )
 
 
-def normalize(endpoint):
-    if endpoint is None:
-        return None
-    return camel_dict_to_snake_dict(endpoint)
-
-
 def ensure_present(client, module):
-    endpoint = get_resolver_endpoint_by_name(client, module)
+    endpoint = get_resolver_endpoint_by_name(client, module, module.params["name"])
     changed = endpoint is None
 
     if changed and not module.check_mode:
+        create_resolver_endpoint = AWSRetry.jittered_backoff()(
+            client.create_resolver_endpoint
+        )
         try:
-            response = client.create_resolver_endpoint(
+            response = create_resolver_endpoint(
                 CreatorRequestId=module.params["name"],
                 Direction=module.params["direction"].upper(),
-                IpAddresses=module.params["ip_addresses"],
+                IpAddresses=aws_ip_addresses(module.params["ip_addresses"]),
                 Name=module.params["name"],
                 ResolverEndpointType=module.params["resolver_endpoint_type"].upper(),
                 SecurityGroupIds=module.params["security_group_ids"],
@@ -218,14 +223,18 @@ def ensure_present(client, module):
             )
         endpoint = response.get("ResolverEndpoint")
         if module.params["wait"]:
-            endpoint = wait_for_status(client, module, endpoint["Id"], {"operational"})
+            endpoint = wait_for_resolver_endpoint_status(
+                client, module, endpoint["Id"], {"operational"}, module.params["name"]
+            )
     elif changed and module.check_mode:
         endpoint = {"Name": module.params["name"]}
 
     result = {
         "changed": changed,
         "name": module.params["name"],
-        "resolver_endpoint": normalize(endpoint),
+        "resolver_endpoint": normalize_resolver_endpoint_with_ip_addresses(
+            client, module, endpoint
+        ),
         "state": "present",
     }
     if endpoint is not None and endpoint.get("Id") is not None:
@@ -235,20 +244,29 @@ def ensure_present(client, module):
 
 
 def ensure_absent(client, module):
-    endpoint = get_resolver_endpoint_by_name(client, module)
+    endpoint = get_resolver_endpoint_by_name(client, module, module.params["name"])
     changed = endpoint is not None
 
     if changed and not module.check_mode:
         resolver_endpoint_id = endpoint["Id"]
+        delete_resolver_endpoint = AWSRetry.jittered_backoff()(
+            client.delete_resolver_endpoint
+        )
         try:
-            client.delete_resolver_endpoint(ResolverEndpointId=resolver_endpoint_id)
+            delete_resolver_endpoint(ResolverEndpointId=resolver_endpoint_id)
         except Exception as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to delete AWS Route53 Resolver endpoint {module.params['name']}",
             )
         if module.params["wait"]:
-            wait_for_status(client, module, resolver_endpoint_id, {"deleted"})
+            wait_for_resolver_endpoint_status(
+                client,
+                module,
+                resolver_endpoint_id,
+                {"deleted"},
+                module.params["name"],
+            )
 
     module.exit_json(
         changed=changed,
@@ -266,6 +284,11 @@ def main():
             },
             "ip_addresses": {
                 "elements": "dict",
+                "options": {
+                    "ip": {"type": "str"},
+                    "ipv6": {"type": "str"},
+                    "subnet_id": {"required": True, "type": "str"},
+                },
                 "type": "list",
             },
             "name": {"required": True, "type": "str"},

@@ -1,0 +1,4 @@
+---
+ec2_serial_console_info_regions:
+  - us-east-1
+...

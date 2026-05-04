@@ -1,0 +1,36 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  tasks:
+    - name: Ensure ec2 serial console access is gathered
+      linuxhq.aws.ec2_serial_console_info:
+        region: "{{ _region }}"
+        validate_certs: true
+      register: __ec2_serial_console_result
+      loop: "{{ ec2_serial_console_regions }}"
+      loop_control:
+        label: "{{ _region | d(none) }}"
+        loop_var: _region
+
+    - name: Ensure gathered ec2 serial console access is verified
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - not _result.changed
+          - _result.serial_console_access.serial_console_access_enabled
+      loop: "{{ __ec2_serial_console_result.results }}"
+      loop_control:
+        label: "{{ _result._region | d(none) }}"
+        loop_var: _result
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        ec2_serial_console_state: absent
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: ec2_serial_console
+...

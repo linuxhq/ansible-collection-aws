@@ -51,35 +51,18 @@ web_acls:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-
-
-def list_web_acl_summaries(client, module, scope):
-    summaries = []
-    next_marker = None
-
-    try:
-        while True:
-            request = {"Scope": scope}
-            if next_marker:
-                request["NextMarker"] = next_marker
-
-            response = client.list_web_acls(**request)
-            summaries.extend(response.get("WebACLs", []))
-            next_marker = response.get("NextMarker")
-            if not next_marker:
-                break
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS WAFv2 web ACLs")
-
-    return summaries
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
+    list_wafv2_summaries,
+    normalize_wafv2_resource,
+)
 
 
 def get_web_acl(client, module, scope, summary):
+    get_web_acl = AWSRetry.jittered_backoff()(client.get_web_acl)
     try:
-        response = client.get_web_acl(
+        response = get_web_acl(
             Id=summary["Id"],
             Name=summary["Name"],
             Scope=scope,
@@ -106,10 +89,17 @@ def main():
     client = module.client("wafv2")
 
     scope = module.params["scope"].upper()
-    summaries = list_web_acl_summaries(client, module, scope)
+    summaries = list_wafv2_summaries(
+        client,
+        module,
+        scope,
+        "list_web_acls",
+        "WebACLs",
+        "Unable to list AWS WAFv2 web ACLs",
+    )
 
     web_acls = [
-        camel_dict_to_snake_dict(get_web_acl(client, module, scope, summary))
+        normalize_wafv2_resource(get_web_acl(client, module, scope, summary))
         for summary in summaries
         if summary.get("Id") and summary.get("Name")
     ]

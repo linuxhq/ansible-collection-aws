@@ -35,23 +35,20 @@ region:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
+    get_account_level,
+    normalize_account_level,
+)
 
 
 def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
     client = module.client("ec2")
 
-    try:
-        response = client.get_instance_metadata_defaults()
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to get EC2 instance metadata defaults")
-
     module.exit_json(
         changed=False,
-        account_level=camel_dict_to_snake_dict(response.get("AccountLevel", {})),
+        account_level=normalize_account_level(get_account_level(client, module)),
         region=module.region,
     )
 

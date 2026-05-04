@@ -14,16 +14,24 @@
       ec2_vpc_prefix_list_entries:
         - name: molecule-localhost
           entries:
-            - Cidr: 127.0.0.6/32
-            - Cidr: 127.0.0.7/32
-            - Cidr: 127.0.0.8/32
-            - Cidr: 127.0.0.9/32
+            - cidr: 127.0.0.6/32
+              description: localhost-6
+            - cidr: 127.0.0.7/32
+              description: localhost-7
+            - cidr: 127.0.0.8/32
+              description: localhost-8
+            - cidr: 127.0.0.9/32
+              description: localhost-9
         - name: molecule-private
           entries:
-            - Cidr: 192.168.6.0/24
-            - Cidr: 192.168.7.0/24
-            - Cidr: 192.168.8.0/24
-            - Cidr: 192.168.9.0/24
+            - cidr: 192.168.6.0/24
+              description: private-6
+            - cidr: 192.168.7.0/24
+              description: private-7
+            - cidr: 192.168.8.0/24
+              description: private-8
+            - cidr: 192.168.9.0/24
+              description: private-9
       tags:
         - molecule-idempotence-notest
 

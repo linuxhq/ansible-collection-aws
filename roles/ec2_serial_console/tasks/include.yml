@@ -1,0 +1,36 @@
+---
+- name: Ensure aws ec2 serial console region access is managed
+  tags:
+    - ec2_serial_console
+  linuxhq.aws.ec2_serial_console:
+    region: "{{ _region }}"
+    state: "{{ ec2_serial_console_state }}"
+    validate_certs: true
+  register: __ec2_serial_console_result
+  loop: "{{ __ec2_serial_console_regions }}"
+  loop_control:
+    label: "{{ _region | d(none) }}"
+    loop_var: _region
+  async: "{{ ansible_check_mode | ternary(0, ec2_serial_console_async) }}"
+  poll: "{{ ec2_serial_console_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_serial_console_result.changed | bool
+
+- name: Ensure managed aws ec2 serial console region jobs are complete
+  tags:
+    - ec2_serial_console
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_serial_console_status
+  loop: "{{ __ec2_serial_console_result.results }}"
+  loop_control:
+    label: "{{ _jid._region | d(none) }}"
+    loop_var: _jid
+  delay: "{{ ec2_serial_console_delay }}"
+  retries: "{{ ec2_serial_console_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_serial_console_status.finished | bool
+...

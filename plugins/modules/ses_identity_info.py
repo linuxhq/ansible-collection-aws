@@ -41,39 +41,20 @@ identities:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-
-
-def list_identities(client, module):
-    identities = []
-    next_token = None
-
-    while True:
-        kwargs = {}
-        if next_token:
-            kwargs["NextToken"] = next_token
-
-        try:
-            response = client.list_identities(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS SES identities",
-            )
-
-        identities.extend(response.get("Identities", []))
-        next_token = response.get("NextToken")
-        if not next_token:
-            break
-
-    return identities
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+)
 
 
 def get_email_identity(client, module, identity):
+    get_email_identity = AWSRetry.jittered_backoff()(client.get_email_identity)
     try:
-        return client.get_email_identity(EmailIdentity=identity)
+        return get_email_identity(EmailIdentity=identity)
     except Exception as e:
         module.fail_json_aws(
             e,
@@ -81,8 +62,19 @@ def get_email_identity(client, module, identity):
         )
 
 
-def normalize(identity, details):
-    normalized = camel_dict_to_snake_dict(details)
+def list_identities(client, module):
+    try:
+        response = paginated_query_with_retries(client, "list_identities")
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg="Unable to list AWS SES identities",
+        )
+    return response.get("Identities", [])
+
+
+def normalize_identity(identity, details):
+    normalized = boto3_resource_to_ansible_dict(details, force_tags=False)
     normalized["name"] = identity
     return normalized
 
@@ -105,7 +97,10 @@ def main():
     module.exit_json(
         changed=False,
         identities=[
-            normalize(identity, get_email_identity(sesv2_client, module, identity))
+            normalize_identity(
+                identity,
+                get_email_identity(sesv2_client, module, identity),
+            )
             for identity in identities
         ],
     )

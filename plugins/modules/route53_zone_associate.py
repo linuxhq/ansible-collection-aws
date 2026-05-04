@@ -79,9 +79,12 @@ vpcs:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+    boto3_resource_to_ansible_dict,
+)
 
 
 def normalize_hosted_zone_id(hosted_zone_id):
@@ -89,8 +92,9 @@ def normalize_hosted_zone_id(hosted_zone_id):
 
 
 def get_hosted_zone(client, module, hosted_zone_id):
+    get_hosted_zone = AWSRetry.jittered_backoff()(client.get_hosted_zone)
     try:
-        response = client.get_hosted_zone(Id=hosted_zone_id)
+        response = get_hosted_zone(Id=hosted_zone_id)
     except Exception as e:
         module.fail_json_aws(
             e,
@@ -119,11 +123,14 @@ def build_result(module, changed, vpcs):
         changed=changed,
         hosted_zone_id=module.params["hosted_zone_id"],
         state=module.params["state"],
-        vpc={
-            "VPCId": module.params["vpc_id"],
-            "VPCRegion": module.params["vpc_region"],
-        },
-        vpcs=[camel_dict_to_snake_dict(vpc) for vpc in vpcs],
+        vpc=boto3_resource_to_ansible_dict(
+            {
+                "VPCId": module.params["vpc_id"],
+                "VPCRegion": module.params["vpc_region"],
+            },
+            force_tags=False,
+        ),
+        vpcs=boto3_resource_list_to_ansible_dict(vpcs, force_tags=False),
     )
 
 
@@ -132,8 +139,11 @@ def ensure_present(client, module, hosted_zone_id):
     changed = not is_associated(vpcs, module)
 
     if changed and not module.check_mode:
+        associate_vpc_with_hosted_zone = AWSRetry.jittered_backoff()(
+            client.associate_vpc_with_hosted_zone
+        )
         try:
-            client.associate_vpc_with_hosted_zone(
+            associate_vpc_with_hosted_zone(
                 HostedZoneId=hosted_zone_id,
                 VPC={
                     "VPCId": module.params["vpc_id"],
@@ -155,8 +165,11 @@ def ensure_absent(client, module, hosted_zone_id):
     changed = is_associated(vpcs, module)
 
     if changed and not module.check_mode:
+        disassociate_vpc_from_hosted_zone = AWSRetry.jittered_backoff()(
+            client.disassociate_vpc_from_hosted_zone
+        )
         try:
-            client.disassociate_vpc_from_hosted_zone(
+            disassociate_vpc_from_hosted_zone(
                 HostedZoneId=hosted_zone_id,
                 VPC={
                     "VPCId": module.params["vpc_id"],

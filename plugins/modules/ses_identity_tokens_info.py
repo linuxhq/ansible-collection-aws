@@ -49,6 +49,31 @@ verification_token:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+
+
+def get_domain_dkim_tokens(client, module, identity):
+    verify_domain_dkim = AWSRetry.jittered_backoff()(client.verify_domain_dkim)
+    try:
+        response = verify_domain_dkim(Domain=identity)
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to gather AWS SES DKIM tokens for {identity}",
+        )
+    return response.get("DkimTokens", [])
+
+
+def get_domain_verification_token(client, module, identity):
+    verify_domain_identity = AWSRetry.jittered_backoff()(client.verify_domain_identity)
+    try:
+        response = verify_domain_identity(Domain=identity)
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to gather AWS SES verification token for {identity}",
+        )
+    return response.get("VerificationToken")
 
 
 def main():
@@ -61,27 +86,11 @@ def main():
     client = module.client("ses")
     identity = module.params["identity"]
 
-    try:
-        dkim_response = client.verify_domain_dkim(Domain=identity)
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to gather AWS SES DKIM tokens for {identity}",
-        )
-
-    try:
-        verification_response = client.verify_domain_identity(Domain=identity)
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to gather AWS SES verification token for {identity}",
-        )
-
     module.exit_json(
         changed=False,
-        dkim_tokens=dkim_response.get("DkimTokens", []),
+        dkim_tokens=get_domain_dkim_tokens(client, module, identity),
         identity=identity,
-        verification_token=verification_response.get("VerificationToken"),
+        verification_token=get_domain_verification_token(client, module, identity),
     )
 
 

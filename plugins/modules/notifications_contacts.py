@@ -62,55 +62,33 @@ state:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import (
+    list_email_contacts,
+)
 
 
-def list_email_contacts(client, module):
-    contacts = []
-    next_token = None
-
-    while True:
-        kwargs = {}
-        if next_token:
-            kwargs["NextToken"] = next_token
-
-        try:
-            response = client.list_email_contacts(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS Notifications contacts",
-            )
-
-        contacts.extend(
-            response.get("emailContacts", response.get("EmailContacts", []))
-        )
-        next_token = response.get("nextToken", response.get("NextToken"))
-        if not next_token:
-            break
-
-    return contacts
-
-
-def get_email_contact_by_address(client, module):
+def get_email_contact_by_address(client, module, email_address):
     for contact in list_email_contacts(client, module):
-        if (
-            contact.get("address", contact.get("Address"))
-            == module.params["email_address"]
-        ):
+        if contact.get("address") == email_address:
             return contact
     return None
 
 
 def ensure_present(client, module):
-    contact = get_email_contact_by_address(client, module)
+    contact = get_email_contact_by_address(
+        client, module, module.params["email_address"]
+    )
     changed = contact is None
 
     if changed and not module.check_mode:
+        create_email_contact = AWSRetry.jittered_backoff()(client.create_email_contact)
         try:
-            response = client.create_email_contact(
+            response = create_email_contact(
                 emailAddress=module.params["email_address"],
                 name=module.params["name"],
             )
@@ -122,7 +100,7 @@ def ensure_present(client, module):
 
         contact = {
             "address": module.params["email_address"],
-            "arn": response.get("arn", response.get("Arn")),
+            "arn": response.get("arn"),
             "name": module.params["name"],
         }
     elif changed and module.check_mode:
@@ -134,19 +112,24 @@ def ensure_present(client, module):
     module.exit_json(
         changed=changed,
         email_contact=(
-            camel_dict_to_snake_dict(contact) if contact is not None else None
+            boto3_resource_to_ansible_dict(contact, force_tags=False)
+            if contact is not None
+            else None
         ),
         state="present",
     )
 
 
 def ensure_absent(client, module):
-    contact = get_email_contact_by_address(client, module)
+    contact = get_email_contact_by_address(
+        client, module, module.params["email_address"]
+    )
     changed = contact is not None
 
     if changed and not module.check_mode:
+        delete_email_contact = AWSRetry.jittered_backoff()(client.delete_email_contact)
         try:
-            client.delete_email_contact(arn=contact.get("arn", contact.get("Arn")))
+            delete_email_contact(arn=contact.get("arn"))
         except Exception as e:
             module.fail_json_aws(
                 e,

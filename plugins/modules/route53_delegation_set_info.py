@@ -40,36 +40,17 @@ delegation_sets:
   type: list
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53 import (
+    list_delegation_sets,
+    normalize_delegation_set,
+)
 
 
-def list_delegation_sets(client, module):
-    delegation_sets = []
-    marker = None
-
-    while True:
-        kwargs = {}
-        if marker:
-            kwargs["Marker"] = marker
-
-        try:
-            response = client.list_reusable_delegation_sets(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS Route53 reusable delegation sets",
-            )
-
-        delegation_sets.extend(response.get("DelegationSets", []))
-        if not response.get("IsTruncated"):
-            break
-        marker = response.get("NextMarker")
-
+def list_normalized_delegation_sets(client, module):
     return [
-        camel_dict_to_snake_dict(delegation_set)
-        for delegation_set in delegation_sets
+        normalize_delegation_set(delegation_set)
+        for delegation_set in list_delegation_sets(client, module)
         if delegation_set.get("CallerReference") is not None
         and (
             module.params["name"] is None
@@ -89,7 +70,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        delegation_sets=list_delegation_sets(client, module),
+        delegation_sets=list_normalized_delegation_sets(client, module),
     )
 
 

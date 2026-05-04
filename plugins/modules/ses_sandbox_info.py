@@ -30,23 +30,21 @@ account:
   type: dict
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.linuxhq.aws.plugins.module_utils.ses import (
+    get_account,
+    normalize_account,
+)
 
 
 def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
     client = module.client("sesv2")
 
-    try:
-        response = client.get_account()
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to get AWS Simple Email Service account details"
-        )
-
-    module.exit_json(changed=False, account=camel_dict_to_snake_dict(response))
+    module.exit_json(
+        changed=False,
+        account=normalize_account(get_account(client, module)),
+    )
 
 
 if __name__ == "__main__":

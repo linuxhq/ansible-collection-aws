@@ -41,33 +41,12 @@ prefix_lists:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-
-
-def get_prefix_list_entries(client, module, prefix_list_id):
-    entries = []
-    next_token = None
-
-    try:
-        while True:
-            request = {"PrefixListId": prefix_list_id}
-            if next_token:
-                request["NextToken"] = next_token
-
-            response = client.get_managed_prefix_list_entries(**request)
-            entries.extend(response.get("Entries", []))
-            next_token = response.get("NextToken")
-            if not next_token:
-                break
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get EC2 VPC managed prefix list entries for {prefix_list_id}",
-        )
-
-    return entries
+from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
+    get_prefix_list_entries,
+    list_prefix_lists,
+    normalize_prefix_list,
+)
 
 
 def main():
@@ -76,33 +55,15 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("ec2")
-
-    prefix_lists = []
-    next_token = None
-
-    try:
-        while True:
-            request = {}
-            if next_token:
-                request["NextToken"] = next_token
-
-            response = client.describe_managed_prefix_lists(**request)
-            prefix_lists.extend(response.get("PrefixLists", []))
-            next_token = response.get("NextToken")
-            if not next_token:
-                break
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to describe EC2 VPC managed prefix lists")
+    prefix_lists = list_prefix_lists(client, module)
 
     module.exit_json(
         changed=False,
         prefix_lists=[
-            camel_dict_to_snake_dict(prefix_list)
-            | {
-                "entries": get_prefix_list_entries(
-                    client, module, prefix_list["PrefixListId"]
-                )
-            }
+            normalize_prefix_list(
+                prefix_list,
+                get_prefix_list_entries(client, module, prefix_list["PrefixListId"]),
+            )
             for prefix_list in prefix_lists
             if prefix_list.get("PrefixListName")
             and (
