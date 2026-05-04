@@ -1,6 +1,6 @@
 # rds\_instance\_param\_group\_info
 
-Gather information about aws relational database service instance parameter groups
+Gather information about aws rds instance parameter groups
 
 ## Requirements
 

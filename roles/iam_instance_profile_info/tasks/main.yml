@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about aws identity and access management instance profiles is gathered
+- name: Ensure information about aws iam instance profiles is gathered
   tags:
     - iam_instance_profile_info
   amazon.aws.iam_instance_profile_info:
@@ -9,7 +9,7 @@
   register: __iam_instance_profile_info_query
   check_mode: false
 
-- name: Ensure list of aws identity and access management instance profiles is generated
+- name: Ensure list of aws iam instance profiles is generated
   tags:
     - iam_instance_profile_info
   ansible.builtin.set_fact:
@@ -18,7 +18,7 @@
           selectattr('instance_profile_name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of aws identity and access management instance profiles is generated
+- name: Ensure dict of aws iam instance profiles is generated
   tags:
     - iam_instance_profile_info
   ansible.builtin.set_fact:

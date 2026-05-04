@@ -1,12 +1,13 @@
 ---
-- name: Ensure information about aws wafv2 web acls is gathered
+- name: Ensure aws wafv2 web acl information is gathered
   tags:
     - wafv2_web_acl_info
   linuxhq.aws.wafv2_web_acl_info:
     scope: "{{ wafv2_web_acl_info_scope }}"
+    validate_certs: true
   register: __wafv2_web_acl_info_query
 
-- name: Ensure list of aws wafv2 web acls is generated
+- name: Ensure list of aws wafv2 web acl information is generated
   tags:
     - wafv2_web_acl_info
   ansible.builtin.set_fact:
@@ -14,7 +15,7 @@
       "{{ __wafv2_web_acl_info_query.web_acls |
           d([]) }}"
 
-- name: Ensure dict of aws wafv2 web acls is generated
+- name: Ensure dict of aws wafv2 web acl information is generated
   tags:
     - wafv2_web_acl_info
   ansible.builtin.set_fact:

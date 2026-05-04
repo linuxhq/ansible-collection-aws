@@ -1,6 +1,6 @@
 # rds\_instance\_param\_group
 
-Manage aws relational database service instance parameter groups
+Manage aws rds instance parameter groups
 
 ## Requirements
 

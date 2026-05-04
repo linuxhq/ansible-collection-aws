@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws relational database service certificate authority defaults are generated
+- name: Ensure aws rds certificate authority defaults are generated
   tags:
     - rds_ca_bundle
   ansible.builtin.set_fact:
@@ -9,7 +9,7 @@
           map('combine') |
           list }}"
 
-- name: Ensure aws relational database service certificate authority bundles are present
+- name: Ensure aws rds certificate authority bundles are present
   tags:
     - rds_ca_bundle
   become: true
@@ -27,7 +27,7 @@
     - _bundle.state == 'present'
     - _bundle.url is defined
 
-- name: Ensure aws relational database service certificate authority bundles are absent
+- name: Ensure aws rds certificate authority bundles are absent
   tags:
     - rds_ca_bundle
   become: true
@@ -42,7 +42,7 @@
     - _bundle.state == 'absent'
     - _bundle.url is defined
 
-- name: Ensure aws relational database service certificate authority bundles are updated
+- name: Ensure aws rds certificate authority bundles are updated
   tags:
     - rds_ca_bundle
   become: true

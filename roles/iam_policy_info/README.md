@@ -4,7 +4,7 @@ Gather information about identity and access management inline policies
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli)
+None
 
 ## Role Variables
 

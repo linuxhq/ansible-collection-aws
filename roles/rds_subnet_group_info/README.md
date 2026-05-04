@@ -1,14 +1,14 @@
 # rds\_subnet\_group\_info
 
-Gather information about aws relational database service subnet groups
+Gather information about aws rds subnet groups
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli)
+None
 
 ## Role Variables
 
-None
+    rds_subnet_group_info_name: null
 
 ## Return Values
 
@@ -25,3 +25,9 @@ None
       connection: local
       roles:
         - linuxhq.aws.rds_subnet_group_info
+
+    - hosts: aws
+      connection: local
+      roles:
+        - role: linuxhq.aws.rds_subnet_group_info
+          rds_subnet_group_info_name: molecule

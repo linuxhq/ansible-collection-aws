@@ -1,0 +1,40 @@
+---
+- name: Ensure aws systems manager associations are managed
+  tags:
+    - ssm_association
+  linuxhq.aws.ssm_association:
+    name: "{{ _association.name }}"
+    schedule_expression: "{{ _association.schedule_expression | d(omit) }}"
+    state: "{{ _association.state | d('present') }}"
+    targets: "{{ _association.targets | d(omit) }}"
+    validate_certs: true
+  register: __ssm_association_result
+  loop: "{{ __ssm_association_list }}"
+  loop_control:
+    label: "{{ _association.name | d(none) }}"
+    loop_var: _association
+  async: "{{ ansible_check_mode | ternary(0, ssm_association_async) }}"
+  poll: "{{ ssm_association_poll }}"
+  when:
+    - _association.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __ssm_association_result.changed | bool
+
+- name: Ensure managed aws systems manager association jobs are complete
+  tags:
+    - ssm_association
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ssm_association_status
+  loop: "{{ __ssm_association_result.results }}"
+  loop_control:
+    label: "{{ _jid._association.name | d(none) }}"
+    loop_var: _jid
+  delay: "{{ ssm_association_delay }}"
+  retries: "{{ ssm_association_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ssm_association_status.finished | bool
+...

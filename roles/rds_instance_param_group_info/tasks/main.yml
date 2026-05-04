@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about aws relational database service instance parameter groups is gathered
+- name: Ensure information about aws rds instance parameter groups is gathered
   tags:
     - rds_instance_param_group_info
   amazon.aws.rds_instance_param_group_info:
@@ -7,7 +7,7 @@
     validate_certs: true
   register: __rds_instance_param_group_info_query
 
-- name: Ensure list of aws relational database service instance parameter groups is generated
+- name: Ensure list of aws rds instance parameter groups is generated
   tags:
     - rds_instance_param_group_info
   ansible.builtin.set_fact:
@@ -16,7 +16,7 @@
           selectattr('db_parameter_group_name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of aws relational database service instance parameter groups is generated
+- name: Ensure dict of aws rds instance parameter groups is generated
   tags:
     - rds_instance_param_group_info
   ansible.builtin.set_fact:

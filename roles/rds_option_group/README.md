@@ -1,6 +1,6 @@
 # rds\_option\_group
 
-Manage aws relational database service option groups
+Manage aws rds option groups
 
 ## Requirements
 

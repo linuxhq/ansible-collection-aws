@@ -4,7 +4,7 @@ Manage aws simple email service identities
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli)
+None
 
 ## Role Variables
 

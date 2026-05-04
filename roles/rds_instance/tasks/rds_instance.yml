@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws relational database service instance is managed
+- name: Ensure aws rds instance is managed
   tags:
     - rds_instance
   amazon.aws.rds_instance:

@@ -38,13 +38,15 @@
   loop_control:
     label: "{{ _lt.template_name | d(none) }}"
     loop_var: _lt
+  async: "{{ ansible_check_mode | ternary(0, ec2_launch_template_async) }}"
+  poll: "{{ ec2_launch_template_poll }}"
   when:
     - _lt.image_id is defined
     - _lt.instance_type is defined
     - _lt.template_name is defined
-  changed_when: false
-  async: "{{ ansible_check_mode | ternary(0, ec2_launch_template_async) }}"
-  poll: "{{ ec2_launch_template_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_launch_template_result.changed | bool
 
 - name: Ensure managed aws launch template jobs are complete
   tags:
@@ -56,10 +58,10 @@
   loop_control:
     label: "{{ _jid._lt.template_name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_launch_template_delay }}"
+  retries: "{{ ec2_launch_template_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_launch_template_status.finished | bool
-  retries: "{{ ec2_launch_template_retries }}"
-  delay: "{{ ec2_launch_template_delay }}"
 ...

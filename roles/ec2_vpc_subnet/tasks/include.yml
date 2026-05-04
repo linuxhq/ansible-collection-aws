@@ -45,10 +45,10 @@
   loop_control:
     label: "{{ _jid._subnet[1].name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_vpc_subnet_delay }}"
+  retries: "{{ ec2_vpc_subnet_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_vpc_subnet_status.finished | bool
-  retries: "{{ ec2_vpc_subnet_retries }}"
-  delay: "{{ ec2_vpc_subnet_delay }}"
 ...

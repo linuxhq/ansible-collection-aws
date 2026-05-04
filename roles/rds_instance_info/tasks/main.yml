@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about aws relational database service instances is gathered
+- name: Ensure information about aws rds instances is gathered
   tags:
     - rds_instance_info
   amazon.aws.rds_instance_info:
@@ -8,7 +8,7 @@
     validate_certs: true
   register: __rds_instance_info_query
 
-- name: Ensure list of aws relational database service instances is generated
+- name: Ensure list of aws rds instances is generated
   tags:
     - rds_instance_info
   ansible.builtin.set_fact:
@@ -17,7 +17,7 @@
           selectattr('db_instance_identifier', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of aws relational database service instances is generated
+- name: Ensure dict of aws rds instances is generated
   tags:
     - rds_instance_info
   ansible.builtin.set_fact:

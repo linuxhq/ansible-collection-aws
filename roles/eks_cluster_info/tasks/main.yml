@@ -1,48 +1,19 @@
 ---
-- name: Ensure information about aws eks cluster names is gathered
+- name: Ensure information about aws eks clusters is gathered
   tags:
     - eks_cluster_info
-  ansible.builtin.command:
-    cmd: >
-      aws eks list-clusters
-        --query clusters
-  register: __eks_cluster_info_list
-  changed_when: false
-  check_mode: false
-
-- name: Ensure list of aws eks clusters is generated
-  tags:
-    - eks_cluster_info
-  ansible.builtin.set_fact:
-    __eks_cluster_info_names:
-      "{{ (__eks_cluster_info_list.stdout |
-          from_json) |
-          d([]) }}"
-
-- name: Ensure information about aws eks cluster details is gathered
-  tags:
-    - eks_cluster_info
-  ansible.builtin.command:
-    cmd: >
-      aws eks describe-cluster
-        --name "{{ _cluster }}"
-        --query cluster
-  register: __eks_cluster_info_describe
-  loop: "{{ __eks_cluster_info_names }}"
-  loop_control:
-    label: "{{ _cluster | d(none) }}"
-    loop_var: _cluster
-  changed_when: false
-  check_mode: false
+  linuxhq.aws.eks_cluster_info:
+    name: "{{ eks_cluster_info_name or omit }}"
+    validate_certs: true
+  register: __eks_cluster_info_query
 
 - name: Ensure list of aws eks cluster information is generated
   tags:
     - eks_cluster_info
   ansible.builtin.set_fact:
     _eks_cluster_info_list:
-      "{{ __eks_cluster_info_describe.results |
-          map(attribute='stdout') |
-          map('from_json') }}"
+      "{{ __eks_cluster_info_query.clusters |
+          d([]) }}"
 
 - name: Ensure dict of aws eks cluster information is generated
   tags:

@@ -2,19 +2,13 @@
 - name: Ensure aws certificate manager certificate is requested
   tags:
     - acm_certificate
-  ansible.builtin.command:
-    cmd: >
-      aws acm request-certificate
-        --domain-name "{{ _certificate.domain_name }}"
-        --validation-method DNS
-        {% if _certificate.subject_alternative_names is defined and
-              _certificate.subject_alternative_names | length > 0 %}
-        --subject-alternative-names {{ _certificate.subject_alternative_names | join(' ') }}
-        {% endif %}
+  linuxhq.aws.acm_certificate_request:
+    domain_name: "{{ _certificate.domain_name }}"
+    subject_alternative_names: "{{ _certificate.subject_alternative_names | d(omit) }}"
+    validate_certs: true
   register: __acm_certificate_request
   when:
     - _certificate.domain_name not in __acm_certificate_dict.keys()
-  changed_when: true
 
 - name: Ensure aws certificate manager certificate pause is executed
   tags:

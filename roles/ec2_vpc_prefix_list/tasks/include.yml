@@ -1,0 +1,40 @@
+---
+- name: Ensure aws virtual private cloud prefix lists are managed
+  tags:
+    - ec2_vpc_prefix_list
+  linuxhq.aws.ec2_vpc_prefix_list:
+    address_family: "{{ _pl.address_family | d('IPv4') }}"
+    entries: "{{ _pl.entries | d(omit) }}"
+    name: "{{ _pl.name }}"
+    state: "{{ _pl.state | d('present') }}"
+    validate_certs: true
+  register: __ec2_vpc_prefix_list_result
+  loop: "{{ __ec2_vpc_prefix_list_entries }}"
+  loop_control:
+    label: "{{ _pl.name | d(none) }}"
+    loop_var: _pl
+  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_prefix_list_async) }}"
+  poll: "{{ ec2_vpc_prefix_list_poll }}"
+  when:
+    - _pl.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_vpc_prefix_list_result.changed | bool
+
+- name: Ensure managed aws virtual private cloud prefix list jobs are complete
+  tags:
+    - ec2_vpc_prefix_list
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_vpc_prefix_list_status
+  loop: "{{ __ec2_vpc_prefix_list_result.results }}"
+  loop_control:
+    label: "{{ _jid._pl.name | d(none) }}"
+    loop_var: _jid
+  delay: "{{ ec2_vpc_prefix_list_delay }}"
+  retries: "{{ ec2_vpc_prefix_list_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_vpc_prefix_list_status.finished | bool
+...

@@ -1,6 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
-
 # Copyright: Taylor Kimball
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
@@ -202,7 +200,7 @@ def ensure_absent(client, module):
     )
 
 
-def main() -> None:
+def main():
     argument_spec = {
         "log_destination_configs": {"elements": "str", "type": "list"},
         "logging_filter": {"type": "dict"},
@@ -213,7 +211,6 @@ def main() -> None:
             "default": "present",
             "type": "str",
         },
-        "validate_certs": {"default": True, "type": "bool"},
     }
 
     module = AnsibleAWSModule(

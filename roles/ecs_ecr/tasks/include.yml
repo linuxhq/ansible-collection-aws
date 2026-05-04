@@ -39,10 +39,10 @@
   loop_control:
     label: "{{ _jid._repository.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ecs_ecr_delay }}"
+  retries: "{{ ecs_ecr_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ecs_ecr_status.finished | bool
-  retries: "{{ ecs_ecr_retries }}"
-  delay: "{{ ecs_ecr_delay }}"
 ...

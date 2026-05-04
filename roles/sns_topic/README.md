@@ -2,10 +2,6 @@
 
 Manage aws simple notification service topics
 
-## Requirements
-
-* [awscli](https://pypi.org/project/awscli)
-
 ## Role Variables
 
     sns_topic_list: []

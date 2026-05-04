@@ -1,0 +1,58 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  tasks:
+    - name: Ensure aws systems manager command shell document info is gathered
+      ansible.builtin.include_role:
+        name: ssm_document_info
+      vars:
+        ssm_document_info_name: molecule-command-shell
+
+    - name: Ensure aws systems manager command shell document info is verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_document_info_dict['molecule-command-shell'].document_type == 'Command'
+          - _ssm_document_info_dict['molecule-command-shell'].content.mainSteps.0.name == 'runShellScript'
+
+    - name: Ensure aws systems manager command env document info is gathered
+      ansible.builtin.include_role:
+        name: ssm_document_info
+      vars:
+        ssm_document_info_name: molecule-command-env
+
+    - name: Ensure aws systems manager command env document info is verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_document_info_dict['molecule-command-env'].document_type == 'Command'
+          - _ssm_document_info_dict['molecule-command-env'].content.mainSteps.0.name == 'printEnvironment'
+
+    - name: Ensure aws systems manager session shell document info is gathered
+      ansible.builtin.include_role:
+        name: ssm_document_info
+      vars:
+        ssm_document_info_name: molecule-session-shell
+
+    - name: Ensure aws systems manager session shell document info is verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_document_info_dict['molecule-session-shell'].document_type == 'Session'
+          - _ssm_document_info_dict['molecule-session-shell'].content.sessionType == 'Standard_Stream'
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        ssm_document_list:
+          "{{ ssm_document_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - ssm_document
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

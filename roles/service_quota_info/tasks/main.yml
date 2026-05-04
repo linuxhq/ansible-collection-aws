@@ -13,13 +13,14 @@
     __service_quota_info_region:
       "{{ __service_quota_info_availability_zone.availability_zones.0.region_name }}"
 
-- name: Ensure information about aws service quota is gathered
+- name: Ensure aws service quota information is gathered
   tags:
     - service_quota_info
   linuxhq.aws.service_quota_info:
     quota_code: "{{ _servicequota.1.quota_code }}"
     region: "{{ _servicequota.1.region | d(__service_quota_info_region) }}"
     service_code: "{{ _servicequota.0.service_code }}"
+    validate_certs: true
   register: __service_quota_info_query
   loop:
     "{{ q('ansible.builtin.subelements',
@@ -36,6 +37,7 @@
   ansible.builtin.set_fact:
     _service_quota_info_list:
       "{{ __service_quota_info_query.results |
+          d([]) |
           map(attribute='quota', default=[]) |
           list }}"
 

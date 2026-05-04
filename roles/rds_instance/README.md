@@ -1,6 +1,6 @@
 # rds\_instance
 
-Manage aws relational database service instances
+Manage aws rds instances
 
 ## Requirements
 

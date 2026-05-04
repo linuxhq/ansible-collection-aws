@@ -29,13 +29,15 @@
   loop_control:
     label: "{{ _vol.1.name | d(none) }}"
     loop_var: _vol
+  async: "{{ ansible_check_mode | ternary(0, ec2_vol_async) }}"
+  poll: "{{ ec2_vol_poll }}"
   when:
     - _vol.0.instance is defined
     - _vol.1.name is defined
     - _vol.1.volume_size is defined
-  changed_when: false
-  async: "{{ ansible_check_mode | ternary(0, ec2_vol_async) }}"
-  poll: "{{ ec2_vol_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_vol_result.changed | bool
 
 - name: Ensure managed aws volume jobs are complete
   tags:
@@ -47,10 +49,10 @@
   loop_control:
     label: "{{ _jid._vol.1.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_vol_delay }}"
+  retries: "{{ ec2_vol_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_vol_status.finished | bool
-  retries: "{{ ec2_vol_retries }}"
-  delay: "{{ ec2_vol_delay }}"
 ...

@@ -1,0 +1,8 @@
+---
+ssm_document_async: 300
+ssm_document_batch: 10
+ssm_document_delay: 3
+ssm_document_list: []
+ssm_document_poll: 0
+ssm_document_retries: 100
+...

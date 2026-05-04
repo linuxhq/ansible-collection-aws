@@ -58,10 +58,10 @@
   loop_control:
     label: "{{ _jid._function.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ lambda_delay }}"
+  retries: "{{ lambda_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __lambda_status.finished | bool
-  retries: "{{ lambda_retries }}"
-  delay: "{{ lambda_delay }}"
 ...

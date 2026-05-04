@@ -1,0 +1,27 @@
+---
+- name: Ensure aws systems manager document information is gathered
+  tags:
+    - ssm_document_info
+  linuxhq.aws.ssm_document_info:
+    name: "{{ ssm_document_info_name }}"
+    validate_certs: true
+  register: __ssm_document_info_query
+
+- name: Ensure list of aws systems manager document information is generated
+  tags:
+    - ssm_document_info
+  ansible.builtin.set_fact:
+    _ssm_document_info_list:
+      "{{ [__ssm_document_info_query.document] |
+          reject('equalto', {}) |
+          list }}"
+
+- name: Ensure dict of aws systems manager document information is generated
+  tags:
+    - ssm_document_info
+  ansible.builtin.set_fact:
+    _ssm_document_info_dict:
+      "{{ dict(_ssm_document_info_list |
+               json_query('[].name') |
+               zip(_ssm_document_info_list)) }}"
+...

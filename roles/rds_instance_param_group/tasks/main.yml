@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws relational database service instance parameter groups are batched
+- name: Ensure aws rds instance parameter groups are batched
   tags:
     - rds_instance_param_group
   ansible.builtin.include_tasks:

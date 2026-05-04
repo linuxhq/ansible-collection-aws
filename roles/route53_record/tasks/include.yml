@@ -56,10 +56,10 @@
   loop_control:
     label: "{{ _jid._record.1.record | d(none) }}"
     loop_var: _jid
+  delay: "{{ route53_record_delay }}"
+  retries: "{{ route53_record_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __route53_record_status.finished | bool
-  retries: "{{ route53_record_retries }}"
-  delay: "{{ route53_record_delay }}"
 ...

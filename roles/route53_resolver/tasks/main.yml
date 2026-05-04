@@ -1,35 +1,5 @@
 ---
-- name: Ensure aws route53 resolver defaults are present
-  tags:
-    - route53_resolver
-  ansible.builtin.set_fact:
-    __route53_resolver_list:
-      "{{ [{'state': 'present'}] |
-          product(route53_resolver_list) |
-          map('combine') |
-          list }}"
-
-- name: Ensure list of aws route53 resolvers is gathered
-  tags:
-    - route53_resolver
-  ansible.builtin.command:
-    cmd: >
-      aws route53resolver list-resolver-endpoints
-        --query 'ResolverEndpoints[].{key: Name, value: Id}'
-  register: __route53_resolver_endpoints_query
-  changed_when: false
-  check_mode: false
-
-- name: Ensure dict of aws route53 resolvers is generated
-  tags:
-    - route53_resolver
-  ansible.builtin.set_fact:
-    __route53_resolver_dict:
-      "{{ (__route53_resolver_endpoints_query.stdout |
-          from_json) |
-          items2dict }}"
-
-- name: Ensure aws route53 resolver tasks are included
+- name: Ensure aws route53 resolver endpoints are batched
   tags:
     - route53_resolver
   ansible.builtin.include_tasks:
@@ -37,14 +7,10 @@
       tags:
         - route53_resolver
     file: include.yml
-  loop: "{{ __route53_resolver_list }}"
+  loop:
+    "{{ route53_resolver_list |
+        batch(route53_resolver_batch) }}"
   loop_control:
-    label: "{{ _route53resolver.name | d(none) }}"
-    loop_var: _route53resolver
-  when:
-    - _route53resolver.name is defined
-    - _route53resolver.direction is defined
-    - _route53resolver.ip_addresses is defined
-    - _route53resolver.ip_addresses | length > 0
-    - _route53resolver.vpc_id is defined
+    label: "{{ __route53_resolver_list | length }}"
+    loop_var: __route53_resolver_list
 ...

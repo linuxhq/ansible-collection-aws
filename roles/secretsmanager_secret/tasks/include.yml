@@ -45,10 +45,10 @@
   loop_control:
     label: "{{ _jid._secret.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ secretsmanager_secret_delay }}"
+  retries: "{{ secretsmanager_secret_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __secretsmanager_secret_status.finished | bool
-  retries: "{{ secretsmanager_secret_retries }}"
-  delay: "{{ secretsmanager_secret_delay }}"
 ...

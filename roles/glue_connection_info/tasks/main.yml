@@ -2,21 +2,16 @@
 - name: Ensure information about aws glue connections is gathered
   tags:
     - glue_connection_info
-  ansible.builtin.command:
-    cmd: >
-      aws glue get-connections
-        --query ConnectionList
+  linuxhq.aws.glue_connection_info:
+    validate_certs: true
   register: __glue_connection_info_query
-  check_mode: false
-  changed_when: false
 
 - name: Ensure list of aws glue connections is generated
   tags:
     - glue_connection_info
   ansible.builtin.set_fact:
     _glue_connection_info_list:
-      "{{ (__glue_connection_info_query.stdout |
-          from_json) |
+      "{{ __glue_connection_info_query.connections |
           d([]) }}"
 
 - name: Ensure dict of aws glue connections is generated
@@ -25,6 +20,6 @@
   ansible.builtin.set_fact:
     _glue_connection_info_dict:
       "{{ dict(_glue_connection_info_list |
-               json_query('[].Name') |
+               json_query('[].name') |
                zip(_glue_connection_info_list)) }}"
 ...

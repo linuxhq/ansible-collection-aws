@@ -25,13 +25,15 @@
   loop_control:
     label: "{{ _nat.name | d(none) }}"
     loop_var: _nat
+  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_nat_gateway_async) }}"
+  poll: "{{ ec2_vpc_nat_gateway_poll }}"
   when:
     - _nat.name is defined
     - _nat.nat_gateway_id is defined or
       _nat.subnet_id is defined
-  changed_when: false
-  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_nat_gateway_async) }}"
-  poll: "{{ ec2_vpc_nat_gateway_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_vpc_nat_gateway_result.changed | bool
 
 - name: Ensure managed aws virtual private cloud nat gateway jobs are complete
   tags:
@@ -43,10 +45,10 @@
   loop_control:
     label: "{{ _jid._nat.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_vpc_nat_gateway_delay }}"
+  retries: "{{ ec2_vpc_nat_gateway_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_vpc_nat_gateway_status.finished | bool
-  retries: "{{ ec2_vpc_nat_gateway_retries }}"
-  delay: "{{ ec2_vpc_nat_gateway_delay }}"
 ...

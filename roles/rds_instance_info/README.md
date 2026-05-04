@@ -1,6 +1,6 @@
 # rds\_instance\_info
 
-Gather information about aws relational database service instances
+Gather information about aws rds instances
 
 ## Requirements
 

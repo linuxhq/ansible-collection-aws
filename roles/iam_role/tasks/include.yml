@@ -46,10 +46,10 @@
   loop_control:
     label: "{{ _jid._role.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ iam_role_delay }}"
+  retries: "{{ iam_role_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __iam_role_status.finished | bool
-  retries: "{{ iam_role_retries }}"
-  delay: "{{ iam_role_delay }}"
 ...

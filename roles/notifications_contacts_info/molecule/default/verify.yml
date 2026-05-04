@@ -8,7 +8,13 @@
     - notifications_contacts_info
 
   post_tasks:
-    - name: Ensure info is verified
+    - name: Ensure role is included without name
+      ansible.builtin.include_role:
+        name: notifications_contacts_info
+      vars:
+        notifications_contacts_info_name: null
+
+    - name: Ensure info without name is verified
       ansible.builtin.assert:
         that:
           - _notifications_contacts_info_dict['dummy01@molecule.org'].address is defined
@@ -59,6 +65,23 @@
           - _notifications_contacts_info_dict['dummy12@molecule.org'].arn is defined
           - _notifications_contacts_info_dict['dummy12@molecule.org'].name is defined
           - _notifications_contacts_info_dict['dummy12@molecule.org'].status == 'inactive'
+
+    - name: Ensure role is included with name
+      ansible.builtin.include_role:
+        name: notifications_contacts_info
+      vars:
+        notifications_contacts_info_name: "{{ notifications_contacts_list.0.name }}"
+
+    - name: Ensure info with name is verified
+      ansible.builtin.assert:
+        that:
+          - _notifications_contacts_info_list | length == 1
+          - _notifications_contacts_info_list.0.name == notifications_contacts_list.0.name
+          - _notifications_contacts_info_dict.keys() | list == [notifications_contacts_list.0.email_address]
+          - _notifications_contacts_info_dict[notifications_contacts_list.0.email_address].address ==
+              notifications_contacts_list.0.email_address
+          - _notifications_contacts_info_dict[notifications_contacts_list.0.email_address].name ==
+              notifications_contacts_list.0.name
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

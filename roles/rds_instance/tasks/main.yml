@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws relational database service instance defaults are generated
+- name: Ensure aws rds instance defaults are generated
   tags:
     - rds_instance
   ansible.builtin.set_fact:
@@ -28,7 +28,7 @@
       - cidr_ip: 0.0.0.0/0
         proto: -1
 
-- name: Ensure aws relational database service instance tasks are included
+- name: Ensure aws rds instance tasks are included
   tags:
     - rds_instance
   ansible.builtin.include_tasks:

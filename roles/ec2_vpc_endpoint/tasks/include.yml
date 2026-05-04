@@ -46,10 +46,10 @@
   loop_control:
     label: "{{ _jid._vpce.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_vpc_endpoint_delay }}"
+  retries: "{{ ec2_vpc_endpoint_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_vpc_endpoint_status.finished | bool
-  retries: "{{ ec2_vpc_endpoint_retries }}"
-  delay: "{{ ec2_vpc_endpoint_delay }}"
 ...

@@ -20,6 +20,7 @@
     quota_code: "{{ _servicequota.1.quota_code }}"
     region: "{{ _servicequota.1.region | d(__service_quota_region) }}"
     service_code: "{{ _servicequota.0.service_code }}"
+    validate_certs: true
     value: "{{ _servicequota.1.value }}"
   loop:
     "{{ q('ansible.builtin.subelements',

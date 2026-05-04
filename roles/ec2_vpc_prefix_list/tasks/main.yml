@@ -1,46 +1,16 @@
 ---
-- name: Ensure aws virtual private cloud prefix list info tasks are executed
+- name: Ensure aws virtual private cloud prefix lists are batched
   tags:
     - ec2_vpc_prefix_list
   ansible.builtin.include_tasks:
     apply:
       tags:
         - ec2_vpc_prefix_list
-    file: info.yml
-
-- name: Ensure aws virtual private cloud prefix list present tasks are executed
-  tags:
-    - ec2_vpc_prefix_list
-  ansible.builtin.include_tasks:
-    apply:
-      tags:
-        - ec2_vpc_prefix_list
-    file: present.yml
-  loop: "{{ ec2_vpc_prefix_list_entries }}"
+    file: include.yml
+  loop:
+    "{{ ec2_vpc_prefix_list_entries |
+        batch(ec2_vpc_prefix_list_batch) }}"
   loop_control:
-    label: "{{ _pl.name | d(none) }}"
-    loop_var: _pl
-  when:
-    - _pl.name is defined
-    - _pl.entries is defined
-    - _pl.entries | length > 0
-    - _pl.state is not defined or
-      _pl.state == 'present'
-
-- name: Ensure aws virtual private cloud prefix list absent tasks are executed
-  tags:
-    - ec2_vpc_prefix_list
-  ansible.builtin.include_tasks:
-    apply:
-      tags:
-        - ec2_vpc_prefix_list
-    file: absent.yml
-  loop: "{{ ec2_vpc_prefix_list_entries }}"
-  loop_control:
-    label: "{{ _pl.name | d(none) }}"
-    loop_var: _pl
-  when:
-    - _pl.name is defined
-    - _pl.state is defined
-    - _pl.state == 'absent'
+    label: "{{ __ec2_vpc_prefix_list_entries | length }}"
+    loop_var: __ec2_vpc_prefix_list_entries
 ...

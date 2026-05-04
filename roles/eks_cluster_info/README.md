@@ -4,11 +4,11 @@ Gather information about eks clusters
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli)
+None
 
 ## Role Variables
 
-None
+    eks_cluster_info_name: null
 
 ## Return Values
 
@@ -25,3 +25,9 @@ None
       connection: local
       roles:
         - linuxhq.aws.eks_cluster_info
+
+    - hosts: aws
+      connection: local
+      roles:
+        - role: linuxhq.aws.eks_cluster_info
+          eks_cluster_info_name: molecule-eks1

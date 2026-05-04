@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about aws relational database service option groups is gathered
+- name: Ensure information about aws rds option groups is gathered
   tags:
     - rds_option_group_info
   amazon.aws.rds_option_group_info:
@@ -11,7 +11,7 @@
     validate_certs: true
   register: __rds_option_group_info_query
 
-- name: Ensure list of aws relational database service option groups is generated
+- name: Ensure list of aws rds option groups is generated
   tags:
     - rds_option_group_info
   ansible.builtin.set_fact:
@@ -20,7 +20,7 @@
           selectattr('option_group_name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of aws relational database service option groups is generated
+- name: Ensure dict of aws rds option groups is generated
   tags:
     - rds_option_group_info
   ansible.builtin.set_fact:

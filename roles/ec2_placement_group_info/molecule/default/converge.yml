@@ -5,6 +5,11 @@
     PATH: '/opt/awscli/bin'
 
   roles:
+    - role: ec2_placement_group_info
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
     - role: ec2_placement_group
       tags:
         - molecule-idempotence-notest

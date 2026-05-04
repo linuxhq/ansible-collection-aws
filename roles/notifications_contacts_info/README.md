@@ -4,11 +4,11 @@ Gather information about aws notifications contacts
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli) >= 1.37.10
+None
 
 ## Role Variables
 
-None
+    notifications_contacts_info_name: null
 
 ## Return Values
 
@@ -25,3 +25,9 @@ None
       connection: local
       roles:
         - linuxhq.aws.notifications_contacts_info
+
+    - hosts: aws
+      connection: local
+      roles:
+        - role: linuxhq.aws.notifications_contacts_info
+          notifications_contacts_info_name: molecule-dummy01

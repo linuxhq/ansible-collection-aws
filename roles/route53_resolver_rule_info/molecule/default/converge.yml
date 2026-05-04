@@ -15,12 +15,22 @@
         - molecule-idempotence-notest
       check_mode: false
 
+    - role: ec2_security_group
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
     - role: route53_resolver
       tags:
         - molecule-idempotence-notest
       check_mode: false
 
     - role: route53_resolver_rule
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: route53_resolver_rule_associate
       tags:
         - molecule-idempotence-notest
       check_mode: false

@@ -1,6 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
-
 # Copyright: Taylor Kimball
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
@@ -153,12 +151,11 @@ def build_requested_quota(module, current_quota):
     return requested_quota
 
 
-def main() -> None:
+def main():
     argument_spec = {
         "quota_code": {"required": True, "type": "str"},
         "service_code": {"required": True, "type": "str"},
         "value": {"required": True, "type": "float"},
-        "validate_certs": {"default": True, "type": "bool"},
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)

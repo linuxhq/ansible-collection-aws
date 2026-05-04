@@ -2,23 +2,19 @@
 - name: Ensure information about aws notifications contacts is gathered
   tags:
     - notifications_contacts_info
-  ansible.builtin.command:
-    cmd: >
-      aws notificationscontacts list-email-contacts
-        --query emailContacts
+  linuxhq.aws.notifications_contacts_info:
+    name: "{{ notifications_contacts_info_name or omit }}"
+    validate_certs: true
   register: __notifications_contacts_info_query
-  changed_when: false
-  check_mode: false
 
 - name: Ensure list of aws notifications contacts is generated
   tags:
     - notifications_contacts_info
   ansible.builtin.set_fact:
     _notifications_contacts_info_list:
-      "{{ (__notifications_contacts_info_query.stdout |
-          from_json |
-          selectattr('address', 'defined')) |
-          d([]) }}"
+      "{{ __notifications_contacts_info_query.email_contacts |
+          d([]) |
+          selectattr('address', 'defined') }}"
 
 - name: Ensure dict of aws notifications contacts is generated
   tags:

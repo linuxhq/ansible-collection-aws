@@ -1,6 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
-
 # Copyright: Taylor Kimball
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
@@ -108,7 +106,7 @@ def build_desired_update(params):
     return desired
 
 
-def main() -> None:
+def main():
     argument_spec = {
         "http_endpoint": {
             "choices": ["disabled", "enabled", "no-preference"],
@@ -123,7 +121,6 @@ def main() -> None:
             "choices": ["disabled", "enabled", "no-preference"],
             "type": "str",
         },
-        "validate_certs": {"default": True, "type": "bool"},
     }
 
     module = AnsibleAWSModule(

@@ -2,13 +2,14 @@
 
 Manage aws systems manager associations
 
-## Requirements
-
-* [awscli](https://pypi.org/project/awscli)
-
 ## Role Variables
 
+    ssm_association_async: 300
+    ssm_association_batch: 10
+    ssm_association_delay: 3
     ssm_association_list: []
+    ssm_association_poll: 0
+    ssm_association_retries: 100
 
 ## Return Values
 

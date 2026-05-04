@@ -7,28 +7,49 @@
   roles:
     - aws_az_info
     - aws_caller_info
-    - ses_identity_info
 
   post_tasks:
-    - name: Ensure info is verified
+    - name: Ensure role is included without name
+      ansible.builtin.include_role:
+        name: ses_identity_info
+      vars:
+        ses_identity_info_name: null
+
+    - name: Ensure info without name is verified
       ansible.builtin.assert:
         that:
-          - _ses_identity_info_dict['molecule.org'].DkimAttributes is defined
-          - _ses_identity_info_dict['molecule.org'].DkimAttributes.Tokens | length == 3
-          - _ses_identity_info_dict['molecule.org'].IdentityType == 'DOMAIN'
-          - _ses_identity_info_dict['molecule.org'].VerificationStatus == 'PENDING'
-          - _ses_identity_info_dict['a.molecule.org'].DkimAttributes is defined
-          - _ses_identity_info_dict['a.molecule.org'].DkimAttributes.Tokens | length == 3
-          - _ses_identity_info_dict['a.molecule.org'].IdentityType == 'DOMAIN'
-          - _ses_identity_info_dict['a.molecule.org'].VerificationStatus == 'PENDING'
-          - _ses_identity_info_dict['b.molecule.org'].DkimAttributes is defined
-          - _ses_identity_info_dict['b.molecule.org'].DkimAttributes.Tokens | length == 3
-          - _ses_identity_info_dict['b.molecule.org'].IdentityType == 'DOMAIN'
-          - _ses_identity_info_dict['b.molecule.org'].VerificationStatus == 'PENDING'
-          - _ses_identity_info_dict['c.molecule.org'].DkimAttributes is defined
-          - _ses_identity_info_dict['c.molecule.org'].DkimAttributes.Tokens | length == 3
-          - _ses_identity_info_dict['c.molecule.org'].IdentityType == 'DOMAIN'
-          - _ses_identity_info_dict['c.molecule.org'].VerificationStatus == 'PENDING'
+          - _ses_identity_info_dict['molecule.org'].dkim_attributes is defined
+          - _ses_identity_info_dict['molecule.org'].dkim_attributes.tokens | length == 3
+          - _ses_identity_info_dict['molecule.org'].identity_type == 'DOMAIN'
+          - _ses_identity_info_dict['molecule.org'].verification_status == 'PENDING'
+          - _ses_identity_info_dict['a.molecule.org'].dkim_attributes is defined
+          - _ses_identity_info_dict['a.molecule.org'].dkim_attributes.tokens | length == 3
+          - _ses_identity_info_dict['a.molecule.org'].identity_type == 'DOMAIN'
+          - _ses_identity_info_dict['a.molecule.org'].verification_status == 'PENDING'
+          - _ses_identity_info_dict['b.molecule.org'].dkim_attributes is defined
+          - _ses_identity_info_dict['b.molecule.org'].dkim_attributes.tokens | length == 3
+          - _ses_identity_info_dict['b.molecule.org'].identity_type == 'DOMAIN'
+          - _ses_identity_info_dict['b.molecule.org'].verification_status == 'PENDING'
+          - _ses_identity_info_dict['c.molecule.org'].dkim_attributes is defined
+          - _ses_identity_info_dict['c.molecule.org'].dkim_attributes.tokens | length == 3
+          - _ses_identity_info_dict['c.molecule.org'].identity_type == 'DOMAIN'
+          - _ses_identity_info_dict['c.molecule.org'].verification_status == 'PENDING'
+
+    - name: Ensure role is included with name
+      ansible.builtin.include_role:
+        name: ses_identity_info
+      vars:
+        ses_identity_info_name: molecule.org
+
+    - name: Ensure info with name is verified
+      ansible.builtin.assert:
+        that:
+          - _ses_identity_info_list | length == 1
+          - _ses_identity_info_list.0.name == 'molecule.org'
+          - _ses_identity_info_dict.keys() | list == ['molecule.org']
+          - _ses_identity_info_dict['molecule.org'].dkim_attributes.tokens | length == 3
+          - _ses_identity_info_dict['molecule.org'].identity_type == 'DOMAIN'
+          - _ses_identity_info_dict['molecule.org'].verification_status == 'PENDING'
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

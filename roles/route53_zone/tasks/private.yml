@@ -70,12 +70,12 @@
   loop_control:
     label: "{{ _jid._zone.zone | d(none) }}"
     loop_var: _jid
+  delay: "{{ route53_zone_delay }}"
+  retries: "{{ route53_zone_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __route53_zone_status_present.finished | bool
-  retries: "{{ route53_zone_retries }}"
-  delay: "{{ route53_zone_delay }}"
 
 - name: Ensure aws route53 private zones are absent
   tags:
@@ -120,10 +120,10 @@
   loop_control:
     label: "{{ _jid._zone.zone | d(none) }}"
     loop_var: _jid
+  delay: "{{ route53_zone_delay }}"
+  retries: "{{ route53_zone_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __route53_zone_status_absent.finished | bool
-  retries: "{{ route53_zone_retries }}"
-  delay: "{{ route53_zone_delay }}"
 ...

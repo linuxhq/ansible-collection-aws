@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws relational database service subnet groups are batched
+- name: Ensure aws rds subnet groups are batched
   tags:
     - rds_subnet_group
   ansible.builtin.include_tasks:

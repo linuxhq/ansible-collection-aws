@@ -18,12 +18,14 @@
   loop_control:
     label: "{{ _key.name | d(none) }}"
     loop_var: _key
+  async: "{{ ansible_check_mode | ternary(0, ec2_key_async) }}"
+  poll: "{{ ec2_key_poll }}"
   when:
     - _key.key_material is defined
     - _key.name is defined
-  changed_when: false
-  async: "{{ ansible_check_mode | ternary(0, ec2_key_async) }}"
-  poll: "{{ ec2_key_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_key_result.changed | bool
 
 - name: Ensure managed aws key jobs are complete
   tags:
@@ -35,10 +37,10 @@
   loop_control:
     label: "{{ _jid._key.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_key_delay }}"
+  retries: "{{ ec2_key_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_key_status.finished | bool
-  retries: "{{ ec2_key_retries }}"
-  delay: "{{ ec2_key_delay }}"
 ...

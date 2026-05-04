@@ -1,0 +1,39 @@
+---
+- name: Ensure aws notifications contacts are managed
+  tags:
+    - notifications_contacts
+  linuxhq.aws.notifications_contacts:
+    email_address: "{{ _emailcontact.email_address }}"
+    name: "{{ _emailcontact.name | d(omit) }}"
+    state: "{{ _emailcontact.state | d('present') }}"
+    validate_certs: true
+  register: __notifications_contacts_result
+  loop: "{{ __notifications_contacts_list }}"
+  loop_control:
+    label: "{{ _emailcontact.email_address | d(none) }}"
+    loop_var: _emailcontact
+  async: "{{ ansible_check_mode | ternary(0, notifications_contacts_async) }}"
+  poll: "{{ notifications_contacts_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __notifications_contacts_result.changed | bool
+  when:
+    - _emailcontact.email_address is defined
+    - _emailcontact.name is defined
+
+- name: Ensure managed aws notifications contact jobs are complete
+  tags:
+    - notifications_contacts
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __notifications_contacts_status
+  loop: "{{ __notifications_contacts_result.results }}"
+  loop_control:
+    label: "{{ _jid._emailcontact.email_address | d(none) }}"
+    loop_var: _jid
+  delay: "{{ notifications_contacts_delay }}"
+  retries: "{{ notifications_contacts_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __notifications_contacts_status.finished | bool

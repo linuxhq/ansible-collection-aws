@@ -1,30 +1,12 @@
 ---
-- name: Ensure aws simple email service identity dkim tokens are gathered
+- name: Ensure aws simple email service identity tokens are gathered
   tags:
     - ses_identity
-  ansible.builtin.command:
-    cmd: >
-      aws ses verify-domain-dkim
-        --domain "{{ _identity.identity }}"
-        --query DkimTokens
-        --region "{{ __ses_identity_region }}"
-  register: __ses_identity_dkim_query
-  changed_when: false
-  check_mode: false
-
-- name: Ensure aws simple email service identity verification token is gathered
-  tags:
-    - ses_identity
-  ansible.builtin.command:
-    cmd: >
-      aws ses verify-domain-identity
-        --domain "{{ _identity.identity }}"
-        --output text
-        --query VerificationToken
-        --region "{{ __ses_identity_region }}"
-  register: __ses_identity_verification_query
-  changed_when: false
-  check_mode: false
+  linuxhq.aws.ses_identity_tokens_info:
+    identity: "{{ _identity.identity }}"
+    region: "{{ __ses_identity_region }}"
+    validate_certs: true
+  register: __ses_identity_tokens_query
 
 - name: Ensure aws simple email service identity txt records are gathered
   tags:
@@ -42,21 +24,19 @@
     - ses_identity
   ansible.builtin.set_fact:
     __ses_identity_value_dkim:
-      "{{ (__ses_identity_dkim_query.stdout |
-          from_json) |
-          d([]) }}"
+      "{{ __ses_identity_tokens_query.dkim_tokens }}"
     __ses_identity_value_txt_absent:
       "{{ __ses_identity_txt_query.resource_record_sets.0.resource_records |
           d([]) |
           map(attribute='value') |
           map('from_json') |
-          reject('eq', __ses_identity_verification_query.stdout) }}"
+          reject('eq', __ses_identity_tokens_query.verification_token) }}"
     __ses_identity_value_txt_present:
       "{{ __ses_identity_txt_query.resource_record_sets.0.resource_records |
           d([]) |
           map(attribute='value') |
           map('from_json') +
-          [__ses_identity_verification_query.stdout] }}"
+          [__ses_identity_tokens_query.verification_token] }}"
 
 - name: Ensure aws simple email service identity dmarc records are managed
   tags:

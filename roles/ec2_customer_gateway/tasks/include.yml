@@ -14,12 +14,14 @@
   loop_control:
     label: "{{ _cgw.name | d(none) }}"
     loop_var: _cgw
+  async: "{{ ansible_check_mode | ternary(0, ec2_customer_gateway_async) }}"
+  poll: "{{ ec2_customer_gateway_poll }}"
   when:
     - _cgw.ip_address is defined
     - _cgw.name is defined
-  changed_when: false
-  async: "{{ ansible_check_mode | ternary(0, ec2_customer_gateway_async) }}"
-  poll: "{{ ec2_customer_gateway_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_customer_gateway_result.changed | bool
 
 - name: Ensure managed aws customer gateway jobs are complete
   tags:
@@ -31,10 +33,10 @@
   loop_control:
     label: "{{ _jid._cgw.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_customer_gateway_delay }}"
+  retries: "{{ ec2_customer_gateway_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_customer_gateway_status.finished | bool
-  retries: "{{ ec2_customer_gateway_retries }}"
-  delay: "{{ ec2_customer_gateway_delay }}"
 ...

@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws relational database service instance present tasks are included
+- name: Ensure aws rds instance present tasks are included
   tags:
     - rds_instance
   ansible.builtin.include_tasks:
@@ -16,7 +16,7 @@
   when:
     - _db.state == 'present'
 
-- name: Ensure aws relational database service instance absent tasks are included
+- name: Ensure aws rds instance absent tasks are included
   tags:
     - rds_instance
   ansible.builtin.include_tasks:

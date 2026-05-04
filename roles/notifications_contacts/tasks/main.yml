@@ -1,62 +1,16 @@
 ---
-- name: Ensure aws notifications contacts defaults are generated
-  tags:
-    - notifications_contacts
-  ansible.builtin.set_fact:
-    __notifications_contacts_list:
-      "{{ [{'state': 'present'}] |
-          product(notifications_contacts_list) |
-          map('combine') |
-          list }}"
-
-- name: Ensure information about aws notifications contacts is gathered
-  tags:
-    - notifications_contacts
-  ansible.builtin.command:
-    cmd: >
-      aws notificationscontacts list-email-contacts
-        --query 'emailContacts[].{key: address, value: arn}'
-  register: __notifications_contacts_query
-  changed_when: false
-  check_mode: false
-
-- name: Ensure dict of aws notifications contacts is generated
-  tags:
-    - notifications_contacts
-  ansible.builtin.set_fact:
-    __notifications_contacts_dict:
-      "{{ (__notifications_contacts_query.stdout |
-          from_json |
-          items2dict) |
-          d({}) }}"
-
-- name: Ensure present aws notifications contacts are batched
+- name: Ensure aws notifications contacts are batched
   tags:
     - notifications_contacts
   ansible.builtin.include_tasks:
     apply:
       tags:
         - notifications_contacts
-    file: present.yml
+    file: include.yml
   loop:
-    "{{ __notifications_contacts_list |
+    "{{ notifications_contacts_list |
         batch(notifications_contacts_batch) }}"
   loop_control:
-    label: "{{ __notifications_contacts_present | length }}"
-    loop_var: __notifications_contacts_present
-
-- name: Ensure absent aws notifications contacts are batched
-  tags:
-    - notifications_contacts
-  ansible.builtin.include_tasks:
-    apply:
-      tags:
-        - notifications_contacts
-    file: absent.yml
-  loop:
-    "{{ __notifications_contacts_list |
-        batch(notifications_contacts_batch) }}"
-  loop_control:
-    label: "{{ __notifications_contacts_absent | length }}"
-    loop_var: __notifications_contacts_absent
+    label: "{{ __notifications_contacts_list | length }}"
+    loop_var: __notifications_contacts_list
 ...

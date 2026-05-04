@@ -2,13 +2,9 @@
 
 Gather information about virtual private cloud prefix lists
 
-## Requirements
-
-* [awscli](https://pypi.org/project/awscli)
-
 ## Role Variables
 
-None
+    ec2_vpc_prefix_list_info_name: null
 
 ## Return Values
 
@@ -25,3 +21,9 @@ None
       connection: local
       roles:
         - linuxhq.aws.ec2_vpc_prefix_list_info
+
+    - hosts: aws
+      connection: local
+      roles:
+        - role: linuxhq.aws.ec2_vpc_prefix_list_info
+          ec2_vpc_prefix_list_info_name: molecule-localhost

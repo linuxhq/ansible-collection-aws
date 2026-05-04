@@ -4,11 +4,16 @@ Manage aws route53 delegation sets
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli)
+None
 
 ## Role Variables
 
+    route53_delegation_set_async: 300
+    route53_delegation_set_batch: 10
+    route53_delegation_set_delay: 3
     route53_delegation_set_list: []
+    route53_delegation_set_poll: 0
+    route53_delegation_set_retries: 100
 
 ## Return Values
 

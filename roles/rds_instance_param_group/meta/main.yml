@@ -3,7 +3,7 @@ dependencies: []
 galaxy_info:
   role_name: rds_instance_param_group
   author: Taylor Kimball
-  description: Manage aws relational database service instance parameter groups
+  description: Manage aws rds instance parameter groups
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq

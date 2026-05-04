@@ -2,10 +2,6 @@
 
 Manage aws systems manager session configuration
 
-## Requirements
-
-* [awscli](https://pypi.org/project/awscli)
-
 ## Role Variables
 
 Defaults can be found in [here](defaults/main)

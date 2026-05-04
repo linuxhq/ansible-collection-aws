@@ -40,10 +40,10 @@
   loop_control:
     label: "{{ _jid._parameter.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ssm_parameter_delay }}"
+  retries: "{{ ssm_parameter_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ssm_parameter_status.finished | bool
-  retries: "{{ ssm_parameter_retries }}"
-  delay: "{{ ssm_parameter_delay }}"
 ...

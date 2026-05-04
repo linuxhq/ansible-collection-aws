@@ -5,7 +5,7 @@ dependencies:
 galaxy_info:
   role_name: rds_subnet_group
   author: Taylor Kimball
-  description: Manage aws relational database service subnet groups
+  description: Manage aws rds subnet groups
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq

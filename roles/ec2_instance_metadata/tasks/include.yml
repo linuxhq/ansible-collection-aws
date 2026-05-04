@@ -30,10 +30,10 @@
   loop_control:
     label: "{{ _jid._region | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_instance_metadata_delay }}"
+  retries: "{{ ec2_instance_metadata_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_instance_metadata_status.finished | bool
-  retries: "{{ ec2_instance_metadata_retries }}"
-  delay: "{{ ec2_instance_metadata_delay }}"
 ...

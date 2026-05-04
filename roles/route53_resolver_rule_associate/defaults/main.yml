@@ -1,3 +1,8 @@
 ---
+route53_resolver_rule_associate_async: 300
+route53_resolver_rule_associate_batch: 10
+route53_resolver_rule_associate_delay: 3
 route53_resolver_rule_associate_list: []
+route53_resolver_rule_associate_poll: 0
+route53_resolver_rule_associate_retries: 100
 ...

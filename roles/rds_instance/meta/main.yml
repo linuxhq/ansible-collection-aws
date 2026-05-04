@@ -7,7 +7,7 @@ dependencies:
 galaxy_info:
   role_name: rds_instance
   author: Taylor Kimball
-  description: Manage aws relational database service instances
+  description: Manage aws rds instances
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq

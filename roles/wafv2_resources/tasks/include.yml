@@ -33,10 +33,10 @@
   loop_control:
     label: "{{ _jid._resource.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ wafv2_resources_delay }}"
+  retries: "{{ wafv2_resources_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __wafv2_resources_status.finished | bool
-  retries: "{{ wafv2_resources_retries }}"
-  delay: "{{ wafv2_resources_delay }}"
 ...
