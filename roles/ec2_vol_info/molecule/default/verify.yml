@@ -15,18 +15,18 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_vol_info_dict['linuxhq-vol-a-01'].id is defined
-          - _ec2_vol_info_dict['linuxhq-vol-a-02'].id is defined
-          - _ec2_vol_info_dict['linuxhq-vol-a-03'].id is defined
-          - _ec2_vol_info_dict['linuxhq-vol-a-04'].id is defined
-          - _ec2_vol_info_dict['linuxhq-vol-a-05'].id is defined
-          - _ec2_vol_info_dict['linuxhq-vol-a-06'].id is defined
-          - _ec2_vol_info_dict['linuxhq-vol-b-01'].id is defined
-          - _ec2_vol_info_dict['linuxhq-vol-b-02'].id is defined
-          - _ec2_vol_info_dict['linuxhq-vol-b-03'].id is defined
-          - _ec2_vol_info_dict['linuxhq-vol-b-04'].id is defined
-          - _ec2_vol_info_dict['linuxhq-vol-b-05'].id is defined
-          - _ec2_vol_info_dict['linuxhq-vol-b-06'].id is defined
+          - _ec2_vol_info_dict['molecule-vol-a-01'].id is defined
+          - _ec2_vol_info_dict['molecule-vol-a-02'].id is defined
+          - _ec2_vol_info_dict['molecule-vol-a-03'].id is defined
+          - _ec2_vol_info_dict['molecule-vol-a-04'].id is defined
+          - _ec2_vol_info_dict['molecule-vol-a-05'].id is defined
+          - _ec2_vol_info_dict['molecule-vol-a-06'].id is defined
+          - _ec2_vol_info_dict['molecule-vol-b-01'].id is defined
+          - _ec2_vol_info_dict['molecule-vol-b-02'].id is defined
+          - _ec2_vol_info_dict['molecule-vol-b-03'].id is defined
+          - _ec2_vol_info_dict['molecule-vol-b-04'].id is defined
+          - _ec2_vol_info_dict['molecule-vol-b-05'].id is defined
+          - _ec2_vol_info_dict['molecule-vol-b-06'].id is defined
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

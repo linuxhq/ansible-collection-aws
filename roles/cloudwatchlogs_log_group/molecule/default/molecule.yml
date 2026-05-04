@@ -26,9 +26,9 @@ provisioner:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
         cloudwatchlogs_log_group_list:
-          - name: linuxhq-30d
+          - name: molecule-30d
             retention: 30
-          - name: linuxhq-90d
+          - name: molecule-90d
             retention: 90
 
 scenario:

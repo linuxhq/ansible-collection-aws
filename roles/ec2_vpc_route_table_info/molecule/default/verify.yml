@@ -15,39 +15,39 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_vpc_route_table_info_dict['linuxhq-pub'].id is defined
-          - _ec2_vpc_route_table_info_dict['linuxhq-pub'].associations.0.association_state.state ==
+          - _ec2_vpc_route_table_info_dict['molecule-pub'].id is defined
+          - _ec2_vpc_route_table_info_dict['molecule-pub'].associations.0.association_state.state ==
               'associated'
-          - _ec2_vpc_route_table_info_dict['linuxhq-pub'].associations.1.association_state.state ==
+          - _ec2_vpc_route_table_info_dict['molecule-pub'].associations.1.association_state.state ==
               'associated'
-          - _ec2_vpc_route_table_info_dict['linuxhq-pub'].associations.2.association_state.state ==
+          - _ec2_vpc_route_table_info_dict['molecule-pub'].associations.2.association_state.state ==
               'associated'
-          - _ec2_vpc_route_table_info_dict['linuxhq-pub'].routes.1.gateway_id ==
-              _ec2_vpc_igw_info_dict['linuxhq'].internet_gateway_id
+          - _ec2_vpc_route_table_info_dict['molecule-pub'].routes.1.gateway_id ==
+              _ec2_vpc_igw_info_dict['molecule'].internet_gateway_id
 
-          - _ec2_vpc_route_table_info_dict['linuxhq-pvt-a'].id is defined
-          - _ec2_vpc_route_table_info_dict['linuxhq-pvt-a'].associations.0.association_state.state ==
+          - _ec2_vpc_route_table_info_dict['molecule-pvt-a'].id is defined
+          - _ec2_vpc_route_table_info_dict['molecule-pvt-a'].associations.0.association_state.state ==
               'associated'
-          - _ec2_vpc_route_table_info_dict['linuxhq-pvt-a'].associations.0.subnet_id ==
-              _ec2_vpc_subnet_info_dict['linuxhq-pvt-a'].id
-          - _ec2_vpc_route_table_info_dict['linuxhq-pvt-a'].routes.1.nat_gateway_id ==
-              _ec2_vpc_nat_gateway_info_dict['linuxhq-pub-a'].nat_gateway_id
+          - _ec2_vpc_route_table_info_dict['molecule-pvt-a'].associations.0.subnet_id ==
+              _ec2_vpc_subnet_info_dict['molecule-pvt-a'].id
+          - _ec2_vpc_route_table_info_dict['molecule-pvt-a'].routes.1.nat_gateway_id ==
+              _ec2_vpc_nat_gateway_info_dict['molecule-pub-a'].nat_gateway_id
 
-          - _ec2_vpc_route_table_info_dict['linuxhq-pvt-b'].id is defined
-          - _ec2_vpc_route_table_info_dict['linuxhq-pvt-b'].associations.0.association_state.state ==
+          - _ec2_vpc_route_table_info_dict['molecule-pvt-b'].id is defined
+          - _ec2_vpc_route_table_info_dict['molecule-pvt-b'].associations.0.association_state.state ==
               'associated'
-          - _ec2_vpc_route_table_info_dict['linuxhq-pvt-b'].associations.0.subnet_id ==
-              _ec2_vpc_subnet_info_dict['linuxhq-pvt-b'].id
-          - _ec2_vpc_route_table_info_dict['linuxhq-pvt-b'].routes.1.nat_gateway_id ==
-              _ec2_vpc_nat_gateway_info_dict['linuxhq-pub-b'].nat_gateway_id
+          - _ec2_vpc_route_table_info_dict['molecule-pvt-b'].associations.0.subnet_id ==
+              _ec2_vpc_subnet_info_dict['molecule-pvt-b'].id
+          - _ec2_vpc_route_table_info_dict['molecule-pvt-b'].routes.1.nat_gateway_id ==
+              _ec2_vpc_nat_gateway_info_dict['molecule-pub-b'].nat_gateway_id
 
-          - _ec2_vpc_route_table_info_dict['linuxhq-pvt-c'].id is defined
-          - _ec2_vpc_route_table_info_dict['linuxhq-pvt-c'].associations.0.association_state.state ==
+          - _ec2_vpc_route_table_info_dict['molecule-pvt-c'].id is defined
+          - _ec2_vpc_route_table_info_dict['molecule-pvt-c'].associations.0.association_state.state ==
               'associated'
-          - _ec2_vpc_route_table_info_dict['linuxhq-pvt-c'].associations.0.subnet_id ==
-              _ec2_vpc_subnet_info_dict['linuxhq-pvt-c'].id
-          - _ec2_vpc_route_table_info_dict['linuxhq-pvt-c'].routes.1.nat_gateway_id ==
-              _ec2_vpc_nat_gateway_info_dict['linuxhq-pub-c'].nat_gateway_id
+          - _ec2_vpc_route_table_info_dict['molecule-pvt-c'].associations.0.subnet_id ==
+              _ec2_vpc_subnet_info_dict['molecule-pvt-c'].id
+          - _ec2_vpc_route_table_info_dict['molecule-pvt-c'].routes.1.nat_gateway_id ==
+              _ec2_vpc_nat_gateway_info_dict['molecule-pub-c'].nat_gateway_id
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

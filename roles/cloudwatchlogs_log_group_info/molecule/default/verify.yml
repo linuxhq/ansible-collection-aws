@@ -11,14 +11,14 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _cloudwatchlogs_log_group_info_dict['linuxhq-30d'] is defined
-          - _cloudwatchlogs_log_group_info_dict['linuxhq-30d'].arn is defined
-          - _cloudwatchlogs_log_group_info_dict['linuxhq-30d'].log_group_name is defined
-          - _cloudwatchlogs_log_group_info_dict['linuxhq-30d'].retention_in_days == 30
-          - _cloudwatchlogs_log_group_info_dict['linuxhq-90d'] is defined
-          - _cloudwatchlogs_log_group_info_dict['linuxhq-90d'].arn is defined
-          - _cloudwatchlogs_log_group_info_dict['linuxhq-90d'].log_group_name is defined
-          - _cloudwatchlogs_log_group_info_dict['linuxhq-90d'].retention_in_days == 90
+          - _cloudwatchlogs_log_group_info_dict['molecule-30d'] is defined
+          - _cloudwatchlogs_log_group_info_dict['molecule-30d'].arn is defined
+          - _cloudwatchlogs_log_group_info_dict['molecule-30d'].log_group_name is defined
+          - _cloudwatchlogs_log_group_info_dict['molecule-30d'].retention_in_days == 30
+          - _cloudwatchlogs_log_group_info_dict['molecule-90d'] is defined
+          - _cloudwatchlogs_log_group_info_dict['molecule-90d'].arn is defined
+          - _cloudwatchlogs_log_group_info_dict['molecule-90d'].log_group_name is defined
+          - _cloudwatchlogs_log_group_info_dict['molecule-90d'].retention_in_days == 90
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

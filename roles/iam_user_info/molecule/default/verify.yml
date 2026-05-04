@@ -11,9 +11,9 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _iam_user_info_dict['linuxhq-admin'].user_id is defined
-          - _iam_user_info_dict['linuxhq-kopia'].user_id is defined
-          - _iam_user_info_dict['linuxhq-molecule'].user_id is defined
+          - _iam_user_info_dict['molecule-admin'].user_id is defined
+          - _iam_user_info_dict['molecule-kopia'].user_id is defined
+          - _iam_user_info_dict['molecule-molecule'].user_id is defined
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

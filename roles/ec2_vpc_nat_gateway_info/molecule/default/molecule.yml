@@ -26,41 +26,41 @@ provisioner:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
         ec2_vpc_net_list:
-          - name: linuxhq
+          - name: molecule
             cidr_block: 10.0.0.0/16
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             subnets:
-              - name: linuxhq-pub-a
+              - name: molecule-pub-a
                 az: us-east-1a
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,0) }}"
-              - name: linuxhq-pub-b
+              - name: molecule-pub-b
                 az: us-east-1b
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,1) }}"
-              - name: linuxhq-pub-c
+              - name: molecule-pub-c
                 az: us-east-1c
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,2) }}"
 
         ec2_vpc_igw_list:
-          - name: linuxhq
-            vpc_id: "{{ _ec2_vpc_net_info_dict['linuxhq'].id }}"
+          - name: molecule
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
 
         ec2_vpc_nat_gateway_list:
-          - name: linuxhq-pub-a
+          - name: molecule-pub-a
             if_exist_do_not_create: true
             release_eip: true
-            subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-a'].id }}"
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-a'].id }}"
             wait: true
-          - name: linuxhq-pub-b
+          - name: molecule-pub-b
             if_exist_do_not_create: true
             release_eip: true
-            subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-b'].id }}"
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-b'].id }}"
             wait: true
-          - name: linuxhq-pub-c
+          - name: molecule-pub-c
             if_exist_do_not_create: true
             release_eip: true
-            subnet_id: "{{ _ec2_vpc_subnet_info_dict['linuxhq-pub-c'].id }}"
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-c'].id }}"
             wait: true
 
 scenario:

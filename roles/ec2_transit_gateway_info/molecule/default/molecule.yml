@@ -30,11 +30,11 @@ provisioner:
             - available
 
         ec2_transit_gateway_list:
-          - name: linuxhq-00
-          - name: linuxhq-01
-          - name: linuxhq-02
-          - name: linuxhq-03
-          - name: linuxhq-04
+          - name: molecule-00
+          - name: molecule-01
+          - name: molecule-02
+          - name: molecule-03
+          - name: molecule-04
 
 scenario:
   test_sequence:
