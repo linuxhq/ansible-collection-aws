@@ -1,0 +1,38 @@
+---
+- name: Ensure aws route53 delegation sets are managed
+  tags:
+    - route53_delegation_set
+  linuxhq.aws.route53_delegation_set:
+    name: "{{ _delegationset.name }}"
+    state: "{{ _delegationset.state | d('present') }}"
+    validate_certs: true
+  register: __route53_delegation_set_result
+  loop: "{{ __route53_delegation_set_list }}"
+  loop_control:
+    label: "{{ _delegationset.name | d(none) }}"
+    loop_var: _delegationset
+  async: "{{ ansible_check_mode | ternary(0, route53_delegation_set_async) }}"
+  poll: "{{ route53_delegation_set_poll }}"
+  when:
+    - _delegationset.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __route53_delegation_set_result.changed | bool
+
+- name: Ensure managed aws route53 delegation set jobs are complete
+  tags:
+    - route53_delegation_set
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __route53_delegation_set_status
+  loop: "{{ __route53_delegation_set_result.results }}"
+  loop_control:
+    label: "{{ _jid._delegationset.name | d(none) }}"
+    loop_var: _jid
+  delay: "{{ route53_delegation_set_delay }}"
+  retries: "{{ route53_delegation_set_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __route53_delegation_set_status.finished | bool
+...

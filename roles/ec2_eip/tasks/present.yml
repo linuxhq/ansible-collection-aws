@@ -15,14 +15,16 @@
   loop_control:
     label: "{{ _eip.name | d(none) }}"
     loop_var: _eip
+  async: "{{ ansible_check_mode | ternary(0, ec2_eip_async) }}"
+  poll: "{{ ec2_eip_poll }}"
   when:
     - _eip.name is defined
     - _eip.name not in __ec2_eip_dict.keys()
     - _eip.state is not defined or
       _eip.state == 'present'
-  changed_when: false
-  async: "{{ ansible_check_mode | ternary(0, ec2_eip_async) }}"
-  poll: "{{ ec2_eip_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_eip_result_present.changed | bool
 
 - name: Ensure present aws elastic ip address jobs are complete
   tags:
@@ -34,10 +36,10 @@
   loop_control:
     label: "{{ _jid._eip.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_eip_delay }}"
+  retries: "{{ ec2_eip_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_eip_status_present.finished | bool
-  retries: "{{ ec2_eip_retries }}"
-  delay: "{{ ec2_eip_delay }}"
 ...

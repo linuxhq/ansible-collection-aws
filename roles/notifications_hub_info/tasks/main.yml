@@ -2,23 +2,18 @@
 - name: Ensure information about aws notifications hubs is gathered
   tags:
     - notifications_hub_info
-  ansible.builtin.command:
-    cmd: >
-      aws notifications list-notification-hubs
-        --query notificationHubs
+  linuxhq.aws.notifications_hub_info:
+    validate_certs: true
   register: __notifications_hub_info_query
-  changed_when: false
-  check_mode: false
 
 - name: Ensure list of aws notifications hubs is generated
   tags:
     - notifications_hub_info
   ansible.builtin.set_fact:
     _notifications_hub_info_list:
-      "{{ (__notifications_hub_info_query.stdout |
-          from_json |
-          selectattr('notificationHubRegion', 'defined')) |
-          d([]) }}"
+      "{{ __notifications_hub_info_query.notification_hubs |
+          d([]) |
+          selectattr('notification_hub_region', 'defined') }}"
 
 - name: Ensure dict of aws notifications hubs is generated
   tags:
@@ -26,6 +21,6 @@
   ansible.builtin.set_fact:
     _notifications_hub_info_dict:
       "{{ dict(_notifications_hub_info_list |
-               json_query('[].notificationHubRegion') |
+               json_query('[].notification_hub_region') |
                zip(_notifications_hub_info_list)) }}"
 ...

@@ -48,6 +48,8 @@
   loop_control:
     label: "{{ _i.name | d(none) }}"
     loop_var: _i
+  async: "{{ ansible_check_mode | ternary(0, ec2_instance_async) }}"
+  poll: "{{ ec2_instance_poll }}"
   when:
     - _i.image_id is defined or
       _i.launch_template is defined
@@ -55,9 +57,9 @@
       _i.launch_template is defined
     - _i.name is defined
     - _i.vpc_subnet_id is defined
-  changed_when: false
-  async: "{{ ansible_check_mode | ternary(0, ec2_instance_async) }}"
-  poll: "{{ ec2_instance_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_instance_result.changed | bool
 
 - name: Ensure managed aws instance jobs are complete
   tags:
@@ -69,10 +71,10 @@
   loop_control:
     label: "{{ _jid._i.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_instance_delay }}"
+  retries: "{{ ec2_instance_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_instance_status.finished | bool
-  retries: "{{ ec2_instance_retries }}"
-  delay: "{{ ec2_instance_delay }}"
 ...

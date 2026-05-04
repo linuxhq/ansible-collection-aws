@@ -12,13 +12,13 @@
 
     - role: ec2_vpc_prefix_list
       ec2_vpc_prefix_list_entries:
-        - name: linuxhq-localhost
+        - name: molecule-localhost
           entries:
             - Cidr: 127.0.0.6/32
             - Cidr: 127.0.0.7/32
             - Cidr: 127.0.0.8/32
             - Cidr: 127.0.0.9/32
-        - name: linuxhq-private
+        - name: molecule-private
           entries:
             - Cidr: 192.168.6.0/24
             - Cidr: 192.168.7.0/24

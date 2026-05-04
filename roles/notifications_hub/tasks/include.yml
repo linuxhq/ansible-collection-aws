@@ -1,0 +1,37 @@
+---
+- name: Ensure aws notifications hubs are managed
+  tags:
+    - notifications_hub
+  linuxhq.aws.notifications_hub:
+    region: "{{ _hub.region }}"
+    state: "{{ _hub.state | d('present') }}"
+    validate_certs: true
+  register: __notifications_hub_result
+  loop: "{{ __notifications_hub_list }}"
+  loop_control:
+    label: "{{ _hub.region | d(none) }}"
+    loop_var: _hub
+  async: "{{ ansible_check_mode | ternary(0, notifications_hub_async) }}"
+  poll: "{{ notifications_hub_poll }}"
+  when:
+    - _hub.region is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __notifications_hub_result.changed | bool
+
+- name: Ensure managed aws notifications hub jobs are complete
+  tags:
+    - notifications_hub
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __notifications_hub_status
+  loop: "{{ __notifications_hub_result.results }}"
+  loop_control:
+    label: "{{ _jid._hub.region | d(none) }}"
+    loop_var: _jid
+  delay: "{{ notifications_hub_delay }}"
+  retries: "{{ notifications_hub_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __notifications_hub_status.finished | bool

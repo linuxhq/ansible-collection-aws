@@ -11,12 +11,12 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _notifications_hub_info_dict['eu-central-1'].notificationHubRegion is defined
-          - _notifications_hub_info_dict['eu-central-1'].statusSummary.status == 'ACTIVE'
-          - _notifications_hub_info_dict['us-east-1'].notificationHubRegion is defined
-          - _notifications_hub_info_dict['us-east-1'].statusSummary.status == 'ACTIVE'
-          - _notifications_hub_info_dict['us-west-1'].notificationHubRegion is defined
-          - _notifications_hub_info_dict['us-west-1'].statusSummary.status == 'ACTIVE'
+          - _notifications_hub_info_dict['eu-central-1'].notification_hub_region is defined
+          - _notifications_hub_info_dict['eu-central-1'].status_summary.status == 'ACTIVE'
+          - _notifications_hub_info_dict['us-east-1'].notification_hub_region is defined
+          - _notifications_hub_info_dict['us-east-1'].status_summary.status == 'ACTIVE'
+          - _notifications_hub_info_dict['us-west-1'].notification_hub_region is defined
+          - _notifications_hub_info_dict['us-west-1'].status_summary.status == 'ACTIVE'
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

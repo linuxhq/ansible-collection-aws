@@ -24,11 +24,13 @@
   loop_control:
     label: "{{ _tgw.name | d(none) }}"
     loop_var: _tgw
-  when:
-    - _tgw.name is defined
-  changed_when: false
   async: "{{ ansible_check_mode | ternary(0, ec2_transit_gateway_async) }}"
   poll: "{{ ec2_transit_gateway_poll }}"
+  when:
+    - _tgw.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_transit_gateway_create_result.changed | bool
 
 - name: Ensure managed aws transit gateway jobs are complete
   tags:
@@ -40,12 +42,12 @@
   loop_control:
     label: "{{ _jid._tgw.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_transit_gateway_delay }}"
+  retries: "{{ ec2_transit_gateway_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_transit_gateway_create_status.finished | bool
-  retries: "{{ ec2_transit_gateway_retries }}"
-  delay: "{{ ec2_transit_gateway_delay }}"
 
 - name: Ensure aws transit gateway route table name tags are managed
   tags:
@@ -66,13 +68,15 @@
   loop_control:
     label: "{{ _tgw.tags.Name | d(none) }}"
     loop_var: _tgw
+  async: "{{ ansible_check_mode | ternary(0, ec2_transit_gateway_async) }}"
+  poll: "{{ ec2_transit_gateway_poll }}"
   when:
     - _tgw.tags.Name is defined
     - _tgw.options.association_default_route_table_id is defined
     - _tgw.state == 'available'
-  changed_when: false
-  async: "{{ ansible_check_mode | ternary(0, ec2_transit_gateway_async) }}"
-  poll: "{{ ec2_transit_gateway_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_transit_gateway_tag_result.changed | bool
 
 - name: Ensure managed aws transit gateway name tag jobs are complete
   tags:
@@ -84,10 +88,10 @@
   loop_control:
     label: "{{ _jid._tgw.tags.Name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_transit_gateway_delay }}"
+  retries: "{{ ec2_transit_gateway_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_transit_gateway_tag_status.finished | bool
-  retries: "{{ ec2_transit_gateway_retries }}"
-  delay: "{{ ec2_transit_gateway_delay }}"
 ...

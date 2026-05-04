@@ -1,51 +1,11 @@
 ---
-- name: Ensure aws iam account alias is gathered
+- name: Ensure aws iam account alias is managed
   tags:
     - iam_account_alias
-  ansible.builtin.command:
-    cmd: >
-      aws iam list-account-aliases
-        --query AccountAliases
-  register: __iam_account_alias_query
+  linuxhq.aws.iam_account_alias:
+    name: "{{ iam_account_alias_name }}"
+    state: "{{ iam_account_alias_state }}"
+    validate_certs: true
   when:
     - iam_account_alias_name is not none
-  changed_when: false
-  check_mode: false
-
-- name: Ensure aws iam account alias list is generated
-  tags:
-    - iam_account_alias
-  ansible.builtin.set_fact:
-    __iam_account_alias_list:
-      "{{ (__iam_account_alias_query.stdout |
-          from_json) |
-          d([]) }}"
-  when:
-    - iam_account_alias_name is not none
-
-- name: Ensure aws iam account alias is present
-  tags:
-    - iam_account_alias
-  ansible.builtin.command:
-    cmd: >
-      aws iam create-account-alias
-        --account-alias "{{ iam_account_alias_name }}"
-  when:
-    - iam_account_alias_name is not none
-    - iam_account_alias_name not in __iam_account_alias_list
-    - iam_account_alias_state == 'present'
-  changed_when: true
-
-- name: Ensure aws iam account alias is absent
-  tags:
-    - iam_account_alias
-  ansible.builtin.command:
-    cmd: >
-      aws iam delete-account-alias
-        --account-alias "{{ iam_account_alias_name }}"
-  when:
-    - iam_account_alias_name is not none
-    - iam_account_alias_name in __iam_account_alias_list
-    - iam_account_alias_state == 'absent'
-  changed_when: true
 ...

@@ -15,6 +15,9 @@ platforms:
 
 provisioner:
   name: ansible
+  env:
+    ANSIBLE_ACTION_WARNINGS: false
+    ANSIBLE_DEPRECATION_WARNINGS: false
   log: true
   options:
     diff: true
@@ -22,7 +25,7 @@ provisioner:
     group_vars:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
-        iam_account_alias_name: "molecule-{{ ansible_date_time.date }}"
+        iam_account_alias_name: "molecule-{{ ansible_facts.date_time.date }}"
 
 scenario:
   test_sequence:

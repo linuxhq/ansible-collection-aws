@@ -34,10 +34,10 @@
   loop_control:
     label: "{{ _jid._event.lambda_function_arn | d(none) }}"
     loop_var: _jid
+  delay: "{{ lambda_event_delay }}"
+  retries: "{{ lambda_event_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __lambda_event_status.finished | bool
-  retries: "{{ lambda_event_retries }}"
-  delay: "{{ lambda_event_delay }}"
 ...

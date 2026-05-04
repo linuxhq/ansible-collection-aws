@@ -48,10 +48,10 @@
   loop_control:
     label: "{{ _jid._lifecycle.1.rule_id | d(none) }}"
     loop_var: _jid
+  delay: "{{ s3_lifecycle_delay }}"
+  retries: "{{ s3_lifecycle_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __s3_lifecycle_status.finished | bool
-  retries: "{{ s3_lifecycle_retries }}"
-  delay: "{{ s3_lifecycle_delay }}"
 ...

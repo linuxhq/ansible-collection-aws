@@ -14,19 +14,19 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _glue_connection_info_dict['molecule'].ConnectionProperties.KAFKA_SSL_ENABLED ==
+          - _glue_connection_info_dict['molecule'].connection_properties.KAFKA_SSL_ENABLED ==
               glue_connection_list.0.connection_properties.KAFKA_SSL_ENABLED
-          - _glue_connection_info_dict['molecule'].ConnectionType ==
+          - _glue_connection_info_dict['molecule'].connection_type ==
               glue_connection_list.0.connection_type
-          - _glue_connection_info_dict['molecule'].Description ==
+          - _glue_connection_info_dict['molecule'].description ==
               glue_connection_list.0.name
-          - _glue_connection_info_dict['molecule'].Name ==
+          - _glue_connection_info_dict['molecule'].name ==
               glue_connection_list.0.name
-          - _glue_connection_info_dict['molecule'].PhysicalConnectionRequirements.AvailabilityZone ==
+          - _glue_connection_info_dict['molecule'].physical_connection_requirements.availability_zone ==
               glue_connection_list.0.availability_zone
-          - _glue_connection_info_dict['molecule'].PhysicalConnectionRequirements.SecurityGroupIdList ==
+          - _glue_connection_info_dict['molecule'].physical_connection_requirements.security_group_id_list ==
               glue_connection_list.0.security_groups
-          - _glue_connection_info_dict['molecule'].PhysicalConnectionRequirements.SubnetId ==
+          - _glue_connection_info_dict['molecule'].physical_connection_requirements.subnet_id ==
               glue_connection_list.0.subnet_id
 
     - name: Ensure inventory lists are formatted

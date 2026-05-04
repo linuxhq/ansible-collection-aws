@@ -40,6 +40,7 @@
   linuxhq.aws.wafv2_web_acl_logging:
     log_destination_configs: "{{ [__wafv2_web_acl_log_group.arn] }}"
     resource_arn: "{{ __wafv2_web_acl_result.arn }}"
+    validate_certs: true
   when:
     - __wafv2_web_acl_log_group.arn is defined
 ...

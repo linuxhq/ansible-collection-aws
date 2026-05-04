@@ -1,0 +1,16 @@
+---
+- name: Ensure aws systems manager documents are batched
+  tags:
+    - ssm_document
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ssm_document
+    file: include.yml
+  loop:
+    "{{ ssm_document_list |
+        batch(ssm_document_batch) }}"
+  loop_control:
+    label: "{{ __ssm_document_list | length }}"
+    loop_var: __ssm_document_list
+...

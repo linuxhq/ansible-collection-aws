@@ -1,11 +1,11 @@
 ---
-- name: Ensure aws systems manager session document is generated
+- name: Ensure aws systems manager session document is managed
   tags:
     - ssm_session
-  ansible.builtin.set_fact:
-    __ssm_session_preferences:
+  linuxhq.aws.ssm_document:
+    content:
       schemaVersion: '1.0'
-      description: 'Document to hold regional settings for Session Manager'
+      description: Document to hold regional settings for Session Manager
       sessionType: Standard_Stream
       inputs:
         cloudWatchLogGroupName: "{{ ssm_session_log_group_name }}"
@@ -20,79 +20,8 @@
           windows: "{{ ssm_session_shell_profile_windows or '' | trim }}"
         s3BucketName: "{{ __ssm_session_account }}-{{ __ssm_session_region }}-{{ ssm_session_bucket_sessions_name }}"
         s3EncryptionEnabled: true
-  when:
-    - ssm_session_state == 'present'
-
-- name: Ensure information about aws systems manager session document is gathered
-  tags:
-    - ssm_session
-  ansible.builtin.command:
-    cmd: >
-      aws ssm get-document
-        --document-version '$LATEST'
-        --name SSM-SessionManagerRunShell
-        --query Content
-  register: __ssm_session_query
-  when:
-    - ssm_session_state == 'present'
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: Ensure information about aws systems manager session document is generated
-  tags:
-    - ssm_session
-  ansible.builtin.set_fact:
-    __ssm_session_document:
-      "{{ (__ssm_session_query.rc != 255) |
-          ternary(
-            __ssm_session_query.stdout |
-            from_json |
-            from_json,
-            {}
-          ) }}"
-  when:
-    - ssm_session_state == 'present'
-
-- name: Ensure aws systems manager session document is present
-  tags:
-    - ssm_session
-  ansible.builtin.command:
-    cmd: >
-      aws ssm create-document
-        --content '{{ __ssm_session_preferences | to_json }}'
-        --document-format JSON
-        --document-type Session
-        --name SSM-SessionManagerRunShell
-  when:
-    - ssm_session_state == 'present'
-    - __ssm_session_query.rc == 255
-  changed_when: true
-
-- name: Ensure aws systems manager session document is updated
-  tags:
-    - ssm_session
-  ansible.builtin.command:
-    cmd: >
-      aws ssm update-document
-        --content '{{ __ssm_session_preferences | to_json }}'
-        --document-format JSON
-        --document-version '$LATEST'
-        --name SSM-SessionManagerRunShell
-  when:
-    - ssm_session_state == 'present'
-    - __ssm_session_preferences != __ssm_session_document
-    - __ssm_session_query.rc == 0
-  changed_when: true
-
-- name: Ensure aws systems manager session document is absent
-  tags:
-    - ssm-session
-  ansible.builtin.command:
-    cmd: >
-      aws ssm delete-document
-        --name SSM-SessionManagerRunShell
-  when:
-    - ssm_session_state == 'absent'
-  changed_when: true
+    document_type: Session
+    name: SSM-SessionManagerRunShell
+    state: "{{ ssm_session_state }}"
+    validate_certs: true
 ...

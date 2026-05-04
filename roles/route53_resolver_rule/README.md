@@ -4,11 +4,16 @@ Manage aws route53 resolver rules
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli)
+None
 
 ## Role Variables
 
+    route53_resolver_rule_async: 300
+    route53_resolver_rule_batch: 10
+    route53_resolver_rule_delay: 3
     route53_resolver_rule_list: []
+    route53_resolver_rule_poll: 0
+    route53_resolver_rule_retries: 100
 
 ## Return Values
 
@@ -27,7 +32,7 @@ None
           route53_resolver_rule_list:
             - name: molecule-cloudflare
               domain_name: cloudflare.com
-              resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].Id }}"
+              resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].id }}"
               rule_type: forward
               target_ips:
                 - Ip: 1.1.1.1
@@ -37,7 +42,7 @@ None
 
             - name: molecule-google
               domain_name: google.com
-              resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-google'].Id }}"
+              resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-google'].id }}"
               rule_type: forward
               target_ips:
                 - Ip: 8.8.8.8

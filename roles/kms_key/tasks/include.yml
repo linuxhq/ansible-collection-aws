@@ -44,10 +44,10 @@
   loop_control:
     label: "{{ _jid._key.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ kms_key_delay }}"
+  retries: "{{ kms_key_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __kms_key_status.finished | bool
-  retries: "{{ kms_key_retries }}"
-  delay: "{{ kms_key_delay }}"
 ...

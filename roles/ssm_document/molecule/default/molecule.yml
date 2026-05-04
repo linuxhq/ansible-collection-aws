@@ -1,0 +1,84 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ACTION_WARNINGS: false
+    ANSIBLE_DEPRECATION_WARNINGS: false
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        ssm_document_list:
+          - name: molecule-command-shell
+            document_type: Command
+            content:
+              schemaVersion: '2.2'
+              description: Run a shell command
+              mainSteps:
+                - action: aws:runShellScript
+                  name: runShellScript
+                  inputs:
+                    runCommand:
+                      - echo molecule
+          - name: molecule-command-env
+            document_type: Command
+            content:
+              schemaVersion: '2.2'
+              description: Print environment
+              mainSteps:
+                - action: aws:runShellScript
+                  name: printEnvironment
+                  inputs:
+                    runCommand:
+                      - env | sort
+          - name: molecule-session-shell
+            document_type: Session
+            content:
+              schemaVersion: '1.0'
+              description: Session Manager shell preferences
+              sessionType: Standard_Stream
+              inputs:
+                idleSessionTimeout: 60
+                runAsEnabled: false
+                shellProfile:
+                  linux: cd
+                  windows: ''
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...

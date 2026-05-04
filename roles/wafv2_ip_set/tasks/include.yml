@@ -42,10 +42,10 @@
   loop_control:
     label: "{{ _jid._ipset.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ wafv2_ip_set_delay }}"
+  retries: "{{ wafv2_ip_set_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __wafv2_ip_set_status.finished | bool
-  retries: "{{ wafv2_ip_set_retries }}"
-  delay: "{{ wafv2_ip_set_delay }}"
 ...

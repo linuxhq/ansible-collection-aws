@@ -32,10 +32,10 @@
   loop_control:
     label: "{{ _jid._region.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ account_region_delay }}"
+  retries: "{{ account_region_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __account_region_status.finished | bool
-  retries: "{{ account_region_retries }}"
-  delay: "{{ account_region_delay }}"
 ...

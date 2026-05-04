@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about aws credentials is generated
+- name: Ensure information about aws credentials is gathered
   tags:
     - aws_credentials_info
   ansible.builtin.set_fact:

@@ -2,13 +2,9 @@
 
 Gather information about ec2 placement groups
 
-## Requirements
-
-* [awscli](https://pypi.org/project/awscli)
-
 ## Role Variables
 
-None
+    ec2_placement_group_info_name: null
 
 ## Return Values
 
@@ -25,3 +21,9 @@ None
       connection: local
       roles:
         - linuxhq.aws.ec2_placement_group_info
+
+    - hosts: aws
+      connection: local
+      roles:
+        - role: linuxhq.aws.ec2_placement_group_info
+          ec2_placement_group_info_name: linuxhq-cluster-1

@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws relational database service instance security group is managed
+- name: Ensure aws rds instance security group is managed
   tags:
     - rds_instance
   amazon.aws.ec2_security_group:
@@ -23,7 +23,7 @@
   delay: 5
   retries: 60
 
-- name: Ensure list of aws relational database service instance security groups is generated
+- name: Ensure list of aws rds instance security groups is generated
   tags:
     - rds_instance
   ansible.builtin.set_fact:

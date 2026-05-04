@@ -20,11 +20,13 @@
   loop_control:
     label: "{{ _log_group.name | d(none) }}"
     loop_var: _log_group
-  when:
-    - _log_group.name is defined
-  changed_when: false
   async: "{{ ansible_check_mode | ternary(0, cloudwatchlogs_log_group_async) }}"
   poll: "{{ cloudwatchlogs_log_group_poll }}"
+  when:
+    - _log_group.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __cloudwatchlogs_log_group_result.changed | bool
 
 - name: Ensure managed aws cloudwatchlogs log group jobs are complete
   tags:
@@ -36,10 +38,10 @@
   loop_control:
     label: "{{ _jid._log_group.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ cloudwatchlogs_log_group_delay }}"
+  retries: "{{ cloudwatchlogs_log_group_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __cloudwatchlogs_log_group_status.finished | bool
-  retries: "{{ cloudwatchlogs_log_group_retries }}"
-  delay: "{{ cloudwatchlogs_log_group_delay }}"
 ...

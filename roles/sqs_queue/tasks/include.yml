@@ -46,10 +46,10 @@
   loop_control:
     label: "{{ _jid._queue.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ sqs_queue_delay }}"
+  retries: "{{ sqs_queue_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __sqs_queue_status.finished | bool
-  retries: "{{ sqs_queue_retries }}"
-  delay: "{{ sqs_queue_delay }}"
 ...

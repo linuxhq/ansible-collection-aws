@@ -25,11 +25,13 @@
   loop_control:
     label: "{{ _user.name | d(none) }}"
     loop_var: _user
-  when:
-    - _user.name is defined
-  changed_when: false
   async: "{{ ansible_check_mode | ternary(0, iam_user_async) }}"
   poll: "{{ iam_user_poll }}"
+  when:
+    - _user.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __iam_user_result.changed | bool
 
 - name: Ensure managed aws iam user jobs are complete
   tags:
@@ -41,10 +43,10 @@
   loop_control:
     label: "{{ _jid._user.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ iam_user_delay }}"
+  retries: "{{ iam_user_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __iam_user_status.finished | bool
-  retries: "{{ iam_user_retries }}"
-  delay: "{{ iam_user_delay }}"
 ...

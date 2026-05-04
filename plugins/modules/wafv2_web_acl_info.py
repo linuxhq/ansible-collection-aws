@@ -1,6 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
-
 # Copyright: Taylor Kimball
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
@@ -95,14 +93,13 @@ def get_web_acl(client, module, scope, summary):
     return response.get("WebACL", {})
 
 
-def main() -> None:
+def main():
     argument_spec = {
         "scope": {
             "choices": ["cloudfront", "regional"],
             "default": "regional",
             "type": "str",
         },
-        "validate_certs": {"default": True, "type": "bool"},
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)

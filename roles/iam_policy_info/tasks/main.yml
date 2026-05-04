@@ -1,94 +1,28 @@
 ---
-- name: Ensure information about aws identity and access management groups is gathered
+- name: Ensure information about aws iam inline policies is gathered
   tags:
     - iam_policy_info
-  ansible.builtin.command:
-    cmd: >
-      aws iam list-groups
-        --query 'Groups[].GroupName'
-  register: __iam_policy_info_group_names
-  changed_when: false
-  check_mode: false
-
-- name: Ensure information about aws identity and access management users is gathered
-  tags:
-    - iam_policy_info
-  ansible.builtin.command:
-    cmd: >
-      aws iam list-users
-        --query 'Users[].UserName'
-  register: __iam_policy_info_user_names
-  changed_when: false
-  check_mode: false
-
-- name: Ensure list of aws identity and access management return values is generated
-  tags:
-    - iam_policy_info
-  ansible.builtin.set_fact:
-    __iam_policy_info_groups:
-      "{{ (__iam_policy_info_group_names.stdout |
-          from_json) |
-          list |
-          d([]) }}"
-    __iam_policy_info_users:
-      "{{ (__iam_policy_info_user_names.stdout |
-          from_json) |
-          list |
-          d([]) }}"
-
-- name: Ensure information about aws identity and access management group inline policies is gathered
-  tags:
-    - iam_policy_info
-  amazon.aws.iam_policy_info:
-    iam_name: "{{ _group }}"
-    iam_type: group
+  linuxhq.aws.iam_policy_info:
     validate_certs: true
-  register: __iam_policy_info_group_query
-  loop: "{{ __iam_policy_info_groups }}"
-  loop_control:
-    label: "{{ _group | d(none) }}"
-    loop_var: _group
+  register: __iam_policy_info_query
 
-- name: Ensure list of aws identity and access management group inline policies is generated
+- name: Ensure list of aws iam group inline policies is generated
   tags:
     - iam_policy_info
   ansible.builtin.set_fact:
     _iam_policy_info_group_list:
-      "{{ __iam_policy_info_group_query.results |
-          json_query('[].{
-            name: _group,
-            all_policy_names: all_policy_names
-            policies: policies
-            policy_names: policy_names
-          }') }}"
+      "{{ __iam_policy_info_query.group_policies |
+          d([]) }}"
 
-- name: Ensure information about aws identity and access management user inline policies is gathered
-  tags:
-    - iam_policy_info
-  amazon.aws.iam_policy_info:
-    iam_name: "{{ _user }}"
-    iam_type: user
-    validate_certs: true
-  register: __iam_policy_info_user_query
-  loop: "{{ __iam_policy_info_users }}"
-  loop_control:
-    label: "{{ _user | d(none) }}"
-    loop_var: _user
-
-- name: Ensure list of aws identity and access management user inline policies is generated
+- name: Ensure list of aws iam user inline policies is generated
   tags:
     - iam_policy_info
   ansible.builtin.set_fact:
     _iam_policy_info_user_list:
-      "{{ __iam_policy_info_user_query.results |
-          json_query('[].{
-            name: _user,
-            all_policy_names: all_policy_names
-            policies: policies
-            policy_names: policy_names
-          }') }}"
+      "{{ __iam_policy_info_query.user_policies |
+          d([]) }}"
 
-- name: Ensure dict of aws group inline policy information is generated
+- name: Ensure dict of aws iam group inline policy information is generated
   tags:
     - iam_policy_info
   ansible.builtin.set_fact:
@@ -97,7 +31,7 @@
                json_query('[].name') |
                zip(_iam_policy_info_group_list)) }}"
 
-- name: Ensure dict of aws user inline policy information is generated
+- name: Ensure dict of aws iam user inline policy information is generated
   tags:
     - iam_policy_info
   ansible.builtin.set_fact:

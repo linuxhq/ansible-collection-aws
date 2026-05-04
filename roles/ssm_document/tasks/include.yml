@@ -1,0 +1,41 @@
+---
+- name: Ensure aws systems manager documents are managed
+  tags:
+    - ssm_document
+  linuxhq.aws.ssm_document:
+    content: "{{ _document.content | d(omit) }}"
+    document_type: "{{ _document.document_type | d(omit) }}"
+    document_version: "{{ _document.document_version | d(omit) }}"
+    name: "{{ _document.name }}"
+    state: "{{ _document.state | d('present') }}"
+    validate_certs: true
+  register: __ssm_document_result
+  loop: "{{ __ssm_document_list }}"
+  loop_control:
+    label: "{{ _document.name | d(none) }}"
+    loop_var: _document
+  async: "{{ ansible_check_mode | ternary(0, ssm_document_async) }}"
+  poll: "{{ ssm_document_poll }}"
+  when:
+    - _document.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __ssm_document_result.changed | bool
+
+- name: Ensure managed aws systems manager document jobs are complete
+  tags:
+    - ssm_document
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ssm_document_status
+  loop: "{{ __ssm_document_result.results }}"
+  loop_control:
+    label: "{{ _jid._document.name | d(none) }}"
+    loop_var: _jid
+  delay: "{{ ssm_document_delay }}"
+  retries: "{{ ssm_document_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ssm_document_status.finished | bool
+...

@@ -26,7 +26,7 @@
           unique |
           first }}"
 
-- name: Enusre aws systems manager session consumer iam policy is managed
+- name: Ensure aws systems manager session consumer iam policy is managed
   tags:
     - ssm_session
   amazon.aws.iam_managed_policy:
@@ -38,7 +38,7 @@
     tags: "{{ ssm_session_tags }}"
     validate_certs: true
 
-- name: Enusre aws systems manager session instance iam policy is managed
+- name: Ensure aws systems manager session instance iam policy is managed
   tags:
     - ssm_session
   amazon.aws.iam_managed_policy:

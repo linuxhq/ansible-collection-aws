@@ -1,6 +1,6 @@
 # rds\_option\_group\_info
 
-Gather information about aws relational database service option groups
+Gather information about aws rds option groups
 
 ## Requirements
 

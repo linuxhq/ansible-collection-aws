@@ -11,12 +11,12 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].AssociationId is defined
-          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].Name ==
+          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].association_id is defined
+          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].name ==
               ssm_association_list.0.name
-          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].ScheduleExpression ==
+          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].schedule_expression ==
               ssm_association_list.0.schedule_expression
-          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].Targets ==
+          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].targets ==
               ssm_association_list.0.targets
 
     - name: Ensure inventory lists are formatted

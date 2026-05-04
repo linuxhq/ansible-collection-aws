@@ -20,12 +20,14 @@
   loop_control:
     label: "{{ _sg.1.name | d(none) }}"
     loop_var: _sg
+  async: "{{ ansible_check_mode | ternary(0, ec2_security_group_async) }}"
+  poll: "{{ ec2_security_group_poll }}"
   when:
     - _sg.0.vpc_id is defined
     - _sg.1.name is defined
-  changed_when: false
-  async: "{{ ansible_check_mode | ternary(0, ec2_security_group_async) }}"
-  poll: "{{ ec2_security_group_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_security_group_create_result.changed | bool
 
 - name: Ensure managed aws security groups jobs are complete
   tags:
@@ -37,12 +39,12 @@
   loop_control:
     label: "{{ _jid._sg[1].name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_security_group_delay }}"
+  retries: "{{ ec2_security_group_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_security_group_create_status.finished | bool
-  retries: "{{ ec2_security_group_retries }}"
-  delay: "{{ ec2_security_group_delay }}"
 
 - name: Ensure aws security groups are populated
   tags:
@@ -67,12 +69,14 @@
   loop_control:
     label: "{{ _sg.1.name | d(none) }}"
     loop_var: _sg
+  async: "{{ ansible_check_mode | ternary(0, ec2_security_group_async) }}"
+  poll: "{{ ec2_security_group_poll }}"
   when:
     - _sg.0.vpc_id is defined
     - _sg.1.name is defined
-  changed_when: false
-  async: "{{ ansible_check_mode | ternary(0, ec2_security_group_async) }}"
-  poll: "{{ ec2_security_group_poll }}"
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_security_group_rule_result.changed | bool
 
 - name: Ensure aws populated security groups jobs are complete
   tags:
@@ -84,10 +88,10 @@
   loop_control:
     label: "{{ _jid._sg[1].name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_security_group_delay }}"
+  retries: "{{ ec2_security_group_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_security_group_rule_status.finished | bool
-  retries: "{{ ec2_security_group_retries }}"
-  delay: "{{ ec2_security_group_delay }}"
 ...

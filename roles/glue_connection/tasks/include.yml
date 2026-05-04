@@ -39,10 +39,10 @@
   loop_control:
     label: "{{ _jid._connection.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ glue_connection_delay }}"
+  retries: "{{ glue_connection_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __glue_connection_status.finished | bool
-  retries: "{{ glue_connection_retries }}"
-  delay: "{{ glue_connection_delay }}"
 ...

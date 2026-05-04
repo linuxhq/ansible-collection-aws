@@ -15,6 +15,9 @@ platforms:
 
 provisioner:
   name: ansible
+  env:
+    ANSIBLE_ACTION_WARNINGS: false
+    ANSIBLE_DEPRECATION_WARNINGS: false
   log: true
   options:
     diff: true
@@ -44,6 +47,24 @@ provisioner:
                              section='profile molecule') ~ 'b' }}"
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(25,1) }}"
 
+        ec2_security_group_list:
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            security_groups:
+              - name: molecule-route53resolver
+                rules:
+                  - cidr_ip: 0.0.0.0/0
+                    ports:
+                      - 53
+                      - 443
+                    proto: tcp
+                  - cidr_ip: 0.0.0.0/0
+                    ports:
+                      - 53
+                    proto: udp
+                rules_egress:
+                  - cidr_ip: 0.0.0.0/0
+                    proto: -1
+
         route53_resolver_list:
           - name: molecule-cloudflare
             direction: outbound
@@ -52,7 +73,8 @@ provisioner:
                 Ip: 192.168.0.125
               - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
                 Ip: 192.168.0.253
-            vpc_id: "{{ _ec2_vpc_net_info_dict[ec2_vpc_net_list.0.name].id }}"
+            security_group_ids:
+              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
           - name: molecule-google
             direction: outbound
@@ -61,24 +83,13 @@ provisioner:
                 Ip: 192.168.0.126
               - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
                 Ip: 192.168.0.254
-            rules:
-              - cidr_ip: 192.168.0.0/24
-                ports:
-                  - 53
-                proto: tcp
-              - cidr_ip: 192.168.0.0/24
-                ports:
-                  - 53
-                proto: udp
-            rules_egress:
-              - cidr_ip: 192.168.0.0/24
-                proto: -1
-            vpc_id: "{{ _ec2_vpc_net_info_dict[ec2_vpc_net_list.0.name].id }}"
+            security_group_ids:
+              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
         route53_resolver_rule_list:
           - name: molecule-cloudflare
             domain_name: cloudflare.com
-            resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].Id }}"
+            resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].id }}"
             rule_type: forward
             target_ips:
               - Ip: 1.1.1.1
@@ -88,13 +99,22 @@ provisioner:
 
           - name: molecule-google
             domain_name: google.com
-            resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-google'].Id }}"
+            resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-google'].id }}"
             rule_type: forward
             target_ips:
               - Ip: 8.8.8.8
                 Port: 53
               - Ip: 8.8.8.4
                 Port: 53
+
+        route53_resolver_rule_associate_list:
+          - name: molecule
+            resolver_rule_id: "{{ _route53_resolver_rule_info_dict['molecule-cloudflare'].id }}"
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+
+          - name: molecule
+            resolver_rule_id: "{{ _route53_resolver_rule_info_dict['molecule-google'].id }}"
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
 
 scenario:
   test_sequence:

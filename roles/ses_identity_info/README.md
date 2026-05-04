@@ -4,11 +4,11 @@ Gather information about aws simple email service identities
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli)
+None
 
 ## Role Variables
 
-None
+    ses_identity_info_name: null
 
 ## Return Values
 
@@ -25,3 +25,9 @@ None
       connection: local
       roles:
         - linuxhq.aws.ses_identity_info
+
+    - hosts: aws
+      connection: local
+      roles:
+        - role: linuxhq.aws.ses_identity_info
+          ses_identity_info_name: molecule.org

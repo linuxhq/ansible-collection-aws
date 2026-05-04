@@ -11,14 +11,14 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _wafv2_ip_set_info_dict['molecule-cloudflare'].ARN is defined
-          - _wafv2_ip_set_info_dict['molecule-cloudflare'].Addresses | length == 1
-          - _wafv2_ip_set_info_dict['molecule-cloudflare'].IPAddressVersion == 'IPV4'
-          - _wafv2_ip_set_info_dict['molecule-cloudflare'].Id is defined
-          - _wafv2_ip_set_info_dict['molecule-google'].ARN is defined
-          - _wafv2_ip_set_info_dict['molecule-google'].Addresses | length == 2
-          - _wafv2_ip_set_info_dict['molecule-google'].IPAddressVersion == 'IPV4'
-          - _wafv2_ip_set_info_dict['molecule-google'].Id is defined
+          - _wafv2_ip_set_info_dict['molecule-cloudflare'].arn is defined
+          - _wafv2_ip_set_info_dict['molecule-cloudflare'].addresses | length == 1
+          - _wafv2_ip_set_info_dict['molecule-cloudflare'].ip_address_version == 'IPV4'
+          - _wafv2_ip_set_info_dict['molecule-cloudflare'].id is defined
+          - _wafv2_ip_set_info_dict['molecule-google'].arn is defined
+          - _wafv2_ip_set_info_dict['molecule-google'].addresses | length == 2
+          - _wafv2_ip_set_info_dict['molecule-google'].ip_address_version == 'IPV4'
+          - _wafv2_ip_set_info_dict['molecule-google'].id is defined
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

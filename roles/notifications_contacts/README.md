@@ -4,7 +4,7 @@ Manage aws notifications contacts
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli) >= 1.37.10
+None
 
 ## Role Variables
 

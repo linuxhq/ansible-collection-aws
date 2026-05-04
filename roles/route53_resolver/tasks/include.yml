@@ -1,35 +1,50 @@
 ---
-- name: Ensure aws route53 resolver present tasks are included
+- name: Ensure aws route53 resolver endpoints are managed
   tags:
     - route53_resolver
-  ansible.builtin.include_tasks:
-    apply:
-      tags:
-        - route53_resolver
-    file: "{{ _order }}.yml"
-  loop:
-    - security_group
-    - route53_resolver
+  linuxhq.aws.route53_resolver:
+    direction: "{{ _route53resolver.direction }}"
+    ip_addresses: "{{ _route53resolver.ip_addresses }}"
+    name: "{{ _route53resolver.name }}"
+    resolver_endpoint_type: "{{ _route53resolver.resolver_endpoint_type | d('ipv4') }}"
+    security_group_ids: "{{ _route53resolver.security_group_ids }}"
+    state: "{{ _route53resolver.state | d('present') }}"
+    validate_certs: true
+    wait: "{{ _route53resolver.wait | d(true) }}"
+    wait_delay: 5
+    wait_timeout: 300
+  register: __route53_resolver_result
+  loop: "{{ __route53_resolver_list }}"
   loop_control:
-    label: "{{ _order | d(none) }}"
-    loop_var: _order
+    label: "{{ _route53resolver.name | d(none) }}"
+    loop_var: _route53resolver
+  async: "{{ ansible_check_mode | ternary(0, route53_resolver_async) }}"
+  poll: "{{ route53_resolver_poll }}"
   when:
-    - _route53resolver.state == 'present'
+    - _route53resolver.name is defined
+    - _route53resolver.direction is defined
+    - _route53resolver.ip_addresses is defined
+    - _route53resolver.ip_addresses | length > 0
+    - _route53resolver.security_group_ids is defined
+    - _route53resolver.security_group_ids | length > 0
+  changed_when:
+    - ansible_check_mode | bool
+    - __route53_resolver_result.changed | bool
 
-- name: Ensure aws route53 resolver absent tasks are included
+- name: Ensure managed aws route53 resolver endpoint jobs are complete
   tags:
     - route53_resolver
-  ansible.builtin.include_tasks:
-    apply:
-      tags:
-        - route53_resolver
-    file: "{{ _order }}.yml"
-  loop:
-    - route53_resolver
-    - security_group
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __route53_resolver_status
+  loop: "{{ __route53_resolver_result.results }}"
   loop_control:
-    label: "{{ _order | d(none) }}"
-    loop_var: _order
+    label: "{{ _jid._route53resolver.name | d(none) }}"
+    loop_var: _jid
+  delay: "{{ route53_resolver_delay }}"
+  retries: "{{ route53_resolver_retries }}"
   when:
-    - _route53resolver.state == 'absent'
+    - _jid.ansible_job_id is defined
+  until:
+    - __route53_resolver_status.finished | bool
 ...

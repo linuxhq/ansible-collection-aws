@@ -4,25 +4,43 @@
   environment:
     PATH: '/opt/awscli/bin'
 
-  roles:
-    - route53_delegation_set_info
+  tasks:
+    - name: Ensure role is included without name
+      ansible.builtin.include_role:
+        name: route53_delegation_set_info
+      vars:
+        route53_delegation_set_info_name: null
 
-  post_tasks:
-    - name: Ensure info is verified
+    - name: Ensure info without name is verified
       ansible.builtin.assert:
         that:
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].CallerReference is defined
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].Id is defined
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].NameServers is defined
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].NameServers | length == 4
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].CallerReference is defined
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].Id is defined
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].NameServers is defined
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].NameServers | length == 4
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].CallerReference is defined
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].Id is defined
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].NameServers is defined
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].NameServers | length == 4
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].caller_reference is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].id is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].name_servers is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].name_servers | length == 4
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].caller_reference is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].id is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].name_servers is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].name_servers | length == 4
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].caller_reference is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].id is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].name_servers is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].name_servers | length == 4
+
+    - name: Ensure role is included with name
+      ansible.builtin.include_role:
+        name: route53_delegation_set_info
+      vars:
+        route53_delegation_set_info_name: "{{ route53_delegation_set_list.0.name }}"
+
+    - name: Ensure info with name is verified
+      ansible.builtin.assert:
+        that:
+          - _route53_delegation_set_info_list | length == 1
+          - _route53_delegation_set_info_list.0.caller_reference == route53_delegation_set_list.0.name
+          - _route53_delegation_set_info_dict.keys() | list == [route53_delegation_set_list.0.name]
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].id is defined
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].name_servers | length == 4
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

@@ -17,12 +17,22 @@
         loop_var: _role
 
     - name: Ensure command is executed
-      ansible.builtin.command:
-        cmd: >
-          aws ssm send-command
-            --document-name AWS-RunShellScript
-            --parameters '{"commands": ["touch /tmp/molecule"]}'
-            --targets "Key=instanceids,Values={{ _ec2_instance_info_dict[ec2_instance_list.0.name].instance_id }}"
+      linuxhq.aws.ssm_send_command:
+        document_name: AWS-RunShellScript
+        parameters:
+          commands:
+            - touch /tmp/molecule
+        targets:
+          - Key: instanceids
+            Values:
+              - "{{ _ec2_instance_info_dict[ec2_instance_list.0.name].instance_id }}"
+        validate_certs: true
+        wait: true
+      register: __ssm_send_command_result
+      until:
+        - __ssm_send_command_result is not failed
+      retries: 12
+      delay: 10
 
     - name: Ensure command result is gathered
       ansible.builtin.stat:

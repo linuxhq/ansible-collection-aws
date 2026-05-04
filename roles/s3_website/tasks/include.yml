@@ -32,10 +32,10 @@
   loop_control:
     label: "{{ _jid._website.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ s3_website_delay }}"
+  retries: "{{ s3_website_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __s3_website_status.finished | bool
-  retries: "{{ s3_website_retries }}"
-  delay: "{{ s3_website_delay }}"
 ...

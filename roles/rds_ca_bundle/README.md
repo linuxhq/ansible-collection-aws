@@ -1,6 +1,6 @@
 # rds\_ca\_bundle
 
-Manage aws relational database service certificate authority bundles
+Manage aws rds certificate authority bundles
 
 ## Requirements
 

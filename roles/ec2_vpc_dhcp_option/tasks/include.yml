@@ -23,11 +23,13 @@
   loop_control:
     label: "{{ _dopt.name | d(none) }}"
     loop_var: _dopt
-  when:
-    - _dopt.name is defined
-  changed_when: false
   async: "{{ ansible_check_mode | ternary(0, ec2_vpc_dhcp_option_async) }}"
   poll: "{{ ec2_vpc_dhcp_option_poll }}"
+  when:
+    - _dopt.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_vpc_dhcp_option_result.changed | bool
 
 - name: Ensure managed aws virtual private cloud dhcp option jobs are complete
   tags:
@@ -39,10 +41,10 @@
   loop_control:
     label: "{{ _jid._dopt.name | d(none) }}"
     loop_var: _jid
+  delay: "{{ ec2_vpc_dhcp_option_delay }}"
+  retries: "{{ ec2_vpc_dhcp_option_retries }}"
   when:
     - _jid.ansible_job_id is defined
   until:
     - __ec2_vpc_dhcp_option_status.finished | bool
-  retries: "{{ ec2_vpc_dhcp_option_retries }}"
-  delay: "{{ ec2_vpc_dhcp_option_delay }}"
 ...

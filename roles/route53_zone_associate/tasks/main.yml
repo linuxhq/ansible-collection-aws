@@ -1,44 +1,5 @@
 ---
-- name: Ensure aws route53 zone association defaults are present
-  tags:
-    - route53_zone_associate
-  ansible.builtin.set_fact:
-    __route53_zone_associate_list:
-      "{{ [{'state': 'present'}] |
-          product(route53_zone_associate_list) |
-          map('combine') |
-          list }}"
-
-- name: Ensure information about aws route53 zone association is gathered
-  tags:
-    - route53_zone_associate
-  amazon.aws.route53_info:
-    hosted_zone_method: details
-    hosted_zone_id: "{{ _zone }}"
-    query: hosted_zone
-    validate_certs: true
-  register: __route53_zone_associate_details
-  loop: "{{ __route53_zone_associate_list |
-            map(attribute='hosted_zone_id', default=[]) |
-            unique }}"
-  loop_control:
-    label: "{{ _zone | d(none) }}"
-    loop_var: _zone
-  check_mode: false
-
-- name: Ensure dict of aws route53 zone association information is generated
-  tags:
-    - route53_zone_associate
-  ansible.builtin.set_fact:
-    __route53_zone_associate_dict:
-      "{{ __route53_zone_associate_details.results |
-          json_query('[].{
-            key: HostedZone.Id
-            value: VPCs
-          }') |
-          items2dict }}"
-
-- name: Ensure aws route53 zone association tasks are included
+- name: Ensure aws route53 zone associations are batched
   tags:
     - route53_zone_associate
   ansible.builtin.include_tasks:
@@ -46,12 +7,10 @@
       tags:
         - route53_zone_associate
     file: include.yml
-  loop: "{{ __route53_zone_associate_list }}"
+  loop:
+    "{{ route53_zone_associate_list |
+        batch(route53_zone_associate_batch) }}"
   loop_control:
-    label: "{{ _zone.hosted_zone_id | d(none) }}"
-    loop_var: _zone
-  when:
-    - _zone.hosted_zone_id is defined
-    - _zone.vpc_id is defined
-    - _zone.vpc_region is defined
+    label: "{{ __route53_zone_associate_list | length }}"
+    loop_var: __route53_zone_associate_list
 ...

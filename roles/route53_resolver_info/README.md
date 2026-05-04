@@ -1,14 +1,14 @@
 # route53\_resolver\_info
 
-Gather information about aws route53 resolvers
+Gather information about aws route53 resolver endpoints
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli)
+None
 
 ## Role Variables
 
-None
+    route53_resolver_info_name: null
 
 ## Return Values
 
@@ -25,3 +25,9 @@ None
       connection: local
       roles:
         - linuxhq.aws.route53_resolver_info
+
+    - hosts: aws
+      connection: local
+      roles:
+        - role: linuxhq.aws.route53_resolver_info
+          route53_resolver_info_name: molecule

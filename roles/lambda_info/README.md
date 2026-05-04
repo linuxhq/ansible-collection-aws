@@ -26,4 +26,4 @@ None
     - hosts: aws
       connection: local
       roles:
-        - linuxhq.aws.lambda
+        - linuxhq.aws.lambda_info

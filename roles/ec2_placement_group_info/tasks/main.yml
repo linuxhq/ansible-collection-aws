@@ -1,31 +1,18 @@
 ---
-# The info module does not currently return arn or id, using cli instead.
-#
-# - name: Ensure information about ec2 placement groups is gathered
-#   tags:
-#     - ec2_placement_group_info
-#   amazon.aws.ec2_placement_group_info:
-#     names: "{{ ec2_placement_group_info_names or omit }}"
-#     validate_certs: true
-#   register: __ec2_placement_group_info_query
-
 - name: Ensure information about aws placement groups is gathered
   tags:
     - ec2_placement_group_info
-  ansible.builtin.command:
-    cmd: >
-      aws ec2 describe-placement-groups
-        --query PlacementGroups
+  linuxhq.aws.ec2_placement_group_info:
+    name: "{{ ec2_placement_group_info_name or omit }}"
+    validate_certs: true
   register: __ec2_placement_group_info_query
-  changed_when: false
-  check_mode: false
 
 - name: Ensure list of aws placement groups is generated
   tags:
     - ec2_placement_group_info
   ansible.builtin.set_fact:
     _ec2_placement_group_info_list:
-      "{{ (__ec2_placement_group_info_query.stdout | from_json) |
+      "{{ __ec2_placement_group_info_query.placement_groups |
           d([]) }}"
 
 - name: Ensure dict of aws placement groups is generated
@@ -34,6 +21,6 @@
   ansible.builtin.set_fact:
     _ec2_placement_group_info_dict:
       "{{ dict(_ec2_placement_group_info_list |
-               json_query('[].GroupName') |
+               json_query('[].group_name') |
                zip(_ec2_placement_group_info_list)) }}"
 ...

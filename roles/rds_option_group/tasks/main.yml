@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws relational database service option groups are batched
+- name: Ensure aws rds option groups are batched
   tags:
     - rds_option_group
   ansible.builtin.include_tasks:

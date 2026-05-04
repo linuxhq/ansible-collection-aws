@@ -1,6 +1,6 @@
 # rds\_subnet\_group
 
-Manage aws relational database service subnet groups
+Manage aws rds subnet groups
 
 ## Requirements
 

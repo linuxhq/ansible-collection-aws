@@ -7,10 +7,15 @@
   roles:
     - ec2_vpc_net_info
     - ec2_vpc_subnet_info
-    - eks_cluster_info
 
   post_tasks:
-    - name: Ensure info is verified
+    - name: Ensure role is included without name
+      ansible.builtin.include_role:
+        name: eks_cluster_info
+      vars:
+        eks_cluster_info_name: null
+
+    - name: Ensure info without name is verified
       ansible.builtin.assert:
         that:
           - _eks_cluster_info_dict['molecule-eks1'].arn is defined
@@ -21,6 +26,23 @@
           - _eks_cluster_info_dict['molecule-eks2'].endpoint is defined
           - _eks_cluster_info_dict['molecule-eks2'].status == 'ACTIVE'
           - _eks_cluster_info_dict['molecule-eks2'].version == '1.35'
+
+    - name: Ensure role is included with name
+      ansible.builtin.include_role:
+        name: eks_cluster_info
+      vars:
+        eks_cluster_info_name: "{{ eks_cluster_list.0.name }}"
+
+    - name: Ensure info with name is verified
+      ansible.builtin.assert:
+        that:
+          - _eks_cluster_info_list | length == 1
+          - _eks_cluster_info_list.0.name == eks_cluster_list.0.name
+          - _eks_cluster_info_dict.keys() | list == [eks_cluster_list.0.name]
+          - _eks_cluster_info_dict[eks_cluster_list.0.name].arn is defined
+          - _eks_cluster_info_dict[eks_cluster_list.0.name].endpoint is defined
+          - _eks_cluster_info_dict[eks_cluster_list.0.name].status == 'ACTIVE'
+          - _eks_cluster_info_dict[eks_cluster_list.0.name].version == '1.34'
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

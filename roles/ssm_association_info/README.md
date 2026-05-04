@@ -2,10 +2,6 @@
 
 Gather information about aws systems manager associations
 
-## Requirements
-
-* [awscli](https://pypi.org/project/awscli)
-
 ## Role Variables
 
 None

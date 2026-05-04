@@ -4,11 +4,11 @@ Gather information about aws route53 delegation sets
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli)
+None
 
 ## Role Variables
 
-None
+    route53_delegation_set_info_name: null
 
 ## Return Values
 
@@ -25,3 +25,9 @@ None
       connection: local
       roles:
         - linuxhq.aws.route53_delegation_set_info
+
+    - hosts: aws
+      connection: local
+      roles:
+        - role: linuxhq.aws.route53_delegation_set_info
+          route53_delegation_set_info_name: molecule-01

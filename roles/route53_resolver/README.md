@@ -1,14 +1,19 @@
 # route53\_resolver
 
-Manage aws route53 resolvers
+Manage aws route53 resolver endpoints
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli)
+None
 
 ## Role Variables
 
+    route53_resolver_async: 300
+    route53_resolver_batch: 10
+    route53_resolver_delay: 3
     route53_resolver_list: []
+    route53_resolver_poll: 0
+    route53_resolver_retries: 100
 
 ## Return Values
 
@@ -16,7 +21,7 @@ None
 
 ## Dependencies
 
-* [ec2\_vpc\_net\_info](../ec2_vpc_net_info)
+* [ec2\_security\_group\_info](../ec2_security_group_info)
 * [ec2\_vpc\_subnet\_info](../ec2_vpc_subnet_info)
 
 ## Example Playbook
@@ -33,7 +38,8 @@ None
                   Ip: 192.168.0.125
                 - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
                   Ip: 192.168.0.253
-              vpc_id: "{{ _ec2_vpc_net_info_dict[ec2_vpc_net_list.0.name].id }}"
+              security_group_ids:
+                - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
             - name: molecule-google
               direction: outbound
@@ -42,16 +48,5 @@ None
                   Ip: 192.168.0.126
                 - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
                   Ip: 192.168.0.254
-              rules:
-                - cidr_ip: 192.168.0.0/24
-                  ports:
-                    - 53
-                  proto: tcp
-                - cidr_ip: 192.168.0.0/24
-                  ports:
-                    - 53
-                  proto: udp
-              rules_egress:
-                - cidr_ip: 192.168.0.0/24
-                  proto: -1
-              vpc_id: "{{ _ec2_vpc_net_info_dict[ec2_vpc_net_list.0.name].id }}"
+              security_group_ids:
+                - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"

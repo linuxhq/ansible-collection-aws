@@ -2,10 +2,6 @@
 
 Gather information about aws wafv2 ip sets
 
-## Requirements
-
-* [awscli](https://pypi.org/project/awscli)
-
 ## Role Variables
 
     wafv2_ip_set_info_scope: regional

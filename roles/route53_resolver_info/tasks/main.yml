@@ -1,32 +1,26 @@
 ---
-- name: Ensure information about aws route53 resolvers is gathered
+- name: Ensure information about aws route53 resolver endpoints is gathered
   tags:
     - route53_resolver_info
-  ansible.builtin.command:
-    cmd: >
-      aws route53resolver list-resolver-endpoints
-        --query 'ResolverEndpoints'
+  linuxhq.aws.route53_resolver_info:
+    name: "{{ route53_resolver_info_name or omit }}"
+    validate_certs: true
   register: __route53_resolver_info_query
-  changed_when: false
-  check_mode: false
 
-- name: Ensure list of aws route53 resolvers is generated
+- name: Ensure list of aws route53 resolver endpoints is generated
   tags:
     - route53_resolver_info
   ansible.builtin.set_fact:
     _route53_resolver_info_list:
-      "{{ (__route53_resolver_info_query.stdout |
-          from_json |
-          selectattr('Name', 'defined') |
-          list) |
+      "{{ __route53_resolver_info_query.resolver_endpoints |
           d([]) }}"
 
-- name: Ensure dict of aws route53 resolvers is generated
+- name: Ensure dict of aws route53 resolver endpoints is generated
   tags:
     - route53_resolver_info
   ansible.builtin.set_fact:
     _route53_resolver_info_dict:
       "{{ dict(_route53_resolver_info_list |
-               json_query('[].Name') |
+               json_query('[].name') |
                zip(_route53_resolver_info_list)) }}"
 ...

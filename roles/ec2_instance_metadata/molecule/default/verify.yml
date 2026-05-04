@@ -11,6 +11,7 @@
     - name: Ensure ec2 instance metadata region defaults are gathered
       linuxhq.aws.ec2_instance_metadata_info:
         region: "{{ _region }}"
+        validate_certs: true
       register: __ec2_instance_metadata_result
       loop: "{{ ec2_instance_metadata_regions }}"
       loop_control:

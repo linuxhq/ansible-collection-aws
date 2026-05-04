@@ -1,6 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
-
 # Copyright: Taylor Kimball
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
@@ -42,11 +40,8 @@ from ansible.module_utils.common.dict_transformations import camel_dict_to_snake
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 
 
-def main() -> None:
-    module = AnsibleAWSModule(
-        argument_spec={"validate_certs": {"default": True, "type": "bool"}},
-        supports_check_mode=True,
-    )
+def main():
+    module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
     client = module.client("ec2")
 
     try:

@@ -1,38 +1,42 @@
 ---
-- name: Ensure aws route53 zone assocation variables are generated
+- name: Ensure aws route53 zone associations are managed
   tags:
     - route53_zone_associate
-  ansible.builtin.set_fact:
-    __route53_zone_associate_json:
-      VPCId: "{{ _zone.vpc_id }}"
-      VPCRegion: "{{ _zone.vpc_region }}"
-    __route53_zone_associate_state:
-      "{{ __route53_zone_associate_dict[_zone.hosted_zone_id] |
-          map(attribute='VPCId', default=[]) }}"
-
-- name: Ensure aws route53 zone associations are present
-  tags:
-    - route53_zone_associate
-  ansible.builtin.command:
-    cmd: >
-      aws route53 associate-vpc-with-hosted-zone
-        --hosted-zone-id "{{ _zone.hosted_zone_id }}"
-        --vpc '{{ __route53_zone_associate_json | to_json }}'
+  linuxhq.aws.route53_zone_associate:
+    hosted_zone_id: "{{ _zone.hosted_zone_id }}"
+    state: "{{ _zone.state | d('present') }}"
+    validate_certs: true
+    vpc_id: "{{ _zone.vpc_id }}"
+    vpc_region: "{{ _zone.vpc_region }}"
+  register: __route53_zone_associate_result
+  loop: "{{ __route53_zone_associate_list }}"
+  loop_control:
+    label: "{{ _zone.hosted_zone_id | d(none) }}"
+    loop_var: _zone
+  async: "{{ ansible_check_mode | ternary(0, route53_zone_associate_async) }}"
+  poll: "{{ route53_zone_associate_poll }}"
   when:
-    - _zone.state == 'present'
-    - _zone.vpc_id not in __route53_zone_associate_state
-  changed_when: true
+    - _zone.hosted_zone_id is defined
+    - _zone.vpc_id is defined
+    - _zone.vpc_region is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __route53_zone_associate_result.changed | bool
 
-- name: Ensure aws route53 zone associations are absent
+- name: Ensure managed aws route53 zone association jobs are complete
   tags:
     - route53_zone_associate
-  ansible.builtin.command:
-    cmd: >
-      aws route53 disassociate-vpc-from-hosted-zone
-        --hosted-zone-id "{{ _zone.hosted_zone_id }}"
-        --vpc '{{ __route53_zone_associate_json | to_json }}'
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __route53_zone_associate_status
+  loop: "{{ __route53_zone_associate_result.results }}"
+  loop_control:
+    label: "{{ _jid._zone.hosted_zone_id | d(none) }}"
+    loop_var: _jid
+  delay: "{{ route53_zone_associate_delay }}"
+  retries: "{{ route53_zone_associate_retries }}"
   when:
-    - _zone.state == 'absent'
-    - _zone.vpc_id in __route53_zone_associate_state
-  changed_when: true
+    - _jid.ansible_job_id is defined
+  until:
+    - __route53_zone_associate_status.finished | bool
 ...

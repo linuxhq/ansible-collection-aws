@@ -2,10 +2,6 @@
 
 Gather information about aws glue connections
 
-## Requirements
-
-* [awscli](https://pypi.org/project/awscli)
-
 ## Role Variables
 
 None
@@ -15,9 +11,9 @@ None
     _glue_connection_info_dict
     _glue_connection_info_list
 
-## Dependencie
+## Dependencies
 
-Nones
+None
 
 ## Example Playbook
 

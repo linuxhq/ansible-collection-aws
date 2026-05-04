@@ -4,11 +4,16 @@ Manage aws route53 zone associations
 
 ## Requirements
 
-* [awscli](https://pypi.org/project/awscli)
+None
 
 ## Role Variables
 
+    route53_zone_associate_async: 300
+    route53_zone_associate_batch: 10
+    route53_zone_associate_delay: 3
     route53_zone_associate_list: []
+    route53_zone_associate_poll: 0
+    route53_zone_associate_retries: 100
 
 ## Return Values
 

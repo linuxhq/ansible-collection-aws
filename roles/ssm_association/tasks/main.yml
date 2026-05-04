@@ -1,97 +1,16 @@
 ---
-- name: Ensure aws systems manager association defaults are present
+- name: Ensure aws systems manager associations are batched
   tags:
     - ssm_association
-  ansible.builtin.set_fact:
-    __ssm_association_list:
-      "{{ [{'state': 'present'}] |
-          product(ssm_association_list) |
-          map('combine') |
-          list }}"
-
-- name: Ensure aws systems manager associations are gathered
-  tags:
-    - ssm_association
-  ansible.builtin.command:
-    cmd: >
-      aws ssm list-associations
-        --query Associations
-  register: __ssm_association_query
-  changed_when: false
-  check_mode: false
-
-- name: Ensure dict of aws systems manager associations is generated
-  tags:
-    - ssm_association
-  ansible.builtin.set_fact:
-    __ssm_association_dict:
-      "{{ __ssm_association_query.stdout |
-          from_json |
-          json_query('[].{
-            key: Name,
-            value: AssociationId
-          }') |
-          items2dict }}"
-
-- name: Ensure aws systems manager associations are present
-  tags:
-    - ssm_association
-  ansible.builtin.command:
-    cmd: >
-      aws ssm create-association
-        --name "{{ _association.name }}"
-        --schedule-expression "{{ _association.schedule_expression }}"
-        --targets '{{ _association.targets | to_json }}'
-  loop: "{{ __ssm_association_list }}"
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ssm_association
+    file: include.yml
+  loop:
+    "{{ ssm_association_list |
+        batch(ssm_association_batch) }}"
   loop_control:
-    label: "{{ _association.name | d(none) }}"
-    loop_var: _association
-  when:
-    - _association.name is defined
-    - _association.name not in __ssm_association_dict.keys()
-    - _association.schedule_expression is defined
-    - _association.state == 'present'
-    - _association.targets is defined
-    - _association.targets | length > 0
-  changed_when: true
-
-- name: Ensure aws systems manager associations are updated
-  tags:
-    - molecule-idempotence-notest
-    - ssm_association
-  ansible.builtin.command:
-    cmd: >
-      aws ssm update-association
-        --association-id "{{ __ssm_association_dict[_association.name] }}"
-        --schedule-expression "{{ _association.schedule_expression }}"
-        --targets '{{ _association.targets | to_json }}'
-  loop: "{{ __ssm_association_list }}"
-  loop_control:
-    label: "{{ _association.name | d(none) }}"
-    loop_var: _association
-  when:
-    - _association.name is defined
-    - _association.name in __ssm_association_dict.keys()
-    - _association.schedule_expression is defined
-    - _association.state == 'present'
-    - _association.targets is defined
-    - _association.targets | length > 0
-  changed_when: true
-
-- name: Ensure aws systems manager associations are absent
-  tags:
-    - ssm_association
-  ansible.builtin.command:
-    cmd: >
-      aws ssm delete-association
-        --association-id "{{ __ssm_association_dict[_association.name] }}"
-  loop: "{{ __ssm_association_list }}"
-  loop_control:
-    label: "{{ _association.name | d(none) }}"
-    loop_var: _association
-  when:
-    - _association.name is defined
-    - _association.name in __ssm_association_dict.keys()
-    - _association.state == 'absent'
-  changed_when: true
+    label: "{{ __ssm_association_list | length }}"
+    loop_var: __ssm_association_list
 ...

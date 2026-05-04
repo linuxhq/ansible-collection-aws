@@ -1,31 +1,25 @@
 ---
-- name: Ensure information about aws systems manager associations is gathered
+- name: Ensure aws systems manager association information is gathered
   tags:
     - ssm_association_info
-  ansible.builtin.command:
-    cmd: >
-      aws ssm list-associations
-        --query Associations
+  linuxhq.aws.ssm_association_info:
+    validate_certs: true
   register: __ssm_association_info_query
-  changed_when: false
-  check_mode: false
 
-- name: Ensure list of aws systems manager associations is generated
+- name: Ensure list of aws systems manager association information is generated
   tags:
     - ssm_association_info
   ansible.builtin.set_fact:
     _ssm_association_info_list:
-      "{{ (__ssm_association_info_query.stdout |
-          from_json) |
-          selectattr('Name', 'defined') |
+      "{{ __ssm_association_info_query.associations |
           d([]) }}"
 
-- name: Ensure dict of aws systems manager associations is generated
+- name: Ensure dict of aws systems manager association information is generated
   tags:
     - ssm_association_info
   ansible.builtin.set_fact:
     _ssm_association_info_dict:
       "{{ dict(_ssm_association_info_list |
-               json_query('[].Name') |
+               json_query('[].name') |
                zip(_ssm_association_info_list)) }}"
 ...

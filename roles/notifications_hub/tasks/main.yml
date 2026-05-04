@@ -1,78 +1,23 @@
 ---
-- name: Ensure information about aws notifications hubs is gathered
-  tags:
-    - notifications_hub
-  ansible.builtin.command:
-    cmd: >
-      aws notifications list-notification-hubs
-        --query
-          'notificationHubs[].{
-            key: notificationHubRegion,
-            value: statusSummary
-          }'
-  register: __notifications_hub_query
-  changed_when: false
-  check_mode: false
-
-- name: Ensure dict of aws notifications hubs is generated
-  tags:
-    - notifications_hub
-  ansible.builtin.set_fact:
-    __notifications_hub_dict:
-      "{{ (__notifications_hub_query.stdout |
-          from_json |
-          items2dict) |
-          d({}) }}"
-
 - name: Ensure aws notifications hub default is present
   tags:
     - notifications_hub
-  ansible.builtin.command:
-    cmd: >
-      aws notifications register-notification-hub
-        --notification-hub-region us-east-1
-        --region us-east-1
-  when:
-    - "'us-east-1' not in __notifications_hub_dict.keys()"
-  changed_when: true
+  linuxhq.aws.notifications_hub:
+    region: us-east-1
+    validate_certs: true
 
-- name: Ensure aws notifications hub list defaults are generated
-  tags:
-    - notifications_hub
-  ansible.builtin.set_fact:
-    __notifications_hub_list:
-      "{{ [{'state': 'present'}] |
-          product(notifications_hub_list) |
-          map('combine') |
-          list }}"
-
-- name: Ensure present aws notifications hubs are batched
+- name: Ensure aws notifications hubs are batched
   tags:
     - notifications_hub
   ansible.builtin.include_tasks:
     apply:
       tags:
         - notifications_hub
-    file: present.yml
+    file: include.yml
   loop:
-    "{{ __notifications_hub_list |
+    "{{ notifications_hub_list |
         batch(notifications_hub_batch) }}"
   loop_control:
-    label: "{{ __notifications_hub_present | length }}"
-    loop_var: __notifications_hub_present
-
-- name: Ensure absent aws notifications hubs are batched
-  tags:
-    - notifications_hub
-  ansible.builtin.include_tasks:
-    apply:
-      tags:
-        - notifications_hub
-    file: absent.yml
-  loop:
-    "{{ __notifications_hub_list |
-        batch(notifications_hub_batch) }}"
-  loop_control:
-    label: "{{ __notifications_hub_absent | length }}"
-    loop_var: __notifications_hub_absent
+    label: "{{ __notifications_hub_list | length }}"
+    loop_var: __notifications_hub_list
 ...
