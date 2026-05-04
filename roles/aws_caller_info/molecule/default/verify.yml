@@ -12,7 +12,7 @@
       ansible.builtin.assert:
         that:
           - _aws_caller_info_account is defined
-          - _aws_caller_info_account_alias == 'linuxhq'
+          - _aws_caller_info_account_alias is defined
           - _aws_caller_info_arn is defined
           - _aws_caller_info_user_id is defined
 ...

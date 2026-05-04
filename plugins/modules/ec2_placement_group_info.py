@@ -40,8 +40,13 @@ placement_groups:
   elements: dict
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
+    describe_ec2_placement_groups,
+)
+from ansible_collections.amazon.aws.plugins.module_utils.exceptions import (
+    AnsibleAWSError,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     scrub_none_parameters,
@@ -57,21 +62,24 @@ def main():
     client = module.client("ec2")
 
     request = scrub_none_parameters(
-        {"GroupNames": [module.params["name"]] if module.params["name"] else None}
+        {
+            "Filters": (
+                [{"Name": "group-name", "Values": [module.params["name"]]}]
+                if module.params["name"]
+                else None
+            )
+        }
     )
 
-    describe_placement_groups = AWSRetry.jittered_backoff()(
-        client.describe_placement_groups
-    )
     try:
-        response = describe_placement_groups(**request)
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to describe EC2 placement groups")
+        placement_groups = describe_ec2_placement_groups(client, **request)
+    except AnsibleAWSError as e:
+        module.fail_json_aws_error(e)
 
     module.exit_json(
         changed=False,
         placement_groups=boto3_resource_list_to_ansible_dict(
-            response.get("PlacementGroups", []),
+            placement_groups,
             force_tags=False,
         ),
     )

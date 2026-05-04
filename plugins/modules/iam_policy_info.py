@@ -39,6 +39,10 @@ user_policies:
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     paginated_query_with_retries,
 )
+from ansible_collections.amazon.aws.plugins.module_utils.exceptions import (
+    AnsibleAWSError,
+)
+from ansible_collections.amazon.aws.plugins.module_utils.iam import list_iam_users
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 
@@ -111,7 +115,11 @@ def get_inline_policy(client, module, operation, entity_type, entity_name, polic
 
 
 def get_user_inline_policies(client, module):
-    users = list_iam_entities(client, module, "list_users", "Users")
+    try:
+        users = list_iam_users(client)
+    except AnsibleAWSError as e:
+        module.fail_json_aws_error(e)
+
     return build_entity_policies(
         client,
         module,
