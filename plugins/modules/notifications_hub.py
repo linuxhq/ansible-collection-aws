@@ -56,49 +56,32 @@ state:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import (
+    list_notification_hubs,
+)
 
 
-def list_notification_hubs(client, module):
-    hubs = []
-    next_token = None
-
-    while True:
-        kwargs = {}
-        if next_token:
-            kwargs["nextToken"] = next_token
-
-        try:
-            response = client.list_notification_hubs(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS Notifications hubs",
-            )
-
-        hubs.extend(response.get("notificationHubs", []))
-        next_token = response.get("nextToken")
-        if not next_token:
-            break
-
-    return hubs
-
-
-def get_notification_hub_by_region(client, module):
+def get_notification_hub_by_region(client, module, region):
     for hub in list_notification_hubs(client, module):
-        if hub.get("notificationHubRegion") == module.params["region"]:
+        if hub.get("notificationHubRegion") == region:
             return hub
     return None
 
 
 def ensure_present(client, module):
-    hub = get_notification_hub_by_region(client, module)
+    hub = get_notification_hub_by_region(client, module, module.params["region"])
     changed = hub is None
 
     if changed and not module.check_mode:
+        register_notification_hub = AWSRetry.jittered_backoff()(
+            client.register_notification_hub
+        )
         try:
-            client.register_notification_hub(
-                notificationHubRegion=module.params["region"]
-            )
+            register_notification_hub(notificationHubRegion=module.params["region"])
         except Exception as e:
             module.fail_json_aws(
                 e,
@@ -114,20 +97,25 @@ def ensure_present(client, module):
 
     module.exit_json(
         changed=changed,
-        notification_hub=hub,
+        notification_hub=(
+            boto3_resource_to_ansible_dict(hub, force_tags=False)
+            if hub is not None
+            else None
+        ),
         state="present",
     )
 
 
 def ensure_absent(client, module):
-    hub = get_notification_hub_by_region(client, module)
+    hub = get_notification_hub_by_region(client, module, module.params["region"])
     changed = hub is not None
 
     if changed and not module.check_mode:
+        deregister_notification_hub = AWSRetry.jittered_backoff()(
+            client.deregister_notification_hub
+        )
         try:
-            client.deregister_notification_hub(
-                notificationHubRegion=module.params["region"]
-            )
+            deregister_notification_hub(notificationHubRegion=module.params["region"])
         except Exception as e:
             module.fail_json_aws(
                 e,

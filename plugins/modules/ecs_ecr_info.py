@@ -46,9 +46,14 @@ repositories:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+    scrub_none_parameters,
+)
 
 
 def main():
@@ -60,25 +65,19 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("ecr")
 
-    params = {}
-    if module.params["registry_id"]:
-        params["registryId"] = module.params["registry_id"]
-    if module.params["repository_names"]:
-        params["repositoryNames"] = module.params["repository_names"]
-
-    repositories = []
-    next_token = None
+    params = scrub_none_parameters(
+        {
+            "registryId": module.params["registry_id"] or None,
+            "repositoryNames": module.params["repository_names"] or None,
+        }
+    )
 
     try:
-        while True:
-            request = dict(params)
-            if next_token:
-                request["nextToken"] = next_token
-            response = client.describe_repositories(**request)
-            repositories.extend(response.get("repositories", []))
-            next_token = response.get("nextToken")
-            if not next_token:
-                break
+        response = paginated_query_with_retries(
+            client,
+            "describe_repositories",
+            **params,
+        )
     except Exception as e:
         module.fail_json_aws(
             e, msg="Unable to describe AWS Elastic Container Registry repositories"
@@ -86,9 +85,10 @@ def main():
 
     module.exit_json(
         changed=False,
-        repositories=[
-            camel_dict_to_snake_dict(repository) for repository in repositories
-        ],
+        repositories=boto3_resource_list_to_ansible_dict(
+            response.get("repositories", []),
+            force_tags=False,
+        ),
     )
 
 

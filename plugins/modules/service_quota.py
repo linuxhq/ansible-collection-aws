@@ -77,66 +77,27 @@ service_code:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.service_quota import (
+    get_service_quota,
+    normalize_quota,
+)
 
-PENDING_STATUSES = ["CASE_OPENED", "PENDING"]
-
-
-def get_service_quota(client, module):
-    try:
-        response = client.get_service_quota(
-            QuotaCode=module.params["quota_code"],
-            ServiceCode=module.params["service_code"],
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                f"Unable to get AWS service quota {module.params['quota_code']} "
-                f"for service {module.params['service_code']}"
-            ),
-        )
-    return response.get("Quota", {})
+PENDING_STATUSES = ("CASE_OPENED", "PENDING")
 
 
-def list_pending_requests(client, module):
-    history = []
-    next_token = None
-
-    try:
-        while True:
-            request = {
-                "QuotaCode": module.params["quota_code"],
-                "ServiceCode": module.params["service_code"],
-            }
-            if next_token:
-                request["NextToken"] = next_token
-
-            response = client.list_requested_service_quota_change_history_by_quota(
-                **request
-            )
-            history.extend(response.get("RequestedQuotas", []))
-            next_token = response.get("NextToken")
-            if not next_token:
-                break
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                f"Unable to list AWS service quota requests for {module.params['quota_code']} "
-                f"for service {module.params['service_code']}"
-            ),
-        )
-    return [request for request in history if request.get("Status") in PENDING_STATUSES]
-
-
-def build_requested_quota(module, current_quota):
+def build_requested_quota(params, current_quota):
     requested_quota = {
-        "DesiredValue": module.params["value"],
-        "QuotaCode": module.params["quota_code"],
-        "ServiceCode": module.params["service_code"],
+        "DesiredValue": params["value"],
+        "QuotaCode": params["quota_code"],
+        "ServiceCode": params["service_code"],
     }
     for key in (
         "GlobalQuota",
@@ -149,6 +110,37 @@ def build_requested_quota(module, current_quota):
             requested_quota[key] = current_quota[key]
     requested_quota["Status"] = "PENDING"
     return requested_quota
+
+
+def list_pending_requests(client, module, quota_code=None, service_code=None):
+    quota_code = quota_code or module.params["quota_code"]
+    service_code = service_code or module.params["service_code"]
+
+    try:
+        response = paginated_query_with_retries(
+            client,
+            "list_requested_service_quota_change_history_by_quota",
+            QuotaCode=quota_code,
+            ServiceCode=service_code,
+        )
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=(
+                f"Unable to list AWS service quota requests for {quota_code} "
+                f"for service {service_code}"
+            ),
+        )
+
+    return [
+        request
+        for request in response.get("RequestedQuotas", [])
+        if request.get("Status") in PENDING_STATUSES
+    ]
+
+
+def normalize_quotas(quotas):
+    return boto3_resource_list_to_ansible_dict(quotas, force_tags=False)
 
 
 def main():
@@ -176,10 +168,13 @@ def main():
     requested_quota = None
     if changed:
         if module.check_mode:
-            requested_quota = build_requested_quota(module, current_quota)
+            requested_quota = build_requested_quota(module.params, current_quota)
         else:
+            request_service_quota_increase = AWSRetry.jittered_backoff()(
+                client.request_service_quota_increase
+            )
             try:
-                response = client.request_service_quota_increase(
+                response = request_service_quota_increase(
                     DesiredValue=desired_value,
                     QuotaCode=module.params["quota_code"],
                     ServiceCode=module.params["service_code"],
@@ -196,13 +191,9 @@ def main():
 
     module.exit_json(
         changed=changed,
-        current_quota=camel_dict_to_snake_dict(current_quota),
-        pending_requests=[
-            camel_dict_to_snake_dict(request) for request in pending_requests
-        ],
-        requested_quota=(
-            camel_dict_to_snake_dict(requested_quota) if requested_quota else None
-        ),
+        current_quota=normalize_quota(current_quota),
+        pending_requests=normalize_quotas(pending_requests),
+        requested_quota=(normalize_quota(requested_quota) if requested_quota else None),
         quota_code=module.params["quota_code"],
         service_code=module.params["service_code"],
     )

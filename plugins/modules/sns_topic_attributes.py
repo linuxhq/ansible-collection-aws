@@ -41,20 +41,18 @@ attributes:
     - The current AWS Simple Notification Service topic attributes after module execution.
   returned: always
   type: dict
-proposed_attributes:
-  description:
-    - The topic attributes that would be applied.
-  returned: when changed
-  type: dict
 topic_arn:
   description: The ARN of the managed topic.
   returned: always
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
+)
 
 MANAGED_ATTRIBUTE_MAP = {
     "kms_master_key_id": "KmsMasterKeyId",
@@ -62,8 +60,9 @@ MANAGED_ATTRIBUTE_MAP = {
 
 
 def get_topic_attributes(client, module):
+    get_topic_attributes = AWSRetry.jittered_backoff()(client.get_topic_attributes)
     try:
-        response = client.get_topic_attributes(TopicArn=module.params["topic_arn"])
+        response = get_topic_attributes(TopicArn=module.params["topic_arn"])
     except Exception as e:
         module.fail_json_aws(
             e,
@@ -73,16 +72,17 @@ def get_topic_attributes(client, module):
     return response.get("Attributes", {})
 
 
-def build_proposed_attributes(module):
-    proposed = {}
-    for parameter, attribute in MANAGED_ATTRIBUTE_MAP.items():
-        if module.params[parameter] is not None:
-            proposed[attribute] = module.params[parameter]
-    return proposed
+def build_desired_attributes(module):
+    return scrub_none_parameters(
+        {
+            attribute: module.params[parameter]
+            for parameter, attribute in MANAGED_ATTRIBUTE_MAP.items()
+        }
+    )
 
 
 def normalize_attributes(attributes):
-    return camel_dict_to_snake_dict(attributes)
+    return boto3_resource_to_ansible_dict(attributes, force_tags=False)
 
 
 def main():
@@ -95,20 +95,23 @@ def main():
     client = module.client("sns")
 
     current_attributes = get_topic_attributes(client, module)
-    proposed_attributes = build_proposed_attributes(module)
+    desired_attributes = build_desired_attributes(module)
 
     changed = False
-    for attribute, value in proposed_attributes.items():
+    for attribute, value in desired_attributes.items():
         if current_attributes.get(attribute) != value:
             changed = True
             break
 
     if changed and not module.check_mode:
-        for attribute, value in proposed_attributes.items():
+        for attribute, value in desired_attributes.items():
             if current_attributes.get(attribute) == value:
                 continue
+            set_topic_attributes = AWSRetry.jittered_backoff()(
+                client.set_topic_attributes
+            )
             try:
-                client.set_topic_attributes(
+                set_topic_attributes(
                     AttributeName=attribute,
                     AttributeValue=value,
                     TopicArn=module.params["topic_arn"],
@@ -121,16 +124,13 @@ def main():
         current_attributes = get_topic_attributes(client, module)
     elif changed and module.check_mode:
         current_attributes = dict(current_attributes)
-        current_attributes.update(proposed_attributes)
+        current_attributes.update(desired_attributes)
 
     result = {
         "attributes": normalize_attributes(current_attributes),
         "changed": changed,
         "topic_arn": module.params["topic_arn"],
     }
-
-    if changed:
-        result["proposed_attributes"] = normalize_attributes(proposed_attributes)
 
     module.exit_json(**result)
 

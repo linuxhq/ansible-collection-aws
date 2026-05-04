@@ -17,6 +17,12 @@ options:
       - Fully qualified domain name for the certificate.
     required: true
     type: str
+  idempotency_token:
+    description:
+      - Custom ACM idempotency token for the certificate request.
+      - When omitted, a deterministic token is generated from O(domain_name) and O(subject_alternative_names).
+      - ACM requires a token of 32 or fewer word characters.
+    type: str
   subject_alternative_names:
     description:
       - Subject alternative names for the certificate.
@@ -44,13 +50,32 @@ certificate_arn:
   type: str
 """
 
+import hashlib
+import json
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    scrub_none_parameters,
+)
+
+
+def build_idempotency_token(domain_name, subject_alternative_names):
+    token_data = {
+        "domain_name": domain_name.lower(),
+        "subject_alternative_names": sorted(
+            name.lower() for name in subject_alternative_names or []
+        ),
+    }
+    return hashlib.sha256(
+        json.dumps(token_data, separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()[:32]
 
 
 def main():
     module = AnsibleAWSModule(
         argument_spec={
             "domain_name": {"required": True, "type": "str"},
+            "idempotency_token": {"type": "str"},
             "subject_alternative_names": {"elements": "str", "type": "list"},
         },
         supports_check_mode=True,
@@ -60,15 +85,23 @@ def main():
         module.exit_json(changed=True)
 
     client = module.client("acm")
-    params = {
-        "DomainName": module.params["domain_name"],
-        "ValidationMethod": "DNS",
-    }
-    if module.params["subject_alternative_names"]:
-        params["SubjectAlternativeNames"] = module.params["subject_alternative_names"]
+    params = scrub_none_parameters(
+        {
+            "DomainName": module.params["domain_name"],
+            "IdempotencyToken": module.params["idempotency_token"]
+            or build_idempotency_token(
+                module.params["domain_name"],
+                module.params["subject_alternative_names"],
+            ),
+            "SubjectAlternativeNames": module.params["subject_alternative_names"]
+            or None,
+            "ValidationMethod": "DNS",
+        }
+    )
 
+    request_certificate = AWSRetry.jittered_backoff()(client.request_certificate)
     try:
-        response = client.request_certificate(**params)
+        response = request_certificate(**params)
     except Exception as e:
         module.fail_json_aws(
             e,

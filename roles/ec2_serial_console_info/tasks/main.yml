@@ -1,0 +1,31 @@
+---
+- name: Ensure information about aws ec2 serial console access is gathered
+  tags:
+    - ec2_serial_console_info
+  linuxhq.aws.ec2_serial_console_info:
+    region: "{{ _region }}"
+    validate_certs: true
+  register: __ec2_serial_console_info_query
+  loop: "{{ ec2_serial_console_info_regions }}"
+  loop_control:
+    label: "{{ _region | d(none) }}"
+    loop_var: _region
+
+- name: Ensure list of aws ec2 serial console access is generated
+  tags:
+    - ec2_serial_console_info
+  ansible.builtin.set_fact:
+    _ec2_serial_console_info_list:
+      "{{ __ec2_serial_console_info_query.results |
+          json_query('[].{region_name: region, serial_console_access: serial_console_access}') }}"
+
+- name: Ensure dict of aws ec2 serial console access is generated
+  tags:
+    - ec2_serial_console_info
+  ansible.builtin.set_fact:
+    _ec2_serial_console_info_dict:
+      "{{ dict(_ec2_serial_console_info_list |
+               json_query('[].region_name') |
+               zip(_ec2_serial_console_info_list |
+                   json_query('[].serial_console_access'))) }}"
+...

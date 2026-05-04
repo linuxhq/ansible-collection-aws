@@ -38,42 +38,10 @@ document:
   type: dict
 """
 
-import json
-
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-
-
-def is_not_found_error(error):
-    return getattr(error, "response", {}).get("Error", {}).get("Code") in (
-        "InvalidDocument",
-        "InvalidDocumentOperation",
-    )
-
-
-def get_document(client, module, name):
-    try:
-        response = client.get_document(
-            DocumentFormat="JSON",
-            DocumentVersion="$LATEST",
-            Name=name,
-        )
-    except Exception as e:
-        if is_not_found_error(e):
-            return {}
-        module.fail_json_aws(
-            e, msg=f"Unable to get AWS Systems Manager document {name}"
-        )
-
-    document = camel_dict_to_snake_dict(response)
-    content = response.get("Content")
-    if content is not None:
-        try:
-            document["content"] = json.loads(content)
-        except ValueError:
-            document["content"] = content
-    return document
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    get_document,
+)
 
 
 def main():
@@ -85,7 +53,13 @@ def main():
 
     module.exit_json(
         changed=False,
-        document=get_document(client, module, module.params["name"]),
+        document=get_document(
+            client,
+            module,
+            module.params["name"],
+            missing_document={},
+            fail_on_invalid_content=False,
+        ),
     )
 
 

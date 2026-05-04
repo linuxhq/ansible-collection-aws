@@ -41,57 +41,21 @@ queues:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+)
 
 
-def is_not_found_error(error):
-    return getattr(error, "response", {}).get("Error", {}).get("Code") == (
-        "AWS.SimpleQueueService.NonExistentQueue"
-    )
-
-
-def get_queue_url(client, module):
+def get_queue(client, module, queue_url):
+    get_queue_attributes = AWSRetry.jittered_backoff()(client.get_queue_attributes)
     try:
-        response = client.get_queue_url(QueueName=module.params["name"])
-    except Exception as e:
-        if is_not_found_error(e):
-            return None
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS Simple Queue Service queue URL for {module.params['name']}",
-        )
-
-    return response.get("QueueUrl")
-
-
-def list_queue_urls(client, module):
-    queue_urls = []
-    next_token = None
-
-    try:
-        while True:
-            request = {}
-            if next_token:
-                request["NextToken"] = next_token
-
-            response = client.list_queues(**request)
-            queue_urls.extend(response.get("QueueUrls", []))
-            next_token = response.get("NextToken")
-            if not next_token:
-                break
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to list AWS Simple Queue Service queue URLs"
-        )
-
-    return queue_urls
-
-
-def get_queue(queue_url, client, module):
-    try:
-        response = client.get_queue_attributes(
+        response = get_queue_attributes(
             AttributeNames=["All"],
             QueueUrl=queue_url,
         )
@@ -102,12 +66,38 @@ def get_queue(queue_url, client, module):
         )
 
     attributes = response.get("Attributes", {})
-    queue = camel_dict_to_snake_dict(attributes)
+    queue = boto3_resource_to_ansible_dict(attributes, force_tags=False)
     queue["name"] = attributes.get("QueueArn", queue_url.rsplit("/", 1)[-1]).split(":")[
         -1
     ]
     queue["queue_url"] = queue_url
     return queue
+
+
+def get_queue_url(client, module, queue_name):
+    get_queue_url = AWSRetry.jittered_backoff()(client.get_queue_url)
+    try:
+        response = get_queue_url(QueueName=queue_name)
+    except is_boto3_error_code("AWS.SimpleQueueService.NonExistentQueue"):
+        return None
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to get AWS Simple Queue Service queue URL for {queue_name}",
+        )
+
+    return response.get("QueueUrl")
+
+
+def list_queue_urls(client, module):
+    try:
+        response = paginated_query_with_retries(client, "list_queues")
+    except Exception as e:
+        module.fail_json_aws(
+            e, msg="Unable to list AWS Simple Queue Service queue URLs"
+        )
+
+    return response.get("QueueUrls", [])
 
 
 def main():
@@ -119,11 +109,11 @@ def main():
     client = module.client("sqs")
 
     if module.params["name"]:
-        queue_url = get_queue_url(client, module)
-        queues = [get_queue(queue_url, client, module)] if queue_url else []
+        queue_url = get_queue_url(client, module, module.params["name"])
+        queues = [get_queue(client, module, queue_url)] if queue_url else []
     else:
         queues = [
-            get_queue(queue_url, client, module)
+            get_queue(client, module, queue_url)
             for queue_url in list_queue_urls(client, module)
         ]
 

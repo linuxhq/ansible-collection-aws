@@ -33,6 +33,16 @@ options:
     description:
       - The targets for the association.
     elements: dict
+    suboptions:
+      key:
+        description:
+          - The target key.
+        type: str
+      values:
+        description:
+          - The target values.
+        elements: str
+        type: list
     type: list
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -46,8 +56,8 @@ EXAMPLES = r"""
     name: AWS-UpdateSSMAgent
     schedule_expression: cron(0 0 * * ? *)
     targets:
-      - Key: InstanceIds
-        Values:
+      - key: InstanceIds
+        values:
           - "*"
 
 - name: Ensure an SSM association is absent
@@ -70,63 +80,59 @@ name:
   description: The managed association name.
   returned: always
   type: str
-proposed_association:
-  description:
-    - The association values that would exist after the requested change.
-  returned: when changed and state is present
-  type: dict
 state:
   description: The requested state of the association.
   returned: always
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    list_associations,
+    normalize_association,
+)
 
 
-def normalize_association(association):
-    normalized = camel_dict_to_snake_dict(association)
-    for key, target in (
-        ("Targets", "targets"),
-        ("TargetMaps", "target_maps"),
-    ):
-        if key in association:
-            normalized[target] = association[key]
-    return normalized
+def aws_target(target):
+    return scrub_none_parameters(
+        {
+            "Key": target.get("key"),
+            "Values": target.get("values") or [],
+        }
+    )
+
+
+def aws_targets(targets):
+    return [aws_target(target) for target in targets or []]
 
 
 def canonicalize_targets(targets):
     normalized = []
     for target in targets or []:
+        key = target.get("key", target.get("Key"))
+        values = target.get("values", target.get("Values", [])) or []
         normalized.append(
             {
-                "Key": target["Key"],
-                "Values": sorted(target.get("Values", [])),
+                "Key": key,
+                "Values": sorted(values),
             }
         )
-    return sorted(normalized, key=lambda item: item["Key"])
+    return sorted(normalized, key=lambda item: item["Key"] or "")
 
 
-def list_associations(client, module):
-    associations = []
-    next_token = None
-
-    try:
-        while True:
-            request = {}
-            if next_token:
-                request["NextToken"] = next_token
-            response = client.list_associations(**request)
-            associations.extend(response.get("Associations", []))
-            next_token = response.get("NextToken")
-            if not next_token:
-                break
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Systems Manager associations")
-
-    return associations
+def build_desired_association(module, association_id=None):
+    desired = {
+        "Name": module.params["name"],
+        "ScheduleExpression": module.params["schedule_expression"],
+        "Targets": aws_targets(module.params["targets"]),
+    }
+    if association_id is not None:
+        desired["AssociationId"] = association_id
+    return desired
 
 
 def find_association(associations, name):
@@ -136,31 +142,21 @@ def find_association(associations, name):
     return None
 
 
-def build_desired_association(module, association_id=None):
-    desired = {
-        "Name": module.params["name"],
-        "ScheduleExpression": module.params["schedule_expression"],
-        "Targets": module.params["targets"],
-    }
-    if association_id is not None:
-        desired["AssociationId"] = association_id
-    return desired
-
-
 def ensure_present(client, module, current):
     desired_targets = canonicalize_targets(module.params["targets"])
 
     if current is None:
         changed = True
-        proposed = build_desired_association(module)
+        desired = build_desired_association(module)
         if module.check_mode:
-            association = proposed
+            association = desired
         else:
+            create_association = AWSRetry.jittered_backoff()(client.create_association)
             try:
-                response = client.create_association(
+                response = create_association(
                     Name=module.params["name"],
                     ScheduleExpression=module.params["schedule_expression"],
-                    Targets=module.params["targets"],
+                    Targets=aws_targets(module.params["targets"]),
                 )
             except Exception as e:
                 module.fail_json_aws(
@@ -173,13 +169,14 @@ def ensure_present(client, module, current):
             current.get("ScheduleExpression") != module.params["schedule_expression"]
             or canonicalize_targets(current.get("Targets", [])) != desired_targets
         )
-        proposed = build_desired_association(module, current.get("AssociationId"))
+        desired = build_desired_association(module, current.get("AssociationId"))
         if changed and not module.check_mode:
+            update_association = AWSRetry.jittered_backoff()(client.update_association)
             try:
-                response = client.update_association(
+                response = update_association(
                     AssociationId=current["AssociationId"],
                     ScheduleExpression=module.params["schedule_expression"],
-                    Targets=module.params["targets"],
+                    Targets=aws_targets(module.params["targets"]),
                 )
             except Exception as e:
                 module.fail_json_aws(
@@ -188,7 +185,7 @@ def ensure_present(client, module, current):
                 )
             association = response.get("AssociationDescription", {})
         elif changed and module.check_mode:
-            association = proposed
+            association = desired
         else:
             association = current
 
@@ -201,8 +198,6 @@ def ensure_present(client, module, current):
     association_id = association.get("AssociationId")
     if association_id:
         result["association_id"] = association_id
-    if changed:
-        result["proposed_association"] = normalize_association(proposed)
     module.exit_json(**result)
 
 
@@ -210,8 +205,9 @@ def ensure_absent(client, module, current):
     changed = current is not None
 
     if changed and not module.check_mode:
+        delete_association = AWSRetry.jittered_backoff()(client.delete_association)
         try:
-            client.delete_association(AssociationId=current["AssociationId"])
+            delete_association(AssociationId=current["AssociationId"])
         except Exception as e:
             module.fail_json_aws(
                 e,
@@ -237,7 +233,14 @@ def main():
             "default": "present",
             "type": "str",
         },
-        "targets": {"elements": "dict", "type": "list"},
+        "targets": {
+            "elements": "dict",
+            "options": {
+                "key": {"type": "str"},
+                "values": {"elements": "str", "type": "list"},
+            },
+            "type": "list",
+        },
     }
 
     module = AnsibleAWSModule(

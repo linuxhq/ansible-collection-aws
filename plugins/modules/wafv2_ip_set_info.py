@@ -51,35 +51,18 @@ scope:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-
-
-def list_ip_set_summaries(client, module, scope):
-    summaries = []
-    next_marker = None
-
-    try:
-        while True:
-            request = {"Scope": scope}
-            if next_marker:
-                request["NextMarker"] = next_marker
-
-            response = client.list_ip_sets(**request)
-            summaries.extend(response.get("IPSets", []))
-            next_marker = response.get("NextMarker")
-            if not next_marker:
-                break
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS WAFv2 IP sets")
-
-    return summaries
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
+    list_wafv2_summaries,
+    normalize_wafv2_resource,
+)
 
 
 def get_ip_set(client, module, scope, summary):
+    get_ip_set = AWSRetry.jittered_backoff()(client.get_ip_set)
     try:
-        response = client.get_ip_set(
+        response = get_ip_set(
             Id=summary["Id"],
             Name=summary["Name"],
             Scope=scope,
@@ -106,9 +89,16 @@ def main():
     client = module.client("wafv2")
 
     scope = module.params["scope"].upper()
-    summaries = list_ip_set_summaries(client, module, scope)
+    summaries = list_wafv2_summaries(
+        client,
+        module,
+        scope,
+        "list_ip_sets",
+        "IPSets",
+        "Unable to list AWS WAFv2 IP sets",
+    )
     ip_sets = [
-        camel_dict_to_snake_dict(get_ip_set(client, module, scope, summary))
+        normalize_wafv2_resource(get_ip_set(client, module, scope, summary))
         for summary in summaries
         if summary.get("Id") and summary.get("Name")
     ]

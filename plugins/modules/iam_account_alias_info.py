@@ -32,31 +32,9 @@ account_aliases:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-
-
-def list_account_aliases(client, module):
-    aliases = []
-    marker = None
-
-    while True:
-        kwargs = {}
-        if marker:
-            kwargs["Marker"] = marker
-
-        try:
-            response = client.list_account_aliases(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS IAM account aliases",
-            )
-
-        aliases.extend(response.get("AccountAliases", []))
-        if not response.get("IsTruncated"):
-            break
-        marker = response.get("Marker")
-
-    return aliases
+from ansible_collections.linuxhq.aws.plugins.module_utils.iam import (
+    list_account_aliases,
+)
 
 
 def main():

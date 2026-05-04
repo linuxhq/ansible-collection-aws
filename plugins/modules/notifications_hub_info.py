@@ -31,34 +31,13 @@ notification_hubs:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-
-
-def list_notification_hubs(client, module):
-    hubs = []
-    next_token = None
-
-    while True:
-        kwargs = {}
-        if next_token:
-            kwargs["nextToken"] = next_token
-
-        try:
-            response = client.list_notification_hubs(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS Notifications hubs",
-            )
-
-        hubs.extend(response.get("notificationHubs", []))
-        next_token = response.get("nextToken")
-        if not next_token:
-            break
-
-    return hubs
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import (
+    list_notification_hubs,
+)
 
 
 def main():
@@ -70,10 +49,10 @@ def main():
 
     module.exit_json(
         changed=False,
-        notification_hubs=[
-            camel_dict_to_snake_dict(notification_hub)
-            for notification_hub in list_notification_hubs(client, module)
-        ],
+        notification_hubs=boto3_resource_list_to_ansible_dict(
+            list_notification_hubs(client, module),
+            force_tags=False,
+        ),
     )
 
 

@@ -4,7 +4,7 @@
 
 DOCUMENTATION = r"""
 ---
-lookup: aws_ses_credentials
+lookup: ses_credential
 author:
   - Taylor Kimball (@tkimball83)
 short_description: Generate an AWS SES SMTP password from an IAM secret access key
@@ -29,7 +29,7 @@ EXAMPLES = r"""
 - name: Generate SES SMTP password
   ansible.builtin.set_fact:
     ses_smtp_password:
-      "{{ lookup('linuxhq.aws.aws_ses_credentials',
+      "{{ lookup('linuxhq.aws.ses_credential',
                  aws_secret_access_key=aws_secret_access_key,
                  region='us-east-1') }}"
 """
@@ -43,7 +43,6 @@ _raw:
 import base64
 import hashlib
 import hmac
-
 from ansible.errors import AnsibleError
 from ansible.plugins.lookup import LookupBase
 
@@ -52,10 +51,6 @@ MESSAGE = "SendRawEmail"
 SERVICE = "ses"
 TERMINAL = "aws4_request"
 VERSION = 0x04
-
-
-def sign(key, message):
-    return hmac.new(key, message.encode("utf-8"), hashlib.sha256).digest()
 
 
 def get_smtp_password(secret_access_key, region):
@@ -67,20 +62,20 @@ def get_smtp_password(secret_access_key, region):
     return base64.b64encode(bytes([VERSION]) + signature).decode("utf-8")
 
 
+def sign(key, message):
+    return hmac.new(key, message.encode("utf-8"), hashlib.sha256).digest()
+
+
 class LookupModule(LookupBase):
     def run(self, terms, variables=None, **kwargs):
         region = kwargs.get("region")
         secret_access_key = kwargs.get("aws_secret_access_key")
 
         if region is None:
-            raise AnsibleError("aws_ses_credentials lookup requires region=")
+            raise AnsibleError("ses_credential lookup requires region=")
         if secret_access_key is None:
-            raise AnsibleError(
-                "aws_ses_credentials lookup requires aws_secret_access_key="
-            )
+            raise AnsibleError("ses_credential lookup requires aws_secret_access_key=")
         if terms:
-            raise AnsibleError(
-                "aws_ses_credentials lookup does not accept positional terms"
-            )
+            raise AnsibleError("ses_credential lookup does not accept positional terms")
 
         return [get_smtp_password(secret_access_key, region)]

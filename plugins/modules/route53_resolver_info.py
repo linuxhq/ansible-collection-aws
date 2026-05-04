@@ -41,41 +41,11 @@ resolver_endpoints:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-
-
-def list_resolver_endpoints(client, module):
-    endpoints = []
-    next_token = None
-
-    while True:
-        kwargs = {}
-        if next_token:
-            kwargs["NextToken"] = next_token
-
-        try:
-            response = client.list_resolver_endpoints(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS Route53 Resolver endpoints",
-            )
-
-        endpoints.extend(response.get("ResolverEndpoints", []))
-        next_token = response.get("NextToken")
-        if not next_token:
-            break
-
-    return endpoints
-
-
-def normalize(endpoint):
-    normalized = camel_dict_to_snake_dict(endpoint)
-    if "ip_addresses" in normalized:
-        normalized["ip_addresses"] = endpoint.get("IpAddresses", [])
-    return normalized
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53 import (
+    list_resolver_endpoints,
+    normalize_resolver_endpoint_with_ip_addresses,
+)
 
 
 def main():
@@ -97,7 +67,10 @@ def main():
 
     module.exit_json(
         changed=False,
-        resolver_endpoints=[normalize(endpoint) for endpoint in resolver_endpoints],
+        resolver_endpoints=[
+            normalize_resolver_endpoint_with_ip_addresses(client, module, endpoint)
+            for endpoint in resolver_endpoints
+        ],
     )
 
 

@@ -42,31 +42,12 @@ email_contacts:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-
-
-def list_email_contacts(client, module):
-    contacts = []
-    next_token = None
-
-    while True:
-        kwargs = {}
-        if next_token:
-            kwargs["nextToken"] = next_token
-
-        try:
-            response = client.list_email_contacts(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS Notifications contacts",
-            )
-
-        contacts.extend(response.get("emailContacts", []))
-        next_token = response.get("nextToken")
-        if not next_token:
-            break
-
-    return contacts
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import (
+    list_email_contacts,
+)
 
 
 def main():
@@ -77,7 +58,10 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("notificationscontacts")
-    email_contacts = list_email_contacts(client, module)
+    email_contacts = boto3_resource_list_to_ansible_dict(
+        list_email_contacts(client, module),
+        force_tags=False,
+    )
 
     if module.params["name"] is not None:
         email_contacts = [

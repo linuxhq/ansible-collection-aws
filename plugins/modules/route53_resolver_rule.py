@@ -42,9 +42,34 @@ options:
     type: str
   target_ips:
     description:
-      - The target IP definitions in AWS format.
+      - The target IP definitions for forwarding rules.
       - This is required when O(state=present).
     elements: dict
+    suboptions:
+      ip:
+        description:
+          - The IPv4 address of the target.
+        type: str
+      ipv6:
+        description:
+          - The IPv6 address of the target.
+        type: str
+      port:
+        description:
+          - The port for the target.
+        type: int
+      protocol:
+        description:
+          - The protocol for the target.
+        choices:
+          - Do53
+          - DoH
+          - DoH-FIPS
+        type: str
+      server_name_indication:
+        description:
+          - The server name indication for the target.
+        type: str
     type: list
   wait:
     description:
@@ -75,10 +100,10 @@ EXAMPLES = r"""
     resolver_endpoint_id: rslvr-out-0123456789abcdef0
     rule_type: forward
     target_ips:
-      - Ip: 1.1.1.1
-        Port: 53
-      - Ip: 1.1.1.2
-        Port: 53
+      - ip: 1.1.1.1
+        port: 53
+      - ip: 1.1.1.2
+        port: 53
 
 - name: Ensure a Route53 Resolver rule is absent
   linuxhq.aws.route53_resolver_rule:
@@ -110,56 +135,43 @@ state:
 """
 
 import time
-
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53 import (
+    list_resolver_rules,
+    normalize_resolver_rule,
+)
 
 
-def is_not_found_error(error):
-    return getattr(error, "response", {}).get("Error", {}).get("Code") in (
-        "ResourceNotFoundException",
+def aws_target_ip(target_ip):
+    return scrub_none_parameters(
+        {
+            "Ip": target_ip.get("ip"),
+            "Ipv6": target_ip.get("ipv6"),
+            "Port": target_ip.get("port"),
+            "Protocol": target_ip.get("protocol"),
+            "ServerNameIndication": target_ip.get("server_name_indication"),
+        }
     )
 
 
-def list_resolver_rules(client, module):
-    rules = []
-    next_token = None
-
-    while True:
-        kwargs = {}
-        if next_token:
-            kwargs["NextToken"] = next_token
-
-        try:
-            response = client.list_resolver_rules(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS Route53 Resolver rules",
-            )
-
-        rules.extend(response.get("ResolverRules", []))
-        next_token = response.get("NextToken")
-        if not next_token:
-            break
-
-    return rules
-
-
-def get_resolver_rule_by_name(client, module):
-    for rule in list_resolver_rules(client, module):
-        if rule.get("Name") == module.params["name"]:
-            return rule
-    return None
+def aws_target_ips(target_ips):
+    return [aws_target_ip(target_ip) for target_ip in target_ips]
 
 
 def get_resolver_rule(client, module, resolver_rule_id):
+    get_resolver_rule = AWSRetry.jittered_backoff()(client.get_resolver_rule)
     try:
-        response = client.get_resolver_rule(ResolverRuleId=resolver_rule_id)
+        response = get_resolver_rule(ResolverRuleId=resolver_rule_id)
+    except is_boto3_error_code("ResourceNotFoundException"):
+        return None
     except Exception as e:
-        if is_not_found_error(e):
-            return None
         module.fail_json_aws(
             e,
             msg=f"Unable to get AWS Route53 Resolver rule {resolver_rule_id}",
@@ -167,7 +179,14 @@ def get_resolver_rule(client, module, resolver_rule_id):
     return response.get("ResolverRule")
 
 
-def wait_for_status(client, module, resolver_rule_id, statuses):
+def get_resolver_rule_by_name(client, module, name):
+    for rule in list_resolver_rules(client, module):
+        if rule.get("Name") == name:
+            return rule
+    return None
+
+
+def wait_for_resolver_rule_status(client, module, resolver_rule_id, statuses, name):
     deadline = time.time() + module.params["wait_timeout"]
 
     while time.time() < deadline:
@@ -179,33 +198,25 @@ def wait_for_status(client, module, resolver_rule_id, statuses):
         time.sleep(module.params["wait_delay"])
 
     module.fail_json(
-        msg=f"Timed out waiting for AWS Route53 Resolver rule {module.params['name']}",
+        msg=f"Timed out waiting for AWS Route53 Resolver rule {name}",
         resolver_rule_id=resolver_rule_id,
     )
 
 
-def normalize(rule):
-    if rule is None:
-        return None
-    normalized = camel_dict_to_snake_dict(rule)
-    if "target_ips" in normalized:
-        normalized["target_ips"] = rule.get("TargetIps", [])
-    return normalized
-
-
 def ensure_present(client, module):
-    rule = get_resolver_rule_by_name(client, module)
+    rule = get_resolver_rule_by_name(client, module, module.params["name"])
     changed = rule is None
 
     if changed and not module.check_mode:
+        create_resolver_rule = AWSRetry.jittered_backoff()(client.create_resolver_rule)
         try:
-            response = client.create_resolver_rule(
+            response = create_resolver_rule(
                 CreatorRequestId=module.params["name"],
                 DomainName=module.params["domain_name"],
                 Name=module.params["name"],
                 ResolverEndpointId=module.params["resolver_endpoint_id"],
                 RuleType=module.params["rule_type"].upper(),
-                TargetIps=module.params["target_ips"],
+                TargetIps=aws_target_ips(module.params["target_ips"]),
             )
         except Exception as e:
             module.fail_json_aws(
@@ -214,14 +225,16 @@ def ensure_present(client, module):
             )
         rule = response.get("ResolverRule")
         if module.params["wait"]:
-            rule = wait_for_status(client, module, rule["Id"], {"complete"})
+            rule = wait_for_resolver_rule_status(
+                client, module, rule["Id"], {"complete"}, module.params["name"]
+            )
     elif changed and module.check_mode:
         rule = {"Name": module.params["name"]}
 
     result = {
         "changed": changed,
         "name": module.params["name"],
-        "resolver_rule": normalize(rule),
+        "resolver_rule": normalize_resolver_rule(rule),
         "state": "present",
     }
     if rule is not None and rule.get("Id") is not None:
@@ -231,20 +244,27 @@ def ensure_present(client, module):
 
 
 def ensure_absent(client, module):
-    rule = get_resolver_rule_by_name(client, module)
+    rule = get_resolver_rule_by_name(client, module, module.params["name"])
     changed = rule is not None
 
     if changed and not module.check_mode:
         resolver_rule_id = rule["Id"]
+        delete_resolver_rule = AWSRetry.jittered_backoff()(client.delete_resolver_rule)
         try:
-            client.delete_resolver_rule(ResolverRuleId=resolver_rule_id)
+            delete_resolver_rule(ResolverRuleId=resolver_rule_id)
         except Exception as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to delete AWS Route53 Resolver rule {module.params['name']}",
             )
         if module.params["wait"]:
-            wait_for_status(client, module, resolver_rule_id, {"deleted"})
+            wait_for_resolver_rule_status(
+                client,
+                module,
+                resolver_rule_id,
+                {"deleted"},
+                module.params["name"],
+            )
 
     module.exit_json(
         changed=changed,
@@ -267,6 +287,16 @@ def main():
             },
             "target_ips": {
                 "elements": "dict",
+                "options": {
+                    "ip": {"type": "str"},
+                    "ipv6": {"type": "str"},
+                    "port": {"type": "int"},
+                    "protocol": {
+                        "choices": ["Do53", "DoH", "DoH-FIPS"],
+                        "type": "str",
+                    },
+                    "server_name_indication": {"type": "str"},
+                },
                 "type": "list",
             },
             "wait": {"default": True, "type": "bool"},

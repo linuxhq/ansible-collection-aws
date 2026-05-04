@@ -65,56 +65,31 @@ state:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53 import (
+    list_delegation_sets,
+    normalize_delegation_set,
+)
 
 
-def list_delegation_sets(client, module):
-    delegation_sets = []
-    marker = None
-
-    while True:
-        kwargs = {}
-        if marker:
-            kwargs["Marker"] = marker
-
-        try:
-            response = client.list_reusable_delegation_sets(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS Route53 reusable delegation sets",
-            )
-
-        delegation_sets.extend(response.get("DelegationSets", []))
-        if not response.get("IsTruncated"):
-            break
-        marker = response.get("NextMarker")
-
-    return delegation_sets
-
-
-def get_delegation_set(client, module):
+def get_delegation_set_by_name(client, module, name):
     for delegation_set in list_delegation_sets(client, module):
-        if delegation_set.get("CallerReference") == module.params["name"]:
+        if delegation_set.get("CallerReference") == name:
             return delegation_set
     return None
 
 
-def normalize_delegation_set(delegation_set):
-    if delegation_set is None:
-        return None
-    return camel_dict_to_snake_dict(delegation_set)
-
-
 def ensure_present(client, module):
-    delegation_set = get_delegation_set(client, module)
+    delegation_set = get_delegation_set_by_name(client, module, module.params["name"])
     changed = delegation_set is None
 
     if changed and not module.check_mode:
+        create_reusable_delegation_set = AWSRetry.jittered_backoff()(
+            client.create_reusable_delegation_set
+        )
         try:
-            response = client.create_reusable_delegation_set(
+            response = create_reusable_delegation_set(
                 CallerReference=module.params["name"],
             )
         except Exception as e:
@@ -122,8 +97,8 @@ def ensure_present(client, module):
                 e,
                 msg=f"Unable to create AWS Route53 reusable delegation set {module.params['name']}",
             )
-        delegation_set = response.get("DelegationSet") or get_delegation_set(
-            client, module
+        delegation_set = response.get("DelegationSet") or get_delegation_set_by_name(
+            client, module, module.params["name"]
         )
     elif changed and module.check_mode:
         delegation_set = {
@@ -143,12 +118,15 @@ def ensure_present(client, module):
 
 
 def ensure_absent(client, module):
-    delegation_set = get_delegation_set(client, module)
+    delegation_set = get_delegation_set_by_name(client, module, module.params["name"])
     changed = delegation_set is not None
 
     if changed and not module.check_mode:
+        delete_reusable_delegation_set = AWSRetry.jittered_backoff()(
+            client.delete_reusable_delegation_set
+        )
         try:
-            client.delete_reusable_delegation_set(
+            delete_reusable_delegation_set(
                 Id=delegation_set["Id"],
             )
         except Exception as e:

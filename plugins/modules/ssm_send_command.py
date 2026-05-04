@@ -89,7 +89,7 @@ RETURN = r"""
 command:
   description:
     - The command metadata returned by AWS Systems Manager.
-  returned: always
+  returned: when not in check mode
   type: dict
 command_id:
   description:
@@ -101,11 +101,6 @@ command_invocations:
     - The command invocations returned when O(wait=true).
   returned: when wait is true and not in check mode
   type: list
-proposed_command:
-  description:
-    - The command request that would be sent.
-  returned: always
-  type: dict
 status:
   description:
     - The aggregate command status.
@@ -114,74 +109,40 @@ status:
 """
 
 import time
-
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
+)
 
-TERMINAL_STATUSES = {"Cancelled", "Cancelling", "Failed", "Success", "TimedOut"}
 SUCCESS_STATUSES = {"Success"}
+TERMINAL_STATUSES = {"Cancelled", "Cancelling", "Failed", "Success", "TimedOut"}
 
 
-def snake_top_level_dict(value):
-    return {
-        camel_dict_to_snake_dict({key: None}).popitem()[0]: item
-        for key, item in value.items()
-    }
-
-
-def build_send_command_args(module):
-    args = {
-        "DocumentName": module.params["document_name"],
-        "Parameters": module.params["parameters"],
-    }
-
-    for module_key, aws_key in (
-        ("comment", "Comment"),
-        ("instance_ids", "InstanceIds"),
-        ("max_concurrency", "MaxConcurrency"),
-        ("max_errors", "MaxErrors"),
-        ("targets", "Targets"),
-        ("timeout_seconds", "TimeoutSeconds"),
-    ):
-        value = module.params.get(module_key)
-        if value is not None:
-            args[aws_key] = value
-
-    return args
-
-
-def list_command_invocations(client, module, command_id):
-    invocations = []
-    next_token = None
-
-    while True:
-        kwargs = {
-            "CommandId": command_id,
-            "Details": True,
+def build_send_command_args(params):
+    return scrub_none_parameters(
+        {
+            "Comment": params["comment"],
+            "DocumentName": params["document_name"],
+            "InstanceIds": params["instance_ids"],
+            "MaxConcurrency": params["max_concurrency"],
+            "MaxErrors": params["max_errors"],
+            "Parameters": params["parameters"],
+            "Targets": params["targets"],
+            "TimeoutSeconds": params["timeout_seconds"],
         }
-        if next_token:
-            kwargs["NextToken"] = next_token
-
-        try:
-            response = client.list_command_invocations(**kwargs)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to list AWS Systems Manager command invocations for {command_id}",
-            )
-
-        invocations.extend(response.get("CommandInvocations", []))
-        next_token = response.get("NextToken")
-        if not next_token:
-            break
-
-    return invocations
+    )
 
 
 def get_command(client, module, command_id):
+    list_commands = AWSRetry.jittered_backoff()(client.list_commands)
     try:
-        response = client.list_commands(CommandId=command_id)
+        response = list_commands(CommandId=command_id)
     except Exception as e:
         module.fail_json_aws(
             e,
@@ -195,6 +156,37 @@ def get_command(client, module, command_id):
         )
 
     return commands[0]
+
+
+def list_command_invocations(client, module, command_id):
+    try:
+        response = paginated_query_with_retries(
+            client,
+            "list_command_invocations",
+            CommandId=command_id,
+            Details=True,
+        )
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to list AWS Systems Manager command invocations for {command_id}",
+        )
+    return response.get("CommandInvocations", [])
+
+
+def normalize_command(command):
+    return boto3_resource_to_ansible_dict(
+        command,
+        force_tags=False,
+        ignore_list=["Parameters", "Targets"],
+    )
+
+
+def normalize_command_invocations(invocations):
+    return boto3_resource_list_to_ansible_dict(
+        invocations,
+        force_tags=False,
+    )
 
 
 def wait_for_command(client, module, command_id):
@@ -215,7 +207,7 @@ def wait_for_command(client, module, command_id):
 
             module.fail_json(
                 msg=f"AWS Systems Manager command {command_id} did not complete successfully",
-                command=snake_top_level_dict(command),
+                command=normalize_command(command),
                 command_id=command_id,
                 command_invocations=[],
                 status=command.get("Status"),
@@ -227,11 +219,9 @@ def wait_for_command(client, module, command_id):
 
             module.fail_json(
                 msg=f"AWS Systems Manager command {command_id} did not complete successfully",
-                command=snake_top_level_dict(command),
+                command=normalize_command(command),
                 command_id=command_id,
-                command_invocations=[
-                    camel_dict_to_snake_dict(invocation) for invocation in invocations
-                ],
+                command_invocations=normalize_command_invocations(invocations),
                 status=command.get("Status"),
             )
 
@@ -264,16 +254,14 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("ssm")
-    proposed_command = build_send_command_args(module)
+    send_command_args = build_send_command_args(module.params)
 
     if module.check_mode:
-        module.exit_json(
-            changed=True,
-            proposed_command=snake_top_level_dict(proposed_command),
-        )
+        module.exit_json(changed=True)
 
+    send_command = AWSRetry.jittered_backoff()(client.send_command)
     try:
-        response = client.send_command(**proposed_command)
+        response = send_command(**send_command_args)
     except Exception as e:
         module.fail_json_aws(
             e,
@@ -283,9 +271,8 @@ def main():
     command = response.get("Command", {})
     result = {
         "changed": True,
-        "command": snake_top_level_dict(command),
+        "command": normalize_command(command),
         "command_id": command.get("CommandId"),
-        "proposed_command": snake_top_level_dict(proposed_command),
         "status": command.get("Status"),
     }
 
@@ -293,10 +280,8 @@ def main():
         command, invocations = wait_for_command(
             client, module, command.get("CommandId")
         )
-        result["command"] = snake_top_level_dict(command)
-        result["command_invocations"] = [
-            camel_dict_to_snake_dict(invocation) for invocation in invocations
-        ]
+        result["command"] = normalize_command(command)
+        result["command_invocations"] = normalize_command_invocations(invocations)
         result["status"] = command.get("Status")
 
     module.exit_json(**result)

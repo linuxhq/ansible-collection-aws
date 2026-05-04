@@ -69,20 +69,20 @@ provisioner:
           - name: molecule-cloudflare
             direction: outbound
             ip_addresses:
-              - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
-                Ip: 192.168.0.125
-              - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
-                Ip: 192.168.0.253
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
+                ip: 192.168.0.125
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
+                ip: 192.168.0.253
             security_group_ids:
               - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
           - name: molecule-google
             direction: outbound
             ip_addresses:
-              - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
-                Ip: 192.168.0.126
-              - SubnetId: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
-                Ip: 192.168.0.254
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
+                ip: 192.168.0.126
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
+                ip: 192.168.0.254
             security_group_ids:
               - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
@@ -92,20 +92,20 @@ provisioner:
             resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].id }}"
             rule_type: forward
             target_ips:
-              - Ip: 1.1.1.1
-                Port: 53
-              - Ip: 1.1.1.2
-                Port: 53
+              - ip: 1.1.1.1
+                port: 53
+              - ip: 1.1.1.2
+                port: 53
 
           - name: molecule-google
             domain_name: google.com
             resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-google'].id }}"
             rule_type: forward
             target_ips:
-              - Ip: 8.8.8.8
-                Port: 53
-              - Ip: 8.8.8.4
-                Port: 53
+              - ip: 8.8.8.8
+                port: 53
+              - ip: 8.8.8.4
+                port: 53
 
 scenario:
   test_sequence:

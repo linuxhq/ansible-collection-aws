@@ -25,8 +25,18 @@ options:
   entries:
     description:
       - The prefix list entries to manage.
-      - Each entry must include C(Cidr) and may include C(Description).
+      - Each entry must include O(entries[].cidr) and may include O(entries[].description).
     elements: dict
+    suboptions:
+      cidr:
+        description:
+          - The CIDR block for the prefix list entry.
+        required: true
+        type: str
+      description:
+        description:
+          - The description for the prefix list entry.
+        type: str
     type: list
   name:
     description:
@@ -52,10 +62,10 @@ EXAMPLES = r"""
   linuxhq.aws.ec2_vpc_prefix_list:
     name: linuxhq-localhost
     entries:
-      - Cidr: 127.0.0.1/32
-        Description: localhost-1
-      - Cidr: 127.0.0.2/32
-        Description: localhost-2
+      - cidr: 127.0.0.1/32
+        description: localhost-1
+      - cidr: 127.0.0.2/32
+        description: localhost-2
 
 - name: Ensure a managed prefix list is absent
   linuxhq.aws.ec2_vpc_prefix_list:
@@ -77,11 +87,6 @@ prefix_list_id:
   description: The managed prefix list identifier.
   returned: when a prefix list exists
   type: str
-proposed_prefix_list:
-  description:
-    - The prefix list values that would exist after the requested change.
-  returned: when changed and state is present
-  type: dict
 state:
   description: The requested state of the managed prefix list.
   returned: always
@@ -90,16 +95,34 @@ state:
 
 import json
 from time import sleep
-
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
+    get_prefix_list_entries,
+    list_prefix_lists,
+    normalize_prefix_list,
+)
+
+
+def aws_add_entry(entry):
+    aws_entry = {"Cidr": entry["cidr"]}
+    if entry.get("description") is not None:
+        aws_entry["Description"] = entry["description"]
+    return aws_entry
+
+
+def aws_add_entries(entries):
+    return [aws_add_entry(entry) for entry in entries]
+
+
+def aws_remove_entries(entries):
+    return [{"Cidr": entry["cidr"]} for entry in entries]
 
 
 def canonical_entry(entry):
-    normalized = {"Cidr": entry["Cidr"]}
-    if entry.get("Description") is not None:
-        normalized["Description"] = entry["Description"]
+    normalized = {"cidr": entry["cidr"]}
+    if entry.get("description") is not None:
+        normalized["description"] = entry["description"]
     return normalized
 
 
@@ -122,58 +145,6 @@ def diff_entries(left, right):
     ]
 
 
-def normalize_prefix_list(prefix_list, entries=None):
-    normalized = camel_dict_to_snake_dict(prefix_list or {})
-    if entries is not None:
-        normalized["entries"] = entries
-    return normalized
-
-
-def list_prefix_lists(client, module):
-    prefix_lists = []
-    next_token = None
-
-    try:
-        while True:
-            request = {}
-            if next_token:
-                request["NextToken"] = next_token
-
-            response = client.describe_managed_prefix_lists(**request)
-            prefix_lists.extend(response.get("PrefixLists", []))
-            next_token = response.get("NextToken")
-            if not next_token:
-                break
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to describe EC2 VPC managed prefix lists")
-
-    return prefix_lists
-
-
-def get_prefix_list_entries(client, module, prefix_list_id):
-    entries = []
-    next_token = None
-
-    try:
-        while True:
-            request = {"PrefixListId": prefix_list_id}
-            if next_token:
-                request["NextToken"] = next_token
-
-            response = client.get_managed_prefix_list_entries(**request)
-            entries.extend(response.get("Entries", []))
-            next_token = response.get("NextToken")
-            if not next_token:
-                break
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get EC2 VPC managed prefix list entries for {prefix_list_id}",
-        )
-
-    return entries
-
-
 def find_prefix_list(client, module, name):
     for prefix_list in list_prefix_lists(client, module):
         if (
@@ -188,11 +159,12 @@ def find_prefix_list(client, module, name):
 
 
 def wait_for_ready_state(client, module, prefix_list_id):
+    describe_managed_prefix_lists = AWSRetry.jittered_backoff()(
+        client.describe_managed_prefix_lists
+    )
     for _ in range(60):
         try:
-            response = client.describe_managed_prefix_lists(
-                PrefixListIds=[prefix_list_id]
-            )
+            response = describe_managed_prefix_lists(PrefixListIds=[prefix_list_id])
         except Exception as e:
             module.fail_json_aws(
                 e,
@@ -226,8 +198,11 @@ def modify_prefix_list(client, module, current, **kwargs):
         request["CurrentVersion"] = current["Version"]
     request.update(kwargs)
 
+    modify_managed_prefix_list = AWSRetry.jittered_backoff()(
+        client.modify_managed_prefix_list
+    )
     try:
-        client.modify_managed_prefix_list(**request)
+        modify_managed_prefix_list(**request)
     except Exception as e:
         module.fail_json_aws(
             e,
@@ -256,19 +231,15 @@ def ensure_present(client, module):
             )
         )
 
-    proposed = {
-        "address_family": module.params["address_family"],
-        "entries": desired_entries,
-        "max_entries": len(desired_entries),
-        "name": module.params["name"],
-    }
-
     if current is None:
         if not module.check_mode:
+            create_managed_prefix_list = AWSRetry.jittered_backoff()(
+                client.create_managed_prefix_list
+            )
             try:
-                response = client.create_managed_prefix_list(
+                response = create_managed_prefix_list(
                     AddressFamily=module.params["address_family"],
-                    Entries=desired_entries,
+                    Entries=aws_add_entries(desired_entries),
                     MaxEntries=len(desired_entries),
                     PrefixListName=module.params["name"],
                 )
@@ -297,7 +268,10 @@ def ensure_present(client, module):
         if changed and not module.check_mode:
             if remove_entries:
                 modify_prefix_list(
-                    client, module, current, RemoveEntries=remove_entries
+                    client,
+                    module,
+                    current,
+                    RemoveEntries=aws_remove_entries(remove_entries),
                 )
                 wait_for_ready_state(client, module, current["PrefixListId"])
                 current, current_entries = get_current(client, module)
@@ -310,7 +284,12 @@ def ensure_present(client, module):
                 current, current_entries = get_current(client, module)
 
             if add_entries:
-                modify_prefix_list(client, module, current, AddEntries=add_entries)
+                modify_prefix_list(
+                    client,
+                    module,
+                    current,
+                    AddEntries=aws_add_entries(add_entries),
+                )
                 wait_for_ready_state(client, module, current["PrefixListId"])
                 current, current_entries = get_current(client, module)
         elif changed and module.check_mode:
@@ -326,8 +305,6 @@ def ensure_present(client, module):
     }
     if current and current.get("PrefixListId"):
         result["prefix_list_id"] = current["PrefixListId"]
-    if changed:
-        result["proposed_prefix_list"] = proposed
     module.exit_json(**result)
 
 
@@ -336,8 +313,11 @@ def ensure_absent(client, module):
     changed = current is not None
 
     if changed and not module.check_mode:
+        delete_managed_prefix_list = AWSRetry.jittered_backoff()(
+            client.delete_managed_prefix_list
+        )
         try:
-            client.delete_managed_prefix_list(PrefixListId=current["PrefixListId"])
+            delete_managed_prefix_list(PrefixListId=current["PrefixListId"])
         except Exception as e:
             module.fail_json_aws(
                 e,
@@ -361,7 +341,14 @@ def main():
             "default": "IPv4",
             "type": "str",
         },
-        "entries": {"elements": "dict", "type": "list"},
+        "entries": {
+            "elements": "dict",
+            "options": {
+                "cidr": {"required": True, "type": "str"},
+                "description": {"type": "str"},
+            },
+            "type": "list",
+        },
         "name": {"required": True, "type": "str"},
         "state": {
             "choices": ["absent", "present"],
