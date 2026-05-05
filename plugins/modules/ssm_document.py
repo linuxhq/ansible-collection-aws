@@ -11,6 +11,7 @@ description:
   - Manages AWS Systems Manager documents.
   - Supports creating, updating, and deleting JSON documents.
   - Accepts structured Ansible YAML content and serializes it to JSON for AWS.
+  - Normalizes document content keys to snake_case for comparison and return values.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -19,6 +20,7 @@ options:
       - The document content to manage.
       - Provide the content as structured Ansible YAML data.
       - The module serializes the content to JSON for AWS Systems Manager.
+      - Content keys may be provided in snake_case or AWS native camelCase.
       - Required when O(state=present).
     type: dict
   document_type:
@@ -54,11 +56,11 @@ EXAMPLES = r"""
 - name: Ensure a Session Manager document is present
   linuxhq.aws.ssm_document:
     content:
-      schemaVersion: "1.0"
+      schema_version: "1.0"
       description: Document to hold regional settings for Session Manager
-      sessionType: Standard_Stream
+      session_type: Standard_Stream
       inputs:
-        idleSessionTimeout: 60
+        idle_session_timeout: 60
     document_type: Session
     name: SSM-SessionManagerRunShell
 
@@ -85,6 +87,11 @@ state:
 """
 
 import json
+
+from ansible.module_utils.common.dict_transformations import (
+    camel_dict_to_snake_dict,
+    snake_dict_to_camel_dict,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
@@ -94,7 +101,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
 
 def build_desired_document(module):
     return {
-        "content": module.params["content"],
+        "content": camel_dict_to_snake_dict(module.params["content"]),
         "document_type": module.params["document_type"],
         "name": module.params["name"],
     }
@@ -114,14 +121,15 @@ def get_document(client, module):
 def ensure_present(client, module):
     current = get_document(client, module)
     desired = build_desired_document(module)
-    changed = current is None or current.get("content") != module.params["content"]
+    changed = current is None or current.get("content") != desired["content"]
 
     if changed and not module.check_mode:
+        content = snake_dict_to_camel_dict(desired["content"])
         try:
             if current is None:
                 create_document = AWSRetry.jittered_backoff()(client.create_document)
                 create_document(
-                    Content=json.dumps(module.params["content"], sort_keys=True),
+                    Content=json.dumps(content, sort_keys=True),
                     DocumentFormat="JSON",
                     DocumentType=module.params["document_type"],
                     Name=module.params["name"],
@@ -129,7 +137,7 @@ def ensure_present(client, module):
             else:
                 update_document = AWSRetry.jittered_backoff()(client.update_document)
                 update_document(
-                    Content=json.dumps(module.params["content"], sort_keys=True),
+                    Content=json.dumps(content, sort_keys=True),
                     DocumentFormat="JSON",
                     DocumentVersion=module.params["document_version"],
                     Name=module.params["name"],

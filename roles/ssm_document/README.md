@@ -29,34 +29,34 @@ None
             - name: molecule-command-shell
               document_type: Command
               content:
-                schemaVersion: '2.2'
+                schema_version: '2.2'
                 description: Run a shell command
-                mainSteps:
+                main_steps:
                   - action: aws:runShellScript
                     name: runShellScript
                     inputs:
-                      runCommand:
+                      run_command:
                         - echo molecule
             - name: molecule-command-env
               document_type: Command
               content:
-                schemaVersion: '2.2'
+                schema_version: '2.2'
                 description: Print environment
-                mainSteps:
+                main_steps:
                   - action: aws:runShellScript
                     name: printEnvironment
                     inputs:
-                      runCommand:
+                      run_command:
                         - env | sort
             - name: molecule-session-shell
               document_type: Session
               content:
-                schemaVersion: '1.0'
+                schema_version: '1.0'
                 description: Session Manager shell preferences
-                sessionType: Standard_Stream
+                session_type: Standard_Stream
                 inputs:
-                  idleSessionTimeout: 60
-                  runAsEnabled: false
-                  shellProfile:
+                  idle_session_timeout: 60
+                  run_as_enabled: false
+                  shell_profile:
                     linux: cd
                     windows: ''

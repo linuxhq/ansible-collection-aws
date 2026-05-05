@@ -47,7 +47,11 @@ def get_document(
         return document
 
     try:
-        document["content"] = json.loads(content)
+        document["content"] = boto3_resource_to_ansible_dict(
+            json.loads(content),
+            transform_tags=False,
+            force_tags=False,
+        )
     except ValueError as e:
         if fail_on_invalid_content:
             module.fail_json(
