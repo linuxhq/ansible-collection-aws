@@ -4,22 +4,22 @@
     - ssm_session
   linuxhq.aws.ssm_document:
     content:
-      schemaVersion: '1.0'
+      schema_version: '1.0'
       description: Document to hold regional settings for Session Manager
-      sessionType: Standard_Stream
+      session_type: Standard_Stream
       inputs:
-        cloudWatchLogGroupName: "{{ ssm_session_log_group_name }}"
-        cloudWatchEncryptionEnabled: true
-        cloudWatchStreamingEnabled: true
-        idleSessionTimeout: 60
-        kmsKeyId: "{{ __ssm_session_kms_key_id }}"
-        runAsEnabled: true
-        runAsDefaultUser: "{{ ssm_session_default_user }}"
-        shellProfile:
+        cloud_watch_log_group_name: "{{ ssm_session_log_group_name }}"
+        cloud_watch_encryption_enabled: true
+        cloud_watch_streaming_enabled: true
+        idle_session_timeout: 60
+        kms_key_id: "{{ __ssm_session_kms_key_id }}"
+        run_as_enabled: true
+        run_as_default_user: "{{ ssm_session_default_user }}"
+        shell_profile:
           linux: "{{ ssm_session_shell_profile_linux or '' | trim }}"
           windows: "{{ ssm_session_shell_profile_windows or '' | trim }}"
-        s3BucketName: "{{ __ssm_session_account }}-{{ __ssm_session_region }}-{{ ssm_session_bucket_sessions_name }}"
-        s3EncryptionEnabled: true
+        s3_bucket_name: "{{ __ssm_session_account }}-{{ __ssm_session_region }}-{{ ssm_session_bucket_sessions_name }}"
+        s3_encryption_enabled: true
     document_type: Session
     name: SSM-SessionManagerRunShell
     state: "{{ ssm_session_state }}"

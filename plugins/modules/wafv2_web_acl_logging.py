@@ -19,15 +19,6 @@ options:
       - AWS WAF allows one destination per web ACL.
     elements: str
     type: list
-  logging_filter:
-    description:
-      - Optional AWS WAF logging filter configuration.
-    type: dict
-  redacted_fields:
-    description:
-      - Optional fields to redact from the emitted logs.
-    elements: dict
-    type: list
   resource_arn:
     description:
       - The ARN of the WAFv2 web ACL to manage logging for.
@@ -76,55 +67,20 @@ state:
   type: str
 """
 
-import json
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
-)
 from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
     normalize_wafv2_resource,
 )
 
-LOGGING_CONFIGURATION_KEYS = (
-    "LogDestinationConfigs",
-    "LoggingFilter",
-    "RedactedFields",
-    "ResourceArn",
-)
-
 
 def build_logging_configuration(params):
-    return scrub_none_parameters(
-        {
-            "LogDestinationConfigs": params["log_destination_configs"],
-            "LoggingFilter": params["logging_filter"],
-            "RedactedFields": params["redacted_fields"],
-            "ResourceArn": params["resource_arn"],
-        }
-    )
-
-
-def canonicalize(value):
-    if isinstance(value, dict):
-        return {key: canonicalize(value[key]) for key in sorted(value)}
-    if isinstance(value, list):
-        items = [canonicalize(item) for item in value]
-        return sorted(items, key=lambda item: json.dumps(item, sort_keys=True))
-    return value
-
-
-def comparable_logging_configuration(configuration):
-    if configuration is None:
-        return None
-
     return {
-        key: value
-        for key, value in configuration.items()
-        if key in LOGGING_CONFIGURATION_KEYS
+        "LogDestinationConfigs": params["log_destination_configs"],
+        "ResourceArn": params["resource_arn"],
     }
 
 
@@ -145,9 +101,12 @@ def get_logging_configuration(client, module, resource_arn):
 
 
 def logging_configuration_matches(current, desired):
-    return canonicalize(comparable_logging_configuration(current)) == canonicalize(
-        desired
-    )
+    if current is None:
+        return False
+
+    return current.get("ResourceArn") == desired["ResourceArn"] and sorted(
+        current.get("LogDestinationConfigs") or []
+    ) == sorted(desired["LogDestinationConfigs"] or [])
 
 
 def ensure_present(client, module):
@@ -208,8 +167,6 @@ def ensure_absent(client, module):
 def main():
     argument_spec = {
         "log_destination_configs": {"elements": "str", "type": "list"},
-        "logging_filter": {"type": "dict"},
-        "redacted_fields": {"elements": "dict", "type": "list"},
         "resource_arn": {"required": True, "type": "str"},
         "state": {
             "choices": ["absent", "present"],

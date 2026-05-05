@@ -42,8 +42,8 @@ options:
     type: dict
   targets:
     description:
-      - The command targets in AWS format.
-      - Preserve AWS target keys such as C(Key) and C(Values).
+      - The command targets.
+      - Target keys may be provided in snake_case or AWS native PascalCase.
     elements: dict
     type: list
   timeout_seconds:
@@ -79,8 +79,8 @@ EXAMPLES = r"""
       commands:
         - touch /tmp/molecule
     targets:
-      - Key: instanceids
-        Values:
+      - key: instanceids
+        values:
           - i-0123456789abcdef0
     wait: true
 """
@@ -109,6 +109,8 @@ status:
 """
 
 import time
+
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     paginated_query_with_retries,
 )
@@ -124,6 +126,14 @@ SUCCESS_STATUSES = {"Success"}
 TERMINAL_STATUSES = {"Cancelled", "Cancelling", "Failed", "Success", "TimedOut"}
 
 
+def aws_targets(targets):
+    if targets is None:
+        return None
+    return [
+        snake_dict_to_camel_dict(target, capitalize_first=True) for target in targets
+    ]
+
+
 def build_send_command_args(params):
     return scrub_none_parameters(
         {
@@ -133,7 +143,7 @@ def build_send_command_args(params):
             "MaxConcurrency": params["max_concurrency"],
             "MaxErrors": params["max_errors"],
             "Parameters": params["parameters"],
-            "Targets": params["targets"],
+            "Targets": aws_targets(params["targets"]),
             "TimeoutSeconds": params["timeout_seconds"],
         }
     )
