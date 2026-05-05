@@ -8,9 +8,12 @@ None
 
 ## Role Variables
 
+    account_region_async: 3600
+    account_region_batch: 10
     account_region_delay: 30
     account_region_list: []
-    account_region_retries: 60
+    account_region_poll: 0
+    account_region_retries: 120
     account_region_wait: true
 
 ## Return Values
@@ -31,4 +34,3 @@ None
             - name: af-south-1
             - name: ap-east-1
             - name: ca-west-1
-              wait: true

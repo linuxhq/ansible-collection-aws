@@ -27,6 +27,7 @@ provisioner:
         ansible_python_interpreter: /opt/awscli/bin/python
         sns_topic_list:
           - name: molecule-bounce
+            display_name: molecule-bounce
             subscriptions:
               - endpoint: "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-bounce"
                 protocol: sqs
@@ -47,6 +48,7 @@ provisioner:
                         - "arn:aws:ses:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:identity/molecule.org"
 
           - name: molecule-complaint
+            display_name: molecule-complaint
             subscriptions:
               - endpoint: "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-complaint"
                 protocol: sqs
@@ -67,6 +69,7 @@ provisioner:
                         - "arn:aws:ses:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:identity/molecule.org"
 
           - name: molecule-delivery
+            display_name: molecule-delivery
             subscriptions:
               - endpoint: "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-delivery"
                 protocol: sqs
@@ -85,6 +88,11 @@ provisioner:
                       'AWS:SourceAccount': "{{ _aws_caller_info_account }}"
                       'AWS:SourceArn':
                         - "arn:aws:ses:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:identity/molecule.org"
+
+        sns_topic_updated_list:
+          - "{{ sns_topic_list.0 | combine({'display_name': 'molecule-bounce-updated'}) }}"
+          - "{{ sns_topic_list.1 | combine({'display_name': 'molecule-complaint-updated'}) }}"
+          - "{{ sns_topic_list.2 | combine({'display_name': 'molecule-delivery-updated'}) }}"
 
         sqs_queue_list:
           - name: molecule-bounce

@@ -61,10 +61,14 @@ state:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.iam import (
-    list_account_aliases,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+    aws_response,
 )
+
+
+def list_account_aliases(client, module):
+    return aws_paginated_list(client, module, "list_account_aliases", "AccountAliases")
 
 
 def ensure_present(client, module):
@@ -73,29 +77,25 @@ def ensure_present(client, module):
     changed = aliases != [name]
 
     if changed and not module.check_mode:
-        delete_account_alias = AWSRetry.jittered_backoff()(client.delete_account_alias)
         for alias in aliases:
             if alias == name:
                 continue
-            try:
-                delete_account_alias(AccountAlias=alias)
-            except Exception as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to delete AWS IAM account alias {alias}",
-                )
+            aws_response(
+                client,
+                module,
+                "delete_account_alias",
+                error_message=f"Unable to delete AWS IAM account alias {alias}",
+                AccountAlias=alias,
+            )
 
         if name not in aliases:
-            create_account_alias = AWSRetry.jittered_backoff()(
-                client.create_account_alias
+            aws_response(
+                client,
+                module,
+                "create_account_alias",
+                error_message=f"Unable to create AWS IAM account alias {name}",
+                AccountAlias=name,
             )
-            try:
-                create_account_alias(AccountAlias=name)
-            except Exception as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to create AWS IAM account alias {name}",
-                )
 
         aliases = list_account_aliases(client, module)
     elif changed and module.check_mode:
@@ -115,14 +115,13 @@ def ensure_absent(client, module):
     changed = name in aliases
 
     if changed and not module.check_mode:
-        delete_account_alias = AWSRetry.jittered_backoff()(client.delete_account_alias)
-        try:
-            delete_account_alias(AccountAlias=name)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to delete AWS IAM account alias {name}",
-            )
+        aws_response(
+            client,
+            module,
+            "delete_account_alias",
+            error_message=f"Unable to delete AWS IAM account alias {name}",
+            AccountAlias=name,
+        )
         aliases = list_account_aliases(client, module)
     elif changed and module.check_mode:
         aliases = [alias for alias in aliases if alias != name]

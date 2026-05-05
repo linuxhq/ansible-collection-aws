@@ -32,19 +32,18 @@ connections:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
 )
 
 
 def normalize_connection(connection):
-    return boto3_resource_to_ansible_dict(
+    return aws_resource_to_snake_dict(
         connection,
-        force_tags=False,
         ignore_list=["ConnectionProperties"],
     )
 
@@ -53,16 +52,16 @@ def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
     client = module.client("glue")
 
-    try:
-        response = paginated_query_with_retries(client, "get_connections")
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to get AWS Glue connections")
-
     module.exit_json(
         changed=False,
         connections=[
             normalize_connection(connection)
-            for connection in response.get("ConnectionList", [])
+            for connection in aws_paginated_list(
+                client,
+                module,
+                "get_connections",
+                "ConnectionList",
+            )
         ],
     )
 

@@ -32,6 +32,13 @@ provisioner:
               - key: InstanceIds
                 values: ['*']
 
+        ssm_association_updated_list:
+          - name: AWS-UpdateSSMAgent
+            schedule_expression: 'cron(15 0 * * ? *)'
+            targets:
+              - key: InstanceIds
+                values: ['*']
+
 scenario:
   test_sequence:
     - dependency

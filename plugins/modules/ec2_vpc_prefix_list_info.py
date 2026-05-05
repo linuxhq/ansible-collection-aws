@@ -42,11 +42,32 @@ prefix_lists:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
-    get_prefix_list_entries,
-    list_prefix_lists,
-    normalize_prefix_list,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_list_to_snake_dicts,
+    aws_resource_to_snake_dict,
+)
+
+
+def get_prefix_list_entries(client, module, prefix_list_id):
+    return aws_resource_list_to_snake_dicts(
+        aws_paginated_list(
+            client,
+            module,
+            "get_managed_prefix_list_entries",
+            "Entries",
+            PrefixListId=prefix_list_id,
+        )
+    )
+
+
+def normalize_prefix_list(prefix_list, entries=None):
+    normalized = aws_resource_to_snake_dict(prefix_list or {})
+    if entries is not None:
+        normalized["entries"] = entries
+    return normalized
 
 
 def main():
@@ -55,7 +76,12 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("ec2")
-    prefix_lists = list_prefix_lists(client, module)
+    prefix_lists = aws_paginated_list(
+        client,
+        module,
+        "describe_managed_prefix_lists",
+        "PrefixLists",
+    )
 
     module.exit_json(
         changed=False,

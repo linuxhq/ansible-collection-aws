@@ -9,6 +9,7 @@ version_added: 1.9.1
 short_description: Manage AWS Route53 Resolver rule associations
 description:
   - Manages AWS Route53 Resolver rule associations.
+  - O(name) is immutable after association creation.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -94,93 +95,153 @@ state:
   type: str
 """
 
-import time
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.route53 import (
-    list_resolver_rule_associations,
-    normalize_resolver_rule_association,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+    aws_resource,
+    aws_response,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
+    find_aws_resource,
+    validate_immutable_fields,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    wait_for_aws_resource,
+)
+
+ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA = {
+    "resolver_rule_association_complete": {
+        "delay": 5,
+        "maxAttempts": 60,
+        "operation": "GetResolverRuleAssociation",
+        "acceptors": [
+            {
+                "argument": "ResolverRuleAssociation.Status",
+                "expected": "COMPLETE",
+                "matcher": "path",
+                "state": "success",
+            },
+            {
+                "argument": "ResolverRuleAssociation.Status",
+                "expected": "CREATING",
+                "matcher": "path",
+                "state": "retry",
+            },
+            {
+                "argument": "ResolverRuleAssociation.Status",
+                "expected": "UPDATING",
+                "matcher": "path",
+                "state": "retry",
+            },
+            {
+                "argument": "ResolverRuleAssociation.Status",
+                "expected": "DELETING",
+                "matcher": "path",
+                "state": "retry",
+            },
+        ],
+    },
+    "resolver_rule_association_deleted": {
+        "delay": 5,
+        "maxAttempts": 60,
+        "operation": "GetResolverRuleAssociation",
+        "acceptors": [
+            {
+                "expected": "ResourceNotFoundException",
+                "matcher": "error",
+                "state": "success",
+            },
+            {
+                "argument": "ResolverRuleAssociation.Status",
+                "expected": "DELETING",
+                "matcher": "path",
+                "state": "retry",
+            },
+        ],
+    },
+}
 
 
 def get_resolver_rule_association(client, module, resolver_rule_association_id):
-    get_resolver_rule_association = AWSRetry.jittered_backoff()(
-        client.get_resolver_rule_association
+    return aws_resource(
+        client,
+        module,
+        "get_resolver_rule_association",
+        "ResolverRuleAssociation",
+        ignore_error_codes="ResourceNotFoundException",
+        ignored_error_result=None,
+        ResolverRuleAssociationId=resolver_rule_association_id,
     )
-    try:
-        response = get_resolver_rule_association(
-            ResolverRuleAssociationId=resolver_rule_association_id
-        )
-    except is_boto3_error_code("ResourceNotFoundException"):
-        return None
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS Route53 Resolver rule association {resolver_rule_association_id}",
-        )
-    return response.get("ResolverRuleAssociation")
 
 
 def get_resolver_rule_association_by_rule_and_vpc(
     client, module, resolver_rule_id, vpc_id
 ):
-    for association in list_resolver_rule_associations(client, module):
-        if (
-            association.get("ResolverRuleId") == resolver_rule_id
-            and association.get("VPCId") == vpc_id
-        ):
-            return association
-    return None
+    return find_aws_resource(
+        aws_paginated_list(
+            client,
+            module,
+            "list_resolver_rule_associations",
+            "ResolverRuleAssociations",
+        ),
+        resolver_rule_id=resolver_rule_id,
+        vpc_id=vpc_id,
+    )
 
 
 def wait_for_resolver_rule_association_status(
     client, module, resolver_rule_association_id, statuses, name
 ):
-    deadline = time.time() + module.params["wait_timeout"]
-
-    while time.time() < deadline:
-        association = get_resolver_rule_association(
-            client, module, resolver_rule_association_id
-        )
-        if association is None and "deleted" in statuses:
-            return None
-        if (
-            association is not None
-            and association.get("Status", "").lower() in statuses
-        ):
-            return association
-        time.sleep(module.params["wait_delay"])
-
-    module.fail_json(
-        msg=f"Timed out waiting for AWS Route53 Resolver rule association {name}",
-        resolver_rule_association_id=resolver_rule_association_id,
+    deleted = "deleted" in statuses
+    wait_for_aws_resource(
+        client,
+        module,
+        ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA,
+        (
+            "resolver_rule_association_deleted"
+            if deleted
+            else "resolver_rule_association_complete"
+        ),
+        f"Timed out waiting for AWS Route53 Resolver rule association {name}",
+        ResolverRuleAssociationId=resolver_rule_association_id,
     )
+    if deleted:
+        return None
+    return get_resolver_rule_association(client, module, resolver_rule_association_id)
 
 
 def ensure_present(client, module):
     association = get_resolver_rule_association_by_rule_and_vpc(
         client, module, module.params["resolver_rule_id"], module.params["vpc_id"]
     )
+    comparable_association = aws_resource_to_snake_dict(association)
+    validate_immutable_fields(
+        module,
+        comparable_association,
+        {"name": module.params["name"]},
+        ["name"],
+        (
+            "Unable to update AWS Route53 Resolver rule association "
+            f"{module.params['name']}: immutable fields differ"
+        ),
+    )
+
     changed = association is None
 
     if changed and not module.check_mode:
-        associate_resolver_rule = AWSRetry.jittered_backoff()(
-            client.associate_resolver_rule
+        response = aws_response(
+            client,
+            module,
+            "associate_resolver_rule",
+            error_message=(
+                "Unable to create AWS Route53 Resolver rule association "
+                f"{module.params['name']}"
+            ),
+            Name=module.params["name"],
+            ResolverRuleId=module.params["resolver_rule_id"],
+            VPCId=module.params["vpc_id"],
         )
-        try:
-            response = associate_resolver_rule(
-                Name=module.params["name"],
-                ResolverRuleId=module.params["resolver_rule_id"],
-                VPCId=module.params["vpc_id"],
-            )
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to create AWS Route53 Resolver rule association {module.params['name']}",
-            )
         association = response.get("ResolverRuleAssociation")
         if module.params["wait"]:
             association = wait_for_resolver_rule_association_status(
@@ -196,7 +257,7 @@ def ensure_present(client, module):
     result = {
         "changed": changed,
         "name": module.params["name"],
-        "resolver_rule_association": normalize_resolver_rule_association(association),
+        "resolver_rule_association": aws_resource_to_snake_dict(association),
         "state": "present",
     }
     if association is not None and association.get("Id") is not None:
@@ -213,19 +274,17 @@ def ensure_absent(client, module):
 
     if changed and not module.check_mode:
         resolver_rule_association_id = association["Id"]
-        disassociate_resolver_rule = AWSRetry.jittered_backoff()(
-            client.disassociate_resolver_rule
+        aws_response(
+            client,
+            module,
+            "disassociate_resolver_rule",
+            error_message=(
+                "Unable to delete AWS Route53 Resolver rule association "
+                f"{module.params['name']}"
+            ),
+            ResolverRuleId=module.params["resolver_rule_id"],
+            VPCId=module.params["vpc_id"],
         )
-        try:
-            disassociate_resolver_rule(
-                ResolverRuleId=module.params["resolver_rule_id"],
-                VPCId=module.params["vpc_id"],
-            )
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to delete AWS Route53 Resolver rule association {module.params['name']}",
-            )
         if module.params["wait"]:
             wait_for_resolver_rule_association_status(
                 client,

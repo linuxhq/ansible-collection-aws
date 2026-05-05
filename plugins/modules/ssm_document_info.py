@@ -38,10 +38,43 @@ document:
   type: dict
 """
 
+import json
+
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
-    get_document,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_response,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
+)
+
+INVALID_DOCUMENT_ERRORS = ("InvalidDocument", "InvalidDocumentOperation")
+
+
+def get_document(client, module):
+    response = aws_response(
+        client,
+        module,
+        "get_document",
+        ignore_error_codes=INVALID_DOCUMENT_ERRORS,
+        ignored_error_result={},
+        DocumentFormat="JSON",
+        DocumentVersion="$LATEST",
+        Name=module.params["name"],
+    )
+    if response == {}:
+        return {}
+
+    document = aws_resource_to_snake_dict(response)
+    content = response.get("Content")
+    if content is None:
+        return document
+
+    try:
+        document["content"] = aws_resource_to_snake_dict(json.loads(content))
+    except ValueError:
+        document["content"] = content
+    return document
 
 
 def main():
@@ -53,13 +86,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        document=get_document(
-            client,
-            module,
-            module.params["name"],
-            missing_document={},
-            fail_on_invalid_content=False,
-        ),
+        document=get_document(client, module),
     )
 
 

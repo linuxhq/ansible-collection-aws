@@ -102,6 +102,15 @@ provisioner:
           - name: /molecule/vpc/subnet/b/id
             value: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
 
+        ssm_parameter_updated_list:
+          - "{{ ssm_parameter_list.0 | combine({'description': '/molecule/vpc/id updated'}) }}"
+          - "{{ ssm_parameter_list.1 | combine({'description': '/molecule/vpc/igw/id updated'}) }}"
+          - "{{ ssm_parameter_list.2 | combine({'description': '/molecule/vpc/nat/id updated'}) }}"
+          - "{{ ssm_parameter_list.3 | combine({'description': '/molecule/vpc/rtb/a/id updated'}) }}"
+          - "{{ ssm_parameter_list.4 | combine({'description': '/molecule/vpc/rtb/b/id updated'}) }}"
+          - "{{ ssm_parameter_list.5 | combine({'description': '/molecule/vpc/subnet/a/id updated'}) }}"
+          - "{{ ssm_parameter_list.6 | combine({'description': '/molecule/vpc/subnet/b/id updated'}) }}"
+
 scenario:
   test_sequence:
     - dependency

@@ -31,6 +31,12 @@ provisioner:
           - name: molecule-90d
             retention: 90
 
+        cloudwatchlogs_log_group_updated_list:
+          - name: molecule-30d
+            retention: 14
+          - name: molecule-90d
+            retention: 60
+
 scenario:
   test_sequence:
     - dependency

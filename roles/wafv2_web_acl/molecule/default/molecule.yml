@@ -131,6 +131,14 @@ provisioner:
                   metric_name: AWS-AWSManagedRulesSQLiRuleSet
                   sampled_requests_enabled: true
 
+        wafv2_web_acl_updated_list:
+          - "{{ wafv2_web_acl_list.0 | combine({'description': 'molecule-amazonipreputationlist-updated'}) }}"
+          - "{{ wafv2_web_acl_list.1 | combine({'description': 'molecule-commonruleset-updated'}) }}"
+          - "{{ wafv2_web_acl_list.2 | combine({'description': 'molecule-knownbadinputsruleset-updated'}) }}"
+          - "{{ wafv2_web_acl_list.3 | combine({'description': 'molecule-linuxruleset-updated'}) }}"
+          - "{{ wafv2_web_acl_list.4 | combine({'description': 'molecule-anonymousiplist-updated'}) }}"
+          - "{{ wafv2_web_acl_list.5 | combine({'description': 'molecule-sqliruleset-updated'}) }}"
+
 scenario:
   test_sequence:
     - dependency

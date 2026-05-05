@@ -69,13 +69,16 @@ region:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
-    get_account_level,
-    normalize_account_level,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_resource,
+    aws_response,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
+    validated_field_differences,
 )
 
 OPTION_TO_AWS_FIELD = {
@@ -92,6 +95,16 @@ def build_desired_update(params):
             aws_field: params.get(option_name)
             for option_name, aws_field in OPTION_TO_AWS_FIELD.items()
         }
+    )
+
+
+def get_account_level(client, module):
+    return aws_resource(
+        client,
+        module,
+        "get_instance_metadata_defaults",
+        "AccountLevel",
+        default={},
     )
 
 
@@ -128,27 +141,28 @@ def main():
 
     current_account_level = get_account_level(client, module)
     desired_update = build_desired_update(module.params)
+    desired_account_level = aws_resource_to_snake_dict(desired_update)
 
-    changed = any(
-        current_account_level.get(aws_field) != desired_value
-        for aws_field, desired_value in desired_update.items()
+    _, changed = validated_field_differences(
+        module,
+        current_account_level,
+        desired_account_level,
+        desired_account_level.keys(),
     )
 
     if changed and not module.check_mode:
-        modify_instance_metadata_defaults = AWSRetry.jittered_backoff()(
-            client.modify_instance_metadata_defaults
+        aws_response(
+            client,
+            module,
+            "modify_instance_metadata_defaults",
+            error_message="Unable to modify EC2 instance metadata defaults",
+            **desired_update,
         )
-        try:
-            modify_instance_metadata_defaults(**desired_update)
-        except Exception as e:
-            module.fail_json_aws(
-                e, msg="Unable to modify EC2 instance metadata defaults"
-            )
         current_account_level = get_account_level(client, module)
 
     result = {
         "changed": changed,
-        "account_level": normalize_account_level(current_account_level),
+        "account_level": aws_resource_to_snake_dict(current_account_level),
         "region": module.region,
     }
 

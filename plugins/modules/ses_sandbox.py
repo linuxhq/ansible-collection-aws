@@ -66,17 +66,15 @@ account:
   type: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.ses import (
-    get_account,
-    normalize_account,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_response,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
 )
 
 
@@ -120,7 +118,7 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("sesv2")
 
-    current_account = get_account(client, module)
+    current_account = aws_response(client, module, "get_account")
     request = build_request(module.params)
 
     ready = (
@@ -131,25 +129,26 @@ def main():
     changed = ready
 
     if changed and not module.check_mode:
-        put_account_details = AWSRetry.jittered_backoff()(client.put_account_details)
-        try:
-            put_account_details(**request)
-        except is_boto3_error_code("ConflictException"):
+        conflict_response = object()
+        response = aws_response(
+            client,
+            module,
+            "put_account_details",
+            error_message="Unable to manage AWS Simple Email Service account details",
+            ignore_error_codes="ConflictException",
+            ignored_error_result=conflict_response,
+            **request,
+        )
+        if response is conflict_response:
             module.warn(
                 "AWS Simple Email Service account details request is already in progress"
             )
-            current_account = get_account(client, module)
             changed = False
-        except Exception as e:
-            module.fail_json_aws(
-                e, msg="Unable to manage AWS Simple Email Service account details"
-            )
-        else:
-            current_account = get_account(client, module)
+        current_account = aws_response(client, module, "get_account")
 
     result = {
         "changed": changed,
-        "account": normalize_account(current_account),
+        "account": aws_resource_to_snake_dict(current_account),
     }
 
     module.exit_json(**result)

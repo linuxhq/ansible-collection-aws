@@ -48,10 +48,16 @@ topic_arn:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
     scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_resource,
+    aws_response,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
+    validated_field_differences,
 )
 
 MANAGED_ATTRIBUTE_MAP = {
@@ -60,16 +66,14 @@ MANAGED_ATTRIBUTE_MAP = {
 
 
 def get_topic_attributes(client, module):
-    get_topic_attributes = AWSRetry.jittered_backoff()(client.get_topic_attributes)
-    try:
-        response = get_topic_attributes(TopicArn=module.params["topic_arn"])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS Simple Notification Service topic attributes for {module.params['topic_arn']}",
-        )
-
-    return response.get("Attributes", {})
+    return aws_resource(
+        client,
+        module,
+        "get_topic_attributes",
+        "Attributes",
+        default={},
+        TopicArn=module.params["topic_arn"],
+    )
 
 
 def build_desired_attributes(module):
@@ -82,7 +86,7 @@ def build_desired_attributes(module):
 
 
 def normalize_attributes(attributes):
-    return boto3_resource_to_ansible_dict(attributes, force_tags=False)
+    return aws_resource_to_snake_dict(attributes)
 
 
 def main():
@@ -96,31 +100,31 @@ def main():
 
     current_attributes = get_topic_attributes(client, module)
     desired_attributes = build_desired_attributes(module)
+    desired_normalized_attributes = normalize_attributes(desired_attributes)
 
-    changed = False
-    for attribute, value in desired_attributes.items():
-        if current_attributes.get(attribute) != value:
-            changed = True
-            break
+    _, changed = validated_field_differences(
+        module,
+        current_attributes,
+        desired_normalized_attributes,
+        desired_normalized_attributes.keys(),
+    )
 
     if changed and not module.check_mode:
         for attribute, value in desired_attributes.items():
             if current_attributes.get(attribute) == value:
                 continue
-            set_topic_attributes = AWSRetry.jittered_backoff()(
-                client.set_topic_attributes
+            aws_response(
+                client,
+                module,
+                "set_topic_attributes",
+                error_message=(
+                    "Unable to manage AWS Simple Notification Service topic "
+                    f"attributes for {module.params['topic_arn']}"
+                ),
+                AttributeName=attribute,
+                AttributeValue=value,
+                TopicArn=module.params["topic_arn"],
             )
-            try:
-                set_topic_attributes(
-                    AttributeName=attribute,
-                    AttributeValue=value,
-                    TopicArn=module.params["topic_arn"],
-                )
-            except Exception as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to manage AWS Simple Notification Service topic attributes for {module.params['topic_arn']}",
-                )
         current_attributes = get_topic_attributes(client, module)
     elif changed and module.check_mode:
         current_attributes = dict(current_attributes)

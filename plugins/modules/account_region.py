@@ -9,6 +9,8 @@ version_added: 1.9.1
 short_description: Manage AWS account region opt-in status
 description:
   - Enables or disables the opt-in status of an AWS account region.
+  - Compares the desired state against the current region opt-in status fetched by name.
+  - O(name) is immutable and identifies the region being managed.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -28,7 +30,7 @@ options:
   wait:
     description:
       - Wait for the region status to reach the desired steady state.
-    default: false
+    default: true
     type: bool
   delay:
     description:
@@ -73,35 +75,266 @@ previous_region_opt_status:
   type: str
 """
 
-import time
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_resource,
+    aws_response,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    validated_field_differences,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    wait_for_aws_resource,
+)
 
 PRESENT_STATUSES = {"ENABLED", "ENABLING", "ENABLED_BY_DEFAULT"}
 ABSENT_STATUSES = {"DISABLED", "DISABLING"}
+IMMUTABLE_ITEMS = ["name"]
+COMPARE_ITEMS = ["name", "state"]
+
+
+ACCOUNT_REGION_WAITER_MODEL_DATA = {
+    "region_enabled": {
+        "delay": 30,
+        "maxAttempts": 60,
+        "operation": "GetRegionOptStatus",
+        "acceptors": [
+            {
+                "argument": "RegionOptStatus",
+                "expected": "ENABLED",
+                "matcher": "path",
+                "state": "success",
+            },
+            {
+                "argument": "RegionOptStatus",
+                "expected": "ENABLED_BY_DEFAULT",
+                "matcher": "path",
+                "state": "success",
+            },
+            {
+                "argument": "RegionOptStatus",
+                "expected": "ENABLING",
+                "matcher": "path",
+                "state": "retry",
+            },
+            {
+                "argument": "RegionOptStatus",
+                "expected": "DISABLING",
+                "matcher": "path",
+                "state": "retry",
+            },
+            {
+                "argument": "RegionOptStatus",
+                "expected": "DISABLED",
+                "matcher": "path",
+                "state": "retry",
+            },
+        ],
+    },
+    "region_disabled": {
+        "delay": 30,
+        "maxAttempts": 60,
+        "operation": "GetRegionOptStatus",
+        "acceptors": [
+            {
+                "argument": "RegionOptStatus",
+                "expected": "DISABLED",
+                "matcher": "path",
+                "state": "success",
+            },
+            {
+                "argument": "RegionOptStatus",
+                "expected": "DISABLING",
+                "matcher": "path",
+                "state": "retry",
+            },
+            {
+                "argument": "RegionOptStatus",
+                "expected": "ENABLING",
+                "matcher": "path",
+                "state": "retry",
+            },
+            {
+                "argument": "RegionOptStatus",
+                "expected": "ENABLED",
+                "matcher": "path",
+                "state": "retry",
+            },
+            {
+                "argument": "RegionOptStatus",
+                "expected": "ENABLED_BY_DEFAULT",
+                "matcher": "path",
+                "state": "retry",
+            },
+        ],
+    },
+}
+
+
+def build_desired_region(module):
+    return {
+        "name": module.params["name"],
+        "state": module.params["state"],
+    }
+
+
+def state_from_region_opt_status(region_opt_status):
+    if region_opt_status in PRESENT_STATUSES:
+        return "present"
+    if region_opt_status in ABSENT_STATUSES:
+        return "absent"
+    return None
+
+
+def desired_region_opt_status(state):
+    if state == "present":
+        return "ENABLED"
+    return "DISABLED"
+
+
+def desired_statuses(state):
+    if state == "present":
+        return PRESENT_STATUSES
+    return ABSENT_STATUSES
+
+
+def normalize_account_region(name, region_opt_status):
+    if not region_opt_status:
+        return None
+    return {
+        "name": name,
+        "region_opt_status": region_opt_status,
+        "state": state_from_region_opt_status(region_opt_status),
+    }
+
+
+def comparable_account_region(region):
+    if not region:
+        return None
+    return {
+        "name": region["name"],
+        "state": region["state"],
+    }
 
 
 def get_region_opt_status(client, module, region_name):
-    get_region_opt_status = AWSRetry.jittered_backoff()(client.get_region_opt_status)
-    try:
-        response = get_region_opt_status(RegionName=region_name)
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg=f"Unable to get AWS account region opt-in status for {region_name}"
-        )
-    return response["RegionOptStatus"]
+    return aws_resource(
+        client,
+        module,
+        "get_region_opt_status",
+        "RegionOptStatus",
+        RegionName=region_name,
+    )
 
 
 def wait_for_status(client, module, region_name, desired_statuses):
-    status = None
-    for _ in range(module.params["retries"]):
-        status = get_region_opt_status(client, module, region_name)
-        if status in desired_statuses:
-            return status
-        time.sleep(module.params["delay"])
-    module.fail_json(
-        msg=f"Timed out waiting for AWS account region {region_name} to reach one of {sorted(desired_statuses)}",
-        region_opt_status=status,
+    waiter_name = (
+        "region_enabled" if desired_statuses == PRESENT_STATUSES else "region_disabled"
+    )
+    wait_for_aws_resource(
+        client,
+        module,
+        ACCOUNT_REGION_WAITER_MODEL_DATA,
+        waiter_name,
+        (
+            f"Timed out waiting for AWS account region {region_name} "
+            f"to reach one of {sorted(desired_statuses)}"
+        ),
+        waiter_config={
+            "Delay": module.params["delay"],
+            "MaxAttempts": module.params["retries"],
+        },
+        RegionName=region_name,
+    )
+    return get_region_opt_status(client, module, region_name)
+
+
+def update_region_state(client, module, desired):
+    region_name = desired["name"]
+
+    if desired["state"] == "present":
+        operation = "enable_region"
+        action = "enable"
+    else:
+        operation = "disable_region"
+        action = "disable"
+
+    aws_response(
+        client,
+        module,
+        operation,
+        error_message=f"Unable to {action} AWS account region {region_name}",
+        RegionName=region_name,
+    )
+
+
+def get_current_region(client, module, name):
+    return normalize_account_region(name, get_region_opt_status(client, module, name))
+
+
+def ensure_region(client, module):
+    desired = build_desired_region(module)
+    previous = get_current_region(client, module, desired["name"])
+    current = comparable_account_region(previous)
+    desired_comparable = comparable_account_region(desired)
+
+    if current is None:
+        changed = True
+    else:
+        differences, changed = validated_field_differences(
+            module,
+            current,
+            desired_comparable,
+            COMPARE_ITEMS,
+            IMMUTABLE_ITEMS,
+            (
+                "Unable to update AWS account region "
+                f"{module.params['name']}: immutable fields differ"
+            ),
+        )
+
+    if changed and not module.check_mode:
+        update_region_state(client, module, desired)
+        current_status = (
+            wait_for_status(
+                client,
+                module,
+                desired["name"],
+                desired_statuses(desired["state"]),
+            )
+            if module.params["wait"]
+            else get_region_opt_status(client, module, desired["name"])
+        )
+        current_region = normalize_account_region(desired["name"], current_status)
+    elif changed and module.check_mode:
+        current_region = {
+            "name": desired["name"],
+            "region_opt_status": desired_region_opt_status(desired["state"]),
+            "state": desired["state"],
+        }
+    else:
+        current_region = previous
+
+    if module.params["wait"] and not module.check_mode and not changed:
+        current_region = normalize_account_region(
+            desired["name"],
+            wait_for_status(
+                client,
+                module,
+                desired["name"],
+                desired_statuses(desired["state"]),
+            ),
+        )
+
+    module.exit_json(
+        changed=changed,
+        name=desired["name"],
+        previous_region_opt_status=(
+            previous["region_opt_status"] if previous is not None else None
+        ),
+        region_opt_status=(
+            current_region["region_opt_status"] if current_region is not None else None
+        ),
     )
 
 
@@ -113,7 +346,7 @@ def main():
             "default": "present",
             "type": "str",
         },
-        "wait": {"default": False, "type": "bool"},
+        "wait": {"default": True, "type": "bool"},
         "delay": {"default": 30, "type": "int"},
         "retries": {"default": 60, "type": "int"},
     }
@@ -121,58 +354,7 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("account")
 
-    region_name = module.params["name"]
-    state = module.params["state"]
-    previous_status = get_region_opt_status(client, module, region_name)
-    current_status = previous_status
-    changed = False
-
-    if state == "present" and previous_status == "DISABLED":
-        changed = True
-        if not module.check_mode:
-            enable_region = AWSRetry.jittered_backoff()(client.enable_region)
-            try:
-                enable_region(RegionName=region_name)
-            except Exception as e:
-                module.fail_json_aws(
-                    e, msg=f"Unable to enable AWS account region {region_name}"
-                )
-            current_status = (
-                wait_for_status(client, module, region_name, PRESENT_STATUSES)
-                if module.params["wait"]
-                else get_region_opt_status(client, module, region_name)
-            )
-    elif state == "absent" and previous_status == "ENABLED":
-        changed = True
-        if not module.check_mode:
-            disable_region = AWSRetry.jittered_backoff()(client.disable_region)
-            try:
-                disable_region(RegionName=region_name)
-            except Exception as e:
-                module.fail_json_aws(
-                    e, msg=f"Unable to disable AWS account region {region_name}"
-                )
-            current_status = (
-                wait_for_status(client, module, region_name, ABSENT_STATUSES)
-                if module.params["wait"]
-                else get_region_opt_status(client, module, region_name)
-            )
-    elif module.params["wait"] and not module.check_mode:
-        if state == "present" and previous_status == "ENABLING":
-            current_status = wait_for_status(
-                client, module, region_name, PRESENT_STATUSES
-            )
-        elif state == "absent" and previous_status == "DISABLING":
-            current_status = wait_for_status(
-                client, module, region_name, ABSENT_STATUSES
-            )
-
-    module.exit_json(
-        changed=changed,
-        name=region_name,
-        previous_region_opt_status=previous_status,
-        region_opt_status=current_status,
-    )
+    ensure_region(client, module)
 
 
 if __name__ == "__main__":

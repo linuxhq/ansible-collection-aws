@@ -29,7 +29,6 @@ provisioner:
           - name: af-south-1
           - name: ap-east-1
           - name: ca-west-1
-            wait: true
 
 scenario:
   test_sequence:

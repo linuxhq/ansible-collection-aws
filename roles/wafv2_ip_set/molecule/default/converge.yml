@@ -10,5 +10,10 @@
       tags:
         - molecule-idempotence-notest
 
-    - wafv2_ip_set
+    - role: wafv2_ip_set
+      tags:
+        - molecule-idempotence-notest
+
+    - role: wafv2_ip_set
+      wafv2_ip_set_list: "{{ wafv2_ip_set_updated_list }}"
 ...

@@ -40,45 +40,39 @@ subnet_groups:
   type: list
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_list_to_ansible_dict,
     scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_list_to_snake_dicts,
 )
 
 
 def list_subnet_groups(client, module):
     kwargs = scrub_none_parameters({"DBSubnetGroupName": module.params["name"]})
 
-    try:
-        response = paginated_query_with_retries(
-            client,
-            "describe_db_subnet_groups",
-            **kwargs,
-        )
-    except is_boto3_error_code("DBSubnetGroupNotFoundFault") as e:
-        if module.params["name"] is not None:
-            return []
-        module.fail_json_aws(
-            e,
-            msg="Unable to describe AWS RDS subnet groups",
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg="Unable to describe AWS RDS subnet groups",
-        )
-
     subnet_groups = [
         subnet_group
-        for subnet_group in response.get("DBSubnetGroups", [])
+        for subnet_group in aws_paginated_list(
+            client,
+            module,
+            "describe_db_subnet_groups",
+            "DBSubnetGroups",
+            ignore_error_codes=(
+                "DBSubnetGroupNotFoundFault"
+                if module.params["name"] is not None
+                else None
+            ),
+            ignored_error_result=[],
+            **kwargs,
+        )
         if subnet_group.get("DBSubnetGroupName") is not None
     ]
-    return boto3_resource_list_to_ansible_dict(subnet_groups, force_tags=False)
+    return aws_resource_list_to_snake_dicts(subnet_groups)
 
 
 def main():

@@ -4,7 +4,7 @@ Gather information about aws elastic container registry repositories
 
 ## Requirements
 
-None
+    ecs_ecr_info_name: null
 
 ## Role Variables
 
@@ -24,4 +24,5 @@ None
     - hosts: aws
       connection: local
       roles:
-        - linuxhq.aws.ecs_ecr_info
+        - role: linuxhq.aws.ecs_ecr_info
+          ecs_ecr_info_name: molecule-00

@@ -53,9 +53,11 @@ certificate_arn:
 import hashlib
 import json
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_response,
 )
 
 
@@ -99,14 +101,16 @@ def main():
         }
     )
 
-    request_certificate = AWSRetry.jittered_backoff()(client.request_certificate)
-    try:
-        response = request_certificate(**params)
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to request AWS Certificate Manager certificate {module.params['domain_name']}",
-        )
+    response = aws_response(
+        client,
+        module,
+        "request_certificate",
+        error_message=(
+            "Unable to request AWS Certificate Manager certificate "
+            f"{module.params['domain_name']}"
+        ),
+        **params,
+    )
 
     module.exit_json(
         changed=True,

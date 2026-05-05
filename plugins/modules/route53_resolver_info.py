@@ -42,10 +42,31 @@ resolver_endpoints:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.route53 import (
-    list_resolver_endpoints,
-    normalize_resolver_endpoint_with_ip_addresses,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_list_to_snake_dicts,
+    aws_resource_to_snake_dict,
+    filter_aws_resources,
+)
+
+
+def normalize_resolver_endpoint_with_ip_addresses(client, module, endpoint):
+    normalized = aws_resource_to_snake_dict(endpoint)
+    if endpoint is None or endpoint.get("Id") is None:
+        return normalized
+
+    normalized["ip_addresses"] = aws_resource_list_to_snake_dicts(
+        aws_paginated_list(
+            client,
+            module,
+            "list_resolver_endpoint_ip_addresses",
+            "IpAddresses",
+            ResolverEndpointId=endpoint["Id"],
+        )
+    )
+    return normalized
 
 
 def main():
@@ -56,14 +77,18 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("route53resolver")
-    resolver_endpoints = list_resolver_endpoints(client, module)
+    resolver_endpoints = aws_paginated_list(
+        client,
+        module,
+        "list_resolver_endpoints",
+        "ResolverEndpoints",
+    )
 
     if module.params["name"] is not None:
-        resolver_endpoints = [
-            endpoint
-            for endpoint in resolver_endpoints
-            if endpoint.get("Name") == module.params["name"]
-        ]
+        resolver_endpoints = filter_aws_resources(
+            resolver_endpoints,
+            name=module.params["name"],
+        )
 
     module.exit_json(
         changed=False,

@@ -52,28 +52,26 @@ web_acls:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
-    list_wafv2_summaries,
-    normalize_wafv2_resource,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_marker_paginated_list,
+    aws_resource,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
 )
 
 
 def get_web_acl(client, module, scope, summary):
-    get_web_acl = AWSRetry.jittered_backoff()(client.get_web_acl)
-    try:
-        response = get_web_acl(
-            Id=summary["Id"],
-            Name=summary["Name"],
-            Scope=scope,
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS WAFv2 web ACL {summary['Name']}",
-        )
-
-    return response.get("WebACL", {})
+    return aws_resource(
+        client,
+        module,
+        "get_web_acl",
+        "WebACL",
+        default={},
+        Id=summary["Id"],
+        Name=summary["Name"],
+        Scope=scope,
+    )
 
 
 def main():
@@ -89,17 +87,17 @@ def main():
     client = module.client("wafv2")
 
     scope = module.params["scope"].upper()
-    summaries = list_wafv2_summaries(
+    summaries = aws_marker_paginated_list(
         client,
         module,
-        scope,
         "list_web_acls",
         "WebACLs",
-        "Unable to list AWS WAFv2 web ACLs",
+        marker_arg="NextMarker",
+        initial_kwargs={"Scope": scope},
     )
 
     web_acls = [
-        normalize_wafv2_resource(get_web_acl(client, module, scope, summary))
+        aws_resource_to_snake_dict(get_web_acl(client, module, scope, summary))
         for summary in summaries
         if summary.get("Id") and summary.get("Name")
     ]

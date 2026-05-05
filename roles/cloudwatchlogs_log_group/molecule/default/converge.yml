@@ -10,5 +10,10 @@
       tags:
         - molecule-idempotence-notest
 
-    - cloudwatchlogs_log_group
+    - role: cloudwatchlogs_log_group
+      tags:
+        - molecule-idempotence-notest
+
+    - role: cloudwatchlogs_log_group
+      cloudwatchlogs_log_group_list: "{{ cloudwatchlogs_log_group_updated_list }}"
 ...

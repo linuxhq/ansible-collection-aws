@@ -41,40 +41,35 @@ clusters:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_list_to_ansible_dict,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+    aws_resource,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_list_to_snake_dicts,
 )
 
 
 def list_cluster_names(client, module):
-    try:
-        response = paginated_query_with_retries(client, "list_clusters")
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg="Unable to list AWS EKS clusters",
-        )
-    return response.get("clusters", [])
+    return aws_paginated_list(
+        client,
+        module,
+        "list_clusters",
+        "clusters",
+    )
 
 
 def describe_cluster(client, module, name):
-    describe_cluster = AWSRetry.jittered_backoff()(client.describe_cluster)
-    try:
-        response = describe_cluster(name=name)
-    except is_boto3_error_code("ResourceNotFoundException"):
-        return None
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to describe AWS EKS cluster {name}",
-        )
-    return response.get("cluster")
+    return aws_resource(
+        client,
+        module,
+        "describe_cluster",
+        "cluster",
+        ignore_error_codes="ResourceNotFoundException",
+        ignored_error_result=None,
+        name=name,
+    )
 
 
 def main():
@@ -101,7 +96,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        clusters=boto3_resource_list_to_ansible_dict(clusters, force_tags=False),
+        clusters=aws_resource_list_to_snake_dicts(clusters),
     )
 
 

@@ -40,16 +40,15 @@ placement_groups:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
-    describe_ec2_placement_groups,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.exceptions import (
-    AnsibleAWSError,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_list_to_ansible_dict,
     scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_resource,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_list_to_snake_dicts,
 )
 
 
@@ -71,17 +70,18 @@ def main():
         }
     )
 
-    try:
-        placement_groups = describe_ec2_placement_groups(client, **request)
-    except AnsibleAWSError as e:
-        module.fail_json_aws_error(e)
+    placement_groups = aws_resource(
+        client,
+        module,
+        "describe_placement_groups",
+        "PlacementGroups",
+        default=[],
+        **request,
+    )
 
     module.exit_json(
         changed=False,
-        placement_groups=boto3_resource_list_to_ansible_dict(
-            placement_groups,
-            force_tags=False,
-        ),
+        placement_groups=aws_resource_list_to_snake_dicts(placement_groups),
     )
 
 

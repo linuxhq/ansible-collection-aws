@@ -10,5 +10,10 @@
       tags:
         - molecule-idempotence-notest
 
-    - secretsmanager_secret
+    - role: secretsmanager_secret
+      tags:
+        - molecule-idempotence-notest
+
+    - role: secretsmanager_secret
+      secretsmanager_secret_list: "{{ secretsmanager_secret_updated_list }}"
 ...

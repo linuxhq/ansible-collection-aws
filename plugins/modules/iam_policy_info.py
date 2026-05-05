@@ -36,15 +36,11 @@ user_policies:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.exceptions import (
-    AnsibleAWSError,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.iam import list_iam_users
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+    aws_response,
+)
 
 
 def build_entity_policies(client, module, entity_type, names):
@@ -84,7 +80,7 @@ def build_entity_policies(client, module, entity_type, names):
 
 
 def get_group_inline_policies(client, module):
-    groups = list_iam_entities(client, module, "list_groups", "Groups")
+    groups = aws_paginated_list(client, module, "list_groups", "Groups")
     return build_entity_policies(
         client,
         module,
@@ -94,19 +90,15 @@ def get_group_inline_policies(client, module):
 
 
 def get_inline_policy(client, module, operation, entity_type, entity_name, policy_name):
-    get_policy = AWSRetry.jittered_backoff()(getattr(client, operation))
-    try:
-        response = get_policy(
-            **{
-                f"{entity_type}Name": entity_name,
-                "PolicyName": policy_name,
-            }
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS IAM {entity_type.lower()} inline policy {policy_name} for {entity_name}",
-        )
+    response = aws_response(
+        client,
+        module,
+        operation,
+        **{
+            f"{entity_type}Name": entity_name,
+            "PolicyName": policy_name,
+        },
+    )
 
     return {
         "policy_name": response.get("PolicyName", policy_name),
@@ -115,10 +107,7 @@ def get_inline_policy(client, module, operation, entity_type, entity_name, polic
 
 
 def get_user_inline_policies(client, module):
-    try:
-        users = list_iam_users(client)
-    except AnsibleAWSError as e:
-        module.fail_json_aws_error(e)
+    users = aws_paginated_list(client, module, "list_users", "Users")
 
     return build_entity_policies(
         client,
@@ -128,30 +117,14 @@ def get_user_inline_policies(client, module):
     )
 
 
-def list_iam_entities(client, module, operation, result_key):
-    try:
-        response = paginated_query_with_retries(client, operation)
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list AWS IAM {result_key.lower()}",
-        )
-    return response.get(result_key, [])
-
-
 def list_inline_policy_names(client, module, operation, entity_type, entity_name):
-    try:
-        response = paginated_query_with_retries(
-            client,
-            operation,
-            **{f"{entity_type}Name": entity_name},
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list AWS IAM {entity_type.lower()} inline policies for {entity_name}",
-        )
-    return response.get("PolicyNames", [])
+    return aws_paginated_list(
+        client,
+        module,
+        operation,
+        "PolicyNames",
+        **{f"{entity_type}Name": entity_name},
+    )
 
 
 def main():

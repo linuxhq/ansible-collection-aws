@@ -49,31 +49,28 @@ verification_token:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import aws_resource
 
 
 def get_domain_dkim_tokens(client, module, identity):
-    verify_domain_dkim = AWSRetry.jittered_backoff()(client.verify_domain_dkim)
-    try:
-        response = verify_domain_dkim(Domain=identity)
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to gather AWS SES DKIM tokens for {identity}",
-        )
-    return response.get("DkimTokens", [])
+    return aws_resource(
+        client,
+        module,
+        "verify_domain_dkim",
+        "DkimTokens",
+        default=[],
+        Domain=identity,
+    )
 
 
 def get_domain_verification_token(client, module, identity):
-    verify_domain_identity = AWSRetry.jittered_backoff()(client.verify_domain_identity)
-    try:
-        response = verify_domain_identity(Domain=identity)
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to gather AWS SES verification token for {identity}",
-        )
-    return response.get("VerificationToken")
+    return aws_resource(
+        client,
+        module,
+        "verify_domain_identity",
+        "VerificationToken",
+        Domain=identity,
+    )
 
 
 def main():

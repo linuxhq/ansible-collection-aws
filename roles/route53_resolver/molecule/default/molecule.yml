@@ -70,9 +70,37 @@ provisioner:
             direction: outbound
             ip_addresses:
               - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
+                ip: 192.168.0.123
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
+                ip: 192.168.0.251
+            protocols:
+              - do53
+            security_group_ids:
+              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
+
+          - name: molecule-google
+            direction: outbound
+            ip_addresses:
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
+                ip: 192.168.0.124
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
+                ip: 192.168.0.252
+            protocols:
+              - do53
+            security_group_ids:
+              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
+
+        route53_resolver_idempotence:
+          - name: molecule-cloudflare
+            direction: outbound
+            ip_addresses:
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
                 ip: 192.168.0.125
               - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
                 ip: 192.168.0.253
+            protocols:
+              - do53
+              - doh
             security_group_ids:
               - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
@@ -83,6 +111,9 @@ provisioner:
                 ip: 192.168.0.126
               - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
                 ip: 192.168.0.254
+            protocols:
+              - do53
+              - doh
             security_group_ids:
               - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
