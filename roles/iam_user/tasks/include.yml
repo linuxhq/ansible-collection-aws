@@ -21,7 +21,7 @@
     wait: "{{ _user.wait | d(true) }}"
     wait_timeout: "{{ _user.wait_timeout | d(120) }}"
   register: __iam_user_result
-  loop: "{{ iam_user_list }}"
+  loop: "{{ __iam_user_list }}"
   loop_control:
     label: "{{ _user.name | d(none) }}"
     loop_var: _user

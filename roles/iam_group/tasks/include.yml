@@ -12,7 +12,7 @@
     users: "{{ _group.users | d([]) }}"
     validate_certs: true
   register: __iam_group_result
-  loop: "{{ iam_group_list }}"
+  loop: "{{ __iam_group_list }}"
   loop_control:
     label: "{{ _group.name | d(none) }}"
     loop_var: _group

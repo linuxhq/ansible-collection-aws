@@ -11,7 +11,7 @@
     state: "{{ _policy.state | d('present') }}"
     validate_certs: true
   register: __iam_policy_result
-  loop: "{{ iam_policy_list }}"
+  loop: "{{ __iam_policy_list }}"
   loop_control:
     label: "{{ _policy.policy_name | d(none) }}"
     loop_var: _policy

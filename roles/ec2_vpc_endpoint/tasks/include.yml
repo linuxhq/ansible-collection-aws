@@ -4,7 +4,7 @@
     - ec2_vpc_endpoint
   amazon.aws.ec2_vpc_endpoint:
     client_token: "{{ _vpce.client_token | d(omit) }}"
-    policy: "{{ _vpce.policy | to_json | d(omit) }}"
+    policy: "{{ _vpce.policy | to_json if _vpce.policy is defined else omit }}"
     purge_tags: "{{ _vpce.purge_tags | d(true) }}"
     route_table_ids: "{{ _vpce.route_table_ids | d(omit) }}"
     service: "{{ _vpce.service }}"
@@ -20,7 +20,7 @@
     vpc_endpoint_type: "{{ _vpce.vpc_endpoint_type | d('Gateway') }}"
     vpc_id: "{{ _vpce.vpc_id }}"
     wait: "{{ _vpce.wait | d(false) }}"
-    wait_timeout: "{{ _vpc.wait_timeout | d(320) }}"
+    wait_timeout: "{{ _vpce.wait_timeout | d(320) }}"
   register: __ec2_vpc_endpoint_result
   loop: "{{ __ec2_vpc_endpoint_list }}"
   loop_control:
