@@ -42,11 +42,12 @@ resolver_rules:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.route53 import (
-    list_resolver_rule_associations,
-    list_resolver_rules,
-    normalize_resolver_rule,
-    normalize_resolver_rule_association,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
+    filter_aws_resources,
 )
 
 
@@ -60,9 +61,9 @@ def group_associations_by_rule_id(associations):
 
 
 def normalize_resolver_rule_with_associations(rule, associations_by_rule_id):
-    normalized = normalize_resolver_rule(rule)
+    normalized = aws_resource_to_snake_dict(rule)
     normalized["associations"] = [
-        normalize_resolver_rule_association(association)
+        aws_resource_to_snake_dict(association)
         for association in associations_by_rule_id.get(rule.get("Id"), [])
     ]
     normalized["vpc_ids"] = [
@@ -81,15 +82,26 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("route53resolver")
-    resolver_rules = list_resolver_rules(client, module)
+    resolver_rules = aws_paginated_list(
+        client,
+        module,
+        "list_resolver_rules",
+        "ResolverRules",
+    )
     associations_by_rule_id = group_associations_by_rule_id(
-        list_resolver_rule_associations(client, module)
+        aws_paginated_list(
+            client,
+            module,
+            "list_resolver_rule_associations",
+            "ResolverRuleAssociations",
+        )
     )
 
     if module.params["name"] is not None:
-        resolver_rules = [
-            rule for rule in resolver_rules if rule.get("Name") == module.params["name"]
-        ]
+        resolver_rules = filter_aws_resources(
+            resolver_rules,
+            name=module.params["name"],
+        )
 
     module.exit_json(
         changed=False,

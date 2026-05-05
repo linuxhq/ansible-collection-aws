@@ -25,5 +25,11 @@
       tags:
         - molecule-idempotence-notest
 
-    - route53_resolver
+    - role: route53_resolver
+      tags:
+        - molecule-idempotence-notest
+
+    - role: route53_resolver
+      route53_resolver_list:
+        "{{ route53_resolver_idempotence }}"
 ...

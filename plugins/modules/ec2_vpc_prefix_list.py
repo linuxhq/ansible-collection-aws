@@ -93,15 +93,60 @@ state:
   type: str
 """
 
-import json
-from time import sleep
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
-    get_prefix_list_entries,
-    list_prefix_lists,
-    normalize_prefix_list,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+    aws_response,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_list_to_snake_dicts,
+    aws_resource_to_snake_dict,
+    canonicalize_list,
+    list_difference,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    wait_for_aws_resource,
+)
+
+EC2_WAITER_MODEL_DATA = {
+    "managed_prefix_list_ready": {
+        "delay": 1,
+        "maxAttempts": 60,
+        "operation": "DescribeManagedPrefixLists",
+        "acceptors": [
+            {
+                "argument": "PrefixLists[0].State",
+                "expected": "create-complete",
+                "matcher": "path",
+                "state": "success",
+            },
+            {
+                "argument": "PrefixLists[0].State",
+                "expected": "modify-complete",
+                "matcher": "path",
+                "state": "success",
+            },
+            {
+                "argument": "PrefixLists[0].State",
+                "expected": "create-in-progress",
+                "matcher": "path",
+                "state": "retry",
+            },
+            {
+                "argument": "PrefixLists[0].State",
+                "expected": "modify-in-progress",
+                "matcher": "path",
+                "state": "retry",
+            },
+            {
+                "argument": "PrefixLists[0].State",
+                "expected": "restore-in-progress",
+                "matcher": "path",
+                "state": "retry",
+            },
+        ],
+    },
+}
 
 
 def aws_add_entry(entry):
@@ -127,26 +172,39 @@ def canonical_entry(entry):
 
 
 def canonicalize_entries(entries):
-    normalized = [canonical_entry(entry) for entry in entries or []]
-    return sorted(
-        normalized,
-        key=lambda item: json.dumps(item, sort_keys=True),
-    )
+    return canonicalize_list(entries, canonical_entry)
 
 
 def diff_entries(left, right):
-    right_set = {
-        json.dumps(item, sort_keys=True) for item in canonicalize_entries(right)
-    }
-    return [
-        entry
-        for entry in canonicalize_entries(left)
-        if json.dumps(entry, sort_keys=True) not in right_set
-    ]
+    return list_difference(left, right, canonical_entry)
+
+
+def get_prefix_list_entries(client, module, prefix_list_id):
+    return aws_resource_list_to_snake_dicts(
+        aws_paginated_list(
+            client,
+            module,
+            "get_managed_prefix_list_entries",
+            "Entries",
+            PrefixListId=prefix_list_id,
+        )
+    )
+
+
+def normalize_prefix_list(prefix_list, entries=None):
+    normalized = aws_resource_to_snake_dict(prefix_list or {})
+    if entries is not None:
+        normalized["entries"] = entries
+    return normalized
 
 
 def find_prefix_list(client, module, name):
-    for prefix_list in list_prefix_lists(client, module):
+    for prefix_list in aws_paginated_list(
+        client,
+        module,
+        "describe_managed_prefix_lists",
+        "PrefixLists",
+    ):
         if (
             prefix_list.get("PrefixListName") == name
             and prefix_list.get("OwnerId") != "AWS"
@@ -159,27 +217,14 @@ def find_prefix_list(client, module, name):
 
 
 def wait_for_ready_state(client, module, prefix_list_id):
-    describe_managed_prefix_lists = AWSRetry.jittered_backoff()(
-        client.describe_managed_prefix_lists
-    )
-    for _ in range(60):
-        try:
-            response = describe_managed_prefix_lists(PrefixListIds=[prefix_list_id])
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to get EC2 VPC managed prefix list state for {prefix_list_id}",
-            )
-
-        prefix_lists = response.get("PrefixLists", [])
-        if prefix_lists:
-            state = prefix_lists[0].get("State")
-            if state in ("create-complete", "modify-complete"):
-                return
-        sleep(1)
-
-    module.fail_json(
-        msg=f"Timed out waiting for EC2 VPC managed prefix list {prefix_list_id}"
+    wait_for_aws_resource(
+        client,
+        module,
+        EC2_WAITER_MODEL_DATA,
+        "managed_prefix_list_ready",
+        f"Timed out waiting for EC2 VPC managed prefix list {prefix_list_id}",
+        waiter_config={"Delay": 1, "MaxAttempts": 60},
+        PrefixListIds=[prefix_list_id],
     )
 
 
@@ -198,16 +243,15 @@ def modify_prefix_list(client, module, current, **kwargs):
         request["CurrentVersion"] = current["Version"]
     request.update(kwargs)
 
-    modify_managed_prefix_list = AWSRetry.jittered_backoff()(
-        client.modify_managed_prefix_list
+    aws_response(
+        client,
+        module,
+        "modify_managed_prefix_list",
+        error_message=(
+            "Unable to modify EC2 VPC managed prefix list " f"{module.params['name']}"
+        ),
+        **request,
     )
-    try:
-        modify_managed_prefix_list(**request)
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to modify EC2 VPC managed prefix list {module.params['name']}",
-        )
 
 
 def ensure_present(client, module):
@@ -233,21 +277,19 @@ def ensure_present(client, module):
 
     if current is None:
         if not module.check_mode:
-            create_managed_prefix_list = AWSRetry.jittered_backoff()(
-                client.create_managed_prefix_list
+            response = aws_response(
+                client,
+                module,
+                "create_managed_prefix_list",
+                error_message=(
+                    "Unable to create EC2 VPC managed prefix list "
+                    f"{module.params['name']}"
+                ),
+                AddressFamily=module.params["address_family"],
+                Entries=aws_add_entries(desired_entries),
+                MaxEntries=len(desired_entries),
+                PrefixListName=module.params["name"],
             )
-            try:
-                response = create_managed_prefix_list(
-                    AddressFamily=module.params["address_family"],
-                    Entries=aws_add_entries(desired_entries),
-                    MaxEntries=len(desired_entries),
-                    PrefixListName=module.params["name"],
-                )
-            except Exception as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to create EC2 VPC managed prefix list {module.params['name']}",
-                )
             prefix_list = response.get("PrefixList", {})
             if prefix_list.get("PrefixListId"):
                 wait_for_ready_state(client, module, prefix_list["PrefixListId"])
@@ -313,16 +355,16 @@ def ensure_absent(client, module):
     changed = current is not None
 
     if changed and not module.check_mode:
-        delete_managed_prefix_list = AWSRetry.jittered_backoff()(
-            client.delete_managed_prefix_list
+        aws_response(
+            client,
+            module,
+            "delete_managed_prefix_list",
+            error_message=(
+                "Unable to delete EC2 VPC managed prefix list "
+                f"{module.params['name']}"
+            ),
+            PrefixListId=current["PrefixListId"],
         )
-        try:
-            delete_managed_prefix_list(PrefixListId=current["PrefixListId"])
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to delete EC2 VPC managed prefix list {module.params['name']}",
-            )
 
     result = {
         "changed": changed,

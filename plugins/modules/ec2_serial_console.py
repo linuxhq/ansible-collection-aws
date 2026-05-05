@@ -55,23 +55,34 @@ state:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
-    get_serial_console_access,
-    normalize_serial_console_access,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_response,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
 )
 
 
+def get_serial_console_access(client, module):
+    response = aws_response(client, module, "get_serial_console_access_status")
+    status = {
+        "ManagedBy": response.get("ManagedBy"),
+        "SerialConsoleAccessEnabled": response.get("SerialConsoleAccessEnabled"),
+    }
+    return {key: value for key, value in status.items() if value is not None}
+
+
 def set_serial_console_access(client, module, desired_enabled):
-    modify_serial_console_access = AWSRetry.jittered_backoff()(
-        client.enable_serial_console_access
-        if desired_enabled
-        else client.disable_serial_console_access
+    aws_response(
+        client,
+        module,
+        (
+            "enable_serial_console_access"
+            if desired_enabled
+            else "disable_serial_console_access"
+        ),
+        error_message="Unable to manage EC2 serial console access",
     )
-    try:
-        modify_serial_console_access()
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to manage EC2 serial console access")
 
 
 def main():
@@ -98,7 +109,7 @@ def main():
     result = {
         "changed": changed,
         "region": module.region,
-        "serial_console_access": normalize_serial_console_access(current),
+        "serial_console_access": aws_resource_to_snake_dict(current),
         "state": module.params["state"],
     }
 

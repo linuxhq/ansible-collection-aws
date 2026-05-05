@@ -9,6 +9,7 @@ version_added: 1.9.1
 short_description: Manage AWS Notifications contacts
 description:
   - Manages AWS Notifications email contacts.
+  - O(name) is immutable after contact creation.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -63,40 +64,59 @@ state:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+    aws_response,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import (
-    list_email_contacts,
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
+    find_aws_resource,
+    validate_immutable_fields,
 )
 
 
 def get_email_contact_by_address(client, module, email_address):
-    for contact in list_email_contacts(client, module):
-        if contact.get("address") == email_address:
-            return contact
-    return None
+    return find_aws_resource(
+        aws_paginated_list(
+            client,
+            module,
+            "list_email_contacts",
+            "emailContacts",
+        ),
+        address=email_address,
+    )
 
 
 def ensure_present(client, module):
     contact = get_email_contact_by_address(
         client, module, module.params["email_address"]
     )
+    comparable_contact = aws_resource_to_snake_dict(contact)
+    validate_immutable_fields(
+        module,
+        comparable_contact,
+        {"name": module.params["name"]},
+        ["name"],
+        (
+            "Unable to update AWS Notifications contact "
+            f"{module.params['email_address']}: immutable fields differ"
+        ),
+    )
+
     changed = contact is None
 
     if changed and not module.check_mode:
-        create_email_contact = AWSRetry.jittered_backoff()(client.create_email_contact)
-        try:
-            response = create_email_contact(
-                emailAddress=module.params["email_address"],
-                name=module.params["name"],
-            )
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to create AWS Notifications contact {module.params['email_address']}",
-            )
+        response = aws_response(
+            client,
+            module,
+            "create_email_contact",
+            error_message=(
+                "Unable to create AWS Notifications contact "
+                f"{module.params['email_address']}"
+            ),
+            emailAddress=module.params["email_address"],
+            name=module.params["name"],
+        )
 
         contact = {
             "address": module.params["email_address"],
@@ -112,9 +132,7 @@ def ensure_present(client, module):
     module.exit_json(
         changed=changed,
         email_contact=(
-            boto3_resource_to_ansible_dict(contact, force_tags=False)
-            if contact is not None
-            else None
+            aws_resource_to_snake_dict(contact) if contact is not None else None
         ),
         state="present",
     )
@@ -127,14 +145,16 @@ def ensure_absent(client, module):
     changed = contact is not None
 
     if changed and not module.check_mode:
-        delete_email_contact = AWSRetry.jittered_backoff()(client.delete_email_contact)
-        try:
-            delete_email_contact(arn=contact.get("arn"))
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to delete AWS Notifications contact {module.params['email_address']}",
-            )
+        aws_response(
+            client,
+            module,
+            "delete_email_contact",
+            error_message=(
+                "Unable to delete AWS Notifications contact "
+                f"{module.params['email_address']}"
+            ),
+            arn=contact.get("arn"),
+        )
 
     module.exit_json(
         changed=changed,

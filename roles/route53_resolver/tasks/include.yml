@@ -6,13 +6,14 @@
     direction: "{{ _route53resolver.direction }}"
     ip_addresses: "{{ _route53resolver.ip_addresses }}"
     name: "{{ _route53resolver.name }}"
+    protocols: "{{ _route53resolver.protocols | d(['do53']) }}"
     resolver_endpoint_type: "{{ _route53resolver.resolver_endpoint_type | d('ipv4') }}"
     security_group_ids: "{{ _route53resolver.security_group_ids }}"
     state: "{{ _route53resolver.state | d('present') }}"
     validate_certs: true
     wait: "{{ _route53resolver.wait | d(true) }}"
     wait_delay: 5
-    wait_timeout: 300
+    wait_timeout: "{{ _route53resolver.wait_timeout | d(route53_resolver_timeout) }}"
   register: __route53_resolver_result
   loop: "{{ __route53_resolver_list }}"
   loop_control:

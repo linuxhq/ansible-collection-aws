@@ -87,13 +87,17 @@ state:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
-    list_associations,
-    normalize_association,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+    aws_response,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
+    canonicalize_list,
+    find_aws_resource,
 )
 
 
@@ -110,18 +114,25 @@ def aws_targets(targets):
     return [aws_target(target) for target in targets or []]
 
 
+def normalize_association(association):
+    return aws_resource_to_snake_dict(association, ignore_list=["TargetMaps"])
+
+
+def canonical_target(target):
+    key = target.get("key", target.get("Key"))
+    values = target.get("values", target.get("Values", [])) or []
+    return {
+        "Key": key,
+        "Values": sorted(values),
+    }
+
+
+def target_sort_key(target):
+    return target["Key"] or ""
+
+
 def canonicalize_targets(targets):
-    normalized = []
-    for target in targets or []:
-        key = target.get("key", target.get("Key"))
-        values = target.get("values", target.get("Values", [])) or []
-        normalized.append(
-            {
-                "Key": key,
-                "Values": sorted(values),
-            }
-        )
-    return sorted(normalized, key=lambda item: item["Key"] or "")
+    return canonicalize_list(targets, canonical_target, target_sort_key)
 
 
 def build_desired_association(module, association_id=None):
@@ -136,10 +147,7 @@ def build_desired_association(module, association_id=None):
 
 
 def find_association(associations, name):
-    for association in associations:
-        if association.get("Name") == name:
-            return association
-    return None
+    return find_aws_resource(associations, name=name)
 
 
 def ensure_present(client, module, current):
@@ -151,18 +159,18 @@ def ensure_present(client, module, current):
         if module.check_mode:
             association = desired
         else:
-            create_association = AWSRetry.jittered_backoff()(client.create_association)
-            try:
-                response = create_association(
-                    Name=module.params["name"],
-                    ScheduleExpression=module.params["schedule_expression"],
-                    Targets=aws_targets(module.params["targets"]),
-                )
-            except Exception as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to create AWS Systems Manager association {module.params['name']}",
-                )
+            response = aws_response(
+                client,
+                module,
+                "create_association",
+                error_message=(
+                    "Unable to create AWS Systems Manager association "
+                    f"{module.params['name']}"
+                ),
+                Name=module.params["name"],
+                ScheduleExpression=module.params["schedule_expression"],
+                Targets=aws_targets(module.params["targets"]),
+            )
             association = response.get("AssociationDescription", {})
     else:
         changed = (
@@ -171,18 +179,18 @@ def ensure_present(client, module, current):
         )
         desired = build_desired_association(module, current.get("AssociationId"))
         if changed and not module.check_mode:
-            update_association = AWSRetry.jittered_backoff()(client.update_association)
-            try:
-                response = update_association(
-                    AssociationId=current["AssociationId"],
-                    ScheduleExpression=module.params["schedule_expression"],
-                    Targets=aws_targets(module.params["targets"]),
-                )
-            except Exception as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to update AWS Systems Manager association {module.params['name']}",
-                )
+            response = aws_response(
+                client,
+                module,
+                "update_association",
+                error_message=(
+                    "Unable to update AWS Systems Manager association "
+                    f"{module.params['name']}"
+                ),
+                AssociationId=current["AssociationId"],
+                ScheduleExpression=module.params["schedule_expression"],
+                Targets=aws_targets(module.params["targets"]),
+            )
             association = response.get("AssociationDescription", {})
         elif changed and module.check_mode:
             association = desired
@@ -205,14 +213,16 @@ def ensure_absent(client, module, current):
     changed = current is not None
 
     if changed and not module.check_mode:
-        delete_association = AWSRetry.jittered_backoff()(client.delete_association)
-        try:
-            delete_association(AssociationId=current["AssociationId"])
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to delete AWS Systems Manager association {module.params['name']}",
-            )
+        aws_response(
+            client,
+            module,
+            "delete_association",
+            error_message=(
+                "Unable to delete AWS Systems Manager association "
+                f"{module.params['name']}"
+            ),
+            AssociationId=current["AssociationId"],
+        )
 
     result = {
         "changed": changed,
@@ -252,7 +262,15 @@ def main():
     )
     client = module.client("ssm")
 
-    current = find_association(list_associations(client, module), module.params["name"])
+    current = find_association(
+        aws_paginated_list(
+            client,
+            module,
+            "list_associations",
+            "Associations",
+        ),
+        module.params["name"],
+    )
 
     if module.params["state"] == "present":
         ensure_present(client, module, current)

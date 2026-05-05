@@ -36,10 +36,21 @@ serial_console_access:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
-    get_serial_console_access,
-    normalize_serial_console_access,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_response,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
+)
+
+
+def get_serial_console_access(client, module):
+    response = aws_response(client, module, "get_serial_console_access_status")
+    status = {
+        "ManagedBy": response.get("ManagedBy"),
+        "SerialConsoleAccessEnabled": response.get("SerialConsoleAccessEnabled"),
+    }
+    return {key: value for key, value in status.items() if value is not None}
 
 
 def main():
@@ -49,7 +60,7 @@ def main():
     module.exit_json(
         changed=False,
         region=module.region,
-        serial_console_access=normalize_serial_console_access(
+        serial_console_access=aws_resource_to_snake_dict(
             get_serial_console_access(client, module)
         ),
     )

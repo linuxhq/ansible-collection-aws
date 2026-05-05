@@ -27,15 +27,31 @@ provisioner:
         ansible_python_interpreter: /opt/awscli/bin/python
         secretsmanager_secret_list:
           - name: molecule-secret-1
+            description: molecule-secret-1
             secret:
               - key: molecule-secret-1
                 value: WnvpxzicuneCE7PM7upC7aVNFwYoz7wE
           - name: molecule-secret-2
+            description: molecule-secret-2
             secret:
               - key: molecule-secret-2
                 value: JUJMm9adCgL7FPtF7qiuHjyXYne7ivbX
               - key: molecule-secret-2a
                 value: ggfiFwtaauCRwwNfxJUE3oRjoHr3ETLL
+
+        secretsmanager_secret_updated_list:
+          - name: molecule-secret-1
+            description: molecule-secret-1-updated
+            secret:
+              - key: molecule-secret-1
+                value: 6HsTEs6aFSBYCkZ7E89AujFK94nPFJkF
+          - name: molecule-secret-2
+            description: molecule-secret-2-updated
+            secret:
+              - key: molecule-secret-2
+                value: 6VrXJLJUwGkeFjEd9hCn83zQpyVTSUfj
+              - key: molecule-secret-2a
+                value: V6s8pBcJQs9Zkfq6kFF6CFckcvb9Hp7t
 
 scenario:
   test_sequence:

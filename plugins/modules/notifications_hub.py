@@ -56,20 +56,26 @@ state:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+    aws_response,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import (
-    list_notification_hubs,
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
+    find_aws_resource,
 )
 
 
 def get_notification_hub_by_region(client, module, region):
-    for hub in list_notification_hubs(client, module):
-        if hub.get("notificationHubRegion") == region:
-            return hub
-    return None
+    return find_aws_resource(
+        aws_paginated_list(
+            client,
+            module,
+            "list_notification_hubs",
+            "notificationHubs",
+        ),
+        notification_hub_region=region,
+    )
 
 
 def ensure_present(client, module):
@@ -77,16 +83,13 @@ def ensure_present(client, module):
     changed = hub is None
 
     if changed and not module.check_mode:
-        register_notification_hub = AWSRetry.jittered_backoff()(
-            client.register_notification_hub
+        aws_response(
+            client,
+            module,
+            "register_notification_hub",
+            error_message=f"Unable to create AWS Notifications hub {module.params['region']}",
+            notificationHubRegion=module.params["region"],
         )
-        try:
-            register_notification_hub(notificationHubRegion=module.params["region"])
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to create AWS Notifications hub {module.params['region']}",
-            )
         hub = {
             "notificationHubRegion": module.params["region"],
         }
@@ -97,11 +100,7 @@ def ensure_present(client, module):
 
     module.exit_json(
         changed=changed,
-        notification_hub=(
-            boto3_resource_to_ansible_dict(hub, force_tags=False)
-            if hub is not None
-            else None
-        ),
+        notification_hub=(aws_resource_to_snake_dict(hub) if hub is not None else None),
         state="present",
     )
 
@@ -111,16 +110,13 @@ def ensure_absent(client, module):
     changed = hub is not None
 
     if changed and not module.check_mode:
-        deregister_notification_hub = AWSRetry.jittered_backoff()(
-            client.deregister_notification_hub
+        aws_response(
+            client,
+            module,
+            "deregister_notification_hub",
+            error_message=f"Unable to delete AWS Notifications hub {module.params['region']}",
+            notificationHubRegion=module.params["region"],
         )
-        try:
-            deregister_notification_hub(notificationHubRegion=module.params["region"])
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to delete AWS Notifications hub {module.params['region']}",
-            )
 
     module.exit_json(
         changed=changed,

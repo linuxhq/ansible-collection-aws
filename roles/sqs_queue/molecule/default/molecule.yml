@@ -27,6 +27,7 @@ provisioner:
         ansible_python_interpreter: /opt/awscli/bin/python
         sqs_queue_list:
           - name: molecule-bounce
+            delay_seconds: 0
             policy:
               Version: '2012-10-17'
               Statement:
@@ -51,6 +52,7 @@ provisioner:
                         "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-bounce"
 
           - name: molecule-complaint
+            delay_seconds: 0
             policy:
               Version: '2012-10-17'
               Statement:
@@ -75,6 +77,7 @@ provisioner:
                         "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-complaint"
 
           - name: molecule-delivery
+            delay_seconds: 0
             policy:
               Version: '2012-10-17'
               Statement:
@@ -97,6 +100,11 @@ provisioner:
                     ArnEquals:
                       'aws:SourceArn':
                         "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-delivery"
+
+        sqs_queue_updated_list:
+          - "{{ sqs_queue_list.0 | combine({'delay_seconds': 15}) }}"
+          - "{{ sqs_queue_list.1 | combine({'delay_seconds': 15}) }}"
+          - "{{ sqs_queue_list.2 | combine({'delay_seconds': 15}) }}"
 
 scenario:
   test_sequence:

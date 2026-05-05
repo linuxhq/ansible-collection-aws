@@ -16,11 +16,10 @@ options:
     description:
       - The AWS account ID associated with the registry to describe.
     type: str
-  repository_names:
+  name:
     description:
-      - Optional list of repository names to limit the result set.
-    type: list
-    elements: str
+      - Optional repository name to limit the result set.
+    type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -33,8 +32,7 @@ EXAMPLES = r"""
 
 - name: Gather information about selected ECR repositories
   linuxhq.aws.ecs_ecr_info:
-    repository_names:
-      - my-repository
+    name: my-repository
 """
 
 RETURN = r"""
@@ -46,20 +44,22 @@ repositories:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_list_to_ansible_dict,
     scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_list_to_snake_dicts,
 )
 
 
 def main():
     argument_spec = {
+        "name": {"type": "str"},
         "registry_id": {"type": "str"},
-        "repository_names": {"type": "list", "elements": "str"},
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
@@ -68,26 +68,22 @@ def main():
     params = scrub_none_parameters(
         {
             "registryId": module.params["registry_id"] or None,
-            "repositoryNames": module.params["repository_names"] or None,
+            "repositoryNames": (
+                [module.params["name"]] if module.params["name"] is not None else None
+            ),
         }
     )
 
-    try:
-        response = paginated_query_with_retries(
-            client,
-            "describe_repositories",
-            **params,
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to describe AWS Elastic Container Registry repositories"
-        )
-
     module.exit_json(
         changed=False,
-        repositories=boto3_resource_list_to_ansible_dict(
-            response.get("repositories", []),
-            force_tags=False,
+        repositories=aws_resource_list_to_snake_dicts(
+            aws_paginated_list(
+                client,
+                module,
+                "describe_repositories",
+                "repositories",
+                **params,
+            )
         ),
     )
 

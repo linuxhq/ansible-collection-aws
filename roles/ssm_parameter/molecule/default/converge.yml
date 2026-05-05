@@ -35,5 +35,10 @@
       tags:
         - molecule-idempotence-notest
 
-    - ssm_parameter
+    - role: ssm_parameter
+      tags:
+        - molecule-idempotence-notest
+
+    - role: ssm_parameter
+      ssm_parameter_list: "{{ ssm_parameter_updated_list }}"
 ...

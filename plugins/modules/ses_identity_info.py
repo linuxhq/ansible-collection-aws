@@ -41,40 +41,36 @@ identities:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+    aws_response,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
 )
 
 
 def get_email_identity(client, module, identity):
-    get_email_identity = AWSRetry.jittered_backoff()(client.get_email_identity)
-    try:
-        return get_email_identity(EmailIdentity=identity)
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS SES identity {identity}",
-        )
+    return aws_response(
+        client,
+        module,
+        "get_email_identity",
+        EmailIdentity=identity,
+    )
 
 
 def list_identities(client, module):
-    try:
-        response = paginated_query_with_retries(client, "list_identities")
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg="Unable to list AWS SES identities",
-        )
-    return response.get("Identities", [])
+    return aws_paginated_list(
+        client,
+        module,
+        "list_identities",
+        "Identities",
+    )
 
 
 def normalize_identity(identity, details):
-    normalized = boto3_resource_to_ansible_dict(details, force_tags=False)
+    normalized = aws_resource_to_snake_dict(details)
     normalized["name"] = identity
     return normalized
 

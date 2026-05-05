@@ -8,12 +8,13 @@ None
 
 ## Role Variables
 
-    route53_resolver_async: 300
+    route53_resolver_async: 1200
     route53_resolver_batch: 10
-    route53_resolver_delay: 3
+    route53_resolver_delay: 5
     route53_resolver_list: []
     route53_resolver_poll: 0
-    route53_resolver_retries: 100
+    route53_resolver_retries: 240
+    route53_resolver_timeout: 600
 
 ## Return Values
 
@@ -38,6 +39,9 @@ None
                   ip: 192.168.0.125
                 - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
                   ip: 192.168.0.253
+              protocols:
+                - do53
+                - doh
               security_group_ids:
                 - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
@@ -48,5 +52,8 @@ None
                   ip: 192.168.0.126
                 - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
                   ip: 192.168.0.254
+              protocols:
+                - do53
+                - doh
               security_group_ids:
                 - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"

@@ -12,5 +12,11 @@
 
     - aws_az_info
     - aws_caller_info
-    - sqs_queue
+
+    - role: sqs_queue
+      tags:
+        - molecule-idempotence-notest
+
+    - role: sqs_queue
+      sqs_queue_list: "{{ sqs_queue_updated_list }}"
 ...

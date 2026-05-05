@@ -39,6 +39,21 @@ provisioner:
             ip_address_version: ipv4
             scope: regional
 
+        wafv2_ip_set_updated_list:
+          - name: molecule-cloudflare
+            addresses:
+              - 1.1.1.1/32
+              - 1.0.0.1/32
+            ip_address_version: ipv4
+            scope: regional
+
+          - name: molecule-google
+            addresses:
+              - 8.8.8.8/32
+              - 8.8.4.4/32
+            ip_address_version: ipv4
+            scope: regional
+
 scenario:
   test_sequence:
     - dependency

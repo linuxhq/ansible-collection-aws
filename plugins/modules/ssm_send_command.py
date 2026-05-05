@@ -111,15 +111,18 @@ status:
 import time
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_list_to_ansible_dict,
-    boto3_resource_to_ansible_dict,
     scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+    aws_resource,
+    aws_response,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_list_to_snake_dicts,
+    aws_resource_to_snake_dict,
 )
 
 SUCCESS_STATUSES = {"Success"}
@@ -150,16 +153,14 @@ def build_send_command_args(params):
 
 
 def get_command(client, module, command_id):
-    list_commands = AWSRetry.jittered_backoff()(client.list_commands)
-    try:
-        response = list_commands(CommandId=command_id)
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS Systems Manager command {command_id}",
-        )
-
-    commands = response.get("Commands", [])
+    commands = aws_resource(
+        client,
+        module,
+        "list_commands",
+        "Commands",
+        default=[],
+        CommandId=command_id,
+    )
     if not commands:
         module.fail_json(
             msg=f"AWS Systems Manager command {command_id} was not returned by list_commands",
@@ -169,34 +170,25 @@ def get_command(client, module, command_id):
 
 
 def list_command_invocations(client, module, command_id):
-    try:
-        response = paginated_query_with_retries(
-            client,
-            "list_command_invocations",
-            CommandId=command_id,
-            Details=True,
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list AWS Systems Manager command invocations for {command_id}",
-        )
-    return response.get("CommandInvocations", [])
+    return aws_paginated_list(
+        client,
+        module,
+        "list_command_invocations",
+        "CommandInvocations",
+        CommandId=command_id,
+        Details=True,
+    )
 
 
 def normalize_command(command):
-    return boto3_resource_to_ansible_dict(
+    return aws_resource_to_snake_dict(
         command,
-        force_tags=False,
         ignore_list=["Parameters", "Targets"],
     )
 
 
 def normalize_command_invocations(invocations):
-    return boto3_resource_list_to_ansible_dict(
-        invocations,
-        force_tags=False,
-    )
+    return aws_resource_list_to_snake_dicts(invocations)
 
 
 def wait_for_command(client, module, command_id):
@@ -269,14 +261,16 @@ def main():
     if module.check_mode:
         module.exit_json(changed=True)
 
-    send_command = AWSRetry.jittered_backoff()(client.send_command)
-    try:
-        response = send_command(**send_command_args)
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to send AWS Systems Manager command using {module.params['document_name']}",
-        )
+    response = aws_response(
+        client,
+        module,
+        "send_command",
+        error_message=(
+            "Unable to send AWS Systems Manager command using "
+            f"{module.params['document_name']}"
+        ),
+        **send_command_args,
+    )
 
     command = response.get("Command", {})
     result = {

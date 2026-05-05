@@ -67,13 +67,13 @@ state:
   type: str
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
-    normalize_wafv2_resource,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_resource,
+    aws_response,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
 )
 
 
@@ -85,19 +85,15 @@ def build_logging_configuration(params):
 
 
 def get_logging_configuration(client, module, resource_arn):
-    get_logging_configuration = AWSRetry.jittered_backoff()(
-        client.get_logging_configuration
+    return aws_resource(
+        client,
+        module,
+        "get_logging_configuration",
+        "LoggingConfiguration",
+        ignore_error_codes="WAFNonexistentItemException",
+        ignored_error_result=None,
+        ResourceArn=resource_arn,
     )
-    try:
-        response = get_logging_configuration(ResourceArn=resource_arn)
-    except is_boto3_error_code("WAFNonexistentItemException"):
-        return None
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg=f"Unable to get AWS WAFv2 logging configuration for {resource_arn}"
-        )
-
-    return response.get("LoggingConfiguration")
 
 
 def logging_configuration_matches(current, desired):
@@ -115,16 +111,16 @@ def ensure_present(client, module):
     changed = not logging_configuration_matches(current, desired)
 
     if changed and not module.check_mode:
-        put_logging_configuration = AWSRetry.jittered_backoff()(
-            client.put_logging_configuration
+        aws_response(
+            client,
+            module,
+            "put_logging_configuration",
+            error_message=(
+                "Unable to manage AWS WAFv2 logging configuration for "
+                f"{module.params['resource_arn']}"
+            ),
+            LoggingConfiguration=desired,
         )
-        try:
-            put_logging_configuration(LoggingConfiguration=desired)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to manage AWS WAFv2 logging configuration for {module.params['resource_arn']}",
-            )
         current = get_logging_configuration(
             client, module, module.params["resource_arn"]
         )
@@ -135,7 +131,7 @@ def ensure_present(client, module):
         "changed": changed,
         "resource_arn": module.params["resource_arn"],
         "state": "present",
-        "logging_configuration": normalize_wafv2_resource(current or desired),
+        "logging_configuration": aws_resource_to_snake_dict(current or desired),
     }
 
     module.exit_json(**result)
@@ -146,16 +142,16 @@ def ensure_absent(client, module):
     changed = current is not None
 
     if changed and not module.check_mode:
-        delete_logging_configuration = AWSRetry.jittered_backoff()(
-            client.delete_logging_configuration
+        aws_response(
+            client,
+            module,
+            "delete_logging_configuration",
+            error_message=(
+                "Unable to delete AWS WAFv2 logging configuration for "
+                f"{module.params['resource_arn']}"
+            ),
+            ResourceArn=module.params["resource_arn"],
         )
-        try:
-            delete_logging_configuration(ResourceArn=module.params["resource_arn"])
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to delete AWS WAFv2 logging configuration for {module.params['resource_arn']}",
-            )
 
     module.exit_json(
         changed=changed,

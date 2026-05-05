@@ -61,6 +61,43 @@ provisioner:
                   linux: cd
                   windows: ''
 
+        ssm_document_updated_list:
+          - name: molecule-command-shell
+            document_type: Command
+            content:
+              schema_version: '2.2'
+              description: Run an updated shell command
+              main_steps:
+                - action: aws:runShellScript
+                  name: runShellScript
+                  inputs:
+                    run_command:
+                      - echo molecule-updated
+          - name: molecule-command-env
+            document_type: Command
+            content:
+              schema_version: '2.2'
+              description: Print updated environment
+              main_steps:
+                - action: aws:runShellScript
+                  name: printEnvironment
+                  inputs:
+                    run_command:
+                      - env | sort
+                      - pwd
+          - name: molecule-session-shell
+            document_type: Session
+            content:
+              schema_version: '1.0'
+              description: Updated Session Manager shell preferences
+              session_type: Standard_Stream
+              inputs:
+                idle_session_timeout: 120
+                run_as_enabled: false
+                shell_profile:
+                  linux: pwd
+                  windows: ''
+
 scenario:
   test_sequence:
     - dependency

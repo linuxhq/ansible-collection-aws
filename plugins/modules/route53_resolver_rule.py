@@ -9,6 +9,8 @@ version_added: 1.9.1
 short_description: Manage AWS Route53 Resolver rules
 description:
   - Manages AWS Route53 Resolver rules.
+  - Updates resolver endpoint and target IP settings for existing rules.
+  - O(domain_name) and O(rule_type) are immutable after creation.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -134,19 +136,78 @@ state:
   type: str
 """
 
-import time
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.route53 import (
-    list_resolver_rules,
-    normalize_resolver_rule,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+    aws_resource,
+    aws_response,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
+    canonicalize_list,
+    find_aws_resource,
+    validated_field_differences,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    wait_for_aws_resource,
+)
+
+ROUTE53_RESOLVER_RULE_WAITER_MODEL_DATA = {
+    "resolver_rule_complete": {
+        "delay": 5,
+        "maxAttempts": 60,
+        "operation": "GetResolverRule",
+        "acceptors": [
+            {
+                "argument": "ResolverRule.Status",
+                "expected": "COMPLETE",
+                "matcher": "path",
+                "state": "success",
+            },
+            {
+                "argument": "ResolverRule.Status",
+                "expected": "UPDATING",
+                "matcher": "path",
+                "state": "retry",
+            },
+            {
+                "argument": "ResolverRule.Status",
+                "expected": "DELETING",
+                "matcher": "path",
+                "state": "retry",
+            },
+        ],
+    },
+    "resolver_rule_deleted": {
+        "delay": 5,
+        "maxAttempts": 60,
+        "operation": "GetResolverRule",
+        "acceptors": [
+            {
+                "expected": "ResourceNotFoundException",
+                "matcher": "error",
+                "state": "success",
+            },
+            {
+                "argument": "ResolverRule.Status",
+                "expected": "DELETING",
+                "matcher": "path",
+                "state": "retry",
+            },
+        ],
+    },
+}
+
+IMMUTABLE_ITEMS = ["domain_name", "rule_type"]
+COMPARE_ITEMS = [
+    "domain_name",
+    "resolver_endpoint_id",
+    "rule_type",
+    "target_ips",
+]
 
 
 def aws_target_ip(target_ip):
@@ -165,80 +226,191 @@ def aws_target_ips(target_ips):
     return [aws_target_ip(target_ip) for target_ip in target_ips]
 
 
-def get_resolver_rule(client, module, resolver_rule_id):
-    get_resolver_rule = AWSRetry.jittered_backoff()(client.get_resolver_rule)
-    try:
-        response = get_resolver_rule(ResolverRuleId=resolver_rule_id)
-    except is_boto3_error_code("ResourceNotFoundException"):
-        return None
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS Route53 Resolver rule {resolver_rule_id}",
-        )
-    return response.get("ResolverRule")
+def build_desired_resolver_rule(module):
+    return {
+        "domain_name": module.params["domain_name"],
+        "name": module.params["name"],
+        "resolver_endpoint_id": module.params["resolver_endpoint_id"],
+        "rule_type": module.params["rule_type"].upper(),
+        "target_ips": module.params["target_ips"],
+    }
 
 
-def get_resolver_rule_by_name(client, module, name):
-    for rule in list_resolver_rules(client, module):
-        if rule.get("Name") == name:
-            return rule
-    return None
-
-
-def wait_for_resolver_rule_status(client, module, resolver_rule_id, statuses, name):
-    deadline = time.time() + module.params["wait_timeout"]
-
-    while time.time() < deadline:
-        rule = get_resolver_rule(client, module, resolver_rule_id)
-        if rule is None and "deleted" in statuses:
-            return None
-        if rule is not None and rule.get("Status", "").lower() in statuses:
-            return rule
-        time.sleep(module.params["wait_delay"])
-
-    module.fail_json(
-        msg=f"Timed out waiting for AWS Route53 Resolver rule {name}",
-        resolver_rule_id=resolver_rule_id,
+def normalize_target_ip(target_ip):
+    return scrub_none_parameters(
+        {
+            "ip": target_ip.get("ip"),
+            "ipv6": target_ip.get("ipv6"),
+            "port": target_ip.get("port") or 53,
+            "protocol": target_ip.get("protocol"),
+            "server_name_indication": target_ip.get("server_name_indication"),
+        }
     )
 
 
-def ensure_present(client, module):
-    rule = get_resolver_rule_by_name(client, module, module.params["name"])
-    changed = rule is None
+def target_ip_sort_key(target_ip):
+    return (
+        target_ip.get("ip") or "",
+        target_ip.get("ipv6") or "",
+        target_ip.get("port") or 0,
+        target_ip.get("protocol") or "",
+        target_ip.get("server_name_indication") or "",
+    )
 
-    if changed and not module.check_mode:
-        create_resolver_rule = AWSRetry.jittered_backoff()(client.create_resolver_rule)
-        try:
-            response = create_resolver_rule(
-                CreatorRequestId=module.params["name"],
-                DomainName=module.params["domain_name"],
-                Name=module.params["name"],
-                ResolverEndpointId=module.params["resolver_endpoint_id"],
-                RuleType=module.params["rule_type"].upper(),
-                TargetIps=aws_target_ips(module.params["target_ips"]),
-            )
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to create AWS Route53 Resolver rule {module.params['name']}",
-            )
-        rule = response.get("ResolverRule")
-        if module.params["wait"]:
-            rule = wait_for_resolver_rule_status(
-                client, module, rule["Id"], {"complete"}, module.params["name"]
-            )
+
+def normalize_target_ips(target_ips):
+    return canonicalize_list(
+        target_ips,
+        normalize_target_ip,
+        target_ip_sort_key,
+    )
+
+
+def comparable_resolver_rule(rule):
+    if not rule:
+        return None
+    return {
+        "domain_name": rule.get("domain_name", "").rstrip("."),
+        "resolver_endpoint_id": rule.get("resolver_endpoint_id"),
+        "rule_type": rule.get("rule_type"),
+        "target_ips": normalize_target_ips(rule.get("target_ips")),
+    }
+
+
+def comparable_desired_resolver_rule(desired):
+    return {
+        "domain_name": desired["domain_name"].rstrip("."),
+        "resolver_endpoint_id": desired["resolver_endpoint_id"],
+        "rule_type": desired["rule_type"],
+        "target_ips": normalize_target_ips(desired["target_ips"]),
+    }
+
+
+def get_resolver_rule(client, module, resolver_rule_id):
+    return aws_resource(
+        client,
+        module,
+        "get_resolver_rule",
+        "ResolverRule",
+        ignore_error_codes="ResourceNotFoundException",
+        ignored_error_result=None,
+        ResolverRuleId=resolver_rule_id,
+    )
+
+
+def get_resolver_rule_by_name(client, module, name):
+    return find_aws_resource(
+        aws_paginated_list(
+            client,
+            module,
+            "list_resolver_rules",
+            "ResolverRules",
+        ),
+        name=name,
+    )
+
+
+def wait_for_resolver_rule_status(client, module, resolver_rule_id, statuses, name):
+    deleted = "deleted" in statuses
+    wait_for_aws_resource(
+        client,
+        module,
+        ROUTE53_RESOLVER_RULE_WAITER_MODEL_DATA,
+        "resolver_rule_deleted" if deleted else "resolver_rule_complete",
+        f"Timed out waiting for AWS Route53 Resolver rule {name}",
+        ResolverRuleId=resolver_rule_id,
+    )
+    if deleted:
+        return None
+    return get_resolver_rule(client, module, resolver_rule_id)
+
+
+def create_resolver_rule(client, module, desired):
+    response = aws_response(
+        client,
+        module,
+        "create_resolver_rule",
+        error_message=f"Unable to create AWS Route53 Resolver rule {desired['name']}",
+        CreatorRequestId=desired["name"],
+        DomainName=desired["domain_name"],
+        Name=desired["name"],
+        ResolverEndpointId=desired["resolver_endpoint_id"],
+        RuleType=desired["rule_type"],
+        TargetIps=aws_target_ips(desired["target_ips"]),
+    )
+    rule = response.get("ResolverRule")
+    if module.params["wait"]:
+        rule = wait_for_resolver_rule_status(
+            client, module, rule["Id"], {"complete"}, desired["name"]
+        )
+    return rule
+
+
+def update_resolver_rule(client, module, rule, desired):
+    response = aws_response(
+        client,
+        module,
+        "update_resolver_rule",
+        error_message=f"Unable to update AWS Route53 Resolver rule {desired['name']}",
+        ResolverRuleId=rule["id"],
+        Config=scrub_none_parameters(
+            {
+                "Name": desired["name"],
+                "ResolverEndpointId": desired["resolver_endpoint_id"],
+                "TargetIps": aws_target_ips(desired["target_ips"]),
+            }
+        ),
+    )
+    updated_rule = response.get("ResolverRule")
+    if module.params["wait"]:
+        updated_rule = wait_for_resolver_rule_status(
+            client, module, updated_rule["Id"], {"complete"}, desired["name"]
+        )
+    return updated_rule
+
+
+def ensure_present(client, module):
+    desired = build_desired_resolver_rule(module)
+    rule = get_resolver_rule_by_name(client, module, desired["name"])
+    if rule is not None:
+        rule = aws_resource_to_snake_dict(rule)
+
+    current = comparable_resolver_rule(rule)
+    desired_comparable = comparable_desired_resolver_rule(desired)
+    if current is None:
+        changed = True
+    else:
+        differences, changed = validated_field_differences(
+            module,
+            current,
+            desired_comparable,
+            COMPARE_ITEMS,
+            IMMUTABLE_ITEMS,
+            (
+                "Unable to update AWS Route53 Resolver rule "
+                f"{module.params['name']}: immutable fields differ"
+            ),
+        )
+
+    if current is None and not module.check_mode:
+        rule = aws_resource_to_snake_dict(create_resolver_rule(client, module, desired))
+    elif current is None and module.check_mode:
+        rule = desired
+    elif changed and not module.check_mode:
+        rule = aws_resource_to_snake_dict(
+            update_resolver_rule(client, module, rule, desired)
+        )
     elif changed and module.check_mode:
-        rule = {"Name": module.params["name"]}
+        rule = desired
 
     result = {
         "changed": changed,
-        "name": module.params["name"],
-        "resolver_rule": normalize_resolver_rule(rule),
+        "name": desired["name"],
+        "resolver_rule": rule,
         "state": "present",
     }
-    if rule is not None and rule.get("Id") is not None:
-        result["resolver_rule_id"] = rule["Id"]
+    if rule is not None and rule.get("id") is not None:
+        result["resolver_rule_id"] = rule["id"]
 
     module.exit_json(**result)
 
@@ -249,14 +421,13 @@ def ensure_absent(client, module):
 
     if changed and not module.check_mode:
         resolver_rule_id = rule["Id"]
-        delete_resolver_rule = AWSRetry.jittered_backoff()(client.delete_resolver_rule)
-        try:
-            delete_resolver_rule(ResolverRuleId=resolver_rule_id)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to delete AWS Route53 Resolver rule {module.params['name']}",
-            )
+        aws_response(
+            client,
+            module,
+            "delete_resolver_rule",
+            error_message=f"Unable to delete AWS Route53 Resolver rule {module.params['name']}",
+            ResolverRuleId=resolver_rule_id,
+        )
         if module.params["wait"]:
             wait_for_resolver_rule_status(
                 client,

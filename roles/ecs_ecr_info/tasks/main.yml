@@ -3,6 +3,7 @@
   tags:
     - ecs_ecr_info
   linuxhq.aws.ecs_ecr_info:
+    name: "{{ ecs_ecr_info_name or omit }}"
     validate_certs: true
   register: __ecs_ecr_info_query
 

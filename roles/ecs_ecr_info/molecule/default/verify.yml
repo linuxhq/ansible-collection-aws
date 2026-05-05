@@ -4,10 +4,31 @@
   environment:
     PATH: '/opt/awscli/bin'
 
-  roles:
-    - ecs_ecr_info
+  tasks:
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: ecs_ecr_info
+      vars:
+        ecs_ecr_info_name: molecule-00
 
   post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _ecs_ecr_info_list | length == 1
+          - _ecs_ecr_info_dict.keys() | list == ['molecule-00']
+          - _ecs_ecr_info_dict['molecule-00'].encryption_configuration.encryption_type == 'AES256'
+          - _ecs_ecr_info_dict['molecule-00'].image_scanning_configuration.scan_on_push | bool
+          - _ecs_ecr_info_dict['molecule-00'].image_tag_mutability == 'IMMUTABLE'
+          - _ecs_ecr_info_dict['molecule-00'].registry_id is defined
+          - _ecs_ecr_info_dict['molecule-00'].repository_arn is defined
+          - _ecs_ecr_info_dict['molecule-00'].repository_name is defined
+          - _ecs_ecr_info_dict['molecule-00'].repository_uri is defined
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: ecs_ecr_info
+
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:

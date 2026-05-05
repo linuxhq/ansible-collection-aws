@@ -41,32 +41,27 @@ queues:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+    aws_resource,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
 )
 
 
 def get_queue(client, module, queue_url):
-    get_queue_attributes = AWSRetry.jittered_backoff()(client.get_queue_attributes)
-    try:
-        response = get_queue_attributes(
-            AttributeNames=["All"],
-            QueueUrl=queue_url,
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS Simple Queue Service queue attributes for {queue_url}",
-        )
-
-    attributes = response.get("Attributes", {})
-    queue = boto3_resource_to_ansible_dict(attributes, force_tags=False)
+    attributes = aws_resource(
+        client,
+        module,
+        "get_queue_attributes",
+        "Attributes",
+        default={},
+        AttributeNames=["All"],
+        QueueUrl=queue_url,
+    )
+    queue = aws_resource_to_snake_dict(attributes)
     queue["name"] = attributes.get("QueueArn", queue_url.rsplit("/", 1)[-1]).split(":")[
         -1
     ]
@@ -75,29 +70,24 @@ def get_queue(client, module, queue_url):
 
 
 def get_queue_url(client, module, queue_name):
-    get_queue_url = AWSRetry.jittered_backoff()(client.get_queue_url)
-    try:
-        response = get_queue_url(QueueName=queue_name)
-    except is_boto3_error_code("AWS.SimpleQueueService.NonExistentQueue"):
-        return None
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS Simple Queue Service queue URL for {queue_name}",
-        )
-
-    return response.get("QueueUrl")
+    return aws_resource(
+        client,
+        module,
+        "get_queue_url",
+        "QueueUrl",
+        ignore_error_codes="AWS.SimpleQueueService.NonExistentQueue",
+        ignored_error_result=None,
+        QueueName=queue_name,
+    )
 
 
 def list_queue_urls(client, module):
-    try:
-        response = paginated_query_with_retries(client, "list_queues")
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to list AWS Simple Queue Service queue URLs"
-        )
-
-    return response.get("QueueUrls", [])
+    return aws_paginated_list(
+        client,
+        module,
+        "list_queues",
+        "QueueUrls",
+    )
 
 
 def main():

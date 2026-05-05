@@ -31,9 +31,11 @@ account:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.ses import (
-    get_account,
-    normalize_account,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_response,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
 )
 
 
@@ -43,7 +45,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        account=normalize_account(get_account(client, module)),
+        account=aws_resource_to_snake_dict(aws_response(client, module, "get_account")),
     )
 
 

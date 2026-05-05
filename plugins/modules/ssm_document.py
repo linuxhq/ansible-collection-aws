@@ -12,6 +12,7 @@ description:
   - Supports creating, updating, and deleting JSON documents.
   - Accepts structured Ansible YAML content and serializes it to JSON for AWS.
   - Normalizes document content keys to snake_case for comparison and return values.
+  - O(document_type) is immutable after creation.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -88,64 +89,99 @@ state:
 
 import json
 
-from ansible.module_utils.common.dict_transformations import (
-    camel_dict_to_snake_dict,
-    snake_dict_to_camel_dict,
-)
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
-    get_document as get_ssm_document,
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_response,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    aws_resource_to_snake_dict,
+    validated_field_differences,
+)
+
+INVALID_DOCUMENT_ERRORS = ("InvalidDocument", "InvalidDocumentOperation")
 
 
 def build_desired_document(module):
     return {
-        "content": camel_dict_to_snake_dict(module.params["content"]),
+        "content": aws_resource_to_snake_dict(module.params["content"]),
         "document_type": module.params["document_type"],
         "name": module.params["name"],
     }
 
 
 def get_document(client, module):
-    return get_ssm_document(
+    response = aws_response(
         client,
         module,
-        module.params["name"],
-        document_version=module.params["document_version"],
-        default_content={},
-        include_missing_content=True,
+        "get_document",
+        ignore_error_codes=INVALID_DOCUMENT_ERRORS,
+        ignored_error_result=None,
+        DocumentFormat="JSON",
+        DocumentVersion=module.params["document_version"],
+        Name=module.params["name"],
     )
+    if response is None:
+        return None
+
+    document = aws_resource_to_snake_dict(response)
+    content = response.get("Content")
+    if content is None:
+        document["content"] = {}
+        return document
+
+    document["content"] = aws_resource_to_snake_dict(json.loads(content))
+    return document
 
 
 def ensure_present(client, module):
     current = get_document(client, module)
     desired = build_desired_document(module)
-    changed = current is None or current.get("content") != desired["content"]
+
+    if current is None:
+        changed = True
+    else:
+        _, changed = validated_field_differences(
+            module,
+            current,
+            desired,
+            ["content", "document_type"],
+            immutable_fields=["document_type"],
+            msg=(
+                "Unable to update AWS Systems Manager document "
+                f"{module.params['name']}: immutable fields differ"
+            ),
+        )
 
     if changed and not module.check_mode:
         content = snake_dict_to_camel_dict(desired["content"])
-        try:
-            if current is None:
-                create_document = AWSRetry.jittered_backoff()(client.create_document)
-                create_document(
-                    Content=json.dumps(content, sort_keys=True),
-                    DocumentFormat="JSON",
-                    DocumentType=module.params["document_type"],
-                    Name=module.params["name"],
-                )
-            else:
-                update_document = AWSRetry.jittered_backoff()(client.update_document)
-                update_document(
-                    Content=json.dumps(content, sort_keys=True),
-                    DocumentFormat="JSON",
-                    DocumentVersion=module.params["document_version"],
-                    Name=module.params["name"],
-                )
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to manage AWS Systems Manager document {module.params['name']}",
+        if current is None:
+            aws_response(
+                client,
+                module,
+                "create_document",
+                error_message=(
+                    "Unable to manage AWS Systems Manager document "
+                    f"{module.params['name']}"
+                ),
+                Content=json.dumps(content, sort_keys=True),
+                DocumentFormat="JSON",
+                DocumentType=module.params["document_type"],
+                Name=module.params["name"],
+            )
+        else:
+            aws_response(
+                client,
+                module,
+                "update_document",
+                error_message=(
+                    "Unable to manage AWS Systems Manager document "
+                    f"{module.params['name']}"
+                ),
+                Content=json.dumps(content, sort_keys=True),
+                DocumentFormat="JSON",
+                DocumentVersion=module.params["document_version"],
+                Name=module.params["name"],
             )
         current = get_document(client, module)
     elif changed and module.check_mode:
@@ -166,14 +202,16 @@ def ensure_absent(client, module):
     changed = current is not None
 
     if changed and not module.check_mode:
-        delete_document = AWSRetry.jittered_backoff()(client.delete_document)
-        try:
-            delete_document(Name=module.params["name"])
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to delete AWS Systems Manager document {module.params['name']}",
-            )
+        aws_response(
+            client,
+            module,
+            "delete_document",
+            error_message=(
+                "Unable to delete AWS Systems Manager document "
+                f"{module.params['name']}"
+            ),
+            Name=module.params["name"],
+        )
 
     module.exit_json(
         changed=changed,

@@ -10,5 +10,6 @@
         - molecule-idempotence-notest
       check_mode: false
 
-    - ecs_ecr_info
+    - role: ecs_ecr_info
+      ecs_ecr_info_name: molecule-00
 ...
