@@ -4,7 +4,12 @@ Manage aws service quotas
 
 ## Role Variables
 
+    service_quota_async: 300
+    service_quota_batch: 10
+    service_quota_delay: 3
     service_quota_list: []
+    service_quota_poll: 0
+    service_quota_retries: 100
 
 ## Return Values
 
