@@ -14,7 +14,7 @@
           combine({'Name': _instance_profile.name}) }}"
     validate_certs: true
   register: __iam_instance_profile_result
-  loop: "{{ iam_instance_profile_list }}"
+  loop: "{{ __iam_instance_profile_list }}"
   loop_control:
     label: "{{ _instance_profile.name | d(none) }}"
     loop_var: _instance_profile
