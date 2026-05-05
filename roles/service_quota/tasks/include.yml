@@ -1,0 +1,46 @@
+---
+- name: Ensure aws service quotas are managed
+  tags:
+    - service_quota
+  linuxhq.aws.service_quota:
+    quota_code: "{{ _servicequota.1.quota_code }}"
+    region: "{{ _servicequota.1.region | d(__service_quota_region) }}"
+    service_code: "{{ _servicequota.0.service_code }}"
+    validate_certs: true
+    value: "{{ _servicequota.1.value }}"
+  register: __service_quota_result
+  loop:
+    "{{ q('ansible.builtin.subelements',
+          __service_quota_list,
+          'quotas',
+          {'skip_missing': true}) }}"
+  loop_control:
+    label: "{{ _servicequota.1.quota_code | d(none) }}"
+    loop_var: _servicequota
+  async: "{{ ansible_check_mode | ternary(0, service_quota_async) }}"
+  poll: "{{ service_quota_poll }}"
+  when:
+    - _servicequota.0.service_code is defined
+    - _servicequota.1.quota_code is defined
+    - _servicequota.1.value is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __service_quota_result.changed | bool
+
+- name: Ensure managed aws service quota jobs are complete
+  tags:
+    - service_quota
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __service_quota_status
+  loop: "{{ __service_quota_result.results }}"
+  loop_control:
+    label: "{{ _jid._servicequota.1.quota_code | d(none) }}"
+    loop_var: _jid
+  delay: "{{ service_quota_delay }}"
+  retries: "{{ service_quota_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __service_quota_status.finished | bool
+...

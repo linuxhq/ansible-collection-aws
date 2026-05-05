@@ -13,25 +13,18 @@
     __service_quota_region:
       "{{ __service_quota_availability_zone.availability_zones.0.region_name }}"
 
-- name: Ensure aws service quotas are managed
+- name: Ensure aws service quotas are batched
   tags:
     - service_quota
-  linuxhq.aws.service_quota:
-    quota_code: "{{ _servicequota.1.quota_code }}"
-    region: "{{ _servicequota.1.region | d(__service_quota_region) }}"
-    service_code: "{{ _servicequota.0.service_code }}"
-    validate_certs: true
-    value: "{{ _servicequota.1.value }}"
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - service_quota
+    file: include.yml
   loop:
-    "{{ q('ansible.builtin.subelements',
-          service_quota_list,
-          'quotas',
-          {'skip_missing': true}) }}"
+    "{{ service_quota_list |
+        batch(service_quota_batch) }}"
   loop_control:
-    label: "{{ _servicequota.1.quota_code | d(none) }}"
-    loop_var: _servicequota
-  when:
-    - _servicequota.0.service_code is defined
-    - _servicequota.1.quota_code is defined
-    - _servicequota.1.value is defined
+    label: "{{ __service_quota_list | length }}"
+    loop_var: __service_quota_list
 ...
