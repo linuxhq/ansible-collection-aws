@@ -36,16 +36,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
     aws_paginated_list,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_to_snake_dict,
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
+    aws_resource_list_to_snake_dicts,
 )
-
-
-def normalize_connection(connection):
-    return aws_resource_to_snake_dict(
-        connection,
-        ignore_list=["ConnectionProperties"],
-    )
 
 
 def main():
@@ -54,15 +47,15 @@ def main():
 
     module.exit_json(
         changed=False,
-        connections=[
-            normalize_connection(connection)
-            for connection in aws_paginated_list(
+        connections=aws_resource_list_to_snake_dicts(
+            aws_paginated_list(
                 client,
                 module,
                 "get_connections",
                 "ConnectionList",
-            )
-        ],
+            ),
+            ignore_list=["ConnectionProperties"],
+        ),
     )
 
 

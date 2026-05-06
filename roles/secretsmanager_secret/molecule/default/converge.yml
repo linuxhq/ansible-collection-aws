@@ -15,5 +15,5 @@
         - molecule-idempotence-notest
 
     - role: secretsmanager_secret
-      secretsmanager_secret_list: "{{ secretsmanager_secret_updated_list }}"
+      secretsmanager_secret_list: "{{ secretsmanager_secret_idempotence }}"
 ...

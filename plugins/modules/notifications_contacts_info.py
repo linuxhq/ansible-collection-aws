@@ -42,10 +42,10 @@ email_contacts:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
+from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import (
+    list_email_contacts,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_list_to_snake_dicts,
 )
 
@@ -58,25 +58,12 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("notificationscontacts")
-    email_contacts = aws_resource_list_to_snake_dicts(
-        aws_paginated_list(
-            client,
-            module,
-            "list_email_contacts",
-            "emailContacts",
-        )
-    )
-
-    if module.params["name"] is not None:
-        email_contacts = [
-            contact
-            for contact in email_contacts
-            if contact.get("name") == module.params["name"]
-        ]
 
     module.exit_json(
         changed=False,
-        email_contacts=email_contacts,
+        email_contacts=aws_resource_list_to_snake_dicts(
+            list_email_contacts(client, module, module.params["name"])
+        ),
     )
 
 

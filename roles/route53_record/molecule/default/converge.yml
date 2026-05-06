@@ -20,5 +20,5 @@
         - molecule-idempotence-notest
 
     - role: route53_record
-      route53_record_list: "{{ route53_record_updated_list }}"
+      route53_record_list: "{{ route53_record_idempotence }}"
 ...

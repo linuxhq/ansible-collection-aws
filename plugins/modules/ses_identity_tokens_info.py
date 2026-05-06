@@ -52,27 +52,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import aws_resource
 
 
-def get_domain_dkim_tokens(client, module, identity):
-    return aws_resource(
-        client,
-        module,
-        "verify_domain_dkim",
-        "DkimTokens",
-        default=[],
-        Domain=identity,
-    )
-
-
-def get_domain_verification_token(client, module, identity):
-    return aws_resource(
-        client,
-        module,
-        "verify_domain_identity",
-        "VerificationToken",
-        Domain=identity,
-    )
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -85,9 +64,22 @@ def main():
 
     module.exit_json(
         changed=False,
-        dkim_tokens=get_domain_dkim_tokens(client, module, identity),
+        dkim_tokens=aws_resource(
+            client,
+            module,
+            "verify_domain_dkim",
+            "DkimTokens",
+            default=[],
+            Domain=identity,
+        ),
         identity=identity,
-        verification_token=get_domain_verification_token(client, module, identity),
+        verification_token=aws_resource(
+            client,
+            module,
+            "verify_domain_identity",
+            "VerificationToken",
+            Domain=identity,
+        ),
     )
 
 

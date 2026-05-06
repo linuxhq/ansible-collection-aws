@@ -46,7 +46,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
     aws_paginated_list,
     aws_resource,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_to_snake_dict,
 )
 
@@ -69,27 +69,6 @@ def get_queue(client, module, queue_url):
     return queue
 
 
-def get_queue_url(client, module, queue_name):
-    return aws_resource(
-        client,
-        module,
-        "get_queue_url",
-        "QueueUrl",
-        ignore_error_codes="AWS.SimpleQueueService.NonExistentQueue",
-        ignored_error_result=None,
-        QueueName=queue_name,
-    )
-
-
-def list_queue_urls(client, module):
-    return aws_paginated_list(
-        client,
-        module,
-        "list_queues",
-        "QueueUrls",
-    )
-
-
 def main():
     argument_spec = {
         "name": {"type": "str"},
@@ -99,12 +78,25 @@ def main():
     client = module.client("sqs")
 
     if module.params["name"]:
-        queue_url = get_queue_url(client, module, module.params["name"])
+        queue_url = aws_resource(
+            client,
+            module,
+            "get_queue_url",
+            "QueueUrl",
+            ignore_error_codes="AWS.SimpleQueueService.NonExistentQueue",
+            ignored_error_result=None,
+            QueueName=module.params["name"],
+        )
         queues = [get_queue(client, module, queue_url)] if queue_url else []
     else:
         queues = [
             get_queue(client, module, queue_url)
-            for queue_url in list_queue_urls(client, module)
+            for queue_url in aws_paginated_list(
+                client,
+                module,
+                "list_queues",
+                "QueueUrls",
+            )
         ]
 
     module.exit_json(

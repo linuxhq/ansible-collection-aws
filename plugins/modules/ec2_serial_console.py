@@ -59,30 +59,11 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
     aws_response,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_to_snake_dict,
+    field_differences,
 )
-
-
-def get_serial_console_access(client, module):
-    response = aws_response(client, module, "get_serial_console_access_status")
-    status = {
-        "ManagedBy": response.get("ManagedBy"),
-        "SerialConsoleAccessEnabled": response.get("SerialConsoleAccessEnabled"),
-    }
-    return {key: value for key, value in status.items() if value is not None}
-
-
-def set_serial_console_access(client, module, desired_enabled):
-    aws_response(
-        client,
-        module,
-        (
-            "enable_serial_console_access"
-            if desired_enabled
-            else "disable_serial_console_access"
-        ),
-        error_message="Unable to manage EC2 serial console access",
-    )
+from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
+    get_serial_console_access_status,
+)
 
 
 def main():
@@ -99,17 +80,31 @@ def main():
     client = module.client("ec2")
 
     desired_enabled = module.params["state"] == "present"
-    current = get_serial_console_access(client, module)
-    changed = current.get("SerialConsoleAccessEnabled") != desired_enabled
+    current = get_serial_console_access_status(client, module)
+    _, changed = field_differences(
+        current,
+        {"serial_console_access_enabled": desired_enabled},
+        ["serial_console_access_enabled"],
+    )
 
     if changed and not module.check_mode:
-        set_serial_console_access(client, module, desired_enabled)
-        current = get_serial_console_access(client, module)
+        operation = (
+            "enable_serial_console_access"
+            if desired_enabled
+            else "disable_serial_console_access"
+        )
+        aws_response(
+            client,
+            module,
+            operation,
+            error_message="Unable to manage EC2 serial console access",
+        )
+        current = get_serial_console_access_status(client, module)
 
     result = {
         "changed": changed,
         "region": module.region,
-        "serial_console_access": aws_resource_to_snake_dict(current),
+        "serial_console_access": current,
         "state": module.params["state"],
     }
 

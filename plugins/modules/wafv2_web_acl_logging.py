@@ -72,43 +72,66 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
     aws_resource,
     aws_response,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.fields import (
+    aws_field_values,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    field_differences,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_to_snake_dict,
 )
 
+COMPARE_ITEMS = ["log_destination_configs", "resource_arn"]
 
-def build_logging_configuration(params):
+
+def comparable_logging_configuration(configuration):
+    if configuration is None:
+        return None
+    values = aws_field_values(
+        configuration,
+        ("log_destination_configs", "resource_arn"),
+    )
     return {
-        "LogDestinationConfigs": params["log_destination_configs"],
-        "ResourceArn": params["resource_arn"],
+        "log_destination_configs": sorted(values.get("log_destination_configs") or []),
+        "resource_arn": values.get("resource_arn"),
     }
 
 
-def get_logging_configuration(client, module, resource_arn):
-    return aws_resource(
-        client,
-        module,
-        "get_logging_configuration",
-        "LoggingConfiguration",
-        ignore_error_codes="WAFNonexistentItemException",
-        ignored_error_result=None,
-        ResourceArn=resource_arn,
+def ensure_absent(client, module):
+    current = get_logging_configuration(client, module, module.params["resource_arn"])
+    changed = current is not None
+
+    if changed and not module.check_mode:
+        aws_response(
+            client,
+            module,
+            "delete_logging_configuration",
+            error_message=(
+                "Unable to delete AWS WAFv2 logging configuration for "
+                f"{module.params['resource_arn']}"
+            ),
+            ResourceArn=module.params["resource_arn"],
+        )
+
+    module.exit_json(
+        changed=changed,
+        resource_arn=module.params["resource_arn"],
+        state="absent",
     )
-
-
-def logging_configuration_matches(current, desired):
-    if current is None:
-        return False
-
-    return current.get("ResourceArn") == desired["ResourceArn"] and sorted(
-        current.get("LogDestinationConfigs") or []
-    ) == sorted(desired["LogDestinationConfigs"] or [])
 
 
 def ensure_present(client, module):
     current = get_logging_configuration(client, module, module.params["resource_arn"])
-    desired = build_logging_configuration(module.params)
-    changed = not logging_configuration_matches(current, desired)
+    desired = {
+        "LogDestinationConfigs": module.params["log_destination_configs"],
+        "ResourceArn": module.params["resource_arn"],
+    }
+    _, changed = field_differences(
+        comparable_logging_configuration(current),
+        comparable_logging_configuration(desired),
+        COMPARE_ITEMS,
+    )
 
     if changed and not module.check_mode:
         aws_response(
@@ -137,26 +160,15 @@ def ensure_present(client, module):
     module.exit_json(**result)
 
 
-def ensure_absent(client, module):
-    current = get_logging_configuration(client, module, module.params["resource_arn"])
-    changed = current is not None
-
-    if changed and not module.check_mode:
-        aws_response(
-            client,
-            module,
-            "delete_logging_configuration",
-            error_message=(
-                "Unable to delete AWS WAFv2 logging configuration for "
-                f"{module.params['resource_arn']}"
-            ),
-            ResourceArn=module.params["resource_arn"],
-        )
-
-    module.exit_json(
-        changed=changed,
-        resource_arn=module.params["resource_arn"],
-        state="absent",
+def get_logging_configuration(client, module, resource_arn):
+    return aws_resource(
+        client,
+        module,
+        "get_logging_configuration",
+        "LoggingConfiguration",
+        ignore_error_codes="WAFNonexistentItemException",
+        ignored_error_result=None,
+        ResourceArn=resource_arn,
     )
 
 

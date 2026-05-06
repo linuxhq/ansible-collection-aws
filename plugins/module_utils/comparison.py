@@ -4,136 +4,63 @@
 
 import json
 
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_list_to_ansible_dict,
-    boto3_resource_to_ansible_dict,
+from ansible_collections.linuxhq.aws.plugins.module_utils.fields import (
+    aws_field_names,
+    aws_field_value_from_names,
 )
 
 
-def aws_resource_to_snake_dict(resource, ignore_list=None):
-    return boto3_resource_to_ansible_dict(
-        resource,
-        transform_tags=False,
-        force_tags=False,
-        ignore_list=ignore_list,
-    )
-
-
-def aws_resource_list_to_snake_dicts(resources, ignore_list=None):
-    return boto3_resource_list_to_ansible_dict(
-        resources,
-        transform_tags=False,
-        force_tags=False,
-        ignore_list=ignore_list,
-    )
-
-
-def aws_resource_matches(resource, **criteria):
-    comparable = aws_resource_to_snake_dict(resource)
-    return all(comparable.get(field) == value for field, value in criteria.items())
-
-
-def find_aws_resource(resources, **criteria):
-    for resource in resources:
-        if aws_resource_matches(resource, **criteria):
-            return resource
-    return None
-
-
-def filter_aws_resources(resources, **criteria):
-    return [
-        resource for resource in resources if aws_resource_matches(resource, **criteria)
-    ]
-
-
 def _canonical_item_key(item):
-    return json.dumps(item, sort_keys=True)
+    return json.dumps(item, separators=(",", ":"), sort_keys=True)
+
+
+def _field_differences(current, desired, fields, field_map=None):
+    current = current or {}
+    desired = desired or {}
+    differences = {}
+    for field in fields:
+        field_names = aws_field_names(field, field_map)
+        difference = {
+            "current": aws_field_value_from_names(
+                current,
+                field,
+                field_names,
+                prefer_aws_key=True,
+            ),
+            "desired": aws_field_value_from_names(
+                desired,
+                field,
+                field_names,
+                prefer_aws_key=False,
+            ),
+        }
+        if difference["current"] != difference["desired"]:
+            differences[field] = difference
+    return differences
+
+
+def _normalized_items(items, normalizer=None):
+    return [
+        normalizer(item) if normalizer is not None else item for item in items or []
+    ]
 
 
 def canonicalize_list(items, normalizer=None, sort_key=None):
-    normalized = [
-        normalizer(item) if normalizer is not None else item for item in items or []
-    ]
+    normalized = _normalized_items(items, normalizer)
     return sorted(normalized, key=sort_key or _canonical_item_key)
 
 
-def list_difference(left, right, normalizer=None, sort_key=None):
-    right_keys = {
-        _canonical_item_key(item)
-        for item in canonicalize_list(right, normalizer, sort_key)
-    }
-    return [
-        item
-        for item in canonicalize_list(left, normalizer, sort_key)
-        if _canonical_item_key(item) not in right_keys
-    ]
-
-
-def _field_difference(current, desired, field):
-    return {
-        "current": current.get(field),
-        "desired": desired.get(field),
-    }
-
-
-def _field_differences(current, desired, fields):
-    current = aws_resource_to_snake_dict(current)
-    desired = aws_resource_to_snake_dict(desired)
-
-    return {
-        field: _field_difference(current, desired, field)
-        for field in fields
-        if current.get(field) != desired.get(field)
-    }
-
-
-def _immutable_field_differences(current, desired, immutable_fields):
-    current = aws_resource_to_snake_dict(current)
-    desired = aws_resource_to_snake_dict(desired)
-    if not current or not desired:
-        return {}
-
-    return {
-        field: _field_difference(current, desired, field)
-        for field in immutable_fields
-        if current.get(field) is not None
-        and desired.get(field) is not None
-        and current[field] != desired[field]
-    }
-
-
-def validate_immutable_fields(module, current, desired, immutable_fields, msg=None):
-    _fail_on_immutable_differences(
-        module,
-        _immutable_field_differences(current, desired, immutable_fields),
-        immutable_fields,
-        msg or "Immutable fields differ",
-    )
-
-
-def validated_field_differences(
+def fail_on_immutable_differences(
     module,
-    current,
-    desired,
-    fields,
-    immutable_fields=None,
-    msg=None,
+    differences,
+    immutable_fields,
+    msg="Immutable fields differ",
 ):
-    differences = _field_differences(current, desired, fields)
-    _fail_on_immutable_differences(
-        module,
-        differences,
-        immutable_fields or [],
-        msg or "Immutable fields differ",
-    )
-    return differences, bool(differences)
-
-
-def _fail_on_immutable_differences(module, differences, immutable_fields, msg):
+    immutable_field_set = set(immutable_fields)
     immutable_differences = {
         field: difference
         for field, difference in differences.items()
-        if field in immutable_fields
+        if field in immutable_field_set
     }
     if immutable_differences:
         module.fail_json(
@@ -141,3 +68,51 @@ def _fail_on_immutable_differences(module, differences, immutable_fields, msg):
             immutable_items=immutable_fields,
             differences=immutable_differences,
         )
+
+
+def field_differences(current, desired, fields, field_map=None):
+    differences = _field_differences(current, desired, fields, field_map)
+    return differences, bool(differences)
+
+
+def list_difference(left, right, normalizer=None, sort_key=None):
+    right_keys = {
+        _canonical_item_key(item) for item in _normalized_items(right, normalizer)
+    }
+    left_item_keys = []
+    for item in _normalized_items(left, normalizer):
+        item_key = _canonical_item_key(item)
+        if item_key not in right_keys:
+            left_item_keys.append((item_key, item))
+
+    if sort_key is not None:
+        return sorted((item for _item_key, item in left_item_keys), key=sort_key)
+
+    left_item_keys.sort(key=lambda item_key: item_key[0])
+    return [item for _key, item in left_item_keys]
+
+
+def validate_immutable_fields(
+    module,
+    current,
+    desired,
+    immutable_fields,
+    msg="Immutable fields differ",
+    field_map=None,
+):
+    immutable_differences = {
+        field: difference
+        for field, difference in _field_differences(
+            current,
+            desired,
+            immutable_fields,
+            field_map,
+        ).items()
+        if difference["current"] is not None and difference["desired"] is not None
+    }
+    fail_on_immutable_differences(
+        module,
+        immutable_differences,
+        immutable_fields,
+        msg,
+    )

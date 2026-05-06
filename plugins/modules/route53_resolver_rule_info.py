@@ -42,12 +42,14 @@ resolver_rules:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
+    aws_resource_list_to_snake_dicts,
     aws_resource_to_snake_dict,
-    filter_aws_resources,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
+    get_resolver_rule_by_name,
+    list_resolver_rule_associations,
+    list_resolver_rules,
 )
 
 
@@ -62,10 +64,9 @@ def group_associations_by_rule_id(associations):
 
 def normalize_resolver_rule_with_associations(rule, associations_by_rule_id):
     normalized = aws_resource_to_snake_dict(rule)
-    normalized["associations"] = [
-        aws_resource_to_snake_dict(association)
-        for association in associations_by_rule_id.get(rule.get("Id"), [])
-    ]
+    normalized["associations"] = aws_resource_list_to_snake_dicts(
+        associations_by_rule_id.get(rule.get("Id"), [])
+    )
     normalized["vpc_ids"] = [
         association["vpc_id"]
         for association in normalized["associations"]
@@ -82,26 +83,30 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("route53resolver")
-    resolver_rules = aws_paginated_list(
-        client,
-        module,
-        "list_resolver_rules",
-        "ResolverRules",
-    )
-    associations_by_rule_id = group_associations_by_rule_id(
-        aws_paginated_list(
+    if module.params["name"] is None:
+        resolver_rules = list_resolver_rules(client, module)
+    else:
+        resolver_rule = get_resolver_rule_by_name(
             client,
             module,
-            "list_resolver_rule_associations",
-            "ResolverRuleAssociations",
+            module.params["name"],
         )
-    )
+        resolver_rules = [resolver_rule] if resolver_rule is not None else []
 
-    if module.params["name"] is not None:
-        resolver_rules = filter_aws_resources(
-            resolver_rules,
-            name=module.params["name"],
+    if module.params["name"] is None:
+        associations = list_resolver_rule_associations(client, module)
+    elif not resolver_rules:
+        associations = []
+    else:
+        associations = list_resolver_rule_associations(
+            client,
+            module,
+            resolver_rule_id=[rule["Id"] for rule in resolver_rules],
         )
+
+    associations_by_rule_id = group_associations_by_rule_id(
+        associations,
+    )
 
     module.exit_json(
         changed=False,

@@ -52,12 +52,12 @@ certificate_arn:
 
 import hashlib
 import json
+
+from ansible.module_utils.common.text.converters import to_bytes
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
-)
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_response,
+    aws_request_params,
+    aws_resource,
 )
 
 
@@ -69,7 +69,7 @@ def build_idempotency_token(domain_name, subject_alternative_names):
         ),
     }
     return hashlib.sha256(
-        json.dumps(token_data, separators=(",", ":"), sort_keys=True).encode()
+        to_bytes(json.dumps(token_data, separators=(",", ":"), sort_keys=True))
     ).hexdigest()[:32]
 
 
@@ -87,24 +87,25 @@ def main():
         module.exit_json(changed=True)
 
     client = module.client("acm")
-    params = scrub_none_parameters(
+    params = aws_request_params(
         {
-            "DomainName": module.params["domain_name"],
-            "IdempotencyToken": module.params["idempotency_token"]
+            "domain_name": module.params["domain_name"],
+            "idempotency_token": module.params["idempotency_token"]
             or build_idempotency_token(
                 module.params["domain_name"],
                 module.params["subject_alternative_names"],
             ),
-            "SubjectAlternativeNames": module.params["subject_alternative_names"]
+            "subject_alternative_names": module.params["subject_alternative_names"]
             or None,
-            "ValidationMethod": "DNS",
+            "validation_method": "DNS",
         }
     )
 
-    response = aws_response(
+    certificate_arn = aws_resource(
         client,
         module,
         "request_certificate",
+        "CertificateArn",
         error_message=(
             "Unable to request AWS Certificate Manager certificate "
             f"{module.params['domain_name']}"
@@ -114,7 +115,7 @@ def main():
 
     module.exit_json(
         changed=True,
-        certificate_arn=response.get("CertificateArn"),
+        certificate_arn=certificate_arn,
     )
 
 

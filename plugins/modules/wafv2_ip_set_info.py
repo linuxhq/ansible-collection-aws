@@ -52,26 +52,9 @@ scope:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_marker_paginated_list,
-    aws_resource,
+from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
+    list_wafv2_ip_sets,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_to_snake_dict,
-)
-
-
-def get_ip_set(client, module, scope, summary):
-    return aws_resource(
-        client,
-        module,
-        "get_ip_set",
-        "IPSet",
-        default={},
-        Id=summary["Id"],
-        Name=summary["Name"],
-        Scope=scope,
-    )
 
 
 def main():
@@ -87,23 +70,10 @@ def main():
     client = module.client("wafv2")
 
     scope = module.params["scope"].upper()
-    summaries = aws_marker_paginated_list(
-        client,
-        module,
-        "list_ip_sets",
-        "IPSets",
-        marker_arg="NextMarker",
-        initial_kwargs={"Scope": scope},
-    )
-    ip_sets = [
-        aws_resource_to_snake_dict(get_ip_set(client, module, scope, summary))
-        for summary in summaries
-        if summary.get("Id") and summary.get("Name")
-    ]
 
     module.exit_json(
         changed=False,
-        ip_sets=ip_sets,
+        ip_sets=list_wafv2_ip_sets(client, module, scope),
         scope=scope.lower(),
     )
 

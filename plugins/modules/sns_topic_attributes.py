@@ -48,21 +48,19 @@ topic_arn:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
-)
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_request_params,
     aws_resource,
     aws_response,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+    field_differences,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_to_snake_dict,
-    validated_field_differences,
 )
 
-MANAGED_ATTRIBUTE_MAP = {
-    "kms_master_key_id": "KmsMasterKeyId",
-}
+MANAGED_ATTRIBUTES = ["kms_master_key_id"]
 
 
 def get_topic_attributes(client, module):
@@ -76,19 +74,6 @@ def get_topic_attributes(client, module):
     )
 
 
-def build_desired_attributes(module):
-    return scrub_none_parameters(
-        {
-            attribute: module.params[parameter]
-            for parameter, attribute in MANAGED_ATTRIBUTE_MAP.items()
-        }
-    )
-
-
-def normalize_attributes(attributes):
-    return aws_resource_to_snake_dict(attributes)
-
-
 def main():
     argument_spec = {
         "kms_master_key_id": {"type": "str"},
@@ -99,14 +84,17 @@ def main():
     client = module.client("sns")
 
     current_attributes = get_topic_attributes(client, module)
-    desired_attributes = build_desired_attributes(module)
-    desired_normalized_attributes = normalize_attributes(desired_attributes)
+    desired_parameters = {
+        attribute: module.params[attribute]
+        for attribute in MANAGED_ATTRIBUTES
+        if module.params[attribute] is not None
+    }
+    desired_attributes = aws_request_params(desired_parameters)
 
-    _, changed = validated_field_differences(
-        module,
+    _, changed = field_differences(
         current_attributes,
-        desired_normalized_attributes,
-        desired_normalized_attributes.keys(),
+        desired_parameters,
+        desired_parameters.keys(),
     )
 
     if changed and not module.check_mode:
@@ -131,7 +119,7 @@ def main():
         current_attributes.update(desired_attributes)
 
     result = {
-        "attributes": normalize_attributes(current_attributes),
+        "attributes": aws_resource_to_snake_dict(current_attributes),
         "changed": changed,
         "topic_arn": module.params["topic_arn"],
     }

@@ -23,5 +23,5 @@
         - molecule-idempotence-notest
 
     - role: sns_topic
-      sns_topic_list: "{{ sns_topic_updated_list }}"
+      sns_topic_list: "{{ sns_topic_idempotence }}"
 ...

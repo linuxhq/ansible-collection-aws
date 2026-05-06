@@ -147,21 +147,27 @@ state:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
-)
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
+    aws_request_params,
     aws_resource,
     aws_response,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.fields import (
+    aws_field_values,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_list_to_snake_dicts,
-    aws_resource_to_snake_dict,
     canonicalize_list,
-    find_aws_resource,
+    fail_on_immutable_differences,
+    field_differences,
     list_difference,
-    validated_field_differences,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
+    aws_resource_to_snake_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
+    get_resolver_endpoint,
+    get_resolver_endpoint_by_name,
+    resolver_endpoint_with_ip_addresses,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     wait_for_aws_resource,
@@ -247,32 +253,9 @@ PROTOCOLS = {
 
 
 def aws_ip_address(ip_address):
-    return scrub_none_parameters(
-        {
-            "Ip": ip_address.get("ip"),
-            "Ipv6": ip_address.get("ipv6"),
-            "SubnetId": ip_address.get("subnet_id"),
-        }
+    return aws_request_params(
+        aws_field_values(ip_address, ("ip", "ip_id", "ipv6", "subnet_id"))
     )
-
-
-def aws_ip_addresses(ip_addresses):
-    return [aws_ip_address(ip_address) for ip_address in ip_addresses]
-
-
-def aws_ip_address_update(ip_address):
-    return scrub_none_parameters(
-        {
-            "Ip": ip_address.get("ip"),
-            "IpId": ip_address.get("ip_id"),
-            "Ipv6": ip_address.get("ipv6"),
-            "SubnetId": ip_address.get("subnet_id"),
-        }
-    )
-
-
-def aws_protocols(protocols):
-    return [PROTOCOLS[protocol.lower()] for protocol in protocols or []]
 
 
 def build_desired_resolver_endpoint(module):
@@ -280,67 +263,12 @@ def build_desired_resolver_endpoint(module):
         "direction": module.params["direction"].upper(),
         "ip_addresses": module.params["ip_addresses"],
         "name": module.params["name"],
-        "protocols": aws_protocols(module.params["protocols"]),
+        "protocols": [
+            PROTOCOLS[protocol.lower()] for protocol in module.params["protocols"] or []
+        ],
         "resolver_endpoint_type": module.params["resolver_endpoint_type"].upper(),
         "security_group_ids": module.params["security_group_ids"],
     }
-
-
-def normalize_ip_address(ip_address):
-    return scrub_none_parameters(
-        {
-            "ip": ip_address.get("ip"),
-            "ipv6": ip_address.get("ipv6"),
-            "subnet_id": ip_address.get("subnet_id"),
-        }
-    )
-
-
-def ip_address_sort_key(ip_address):
-    return (
-        ip_address.get("subnet_id") or "",
-        ip_address.get("ip") or "",
-        ip_address.get("ipv6") or "",
-    )
-
-
-def normalize_ip_addresses(ip_addresses):
-    return canonicalize_list(
-        ip_addresses,
-        normalize_ip_address,
-        ip_address_sort_key,
-    )
-
-
-def ip_addresses_equal(current_ip_addresses, desired_ip_addresses):
-    return normalize_ip_addresses(current_ip_addresses) == normalize_ip_addresses(
-        desired_ip_addresses
-    )
-
-
-def normalize_protocols(protocols):
-    return sorted(protocol.lower() for protocol in protocols or ["Do53"])
-
-
-def comparable_resolver_endpoint(endpoint, desired=None):
-    if not endpoint:
-        return None
-
-    comparable = {
-        "direction": endpoint.get("direction"),
-        "ip_addresses": normalize_ip_addresses(endpoint.get("ip_addresses", [])),
-        "protocols": normalize_protocols(endpoint.get("protocols")),
-        "resolver_endpoint_type": endpoint.get("resolver_endpoint_type"),
-        "security_group_ids": sorted(endpoint.get("security_group_ids", [])),
-    }
-
-    if desired is not None and ip_addresses_equal(
-        comparable["ip_addresses"],
-        desired["ip_addresses"],
-    ):
-        comparable["ip_addresses"] = normalize_ip_addresses(desired["ip_addresses"])
-
-    return comparable
 
 
 def comparable_desired_resolver_endpoint(desired):
@@ -353,253 +281,60 @@ def comparable_desired_resolver_endpoint(desired):
     }
 
 
-def normalize_resolver_endpoint_with_ip_addresses(client, module, endpoint):
-    normalized = aws_resource_to_snake_dict(endpoint)
-    if endpoint is None or endpoint.get("Id") is None:
-        return normalized
-
-    normalized["ip_addresses"] = aws_resource_list_to_snake_dicts(
-        aws_paginated_list(
-            client,
-            module,
-            "list_resolver_endpoint_ip_addresses",
-            "IpAddresses",
-            ResolverEndpointId=endpoint["Id"],
-        )
-    )
-    return normalized
-
-
-def get_resolver_endpoint(client, module, resolver_endpoint_id):
-    return aws_resource(
-        client,
-        module,
-        "get_resolver_endpoint",
-        "ResolverEndpoint",
-        ignore_error_codes="ResourceNotFoundException",
-        ignored_error_result=None,
-        ResolverEndpointId=resolver_endpoint_id,
-    )
-
-
-def get_resolver_endpoint_by_name(client, module, name):
-    return find_aws_resource(
-        aws_paginated_list(
-            client,
-            module,
-            "list_resolver_endpoints",
-            "ResolverEndpoints",
-        ),
-        name=name,
-    )
-
-
-def wait_for_resolver_endpoint_status(
-    client, module, resolver_endpoint_id, statuses, name
-):
-    deleted = "deleted" in statuses
-    wait_for_aws_resource(
-        client,
-        module,
-        ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA,
-        "resolver_endpoint_deleted" if deleted else "resolver_endpoint_operational",
-        f"Timed out waiting for AWS Route53 Resolver endpoint {name}",
-        ResolverEndpointId=resolver_endpoint_id,
-    )
-    if deleted:
+def comparable_resolver_endpoint(endpoint, desired=None):
+    if not endpoint:
         return None
-    return get_resolver_endpoint(client, module, resolver_endpoint_id)
+
+    endpoint_values = aws_field_values(
+        endpoint,
+        (
+            "direction",
+            "ip_addresses",
+            "protocols",
+            "resolver_endpoint_type",
+            "security_group_ids",
+        ),
+    )
+    comparable = {
+        "direction": endpoint_values.get("direction"),
+        "ip_addresses": normalize_ip_addresses(
+            endpoint_values.get("ip_addresses") or []
+        ),
+        "protocols": normalize_protocols(endpoint_values.get("protocols")),
+        "resolver_endpoint_type": endpoint_values.get("resolver_endpoint_type"),
+        "security_group_ids": sorted(endpoint_values.get("security_group_ids") or []),
+    }
+
+    if desired is not None:
+        desired_ip_addresses = normalize_ip_addresses(desired["ip_addresses"])
+        if comparable["ip_addresses"] == desired_ip_addresses:
+            comparable["ip_addresses"] = desired_ip_addresses
+
+    return comparable
 
 
 def create_resolver_endpoint(client, module, desired):
-    response = aws_response(
+    endpoint = aws_resource(
         client,
         module,
         "create_resolver_endpoint",
+        "ResolverEndpoint",
         error_message=f"Unable to create AWS Route53 Resolver endpoint {desired['name']}",
         CreatorRequestId=desired["name"],
         Direction=desired["direction"],
-        IpAddresses=aws_ip_addresses(desired["ip_addresses"]),
+        IpAddresses=[
+            aws_ip_address(ip_address) for ip_address in desired["ip_addresses"]
+        ],
         Name=desired["name"],
         Protocols=desired["protocols"],
         ResolverEndpointType=desired["resolver_endpoint_type"],
         SecurityGroupIds=desired["security_group_ids"],
     )
-    endpoint = response.get("ResolverEndpoint")
     if module.params["wait"]:
         endpoint = wait_for_resolver_endpoint_status(
             client, module, endpoint["Id"], {"operational"}, desired["name"]
         )
     return endpoint
-
-
-def update_resolver_endpoint_config(client, module, endpoint, differences, desired):
-    update_params = {"ResolverEndpointId": endpoint["id"]}
-    if "protocols" in differences:
-        update_params["Protocols"] = desired["protocols"]
-    if "resolver_endpoint_type" in differences:
-        update_params["ResolverEndpointType"] = desired["resolver_endpoint_type"]
-
-    response = aws_response(
-        client,
-        module,
-        "update_resolver_endpoint",
-        error_message=f"Unable to update AWS Route53 Resolver endpoint {desired['name']}",
-        **update_params,
-    )
-    endpoint = response.get("ResolverEndpoint")
-    if module.params["wait"]:
-        endpoint = wait_for_resolver_endpoint_status(
-            client, module, endpoint["Id"], {"operational"}, desired["name"]
-        )
-    return endpoint
-
-
-def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired):
-    resolver_endpoint_id = endpoint["id"]
-    current_ip_addresses = endpoint.get("ip_addresses", [])
-    desired_ip_addresses = desired["ip_addresses"]
-    ip_addresses_to_add = list_difference(
-        desired_ip_addresses,
-        current_ip_addresses,
-        normalize_ip_address,
-        ip_address_sort_key,
-    )
-    ip_addresses_to_remove = list_difference(
-        current_ip_addresses,
-        desired_ip_addresses,
-        normalize_ip_address,
-        ip_address_sort_key,
-    )
-
-    for ip_address in ip_addresses_to_add:
-        aws_response(
-            client,
-            module,
-            "associate_resolver_endpoint_ip_address",
-            error_message=(
-                "Unable to reconcile AWS Route53 Resolver endpoint IP addresses "
-                f"for {desired['name']}"
-            ),
-            ResolverEndpointId=resolver_endpoint_id,
-            IpAddress=aws_ip_address_update(ip_address),
-        )
-        if module.params["wait"]:
-            wait_for_resolver_endpoint_status(
-                client,
-                module,
-                resolver_endpoint_id,
-                {"operational"},
-                desired["name"],
-            )
-
-    for ip_address in ip_addresses_to_remove:
-        aws_response(
-            client,
-            module,
-            "disassociate_resolver_endpoint_ip_address",
-            error_message=(
-                "Unable to reconcile AWS Route53 Resolver endpoint IP addresses "
-                f"for {desired['name']}"
-            ),
-            ResolverEndpointId=resolver_endpoint_id,
-            IpAddress=aws_ip_address_update(ip_address),
-        )
-        if module.params["wait"]:
-            wait_for_resolver_endpoint_status(
-                client,
-                module,
-                resolver_endpoint_id,
-                {"operational"},
-                desired["name"],
-            )
-
-    return normalize_resolver_endpoint_with_ip_addresses(
-        client,
-        module,
-        get_resolver_endpoint(client, module, resolver_endpoint_id),
-    )
-
-
-def update_resolver_endpoint(client, module, endpoint, differences, desired):
-    if "protocols" in differences or "resolver_endpoint_type" in differences:
-        endpoint = normalize_resolver_endpoint_with_ip_addresses(
-            client,
-            module,
-            update_resolver_endpoint_config(
-                client,
-                module,
-                endpoint,
-                differences,
-                desired,
-            ),
-        )
-
-    if "ip_addresses" in differences:
-        endpoint = reconcile_resolver_endpoint_ip_addresses(
-            client,
-            module,
-            endpoint,
-            desired,
-        )
-
-    return endpoint
-
-
-def ensure_present(client, module):
-    desired = build_desired_resolver_endpoint(module)
-    endpoint = get_resolver_endpoint_by_name(client, module, desired["name"])
-    if endpoint is not None:
-        endpoint = normalize_resolver_endpoint_with_ip_addresses(
-            client, module, endpoint
-        )
-
-    current = comparable_resolver_endpoint(endpoint, desired)
-    desired_comparable = comparable_desired_resolver_endpoint(desired)
-    if current is None:
-        changed = True
-    else:
-        differences, changed = validated_field_differences(
-            module,
-            current,
-            desired_comparable,
-            COMPARE_ITEMS,
-            IMMUTABLE_ITEMS,
-            (
-                "Unable to update AWS Route53 Resolver endpoint "
-                f"{module.params['name']}: immutable fields differ"
-            ),
-        )
-
-    if current is None and not module.check_mode:
-        endpoint = normalize_resolver_endpoint_with_ip_addresses(
-            client,
-            module,
-            create_resolver_endpoint(client, module, desired),
-        )
-    elif current is None and module.check_mode:
-        endpoint = desired
-    elif changed and not module.check_mode:
-        endpoint = update_resolver_endpoint(
-            client,
-            module,
-            endpoint,
-            differences,
-            desired,
-        )
-    elif changed and module.check_mode:
-        endpoint = desired
-
-    result = {
-        "changed": changed,
-        "name": desired["name"],
-        "resolver_endpoint": endpoint,
-        "state": "present",
-    }
-    if endpoint is not None and endpoint.get("id") is not None:
-        result["resolver_endpoint_id"] = endpoint["id"]
-
-    module.exit_json(**result)
 
 
 def ensure_absent(client, module):
@@ -632,6 +367,218 @@ def ensure_absent(client, module):
         name=module.params["name"],
         state="absent",
     )
+
+
+def ensure_present(client, module):
+    desired = build_desired_resolver_endpoint(module)
+    endpoint = get_resolver_endpoint_by_name(client, module, desired["name"])
+    if endpoint is not None:
+        endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
+
+    current = comparable_resolver_endpoint(endpoint, desired)
+    desired_comparable = comparable_desired_resolver_endpoint(desired)
+    if current is None:
+        changed = True
+    else:
+        differences, changed = field_differences(
+            current,
+            desired_comparable,
+            COMPARE_ITEMS,
+        )
+        fail_on_immutable_differences(
+            module,
+            differences,
+            IMMUTABLE_ITEMS,
+            (
+                "Unable to update AWS Route53 Resolver endpoint "
+                f"{module.params['name']}: immutable fields differ"
+            ),
+        )
+
+    if current is None and not module.check_mode:
+        endpoint = resolver_endpoint_with_ip_addresses(
+            client,
+            module,
+            create_resolver_endpoint(client, module, desired),
+        )
+    elif current is None and module.check_mode:
+        endpoint = desired
+    elif changed and not module.check_mode:
+        endpoint = update_resolver_endpoint(
+            client,
+            module,
+            endpoint,
+            differences,
+            desired,
+        )
+    elif changed and module.check_mode:
+        endpoint = desired
+
+    result_endpoint = aws_resource_to_snake_dict(endpoint)
+    result = {
+        "changed": changed,
+        "name": desired["name"],
+        "resolver_endpoint": result_endpoint,
+        "state": "present",
+    }
+    if result_endpoint is not None and result_endpoint.get("id") is not None:
+        result["resolver_endpoint_id"] = result_endpoint["id"]
+
+    module.exit_json(**result)
+
+
+def ip_address_sort_key(ip_address):
+    return (
+        ip_address.get("subnet_id") or "",
+        ip_address.get("ip") or "",
+        ip_address.get("ipv6") or "",
+    )
+
+
+def normalize_ip_address(ip_address):
+    return aws_field_values(ip_address, ("ip", "ipv6", "subnet_id"))
+
+
+def normalize_ip_addresses(ip_addresses):
+    return canonicalize_list(
+        ip_addresses,
+        normalize_ip_address,
+        ip_address_sort_key,
+    )
+
+
+def normalize_protocols(protocols):
+    return sorted(protocol.lower() for protocol in protocols or ["Do53"])
+
+
+def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired):
+    resolver_endpoint_id = endpoint["Id"]
+    current_ip_addresses = endpoint.get("IpAddresses", [])
+    desired_ip_addresses = desired["ip_addresses"]
+    ip_addresses_to_add = list_difference(
+        desired_ip_addresses,
+        current_ip_addresses,
+        normalize_ip_address,
+        ip_address_sort_key,
+    )
+    ip_addresses_to_remove = list_difference(
+        current_ip_addresses,
+        desired_ip_addresses,
+        normalize_ip_address,
+        ip_address_sort_key,
+    )
+
+    for ip_address in ip_addresses_to_add:
+        aws_response(
+            client,
+            module,
+            "associate_resolver_endpoint_ip_address",
+            error_message=(
+                "Unable to reconcile AWS Route53 Resolver endpoint IP addresses "
+                f"for {desired['name']}"
+            ),
+            ResolverEndpointId=resolver_endpoint_id,
+            IpAddress=aws_ip_address(ip_address),
+        )
+        if module.params["wait"]:
+            wait_for_resolver_endpoint_status(
+                client,
+                module,
+                resolver_endpoint_id,
+                {"operational"},
+                desired["name"],
+            )
+
+    for ip_address in ip_addresses_to_remove:
+        aws_response(
+            client,
+            module,
+            "disassociate_resolver_endpoint_ip_address",
+            error_message=(
+                "Unable to reconcile AWS Route53 Resolver endpoint IP addresses "
+                f"for {desired['name']}"
+            ),
+            ResolverEndpointId=resolver_endpoint_id,
+            IpAddress=aws_ip_address(ip_address),
+        )
+        if module.params["wait"]:
+            wait_for_resolver_endpoint_status(
+                client,
+                module,
+                resolver_endpoint_id,
+                {"operational"},
+                desired["name"],
+            )
+
+    return resolver_endpoint_with_ip_addresses(
+        client,
+        module,
+        get_resolver_endpoint(client, module, resolver_endpoint_id),
+    )
+
+
+def update_resolver_endpoint(client, module, endpoint, differences, desired):
+    if "protocols" in differences or "resolver_endpoint_type" in differences:
+        endpoint = resolver_endpoint_with_ip_addresses(
+            client,
+            module,
+            update_resolver_endpoint_config(
+                client,
+                module,
+                endpoint,
+                differences,
+                desired,
+            ),
+        )
+
+    if "ip_addresses" in differences:
+        endpoint = reconcile_resolver_endpoint_ip_addresses(
+            client,
+            module,
+            endpoint,
+            desired,
+        )
+
+    return endpoint
+
+
+def update_resolver_endpoint_config(client, module, endpoint, differences, desired):
+    update_params = {"ResolverEndpointId": endpoint["Id"]}
+    if "protocols" in differences:
+        update_params["Protocols"] = desired["protocols"]
+    if "resolver_endpoint_type" in differences:
+        update_params["ResolverEndpointType"] = desired["resolver_endpoint_type"]
+
+    endpoint = aws_resource(
+        client,
+        module,
+        "update_resolver_endpoint",
+        "ResolverEndpoint",
+        error_message=f"Unable to update AWS Route53 Resolver endpoint {desired['name']}",
+        **update_params,
+    )
+    if module.params["wait"]:
+        endpoint = wait_for_resolver_endpoint_status(
+            client, module, endpoint["Id"], {"operational"}, desired["name"]
+        )
+    return endpoint
+
+
+def wait_for_resolver_endpoint_status(
+    client, module, resolver_endpoint_id, statuses, name
+):
+    deleted = "deleted" in statuses
+    wait_for_aws_resource(
+        client,
+        module,
+        ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA,
+        "resolver_endpoint_deleted" if deleted else "resolver_endpoint_operational",
+        f"Timed out waiting for AWS Route53 Resolver endpoint {name}",
+        ResolverEndpointId=resolver_endpoint_id,
+    )
+    if deleted:
+        return None
+    return get_resolver_endpoint(client, module, resolver_endpoint_id)
 
 
 def main():

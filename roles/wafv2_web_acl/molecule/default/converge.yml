@@ -15,5 +15,5 @@
         - molecule-idempotence-notest
 
     - role: wafv2_web_acl
-      wafv2_web_acl_list: "{{ wafv2_web_acl_updated_list }}"
+      wafv2_web_acl_list: "{{ wafv2_web_acl_idempotence }}"
 ...

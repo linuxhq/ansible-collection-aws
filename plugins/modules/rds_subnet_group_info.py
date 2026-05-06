@@ -41,19 +41,17 @@ subnet_groups:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
-)
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
     aws_paginated_list,
+    aws_request_params,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_list_to_snake_dicts,
 )
 
 
 def list_subnet_groups(client, module):
-    kwargs = scrub_none_parameters({"DBSubnetGroupName": module.params["name"]})
+    kwargs = aws_request_params({"db_subnet_group_name": module.params["name"]})
 
     subnet_groups = [
         subnet_group

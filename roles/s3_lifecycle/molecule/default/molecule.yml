@@ -106,7 +106,7 @@ provisioner:
                 status: enabled
                 storage_class: glacier
 
-        s3_lifecycle_updated_list:
+        s3_lifecycle_idempotence:
           - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-00"
             wait: true
             lifecycle_rules:

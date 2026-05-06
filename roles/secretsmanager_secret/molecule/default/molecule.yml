@@ -39,7 +39,7 @@ provisioner:
               - key: molecule-secret-2a
                 value: ggfiFwtaauCRwwNfxJUE3oRjoHr3ETLL
 
-        secretsmanager_secret_updated_list:
+        secretsmanager_secret_idempotence:
           - name: molecule-secret-1
             description: molecule-secret-1-updated
             secret:

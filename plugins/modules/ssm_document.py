@@ -11,7 +11,7 @@ description:
   - Manages AWS Systems Manager documents.
   - Supports creating, updating, and deleting JSON documents.
   - Accepts structured Ansible YAML content and serializes it to JSON for AWS.
-  - Normalizes document content keys to snake_case for comparison and return values.
+  - Converts document content input keys to AWS format for comparison and API requests.
   - O(document_type) is immutable after creation.
 author:
   - Taylor Kimball (@tkimball83)
@@ -95,106 +95,33 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
     aws_response,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_to_snake_dict,
-    validated_field_differences,
+    fail_on_immutable_differences,
+    field_differences,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    get_ssm_document,
+    normalize_ssm_document,
+    ssm_document_content,
 )
 
-INVALID_DOCUMENT_ERRORS = ("InvalidDocument", "InvalidDocumentOperation")
+IMMUTABLE_ITEMS = ["document_type"]
 
 
 def build_desired_document(module):
     return {
-        "content": aws_resource_to_snake_dict(module.params["content"]),
-        "document_type": module.params["document_type"],
-        "name": module.params["name"],
+        "Content": snake_dict_to_camel_dict(module.params["content"]),
+        "DocumentType": module.params["document_type"],
+        "Name": module.params["name"],
     }
 
 
-def get_document(client, module):
-    response = aws_response(
-        client,
-        module,
-        "get_document",
-        ignore_error_codes=INVALID_DOCUMENT_ERRORS,
-        ignored_error_result=None,
-        DocumentFormat="JSON",
-        DocumentVersion=module.params["document_version"],
-        Name=module.params["name"],
-    )
-    if response is None:
+def comparable_document(document):
+    if document is None:
         return None
-
-    document = aws_resource_to_snake_dict(response)
-    content = response.get("Content")
-    if content is None:
-        document["content"] = {}
-        return document
-
-    document["content"] = aws_resource_to_snake_dict(json.loads(content))
-    return document
-
-
-def ensure_present(client, module):
-    current = get_document(client, module)
-    desired = build_desired_document(module)
-
-    if current is None:
-        changed = True
-    else:
-        _, changed = validated_field_differences(
-            module,
-            current,
-            desired,
-            ["content", "document_type"],
-            immutable_fields=["document_type"],
-            msg=(
-                "Unable to update AWS Systems Manager document "
-                f"{module.params['name']}: immutable fields differ"
-            ),
-        )
-
-    if changed and not module.check_mode:
-        content = snake_dict_to_camel_dict(desired["content"])
-        if current is None:
-            aws_response(
-                client,
-                module,
-                "create_document",
-                error_message=(
-                    "Unable to manage AWS Systems Manager document "
-                    f"{module.params['name']}"
-                ),
-                Content=json.dumps(content, sort_keys=True),
-                DocumentFormat="JSON",
-                DocumentType=module.params["document_type"],
-                Name=module.params["name"],
-            )
-        else:
-            aws_response(
-                client,
-                module,
-                "update_document",
-                error_message=(
-                    "Unable to manage AWS Systems Manager document "
-                    f"{module.params['name']}"
-                ),
-                Content=json.dumps(content, sort_keys=True),
-                DocumentFormat="JSON",
-                DocumentVersion=module.params["document_version"],
-                Name=module.params["name"],
-            )
-        current = get_document(client, module)
-    elif changed and module.check_mode:
-        current = desired
-
-    result = {
-        "changed": changed,
-        "document": current,
-        "name": module.params["name"],
-        "state": "present",
+    return {
+        "Content": ssm_document_content(document),
+        "DocumentType": document.get("DocumentType"),
     }
-
-    module.exit_json(**result)
 
 
 def ensure_absent(client, module):
@@ -217,6 +144,88 @@ def ensure_absent(client, module):
         changed=changed,
         name=module.params["name"],
         state="absent",
+    )
+
+
+def ensure_present(client, module):
+    current = get_document(client, module)
+    desired = build_desired_document(module)
+
+    if current is None:
+        changed = True
+    else:
+        differences, changed = field_differences(
+            comparable_document(current),
+            desired,
+            ["content", "document_type"],
+        )
+        fail_on_immutable_differences(
+            module,
+            differences,
+            IMMUTABLE_ITEMS,
+            (
+                "Unable to update AWS Systems Manager document "
+                f"{module.params['name']}: immutable fields differ"
+            ),
+        )
+
+    if changed and not module.check_mode:
+        desired_content = json.dumps(
+            desired["Content"],
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        if current is None:
+            aws_response(
+                client,
+                module,
+                "create_document",
+                error_message=(
+                    "Unable to manage AWS Systems Manager document "
+                    f"{module.params['name']}"
+                ),
+                Content=desired_content,
+                DocumentFormat="JSON",
+                DocumentType=desired["DocumentType"],
+                Name=desired["Name"],
+            )
+        else:
+            aws_response(
+                client,
+                module,
+                "update_document",
+                error_message=(
+                    "Unable to manage AWS Systems Manager document "
+                    f"{module.params['name']}"
+                ),
+                Content=desired_content,
+                DocumentFormat="JSON",
+                DocumentVersion=module.params["document_version"],
+                Name=desired["Name"],
+            )
+        current = get_document(client, module)
+    elif changed and module.check_mode:
+        current = desired
+
+    document = current
+    if current is not None and "Name" in current:
+        document = normalize_ssm_document(current, force_content=True)
+    result = {
+        "changed": changed,
+        "document": document,
+        "name": module.params["name"],
+        "state": "present",
+    }
+
+    module.exit_json(**result)
+
+
+def get_document(client, module):
+    return get_ssm_document(
+        client,
+        module,
+        module.params["name"],
+        document_version=module.params["document_version"],
     )
 
 

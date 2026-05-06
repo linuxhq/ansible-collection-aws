@@ -36,20 +36,9 @@ region:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_response,
+from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
+    get_instance_metadata_defaults,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_to_snake_dict,
-)
-
-
-def get_account_level(client, module):
-    return aws_response(
-        client,
-        module,
-        "get_instance_metadata_defaults",
-    ).get("AccountLevel", {})
 
 
 def main():
@@ -58,7 +47,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        account_level=aws_resource_to_snake_dict(get_account_level(client, module)),
+        account_level=get_instance_metadata_defaults(client, module),
         region=module.region,
     )
 

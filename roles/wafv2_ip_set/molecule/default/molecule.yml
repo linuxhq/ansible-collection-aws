@@ -39,7 +39,7 @@ provisioner:
             ip_address_version: ipv4
             scope: regional
 
-        wafv2_ip_set_updated_list:
+        wafv2_ip_set_idempotence:
           - name: molecule-cloudflare
             addresses:
               - 1.1.1.1/32

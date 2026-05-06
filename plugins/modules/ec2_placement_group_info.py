@@ -40,14 +40,14 @@ placement_groups:
   elements: dict
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
+    describe_ec2_placement_groups,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
+from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
+    ec2_filter_request,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_resource,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_list_to_snake_dicts,
 )
 
@@ -60,23 +60,9 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("ec2")
 
-    request = scrub_none_parameters(
-        {
-            "Filters": (
-                [{"Name": "group-name", "Values": [module.params["name"]]}]
-                if module.params["name"]
-                else None
-            )
-        }
-    )
-
-    placement_groups = aws_resource(
+    placement_groups = describe_ec2_placement_groups(
         client,
-        module,
-        "describe_placement_groups",
-        "PlacementGroups",
-        default=[],
-        **request,
+        **ec2_filter_request({"group_name": module.params["name"]}),
     )
 
     module.exit_json(

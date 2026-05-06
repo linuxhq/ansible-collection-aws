@@ -45,13 +45,11 @@ repositories:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
-)
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
     aws_paginated_list,
+    aws_request_params,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_list_to_snake_dicts,
 )
 
@@ -65,13 +63,14 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("ecr")
 
-    params = scrub_none_parameters(
+    params = aws_request_params(
         {
-            "registryId": module.params["registry_id"] or None,
-            "repositoryNames": (
+            "registry_id": module.params["registry_id"] or None,
+            "repository_names": (
                 [module.params["name"]] if module.params["name"] is not None else None
             ),
-        }
+        },
+        capitalize_first=False,
     )
 
     module.exit_json(

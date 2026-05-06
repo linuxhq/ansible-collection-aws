@@ -40,5 +40,5 @@
         - molecule-idempotence-notest
 
     - role: ssm_parameter
-      ssm_parameter_list: "{{ ssm_parameter_updated_list }}"
+      ssm_parameter_list: "{{ ssm_parameter_idempotence }}"
 ...

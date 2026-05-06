@@ -62,13 +62,36 @@ state:
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
     aws_response,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.iam import (
+    list_account_aliases,
 )
 
 
-def list_account_aliases(client, module):
-    return aws_paginated_list(client, module, "list_account_aliases", "AccountAliases")
+def ensure_absent(client, module):
+    name = module.params["name"]
+    aliases = list_account_aliases(client, module)
+    changed = name in aliases
+
+    if changed and not module.check_mode:
+        aws_response(
+            client,
+            module,
+            "delete_account_alias",
+            error_message=f"Unable to delete AWS IAM account alias {name}",
+            AccountAlias=name,
+        )
+        aliases = list_account_aliases(client, module)
+    elif changed and module.check_mode:
+        aliases = [alias for alias in aliases if alias != name]
+
+    module.exit_json(
+        changed=changed,
+        account_aliases=aliases,
+        name=name,
+        state="absent",
+    )
 
 
 def ensure_present(client, module):
@@ -106,31 +129,6 @@ def ensure_present(client, module):
         account_aliases=aliases,
         name=name,
         state="present",
-    )
-
-
-def ensure_absent(client, module):
-    name = module.params["name"]
-    aliases = list_account_aliases(client, module)
-    changed = name in aliases
-
-    if changed and not module.check_mode:
-        aws_response(
-            client,
-            module,
-            "delete_account_alias",
-            error_message=f"Unable to delete AWS IAM account alias {name}",
-            AccountAlias=name,
-        )
-        aliases = list_account_aliases(client, module)
-    elif changed and module.check_mode:
-        aliases = [alias for alias in aliases if alias != name]
-
-    module.exit_json(
-        changed=changed,
-        account_aliases=aliases,
-        name=name,
-        state="absent",
     )
 
 
