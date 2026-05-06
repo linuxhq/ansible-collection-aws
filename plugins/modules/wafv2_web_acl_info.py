@@ -52,26 +52,9 @@ web_acls:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_marker_paginated_list,
-    aws_resource,
+from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
+    list_wafv2_web_acls,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_to_snake_dict,
-)
-
-
-def get_web_acl(client, module, scope, summary):
-    return aws_resource(
-        client,
-        module,
-        "get_web_acl",
-        "WebACL",
-        default={},
-        Id=summary["Id"],
-        Name=summary["Name"],
-        Scope=scope,
-    )
 
 
 def main():
@@ -87,25 +70,11 @@ def main():
     client = module.client("wafv2")
 
     scope = module.params["scope"].upper()
-    summaries = aws_marker_paginated_list(
-        client,
-        module,
-        "list_web_acls",
-        "WebACLs",
-        marker_arg="NextMarker",
-        initial_kwargs={"Scope": scope},
-    )
-
-    web_acls = [
-        aws_resource_to_snake_dict(get_web_acl(client, module, scope, summary))
-        for summary in summaries
-        if summary.get("Id") and summary.get("Name")
-    ]
 
     module.exit_json(
         changed=False,
         scope=scope.lower(),
-        web_acls=web_acls,
+        web_acls=list_wafv2_web_acls(client, module, scope),
     )
 
 

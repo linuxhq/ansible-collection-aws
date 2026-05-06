@@ -46,18 +46,9 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
     aws_paginated_list,
     aws_resource,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_list_to_snake_dicts,
 )
-
-
-def list_cluster_names(client, module):
-    return aws_paginated_list(
-        client,
-        module,
-        "list_clusters",
-        "clusters",
-    )
 
 
 def describe_cluster(client, module, name):
@@ -85,14 +76,11 @@ def main():
         cluster = describe_cluster(client, module, module.params["name"])
         clusters = [] if cluster is None else [cluster]
     else:
-        clusters = [
-            cluster
-            for cluster in [
-                describe_cluster(client, module, name)
-                for name in list_cluster_names(client, module)
-            ]
-            if cluster is not None
-        ]
+        clusters = []
+        for name in aws_paginated_list(client, module, "list_clusters", "clusters"):
+            cluster = describe_cluster(client, module, name)
+            if cluster is not None:
+                clusters.append(cluster)
 
     module.exit_json(
         changed=False,

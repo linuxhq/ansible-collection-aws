@@ -87,130 +87,62 @@ state:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
-)
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
+    aws_resource,
     aws_response,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.fields import (
+    aws_field_values,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_to_snake_dict,
     canonicalize_list,
-    find_aws_resource,
+    field_differences,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    aws_ssm_targets,
+    get_ssm_association_by_name,
+    normalize_ssm_association,
 )
 
-
-def aws_target(target):
-    return scrub_none_parameters(
-        {
-            "Key": target.get("key"),
-            "Values": target.get("values") or [],
-        }
-    )
+COMPARE_ITEMS = ["schedule_expression", "targets"]
 
 
-def aws_targets(targets):
-    return [aws_target(target) for target in targets or []]
-
-
-def normalize_association(association):
-    return aws_resource_to_snake_dict(association, ignore_list=["TargetMaps"])
-
-
-def canonical_target(target):
-    key = target.get("key", target.get("Key"))
-    values = target.get("values", target.get("Values", [])) or []
-    return {
-        "Key": key,
-        "Values": sorted(values),
-    }
-
-
-def target_sort_key(target):
-    return target["Key"] or ""
-
-
-def canonicalize_targets(targets):
-    return canonicalize_list(targets, canonical_target, target_sort_key)
-
-
-def build_desired_association(module, association_id=None):
+def build_desired_association(module, targets, association_id=None):
     desired = {
         "Name": module.params["name"],
         "ScheduleExpression": module.params["schedule_expression"],
-        "Targets": aws_targets(module.params["targets"]),
+        "Targets": targets,
     }
     if association_id is not None:
         desired["AssociationId"] = association_id
     return desired
 
 
-def find_association(associations, name):
-    return find_aws_resource(associations, name=name)
-
-
-def ensure_present(client, module, current):
-    desired_targets = canonicalize_targets(module.params["targets"])
-
-    if current is None:
-        changed = True
-        desired = build_desired_association(module)
-        if module.check_mode:
-            association = desired
-        else:
-            response = aws_response(
-                client,
-                module,
-                "create_association",
-                error_message=(
-                    "Unable to create AWS Systems Manager association "
-                    f"{module.params['name']}"
-                ),
-                Name=module.params["name"],
-                ScheduleExpression=module.params["schedule_expression"],
-                Targets=aws_targets(module.params["targets"]),
-            )
-            association = response.get("AssociationDescription", {})
-    else:
-        changed = (
-            current.get("ScheduleExpression") != module.params["schedule_expression"]
-            or canonicalize_targets(current.get("Targets", [])) != desired_targets
-        )
-        desired = build_desired_association(module, current.get("AssociationId"))
-        if changed and not module.check_mode:
-            response = aws_response(
-                client,
-                module,
-                "update_association",
-                error_message=(
-                    "Unable to update AWS Systems Manager association "
-                    f"{module.params['name']}"
-                ),
-                AssociationId=current["AssociationId"],
-                ScheduleExpression=module.params["schedule_expression"],
-                Targets=aws_targets(module.params["targets"]),
-            )
-            association = response.get("AssociationDescription", {})
-        elif changed and module.check_mode:
-            association = desired
-        else:
-            association = current
-
-    result = {
-        "changed": changed,
-        "name": module.params["name"],
-        "state": "present",
-        "association": normalize_association(association),
+def canonical_target(target):
+    values = aws_field_values(target, ("key", "values"))
+    return {
+        "Key": values.get("key"),
+        "Values": sorted(values.get("values") or []),
     }
-    association_id = association.get("AssociationId")
-    if association_id:
-        result["association_id"] = association_id
-    module.exit_json(**result)
+
+
+def canonicalize_targets(targets):
+    return canonicalize_list(targets, canonical_target, target_sort_key)
+
+
+def comparable_association(association):
+    if association is None:
+        return None
+    values = aws_field_values(association, ("schedule_expression", "targets"))
+    return {
+        "schedule_expression": values.get("schedule_expression"),
+        "targets": canonicalize_targets(values.get("targets") or []),
+    }
 
 
 def ensure_absent(client, module, current):
     changed = current is not None
+    association_id = current.get("AssociationId") if current is not None else None
 
     if changed and not module.check_mode:
         aws_response(
@@ -221,7 +153,7 @@ def ensure_absent(client, module, current):
                 "Unable to delete AWS Systems Manager association "
                 f"{module.params['name']}"
             ),
-            AssociationId=current["AssociationId"],
+            AssociationId=association_id,
         )
 
     result = {
@@ -229,9 +161,84 @@ def ensure_absent(client, module, current):
         "name": module.params["name"],
         "state": "absent",
     }
-    if current and current.get("AssociationId"):
-        result["association_id"] = current["AssociationId"]
+    if association_id:
+        result["association_id"] = association_id
     module.exit_json(**result)
+
+
+def ensure_present(client, module, current):
+    aws_targets = aws_ssm_targets(module.params["targets"], default_values=True)
+    desired_targets = canonicalize_targets(aws_targets)
+
+    if current is None:
+        changed = True
+        desired = build_desired_association(module, aws_targets)
+        if module.check_mode:
+            association = desired
+        else:
+            association = aws_resource(
+                client,
+                module,
+                "create_association",
+                "AssociationDescription",
+                default={},
+                error_message=(
+                    "Unable to create AWS Systems Manager association "
+                    f"{module.params['name']}"
+                ),
+                Name=module.params["name"],
+                ScheduleExpression=module.params["schedule_expression"],
+                Targets=aws_targets,
+            )
+    else:
+        _, changed = field_differences(
+            comparable_association(current),
+            {
+                "schedule_expression": module.params["schedule_expression"],
+                "targets": desired_targets,
+            },
+            COMPARE_ITEMS,
+        )
+        association_id = current.get("AssociationId")
+        desired = build_desired_association(
+            module,
+            aws_targets,
+            association_id,
+        )
+        if changed and not module.check_mode:
+            association = aws_resource(
+                client,
+                module,
+                "update_association",
+                "AssociationDescription",
+                default={},
+                error_message=(
+                    "Unable to update AWS Systems Manager association "
+                    f"{module.params['name']}"
+                ),
+                AssociationId=association_id,
+                ScheduleExpression=module.params["schedule_expression"],
+                Targets=aws_targets,
+            )
+        elif changed and module.check_mode:
+            association = desired
+        else:
+            association = current
+
+    result = {
+        "changed": changed,
+        "name": module.params["name"],
+        "state": "present",
+        "association": normalize_ssm_association(association),
+    }
+    association_id = association.get("AssociationId")
+    if association_id:
+        result["association_id"] = association_id
+    module.exit_json(**result)
+
+
+def target_sort_key(target):
+    return target["Key"] or ""
 
 
 def main():
@@ -262,15 +269,7 @@ def main():
     )
     client = module.client("ssm")
 
-    current = find_association(
-        aws_paginated_list(
-            client,
-            module,
-            "list_associations",
-            "Associations",
-        ),
-        module.params["name"],
-    )
+    current = get_ssm_association_by_name(client, module, module.params["name"])
 
     if module.params["state"] == "present":
         ensure_present(client, module, current)

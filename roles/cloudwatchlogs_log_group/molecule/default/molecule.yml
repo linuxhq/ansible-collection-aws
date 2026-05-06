@@ -31,7 +31,7 @@ provisioner:
           - name: molecule-90d
             retention: 90
 
-        cloudwatchlogs_log_group_updated_list:
+        cloudwatchlogs_log_group_idempotence:
           - name: molecule-30d
             retention: 14
           - name: molecule-90d

@@ -18,5 +18,5 @@
         - molecule-idempotence-notest
 
     - role: sqs_queue
-      sqs_queue_list: "{{ sqs_queue_updated_list }}"
+      sqs_queue_list: "{{ sqs_queue_idempotence }}"
 ...

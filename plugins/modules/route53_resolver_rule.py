@@ -137,19 +137,25 @@ state:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
-)
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
+    aws_request_params,
+    aws_request_params_list,
     aws_resource,
     aws_response,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.fields import (
+    aws_field_values,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_to_snake_dict,
     canonicalize_list,
-    find_aws_resource,
-    validated_field_differences,
+    fail_on_immutable_differences,
+    field_differences,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
+    aws_resource_to_snake_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
+    get_resolver_rule_by_name,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     wait_for_aws_resource,
@@ -210,22 +216,6 @@ COMPARE_ITEMS = [
 ]
 
 
-def aws_target_ip(target_ip):
-    return scrub_none_parameters(
-        {
-            "Ip": target_ip.get("ip"),
-            "Ipv6": target_ip.get("ipv6"),
-            "Port": target_ip.get("port"),
-            "Protocol": target_ip.get("protocol"),
-            "ServerNameIndication": target_ip.get("server_name_indication"),
-        }
-    )
-
-
-def aws_target_ips(target_ips):
-    return [aws_target_ip(target_ip) for target_ip in target_ips]
-
-
 def build_desired_resolver_rule(module):
     return {
         "domain_name": module.params["domain_name"],
@@ -233,47 +223,6 @@ def build_desired_resolver_rule(module):
         "resolver_endpoint_id": module.params["resolver_endpoint_id"],
         "rule_type": module.params["rule_type"].upper(),
         "target_ips": module.params["target_ips"],
-    }
-
-
-def normalize_target_ip(target_ip):
-    return scrub_none_parameters(
-        {
-            "ip": target_ip.get("ip"),
-            "ipv6": target_ip.get("ipv6"),
-            "port": target_ip.get("port") or 53,
-            "protocol": target_ip.get("protocol"),
-            "server_name_indication": target_ip.get("server_name_indication"),
-        }
-    )
-
-
-def target_ip_sort_key(target_ip):
-    return (
-        target_ip.get("ip") or "",
-        target_ip.get("ipv6") or "",
-        target_ip.get("port") or 0,
-        target_ip.get("protocol") or "",
-        target_ip.get("server_name_indication") or "",
-    )
-
-
-def normalize_target_ips(target_ips):
-    return canonicalize_list(
-        target_ips,
-        normalize_target_ip,
-        target_ip_sort_key,
-    )
-
-
-def comparable_resolver_rule(rule):
-    if not rule:
-        return None
-    return {
-        "domain_name": rule.get("domain_name", "").rstrip("."),
-        "resolver_endpoint_id": rule.get("resolver_endpoint_id"),
-        "rule_type": rule.get("rule_type"),
-        "target_ips": normalize_target_ips(rule.get("target_ips")),
     }
 
 
@@ -286,133 +235,40 @@ def comparable_desired_resolver_rule(desired):
     }
 
 
-def get_resolver_rule(client, module, resolver_rule_id):
-    return aws_resource(
-        client,
-        module,
-        "get_resolver_rule",
-        "ResolverRule",
-        ignore_error_codes="ResourceNotFoundException",
-        ignored_error_result=None,
-        ResolverRuleId=resolver_rule_id,
-    )
-
-
-def get_resolver_rule_by_name(client, module, name):
-    return find_aws_resource(
-        aws_paginated_list(
-            client,
-            module,
-            "list_resolver_rules",
-            "ResolverRules",
-        ),
-        name=name,
-    )
-
-
-def wait_for_resolver_rule_status(client, module, resolver_rule_id, statuses, name):
-    deleted = "deleted" in statuses
-    wait_for_aws_resource(
-        client,
-        module,
-        ROUTE53_RESOLVER_RULE_WAITER_MODEL_DATA,
-        "resolver_rule_deleted" if deleted else "resolver_rule_complete",
-        f"Timed out waiting for AWS Route53 Resolver rule {name}",
-        ResolverRuleId=resolver_rule_id,
-    )
-    if deleted:
+def comparable_resolver_rule(rule):
+    if not rule:
         return None
-    return get_resolver_rule(client, module, resolver_rule_id)
+    rule_values = aws_field_values(
+        rule,
+        ("domain_name", "resolver_endpoint_id", "rule_type", "target_ips"),
+    )
+    return {
+        "domain_name": (rule_values.get("domain_name") or "").rstrip("."),
+        "resolver_endpoint_id": rule_values.get("resolver_endpoint_id"),
+        "rule_type": rule_values.get("rule_type"),
+        "target_ips": normalize_target_ips(rule_values.get("target_ips")),
+    }
 
 
 def create_resolver_rule(client, module, desired):
-    response = aws_response(
+    rule = aws_resource(
         client,
         module,
         "create_resolver_rule",
+        "ResolverRule",
         error_message=f"Unable to create AWS Route53 Resolver rule {desired['name']}",
         CreatorRequestId=desired["name"],
         DomainName=desired["domain_name"],
         Name=desired["name"],
         ResolverEndpointId=desired["resolver_endpoint_id"],
         RuleType=desired["rule_type"],
-        TargetIps=aws_target_ips(desired["target_ips"]),
+        TargetIps=aws_request_params_list(desired["target_ips"]),
     )
-    rule = response.get("ResolverRule")
     if module.params["wait"]:
         rule = wait_for_resolver_rule_status(
             client, module, rule["Id"], {"complete"}, desired["name"]
         )
     return rule
-
-
-def update_resolver_rule(client, module, rule, desired):
-    response = aws_response(
-        client,
-        module,
-        "update_resolver_rule",
-        error_message=f"Unable to update AWS Route53 Resolver rule {desired['name']}",
-        ResolverRuleId=rule["id"],
-        Config=scrub_none_parameters(
-            {
-                "Name": desired["name"],
-                "ResolverEndpointId": desired["resolver_endpoint_id"],
-                "TargetIps": aws_target_ips(desired["target_ips"]),
-            }
-        ),
-    )
-    updated_rule = response.get("ResolverRule")
-    if module.params["wait"]:
-        updated_rule = wait_for_resolver_rule_status(
-            client, module, updated_rule["Id"], {"complete"}, desired["name"]
-        )
-    return updated_rule
-
-
-def ensure_present(client, module):
-    desired = build_desired_resolver_rule(module)
-    rule = get_resolver_rule_by_name(client, module, desired["name"])
-    if rule is not None:
-        rule = aws_resource_to_snake_dict(rule)
-
-    current = comparable_resolver_rule(rule)
-    desired_comparable = comparable_desired_resolver_rule(desired)
-    if current is None:
-        changed = True
-    else:
-        differences, changed = validated_field_differences(
-            module,
-            current,
-            desired_comparable,
-            COMPARE_ITEMS,
-            IMMUTABLE_ITEMS,
-            (
-                "Unable to update AWS Route53 Resolver rule "
-                f"{module.params['name']}: immutable fields differ"
-            ),
-        )
-
-    if current is None and not module.check_mode:
-        rule = aws_resource_to_snake_dict(create_resolver_rule(client, module, desired))
-    elif current is None and module.check_mode:
-        rule = desired
-    elif changed and not module.check_mode:
-        rule = aws_resource_to_snake_dict(
-            update_resolver_rule(client, module, rule, desired)
-        )
-    elif changed and module.check_mode:
-        rule = desired
-
-    result = {
-        "changed": changed,
-        "name": desired["name"],
-        "resolver_rule": rule,
-        "state": "present",
-    }
-    if rule is not None and rule.get("id") is not None:
-        result["resolver_rule_id"] = rule["id"]
-
-    module.exit_json(**result)
 
 
 def ensure_absent(client, module):
@@ -441,6 +297,126 @@ def ensure_absent(client, module):
         changed=changed,
         name=module.params["name"],
         state="absent",
+    )
+
+
+def ensure_present(client, module):
+    desired = build_desired_resolver_rule(module)
+    rule = get_resolver_rule_by_name(client, module, desired["name"])
+
+    current = comparable_resolver_rule(rule)
+    desired_comparable = comparable_desired_resolver_rule(desired)
+    if current is None:
+        changed = True
+    else:
+        differences, changed = field_differences(
+            current,
+            desired_comparable,
+            COMPARE_ITEMS,
+        )
+        fail_on_immutable_differences(
+            module,
+            differences,
+            IMMUTABLE_ITEMS,
+            (
+                "Unable to update AWS Route53 Resolver rule "
+                f"{module.params['name']}: immutable fields differ"
+            ),
+        )
+
+    if current is None and not module.check_mode:
+        rule = create_resolver_rule(client, module, desired)
+    elif current is None and module.check_mode:
+        rule = desired
+    elif changed and not module.check_mode:
+        rule = update_resolver_rule(client, module, rule, desired)
+    elif changed and module.check_mode:
+        rule = desired
+
+    result_rule = aws_resource_to_snake_dict(rule)
+    result = {
+        "changed": changed,
+        "name": desired["name"],
+        "resolver_rule": result_rule,
+        "state": "present",
+    }
+    if result_rule is not None and result_rule.get("id") is not None:
+        result["resolver_rule_id"] = result_rule["id"]
+
+    module.exit_json(**result)
+
+
+def normalize_target_ip(target_ip):
+    return aws_field_values(
+        target_ip,
+        ("ip", "ipv6", "port", "protocol", "server_name_indication"),
+        defaults={"port": 53, "protocol": "Do53"},
+    )
+
+
+def normalize_target_ips(target_ips):
+    return canonicalize_list(
+        target_ips,
+        normalize_target_ip,
+        target_ip_sort_key,
+    )
+
+
+def target_ip_sort_key(target_ip):
+    return (
+        target_ip.get("ip") or "",
+        target_ip.get("ipv6") or "",
+        target_ip.get("port") or 0,
+        target_ip.get("protocol") or "",
+        target_ip.get("server_name_indication") or "",
+    )
+
+
+def update_resolver_rule(client, module, rule, desired):
+    config = aws_request_params(
+        {
+            "name": desired["name"],
+            "resolver_endpoint_id": desired["resolver_endpoint_id"],
+        }
+    )
+    config["TargetIps"] = aws_request_params_list(desired["target_ips"])
+
+    updated_rule = aws_resource(
+        client,
+        module,
+        "update_resolver_rule",
+        "ResolverRule",
+        error_message=f"Unable to update AWS Route53 Resolver rule {desired['name']}",
+        ResolverRuleId=rule["Id"],
+        Config=config,
+    )
+    if module.params["wait"]:
+        updated_rule = wait_for_resolver_rule_status(
+            client, module, updated_rule["Id"], {"complete"}, desired["name"]
+        )
+    return updated_rule
+
+
+def wait_for_resolver_rule_status(client, module, resolver_rule_id, statuses, name):
+    deleted = "deleted" in statuses
+    wait_for_aws_resource(
+        client,
+        module,
+        ROUTE53_RESOLVER_RULE_WAITER_MODEL_DATA,
+        "resolver_rule_deleted" if deleted else "resolver_rule_complete",
+        f"Timed out waiting for AWS Route53 Resolver rule {name}",
+        ResolverRuleId=resolver_rule_id,
+    )
+    if deleted:
+        return None
+    return aws_resource(
+        client,
+        module,
+        "get_resolver_rule",
+        "ResolverRule",
+        ignore_error_codes="ResourceNotFoundException",
+        ignored_error_result=None,
+        ResolverRuleId=resolver_rule_id,
     )
 
 

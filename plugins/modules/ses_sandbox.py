@@ -67,35 +67,35 @@ account:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
-)
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_request_params,
     aws_response,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_to_snake_dict,
 )
 
 
 def build_request(params):
-    return scrub_none_parameters(
+    request = aws_request_params(
         {
-            "AdditionalContactEmailAddresses": params[
+            "additional_contact_email_addresses": params[
                 "additional_contact_email_addresses"
             ]
             or None,
-            "ContactLanguage": params["contact_language"].upper(),
-            "MailType": params["mail_type"].upper(),
-            "ProductionAccessEnabled": True,
-            "UseCaseDescription": (
+            "contact_language": params["contact_language"].upper(),
+            "mail_type": params["mail_type"].upper(),
+            "production_access_enabled": True,
+            "use_case_description": (
                 None
                 if params["use_case_description"] is None
                 else params["use_case_description"].strip()
             ),
-            "WebsiteURL": params["website_url"],
+            "website_url": params["website_url"],
         }
     )
+    request["WebsiteURL"] = request.pop("WebsiteUrl")
+    return request
 
 
 def main():

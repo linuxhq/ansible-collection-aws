@@ -81,7 +81,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
     aws_response,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    validated_field_differences,
+    field_differences,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     wait_for_aws_resource,
@@ -89,7 +89,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
 
 PRESENT_STATUSES = {"ENABLED", "ENABLING", "ENABLED_BY_DEFAULT"}
 ABSENT_STATUSES = {"DISABLED", "DISABLING"}
-IMMUTABLE_ITEMS = ["name"]
 COMPARE_ITEMS = ["name", "state"]
 
 
@@ -171,126 +170,34 @@ ACCOUNT_REGION_WAITER_MODEL_DATA = {
 }
 
 
-def build_desired_region(module):
-    return {
-        "name": module.params["name"],
-        "state": module.params["state"],
-    }
-
-
-def state_from_region_opt_status(region_opt_status):
-    if region_opt_status in PRESENT_STATUSES:
-        return "present"
-    if region_opt_status in ABSENT_STATUSES:
-        return "absent"
-    return None
-
-
-def desired_region_opt_status(state):
-    if state == "present":
-        return "ENABLED"
-    return "DISABLED"
-
-
 def desired_statuses(state):
     if state == "present":
         return PRESENT_STATUSES
     return ABSENT_STATUSES
 
 
-def normalize_account_region(name, region_opt_status):
-    if not region_opt_status:
-        return None
-    return {
-        "name": name,
-        "region_opt_status": region_opt_status,
-        "state": state_from_region_opt_status(region_opt_status),
-    }
-
-
-def comparable_account_region(region):
-    if not region:
-        return None
-    return {
-        "name": region["name"],
-        "state": region["state"],
-    }
-
-
-def get_region_opt_status(client, module, region_name):
-    return aws_resource(
-        client,
-        module,
-        "get_region_opt_status",
-        "RegionOptStatus",
-        RegionName=region_name,
-    )
-
-
-def wait_for_status(client, module, region_name, desired_statuses):
-    waiter_name = (
-        "region_enabled" if desired_statuses == PRESENT_STATUSES else "region_disabled"
-    )
-    wait_for_aws_resource(
-        client,
-        module,
-        ACCOUNT_REGION_WAITER_MODEL_DATA,
-        waiter_name,
-        (
-            f"Timed out waiting for AWS account region {region_name} "
-            f"to reach one of {sorted(desired_statuses)}"
-        ),
-        waiter_config={
-            "Delay": module.params["delay"],
-            "MaxAttempts": module.params["retries"],
-        },
-        RegionName=region_name,
-    )
-    return get_region_opt_status(client, module, region_name)
-
-
-def update_region_state(client, module, desired):
-    region_name = desired["name"]
-
-    if desired["state"] == "present":
-        operation = "enable_region"
-        action = "enable"
-    else:
-        operation = "disable_region"
-        action = "disable"
-
-    aws_response(
-        client,
-        module,
-        operation,
-        error_message=f"Unable to {action} AWS account region {region_name}",
-        RegionName=region_name,
-    )
-
-
-def get_current_region(client, module, name):
-    return normalize_account_region(name, get_region_opt_status(client, module, name))
-
-
 def ensure_region(client, module):
-    desired = build_desired_region(module)
-    previous = get_current_region(client, module, desired["name"])
-    current = comparable_account_region(previous)
-    desired_comparable = comparable_account_region(desired)
+    desired = {
+        "name": module.params["name"],
+        "state": module.params["state"],
+    }
+    previous = normalize_account_region(
+        desired["name"],
+        get_region_opt_status(client, module, desired["name"]),
+    )
+    current = (
+        {"name": previous["name"], "state": previous["state"]}
+        if previous is not None
+        else None
+    )
 
     if current is None:
         changed = True
     else:
-        differences, changed = validated_field_differences(
-            module,
+        _, changed = field_differences(
             current,
-            desired_comparable,
+            desired,
             COMPARE_ITEMS,
-            IMMUTABLE_ITEMS,
-            (
-                "Unable to update AWS account region "
-                f"{module.params['name']}: immutable fields differ"
-            ),
         )
 
     if changed and not module.check_mode:
@@ -309,7 +216,9 @@ def ensure_region(client, module):
     elif changed and module.check_mode:
         current_region = {
             "name": desired["name"],
-            "region_opt_status": desired_region_opt_status(desired["state"]),
+            "region_opt_status": (
+                "ENABLED" if desired["state"] == "present" else "DISABLED"
+            ),
             "state": desired["state"],
         }
     else:
@@ -336,6 +245,73 @@ def ensure_region(client, module):
             current_region["region_opt_status"] if current_region is not None else None
         ),
     )
+
+
+def get_region_opt_status(client, module, region_name):
+    return aws_resource(
+        client,
+        module,
+        "get_region_opt_status",
+        "RegionOptStatus",
+        RegionName=region_name,
+    )
+
+
+def normalize_account_region(name, region_opt_status):
+    if not region_opt_status:
+        return None
+    if region_opt_status in PRESENT_STATUSES:
+        state = "present"
+    elif region_opt_status in ABSENT_STATUSES:
+        state = "absent"
+    else:
+        state = None
+    return {
+        "name": name,
+        "region_opt_status": region_opt_status,
+        "state": state,
+    }
+
+
+def update_region_state(client, module, desired):
+    region_name = desired["name"]
+
+    if desired["state"] == "present":
+        operation = "enable_region"
+        action = "enable"
+    else:
+        operation = "disable_region"
+        action = "disable"
+
+    aws_response(
+        client,
+        module,
+        operation,
+        error_message=f"Unable to {action} AWS account region {region_name}",
+        RegionName=region_name,
+    )
+
+
+def wait_for_status(client, module, region_name, desired_statuses):
+    waiter_name = (
+        "region_enabled" if desired_statuses == PRESENT_STATUSES else "region_disabled"
+    )
+    wait_for_aws_resource(
+        client,
+        module,
+        ACCOUNT_REGION_WAITER_MODEL_DATA,
+        waiter_name,
+        (
+            f"Timed out waiting for AWS account region {region_name} "
+            f"to reach one of {sorted(desired_statuses)}"
+        ),
+        waiter_config={
+            "Delay": module.params["delay"],
+            "MaxAttempts": module.params["retries"],
+        },
+        RegionName=region_name,
+    )
+    return get_region_opt_status(client, module, region_name)
 
 
 def main():

@@ -80,41 +80,14 @@ vpcs:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import aws_response
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_resource,
+    aws_response,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_list_to_snake_dicts,
-    aws_resource_matches,
     aws_resource_to_snake_dict,
 )
-
-
-def normalize_hosted_zone_id(hosted_zone_id):
-    return hosted_zone_id.rsplit("/", 1)[-1]
-
-
-def get_hosted_zone(client, module, hosted_zone_id):
-    return aws_response(
-        client,
-        module,
-        "get_hosted_zone",
-        Id=hosted_zone_id,
-    )
-
-
-def get_vpc_associations(client, module, hosted_zone_id):
-    response = get_hosted_zone(client, module, hosted_zone_id)
-    return response.get("VPCs", [])
-
-
-def is_associated(vpcs, module):
-    return any(
-        aws_resource_matches(
-            vpc,
-            vpc_id=module.params["vpc_id"],
-            vpc_region=module.params["vpc_region"],
-        )
-        for vpc in vpcs
-    )
 
 
 def build_result(module, changed, vpcs):
@@ -130,30 +103,6 @@ def build_result(module, changed, vpcs):
         ),
         vpcs=aws_resource_list_to_snake_dicts(vpcs),
     )
-
-
-def ensure_present(client, module, hosted_zone_id):
-    vpcs = get_vpc_associations(client, module, hosted_zone_id)
-    changed = not is_associated(vpcs, module)
-
-    if changed and not module.check_mode:
-        aws_response(
-            client,
-            module,
-            "associate_vpc_with_hosted_zone",
-            error_message=(
-                f"Unable to associate VPC {module.params['vpc_id']} with AWS "
-                f"Route53 hosted zone {hosted_zone_id}"
-            ),
-            HostedZoneId=hosted_zone_id,
-            VPC={
-                "VPCId": module.params["vpc_id"],
-                "VPCRegion": module.params["vpc_region"],
-            },
-        )
-        vpcs = get_vpc_associations(client, module, hosted_zone_id)
-
-    build_result(module, changed, vpcs)
 
 
 def ensure_absent(client, module, hosted_zone_id):
@@ -180,6 +129,51 @@ def ensure_absent(client, module, hosted_zone_id):
     build_result(module, changed, vpcs)
 
 
+def ensure_present(client, module, hosted_zone_id):
+    vpcs = get_vpc_associations(client, module, hosted_zone_id)
+    changed = not is_associated(vpcs, module)
+
+    if changed and not module.check_mode:
+        aws_response(
+            client,
+            module,
+            "associate_vpc_with_hosted_zone",
+            error_message=(
+                f"Unable to associate VPC {module.params['vpc_id']} with AWS "
+                f"Route53 hosted zone {hosted_zone_id}"
+            ),
+            HostedZoneId=hosted_zone_id,
+            VPC={
+                "VPCId": module.params["vpc_id"],
+                "VPCRegion": module.params["vpc_region"],
+            },
+        )
+        vpcs = get_vpc_associations(client, module, hosted_zone_id)
+
+    build_result(module, changed, vpcs)
+
+
+def get_vpc_associations(client, module, hosted_zone_id):
+    return aws_resource(
+        client,
+        module,
+        "get_hosted_zone",
+        "VPCs",
+        default=[],
+        Id=hosted_zone_id,
+    )
+
+
+def is_associated(vpcs, module):
+    return any(
+        (
+            vpc.get("VPCId") == module.params["vpc_id"]
+            and vpc.get("VPCRegion") == module.params["vpc_region"]
+        )
+        for vpc in vpcs
+    )
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -195,7 +189,7 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("route53")
-    hosted_zone_id = normalize_hosted_zone_id(module.params["hosted_zone_id"])
+    hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]
     module.params["hosted_zone_id"] = hosted_zone_id
 
     if module.params["state"] == "present":

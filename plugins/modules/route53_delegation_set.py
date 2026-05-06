@@ -67,65 +67,21 @@ state:
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_marker_paginated_list,
+    aws_resource,
     aws_response,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_to_snake_dict,
-    find_aws_resource,
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53 import (
+    get_reusable_delegation_set_by_name,
 )
-
-
-def get_delegation_set_by_name(client, module, name):
-    return find_aws_resource(
-        aws_marker_paginated_list(
-            client,
-            module,
-            "list_reusable_delegation_sets",
-            "DelegationSets",
-            truncated_result="IsTruncated",
-        ),
-        caller_reference=name,
-    )
-
-
-def ensure_present(client, module):
-    delegation_set = get_delegation_set_by_name(client, module, module.params["name"])
-    changed = delegation_set is None
-
-    if changed and not module.check_mode:
-        response = aws_response(
-            client,
-            module,
-            "create_reusable_delegation_set",
-            error_message=(
-                "Unable to create AWS Route53 reusable delegation set "
-                f"{module.params['name']}"
-            ),
-            CallerReference=module.params["name"],
-        )
-        delegation_set = response.get("DelegationSet") or get_delegation_set_by_name(
-            client, module, module.params["name"]
-        )
-    elif changed and module.check_mode:
-        delegation_set = {
-            "CallerReference": module.params["name"],
-        }
-
-    result = {
-        "changed": changed,
-        "delegation_set": aws_resource_to_snake_dict(delegation_set),
-        "name": module.params["name"],
-        "state": "present",
-    }
-    if delegation_set is not None and delegation_set.get("Id") is not None:
-        result["delegation_set_id"] = delegation_set["Id"]
-
-    module.exit_json(**result)
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
+    aws_resource_to_snake_dict,
+)
 
 
 def ensure_absent(client, module):
-    delegation_set = get_delegation_set_by_name(client, module, module.params["name"])
+    delegation_set = get_reusable_delegation_set_by_name(
+        client, module, module.params["name"]
+    )
     changed = delegation_set is not None
 
     if changed and not module.check_mode:
@@ -145,6 +101,45 @@ def ensure_absent(client, module):
         name=module.params["name"],
         state="absent",
     )
+
+
+def ensure_present(client, module):
+    delegation_set = get_reusable_delegation_set_by_name(
+        client, module, module.params["name"]
+    )
+    changed = delegation_set is None
+
+    if changed and not module.check_mode:
+        delegation_set = aws_resource(
+            client,
+            module,
+            "create_reusable_delegation_set",
+            "DelegationSet",
+            error_message=(
+                "Unable to create AWS Route53 reusable delegation set "
+                f"{module.params['name']}"
+            ),
+            CallerReference=module.params["name"],
+        )
+        if delegation_set is None:
+            delegation_set = get_reusable_delegation_set_by_name(
+                client, module, module.params["name"]
+            )
+    elif changed and module.check_mode:
+        delegation_set = {
+            "CallerReference": module.params["name"],
+        }
+
+    result = {
+        "changed": changed,
+        "delegation_set": aws_resource_to_snake_dict(delegation_set),
+        "name": module.params["name"],
+        "state": "present",
+    }
+    if delegation_set is not None and delegation_set.get("Id") is not None:
+        result["delegation_set_id"] = delegation_set["Id"]
+
+    module.exit_json(**result)
 
 
 def main():

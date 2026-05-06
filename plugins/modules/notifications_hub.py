@@ -57,52 +57,15 @@ state:
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
     aws_response,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_to_snake_dict,
-    find_aws_resource,
+from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import (
+    aws_notification_hub,
+    get_notification_hub_by_region,
 )
-
-
-def get_notification_hub_by_region(client, module, region):
-    return find_aws_resource(
-        aws_paginated_list(
-            client,
-            module,
-            "list_notification_hubs",
-            "notificationHubs",
-        ),
-        notification_hub_region=region,
-    )
-
-
-def ensure_present(client, module):
-    hub = get_notification_hub_by_region(client, module, module.params["region"])
-    changed = hub is None
-
-    if changed and not module.check_mode:
-        aws_response(
-            client,
-            module,
-            "register_notification_hub",
-            error_message=f"Unable to create AWS Notifications hub {module.params['region']}",
-            notificationHubRegion=module.params["region"],
-        )
-        hub = {
-            "notificationHubRegion": module.params["region"],
-        }
-    elif changed and module.check_mode:
-        hub = {
-            "notificationHubRegion": module.params["region"],
-        }
-
-    module.exit_json(
-        changed=changed,
-        notification_hub=(aws_resource_to_snake_dict(hub) if hub is not None else None),
-        state="present",
-    )
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
+    aws_resource_to_snake_dict,
+)
 
 
 def ensure_absent(client, module):
@@ -115,12 +78,36 @@ def ensure_absent(client, module):
             module,
             "deregister_notification_hub",
             error_message=f"Unable to delete AWS Notifications hub {module.params['region']}",
-            notificationHubRegion=module.params["region"],
+            **aws_notification_hub(module.params["region"]),
         )
 
     module.exit_json(
         changed=changed,
         state="absent",
+    )
+
+
+def ensure_present(client, module):
+    desired_hub = aws_notification_hub(module.params["region"])
+    hub = get_notification_hub_by_region(client, module, module.params["region"])
+    changed = hub is None
+
+    if changed and not module.check_mode:
+        aws_response(
+            client,
+            module,
+            "register_notification_hub",
+            error_message=f"Unable to create AWS Notifications hub {module.params['region']}",
+            **desired_hub,
+        )
+        hub = desired_hub
+    elif changed and module.check_mode:
+        hub = desired_hub
+
+    module.exit_json(
+        changed=changed,
+        notification_hub=aws_resource_to_snake_dict(hub),
+        state="present",
     )
 
 

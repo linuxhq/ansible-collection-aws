@@ -32,8 +32,8 @@ account_aliases:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
+from ansible_collections.linuxhq.aws.plugins.module_utils.iam import (
+    list_account_aliases,
 )
 
 
@@ -46,12 +46,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        account_aliases=aws_paginated_list(
-            client,
-            module,
-            "list_account_aliases",
-            "AccountAliases",
-        ),
+        account_aliases=list_account_aliases(client, module),
     )
 
 

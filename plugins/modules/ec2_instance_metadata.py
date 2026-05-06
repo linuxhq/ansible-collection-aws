@@ -69,43 +69,23 @@ region:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
-)
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_resource,
+    aws_request_params,
     aws_response,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_to_snake_dict,
-    validated_field_differences,
+    field_differences,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
+    get_instance_metadata_defaults,
 )
 
-OPTION_TO_AWS_FIELD = {
-    "http_endpoint": "HttpEndpoint",
-    "http_put_response_hop_limit": "HttpPutResponseHopLimit",
-    "http_tokens": "HttpTokens",
-    "instance_metadata_tags": "InstanceMetadataTags",
-}
-
-
-def build_desired_update(params):
-    return scrub_none_parameters(
-        {
-            aws_field: params.get(option_name)
-            for option_name, aws_field in OPTION_TO_AWS_FIELD.items()
-        }
-    )
-
-
-def get_account_level(client, module):
-    return aws_resource(
-        client,
-        module,
-        "get_instance_metadata_defaults",
-        "AccountLevel",
-        default={},
-    )
+MANAGED_OPTIONS = [
+    "http_endpoint",
+    "http_put_response_hop_limit",
+    "http_tokens",
+    "instance_metadata_tags",
+]
 
 
 def main():
@@ -139,15 +119,20 @@ def main():
     )
     client = module.client("ec2")
 
-    current_account_level = get_account_level(client, module)
-    desired_update = build_desired_update(module.params)
-    desired_account_level = aws_resource_to_snake_dict(desired_update)
+    current_account_level = get_instance_metadata_defaults(client, module)
+    desired_update = aws_request_params(
+        {option_name: module.params.get(option_name) for option_name in MANAGED_OPTIONS}
+    )
+    desired_fields = [
+        option_name
+        for option_name in MANAGED_OPTIONS
+        if module.params.get(option_name) is not None
+    ]
 
-    _, changed = validated_field_differences(
-        module,
+    _, changed = field_differences(
         current_account_level,
-        desired_account_level,
-        desired_account_level.keys(),
+        module.params,
+        desired_fields,
     )
 
     if changed and not module.check_mode:
@@ -158,11 +143,11 @@ def main():
             error_message="Unable to modify EC2 instance metadata defaults",
             **desired_update,
         )
-        current_account_level = get_account_level(client, module)
+        current_account_level = get_instance_metadata_defaults(client, module)
 
     result = {
         "changed": changed,
-        "account_level": aws_resource_to_snake_dict(current_account_level),
+        "account_level": current_account_level,
         "region": module.region,
     }
 

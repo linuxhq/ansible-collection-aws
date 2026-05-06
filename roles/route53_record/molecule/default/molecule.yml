@@ -49,7 +49,7 @@ provisioner:
                 type: A
                 value: 127.0.0.2
 
-        route53_record_updated_list:
+        route53_record_idempotence:
           - zone: pub.molecule.org
             records:
               - record: molecule-1.pub.molecule.org

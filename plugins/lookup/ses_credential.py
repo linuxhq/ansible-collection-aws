@@ -43,7 +43,10 @@ _raw:
 import base64
 import hashlib
 import hmac
-from ansible.errors import AnsibleError
+
+from ansible.errors import AnsibleLookupError
+from ansible.module_utils.common.text.converters import to_bytes
+from ansible.module_utils.common.text.converters import to_text
 from ansible.plugins.lookup import LookupBase
 
 DATE = "11111111"
@@ -54,16 +57,14 @@ VERSION = 0x04
 
 
 def get_smtp_password(secret_access_key, region):
-    signature = sign(("AWS4" + secret_access_key).encode("utf-8"), DATE)
-    signature = sign(signature, region)
-    signature = sign(signature, SERVICE)
-    signature = sign(signature, TERMINAL)
-    signature = sign(signature, MESSAGE)
-    return base64.b64encode(bytes([VERSION]) + signature).decode("utf-8")
+    signature = to_bytes("AWS4" + secret_access_key)
+    for message in (DATE, region, SERVICE, TERMINAL, MESSAGE):
+        signature = sign(signature, message)
+    return to_text(base64.b64encode(bytes([VERSION]) + signature))
 
 
 def sign(key, message):
-    return hmac.new(key, message.encode("utf-8"), hashlib.sha256).digest()
+    return hmac.new(key, to_bytes(message), hashlib.sha256).digest()
 
 
 class LookupModule(LookupBase):
@@ -72,10 +73,14 @@ class LookupModule(LookupBase):
         secret_access_key = kwargs.get("aws_secret_access_key")
 
         if region is None:
-            raise AnsibleError("ses_credential lookup requires region=")
+            raise AnsibleLookupError("ses_credential lookup requires region=")
         if secret_access_key is None:
-            raise AnsibleError("ses_credential lookup requires aws_secret_access_key=")
+            raise AnsibleLookupError(
+                "ses_credential lookup requires aws_secret_access_key="
+            )
         if terms:
-            raise AnsibleError("ses_credential lookup does not accept positional terms")
+            raise AnsibleLookupError(
+                "ses_credential lookup does not accept positional terms"
+            )
 
         return [get_smtp_password(secret_access_key, region)]

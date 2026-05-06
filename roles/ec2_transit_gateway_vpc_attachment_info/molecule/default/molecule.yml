@@ -25,6 +25,7 @@ provisioner:
     group_vars:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
+
         ec2_vpc_net_list:
           - name: molecule
             cidr_block: 10.0.0.0/16
@@ -34,7 +35,11 @@ provisioner:
             subnets:
               - name: molecule
                 az: us-east-1a
-                cidr: 10.0.0.0/16
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24, 0) }}"
+
+        ec2_transit_gateway_info_filters:
+          state:
+            - available
 
         ec2_transit_gateway_list:
           - name: molecule

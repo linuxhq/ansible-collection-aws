@@ -42,32 +42,11 @@ prefix_lists:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
+from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
+    describe_managed_prefix_lists,
+    get_managed_prefix_list_entries,
+    normalize_managed_prefix_list,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_list_to_snake_dicts,
-    aws_resource_to_snake_dict,
-)
-
-
-def get_prefix_list_entries(client, module, prefix_list_id):
-    return aws_resource_list_to_snake_dicts(
-        aws_paginated_list(
-            client,
-            module,
-            "get_managed_prefix_list_entries",
-            "Entries",
-            PrefixListId=prefix_list_id,
-        )
-    )
-
-
-def normalize_prefix_list(prefix_list, entries=None):
-    normalized = aws_resource_to_snake_dict(prefix_list or {})
-    if entries is not None:
-        normalized["entries"] = entries
-    return normalized
 
 
 def main():
@@ -76,26 +55,23 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("ec2")
-    prefix_lists = aws_paginated_list(
-        client,
-        module,
-        "describe_managed_prefix_lists",
-        "PrefixLists",
-    )
+    name = module.params["name"]
+    prefix_lists = []
+    for prefix_list in describe_managed_prefix_lists(client, module, name):
+        prefix_list_name = prefix_list.get("PrefixListName")
+        if prefix_list_name and (name is None or prefix_list_name == name):
+            prefix_lists.append(prefix_list)
 
     module.exit_json(
         changed=False,
         prefix_lists=[
-            normalize_prefix_list(
+            normalize_managed_prefix_list(
                 prefix_list,
-                get_prefix_list_entries(client, module, prefix_list["PrefixListId"]),
+                get_managed_prefix_list_entries(
+                    client, module, prefix_list["PrefixListId"]
+                ),
             )
             for prefix_list in prefix_lists
-            if prefix_list.get("PrefixListName")
-            and (
-                module.params["name"] is None
-                or prefix_list.get("PrefixListName") == module.params["name"]
-            )
         ],
     )
 

@@ -110,46 +110,41 @@ status:
 
 import time
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
-)
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
     aws_paginated_list,
+    aws_request_params,
     aws_resource,
-    aws_response,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_list_to_snake_dicts,
     aws_resource_to_snake_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    aws_ssm_targets,
 )
 
 SUCCESS_STATUSES = {"Success"}
 TERMINAL_STATUSES = {"Cancelled", "Cancelling", "Failed", "Success", "TimedOut"}
-
-
-def aws_targets(targets):
-    if targets is None:
-        return None
-    return [
-        snake_dict_to_camel_dict(target, capitalize_first=True) for target in targets
-    ]
+SEND_COMMAND_OPTIONS = [
+    "comment",
+    "document_name",
+    "instance_ids",
+    "max_concurrency",
+    "max_errors",
+    "timeout_seconds",
+]
 
 
 def build_send_command_args(params):
-    return scrub_none_parameters(
-        {
-            "Comment": params["comment"],
-            "DocumentName": params["document_name"],
-            "InstanceIds": params["instance_ids"],
-            "MaxConcurrency": params["max_concurrency"],
-            "MaxErrors": params["max_errors"],
-            "Parameters": params["parameters"],
-            "Targets": aws_targets(params["targets"]),
-            "TimeoutSeconds": params["timeout_seconds"],
-        }
+    request = aws_request_params(
+        {option: params[option] for option in SEND_COMMAND_OPTIONS}
     )
+    request["Parameters"] = params["parameters"]
+    targets = aws_ssm_targets(params["targets"], none_if_omitted=True)
+    if targets is not None:
+        request["Targets"] = targets
+    return request
 
 
 def get_command(client, module, command_id):
@@ -169,17 +164,6 @@ def get_command(client, module, command_id):
     return commands[0]
 
 
-def list_command_invocations(client, module, command_id):
-    return aws_paginated_list(
-        client,
-        module,
-        "list_command_invocations",
-        "CommandInvocations",
-        CommandId=command_id,
-        Details=True,
-    )
-
-
 def normalize_command(command):
     return aws_resource_to_snake_dict(
         command,
@@ -192,19 +176,27 @@ def normalize_command_invocations(invocations):
 
 
 def wait_for_command(client, module, command_id):
-    deadline = time.time() + module.params["wait_timeout"]
+    deadline = time.monotonic() + module.params["wait_timeout"]
 
-    while time.time() < deadline:
+    while time.monotonic() < deadline:
         command = get_command(client, module, command_id)
-        invocations = list_command_invocations(client, module, command_id)
+        invocations = aws_paginated_list(
+            client,
+            module,
+            "list_command_invocations",
+            "CommandInvocations",
+            CommandId=command_id,
+            Details=True,
+        )
         statuses = {
             invocation.get("Status")
             for invocation in invocations
             if invocation.get("Status")
         }
+        command_status = command.get("Status")
 
-        if command.get("Status") in TERMINAL_STATUSES and not invocations:
-            if command.get("Status") in SUCCESS_STATUSES:
+        if command_status in TERMINAL_STATUSES and not invocations:
+            if command_status in SUCCESS_STATUSES:
                 return command, invocations
 
             module.fail_json(
@@ -212,7 +204,7 @@ def wait_for_command(client, module, command_id):
                 command=normalize_command(command),
                 command_id=command_id,
                 command_invocations=[],
-                status=command.get("Status"),
+                status=command_status,
             )
 
         if invocations and statuses and statuses.issubset(TERMINAL_STATUSES):
@@ -224,7 +216,7 @@ def wait_for_command(client, module, command_id):
                 command=normalize_command(command),
                 command_id=command_id,
                 command_invocations=normalize_command_invocations(invocations),
-                status=command.get("Status"),
+                status=command_status,
             )
 
         time.sleep(module.params["wait_delay"])
@@ -261,10 +253,12 @@ def main():
     if module.check_mode:
         module.exit_json(changed=True)
 
-    response = aws_response(
+    command = aws_resource(
         client,
         module,
         "send_command",
+        "Command",
+        default={},
         error_message=(
             "Unable to send AWS Systems Manager command using "
             f"{module.params['document_name']}"
@@ -272,7 +266,6 @@ def main():
         **send_command_args,
     )
 
-    command = response.get("Command", {})
     result = {
         "changed": True,
         "command": normalize_command(command),

@@ -102,7 +102,7 @@ provisioner:
           - name: /molecule/vpc/subnet/b/id
             value: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
 
-        ssm_parameter_updated_list:
+        ssm_parameter_idempotence:
           - "{{ ssm_parameter_list.0 | combine({'description': '/molecule/vpc/id updated'}) }}"
           - "{{ ssm_parameter_list.1 | combine({'description': '/molecule/vpc/igw/id updated'}) }}"
           - "{{ ssm_parameter_list.2 | combine({'description': '/molecule/vpc/nat/id updated'}) }}"

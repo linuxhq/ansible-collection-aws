@@ -46,27 +46,9 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
     aws_paginated_list,
     aws_response,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_to_snake_dict,
 )
-
-
-def get_email_identity(client, module, identity):
-    return aws_response(
-        client,
-        module,
-        "get_email_identity",
-        EmailIdentity=identity,
-    )
-
-
-def list_identities(client, module):
-    return aws_paginated_list(
-        client,
-        module,
-        "list_identities",
-        "Identities",
-    )
 
 
 def normalize_identity(identity, details):
@@ -86,19 +68,40 @@ def main():
     sesv2_client = module.client("sesv2")
     requested_name = module.params["name"]
 
-    identities = list_identities(ses_client, module)
     if requested_name is not None:
-        identities = [identity for identity in identities if identity == requested_name]
+        details = aws_response(
+            sesv2_client,
+            module,
+            "get_email_identity",
+            ignore_error_codes="NotFoundException",
+            ignored_error_result=None,
+            EmailIdentity=requested_name,
+        )
+        identities = (
+            [normalize_identity(requested_name, details)] if details is not None else []
+        )
+    else:
+        identities = [
+            normalize_identity(
+                identity,
+                aws_response(
+                    sesv2_client,
+                    module,
+                    "get_email_identity",
+                    EmailIdentity=identity,
+                ),
+            )
+            for identity in aws_paginated_list(
+                ses_client,
+                module,
+                "list_identities",
+                "Identities",
+            )
+        ]
 
     module.exit_json(
         changed=False,
-        identities=[
-            normalize_identity(
-                identity,
-                get_email_identity(sesv2_client, module, identity),
-            )
-            for identity in identities
-        ],
+        identities=identities,
     )
 
 

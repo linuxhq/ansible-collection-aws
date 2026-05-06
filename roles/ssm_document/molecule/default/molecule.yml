@@ -61,7 +61,7 @@ provisioner:
                   linux: cd
                   windows: ''
 
-        ssm_document_updated_list:
+        ssm_document_idempotence:
           - name: molecule-command-shell
             document_type: Command
             content:

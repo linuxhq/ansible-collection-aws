@@ -32,17 +32,10 @@ associations:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    list_ssm_associations,
+    normalize_ssm_association,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_to_snake_dict,
-    aws_resource_matches,
-)
-
-
-def normalize_association(association):
-    return aws_resource_to_snake_dict(association, ignore_list=["TargetMaps"])
 
 
 def main():
@@ -50,17 +43,17 @@ def main():
     client = module.client("ssm")
 
     associations = [
-        normalize_association(association)
-        for association in aws_paginated_list(
-            client,
-            module,
-            "list_associations",
-            "Associations",
-        )
-        if not aws_resource_matches(association, name=None)
+        association
+        for association in list_ssm_associations(client, module)
+        if association.get("Name") is not None
     ]
 
-    module.exit_json(changed=False, associations=associations)
+    module.exit_json(
+        changed=False,
+        associations=[
+            normalize_ssm_association(association) for association in associations
+        ],
+    )
 
 
 if __name__ == "__main__":

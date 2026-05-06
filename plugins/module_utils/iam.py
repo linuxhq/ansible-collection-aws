@@ -1,0 +1,16 @@
+#!/usr/bin/python
+# Copyright: Taylor Kimball
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
+    aws_paginated_list,
+)
+
+
+def list_account_aliases(client, module):
+    return aws_paginated_list(
+        client,
+        module,
+        "list_account_aliases",
+        "AccountAliases",
+    )

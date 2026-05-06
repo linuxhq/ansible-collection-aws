@@ -79,16 +79,16 @@ service_code:
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
     aws_resource,
-    aws_response,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_list_to_snake_dicts,
     aws_resource_to_snake_dict,
 )
-
-PENDING_STATUSES = ("CASE_OPENED", "PENDING")
+from ansible_collections.linuxhq.aws.plugins.module_utils.service_quota import (
+    get_service_quota,
+    list_pending_service_quota_requests,
+)
 
 
 def build_requested_quota(params, current_quota):
@@ -110,28 +110,6 @@ def build_requested_quota(params, current_quota):
     return requested_quota
 
 
-def list_pending_requests(client, module, quota_code=None, service_code=None):
-    quota_code = quota_code or module.params["quota_code"]
-    service_code = service_code or module.params["service_code"]
-
-    return [
-        request
-        for request in aws_paginated_list(
-            client,
-            module,
-            "list_requested_service_quota_change_history_by_quota",
-            "RequestedQuotas",
-            QuotaCode=quota_code,
-            ServiceCode=service_code,
-        )
-        if request.get("Status") in PENDING_STATUSES
-    ]
-
-
-def normalize_quotas(quotas):
-    return aws_resource_list_to_snake_dicts(quotas)
-
-
 def main():
     argument_spec = {
         "quota_code": {"required": True, "type": "str"},
@@ -142,16 +120,8 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("service-quotas")
 
-    current_quota = aws_resource(
-        client,
-        module,
-        "get_service_quota",
-        "Quota",
-        default={},
-        QuotaCode=module.params["quota_code"],
-        ServiceCode=module.params["service_code"],
-    )
-    pending_requests = list_pending_requests(client, module)
+    current_quota = get_service_quota(client, module)
+    pending_requests = list_pending_service_quota_requests(client, module)
 
     desired_value = module.params["value"]
     current_value = current_quota.get("Value")
@@ -167,10 +137,12 @@ def main():
         if module.check_mode:
             requested_quota = build_requested_quota(module.params, current_quota)
         else:
-            response = aws_response(
+            requested_quota = aws_resource(
                 client,
                 module,
                 "request_service_quota_increase",
+                "RequestedQuota",
+                default=None,
                 error_message=(
                     "Unable to request AWS service quota increase for "
                     f"{module.params['quota_code']} for service "
@@ -180,15 +152,12 @@ def main():
                 QuotaCode=module.params["quota_code"],
                 ServiceCode=module.params["service_code"],
             )
-            requested_quota = response.get("RequestedQuota", {})
 
     module.exit_json(
         changed=changed,
         current_quota=aws_resource_to_snake_dict(current_quota),
-        pending_requests=normalize_quotas(pending_requests),
-        requested_quota=(
-            aws_resource_to_snake_dict(requested_quota) if requested_quota else None
-        ),
+        pending_requests=aws_resource_list_to_snake_dicts(pending_requests),
+        requested_quota=aws_resource_to_snake_dict(requested_quota),
         quota_code=module.params["quota_code"],
         service_code=module.params["service_code"],
     )

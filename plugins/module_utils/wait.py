@@ -6,7 +6,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
     BaseWaiterFactory,
     custom_waiter_config,
 )
-from botocore.exceptions import WaiterError
+
+try:
+    from botocore.exceptions import WaiterError
+except ImportError:
+    WaiterError = None
+
+CUSTOM_WAITER_FACTORIES = {}
 
 
 class _CustomWaiterFactory(BaseWaiterFactory):
@@ -19,25 +25,6 @@ class _CustomWaiterFactory(BaseWaiterFactory):
         return self.waiter_model_data
 
 
-def _wait_config_from_module(
-    module, timeout_param="wait_timeout", delay_param="wait_delay"
-):
-    return custom_waiter_config(
-        module.params[timeout_param],
-        module.params[delay_param],
-    )
-
-
-def _waiter_config_from_module_or_value(module, waiter_config):
-    if waiter_config is not None:
-        return waiter_config
-    return _wait_config_from_module(module)
-
-
-def _custom_waiter(client, waiter_model_data, waiter_name):
-    return _CustomWaiterFactory(waiter_model_data).get_waiter(client, waiter_name)
-
-
 def wait_for_aws_resource(
     client,
     module,
@@ -47,11 +34,29 @@ def wait_for_aws_resource(
     waiter_config=None,
     **kwargs,
 ):
-    waiter = _custom_waiter(client, waiter_model_data, waiter_name)
     try:
+        cache_key = id(waiter_model_data)
+        cached_model, waiter_factory = CUSTOM_WAITER_FACTORIES.get(
+            cache_key,
+            (None, None),
+        )
+        if cached_model is not waiter_model_data:
+            waiter_factory = _CustomWaiterFactory(waiter_model_data)
+            CUSTOM_WAITER_FACTORIES[cache_key] = (
+                waiter_model_data,
+                waiter_factory,
+            )
+        waiter = waiter_factory.get_waiter(client, waiter_name)
+        if waiter_config is None:
+            waiter_config = custom_waiter_config(
+                module.params["wait_timeout"],
+                module.params["wait_delay"],
+            )
         waiter.wait(
-            WaiterConfig=_waiter_config_from_module_or_value(module, waiter_config),
+            WaiterConfig=waiter_config,
             **kwargs,
         )
-    except WaiterError as e:
+    except Exception as e:
+        if WaiterError is not None and not isinstance(e, WaiterError):
+            raise
         module.fail_json_aws(e, msg=timeout_message)

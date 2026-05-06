@@ -41,34 +41,13 @@ delegation_sets:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_marker_paginated_list,
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53 import (
+    get_reusable_delegation_set_by_name,
+    list_reusable_delegation_sets,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    aws_resource_matches,
-    aws_resource_to_snake_dict,
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
+    aws_resource_list_to_snake_dicts,
 )
-
-
-def list_normalized_delegation_sets(client, module):
-    return [
-        aws_resource_to_snake_dict(delegation_set)
-        for delegation_set in aws_marker_paginated_list(
-            client,
-            module,
-            "list_reusable_delegation_sets",
-            "DelegationSets",
-            truncated_result="IsTruncated",
-        )
-        if not aws_resource_matches(delegation_set, caller_reference=None)
-        and (
-            module.params["name"] is None
-            or aws_resource_matches(
-                delegation_set,
-                caller_reference=module.params["name"],
-            )
-        )
-    ]
 
 
 def main():
@@ -79,10 +58,19 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("route53")
+    if module.params["name"] is None:
+        delegation_sets = list_reusable_delegation_sets(client, module)
+    else:
+        delegation_set = get_reusable_delegation_set_by_name(
+            client,
+            module,
+            module.params["name"],
+        )
+        delegation_sets = [delegation_set] if delegation_set is not None else []
 
     module.exit_json(
         changed=False,
-        delegation_sets=list_normalized_delegation_sets(client, module),
+        delegation_sets=aws_resource_list_to_snake_dicts(delegation_sets),
     )
 
 

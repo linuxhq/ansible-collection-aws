@@ -58,11 +58,11 @@ service_code:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_resource,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_to_snake_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.service_quota import (
+    get_service_quota,
 )
 
 
@@ -77,17 +77,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        quota=aws_resource_to_snake_dict(
-            aws_resource(
-                client,
-                module,
-                "get_service_quota",
-                "Quota",
-                default={},
-                QuotaCode=module.params["quota_code"],
-                ServiceCode=module.params["service_code"],
-            )
-        ),
+        quota=aws_resource_to_snake_dict(get_service_quota(client, module)),
         quota_code=module.params["quota_code"],
         service_code=module.params["service_code"],
     )

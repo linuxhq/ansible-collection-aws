@@ -32,10 +32,10 @@ notification_hubs:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
+from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import (
+    list_notification_hubs,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
+from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
     aws_resource_list_to_snake_dicts,
 )
 
@@ -50,12 +50,7 @@ def main():
     module.exit_json(
         changed=False,
         notification_hubs=aws_resource_list_to_snake_dicts(
-            aws_paginated_list(
-                client,
-                module,
-                "list_notification_hubs",
-                "notificationHubs",
-            )
+            list_notification_hubs(client, module)
         ),
     )
 

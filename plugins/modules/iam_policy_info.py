@@ -36,10 +36,11 @@ user_policies:
   elements: dict
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.iam import list_iam_users
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
     aws_paginated_list,
-    aws_response,
+    aws_resource,
 )
 
 
@@ -54,8 +55,12 @@ def build_entity_policies(client, module, entity_type, names):
     results = []
 
     for name in names:
-        policy_names = list_inline_policy_names(
-            client, module, list_operation, entity_type, name
+        policy_names = aws_paginated_list(
+            client,
+            module,
+            list_operation,
+            "PolicyNames",
+            **{f"{entity_type}Name": name},
         )
         results.append(
             {
@@ -90,10 +95,11 @@ def get_group_inline_policies(client, module):
 
 
 def get_inline_policy(client, module, operation, entity_type, entity_name, policy_name):
-    response = aws_response(
+    policy_document = aws_resource(
         client,
         module,
         operation,
+        "PolicyDocument",
         **{
             f"{entity_type}Name": entity_name,
             "PolicyName": policy_name,
@@ -101,29 +107,19 @@ def get_inline_policy(client, module, operation, entity_type, entity_name, polic
     )
 
     return {
-        "policy_name": response.get("PolicyName", policy_name),
-        "policy_document": response.get("PolicyDocument"),
+        "policy_name": policy_name,
+        "policy_document": policy_document,
     }
 
 
 def get_user_inline_policies(client, module):
-    users = aws_paginated_list(client, module, "list_users", "Users")
+    users = list_iam_users(client)
 
     return build_entity_policies(
         client,
         module,
         "User",
         [user["UserName"] for user in users],
-    )
-
-
-def list_inline_policy_names(client, module, operation, entity_type, entity_name):
-    return aws_paginated_list(
-        client,
-        module,
-        operation,
-        "PolicyNames",
-        **{f"{entity_type}Name": entity_name},
     )
 
 
