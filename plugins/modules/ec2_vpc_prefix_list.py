@@ -175,7 +175,7 @@ EC2_WAITER_MODEL_DATA = {
         "operation": "DescribeManagedPrefixLists",
         "acceptors": [
             {
-                "expected": "InvalidPrefixListId.NotFound",
+                "expected": "InvalidPrefixListID.NotFound",
                 "matcher": "error",
                 "state": "success",
             },

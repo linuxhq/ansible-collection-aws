@@ -13,10 +13,9 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _elb_application_lb_info_dict['molecule-http-80'].availability_zones.0.subnet_id ==
-              elb_application_lb_list.0.subnets.1
-          - _elb_application_lb_info_dict['molecule-http-80'].availability_zones.1.subnet_id ==
-              elb_application_lb_list.0.subnets.0
+          - _elb_application_lb_info_dict['molecule-http-80'].availability_zones |
+            map(attribute='subnet_id') | sort | list ==
+              elb_application_lb_list.0.subnets | sort | list
           - _elb_application_lb_info_dict['molecule-http-80'].dns_name is defined
           - _elb_application_lb_info_dict['molecule-http-80'].ip_address_type == 'ipv4'
           - _elb_application_lb_info_dict['molecule-http-80'].listeners.0.port ==
@@ -26,10 +25,9 @@
           - _elb_application_lb_info_dict['molecule-http-80'].vpc_id ==
               elb_application_lb_list.0.vpc_id
 
-          - _elb_application_lb_info_dict['molecule-http-81'].availability_zones.0.subnet_id ==
-              elb_application_lb_list.1.subnets.1
-          - _elb_application_lb_info_dict['molecule-http-81'].availability_zones.1.subnet_id ==
-              elb_application_lb_list.1.subnets.0
+          - _elb_application_lb_info_dict['molecule-http-81'].availability_zones |
+            map(attribute='subnet_id') | sort | list ==
+              elb_application_lb_list.1.subnets | sort | list
           - _elb_application_lb_info_dict['molecule-http-81'].dns_name is defined
           - _elb_application_lb_info_dict['molecule-http-81'].ip_address_type == 'ipv4'
           - _elb_application_lb_info_dict['molecule-http-81'].listeners.0.port ==
