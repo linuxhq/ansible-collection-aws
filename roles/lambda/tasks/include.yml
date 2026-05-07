@@ -13,6 +13,7 @@
     memory_size: "{{ _function.memory_size | d(omit) }}"
     name: "{{ _function.name }}"
     purge_tags: "{{ _function.purge_tags | d(true) }}"
+    region: "{{ _function.region | d(omit) }}"
     role: "{{ _function.role }}"
     runtime: "{{ _function.runtime }}"
     s3_bucket: "{{ _function.s3_bucket | d(omit) }}"

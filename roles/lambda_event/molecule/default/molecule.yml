@@ -70,6 +70,7 @@ provisioner:
               MOLECULE: 'true'
             handler: lambda_function.lambda_handler
             memory_size: 128
+            region: "{{ _aws_az_info_list_l.0[:-1] }}"
             role: "arn:aws:iam::{{ _aws_caller_info_account }}:role/molecule-pass"
             runtime: python3.11
             tracing_mode: PassThrough
