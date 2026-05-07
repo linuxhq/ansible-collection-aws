@@ -6,7 +6,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_vpc_prefix_list_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about EC2 VPC prefix lists
 description:
   - Gathers information about EC2 VPC managed prefix lists.
@@ -41,11 +41,16 @@ prefix_lists:
   elements: dict
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
-    describe_managed_prefix_lists,
-    get_managed_prefix_list_entries,
-    normalize_managed_prefix_list,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    ansible_dict_to_boto3_filter_list,
+    boto3_resource_list_to_ansible_dict,
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
 
 
@@ -54,10 +59,14 @@ def main():
         argument_spec={"name": {"type": "str"}},
         supports_check_mode=True,
     )
-    client = module.client("ec2")
+    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
     name = module.params["name"]
+    filters = scrub_none_parameters({"prefix-list-name": name})
+    request = {"Filters": ansible_dict_to_boto3_filter_list(filters)} if filters else {}
     prefix_lists = []
-    for prefix_list in describe_managed_prefix_lists(client, module, name):
+    for prefix_list in paginated_query_with_retries(
+        client, "describe_managed_prefix_lists", **request
+    ).get("PrefixLists", []):
         prefix_list_name = prefix_list.get("PrefixListName")
         if prefix_list_name and (name is None or prefix_list_name == name):
             prefix_lists.append(prefix_list)
@@ -65,10 +74,18 @@ def main():
     module.exit_json(
         changed=False,
         prefix_lists=[
-            normalize_managed_prefix_list(
-                prefix_list,
-                get_managed_prefix_list_entries(
-                    client, module, prefix_list["PrefixListId"]
+            dict(
+                boto3_resource_to_ansible_dict(
+                    prefix_list, transform_tags=True, force_tags=False
+                ),
+                entries=boto3_resource_list_to_ansible_dict(
+                    paginated_query_with_retries(
+                        client,
+                        "get_managed_prefix_list_entries",
+                        PrefixListId=prefix_list["PrefixListId"],
+                    ).get("Entries", []),
+                    transform_tags=False,
+                    force_tags=False,
                 ),
             )
             for prefix_list in prefix_lists

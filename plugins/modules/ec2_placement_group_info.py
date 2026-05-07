@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_placement_group_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about EC2 placement groups
 description:
   - Gathers information about EC2 placement groups.
@@ -40,15 +40,12 @@ placement_groups:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
-    describe_ec2_placement_groups,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
-    ec2_filter_request,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_list_to_snake_dicts,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    ansible_dict_to_boto3_filter_list,
+    boto3_resource_list_to_ansible_dict,
+    scrub_none_parameters,
 )
 
 
@@ -58,16 +55,26 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    client = module.client("ec2")
+    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
+    filters = scrub_none_parameters({"group-name": module.params["name"]})
 
-    placement_groups = describe_ec2_placement_groups(
-        client,
-        **ec2_filter_request({"group_name": module.params["name"]}),
-    )
+    try:
+        placement_groups = client.describe_placement_groups(
+            **(
+                {"Filters": ansible_dict_to_boto3_filter_list(filters)}
+                if filters
+                else {}
+            ),
+            aws_retry=True,
+        ).get("PlacementGroups", [])
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to describe EC2 placement groups")
 
     module.exit_json(
         changed=False,
-        placement_groups=aws_resource_list_to_snake_dicts(placement_groups),
+        placement_groups=boto3_resource_list_to_ansible_dict(
+            placement_groups, transform_tags=False, force_tags=False
+        ),
     )
 
 

@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ses_identity_tokens_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather AWS SES domain identity tokens
 description:
   - Gathers AWS SES DKIM and verification tokens for a domain identity.
@@ -48,8 +48,12 @@ verification_token:
   type: str
 """
 
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import aws_resource
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    scrub_none_parameters,
+)
 
 
 def main():
@@ -59,27 +63,23 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client("ses")
+    client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
     identity = module.params["identity"]
+    params = scrub_none_parameters(
+        snake_dict_to_camel_dict({"domain": identity}, capitalize_first=True)
+    )
+    dkim_tokens = client.verify_domain_dkim(**params, aws_retry=True).get(
+        "DkimTokens", []
+    )
+    verification_token = client.verify_domain_identity(**params, aws_retry=True).get(
+        "VerificationToken"
+    )
 
     module.exit_json(
         changed=False,
-        dkim_tokens=aws_resource(
-            client,
-            module,
-            "verify_domain_dkim",
-            "DkimTokens",
-            default=[],
-            Domain=identity,
-        ),
+        dkim_tokens=dkim_tokens,
         identity=identity,
-        verification_token=aws_resource(
-            client,
-            module,
-            "verify_domain_identity",
-            "VerificationToken",
-            Domain=identity,
-        ),
+        verification_token=verification_token,
     )
 
 

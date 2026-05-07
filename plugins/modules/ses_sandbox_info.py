@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ses_sandbox_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about AWS Simple Email Service account details
 description:
   - Gathers information about AWS Simple Email Service account details.
@@ -31,21 +31,23 @@ account:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_response,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_to_snake_dict,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
 )
 
 
 def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
-    client = module.client("sesv2")
+    client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
 
     module.exit_json(
         changed=False,
-        account=aws_resource_to_snake_dict(aws_response(client, module, "get_account")),
+        account=boto3_resource_to_ansible_dict(
+            client.get_account(aws_retry=True),
+            transform_tags=False,
+            force_tags=False,
+        ),
     )
 
 

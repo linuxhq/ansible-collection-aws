@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ssm_document
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Manage AWS Systems Manager documents
 description:
   - Manages AWS Systems Manager documents.
@@ -39,6 +39,12 @@ options:
       - The Systems Manager document name.
     required: true
     type: str
+  purge_tags:
+    description:
+      - Whether tags not listed in O(tags) should be removed.
+      - This option is only used when O(tags) is provided.
+    default: true
+    type: bool
   state:
     description:
       - Whether the document should exist.
@@ -47,6 +53,10 @@ options:
       - present
     default: present
     type: str
+  tags:
+    description:
+      - Tags to apply to the Systems Manager document.
+    type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -64,6 +74,8 @@ EXAMPLES = r"""
         idle_session_timeout: 60
     document_type: Session
     name: SSM-SessionManagerRunShell
+    tags:
+      Name: SSM-SessionManagerRunShell
 
 - name: Ensure a Session Manager document is absent
   linuxhq.aws.ssm_document:
@@ -89,39 +101,26 @@ state:
 
 import json
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+from ansible.module_utils.common.dict_transformations import (
+    recursive_diff,
+    snake_dict_to_camel_dict,
+)
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_response,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
+    ansible_dict_to_boto3_tag_list,
+    boto3_tag_list_to_ansible_dict,
+    compare_aws_tags,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    fail_on_immutable_differences,
-    field_differences,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
-    get_ssm_document,
-    normalize_ssm_document,
-    ssm_document_content,
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
 
-IMMUTABLE_ITEMS = ["document_type"]
-
-
-def build_desired_document(module):
-    return {
-        "Content": snake_dict_to_camel_dict(module.params["content"]),
-        "DocumentType": module.params["document_type"],
-        "Name": module.params["name"],
-    }
-
-
-def comparable_document(document):
-    if document is None:
-        return None
-    return {
-        "Content": ssm_document_content(document),
-        "DocumentType": document.get("DocumentType"),
-    }
+SSM_DOCUMENT_RESOURCE_TYPE = "Document"
 
 
 def ensure_absent(client, module):
@@ -129,16 +128,23 @@ def ensure_absent(client, module):
     changed = current is not None
 
     if changed and not module.check_mode:
-        aws_response(
-            client,
-            module,
-            "delete_document",
-            error_message=(
-                "Unable to delete AWS Systems Manager document "
-                f"{module.params['name']}"
-            ),
-            Name=module.params["name"],
-        )
+        try:
+            client.delete_document(
+                **scrub_none_parameters(
+                    snake_dict_to_camel_dict(
+                        {"name": module.params["name"]}, capitalize_first=True
+                    )
+                ),
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    "Unable to delete AWS Systems Manager document "
+                    f"{module.params['name']}"
+                ),
+            )
 
     module.exit_json(
         changed=changed,
@@ -149,67 +155,130 @@ def ensure_absent(client, module):
 
 def ensure_present(client, module):
     current = get_document(client, module)
-    desired = build_desired_document(module)
+    desired = {
+        "content": module.params["content"],
+        "document_type": module.params["document_type"],
+        "name": module.params["name"],
+    }
+    current_document = (
+        {
+            "content": snake_dict_to_camel_dict(
+                document_content(current), capitalize_first=False
+            ),
+            "document_type": current.get("DocumentType"),
+        }
+        if current is not None
+        else None
+    )
+    desired_comparable = {
+        "content": snake_dict_to_camel_dict(desired["content"], capitalize_first=False),
+        "document_type": desired["document_type"],
+    }
+    current_comparable = current_document
+    desired.update(desired_comparable)
 
     if current is None:
         changed = True
+        resource_changed = True
     else:
-        differences, changed = field_differences(
-            comparable_document(current),
-            desired,
-            ["content", "document_type"],
+        if current_comparable["document_type"] != desired_comparable["document_type"]:
+            module.fail_json(
+                msg=(
+                    "Unable to update AWS Systems Manager document "
+                    f"{module.params['name']}: immutable fields differ"
+                )
+            )
+        changed = (
+            recursive_diff((current_comparable) or {}, (desired_comparable) or {})
+            is not None
         )
-        fail_on_immutable_differences(
-            module,
-            differences,
-            IMMUTABLE_ITEMS,
-            (
-                "Unable to update AWS Systems Manager document "
-                f"{module.params['name']}: immutable fields differ"
-            ),
-        )
+        resource_changed = changed
+
+    tags_to_set, tag_keys_to_unset = tag_changes(module, current)
+    changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
-        desired_content = json.dumps(
-            desired["Content"],
-            separators=(",", ":"),
-            sort_keys=True,
-        )
+        if resource_changed:
+            desired_content = json.dumps(
+                desired["content"],
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+
         if current is None:
-            aws_response(
-                client,
-                module,
-                "create_document",
-                error_message=(
-                    "Unable to manage AWS Systems Manager document "
-                    f"{module.params['name']}"
-                ),
-                Content=desired_content,
-                DocumentFormat="JSON",
-                DocumentType=desired["DocumentType"],
-                Name=desired["Name"],
-            )
-        else:
-            aws_response(
-                client,
-                module,
-                "update_document",
-                error_message=(
-                    "Unable to manage AWS Systems Manager document "
-                    f"{module.params['name']}"
-                ),
-                Content=desired_content,
-                DocumentFormat="JSON",
-                DocumentVersion=module.params["document_version"],
-                Name=desired["Name"],
-            )
+            try:
+                client.create_document(
+                    **scrub_none_parameters(
+                        snake_dict_to_camel_dict(
+                            {
+                                "content": desired_content,
+                                "document_format": "JSON",
+                                "document_type": desired["document_type"],
+                                "name": desired["name"],
+                                "tags": (
+                                    ansible_dict_to_boto3_tag_list(
+                                        module.params["tags"]
+                                    )
+                                    if module.params["tags"] is not None
+                                    else None
+                                ),
+                            },
+                            capitalize_first=True,
+                        )
+                    ),
+                    aws_retry=True,
+                )
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        "Unable to manage AWS Systems Manager document "
+                        f"{module.params['name']}"
+                    ),
+                )
+        elif resource_changed:
+            try:
+                client.update_document(
+                    **scrub_none_parameters(
+                        snake_dict_to_camel_dict(
+                            {
+                                "content": desired_content,
+                                "document_format": "JSON",
+                                "document_version": module.params["document_version"],
+                                "name": desired["name"],
+                            },
+                            capitalize_first=True,
+                        )
+                    ),
+                    aws_retry=True,
+                )
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        "Unable to manage AWS Systems Manager document "
+                        f"{module.params['name']}"
+                    ),
+                )
         current = get_document(client, module)
+        if current is not None and module.params["tags"] is not None:
+            tags_to_set, tag_keys_to_unset = tag_changes(module, current)
+            apply_tag_changes(
+                client,
+                module,
+                module.params["name"],
+                tags_to_set,
+                tag_keys_to_unset,
+            )
+            current = get_document(client, module)
     elif changed and module.check_mode:
         current = desired
+        if module.params["tags"] is not None:
+            current["tags"] = module.params["tags"]
 
     document = current
-    if current is not None and "Name" in current:
-        document = normalize_ssm_document(current, force_content=True)
+    if (current or {}).get("Name") is not None:
+        document = normalize_document(current, force_content=True)
     result = {
         "changed": changed,
         "document": document,
@@ -221,12 +290,118 @@ def ensure_present(client, module):
 
 
 def get_document(client, module):
-    return get_ssm_document(
+    try:
+        document = client.get_document(
+            **scrub_none_parameters(
+                snake_dict_to_camel_dict(
+                    {
+                        "document_format": "JSON",
+                        "document_version": module.params["document_version"],
+                        "name": module.params["name"],
+                    },
+                    capitalize_first=True,
+                )
+            ),
+            aws_retry=True,
+        )
+    except is_boto3_error_code(("InvalidDocument", "InvalidDocumentOperation")):
+        return None
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to get AWS Systems Manager document {module.params['name']}",
+        )
+    document["Tags"] = get_resource_tags(
         client,
         module,
+        SSM_DOCUMENT_RESOURCE_TYPE,
         module.params["name"],
-        document_version=module.params["document_version"],
     )
+    return document
+
+
+def get_resource_tags(client, module, resource_type, resource_id):
+    try:
+        return client.list_tags_for_resource(
+            ResourceType=resource_type,
+            ResourceId=resource_id,
+            aws_retry=True,
+        ).get("TagList", [])
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to list tags for AWS Systems Manager {resource_type} {resource_id}",
+        )
+
+
+def tag_changes(module, current):
+    if module.params["tags"] is None:
+        return {}, []
+    current_tags = boto3_tag_list_to_ansible_dict((current or {}).get("Tags", []))
+    return compare_aws_tags(
+        current_tags,
+        module.params["tags"],
+        purge_tags=module.params["purge_tags"],
+    )
+
+
+def apply_tag_changes(client, module, resource_id, tags_to_set, tag_keys_to_unset):
+    if tag_keys_to_unset:
+        try:
+            client.remove_tags_from_resource(
+                ResourceType=SSM_DOCUMENT_RESOURCE_TYPE,
+                ResourceId=resource_id,
+                TagKeys=tag_keys_to_unset,
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to remove tags from AWS Systems Manager document {resource_id}",
+            )
+
+    if tags_to_set:
+        try:
+            client.add_tags_to_resource(
+                ResourceType=SSM_DOCUMENT_RESOURCE_TYPE,
+                ResourceId=resource_id,
+                Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to tag AWS Systems Manager document {resource_id}",
+            )
+
+
+def document_content(document, strict=True):
+    if not document or document.get("Content") is None:
+        return {}
+    content = document.get("Content")
+    if not isinstance(content, str):
+        return content
+    try:
+        return json.loads(content)
+    except ValueError:
+        if strict:
+            raise
+        return content
+
+
+def normalize_document(document, strict_content=True, force_content=False):
+    if not document:
+        return document
+
+    content = document_content(document, strict_content)
+    normalized = boto3_resource_to_ansible_dict(
+        dict(document, Content=content),
+        transform_tags=True,
+        force_tags=False,
+    )
+    if force_content and "content" not in normalized:
+        normalized["content"] = {}
+    return normalized
 
 
 def main():
@@ -235,11 +410,13 @@ def main():
         "document_type": {"type": "str"},
         "document_version": {"default": "$LATEST", "type": "str"},
         "name": {"required": True, "type": "str"},
+        "purge_tags": {"default": True, "type": "bool"},
         "state": {
             "choices": ["absent", "present"],
             "default": "present",
             "type": "str",
         },
+        "tags": {"type": "dict"},
     }
 
     module = AnsibleAWSModule(
@@ -247,7 +424,7 @@ def main():
         required_if=[("state", "present", ["content", "document_type"])],
         supports_check_mode=True,
     )
-    client = module.client("ssm")
+    client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
 
     if module.params["state"] == "present":
         ensure_present(client, module)

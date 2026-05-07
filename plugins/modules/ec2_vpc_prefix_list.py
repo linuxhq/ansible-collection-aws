@@ -6,7 +6,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_vpc_prefix_list
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Manage EC2 VPC managed prefix lists
 description:
   - Creates, updates, and deletes EC2 VPC managed prefix lists.
@@ -43,6 +43,12 @@ options:
       - The managed prefix list name.
     required: true
     type: str
+  purge_tags:
+    description:
+      - Whether tags not listed in O(tags) should be removed.
+      - This option is only used when O(tags) is provided.
+    default: true
+    type: bool
   state:
     description:
       - Whether the managed prefix list should exist.
@@ -51,6 +57,10 @@ options:
       - present
     default: present
     type: str
+  tags:
+    description:
+      - Tags to apply to the managed prefix list.
+    type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -66,6 +76,8 @@ EXAMPLES = r"""
         description: localhost-1
       - cidr: 127.0.0.2/32
         description: localhost-2
+    tags:
+      Name: linuxhq-localhost
 
 - name: Ensure a managed prefix list is absent
   linuxhq.aws.ec2_vpc_prefix_list:
@@ -93,27 +105,30 @@ state:
   type: str
 """
 
+import json
+
+from ansible.module_utils.common.dict_transformations import (
+    recursive_diff,
+    snake_dict_to_camel_dict,
+)
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_request_params,
-    aws_request_params_list,
-    aws_resource,
-    aws_response,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
+    ansible_dict_to_boto3_tag_list,
+    boto3_tag_list_to_ansible_dict,
+    compare_aws_tags,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.fields import (
-    aws_field_values,
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    ansible_dict_to_boto3_filter_list,
+    boto3_resource_list_to_ansible_dict,
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    canonicalize_list,
-    list_difference,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
-    get_customer_managed_prefix_list_by_name,
-    get_managed_prefix_list_entries,
-    normalize_managed_prefix_list,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
-    wait_for_aws_resource,
+from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
+    BaseWaiterFactory,
 )
 
 EC2_WAITER_MODEL_DATA = {
@@ -154,96 +169,155 @@ EC2_WAITER_MODEL_DATA = {
             },
         ],
     },
+    "managed_prefix_list_deleted": {
+        "delay": 1,
+        "maxAttempts": 60,
+        "operation": "DescribeManagedPrefixLists",
+        "acceptors": [
+            {
+                "expected": "InvalidPrefixListId.NotFound",
+                "matcher": "error",
+                "state": "success",
+            },
+            {
+                "argument": "PrefixLists[0].State",
+                "expected": "delete-in-progress",
+                "matcher": "path",
+                "state": "retry",
+            },
+        ],
+    },
 }
 
 
-def canonical_entry(entry):
-    return aws_request_params(aws_field_values(entry, ("cidr", "description")))
+class EC2WaiterFactory(BaseWaiterFactory):
+    @property
+    def _waiter_model_data(self):
+        return EC2_WAITER_MODEL_DATA
 
 
-def diff_entries(left, right):
-    return list_difference(left, right, canonical_entry)
+def create_prefix_list(client, module, desired_prefix_list, desired_entries):
+    request = scrub_none_parameters(
+        snake_dict_to_camel_dict(
+            dict(desired_prefix_list, entries=desired_entries),
+            capitalize_first=True,
+        )
+    )
+    if module.params["tags"] is not None:
+        request["TagSpecifications"] = [
+            {
+                "ResourceType": "prefix-list",
+                "Tags": ansible_dict_to_boto3_tag_list(module.params["tags"]),
+            }
+        ]
+
+    try:
+        prefix_list = client.create_managed_prefix_list(
+            **request,
+            aws_retry=True,
+        ).get("PrefixList", {})
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=(
+                "Unable to create EC2 VPC managed prefix list "
+                f"{module.params['name']}"
+            ),
+        )
+    created_prefix_list_id = prefix_list.get("PrefixListId")
+    if created_prefix_list_id:
+        wait_for_ready_state(client, module, created_prefix_list_id)
+    return get_current(client, module)
 
 
-def ensure_absent(client, module):
-    current, _ = get_current(client, module)
-    changed = current is not None
-
-    if changed and not module.check_mode:
-        aws_response(
-            client,
-            module,
-            "delete_managed_prefix_list",
-            error_message=(
+def delete_prefix_list(client, module, prefix_list_id):
+    try:
+        client.delete_managed_prefix_list(
+            PrefixListId=prefix_list_id,
+            aws_retry=True,
+        )
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=(
                 "Unable to delete EC2 VPC managed prefix list "
                 f"{module.params['name']}"
             ),
-            PrefixListId=current["PrefixListId"],
         )
+    if prefix_list_id:
+        wait_for_prefix_list_state(
+            client,
+            module,
+            prefix_list_id,
+            "managed_prefix_list_deleted",
+        )
+
+
+def ensure_absent(client, module):
+    current = get_current(client, module)[0]
+    changed = current is not None
+    prefix_list_id = (current or {}).get("PrefixListId")
+
+    if changed and not module.check_mode:
+        delete_prefix_list(client, module, prefix_list_id)
 
     result = {
         "changed": changed,
         "name": module.params["name"],
         "state": "absent",
     }
-    if current and current.get("PrefixListId"):
-        result["prefix_list_id"] = current["PrefixListId"]
+    if prefix_list_id:
+        result["prefix_list_id"] = prefix_list_id
     module.exit_json(**result)
 
 
 def ensure_present(client, module):
-    desired_entries = canonicalize_list(module.params["entries"], canonical_entry)
+    current, current_entries = get_current(client, module)
+    desired_entries = comparable_entries(module.params["entries"])
     if not desired_entries:
         module.fail_json(
             msg="entries must contain at least one item when state=present"
         )
 
-    current, current_entries = get_current(client, module)
     changed = current is None
 
-    if (
-        current is not None
-        and current.get("AddressFamily") != module.params["address_family"]
-    ):
-        module.fail_json(
-            msg=(
-                f"EC2 VPC managed prefix list {module.params['name']} already exists with "
-                f"address_family {current.get('AddressFamily')}"
-            )
-        )
+    desired_prefix_list = {
+        "address_family": module.params["address_family"],
+        "max_entries": len(desired_entries),
+        "prefix_list_name": module.params["name"],
+    }
 
     if current is None:
         if not module.check_mode:
-            prefix_list = aws_resource(
+            current, current_entries = create_prefix_list(
                 client,
                 module,
-                "create_managed_prefix_list",
-                "PrefixList",
-                default={},
-                error_message=(
-                    "Unable to create EC2 VPC managed prefix list "
-                    f"{module.params['name']}"
-                ),
-                AddressFamily=module.params["address_family"],
-                Entries=desired_entries,
-                MaxEntries=len(desired_entries),
-                PrefixListName=module.params["name"],
+                desired_prefix_list,
+                desired_entries,
             )
-            if prefix_list.get("PrefixListId"):
-                wait_for_ready_state(client, module, prefix_list["PrefixListId"])
-            current, current_entries = get_current(client, module)
         else:
-            current = {
-                "AddressFamily": module.params["address_family"],
-                "MaxEntries": len(desired_entries),
-                "PrefixListName": module.params["name"],
-            }
+            current = snake_dict_to_camel_dict(
+                desired_prefix_list, capitalize_first=True
+            )
+            if module.params["tags"] is not None:
+                current["Tags"] = ansible_dict_to_boto3_tag_list(module.params["tags"])
             current_entries = desired_entries
     else:
-        remove_entries = diff_entries(current_entries, desired_entries)
-        add_entries = diff_entries(desired_entries, current_entries)
-        max_entries_changed = len(desired_entries) != current.get("MaxEntries")
-        changed = bool(remove_entries or add_entries or max_entries_changed)
+        current_prefix_list = comparable_prefix_list(current)
+        current_entries = comparable_entries(current_entries)
+        remove_entries = [
+            entry for entry in current_entries if entry not in desired_entries
+        ]
+        add_entries = [
+            entry for entry in desired_entries if entry not in current_entries
+        ]
+        resource_changed = (
+            recursive_diff((current_prefix_list) or {}, (desired_prefix_list) or {})
+            is not None
+        )
+        changed = bool(remove_entries or add_entries or resource_changed)
+        tags_to_set, tag_keys_to_unset = tag_changes(module, current)
+        changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
         if changed and not module.check_mode:
             if remove_entries:
@@ -251,91 +325,255 @@ def ensure_present(client, module):
                     client,
                     module,
                     current,
-                    RemoveEntries=aws_request_params_list(
-                        aws_field_values(entry, ("cidr",)) for entry in remove_entries
-                    ),
+                    remove_entries=[
+                        {"cidr": entry["cidr"]} for entry in remove_entries
+                    ],
                 )
-                wait_for_ready_state(client, module, current["PrefixListId"])
+                wait_for_ready_state(
+                    client,
+                    module,
+                    current.get("PrefixListId"),
+                )
                 current, current_entries = get_current(client, module)
 
-            if len(desired_entries) != current.get("MaxEntries"):
-                modify_prefix_list(
-                    client, module, current, MaxEntries=len(desired_entries)
-                )
-                wait_for_ready_state(client, module, current["PrefixListId"])
-                current, current_entries = get_current(client, module)
+            if resource_changed:
+                current_prefix_list = comparable_prefix_list(current)
+                if (
+                    recursive_diff(
+                        (current_prefix_list) or {}, (desired_prefix_list) or {}
+                    )
+                    is not None
+                ):
+                    modify_prefix_list(
+                        client,
+                        module,
+                        current,
+                        max_entries=len(desired_entries),
+                    )
+                    wait_for_ready_state(
+                        client,
+                        module,
+                        current.get("PrefixListId"),
+                    )
+                    current, current_entries = get_current(client, module)
+                    current_prefix_list = comparable_prefix_list(current)
+
+                if (
+                    recursive_diff(
+                        (current_prefix_list) or {}, (desired_prefix_list) or {}
+                    )
+                    is not None
+                ):
+                    prefix_list_id = current.get("PrefixListId")
+                    delete_prefix_list(client, module, prefix_list_id)
+                    current, current_entries = create_prefix_list(
+                        client,
+                        module,
+                        desired_prefix_list,
+                        desired_entries,
+                    )
+                    add_entries = []
 
             if add_entries:
                 modify_prefix_list(
                     client,
                     module,
                     current,
-                    AddEntries=add_entries,
+                    add_entries=add_entries,
                 )
-                wait_for_ready_state(client, module, current["PrefixListId"])
+                wait_for_ready_state(
+                    client,
+                    module,
+                    current.get("PrefixListId"),
+                )
+                current, current_entries = get_current(client, module)
+            if current is not None and module.params["tags"] is not None:
+                tags_to_set, tag_keys_to_unset = tag_changes(module, current)
+                apply_tag_changes(
+                    client,
+                    module,
+                    current.get("PrefixListId"),
+                    tags_to_set,
+                    tag_keys_to_unset,
+                )
                 current, current_entries = get_current(client, module)
         elif changed and module.check_mode:
             current = dict(current)
-            current["MaxEntries"] = len(desired_entries)
+            current.update(
+                snake_dict_to_camel_dict(desired_prefix_list, capitalize_first=True)
+            )
+            if module.params["tags"] is not None:
+                current["Tags"] = ansible_dict_to_boto3_tag_list(module.params["tags"])
             current_entries = desired_entries
 
     result = {
         "changed": changed,
         "name": module.params["name"],
-        "prefix_list": normalize_managed_prefix_list(current, current_entries),
+        "prefix_list": normalize_prefix_list(current, current_entries),
         "state": "present",
     }
-    if current and current.get("PrefixListId"):
-        result["prefix_list_id"] = current["PrefixListId"]
+    prefix_list_id = (current or {}).get("PrefixListId")
+    if prefix_list_id:
+        result["prefix_list_id"] = prefix_list_id
     module.exit_json(**result)
 
 
 def get_current(client, module):
     prefix_list = get_customer_managed_prefix_list_by_name(
-        client,
-        module,
-        module.params["name"],
+        client, module.params["name"]
     )
     if prefix_list is None:
         return None, None
 
-    entries = get_managed_prefix_list_entries(
-        client,
-        module,
-        prefix_list["PrefixListId"],
-    )
+    entries = get_managed_prefix_list_entries(client, prefix_list.get("PrefixListId"))
     return prefix_list, entries
 
 
 def modify_prefix_list(client, module, current, **kwargs):
     request = {
-        "PrefixListId": current["PrefixListId"],
+        "prefix_list_id": current.get("PrefixListId"),
     }
-    if "AddEntries" in kwargs or "RemoveEntries" in kwargs:
-        request["CurrentVersion"] = current["Version"]
+    if "add_entries" in kwargs or "remove_entries" in kwargs:
+        request["current_version"] = current.get("Version")
     request.update(kwargs)
 
-    aws_response(
-        client,
-        module,
-        "modify_managed_prefix_list",
-        error_message=(
-            "Unable to modify EC2 VPC managed prefix list " f"{module.params['name']}"
-        ),
-        **request,
-    )
+    try:
+        client.modify_managed_prefix_list(
+            **scrub_none_parameters(
+                snake_dict_to_camel_dict(request, capitalize_first=True)
+            ),
+            aws_retry=True,
+        )
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=(
+                "Unable to modify EC2 VPC managed prefix list "
+                f"{module.params['name']}"
+            ),
+        )
 
 
 def wait_for_ready_state(client, module, prefix_list_id):
-    wait_for_aws_resource(
+    wait_for_prefix_list_state(
         client,
         module,
-        EC2_WAITER_MODEL_DATA,
+        prefix_list_id,
         "managed_prefix_list_ready",
-        f"Timed out waiting for EC2 VPC managed prefix list {prefix_list_id}",
-        waiter_config={"Delay": 1, "MaxAttempts": 60},
-        PrefixListIds=[prefix_list_id],
     )
+
+
+def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name):
+    try:
+        waiter = EC2WaiterFactory().get_waiter(client, waiter_name)
+        waiter.wait(PrefixListIds=[prefix_list_id])
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Timed out waiting for EC2 VPC managed prefix list {prefix_list_id}",
+        )
+
+
+def get_customer_managed_prefix_list_by_name(client, name):
+    filters = ansible_dict_to_boto3_filter_list({"prefix-list-name": name})
+    prefix_lists = paginated_query_with_retries(
+        client, "describe_managed_prefix_lists", Filters=filters
+    ).get("PrefixLists", [])
+    return next(
+        (
+            prefix_list
+            for prefix_list in prefix_lists
+            if prefix_list.get("PrefixListName") == name
+            and prefix_list.get("OwnerId") != "AWS"
+        ),
+        None,
+    )
+
+
+def get_managed_prefix_list_entries(client, prefix_list_id):
+    return paginated_query_with_retries(
+        client,
+        "get_managed_prefix_list_entries",
+        PrefixListId=prefix_list_id,
+    ).get("Entries", [])
+
+
+def tag_changes(module, prefix_list):
+    if module.params["tags"] is None:
+        return {}, []
+    current_tags = boto3_tag_list_to_ansible_dict((prefix_list or {}).get("Tags", []))
+    return compare_aws_tags(
+        current_tags,
+        module.params["tags"],
+        purge_tags=module.params["purge_tags"],
+    )
+
+
+def apply_tag_changes(client, module, prefix_list_id, tags_to_set, tag_keys_to_unset):
+    if not prefix_list_id:
+        return
+    if tag_keys_to_unset:
+        try:
+            client.delete_tags(
+                Resources=[prefix_list_id],
+                Tags=[{"Key": key} for key in tag_keys_to_unset],
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to remove tags from EC2 VPC managed prefix list {prefix_list_id}",
+            )
+    if tags_to_set:
+        try:
+            client.create_tags(
+                Resources=[prefix_list_id],
+                Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to tag EC2 VPC managed prefix list {prefix_list_id}",
+            )
+
+
+def comparable_prefix_list(prefix_list):
+    normalized = boto3_resource_to_ansible_dict(
+        prefix_list, transform_tags=False, force_tags=False
+    )
+    return {
+        "address_family": normalized.get("address_family"),
+        "max_entries": normalized.get("max_entries"),
+        "prefix_list_name": normalized.get("prefix_list_name"),
+    }
+
+
+def comparable_entries(entries):
+    normalized_entries = boto3_resource_list_to_ansible_dict(
+        entries, transform_tags=False, force_tags=False
+    )
+    result = []
+    for entry in normalized_entries or []:
+        result.append(
+            {
+                field: entry.get(field)
+                for field in ("cidr", "description")
+                if entry.get(field) is not None
+            }
+        )
+    return sorted(result, key=lambda entry: json.dumps(entry, sort_keys=True))
+
+
+def normalize_prefix_list(prefix_list, entries=None):
+    normalized = boto3_resource_to_ansible_dict(
+        prefix_list or {}, transform_tags=True, force_tags=False
+    )
+    if entries is not None:
+        normalized["entries"] = boto3_resource_list_to_ansible_dict(
+            entries, transform_tags=False, force_tags=False
+        )
+    return normalized
 
 
 def main():
@@ -354,11 +592,13 @@ def main():
             "type": "list",
         },
         "name": {"required": True, "type": "str"},
+        "purge_tags": {"default": True, "type": "bool"},
         "state": {
             "choices": ["absent", "present"],
             "default": "present",
             "type": "str",
         },
+        "tags": {"type": "dict"},
     }
 
     module = AnsibleAWSModule(
@@ -366,7 +606,7 @@ def main():
         required_if=[("state", "present", ["entries"])],
         supports_check_mode=True,
     )
-    client = module.client("ec2")
+    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     if module.params["state"] == "present":
         ensure_present(client, module)

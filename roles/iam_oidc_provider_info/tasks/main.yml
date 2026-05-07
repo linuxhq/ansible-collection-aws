@@ -1,0 +1,27 @@
+---
+- name: Ensure information about aws iam oidc providers is gathered
+  tags:
+    - iam_oidc_provider_info
+  linuxhq.aws.iam_oidc_provider_info:
+    arn: "{{ iam_oidc_provider_info_arn or omit }}"
+    url: "{{ iam_oidc_provider_info_url or omit }}"
+    validate_certs: true
+  register: __iam_oidc_provider_info_query
+
+- name: Ensure list of aws iam oidc providers is generated
+  tags:
+    - iam_oidc_provider_info
+  ansible.builtin.set_fact:
+    _iam_oidc_provider_info_list:
+      "{{ __iam_oidc_provider_info_query.open_id_connect_providers |
+          d([]) }}"
+
+- name: Ensure dict of aws iam oidc providers is generated
+  tags:
+    - iam_oidc_provider_info
+  ansible.builtin.set_fact:
+    _iam_oidc_provider_info_dict:
+      "{{ dict(_iam_oidc_provider_info_list |
+               json_query('[].url') |
+               zip(_iam_oidc_provider_info_list)) }}"
+...

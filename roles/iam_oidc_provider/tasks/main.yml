@@ -1,0 +1,16 @@
+---
+- name: Ensure aws iam oidc providers are batched
+  tags:
+    - iam_oidc_provider
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - iam_oidc_provider
+    file: include.yml
+  loop:
+    "{{ iam_oidc_provider_list |
+        batch(iam_oidc_provider_batch) }}"
+  loop_control:
+    label: "{{ __iam_oidc_provider_list | length }}"
+    loop_var: __iam_oidc_provider_list
+...

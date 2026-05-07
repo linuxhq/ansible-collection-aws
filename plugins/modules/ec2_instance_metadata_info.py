@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_instance_metadata_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather EC2 account-level instance metadata defaults
 description:
   - Gathers EC2 account-level instance metadata defaults for a region.
@@ -36,18 +36,25 @@ region:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
-    get_instance_metadata_defaults,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
 )
 
 
 def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
-    client = module.client("ec2")
+    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     module.exit_json(
         changed=False,
-        account_level=get_instance_metadata_defaults(client, module),
+        account_level=boto3_resource_to_ansible_dict(
+            client.get_instance_metadata_defaults(aws_retry=True).get(
+                "AccountLevel", {}
+            ),
+            transform_tags=False,
+            force_tags=False,
+        ),
         region=module.region,
     )
 

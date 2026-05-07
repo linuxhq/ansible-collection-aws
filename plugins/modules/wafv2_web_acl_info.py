@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: wafv2_web_acl_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about AWS WAFv2 web ACLs
 description:
   - Gathers information about AWS WAFv2 web ACLs.
@@ -52,8 +52,9 @@ web_acls:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
-    list_wafv2_web_acls,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
 )
 
 
@@ -67,14 +68,35 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    client = module.client("wafv2")
+    client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
 
     scope = module.params["scope"].upper()
+    marker = None
+    web_acls = []
+    while True:
+        request = {"Scope": scope, "Limit": 100}
+        if marker:
+            request["NextMarker"] = marker
+        response = client.list_web_acls(**request, aws_retry=True)
+        for summary in response.get("WebACLs", []):
+            web_acls.append(
+                client.get_web_acl(
+                    Id=summary["Id"],
+                    Name=summary["Name"],
+                    Scope=scope,
+                    aws_retry=True,
+                ).get("WebACL", {})
+            )
+        marker = response.get("NextMarker")
+        if not marker:
+            break
 
     module.exit_json(
         changed=False,
         scope=scope.lower(),
-        web_acls=list_wafv2_web_acls(client, module, scope),
+        web_acls=boto3_resource_list_to_ansible_dict(
+            web_acls, transform_tags=False, force_tags=False
+        ),
     )
 
 

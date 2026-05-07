@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: route53_resolver_rule_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about AWS Route53 Resolver rules
 description:
   - Gathers information about AWS Route53 Resolver rules.
@@ -41,38 +41,31 @@ resolver_rules:
   elements: dict
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_list_to_snake_dicts,
-    aws_resource_to_snake_dict,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
-    get_resolver_rule_by_name,
-    list_resolver_rule_associations,
-    list_resolver_rules,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    ansible_dict_to_boto3_filter_list,
+    boto3_resource_list_to_ansible_dict,
+    boto3_resource_to_ansible_dict,
 )
 
 
-def group_associations_by_rule_id(associations):
-    associations_by_rule_id = {}
-    for association in associations:
-        associations_by_rule_id.setdefault(
-            association.get("ResolverRuleId"), []
-        ).append(association)
-    return associations_by_rule_id
-
-
-def normalize_resolver_rule_with_associations(rule, associations_by_rule_id):
-    normalized = aws_resource_to_snake_dict(rule)
-    normalized["associations"] = aws_resource_list_to_snake_dicts(
-        associations_by_rule_id.get(rule.get("Id"), [])
-    )
-    normalized["vpc_ids"] = [
-        association["vpc_id"]
-        for association in normalized["associations"]
-        if association.get("vpc_id") is not None
-    ]
-    return normalized
+def resource_tags(client, module, resource):
+    if not resource.get("Arn"):
+        return []
+    try:
+        return client.list_tags_for_resource(
+            ResourceArn=resource["Arn"],
+            aws_retry=True,
+        ).get("Tags", [])
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to list tags for AWS Route53 Resolver rule {resource['Arn']}",
+        )
 
 
 def main():
@@ -82,38 +75,60 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client("route53resolver")
-    if module.params["name"] is None:
-        resolver_rules = list_resolver_rules(client, module)
-    else:
-        resolver_rule = get_resolver_rule_by_name(
-            client,
-            module,
-            module.params["name"],
-        )
-        resolver_rules = [resolver_rule] if resolver_rule is not None else []
+    client = module.client(
+        "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
+    )
+    resolver_rules = paginated_query_with_retries(client, "list_resolver_rules").get(
+        "ResolverRules", []
+    )
+    if module.params["name"] is not None:
+        resolver_rules = [
+            rule for rule in resolver_rules if rule.get("Name") == module.params["name"]
+        ]
 
     if module.params["name"] is None:
-        associations = list_resolver_rule_associations(client, module)
+        associations = paginated_query_with_retries(
+            client, "list_resolver_rule_associations"
+        ).get("ResolverRuleAssociations", [])
     elif not resolver_rules:
         associations = []
     else:
-        associations = list_resolver_rule_associations(
+        associations = paginated_query_with_retries(
             client,
-            module,
-            resolver_rule_id=[rule["Id"] for rule in resolver_rules],
-        )
+            "list_resolver_rule_associations",
+            Filters=ansible_dict_to_boto3_filter_list(
+                {"ResolverRuleId": [rule["Id"] for rule in resolver_rules]}
+            ),
+        ).get("ResolverRuleAssociations", [])
 
-    associations_by_rule_id = group_associations_by_rule_id(
-        associations,
-    )
+    associations_by_rule_id = {}
+    for association in associations:
+        resolver_rule_id = association.get("ResolverRuleId")
+        associations_by_rule_id.setdefault(resolver_rule_id, []).append(association)
+
+    normalized_rules = []
+    for rule in resolver_rules:
+        normalized = boto3_resource_to_ansible_dict(
+            dict(rule, Tags=resource_tags(client, module, rule)),
+            transform_tags=True,
+            force_tags=False,
+        )
+        resolver_rule_id = rule.get("Id")
+        normalized["associations"] = boto3_resource_list_to_ansible_dict(
+            associations_by_rule_id.get(resolver_rule_id, []),
+            transform_tags=False,
+            force_tags=False,
+        )
+        normalized["vpc_ids"] = []
+        for association in normalized["associations"]:
+            vpc_id = association.get("vpc_id")
+            if vpc_id is not None:
+                normalized["vpc_ids"].append(vpc_id)
+        normalized_rules.append(normalized)
 
     module.exit_json(
         changed=False,
-        resolver_rules=[
-            normalize_resolver_rule_with_associations(rule, associations_by_rule_id)
-            for rule in resolver_rules
-        ],
+        resolver_rules=normalized_rules,
     )
 
 

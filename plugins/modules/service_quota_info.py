@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: service_quota_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about an AWS service quota
 description:
   - Gathers information about an AWS service quota.
@@ -57,12 +57,12 @@ service_code:
   type: str
 """
 
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_to_snake_dict,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.service_quota import (
-    get_service_quota,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
 
 
@@ -73,11 +73,27 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    client = module.client("service-quotas")
+    client = module.client(
+        "service-quotas", retry_decorator=AWSRetry.jittered_backoff()
+    )
+    quota = client.get_service_quota(
+        **scrub_none_parameters(
+            snake_dict_to_camel_dict(
+                {
+                    "quota_code": module.params["quota_code"],
+                    "service_code": module.params["service_code"],
+                },
+                capitalize_first=True,
+            )
+        ),
+        aws_retry=True,
+    ).get("Quota", {})
 
     module.exit_json(
         changed=False,
-        quota=aws_resource_to_snake_dict(get_service_quota(client, module)),
+        quota=boto3_resource_to_ansible_dict(
+            quota, transform_tags=False, force_tags=False
+        ),
         quota_code=module.params["quota_code"],
         service_code=module.params["service_code"],
     )

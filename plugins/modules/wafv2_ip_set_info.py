@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: wafv2_ip_set_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about AWS WAFv2 IP sets
 description:
   - Gathers information about AWS WAFv2 IP sets.
@@ -52,8 +52,9 @@ scope:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
-    list_wafv2_ip_sets,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
 )
 
 
@@ -67,13 +68,34 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    client = module.client("wafv2")
+    client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
 
     scope = module.params["scope"].upper()
+    marker = None
+    ip_sets = []
+    while True:
+        request = {"Scope": scope, "Limit": 100}
+        if marker:
+            request["NextMarker"] = marker
+        response = client.list_ip_sets(**request, aws_retry=True)
+        for summary in response.get("IPSets", []):
+            ip_sets.append(
+                client.get_ip_set(
+                    Id=summary["Id"],
+                    Name=summary["Name"],
+                    Scope=scope,
+                    aws_retry=True,
+                ).get("IPSet", {})
+            )
+        marker = response.get("NextMarker")
+        if not marker:
+            break
 
     module.exit_json(
         changed=False,
-        ip_sets=list_wafv2_ip_sets(client, module, scope),
+        ip_sets=boto3_resource_list_to_ansible_dict(
+            ip_sets, transform_tags=False, force_tags=False
+        ),
         scope=scope.lower(),
     )
 

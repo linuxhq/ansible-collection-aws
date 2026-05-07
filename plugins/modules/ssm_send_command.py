@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ssm_send_command
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Send AWS Systems Manager commands
 description:
   - Sends an AWS Systems Manager Run Command request.
@@ -44,7 +44,20 @@ options:
     description:
       - The command targets.
       - Target keys may be provided in snake_case or AWS native PascalCase.
+      - Each target requires a target key and values.
     elements: dict
+    suboptions:
+      key:
+        description:
+          - The target key.
+        required: true
+        type: str
+      values:
+        description:
+          - The target values.
+        elements: str
+        required: true
+        type: list
     type: list
   timeout_seconds:
     description:
@@ -110,18 +123,16 @@ status:
 
 import time
 
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
-    aws_request_params,
-    aws_resource,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_list_to_snake_dicts,
-    aws_resource_to_snake_dict,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
-    aws_ssm_targets,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
 
 SUCCESS_STATUSES = {"Success"}
@@ -136,63 +147,56 @@ SEND_COMMAND_OPTIONS = [
 ]
 
 
-def build_send_command_args(params):
-    request = aws_request_params(
-        {option: params[option] for option in SEND_COMMAND_OPTIONS}
-    )
-    request["Parameters"] = params["parameters"]
-    targets = aws_ssm_targets(params["targets"], none_if_omitted=True)
-    if targets is not None:
-        request["Targets"] = targets
-    return request
-
-
-def get_command(client, module, command_id):
-    commands = aws_resource(
-        client,
-        module,
-        "list_commands",
-        "Commands",
-        default=[],
-        CommandId=command_id,
-    )
-    if not commands:
-        module.fail_json(
-            msg=f"AWS Systems Manager command {command_id} was not returned by list_commands",
-        )
-
-    return commands[0]
-
-
 def normalize_command(command):
-    return aws_resource_to_snake_dict(
+    return boto3_resource_to_ansible_dict(
         command,
-        ignore_list=["Parameters", "Targets"],
+        ignore_list=[
+            "Parameters",
+            "Targets",
+        ],
+        transform_tags=False,
+        force_tags=False,
     )
-
-
-def normalize_command_invocations(invocations):
-    return aws_resource_list_to_snake_dicts(invocations)
 
 
 def wait_for_command(client, module, command_id):
     deadline = time.monotonic() + module.params["wait_timeout"]
 
     while time.monotonic() < deadline:
-        command = get_command(client, module, command_id)
-        invocations = aws_paginated_list(
+        commands = client.list_commands(
+            **scrub_none_parameters(
+                snake_dict_to_camel_dict(
+                    {"command_id": command_id}, capitalize_first=True
+                )
+            ),
+            aws_retry=True,
+        ).get("Commands", [])
+        if not commands:
+            module.fail_json(
+                msg=(
+                    f"AWS Systems Manager command {command_id} was not returned "
+                    "by list_commands"
+                ),
+            )
+        command = commands[0]
+        invocations = paginated_query_with_retries(
             client,
-            module,
             "list_command_invocations",
-            "CommandInvocations",
-            CommandId=command_id,
-            Details=True,
-        )
-        statuses = {
-            invocation.get("Status")
-            for invocation in invocations
-            if invocation.get("Status")
-        }
+            **scrub_none_parameters(
+                snake_dict_to_camel_dict(
+                    {
+                        "command_id": command_id,
+                        "details": True,
+                    },
+                    capitalize_first=True,
+                )
+            ),
+        ).get("CommandInvocations", [])
+        statuses = set()
+        for invocation in invocations:
+            invocation_status = invocation.get("Status")
+            if invocation_status:
+                statuses.add(invocation_status)
         command_status = command.get("Status")
 
         if command_status in TERMINAL_STATUSES and not invocations:
@@ -215,7 +219,9 @@ def wait_for_command(client, module, command_id):
                 msg=f"AWS Systems Manager command {command_id} did not complete successfully",
                 command=normalize_command(command),
                 command_id=command_id,
-                command_invocations=normalize_command_invocations(invocations),
+                command_invocations=boto3_resource_list_to_ansible_dict(
+                    invocations, transform_tags=False, force_tags=False
+                ),
                 status=command_status,
             )
 
@@ -235,7 +241,14 @@ def main():
         "max_concurrency": {"type": "str"},
         "max_errors": {"type": "str"},
         "parameters": {"default": {}, "type": "dict"},
-        "targets": {"elements": "dict", "type": "list"},
+        "targets": {
+            "elements": "dict",
+            "options": {
+                "key": {"no_log": False, "required": True, "type": "str"},
+                "values": {"elements": "str", "required": True, "type": "list"},
+            },
+            "type": "list",
+        },
         "timeout_seconds": {"type": "int"},
         "wait": {"default": False, "type": "bool"},
         "wait_delay": {"default": 5, "type": "int"},
@@ -247,24 +260,36 @@ def main():
         required_one_of=[["instance_ids", "targets"]],
         supports_check_mode=True,
     )
-    client = module.client("ssm")
-    send_command_args = build_send_command_args(module.params)
+    client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
+    send_command_request = {
+        option: module.params[option] for option in SEND_COMMAND_OPTIONS
+    }
+    send_command_request["parameters"] = module.params["parameters"]
+    if module.params["targets"] is not None:
+        send_command_request["targets"] = [
+            snake_dict_to_camel_dict(target, capitalize_first=True)
+            for target in module.params["targets"]
+        ]
+    send_command_args = scrub_none_parameters(
+        snake_dict_to_camel_dict(send_command_request, capitalize_first=True)
+    )
+    send_command_args["Parameters"] = module.params["parameters"]
 
     if module.check_mode:
         module.exit_json(changed=True)
 
-    command = aws_resource(
-        client,
-        module,
-        "send_command",
-        "Command",
-        default={},
-        error_message=(
-            "Unable to send AWS Systems Manager command using "
-            f"{module.params['document_name']}"
-        ),
-        **send_command_args,
-    )
+    try:
+        command = client.send_command(**send_command_args, aws_retry=True).get(
+            "Command", {}
+        )
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=(
+                "Unable to send AWS Systems Manager command using "
+                f"{module.params['document_name']}"
+            ),
+        )
 
     result = {
         "changed": True,
@@ -274,11 +299,16 @@ def main():
     }
 
     if module.params["wait"]:
+        command_id = command.get("CommandId")
         command, invocations = wait_for_command(
-            client, module, command.get("CommandId")
+            client,
+            module,
+            command_id,
         )
         result["command"] = normalize_command(command)
-        result["command_invocations"] = normalize_command_invocations(invocations)
+        result["command_invocations"] = boto3_resource_list_to_ansible_dict(
+            invocations, transform_tags=False, force_tags=False
+        )
         result["status"] = command.get("Status")
 
     module.exit_json(**result)

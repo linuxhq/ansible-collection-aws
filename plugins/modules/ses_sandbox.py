@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ses_sandbox
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Manage AWS Simple Email Service account details
 description:
   - Requests production access for an AWS Simple Email Service account and manages the submitted account details.
@@ -66,36 +66,24 @@ account:
   type: dict
 """
 
+from ansible.module_utils.common.dict_transformations import recursive_diff
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_request_params,
-    aws_response,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_to_snake_dict,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
 
-
-def build_request(params):
-    request = aws_request_params(
-        {
-            "additional_contact_email_addresses": params[
-                "additional_contact_email_addresses"
-            ]
-            or None,
-            "contact_language": params["contact_language"].upper(),
-            "mail_type": params["mail_type"].upper(),
-            "production_access_enabled": True,
-            "use_case_description": (
-                None
-                if params["use_case_description"] is None
-                else params["use_case_description"].strip()
-            ),
-            "website_url": params["website_url"],
-        }
-    )
-    request["WebsiteURL"] = request.pop("WebsiteUrl")
-    return request
+ACCOUNT_DETAILS_FIELDS = (
+    "additional_contact_email_addresses",
+    "contact_language",
+    "mail_type",
+    "use_case_description",
+    "website_url",
+)
 
 
 def main():
@@ -116,39 +104,82 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    client = module.client("sesv2")
+    client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
 
-    current_account = aws_response(client, module, "get_account")
-    request = build_request(module.params)
+    current_account = boto3_resource_to_ansible_dict(
+        client.get_account(aws_retry=True), transform_tags=False, force_tags=False
+    )
+    desired_details = {
+        "additional_contact_email_addresses": (
+            module.params["additional_contact_email_addresses"] or None
+        ),
+        "contact_language": module.params["contact_language"].upper(),
+        "mail_type": module.params["mail_type"].upper(),
+        "use_case_description": (
+            None
+            if module.params["use_case_description"] is None
+            else module.params["use_case_description"].strip()
+        ),
+        "website_url": module.params["website_url"],
+    }
+    desired = {
+        "details": desired_details,
+        "production_access_enabled": True,
+    }
+    request = scrub_none_parameters(
+        {
+            "AdditionalContactEmailAddresses": desired_details[
+                "additional_contact_email_addresses"
+            ],
+            "ContactLanguage": desired_details["contact_language"],
+            "MailType": desired_details["mail_type"],
+            "ProductionAccessEnabled": True,
+            "UseCaseDescription": desired_details["use_case_description"],
+            "WebsiteURL": desired_details["website_url"],
+        }
+    )
+    current = {
+        "details": current_account.get("details", {}),
+        "production_access_enabled": current_account.get(
+            "production_access_enabled", False
+        ),
+    }
+    current = {
+        "details": {
+            field: current["details"].get(field)
+            for field in ACCOUNT_DETAILS_FIELDS
+            if current["details"].get(field) is not None
+        },
+        "production_access_enabled": current["production_access_enabled"],
+    }
 
     ready = (
-        not current_account.get("ProductionAccessEnabled", False)
-        and module.params["use_case_description"] is not None
+        module.params["use_case_description"] is not None
         and module.params["website_url"] is not None
     )
-    changed = ready
+    changed = ready and recursive_diff((current) or {}, (desired) or {}) is not None
 
     if changed and not module.check_mode:
-        conflict_response = object()
-        response = aws_response(
-            client,
-            module,
-            "put_account_details",
-            error_message="Unable to manage AWS Simple Email Service account details",
-            ignore_error_codes="ConflictException",
-            ignored_error_result=conflict_response,
-            **request,
-        )
-        if response is conflict_response:
+        try:
+            client.put_account_details(**request, aws_retry=True)
+        except is_boto3_error_code("ConflictException"):
             module.warn(
                 "AWS Simple Email Service account details request is already in progress"
             )
             changed = False
-        current_account = aws_response(client, module, "get_account")
+        except Exception as e:
+            module.fail_json_aws(
+                e, msg="Unable to manage AWS Simple Email Service account details"
+            )
+        current_account = boto3_resource_to_ansible_dict(
+            client.get_account(aws_retry=True),
+            transform_tags=False,
+            force_tags=False,
+        )
 
     result = {
         "changed": changed,
-        "account": aws_resource_to_snake_dict(current_account),
+        "account": current_account,
     }
 
     module.exit_json(**result)

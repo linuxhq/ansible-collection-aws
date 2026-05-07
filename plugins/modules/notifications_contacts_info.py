@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: notifications_contacts_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about AWS Notifications contacts
 description:
   - Gathers information about AWS Notifications email contacts.
@@ -41,13 +41,31 @@ email_contacts:
   elements: dict
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import (
-    list_email_contacts,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_list_to_snake_dicts,
-)
+
+
+def contact_with_tags(client, module, contact):
+    if not contact.get("arn"):
+        return contact
+    contact = dict(contact)
+    try:
+        contact["tags"] = client.list_tags_for_resource(
+            arn=contact["arn"],
+            aws_retry=True,
+        ).get("tags", {})
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to list tags for AWS Notifications contact {contact['arn']}",
+        )
+    return contact
 
 
 def main():
@@ -57,12 +75,25 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client("notificationscontacts")
+    client = module.client(
+        "notificationscontacts", retry_decorator=AWSRetry.jittered_backoff()
+    )
+    email_contacts = paginated_query_with_retries(client, "list_email_contacts").get(
+        "emailContacts", []
+    )
+    if module.params["name"] is not None:
+        email_contacts = [
+            contact
+            for contact in email_contacts
+            if contact.get("name") == module.params["name"]
+        ]
 
     module.exit_json(
         changed=False,
-        email_contacts=aws_resource_list_to_snake_dicts(
-            list_email_contacts(client, module, module.params["name"])
+        email_contacts=boto3_resource_list_to_ansible_dict(
+            [contact_with_tags(client, module, contact) for contact in email_contacts],
+            transform_tags=False,
+            force_tags=False,
         ),
     )
 
