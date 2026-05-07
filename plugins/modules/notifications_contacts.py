@@ -5,11 +5,10 @@
 DOCUMENTATION = r"""
 ---
 module: notifications_contacts
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Manage AWS Notifications contacts
 description:
   - Manages AWS Notifications email contacts.
-  - O(name) is immutable after contact creation.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -23,6 +22,12 @@ options:
       - The notifications contact name.
     required: true
     type: str
+  purge_tags:
+    description:
+      - Whether tags not listed in O(tags) should be removed.
+      - This option is only used when O(tags) is provided.
+    default: true
+    type: bool
   state:
     description:
       - Whether the notifications contact should exist.
@@ -31,6 +36,10 @@ options:
       - present
     default: present
     type: str
+  tags:
+    description:
+      - Tags to apply to the notifications contact.
+    type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -42,6 +51,8 @@ EXAMPLES = r"""
   linuxhq.aws.notifications_contacts:
     email_address: dummy01@molecule.org
     name: molecule-dummy01
+    tags:
+      Name: molecule-dummy01
 
 - name: Ensure an AWS Notifications contact is absent
   linuxhq.aws.notifications_contacts:
@@ -63,39 +74,109 @@ state:
   type: str
 """
 
+from ansible.module_utils.common.dict_transformations import (
+    recursive_diff,
+    snake_dict_to_camel_dict,
+)
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_resource,
-    aws_response,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.tagging import compare_aws_tags
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    validate_immutable_fields,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import (
-    get_email_contact_by_address,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_to_snake_dict,
-)
+
+
+def contact_with_tags(client, module, contact):
+    if not contact or not contact.get("arn"):
+        return contact
+    contact = dict(contact)
+    try:
+        contact["tags"] = client.list_tags_for_resource(
+            arn=contact["arn"],
+            aws_retry=True,
+        ).get("tags", {})
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to list tags for AWS Notifications contact {contact['arn']}",
+        )
+    return contact
+
+
+def tag_changes(module, contact):
+    if module.params["tags"] is None:
+        return {}, []
+    return compare_aws_tags(
+        (contact or {}).get("tags", {}),
+        module.params["tags"],
+        purge_tags=module.params["purge_tags"],
+    )
+
+
+def apply_tag_changes(client, module, contact, tags_to_set, tag_keys_to_unset):
+    if tag_keys_to_unset:
+        try:
+            client.untag_resource(
+                arn=contact["arn"],
+                tagKeys=tag_keys_to_unset,
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to remove tags from AWS Notifications contact {contact['arn']}",
+            )
+
+    if tags_to_set:
+        try:
+            client.tag_resource(
+                arn=contact["arn"],
+                tags=tags_to_set,
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to tag AWS Notifications contact {contact['arn']}",
+            )
 
 
 def ensure_absent(client, module):
-    contact = get_email_contact_by_address(
-        client, module, module.params["email_address"]
+    contact = next(
+        (
+            item
+            for item in paginated_query_with_retries(client, "list_email_contacts").get(
+                "emailContacts", []
+            )
+            if item.get("address") == module.params["email_address"]
+        ),
+        None,
     )
     changed = contact is not None
 
     if changed and not module.check_mode:
-        aws_response(
-            client,
-            module,
-            "delete_email_contact",
-            error_message=(
-                "Unable to delete AWS Notifications contact "
-                f"{module.params['email_address']}"
-            ),
-            arn=contact.get("arn"),
-        )
+        try:
+            client.delete_email_contact(
+                **scrub_none_parameters(
+                    snake_dict_to_camel_dict(
+                        {"arn": contact.get("arn")},
+                        capitalize_first=False,
+                    )
+                ),
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    "Unable to delete AWS Notifications contact "
+                    f"{module.params['email_address']}"
+                ),
+            )
 
     module.exit_json(
         changed=changed,
@@ -104,50 +185,94 @@ def ensure_absent(client, module):
 
 
 def ensure_present(client, module):
-    contact = get_email_contact_by_address(
-        client, module, module.params["email_address"]
-    )
-    validate_immutable_fields(
-        module,
-        contact,
-        {"name": module.params["name"]},
-        ["name"],
+    contact = next(
         (
-            "Unable to update AWS Notifications contact "
-            f"{module.params['email_address']}: immutable fields differ"
+            item
+            for item in paginated_query_with_retries(client, "list_email_contacts").get(
+                "emailContacts", []
+            )
+            if item.get("address") == module.params["email_address"]
         ),
+        None,
     )
-
-    changed = contact is None
+    contact = contact_with_tags(client, module, contact)
+    current_contact = (
+        {"address": contact.get("address"), "name": contact.get("name")}
+        if contact
+        else None
+    )
+    desired_contact = {
+        "address": module.params["email_address"],
+        "name": module.params["name"],
+    }
+    resource_changed = (
+        recursive_diff((current_contact) or {}, desired_contact) is not None
+    )
+    tags_to_set, tag_keys_to_unset = tag_changes(module, contact)
+    changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
-        contact_arn = aws_resource(
-            client,
-            module,
-            "create_email_contact",
-            "arn",
-            error_message=(
-                "Unable to create AWS Notifications contact "
-                f"{module.params['email_address']}"
-            ),
-            emailAddress=module.params["email_address"],
-            name=module.params["name"],
-        )
+        if contact is None or resource_changed:
+            if contact is not None:
+                try:
+                    client.delete_email_contact(
+                        **scrub_none_parameters(
+                            snake_dict_to_camel_dict(
+                                {"arn": contact.get("arn")},
+                                capitalize_first=False,
+                            )
+                        ),
+                        aws_retry=True,
+                    )
+                except Exception as e:
+                    module.fail_json_aws(
+                        e,
+                        msg=(
+                            "Unable to delete AWS Notifications contact "
+                            f"{module.params['email_address']}"
+                        ),
+                    )
 
-        contact = {
-            "address": module.params["email_address"],
-            "arn": contact_arn,
-            "name": module.params["name"],
-        }
+            try:
+                contact_request = {
+                    "email_address": module.params["email_address"],
+                    "name": module.params["name"],
+                    "tags": module.params["tags"],
+                }
+                contact_arn = client.create_email_contact(
+                    **scrub_none_parameters(
+                        snake_dict_to_camel_dict(
+                            contact_request,
+                            capitalize_first=False,
+                        )
+                    ),
+                    aws_retry=True,
+                ).get("arn")
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        "Unable to create AWS Notifications contact "
+                        f"{module.params['email_address']}"
+                    ),
+                )
+
+            contact = dict(desired_contact, arn=contact_arn)
+            if module.params["tags"] is not None:
+                contact["tags"] = module.params["tags"]
+        elif contact is not None:
+            apply_tag_changes(client, module, contact, tags_to_set, tag_keys_to_unset)
+            contact = contact_with_tags(client, module, contact)
     elif changed and module.check_mode:
-        contact = {
-            "address": module.params["email_address"],
-            "name": module.params["name"],
-        }
+        contact = desired_contact
+        if module.params["tags"] is not None:
+            contact["tags"] = module.params["tags"]
 
     module.exit_json(
         changed=changed,
-        email_contact=aws_resource_to_snake_dict(contact),
+        email_contact=boto3_resource_to_ansible_dict(
+            contact, transform_tags=False, force_tags=False
+        ),
         state="present",
     )
 
@@ -157,15 +282,19 @@ def main():
         argument_spec={
             "email_address": {"required": True, "type": "str"},
             "name": {"required": True, "type": "str"},
+            "purge_tags": {"default": True, "type": "bool"},
             "state": {
                 "choices": ["absent", "present"],
                 "default": "present",
                 "type": "str",
             },
+            "tags": {"type": "dict"},
         },
         supports_check_mode=True,
     )
-    client = module.client("notificationscontacts")
+    client = module.client(
+        "notificationscontacts", retry_decorator=AWSRetry.jittered_backoff()
+    )
 
     if module.params["state"] == "present":
         ensure_present(client, module)

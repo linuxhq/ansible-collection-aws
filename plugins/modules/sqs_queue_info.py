@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: sqs_queue_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about AWS Simple Queue Service queues
 description:
   - Gathers information about AWS Simple Queue Service queues.
@@ -41,30 +41,37 @@ queues:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
-    aws_resource,
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+    paginated_query_with_retries,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_to_snake_dict,
+from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
 
 
 def get_queue(client, module, queue_url):
-    attributes = aws_resource(
-        client,
-        module,
-        "get_queue_attributes",
-        "Attributes",
-        default={},
-        AttributeNames=["All"],
-        QueueUrl=queue_url,
+    attributes = client.get_queue_attributes(
+        **scrub_none_parameters(
+            snake_dict_to_camel_dict(
+                {
+                    "attribute_names": ["All"],
+                    "queue_url": queue_url,
+                },
+                capitalize_first=True,
+            )
+        ),
+        aws_retry=True,
+    ).get("Attributes", {})
+    queue = boto3_resource_to_ansible_dict(
+        attributes, transform_tags=False, force_tags=False
     )
-    queue = aws_resource_to_snake_dict(attributes)
-    queue["name"] = attributes.get("QueueArn", queue_url.rsplit("/", 1)[-1]).split(":")[
-        -1
-    ]
+    queue_arn = queue.get("queue_arn")
+    queue["name"] = (queue_arn or queue_url.rsplit("/", 1)[-1]).split(":")[-1]
     queue["queue_url"] = queue_url
     return queue
 
@@ -75,28 +82,31 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    client = module.client("sqs")
+    client = module.client("sqs", retry_decorator=AWSRetry.jittered_backoff())
 
     if module.params["name"]:
-        queue_url = aws_resource(
-            client,
-            module,
-            "get_queue_url",
-            "QueueUrl",
-            ignore_error_codes="AWS.SimpleQueueService.NonExistentQueue",
-            ignored_error_result=None,
-            QueueName=module.params["name"],
-        )
+        try:
+            queue_url = client.get_queue_url(
+                **scrub_none_parameters(
+                    snake_dict_to_camel_dict(
+                        {"queue_name": module.params["name"]},
+                        capitalize_first=True,
+                    )
+                ),
+                aws_retry=True,
+            ).get("QueueUrl")
+        except is_boto3_error_code("AWS.SimpleQueueService.NonExistentQueue"):
+            queue_url = None
+        except Exception as e:
+            module.fail_json_aws(e, msg="Unable to get AWS SQS queue URL")
         queues = [get_queue(client, module, queue_url)] if queue_url else []
     else:
         queues = [
             get_queue(client, module, queue_url)
-            for queue_url in aws_paginated_list(
+            for queue_url in paginated_query_with_retries(
                 client,
-                module,
                 "list_queues",
-                "QueueUrls",
-            )
+            ).get("QueueUrls", [])
         ]
 
     module.exit_json(

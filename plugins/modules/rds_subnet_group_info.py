@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: rds_subnet_group_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather AWS RDS subnet group information
 description:
   - Gathers AWS Relational Database Service subnet groups.
@@ -40,37 +40,17 @@ subnet_groups:
   type: list
 """
 
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
-    aws_request_params,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+    scrub_none_parameters,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_list_to_snake_dicts,
-)
-
-
-def list_subnet_groups(client, module):
-    kwargs = aws_request_params({"db_subnet_group_name": module.params["name"]})
-
-    subnet_groups = [
-        subnet_group
-        for subnet_group in aws_paginated_list(
-            client,
-            module,
-            "describe_db_subnet_groups",
-            "DBSubnetGroups",
-            ignore_error_codes=(
-                "DBSubnetGroupNotFoundFault"
-                if module.params["name"] is not None
-                else None
-            ),
-            ignored_error_result=[],
-            **kwargs,
-        )
-        if subnet_group.get("DBSubnetGroupName") is not None
-    ]
-    return aws_resource_list_to_snake_dicts(subnet_groups)
 
 
 def main():
@@ -80,11 +60,36 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client("rds")
+    client = module.client("rds", retry_decorator=AWSRetry.jittered_backoff())
+    kwargs = scrub_none_parameters(
+        snake_dict_to_camel_dict(
+            {"db_subnet_group_name": module.params["name"]},
+            capitalize_first=True,
+        )
+    )
+    try:
+        subnet_groups = [
+            subnet_group
+            for subnet_group in paginated_query_with_retries(
+                client,
+                "describe_db_subnet_groups",
+                **kwargs,
+            ).get("DBSubnetGroups", [])
+            if subnet_group.get("DBSubnetGroupName") is not None
+        ]
+    except is_boto3_error_code("DBSubnetGroupNotFoundFault"):
+        subnet_groups = []
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg="Unable to describe AWS RDS DB subnet groups",
+        )
 
     module.exit_json(
         changed=False,
-        subnet_groups=list_subnet_groups(client, module),
+        subnet_groups=boto3_resource_list_to_ansible_dict(
+            subnet_groups, transform_tags=False, force_tags=False
+        ),
     )
 
 

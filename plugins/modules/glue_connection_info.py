@@ -6,7 +6,7 @@
 DOCUMENTATION = r"""
 ---
 module: glue_connection_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about AWS Glue connections
 description:
   - Gathers information about AWS Glue connections.
@@ -32,29 +32,30 @@ connections:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_list_to_snake_dicts,
+from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
 )
 
 
 def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
-    client = module.client("glue")
+    client = module.client("glue", retry_decorator=AWSRetry.jittered_backoff())
 
     module.exit_json(
         changed=False,
-        connections=aws_resource_list_to_snake_dicts(
-            aws_paginated_list(
+        connections=boto3_resource_list_to_ansible_dict(
+            paginated_query_with_retries(
                 client,
-                module,
                 "get_connections",
-                "ConnectionList",
-            ),
+            ).get("ConnectionList", []),
             ignore_list=["ConnectionProperties"],
+            transform_tags=False,
+            force_tags=False,
         ),
     )
 

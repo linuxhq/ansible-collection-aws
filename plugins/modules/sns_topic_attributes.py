@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: sns_topic_attributes
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Manage AWS Simple Notification Service topic attributes
 description:
   - Manages selected AWS Simple Notification Service topic attributes.
@@ -47,31 +47,30 @@ topic_arn:
   type: str
 """
 
+from ansible.module_utils.common.dict_transformations import (
+    recursive_diff,
+    snake_dict_to_camel_dict,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_request_params,
-    aws_resource,
-    aws_response,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    field_differences,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_to_snake_dict,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
 
 MANAGED_ATTRIBUTES = ["kms_master_key_id"]
 
 
 def get_topic_attributes(client, module):
-    return aws_resource(
-        client,
-        module,
-        "get_topic_attributes",
-        "Attributes",
-        default={},
-        TopicArn=module.params["topic_arn"],
-    )
+    return client.get_topic_attributes(
+        **scrub_none_parameters(
+            snake_dict_to_camel_dict(
+                {"topic_arn": module.params["topic_arn"]},
+                capitalize_first=True,
+            )
+        ),
+        aws_retry=True,
+    ).get("Attributes", {})
 
 
 def main():
@@ -81,7 +80,7 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    client = module.client("sns")
+    client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
 
     current_attributes = get_topic_attributes(client, module)
     desired_parameters = {
@@ -89,37 +88,48 @@ def main():
         for attribute in MANAGED_ATTRIBUTES
         if module.params[attribute] is not None
     }
-    desired_attributes = aws_request_params(desired_parameters)
-
-    _, changed = field_differences(
-        current_attributes,
-        desired_parameters,
-        desired_parameters.keys(),
+    desired_attributes = snake_dict_to_camel_dict(
+        desired_parameters, capitalize_first=True
     )
+    current = boto3_resource_to_ansible_dict(
+        current_attributes, transform_tags=False, force_tags=False
+    )
+    current = {key: current.get(key) for key in desired_parameters}
+    changed = recursive_diff(current, desired_parameters) is not None
 
     if changed and not module.check_mode:
         for attribute, value in desired_attributes.items():
-            if current_attributes.get(attribute) == value:
-                continue
-            aws_response(
-                client,
-                module,
-                "set_topic_attributes",
-                error_message=(
-                    "Unable to manage AWS Simple Notification Service topic "
-                    f"attributes for {module.params['topic_arn']}"
-                ),
-                AttributeName=attribute,
-                AttributeValue=value,
-                TopicArn=module.params["topic_arn"],
-            )
+            try:
+                client.set_topic_attributes(
+                    **scrub_none_parameters(
+                        snake_dict_to_camel_dict(
+                            {
+                                "attribute_name": attribute,
+                                "attribute_value": value,
+                                "topic_arn": module.params["topic_arn"],
+                            },
+                            capitalize_first=True,
+                        )
+                    ),
+                    aws_retry=True,
+                )
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        "Unable to manage AWS Simple Notification Service topic "
+                        f"attributes for {module.params['topic_arn']}"
+                    ),
+                )
         current_attributes = get_topic_attributes(client, module)
     elif changed and module.check_mode:
         current_attributes = dict(current_attributes)
         current_attributes.update(desired_attributes)
 
     result = {
-        "attributes": aws_resource_to_snake_dict(current_attributes),
+        "attributes": boto3_resource_to_ansible_dict(
+            current_attributes, transform_tags=False, force_tags=False
+        ),
         "changed": changed,
         "topic_arn": module.params["topic_arn"],
     }

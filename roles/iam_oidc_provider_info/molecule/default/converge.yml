@@ -1,0 +1,19 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - role: iam_oidc_provider_info
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: iam_oidc_provider
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - iam_oidc_provider_info
+...

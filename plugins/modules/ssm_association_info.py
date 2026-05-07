@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ssm_association_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about AWS Systems Manager associations
 description:
   - Gathers information about AWS Systems Manager associations.
@@ -31,27 +31,62 @@ associations:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
-    list_ssm_associations,
-    normalize_ssm_association,
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
 )
+from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+)
+
+SSM_ASSOCIATION_RESOURCE_TYPE = "Association"
+
+
+def association_with_tags(client, module, association):
+    association_id = association.get("AssociationId")
+    if not association_id:
+        return association
+    association = dict(association)
+    try:
+        association["Tags"] = client.list_tags_for_resource(
+            ResourceType=SSM_ASSOCIATION_RESOURCE_TYPE,
+            ResourceId=association_id,
+            aws_retry=True,
+        ).get("TagList", [])
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to list tags for AWS Systems Manager association {association_id}",
+        )
+    return association
 
 
 def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
-    client = module.client("ssm")
+    client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
 
     associations = [
         association
-        for association in list_ssm_associations(client, module)
+        for association in paginated_query_with_retries(
+            client, "list_associations"
+        ).get("Associations", [])
         if association.get("Name") is not None
     ]
 
     module.exit_json(
         changed=False,
         associations=[
-            normalize_ssm_association(association) for association in associations
+            boto3_resource_to_ansible_dict(
+                association,
+                ignore_list=["TargetMaps"],
+                transform_tags=True,
+                force_tags=False,
+            )
+            for association in [
+                association_with_tags(client, module, association)
+                for association in associations
+            ]
         ],
     )
 

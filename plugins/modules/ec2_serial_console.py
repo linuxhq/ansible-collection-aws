@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_serial_console
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Manage EC2 serial console access
 description:
   - Enables or disables EC2 serial console access for a region.
@@ -54,15 +54,11 @@ state:
   type: str
 """
 
+from ansible.module_utils.common.dict_transformations import recursive_diff
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_response,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    field_differences,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
-    get_serial_console_access_status,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
 )
 
 
@@ -77,15 +73,19 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client("ec2")
+    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     desired_enabled = module.params["state"] == "present"
-    current = get_serial_console_access_status(client, module)
-    _, changed = field_differences(
-        current,
-        {"serial_console_access_enabled": desired_enabled},
-        ["serial_console_access_enabled"],
+    desired = {"serial_console_access_enabled": desired_enabled}
+    current = boto3_resource_to_ansible_dict(
+        client.get_serial_console_access_status(aws_retry=True),
+        transform_tags=False,
+        force_tags=False,
     )
+    current_comparable = {
+        "serial_console_access_enabled": current.get("serial_console_access_enabled")
+    }
+    changed = recursive_diff(current_comparable, desired) is not None
 
     if changed and not module.check_mode:
         operation = (
@@ -93,13 +93,15 @@ def main():
             if desired_enabled
             else "disable_serial_console_access"
         )
-        aws_response(
-            client,
-            module,
-            operation,
-            error_message="Unable to manage EC2 serial console access",
+        try:
+            getattr(client, operation)(aws_retry=True)
+        except Exception as e:
+            module.fail_json_aws(e, msg="Unable to manage EC2 serial console access")
+        current = boto3_resource_to_ansible_dict(
+            client.get_serial_console_access_status(aws_retry=True),
+            transform_tags=False,
+            force_tags=False,
         )
-        current = get_serial_console_access_status(client, module)
 
     result = {
         "changed": changed,

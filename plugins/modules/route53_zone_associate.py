@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: route53_zone_associate
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Manage AWS Route53 private hosted zone VPC associations
 description:
   - Manages AWS Route53 private hosted zone VPC associations.
@@ -37,6 +37,7 @@ options:
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
+  - amazon.aws.region.modules
   - amazon.aws.boto3
 """
 
@@ -79,99 +80,120 @@ vpcs:
   elements: dict
 """
 
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_resource,
-    aws_response,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_list_to_snake_dicts,
-    aws_resource_to_snake_dict,
-)
-
-
-def build_result(module, changed, vpcs):
-    module.exit_json(
-        changed=changed,
-        hosted_zone_id=module.params["hosted_zone_id"],
-        state=module.params["state"],
-        vpc=aws_resource_to_snake_dict(
-            {
-                "VPCId": module.params["vpc_id"],
-                "VPCRegion": module.params["vpc_region"],
-            }
-        ),
-        vpcs=aws_resource_list_to_snake_dicts(vpcs),
-    )
 
 
 def ensure_absent(client, module, hosted_zone_id):
     vpcs = get_vpc_associations(client, module, hosted_zone_id)
-    changed = is_associated(vpcs, module)
+    current_vpcs = route53_vpc_list(vpcs)
+    requested_vpc = route53_vpc(module)
+    changed = requested_vpc in current_vpcs
 
     if changed and not module.check_mode:
-        aws_response(
-            client,
-            module,
-            "disassociate_vpc_from_hosted_zone",
-            error_message=(
-                f"Unable to disassociate VPC {module.params['vpc_id']} from AWS "
-                f"Route53 hosted zone {hosted_zone_id}"
-            ),
-            HostedZoneId=hosted_zone_id,
-            VPC={
-                "VPCId": module.params["vpc_id"],
-                "VPCRegion": module.params["vpc_region"],
-            },
-        )
+        try:
+            client.disassociate_vpc_from_hosted_zone(
+                HostedZoneId=hosted_zone_id,
+                VPC=requested_vpc,
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    f"Unable to disassociate VPC {module.params['vpc_id']} from AWS "
+                    f"Route53 hosted zone {hosted_zone_id}"
+                ),
+            )
         vpcs = get_vpc_associations(client, module, hosted_zone_id)
 
-    build_result(module, changed, vpcs)
+    module.exit_json(
+        changed=changed,
+        hosted_zone_id=module.params["hosted_zone_id"],
+        state=module.params["state"],
+        vpc=boto3_resource_to_ansible_dict(
+            route53_vpc(module), transform_tags=False, force_tags=False
+        ),
+        vpcs=boto3_resource_list_to_ansible_dict(
+            vpcs, transform_tags=False, force_tags=False
+        ),
+    )
 
 
 def ensure_present(client, module, hosted_zone_id):
     vpcs = get_vpc_associations(client, module, hosted_zone_id)
-    changed = not is_associated(vpcs, module)
+    current_vpcs = route53_vpc_list(vpcs)
+    requested_vpc = route53_vpc(module)
+    changed = requested_vpc not in current_vpcs
 
     if changed and not module.check_mode:
-        aws_response(
-            client,
-            module,
-            "associate_vpc_with_hosted_zone",
-            error_message=(
-                f"Unable to associate VPC {module.params['vpc_id']} with AWS "
-                f"Route53 hosted zone {hosted_zone_id}"
-            ),
-            HostedZoneId=hosted_zone_id,
-            VPC={
-                "VPCId": module.params["vpc_id"],
-                "VPCRegion": module.params["vpc_region"],
-            },
-        )
+        try:
+            client.associate_vpc_with_hosted_zone(
+                HostedZoneId=hosted_zone_id,
+                VPC=requested_vpc,
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    f"Unable to associate VPC {module.params['vpc_id']} with AWS "
+                    f"Route53 hosted zone {hosted_zone_id}"
+                ),
+            )
         vpcs = get_vpc_associations(client, module, hosted_zone_id)
 
-    build_result(module, changed, vpcs)
+    module.exit_json(
+        changed=changed,
+        hosted_zone_id=module.params["hosted_zone_id"],
+        state=module.params["state"],
+        vpc=boto3_resource_to_ansible_dict(
+            route53_vpc(module), transform_tags=False, force_tags=False
+        ),
+        vpcs=boto3_resource_list_to_ansible_dict(
+            vpcs, transform_tags=False, force_tags=False
+        ),
+    )
 
 
 def get_vpc_associations(client, module, hosted_zone_id):
-    return aws_resource(
-        client,
-        module,
-        "get_hosted_zone",
-        "VPCs",
-        default=[],
-        Id=hosted_zone_id,
-    )
-
-
-def is_associated(vpcs, module):
-    return any(
-        (
-            vpc.get("VPCId") == module.params["vpc_id"]
-            and vpc.get("VPCRegion") == module.params["vpc_region"]
+    try:
+        return client.get_hosted_zone(
+            **scrub_none_parameters(
+                snake_dict_to_camel_dict({"id": hosted_zone_id}, capitalize_first=True)
+            ),
+            aws_retry=True,
+        ).get("VPCs", [])
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to get AWS Route53 hosted zone {hosted_zone_id}",
         )
-        for vpc in vpcs
-    )
+
+
+def route53_vpc(module):
+    return {
+        "VPCId": module.params["vpc_id"],
+        "VPCRegion": module.params["vpc_region"],
+    }
+
+
+def route53_vpc_list(vpcs):
+    normalized = []
+    for vpc in vpcs or []:
+        normalized.append(
+            {
+                "VPCId": vpc.get("VPCId") or vpc.get("vpc_id"),
+                "VPCRegion": vpc.get("VPCRegion") or vpc.get("vpc_region"),
+            }
+        )
+    return sorted(normalized, key=lambda vpc: (vpc.get("VPCId"), vpc.get("VPCRegion")))
 
 
 def main():
@@ -188,7 +210,7 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client("route53")
+    client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
     hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]
     module.params["hosted_zone_id"] = hosted_zone_id
 

@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: eks_cluster_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about AWS EKS clusters
 description:
   - Gathers information about AWS EKS clusters.
@@ -41,26 +41,31 @@ clusters:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
-    aws_resource,
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+    paginated_query_with_retries,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_list_to_snake_dicts,
+from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+    scrub_none_parameters,
 )
 
 
 def describe_cluster(client, module, name):
-    return aws_resource(
-        client,
-        module,
-        "describe_cluster",
-        "cluster",
-        ignore_error_codes="ResourceNotFoundException",
-        ignored_error_result=None,
-        name=name,
-    )
+    try:
+        return client.describe_cluster(
+            **scrub_none_parameters(
+                snake_dict_to_camel_dict({"name": name}, capitalize_first=False)
+            ),
+            aws_retry=True,
+        ).get("cluster")
+    except is_boto3_error_code("ResourceNotFoundException"):
+        return None
+    except Exception as e:
+        module.fail_json_aws(e, msg=f"Unable to describe AWS EKS cluster {name}")
 
 
 def main():
@@ -70,21 +75,25 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client("eks")
+    client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())
 
     if module.params["name"] is not None:
         cluster = describe_cluster(client, module, module.params["name"])
         clusters = [] if cluster is None else [cluster]
     else:
         clusters = []
-        for name in aws_paginated_list(client, module, "list_clusters", "clusters"):
+        for name in paginated_query_with_retries(client, "list_clusters").get(
+            "clusters", []
+        ):
             cluster = describe_cluster(client, module, name)
             if cluster is not None:
                 clusters.append(cluster)
 
     module.exit_json(
         changed=False,
-        clusters=aws_resource_list_to_snake_dicts(clusters),
+        clusters=boto3_resource_list_to_ansible_dict(
+            clusters, transform_tags=False, force_tags=False
+        ),
     )
 
 

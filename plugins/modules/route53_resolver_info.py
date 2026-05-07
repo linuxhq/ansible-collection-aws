@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: route53_resolver_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about AWS Route53 Resolver endpoints
 description:
   - Gathers information about AWS Route53 Resolver endpoints.
@@ -41,15 +41,29 @@ resolver_endpoints:
   elements: dict
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_to_snake_dict,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
-    get_resolver_endpoint_by_name,
-    list_resolver_endpoints,
-    resolver_endpoint_with_ip_addresses,
-)
+
+
+def resource_tags(client, module, resource):
+    if not resource.get("Arn"):
+        return []
+    try:
+        return client.list_tags_for_resource(
+            ResourceArn=resource["Arn"],
+            aws_retry=True,
+        ).get("Tags", [])
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to list tags for AWS Route53 Resolver endpoint {resource['Arn']}",
+        )
 
 
 def main():
@@ -59,24 +73,34 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client("route53resolver")
-    if module.params["name"] is None:
-        resolver_endpoints = list_resolver_endpoints(client, module)
-    else:
-        resolver_endpoint = get_resolver_endpoint_by_name(
-            client,
-            module,
-            module.params["name"],
-        )
-        resolver_endpoints = (
-            [resolver_endpoint] if resolver_endpoint is not None else []
-        )
+    client = module.client(
+        "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
+    )
+    resolver_endpoints = paginated_query_with_retries(
+        client, "list_resolver_endpoints"
+    ).get("ResolverEndpoints", [])
+    if module.params["name"] is not None:
+        resolver_endpoints = [
+            endpoint
+            for endpoint in resolver_endpoints
+            if endpoint.get("Name") == module.params["name"]
+        ]
 
     module.exit_json(
         changed=False,
         resolver_endpoints=[
-            aws_resource_to_snake_dict(
-                resolver_endpoint_with_ip_addresses(client, module, endpoint)
+            boto3_resource_to_ansible_dict(
+                dict(
+                    endpoint,
+                    IpAddresses=paginated_query_with_retries(
+                        client,
+                        "list_resolver_endpoint_ip_addresses",
+                        ResolverEndpointId=endpoint["Id"],
+                    ).get("IpAddresses", []),
+                    Tags=resource_tags(client, module, endpoint),
+                ),
+                transform_tags=True,
+                force_tags=False,
             )
             for endpoint in resolver_endpoints
         ],

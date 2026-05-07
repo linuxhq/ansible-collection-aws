@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: route53_delegation_set_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather AWS Route53 reusable delegation set information
 description:
   - Gathers AWS Route53 reusable delegation sets.
@@ -41,12 +41,9 @@ delegation_sets:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.route53 import (
-    get_reusable_delegation_set_by_name,
-    list_reusable_delegation_sets,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_list_to_snake_dicts,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
 )
 
 
@@ -57,20 +54,30 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client("route53")
-    if module.params["name"] is None:
-        delegation_sets = list_reusable_delegation_sets(client, module)
-    else:
-        delegation_set = get_reusable_delegation_set_by_name(
-            client,
-            module,
-            module.params["name"],
-        )
-        delegation_sets = [delegation_set] if delegation_set is not None else []
+    client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
+    delegation_sets = []
+    marker = None
+    while True:
+        request = {}
+        if marker:
+            request["Marker"] = marker
+        response = client.list_reusable_delegation_sets(**request, aws_retry=True)
+        delegation_sets.extend(response.get("DelegationSets", []))
+        marker = response.get("NextMarker")
+        if not response.get("IsTruncated") or not marker:
+            break
+    if module.params["name"] is not None:
+        delegation_sets = [
+            delegation_set
+            for delegation_set in delegation_sets
+            if delegation_set.get("CallerReference") == module.params["name"]
+        ]
 
     module.exit_json(
         changed=False,
-        delegation_sets=aws_resource_list_to_snake_dicts(delegation_sets),
+        delegation_sets=boto3_resource_list_to_ansible_dict(
+            delegation_sets, transform_tags=False, force_tags=False
+        ),
     )
 
 

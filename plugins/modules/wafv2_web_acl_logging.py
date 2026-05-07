@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: wafv2_web_acl_logging
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Manage AWS WAFv2 web ACL logging configuration
 description:
   - Manages AWS WAFv2 web ACL logging configuration.
@@ -67,35 +67,19 @@ state:
   type: str
 """
 
+from ansible.module_utils.common.dict_transformations import (
+    recursive_diff,
+    snake_dict_to_camel_dict,
+)
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_resource,
-    aws_response,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.fields import (
-    aws_field_values,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    field_differences,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_to_snake_dict,
-)
-
-COMPARE_ITEMS = ["log_destination_configs", "resource_arn"]
-
-
-def comparable_logging_configuration(configuration):
-    if configuration is None:
-        return None
-    values = aws_field_values(
-        configuration,
-        ("log_destination_configs", "resource_arn"),
-    )
-    return {
-        "log_destination_configs": sorted(values.get("log_destination_configs") or []),
-        "resource_arn": values.get("resource_arn"),
-    }
 
 
 def ensure_absent(client, module):
@@ -103,16 +87,24 @@ def ensure_absent(client, module):
     changed = current is not None
 
     if changed and not module.check_mode:
-        aws_response(
-            client,
-            module,
-            "delete_logging_configuration",
-            error_message=(
-                "Unable to delete AWS WAFv2 logging configuration for "
-                f"{module.params['resource_arn']}"
-            ),
-            ResourceArn=module.params["resource_arn"],
-        )
+        try:
+            client.delete_logging_configuration(
+                **scrub_none_parameters(
+                    snake_dict_to_camel_dict(
+                        {"resource_arn": module.params["resource_arn"]},
+                        capitalize_first=True,
+                    )
+                ),
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    "Unable to delete AWS WAFv2 logging configuration for "
+                    f"{module.params['resource_arn']}"
+                ),
+            )
 
     module.exit_json(
         changed=changed,
@@ -123,27 +115,40 @@ def ensure_absent(client, module):
 
 def ensure_present(client, module):
     current = get_logging_configuration(client, module, module.params["resource_arn"])
-    desired = {
-        "LogDestinationConfigs": module.params["log_destination_configs"],
-        "ResourceArn": module.params["resource_arn"],
+    current_comparable = None
+    if current:
+        normalized_current = boto3_resource_to_ansible_dict(
+            current, transform_tags=False, force_tags=False
+        )
+        current_comparable = {
+            "log_destination_configs": normalized_current.get(
+                "log_destination_configs"
+            ),
+            "resource_arn": normalized_current.get("resource_arn"),
+        }
+    desired_comparable = {
+        "log_destination_configs": module.params["log_destination_configs"],
+        "resource_arn": module.params["resource_arn"],
     }
-    _, changed = field_differences(
-        comparable_logging_configuration(current),
-        comparable_logging_configuration(desired),
-        COMPARE_ITEMS,
+    desired = scrub_none_parameters(
+        snake_dict_to_camel_dict(desired_comparable, capitalize_first=True)
     )
+    changed = recursive_diff((current_comparable) or {}, desired_comparable) is not None
 
     if changed and not module.check_mode:
-        aws_response(
-            client,
-            module,
-            "put_logging_configuration",
-            error_message=(
-                "Unable to manage AWS WAFv2 logging configuration for "
-                f"{module.params['resource_arn']}"
-            ),
-            LoggingConfiguration=desired,
-        )
+        try:
+            client.put_logging_configuration(
+                LoggingConfiguration=desired,
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    "Unable to manage AWS WAFv2 logging configuration for "
+                    f"{module.params['resource_arn']}"
+                ),
+            )
         current = get_logging_configuration(
             client, module, module.params["resource_arn"]
         )
@@ -154,22 +159,32 @@ def ensure_present(client, module):
         "changed": changed,
         "resource_arn": module.params["resource_arn"],
         "state": "present",
-        "logging_configuration": aws_resource_to_snake_dict(current or desired),
+        "logging_configuration": boto3_resource_to_ansible_dict(
+            current or desired, transform_tags=False, force_tags=False
+        ),
     }
 
     module.exit_json(**result)
 
 
 def get_logging_configuration(client, module, resource_arn):
-    return aws_resource(
-        client,
-        module,
-        "get_logging_configuration",
-        "LoggingConfiguration",
-        ignore_error_codes="WAFNonexistentItemException",
-        ignored_error_result=None,
-        ResourceArn=resource_arn,
-    )
+    try:
+        return client.get_logging_configuration(
+            **scrub_none_parameters(
+                snake_dict_to_camel_dict(
+                    {"resource_arn": resource_arn},
+                    capitalize_first=True,
+                )
+            ),
+            aws_retry=True,
+        ).get("LoggingConfiguration")
+    except is_boto3_error_code("WAFNonexistentItemException"):
+        return None
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to get AWS WAFv2 logging configuration for {resource_arn}",
+        )
 
 
 def main():
@@ -188,7 +203,7 @@ def main():
         required_if=[("state", "present", ["log_destination_configs"])],
         supports_check_mode=True,
     )
-    client = module.client("wafv2")
+    client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
 
     if module.params["state"] == "present":
         ensure_present(client, module)

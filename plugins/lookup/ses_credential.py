@@ -1,10 +1,9 @@
-#!/usr/bin/python
 # Copyright: Taylor Kimball
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
 ---
-lookup: ses_credential
+name: ses_credential
 author:
   - Taylor Kimball (@tkimball83)
 short_description: Generate an AWS SES SMTP password from an IAM secret access key
@@ -56,17 +55,6 @@ TERMINAL = "aws4_request"
 VERSION = 0x04
 
 
-def get_smtp_password(secret_access_key, region):
-    signature = to_bytes("AWS4" + secret_access_key)
-    for message in (DATE, region, SERVICE, TERMINAL, MESSAGE):
-        signature = sign(signature, message)
-    return to_text(base64.b64encode(bytes([VERSION]) + signature))
-
-
-def sign(key, message):
-    return hmac.new(key, to_bytes(message), hashlib.sha256).digest()
-
-
 class LookupModule(LookupBase):
     def run(self, terms, variables=None, **kwargs):
         region = kwargs.get("region")
@@ -83,4 +71,8 @@ class LookupModule(LookupBase):
                 "ses_credential lookup does not accept positional terms"
             )
 
-        return [get_smtp_password(secret_access_key, region)]
+        signature = to_bytes("AWS4" + secret_access_key)
+        for message in (DATE, region, SERVICE, TERMINAL, MESSAGE):
+            signature = hmac.new(signature, to_bytes(message), hashlib.sha256).digest()
+
+        return [to_text(base64.b64encode(bytes([VERSION]) + signature))]

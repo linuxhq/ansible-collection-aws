@@ -1,0 +1,8 @@
+---
+iam_oidc_provider_async: 300
+iam_oidc_provider_batch: 10
+iam_oidc_provider_delay: 3
+iam_oidc_provider_list: []
+iam_oidc_provider_poll: 0
+iam_oidc_provider_retries: 100
+...

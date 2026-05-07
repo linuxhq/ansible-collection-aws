@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: notifications_hub_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about AWS Notifications hubs
 description:
   - Gathers information about AWS Notifications hubs.
@@ -31,12 +31,13 @@ notification_hubs:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import (
-    list_notification_hubs,
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_list_to_snake_dicts,
+from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
 )
 
 
@@ -45,12 +46,20 @@ def main():
         argument_spec={},
         supports_check_mode=True,
     )
-    client = module.client("notifications", region="us-east-1")
+    client = module.client(
+        "notifications",
+        region="us-east-1",
+        retry_decorator=AWSRetry.jittered_backoff(),
+    )
 
     module.exit_json(
         changed=False,
-        notification_hubs=aws_resource_list_to_snake_dicts(
-            list_notification_hubs(client, module)
+        notification_hubs=boto3_resource_list_to_ansible_dict(
+            paginated_query_with_retries(client, "list_notification_hubs").get(
+                "notificationHubs", []
+            ),
+            transform_tags=False,
+            force_tags=False,
         ),
     )
 

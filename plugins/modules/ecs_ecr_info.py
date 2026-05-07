@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ecs_ecr_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about AWS Elastic Container Registry repositories
 description:
   - Gather information about AWS Elastic Container Registry repositories.
@@ -44,13 +44,15 @@ repositories:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
-    aws_request_params,
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_list_to_snake_dicts,
+from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+    scrub_none_parameters,
 )
 
 
@@ -61,28 +63,32 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    client = module.client("ecr")
+    client = module.client("ecr", retry_decorator=AWSRetry.jittered_backoff())
 
-    params = aws_request_params(
-        {
-            "registry_id": module.params["registry_id"] or None,
-            "repository_names": (
-                [module.params["name"]] if module.params["name"] is not None else None
-            ),
-        },
-        capitalize_first=False,
+    params = scrub_none_parameters(
+        snake_dict_to_camel_dict(
+            {
+                "registry_id": module.params["registry_id"] or None,
+                "repository_names": (
+                    [module.params["name"]]
+                    if module.params["name"] is not None
+                    else None
+                ),
+            },
+            capitalize_first=False,
+        )
     )
 
     module.exit_json(
         changed=False,
-        repositories=aws_resource_list_to_snake_dicts(
-            aws_paginated_list(
+        repositories=boto3_resource_list_to_ansible_dict(
+            paginated_query_with_retries(
                 client,
-                module,
                 "describe_repositories",
-                "repositories",
                 **params,
-            )
+            ).get("repositories", []),
+            transform_tags=False,
+            force_tags=False,
         ),
     )
 

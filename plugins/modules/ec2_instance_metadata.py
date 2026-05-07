@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_instance_metadata
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Manage EC2 account-level instance metadata defaults
 description:
   - Updates EC2 account-level instance metadata defaults for a region.
@@ -68,16 +68,15 @@ region:
   type: str
 """
 
+from ansible.module_utils.common.dict_transformations import (
+    recursive_diff,
+    snake_dict_to_camel_dict,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_request_params,
-    aws_response,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.comparison import (
-    field_differences,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
-    get_instance_metadata_defaults,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
 
 MANAGED_OPTIONS = [
@@ -117,33 +116,48 @@ def main():
         ],
         supports_check_mode=True,
     )
-    client = module.client("ec2")
+    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    current_account_level = get_instance_metadata_defaults(client, module)
-    desired_update = aws_request_params(
-        {option_name: module.params.get(option_name) for option_name in MANAGED_OPTIONS}
+    current_account_level = boto3_resource_to_ansible_dict(
+        client.get_instance_metadata_defaults(aws_retry=True).get("AccountLevel", {}),
+        transform_tags=False,
+        force_tags=False,
+    )
+    desired_update = scrub_none_parameters(
+        snake_dict_to_camel_dict(
+            {
+                option_name: module.params[option_name]
+                for option_name in MANAGED_OPTIONS
+            },
+            capitalize_first=True,
+        )
     )
     desired_fields = [
         option_name
         for option_name in MANAGED_OPTIONS
-        if module.params.get(option_name) is not None
+        if module.params[option_name] is not None
     ]
 
-    _, changed = field_differences(
-        current_account_level,
-        module.params,
-        desired_fields,
-    )
+    desired = {
+        option_name: module.params[option_name] for option_name in desired_fields
+    }
+    current = {field: current_account_level.get(field) for field in desired_fields}
+    changed = recursive_diff(current, desired) is not None
 
     if changed and not module.check_mode:
-        aws_response(
-            client,
-            module,
-            "modify_instance_metadata_defaults",
-            error_message="Unable to modify EC2 instance metadata defaults",
-            **desired_update,
+        try:
+            client.modify_instance_metadata_defaults(**desired_update, aws_retry=True)
+        except Exception as e:
+            module.fail_json_aws(
+                e, msg="Unable to modify EC2 instance metadata defaults"
+            )
+        current_account_level = boto3_resource_to_ansible_dict(
+            client.get_instance_metadata_defaults(aws_retry=True).get(
+                "AccountLevel", {}
+            ),
+            transform_tags=False,
+            force_tags=False,
         )
-        current_account_level = get_instance_metadata_defaults(client, module)
 
     result = {
         "changed": changed,

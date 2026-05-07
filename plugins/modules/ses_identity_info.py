@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ses_identity_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about AWS SES identities
 description:
   - Gathers information about AWS SES identities.
@@ -41,20 +41,17 @@ identities:
   elements: dict
 """
 
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
-    aws_response,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.resources import (
-    aws_resource_to_snake_dict,
-)
-
-
-def normalize_identity(identity, details):
-    normalized = aws_resource_to_snake_dict(details)
-    normalized["name"] = identity
-    return normalized
 
 
 def main():
@@ -64,40 +61,56 @@ def main():
         },
         supports_check_mode=True,
     )
-    ses_client = module.client("ses")
-    sesv2_client = module.client("sesv2")
+    ses_client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
+    sesv2_client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
     requested_name = module.params["name"]
 
     if requested_name is not None:
-        details = aws_response(
-            sesv2_client,
-            module,
-            "get_email_identity",
-            ignore_error_codes="NotFoundException",
-            ignored_error_result=None,
-            EmailIdentity=requested_name,
-        )
-        identities = (
-            [normalize_identity(requested_name, details)] if details is not None else []
-        )
-    else:
-        identities = [
-            normalize_identity(
-                identity,
-                aws_response(
-                    sesv2_client,
-                    module,
-                    "get_email_identity",
-                    EmailIdentity=identity,
+        try:
+            details = sesv2_client.get_email_identity(
+                **scrub_none_parameters(
+                    snake_dict_to_camel_dict(
+                        {"email_identity": requested_name},
+                        capitalize_first=True,
+                    )
                 ),
+                aws_retry=True,
             )
-            for identity in aws_paginated_list(
-                ses_client,
-                module,
-                "list_identities",
-                "Identities",
+        except is_boto3_error_code("NotFoundException"):
+            details = None
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to get AWS SES identity {requested_name}",
             )
-        ]
+        identities = []
+        if details is not None:
+            identity = boto3_resource_to_ansible_dict(
+                details, transform_tags=False, force_tags=False
+            )
+            identity["name"] = requested_name
+            identities.append(identity)
+    else:
+        identities = []
+        for identity_name in paginated_query_with_retries(
+            ses_client,
+            "list_identities",
+        ).get("Identities", []):
+            identity = boto3_resource_to_ansible_dict(
+                sesv2_client.get_email_identity(
+                    **scrub_none_parameters(
+                        snake_dict_to_camel_dict(
+                            {"email_identity": identity_name},
+                            capitalize_first=True,
+                        )
+                    ),
+                    aws_retry=True,
+                ),
+                transform_tags=False,
+                force_tags=False,
+            )
+            identity["name"] = identity_name
+            identities.append(identity)
 
     module.exit_json(
         changed=False,

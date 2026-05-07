@@ -1,0 +1,31 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - iam_oidc_provider_info
+
+  post_tasks:
+    - name: Ensure aws iam oidc provider information is verified
+      ansible.builtin.assert:
+        that:
+          - _iam_oidc_provider_info_dict['oidc.molecule.example.com'].client_id_list.0 == 'sts.amazonaws.com'
+          - _iam_oidc_provider_info_dict['oidc.molecule.example.com'].tags.Name == 'molecule-oidc-provider'
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        iam_oidc_provider_list:
+          "{{ iam_oidc_provider_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - iam_oidc_provider
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: iam_policy_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather information about AWS IAM inline policies
 description:
   - Gathers information about AWS IAM inline policies for users and groups.
@@ -13,6 +13,7 @@ author:
   - Taylor Kimball (@tkimball83)
 extends_documentation_fragment:
   - amazon.aws.common.modules
+  - amazon.aws.region.modules
   - amazon.aws.boto3
 """
 
@@ -36,11 +37,14 @@ user_policies:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.iam import list_iam_users
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.aws import (
-    aws_paginated_list,
-    aws_resource,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    scrub_none_parameters,
 )
 
 
@@ -55,26 +59,36 @@ def build_entity_policies(client, module, entity_type, names):
     results = []
 
     for name in names:
-        policy_names = aws_paginated_list(
+        policy_names = paginated_query_with_retries(
             client,
-            module,
             list_operation,
-            "PolicyNames",
-            **{f"{entity_type}Name": name},
-        )
+            **scrub_none_parameters(
+                snake_dict_to_camel_dict(
+                    {f"{entity_type.lower()}_name": name},
+                    capitalize_first=True,
+                )
+            ),
+        ).get("PolicyNames", [])
         results.append(
             {
                 "name": name,
                 "all_policy_names": policy_names,
                 "policies": [
-                    get_inline_policy(
-                        client,
-                        module,
-                        get_operation,
-                        entity_type,
-                        name,
-                        policy_name,
-                    )
+                    {
+                        "policy_name": policy_name,
+                        "policy_document": getattr(client, get_operation)(
+                            **scrub_none_parameters(
+                                snake_dict_to_camel_dict(
+                                    {
+                                        f"{entity_type.lower()}_name": name,
+                                        "policy_name": policy_name,
+                                    },
+                                    capitalize_first=True,
+                                )
+                            ),
+                            aws_retry=True,
+                        ).get("PolicyDocument"),
+                    }
                     for policy_name in policy_names
                 ],
                 "policy_names": policy_names,
@@ -84,56 +98,31 @@ def build_entity_policies(client, module, entity_type, names):
     return results
 
 
-def get_group_inline_policies(client, module):
-    groups = aws_paginated_list(client, module, "list_groups", "Groups")
-    return build_entity_policies(
-        client,
-        module,
-        "Group",
-        [group["GroupName"] for group in groups],
-    )
-
-
-def get_inline_policy(client, module, operation, entity_type, entity_name, policy_name):
-    policy_document = aws_resource(
-        client,
-        module,
-        operation,
-        "PolicyDocument",
-        **{
-            f"{entity_type}Name": entity_name,
-            "PolicyName": policy_name,
-        },
-    )
-
-    return {
-        "policy_name": policy_name,
-        "policy_document": policy_document,
-    }
-
-
-def get_user_inline_policies(client, module):
-    users = list_iam_users(client)
-
-    return build_entity_policies(
-        client,
-        module,
-        "User",
-        [user["UserName"] for user in users],
-    )
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={},
         supports_check_mode=True,
     )
-    client = module.client("iam")
+    client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
+    groups = paginated_query_with_retries(client, "list_groups").get("Groups", [])
+    users = paginated_query_with_retries(client, "list_users").get("Users", [])
+    group_names = [group["GroupName"] for group in groups if group.get("GroupName")]
+    user_names = [user["UserName"] for user in users if user.get("UserName")]
 
     module.exit_json(
         changed=False,
-        group_policies=get_group_inline_policies(client, module),
-        user_policies=get_user_inline_policies(client, module),
+        group_policies=build_entity_policies(
+            client,
+            module,
+            "Group",
+            group_names,
+        ),
+        user_policies=build_entity_policies(
+            client,
+            module,
+            "User",
+            user_names,
+        ),
     )
 
 

@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_serial_console_info
-version_added: 1.9.1
+version_added: "1.9.0"
 short_description: Gather EC2 serial console access status
 description:
   - Gathers EC2 serial console access status for a region.
@@ -36,19 +36,24 @@ serial_console_access:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.ec2 import (
-    get_serial_console_access_status,
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
 )
 
 
 def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
-    client = module.client("ec2")
+    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     module.exit_json(
         changed=False,
         region=module.region,
-        serial_console_access=get_serial_console_access_status(client, module),
+        serial_console_access=boto3_resource_to_ansible_dict(
+            client.get_serial_console_access_status(aws_retry=True),
+            transform_tags=False,
+            force_tags=False,
+        ),
     )
 
 
