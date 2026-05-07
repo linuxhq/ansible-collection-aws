@@ -1,9 +1,6 @@
 ---
 - name: Converge
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
-
   roles:
     - role: rds_ca_bundle
       rds_ca_bundle_list: []
