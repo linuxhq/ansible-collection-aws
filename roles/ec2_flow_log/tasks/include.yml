@@ -1,0 +1,56 @@
+---
+- name: Ensure aws ec2 flow logs are managed
+  tags:
+    - ec2_flow_log
+  linuxhq.aws.ec2_flow_log:
+    deliver_cross_account_role: "{{ _flow_log.deliver_cross_account_role | d(omit) }}"
+    deliver_logs_permission_arn: "{{ _flow_log.deliver_logs_permission_arn | d(omit) }}"
+    destination_options: "{{ _flow_log.destination_options | d(omit) }}"
+    log_destination: "{{ _flow_log.log_destination | d(omit) }}"
+    log_destination_type: "{{ _flow_log.log_destination_type | d(omit) }}"
+    log_format: "{{ _flow_log.log_format | d(omit) }}"
+    log_group_name: "{{ _flow_log.log_group_name | d(omit) }}"
+    max_aggregation_interval: "{{ _flow_log.max_aggregation_interval | d(omit) }}"
+    purge_tags: "{{ _flow_log.purge_tags | d(true) }}"
+    resource_ids: "{{ _flow_log.resource_ids }}"
+    resource_type: "{{ _flow_log.resource_type | d(omit) }}"
+    state: "{{ _flow_log.state | d('present') }}"
+    tags:
+      "{{ _flow_log.tags |
+          d({}) |
+          combine({'Name': _flow_log.name}) }}"
+    traffic_type: "{{ _flow_log.traffic_type | d(omit) }}"
+    validate_certs: true
+  register: __ec2_flow_log_result
+  loop: "{{ __ec2_flow_log_list }}"
+  loop_control:
+    label: "{{ _flow_log.name | d(_flow_log.resource_ids | d(none)) }}"
+    loop_var: _flow_log
+  async: "{{ ansible_check_mode | ternary(0, ec2_flow_log_async) }}"
+  poll: "{{ ec2_flow_log_poll }}"
+  when:
+    - _flow_log.name is defined
+    - _flow_log.resource_ids is defined
+    - _flow_log.resource_ids | length > 0
+    - _flow_log.resource_type is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_flow_log_result.changed | bool
+
+- name: Ensure managed aws ec2 flow log jobs are complete
+  tags:
+    - ec2_flow_log
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_flow_log_status
+  loop: "{{ __ec2_flow_log_result.results }}"
+  loop_control:
+    label: "{{ _jid._flow_log.name | d(_jid._flow_log.resource_ids | d(none)) }}"
+    loop_var: _jid
+  delay: "{{ ec2_flow_log_delay }}"
+  retries: "{{ ec2_flow_log_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_flow_log_status.finished | bool
+...

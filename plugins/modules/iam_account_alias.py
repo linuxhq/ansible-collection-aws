@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: iam_account_alias
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Manage AWS IAM account aliases
 description:
   - Manages the AWS IAM account alias for the current account.

@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_serial_console
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Manage EC2 serial console access
 description:
   - Enables or disables EC2 serial console access for a region.

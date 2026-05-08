@@ -1,0 +1,31 @@
+---
+dependencies:
+  - role: ec2_vpc_net_info
+    tags: ec2_flow_log
+  - role: ec2_vpc_subnet_info
+    tags: ec2_flow_log
+  - role: ec2_transit_gateway_info
+    tags: ec2_flow_log
+  - role: ec2_transit_gateway_vpc_attachment_info
+    tags: ec2_flow_log
+galaxy_info:
+  role_name: ec2_flow_log
+  author: Taylor Kimball
+  description: Manage aws ec2 flow logs
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - ec2
+    - flow
+    - logs
+...

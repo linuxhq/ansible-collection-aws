@@ -1,0 +1,28 @@
+---
+- name: Ensure information about aws systems manager instances is gathered
+  tags:
+    - ssm_instance_info
+  linuxhq.aws.ssm_instance_info:
+    filters: "{{ ssm_instance_info_filters }}"
+    instance_ids: "{{ ssm_instance_info_instance_ids }}"
+    ping_status: "{{ ssm_instance_info_ping_status or omit }}"
+    validate_certs: true
+  register: __ssm_instance_info_query
+
+- name: Ensure list of aws systems manager instances is generated
+  tags:
+    - ssm_instance_info
+  ansible.builtin.set_fact:
+    _ssm_instance_info_list:
+      "{{ __ssm_instance_info_query.instances |
+          d([]) }}"
+
+- name: Ensure dict of aws systems manager instances is generated
+  tags:
+    - ssm_instance_info
+  ansible.builtin.set_fact:
+    _ssm_instance_info_dict:
+      "{{ dict(_ssm_instance_info_list |
+               json_query('[].instance_id') |
+               zip(_ssm_instance_info_list)) }}"
+...

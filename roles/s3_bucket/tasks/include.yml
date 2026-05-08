@@ -12,6 +12,7 @@
     dualstack: "{{ _bucket.dualstack | d(false) }}"
     encryption: "{{ _bucket.encryption | d(omit) }}"
     encryption_key_id: "{{ _bucket.encryption_key_id | d(omit) }}"
+    force: "{{ _bucket.force | d(omit) }}"
     name: "{{ _bucket.name }}"
     object_lock_default_retention: "{{ _bucket.object_lock_default_retention | d(omit) }}"
     object_lock_enabled: "{{ _bucket.object_lock_enabled | d(omit) }}"

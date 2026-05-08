@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: iam_account_alias_info
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Gather AWS IAM account alias information
 description:
   - Gathers AWS IAM account aliases for the current account.

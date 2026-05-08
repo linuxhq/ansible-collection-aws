@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: notifications_hub_info
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Gather information about AWS Notifications hubs
 description:
   - Gathers information about AWS Notifications hubs.

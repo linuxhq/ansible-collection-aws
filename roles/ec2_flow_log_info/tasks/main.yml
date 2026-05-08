@@ -1,0 +1,29 @@
+---
+- name: Ensure information about aws ec2 flow logs is gathered
+  tags:
+    - ec2_flow_log_info
+  linuxhq.aws.ec2_flow_log_info:
+    filters: "{{ ec2_flow_log_info_filters }}"
+    flow_log_ids: "{{ ec2_flow_log_info_flow_log_ids }}"
+    resource_ids: "{{ ec2_flow_log_info_resource_ids }}"
+    validate_certs: true
+  register: __ec2_flow_log_info_query
+
+- name: Ensure list of aws ec2 flow logs is generated
+  tags:
+    - ec2_flow_log_info
+  ansible.builtin.set_fact:
+    _ec2_flow_log_info_list:
+      "{{ (__ec2_flow_log_info_query.flow_logs |
+          selectattr('tags.Name', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of aws ec2 flow logs is generated
+  tags:
+    - ec2_flow_log_info
+  ansible.builtin.set_fact:
+    _ec2_flow_log_info_dict:
+      "{{ dict(_ec2_flow_log_info_list |
+               json_query('[].tags.Name') |
+               zip(_ec2_flow_log_info_list)) }}"
+...

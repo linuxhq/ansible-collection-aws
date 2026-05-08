@@ -6,7 +6,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_vpc_prefix_list_info
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Gather information about EC2 VPC prefix lists
 description:
   - Gathers information about EC2 VPC managed prefix lists.

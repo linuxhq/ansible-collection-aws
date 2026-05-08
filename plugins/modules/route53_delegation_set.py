@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: route53_delegation_set
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Manage AWS Route53 reusable delegation sets
 description:
   - Manages AWS Route53 reusable delegation sets.

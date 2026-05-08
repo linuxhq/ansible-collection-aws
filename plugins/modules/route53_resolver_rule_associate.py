@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: route53_resolver_rule_associate
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Manage AWS Route53 Resolver rule associations
 description:
   - Manages AWS Route53 Resolver rule associations.

@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ssm_association
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Manage AWS Systems Manager associations
 description:
   - Manages AWS Systems Manager associations.

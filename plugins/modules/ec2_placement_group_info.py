@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_placement_group_info
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Gather information about EC2 placement groups
 description:
   - Gathers information about EC2 placement groups.

@@ -1,0 +1,16 @@
+---
+- name: Ensure aws ec2 flow logs are batched
+  tags:
+    - ec2_flow_log
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_flow_log
+    file: include.yml
+  loop:
+    "{{ ec2_flow_log_list |
+        batch(ec2_flow_log_batch) }}"
+  loop_control:
+    label: "{{ __ec2_flow_log_list | length }}"
+    loop_var: __ec2_flow_log_list
+...

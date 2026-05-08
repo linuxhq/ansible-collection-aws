@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: iam_oidc_provider
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Manage AWS IAM OpenID Connect providers
 description:
   - Manages AWS IAM OpenID Connect (OIDC) identity providers.
