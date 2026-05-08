@@ -34,17 +34,6 @@ provisioner:
             tags:
               Name: molecule-oidc-provider
 
-        iam_oidc_provider_idempotence:
-          - url: https://oidc.molecule.example.com
-            client_id_list:
-              - molecule.amazonaws.com
-              - sts.amazonaws.com
-            thumbprint_list:
-              - 6938fd4d98bab03faadb97b34396831e3780aea1
-            tags:
-              Name: molecule-oidc-provider
-              Phase: idempotence
-
 scenario:
   test_sequence:
     - dependency

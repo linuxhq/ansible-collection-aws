@@ -40,7 +40,6 @@ subnet_groups:
   type: list
 """
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
     paginated_query_with_retries,
@@ -61,12 +60,7 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("rds", retry_decorator=AWSRetry.jittered_backoff())
-    kwargs = scrub_none_parameters(
-        snake_dict_to_camel_dict(
-            {"db_subnet_group_name": module.params["name"]},
-            capitalize_first=True,
-        )
-    )
+    kwargs = scrub_none_parameters({"DBSubnetGroupName": module.params["name"]})
     try:
         subnet_groups = [
             subnet_group

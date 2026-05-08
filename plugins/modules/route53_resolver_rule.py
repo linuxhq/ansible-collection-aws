@@ -296,7 +296,7 @@ def delete_resolver_rule(client, module, rule, name):
 
 
 def ensure_absent(client, module):
-    rule = get_resolver_rule_by_name(client, module.params["name"])
+    rule = get_resolver_rule_by_name(client, module, module.params["name"])
     changed = rule is not None
 
     if changed and not module.check_mode:
@@ -317,8 +317,7 @@ def ensure_present(client, module):
         "rule_type": module.params["rule_type"].upper(),
         "target_ips": module.params["target_ips"],
     }
-    rule = get_resolver_rule_by_name(client, desired["name"])
-    rule = resolver_rule_with_tags(client, module, rule)
+    rule = get_resolver_rule_by_name(client, module, desired["name"])
 
     comparable_fields = (
         "domain_name",
@@ -506,7 +505,10 @@ def comparable_rule(rule):
 def comparable_target_ips(target_ips):
     normalized = []
     for target_ip in target_ips or []:
-        item = dict(TARGET_IP_DEFAULTS, **target_ip)
+        item = dict(TARGET_IP_DEFAULTS)
+        item.update(
+            {key: value for key, value in target_ip.items() if value is not None}
+        )
         normalized.append(
             {
                 field: item.get(field)
@@ -533,8 +535,8 @@ def get_resolver_rule(client, module, resolver_rule_id):
     return resolver_rule_with_tags(client, module, rule)
 
 
-def get_resolver_rule_by_name(client, name):
-    return next(
+def get_resolver_rule_by_name(client, module, name):
+    rule = next(
         (
             rule
             for rule in paginated_query_with_retries(client, "list_resolver_rules").get(
@@ -544,6 +546,9 @@ def get_resolver_rule_by_name(client, name):
         ),
         None,
     )
+    if rule is None:
+        return None
+    return get_resolver_rule(client, module, rule["Id"])
 
 
 def resolver_rule_with_tags(client, module, rule):

@@ -1,4 +1,26 @@
 ---
+- name: Ensure aws wafv2 resources are active
+  tags:
+    - wafv2_resources
+  amazon.aws.elb_application_lb_info:
+    load_balancer_arns:
+      - "{{ _resource.arn }}"
+    validate_certs: true
+  register: __wafv2_resources_elb_info
+  loop:
+    "{{ wafv2_resources_list |
+        selectattr('arn', 'defined') |
+        selectattr('arn', 'search', ':elasticloadbalancing:') }}"
+  loop_control:
+    label: "{{ _resource.name | d(none) }}"
+    loop_var: _resource
+  retries: 30
+  delay: 10
+  until:
+    - __wafv2_resources_elb_info.load_balancers.0.state.code == 'active'
+  when:
+    - _resource.state | d('present') == 'present'
+
 - name: Ensure aws wafv2 resources are batched
   tags:
     - wafv2_resources

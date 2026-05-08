@@ -25,35 +25,29 @@ provisioner:
     group_vars:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
-        ec2_customer_gateway_list:
-          - name: molecule-cgw-01
-            ip_address: 52.93.22.49
-          - name: molecule-cgw-02
-            ip_address: 52.93.22.50
-          - name: molecule-cgw-03
-            ip_address: 52.93.22.51
-          - name: molecule-cgw-04
-            ip_address: 52.93.22.52
-          - name: molecule-cgw-05
-            ip_address: 52.93.22.53
-          - name: molecule-cgw-06
-            ip_address: 52.93.22.54
-          - name: molecule-cgw-07
-            ip_address: 52.93.22.55
-          - name: molecule-cgw-08
-            ip_address: 52.93.22.56
-          - name: molecule-cgw-09
-            ip_address: 52.93.22.57
-          - name: molecule-cgw-10
-            ip_address: 52.93.22.58
-          - name: molecule-cgw-11
-            ip_address: 52.93.22.59
-          - name: molecule-cgw-12
-            ip_address: 52.93.22.60
-          - name: molecule-cgw-13
-            ip_address: 52.93.22.61
-          - name: molecule-cgw-14
-            ip_address: 52.93.22.62
+        ec2_customer_gateway_list_create:
+          - name: molecule-00
+            ip_address: 1.1.1.0
+          - name: molecule-01
+            ip_address: 1.1.1.1
+          - name: molecule-02
+            ip_address: 1.1.1.2
+          - name: molecule-03
+            ip_address: 1.1.1.3
+          - name: molecule-04
+            ip_address: 1.1.1.4
+
+        ec2_customer_gateway_list_update:
+          - name: molecule-00
+            ip_address: 1.1.1.5
+          - name: molecule-01
+            ip_address: 1.1.1.6
+          - name: molecule-02
+            ip_address: 1.1.1.7
+          - name: molecule-03
+            ip_address: 1.1.1.8
+          - name: molecule-04
+            ip_address: 1.1.1.9
 
 scenario:
   test_sequence:

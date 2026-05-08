@@ -25,17 +25,22 @@ provisioner:
     group_vars:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
-        cloudwatchlogs_log_group_list:
-          - name: molecule-30d
-            retention: 30
-          - name: molecule-90d
-            retention: 90
 
-        cloudwatchlogs_log_group_idempotence:
-          - name: molecule-30d
-            retention: 14
-          - name: molecule-90d
+        cloudwatchlogs_log_group_list_create:
+          - name: molecule-00
+            retention: 1
+          - name: molecule-01
+            retention: 3
+          - name: molecule-02
+            retention: 5
+
+        cloudwatchlogs_log_group_list_update:
+          - name: molecule-00
+            retention: 30
+          - name: molecule-01
             retention: 60
+          - name: molecule-02
+            retention: 120
 
 scenario:
   test_sequence:

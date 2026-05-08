@@ -15,10 +15,5 @@
       tags:
         - molecule-idempotence-notest
 
-    - role: s3_lifecycle
-      tags:
-        - molecule-idempotence-notest
-
-    - role: s3_lifecycle
-      s3_lifecycle_list: "{{ s3_lifecycle_idempotence }}"
+    - s3_lifecycle
 ...

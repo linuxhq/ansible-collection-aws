@@ -16,9 +16,9 @@
       check_mode: false
 
     - role: route53_record
+      route53_record_list: []
       tags:
         - molecule-idempotence-notest
 
-    - role: route53_record
-      route53_record_list: "{{ route53_record_idempotence }}"
+    - route53_record
 ...

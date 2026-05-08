@@ -28,7 +28,7 @@
           "{{ route53_resolver_list |
               map('combine', {'state': 'absent'}) }}"
         route53_resolver_rule_list:
-          "{{ route53_resolver_rule_list |
+          "{{ route53_resolver_rule_list_update |
               map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included

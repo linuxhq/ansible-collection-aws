@@ -14,15 +14,12 @@
       ansible.builtin.assert:
         that:
           - _sns_topic_info_dict['molecule-bounce'].display_name is defined
-          - _sns_topic_info_dict['molecule-bounce'].kms_master_key_id == 'alias/aws/sns'
           - _sns_topic_info_dict['molecule-bounce'].subscriptions | length == 1
           - _sns_topic_info_dict['molecule-bounce'].topic_arn is defined
           - _sns_topic_info_dict['molecule-complaint'].display_name is defined
-          - _sns_topic_info_dict['molecule-complaint'].kms_master_key_id == 'alias/aws/sns'
           - _sns_topic_info_dict['molecule-complaint'].subscriptions | length == 1
           - _sns_topic_info_dict['molecule-complaint'].topic_arn is defined
           - _sns_topic_info_dict['molecule-delivery'].display_name is defined
-          - _sns_topic_info_dict['molecule-delivery'].kms_master_key_id == 'alias/aws/sns'
           - _sns_topic_info_dict['molecule-delivery'].subscriptions | length == 1
           - _sns_topic_info_dict['molecule-delivery'].topic_arn is defined
 

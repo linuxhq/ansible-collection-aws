@@ -8,7 +8,7 @@
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         iam_oidc_provider_list:
-          "{{ iam_oidc_provider_idempotence |
+          "{{ iam_oidc_provider_list |
               map('combine', {'state': 'absent'}) }}"
 
   roles:

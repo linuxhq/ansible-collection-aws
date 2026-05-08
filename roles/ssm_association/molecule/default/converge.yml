@@ -11,9 +11,12 @@
         - molecule-idempotence-notest
 
     - role: ssm_association
+      ssm_association_list:
+        "{{ ssm_association_list_create }}"
       tags:
         - molecule-idempotence-notest
 
     - role: ssm_association
-      ssm_association_list: "{{ ssm_association_idempotence }}"
+      ssm_association_list:
+        "{{ ssm_association_list_update }}"
 ...
