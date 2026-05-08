@@ -1,0 +1,29 @@
+---
+- name: Ensure information about aws pricing products is gathered
+  tags:
+    - ec2_pricing_info
+  linuxhq.aws.ec2_pricing_info:
+    filters: "{{ ec2_pricing_info_filters }}"
+    format_version: "{{ ec2_pricing_info_format_version }}"
+    max_results: "{{ ec2_pricing_info_max_results or omit }}"
+    service_code: "{{ ec2_pricing_info_service_code }}"
+    validate_certs: true
+  register: __ec2_pricing_info_query
+
+- name: Ensure list of aws pricing products is generated
+  tags:
+    - ec2_pricing_info
+  ansible.builtin.set_fact:
+    _ec2_pricing_info_list:
+      "{{ __ec2_pricing_info_query.products |
+          d([]) }}"
+
+- name: Ensure dict of aws pricing products is generated
+  tags:
+    - ec2_pricing_info
+  ansible.builtin.set_fact:
+    _ec2_pricing_info_dict:
+      "{{ dict(_ec2_pricing_info_list |
+               json_query('[].product.sku') |
+               zip(_ec2_pricing_info_list)) }}"
+...

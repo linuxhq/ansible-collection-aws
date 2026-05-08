@@ -1,0 +1,27 @@
+---
+- name: Ensure information about aws instance types is gathered
+  tags:
+    - ec2_instance_type_info
+  linuxhq.aws.ec2_instance_type_info:
+    filters: "{{ ec2_instance_type_info_filters }}"
+    instance_types: "{{ ec2_instance_type_info_instance_types }}"
+    validate_certs: true
+  register: __ec2_instance_type_info_query
+
+- name: Ensure list of aws instance types is generated
+  tags:
+    - ec2_instance_type_info
+  ansible.builtin.set_fact:
+    _ec2_instance_type_info_list:
+      "{{ __ec2_instance_type_info_query.instance_types |
+          d([]) }}"
+
+- name: Ensure dict of aws instance types is generated
+  tags:
+    - ec2_instance_type_info
+  ansible.builtin.set_fact:
+    _ec2_instance_type_info_dict:
+      "{{ dict(_ec2_instance_type_info_list |
+               json_query('[].instance_type') |
+               zip(_ec2_instance_type_info_list)) }}"
+...
