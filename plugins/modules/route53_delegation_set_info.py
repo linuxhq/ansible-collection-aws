@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: route53_delegation_set_info
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Gather AWS Route53 reusable delegation set information
 description:
   - Gathers AWS Route53 reusable delegation sets.

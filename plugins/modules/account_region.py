@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: account_region
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Manage AWS account region opt-in status
 description:
   - Enables or disables the opt-in status of an AWS account region.

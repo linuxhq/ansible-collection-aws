@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: notifications_hub
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Manage AWS Notifications hubs
 description:
   - Manages AWS Notifications hubs.

@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_instance_metadata_info
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Gather EC2 account-level instance metadata defaults
 description:
   - Gathers EC2 account-level instance metadata defaults for a region.

@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: wafv2_ip_set_info
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Gather information about AWS WAFv2 IP sets
 description:
   - Gathers information about AWS WAFv2 IP sets.

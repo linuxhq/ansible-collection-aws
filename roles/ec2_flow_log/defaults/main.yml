@@ -1,0 +1,8 @@
+---
+ec2_flow_log_async: 300
+ec2_flow_log_batch: 10
+ec2_flow_log_delay: 3
+ec2_flow_log_list: []
+ec2_flow_log_poll: 0
+ec2_flow_log_retries: 100
+...

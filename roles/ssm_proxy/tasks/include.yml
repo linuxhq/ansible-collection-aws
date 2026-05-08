@@ -18,18 +18,15 @@
 - name: Ensure aws session manager proxy instance is online
   tags:
     - ssm_proxy
-  ansible.builtin.command:
-    cmd: >
-      aws ssm describe-instance-information
-        --filters Key=InstanceIds,Values={{ __ssm_proxy_instance.instances.0.instance_id }}
-        --query 'InstanceInformationList[0].PingStatus'
-        --output text
+  linuxhq.aws.ssm_instance_info:
+    instance_ids:
+      - "{{ __ssm_proxy_instance.instances.0.instance_id }}"
+    validate_certs: true
   register: __ssm_proxy_ping
-  changed_when: false
   retries: 30
   delay: 10
   until:
-    - __ssm_proxy_ping.stdout == 'Online'
+    - __ssm_proxy_ping.instances.0.ping_status | d('') == 'Online'
 
 - name: Ensure aws session manager proxy parameters are generated
   tags:

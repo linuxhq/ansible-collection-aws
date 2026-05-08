@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ssm_document_info
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Gather information about AWS Systems Manager documents
 description:
   - Gathers information about AWS Systems Manager documents.

@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: sns_topic_attributes
-version_added: "1.9.0"
+version_added: "1.9.5"
 short_description: Manage AWS Simple Notification Service topic attributes
 description:
   - Manages selected AWS Simple Notification Service topic attributes.
