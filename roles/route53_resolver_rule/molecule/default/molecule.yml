@@ -86,7 +86,7 @@ provisioner:
             security_group_ids:
               - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
-        route53_resolver_rule_list:
+        route53_resolver_rule_list_create:
           - name: molecule-cloudflare
             domain_name: cloudflare.com
             resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].id }}"
@@ -107,7 +107,7 @@ provisioner:
               - ip: 8.8.8.4
                 port: 53
 
-        route53_resolver_rule_idempotence:
+        route53_resolver_rule_list_update:
           - name: molecule-cloudflare
             domain_name: cloudflare.com
             resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].id }}"

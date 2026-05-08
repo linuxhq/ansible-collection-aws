@@ -42,6 +42,7 @@ resolver_rules:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -61,6 +62,8 @@ def resource_tags(client, module, resource):
             ResourceArn=resource["Arn"],
             aws_retry=True,
         ).get("Tags", [])
+    except is_boto3_error_code("InvalidRequestException"):
+        return []
     except Exception as e:
         module.fail_json_aws(
             e,

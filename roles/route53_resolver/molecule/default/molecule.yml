@@ -65,7 +65,7 @@ provisioner:
                   - cidr_ip: 0.0.0.0/0
                     proto: -1
 
-        route53_resolver_list:
+        route53_resolver_list_create:
           - name: molecule-cloudflare
             direction: outbound
             ip_addresses:
@@ -90,7 +90,7 @@ provisioner:
             security_group_ids:
               - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
-        route53_resolver_idempotence:
+        route53_resolver_list_update:
           - name: molecule-cloudflare
             direction: outbound
             ip_addresses:

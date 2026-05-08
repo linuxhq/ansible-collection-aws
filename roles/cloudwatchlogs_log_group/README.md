@@ -30,7 +30,9 @@ None
       roles:
         - role: linuxhq.aws.cloudwatchlogs_log_group
           cloudwatchlogs_log_group_list:
-            - name: molecule-30d
+            - name: molecule-00
               retention: 30
-            - name: molecule-90d
-              retention: 90
+            - name: molecule-01
+              retention: 60
+            - name: molecule-02
+              retention: 120

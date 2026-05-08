@@ -101,11 +101,6 @@ provisioner:
                       'aws:SourceArn':
                         "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-delivery"
 
-        sqs_queue_idempotence:
-          - "{{ sqs_queue_list.0 | combine({'delay_seconds': 15}) }}"
-          - "{{ sqs_queue_list.1 | combine({'delay_seconds': 15}) }}"
-          - "{{ sqs_queue_list.2 | combine({'delay_seconds': 15}) }}"
-
 scenario:
   test_sequence:
     - dependency

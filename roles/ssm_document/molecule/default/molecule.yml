@@ -25,7 +25,8 @@ provisioner:
     group_vars:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
-        ssm_document_list:
+
+        ssm_document_list_create:
           - name: molecule-command-shell
             document_type: Command
             content:
@@ -61,7 +62,7 @@ provisioner:
                   linux: cd
                   windows: ''
 
-        ssm_document_idempotence:
+        ssm_document_list_update:
           - name: molecule-command-shell
             document_type: Command
             content:
@@ -92,7 +93,7 @@ provisioner:
               description: Updated Session Manager shell preferences
               session_type: Standard_Stream
               inputs:
-                idle_session_timeout: 120
+                idle_session_timeout: 60
                 run_as_enabled: false
                 shell_profile:
                   linux: pwd

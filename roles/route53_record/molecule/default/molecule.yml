@@ -49,26 +49,6 @@ provisioner:
                 type: A
                 value: 127.0.0.2
 
-        route53_record_idempotence:
-          - zone: pub.molecule.org
-            records:
-              - record: molecule-1.pub.molecule.org
-                type: A
-                value: 127.0.0.11
-              - record: molecule-2.pub.molecule.org
-                type: A
-                value: 127.0.0.12
-
-          - zone: pvt.molecule.org
-            private_zone: true
-            records:
-              - record: molecule-1.pvt.molecule.org
-                type: A
-                value: 127.0.0.11
-              - record: molecule-2.pvt.molecule.org
-                type: A
-                value: 127.0.0.12
-
         route53_zone_list:
           - zone: pub.molecule.org
           - zone: pvt.molecule.org

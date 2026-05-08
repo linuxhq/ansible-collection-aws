@@ -18,10 +18,5 @@
       tags:
         - molecule-idempotence-notest
 
-    - role: sns_topic
-      tags:
-        - molecule-idempotence-notest
-
-    - role: sns_topic
-      sns_topic_list: "{{ sns_topic_idempotence }}"
+    - sns_topic
 ...

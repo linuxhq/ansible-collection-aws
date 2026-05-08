@@ -25,14 +25,14 @@ provisioner:
     group_vars:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
-        ssm_association_list:
+        ssm_association_list_create:
           - name: AWS-UpdateSSMAgent
             schedule_expression: 'cron(0 0 * * ? *)'
             targets:
               - key: InstanceIds
                 values: ['*']
 
-        ssm_association_idempotence:
+        ssm_association_list_update:
           - name: AWS-UpdateSSMAgent
             schedule_expression: 'cron(15 0 * * ? *)'
             targets:

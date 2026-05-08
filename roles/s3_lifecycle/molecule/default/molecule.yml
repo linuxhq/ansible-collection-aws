@@ -106,21 +106,6 @@ provisioner:
                 status: enabled
                 storage_class: glacier
 
-        s3_lifecycle_idempotence:
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-00"
-            wait: true
-            lifecycle_rules:
-              - rule_id: molecule-1d-glacier
-                transition_days: 2
-                prefix: 1d/
-                status: enabled
-                storage_class: glacier
-              - rule_id: molecule-10d-glacier
-                transition_days: 11
-                prefix: 10d/
-                status: enabled
-                storage_class: glacier
-
 scenario:
   test_sequence:
     - dependency

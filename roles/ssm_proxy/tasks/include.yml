@@ -15,6 +15,22 @@
       'tag:Name': "{{ ssm_proxy_instance }}"
   register: __ssm_proxy_instance
 
+- name: Ensure aws session manager proxy instance is online
+  tags:
+    - ssm_proxy
+  ansible.builtin.command:
+    cmd: >
+      aws ssm describe-instance-information
+        --filters Key=InstanceIds,Values={{ __ssm_proxy_instance.instances.0.instance_id }}
+        --query 'InstanceInformationList[0].PingStatus'
+        --output text
+  register: __ssm_proxy_ping
+  changed_when: false
+  retries: 30
+  delay: 10
+  until:
+    - __ssm_proxy_ping.stdout == 'Online'
+
 - name: Ensure aws session manager proxy parameters are generated
   tags:
     - ssm_proxy

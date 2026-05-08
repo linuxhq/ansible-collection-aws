@@ -11,9 +11,12 @@
         - molecule-idempotence-notest
 
     - role: ssm_document
+      ssm_document_list:
+        "{{ ssm_document_list_create }}"
       tags:
         - molecule-idempotence-notest
 
     - role: ssm_document
-      ssm_document_list: "{{ ssm_document_idempotence }}"
+      ssm_document_list:
+        "{{ ssm_document_list_update }}"
 ...

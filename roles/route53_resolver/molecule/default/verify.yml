@@ -24,7 +24,7 @@
           "{{ ec2_vpc_subnet_list |
               map('combine', {'state': 'absent'}) }}"
         route53_resolver_list:
-          "{{ route53_resolver_list |
+          "{{ route53_resolver_list_update |
               map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included
