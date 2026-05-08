@@ -1,0 +1,6 @@
+---
+ec2_pricing_info_filters: []
+ec2_pricing_info_format_version: aws_v1
+ec2_pricing_info_max_results: null
+ec2_pricing_info_service_code: AmazonEC2
+...
