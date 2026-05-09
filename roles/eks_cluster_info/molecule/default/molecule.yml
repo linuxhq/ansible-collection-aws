@@ -25,6 +25,23 @@ provisioner:
     group_vars:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
+
+        iam_role_list:
+          - name: MoleculeEksClusterRole
+            assume_role_policy_document:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Principal:
+                    Service: eks.amazonaws.com
+                  Action:
+                    - sts:AssumeRole
+            create_instance_profile: false
+            delete_instance_profile: true
+            managed_policies:
+              - AmazonEKSClusterPolicy
+              - AmazonS3FullAccess
+
         ec2_vpc_net_list:
           - name: molecule
             cidr_block: 10.0.0.0/16
@@ -42,37 +59,48 @@ provisioner:
                 az: us-east-1d
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,2) }}"
 
+        ec2_security_group_list:
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            security_groups:
+              - name: molecule-eks
+                rules:
+                  - cidr_ip: 0.0.0.0/0
+                    ports:
+                      - 443
+                    proto: tcp
+                rules_egress:
+                  - cidr_ip: 0.0.0.0/0
+                    proto: -1
+
         eks_cluster_list:
           - name: molecule-eks1
-            subnets:
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
-            version: 1.34
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            resources_vpc_config:
+              endpoint_private_access: false
+              endpoint_public_access: true
+              public_access_cidrs:
+                - 69.107.10.200/29
+              security_group_ids:
+                - "{{ _ec2_security_group_info_dict['molecule-eks'].group_id }}"
+              subnet_ids:
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
+            role_arn: "arn:aws:iam::{{ _aws_caller_info_account }}:role/MoleculeEksClusterRole"
+            version: '1.34'
             wait: true
 
           - name: molecule-eks2
-            iam_managed_policies:
-              - AmazonEKSClusterPolicy
-              - AmazonS3FullAccess
-            iam_role_name: MoleculeEksClusterRole
-            rules:
-              - cidr_ip: 10.0.0.0/8
-                ports:
-                  - 443
-                proto: tcp
-            rules_egress:
-              - cidr_ip: 10.0.0.0/8
-                ports:
-                  - 0-65535
-                proto: tcp
-            subnets:
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
-            version: 1.35
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            resources_vpc_config:
+              endpoint_private_access: true
+              endpoint_public_access: false
+              security_group_ids:
+                - "{{ _ec2_security_group_info_dict['molecule-eks'].group_id }}"
+              subnet_ids:
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
+            role_arn: "arn:aws:iam::{{ _aws_caller_info_account }}:role/MoleculeEksClusterRole"
+            version: '1.35'
             wait: true
 
 scenario:

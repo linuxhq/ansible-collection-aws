@@ -1,6 +1,6 @@
 ---
 dependencies:
-  - role: ec2_vpc_net_info
+  - role: ec2_security_group_info
     tags: eks_cluster
   - role: ec2_vpc_subnet_info
     tags: eks_cluster

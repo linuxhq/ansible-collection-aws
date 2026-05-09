@@ -5,6 +5,13 @@
     PATH: '/opt/awscli/bin'
 
   roles:
+    - aws_caller_info
+
+    - role: iam_role
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
     - role: ec2_vpc_net
       tags:
         - molecule-idempotence-notest
@@ -15,10 +22,23 @@
         - molecule-idempotence-notest
       check_mode: false
 
+    - role: ec2_security_group
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
     - role: eks_cluster
       eks_cluster_list: []
       tags:
         - molecule-idempotence-notest
 
-    - eks_cluster
+    - role: eks_cluster
+      eks_cluster_list:
+        "{{ eks_cluster_list_create }}"
+      tags:
+        - molecule-idempotence-notest
+
+    - role: eks_cluster
+      eks_cluster_list:
+        "{{ eks_cluster_list_update }}"
 ...
