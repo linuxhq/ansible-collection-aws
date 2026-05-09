@@ -1,0 +1,16 @@
+---
+- name: Ensure aws end user messaging sms phone number requests are batched
+  tags:
+    - pinpoint_sms_voice_phone_number
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - pinpoint_sms_voice_phone_number
+    file: include.yml
+  loop:
+    "{{ pinpoint_sms_voice_phone_number_list |
+        batch(pinpoint_sms_voice_phone_number_batch) }}"
+  loop_control:
+    label: "{{ __pinpoint_sms_voice_phone_number_list | length }}"
+    loop_var: __pinpoint_sms_voice_phone_number_list
+...

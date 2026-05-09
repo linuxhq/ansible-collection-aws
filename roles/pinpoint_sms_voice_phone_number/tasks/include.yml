@@ -1,0 +1,56 @@
+---
+- name: Ensure aws end user messaging sms phone numbers are managed
+  tags:
+    - pinpoint_sms_voice_phone_number
+  linuxhq.aws.pinpoint_sms_voice_phone_number:
+    client_token: "{{ _phone_number.client_token | d(_phone_number.name) }}"
+    deletion_protection_enabled:
+      "{{ _phone_number.deletion_protection_enabled | d(omit) }}"
+    international_sending_enabled:
+      "{{ _phone_number.international_sending_enabled | d(omit) }}"
+    iso_country_code: "{{ _phone_number.iso_country_code | d(omit) }}"
+    message_type: "{{ _phone_number.message_type | d(omit) }}"
+    number_capabilities: "{{ _phone_number.number_capabilities | d(omit) }}"
+    number_type: "{{ _phone_number.number_type | d(omit) }}"
+    opt_out_list_name: "{{ _phone_number.opt_out_list_name | d(omit) }}"
+    phone_number_id: "{{ _phone_number.phone_number_id | d(omit) }}"
+    pool_id: "{{ _phone_number.pool_id | d(omit) }}"
+    registration_id: "{{ _phone_number.registration_id | d(omit) }}"
+    state: "{{ _phone_number.state | d('present') }}"
+    tags:
+      "{{ _phone_number.tags |
+          d({}) |
+          combine({'Name': _phone_number.name}) }}"
+    validate_certs: true
+  register: __pinpoint_sms_voice_phone_number_result
+  loop: "{{ __pinpoint_sms_voice_phone_number_list }}"
+  loop_control:
+    label: "{{ _phone_number.name | d(none) }}"
+    loop_var: _phone_number
+  async:
+    "{{ ansible_check_mode |
+        ternary(0, pinpoint_sms_voice_phone_number_async) }}"
+  poll: "{{ pinpoint_sms_voice_phone_number_poll }}"
+  when:
+    - _phone_number.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __pinpoint_sms_voice_phone_number_result.changed | bool
+
+- name: Ensure managed aws end user messaging sms phone number request jobs are complete
+  tags:
+    - pinpoint_sms_voice_phone_number
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __pinpoint_sms_voice_phone_number_status
+  loop: "{{ __pinpoint_sms_voice_phone_number_result.results }}"
+  loop_control:
+    label: "{{ _jid._phone_number.name | d(none) }}"
+    loop_var: _jid
+  delay: "{{ pinpoint_sms_voice_phone_number_delay }}"
+  retries: "{{ pinpoint_sms_voice_phone_number_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __pinpoint_sms_voice_phone_number_status.finished | bool
+...
