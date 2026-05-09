@@ -4,14 +4,10 @@
     - aws_credentials_info
   ansible.builtin.set_fact:
     "_aws_credentials_info_{{ _key }}":
-      "{{
-        lookup(
-          'ansible.builtin.ini',
-          _key,
-          file=aws_credentials_info_file,
-          section=aws_credentials_info_profile
-        )
-      }}"
+      "{{ lookup('ansible.builtin.ini',
+                 _key,
+                 file=aws_credentials_info_file,
+                 section=aws_credentials_info_profile) }}"
   loop: "{{ aws_credentials_info_keys }}"
   loop_control:
     label: "{{ _key | d(none) }}"

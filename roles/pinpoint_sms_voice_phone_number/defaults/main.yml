@@ -1,0 +1,8 @@
+---
+pinpoint_sms_voice_phone_number_async: 300
+pinpoint_sms_voice_phone_number_batch: 10
+pinpoint_sms_voice_phone_number_delay: 3
+pinpoint_sms_voice_phone_number_list: []
+pinpoint_sms_voice_phone_number_poll: 0
+pinpoint_sms_voice_phone_number_retries: 100
+...

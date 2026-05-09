@@ -1,0 +1,25 @@
+---
+allow_duplicates: true
+dependencies: []
+galaxy_info:
+  role_name: pinpoint_sms_voice_phone_number_info
+  author: Taylor Kimball
+  description: Gather information about aws end user messaging sms phone numbers
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - info
+    - pinpoint
+    - sms
+    - voice
+...

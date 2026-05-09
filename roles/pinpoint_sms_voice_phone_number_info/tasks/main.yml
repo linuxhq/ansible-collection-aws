@@ -1,0 +1,29 @@
+---
+- name: Ensure information about aws end user messaging sms phone numbers is gathered
+  tags:
+    - pinpoint_sms_voice_phone_number_info
+  linuxhq.aws.pinpoint_sms_voice_phone_number_info:
+    filters: "{{ pinpoint_sms_voice_phone_number_info_filters }}"
+    max_results: "{{ pinpoint_sms_voice_phone_number_info_max_results or omit }}"
+    owner: "{{ pinpoint_sms_voice_phone_number_info_owner }}"
+    phone_number_ids: "{{ pinpoint_sms_voice_phone_number_info_phone_number_ids }}"
+    validate_certs: true
+  register: __pinpoint_sms_voice_phone_number_info_query
+
+- name: Ensure list of aws end user messaging sms phone numbers is generated
+  tags:
+    - pinpoint_sms_voice_phone_number_info
+  ansible.builtin.set_fact:
+    _pinpoint_sms_voice_phone_number_info_list:
+      "{{ __pinpoint_sms_voice_phone_number_info_query.phone_numbers |
+          d([]) }}"
+
+- name: Ensure dict of aws end user messaging sms phone numbers is generated
+  tags:
+    - pinpoint_sms_voice_phone_number_info
+  ansible.builtin.set_fact:
+    _pinpoint_sms_voice_phone_number_info_dict:
+      "{{ dict(_pinpoint_sms_voice_phone_number_info_list |
+               json_query('[].phone_number') |
+               zip(_pinpoint_sms_voice_phone_number_info_list)) }}"
+...
