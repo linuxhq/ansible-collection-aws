@@ -1,37 +1,59 @@
 ---
-- name: Ensure aws elastic kubernetes service present tasks are included
+- name: Ensure aws elastic kubernetes service clusters are managed
   tags:
     - eks_cluster
-  ansible.builtin.include_tasks:
-    apply:
-      tags:
-        - eks_cluster
-    file: "{{ _order }}"
-  loop:
-    - iam_role.yml
-    - security_group.yml
-    - eks_cluster.yml
+  linuxhq.aws.eks_cluster:
+    access_config: "{{ _cluster.access_config | d(omit) }}"
+    bootstrap_self_managed_addons:
+      "{{ _cluster.bootstrap_self_managed_addons | d(omit) }}"
+    compute_config: "{{ _cluster.compute_config | d(omit) }}"
+    encryption_config: "{{ _cluster.encryption_config | d(omit) }}"
+    kubernetes_network_config:
+      "{{ _cluster.kubernetes_network_config | d(omit) }}"
+    logging: "{{ _cluster.logging | d(omit) }}"
+    name: "{{ _cluster.name }}"
+    purge_tags: "{{ _cluster.purge_tags | d(true) }}"
+    resources_vpc_config: "{{ _cluster.resources_vpc_config | d(omit) }}"
+    role_arn: "{{ _cluster.role_arn | d(omit) }}"
+    state: "{{ _cluster.state | d('present') }}"
+    storage_config: "{{ _cluster.storage_config | d(omit) }}"
+    tags:
+      "{{ _cluster.tags |
+          d({}) |
+          combine({'Name': _cluster.name}) }}"
+    upgrade_policy: "{{ _cluster.upgrade_policy | d(omit) }}"
+    validate_certs: true
+    version: "{{ _cluster.version | d(omit) }}"
+    wait: "{{ _cluster.wait | d(omit) }}"
+    wait_timeout: "{{ _cluster.wait_timeout | d(1200) }}"
+    zonal_shift_config: "{{ _cluster.zonal_shift_config | d(omit) }}"
+  register: __eks_cluster_result
+  loop: "{{ __eks_cluster_list }}"
   loop_control:
-    label: "{{ _order | d(none) }}"
-    loop_var: _order
+    label: "{{ _cluster.name | d(none) }}"
+    loop_var: _cluster
+  async: "{{ ansible_check_mode | ternary(0, _cluster.async | d(eks_cluster_async)) }}"
+  poll: "{{ eks_cluster_poll }}"
   when:
-    - _cluster.state == 'present'
+    - _cluster.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __eks_cluster_result.changed | bool
 
-- name: Ensure aws elastic kubernetes service absent tasks are included
+- name: Ensure managed aws elastic kubernetes service cluster jobs are complete
   tags:
     - eks_cluster
-  ansible.builtin.include_tasks:
-    apply:
-      tags:
-        - eks_cluster
-    file: "{{ _order }}"
-  loop:
-    - eks_cluster.yml
-    - security_group.yml
-    - iam_role.yml
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __eks_cluster_status
+  loop: "{{ __eks_cluster_result.results }}"
   loop_control:
-    label: "{{ _order | d(none) }}"
-    loop_var: _order
+    label: "{{ _jid._cluster.name | d(none) }}"
+    loop_var: _jid
+  delay: "{{ eks_cluster_delay }}"
+  retries: "{{ eks_cluster_retries }}"
   when:
-    - _cluster.state == 'absent'
+    - _jid.ansible_job_id is defined
+  until:
+    - __eks_cluster_status.finished | bool
 ...
