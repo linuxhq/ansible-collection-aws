@@ -12,6 +12,12 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
+  filters:
+    description:
+      - A dict of filters to apply when describing RDS DB subnet groups.
+      - Filter names and values are passed to the RDS
+        C(DescribeDBSubnetGroups) API.
+    type: dict
   names:
     description:
       - RDS DB subnet group names used to limit the result set.
@@ -31,6 +37,11 @@ EXAMPLES = r"""
   linuxhq.aws.rds_subnet_group_info:
     names:
       - molecule
+
+- name: Gather RDS subnet groups using filters
+  linuxhq.aws.rds_subnet_group_info:
+    filters:
+      vpc-id: vpc-0123456789abcdef0
 """
 
 RETURN = r"""
@@ -48,13 +59,24 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
 )
+
+
+def build_request(module, name=None):
+    request = {}
+    if name:
+        request["DBSubnetGroupName"] = name
+    if module.params["filters"]:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+    return request
 
 
 def main():
     module = AnsibleAWSModule(
         argument_spec={
+            "filters": {"type": "dict"},
             "names": {"elements": "str", "type": "list"},
         },
         supports_check_mode=True,
@@ -67,7 +89,7 @@ def main():
                 try:
                     subnet_groups.extend(
                         client.describe_db_subnet_groups(
-                            DBSubnetGroupName=name,
+                            **build_request(module, name),
                             aws_retry=True,
                         ).get("DBSubnetGroups", [])
                     )
@@ -77,6 +99,7 @@ def main():
             subnet_groups = paginated_query_with_retries(
                 client,
                 "describe_db_subnet_groups",
+                **build_request(module),
             ).get("DBSubnetGroups", [])
         subnet_groups = [
             subnet_group

@@ -13,6 +13,20 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
+  ids:
+    description:
+      - WAFv2 web ACL IDs used to limit the result set.
+      - The module lists web ACL summaries for the selected O(scope), filters
+        by ID, and then gathers each full web ACL definition.
+    elements: str
+    type: list
+  names:
+    description:
+      - WAFv2 web ACL names used to limit the result set.
+      - The module lists web ACL summaries for the selected O(scope), filters
+        by name, and then gathers each full web ACL definition.
+    elements: str
+    type: list
   scope:
     description:
       - The scope of the web ACLs to gather.
@@ -36,6 +50,11 @@ EXAMPLES = r"""
   linuxhq.aws.wafv2_web_acl_info:
     scope: cloudfront
     region: us-east-1
+
+- name: Gather information about selected WAFv2 web ACLs
+  linuxhq.aws.wafv2_web_acl_info:
+    names:
+      - molecule
 """
 
 RETURN = r"""
@@ -58,8 +77,18 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
+def summary_matches(module, summary):
+    if module.params["ids"] and summary.get("Id") not in module.params["ids"]:
+        return False
+    if module.params["names"] and summary.get("Name") not in module.params["names"]:
+        return False
+    return True
+
+
 def main():
     argument_spec = {
+        "ids": {"elements": "str", "type": "list"},
+        "names": {"elements": "str", "type": "list"},
         "scope": {
             "choices": ["cloudfront", "regional"],
             "default": "regional",
@@ -79,6 +108,8 @@ def main():
             request["NextMarker"] = marker
         response = client.list_web_acls(**request, aws_retry=True)
         for summary in response.get("WebACLs", []):
+            if not summary_matches(module, summary):
+                continue
             web_acls.append(
                 client.get_web_acl(
                     Id=summary["Id"],

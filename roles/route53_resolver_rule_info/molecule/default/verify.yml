@@ -29,12 +29,12 @@
           - _route53_resolver_rule_info_dict['molecule-cloudflare'].rule_type ==
               route53_resolver_rule_list.0.rule_type | upper
           - _route53_resolver_rule_info_dict['molecule-cloudflare'].status == 'COMPLETE'
-          - (_route53_resolver_rule_info_dict['molecule-cloudflare'].target_ips |
-             json_query('[].[ip, port]') |
-             sort) ==
-              (route53_resolver_rule_list.0.target_ips |
-               json_query('[].[ip, port]') |
-               sort)
+          - _route53_resolver_rule_info_dict['molecule-cloudflare'].target_ips |
+            json_query('[].[ip, port]') |
+            sort ==
+              route53_resolver_rule_list.0.target_ips |
+              json_query('[].[ip, port]') |
+              sort
           - _route53_resolver_rule_info_dict['molecule-cloudflare'].associations | length == 1
           - _route53_resolver_rule_info_dict['molecule-cloudflare'].associations.0.name ==
               route53_resolver_rule_associate_list.0.name
@@ -51,12 +51,12 @@
           - _route53_resolver_rule_info_dict['molecule-google'].rule_type ==
               route53_resolver_rule_list.1.rule_type | upper
           - _route53_resolver_rule_info_dict['molecule-google'].status == 'COMPLETE'
-          - (_route53_resolver_rule_info_dict['molecule-google'].target_ips |
-             json_query('[].[ip, port]') |
-             sort) ==
-              (route53_resolver_rule_list.1.target_ips |
-               json_query('[].[ip, port]') |
-               sort)
+          - _route53_resolver_rule_info_dict['molecule-google'].target_ips |
+            json_query('[].[ip, port]') |
+            sort ==
+              route53_resolver_rule_list.1.target_ips |
+              json_query('[].[ip, port]') |
+              sort
           - _route53_resolver_rule_info_dict['molecule-google'].associations | length == 1
           - _route53_resolver_rule_info_dict['molecule-google'].associations.0.name ==
               route53_resolver_rule_associate_list.1.name

@@ -13,6 +13,20 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
+  ids:
+    description:
+      - WAFv2 IP set IDs used to limit the result set.
+      - The module lists IP set summaries for the selected O(scope), filters by
+        ID, and then gathers each full IP set definition.
+    elements: str
+    type: list
+  names:
+    description:
+      - WAFv2 IP set names used to limit the result set.
+      - The module lists IP set summaries for the selected O(scope), filters by
+        name, and then gathers each full IP set definition.
+    elements: str
+    type: list
   scope:
     description:
       - The scope of the IP sets to gather.
@@ -36,6 +50,11 @@ EXAMPLES = r"""
   linuxhq.aws.wafv2_ip_set_info:
     scope: cloudfront
     region: us-east-1
+
+- name: Gather information about selected WAFv2 IP sets
+  linuxhq.aws.wafv2_ip_set_info:
+    names:
+      - molecule
 """
 
 RETURN = r"""
@@ -58,8 +77,18 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
+def summary_matches(module, summary):
+    if module.params["ids"] and summary.get("Id") not in module.params["ids"]:
+        return False
+    if module.params["names"] and summary.get("Name") not in module.params["names"]:
+        return False
+    return True
+
+
 def main():
     argument_spec = {
+        "ids": {"elements": "str", "type": "list"},
+        "names": {"elements": "str", "type": "list"},
         "scope": {
             "choices": ["cloudfront", "regional"],
             "default": "regional",
@@ -79,6 +108,8 @@ def main():
             request["NextMarker"] = marker
         response = client.list_ip_sets(**request, aws_retry=True)
         for summary in response.get("IPSets", []):
+            if not summary_matches(module, summary):
+                continue
             ip_sets.append(
                 client.get_ip_set(
                     Id=summary["Id"],

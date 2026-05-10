@@ -22,6 +22,12 @@ options:
         C(resources_vpc_config.endpoint_private_access).
       - C(tag:Name) can be used to filter by cluster tag.
     type: dict
+  include:
+    description:
+      - Additional EKS cluster types to include when listing clusters.
+      - Values are passed to the EKS C(ListClusters) API.
+    elements: str
+    type: list
   names:
     description:
       - EKS cluster names used to limit the result set.
@@ -49,6 +55,11 @@ EXAMPLES = r"""
     filters:
       status: ACTIVE
       resources_vpc_config.endpoint_private_access: true
+
+- name: Gather information about all EKS clusters including external clusters
+  linuxhq.aws.eks_cluster_info:
+    include:
+      - all
 """
 
 RETURN = r"""
@@ -127,13 +138,24 @@ def describe_cluster(client, module, name):
 def cluster_names(client, module):
     if module.params["names"]:
         return module.params["names"]
-    return paginated_query_with_retries(client, "list_clusters").get("clusters", [])
+    request = scrub_none_parameters(
+        snake_dict_to_camel_dict(
+            {"include": module.params["include"]},
+            capitalize_first=False,
+        )
+    )
+    return paginated_query_with_retries(
+        client,
+        "list_clusters",
+        **request,
+    ).get("clusters", [])
 
 
 def main():
     module = AnsibleAWSModule(
         argument_spec={
             "filters": {"type": "dict"},
+            "include": {"elements": "str", "type": "list"},
             "names": {"elements": "str", "type": "list"},
         },
         supports_check_mode=True,

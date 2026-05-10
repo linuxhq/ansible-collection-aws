@@ -1,3 +1,5 @@
 ---
+wafv2_ip_set_info_ids: []
+wafv2_ip_set_info_names: []
 wafv2_ip_set_info_scope: regional
 ...

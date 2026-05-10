@@ -13,6 +13,23 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
+  document_format:
+    choices:
+      - JSON
+      - TEXT
+      - YAML
+    default: JSON
+    description:
+      - The document format to request from the Systems Manager
+        C(GetDocument) API.
+    type: str
+  document_version:
+    description:
+      - The document version to request from the Systems Manager
+        C(GetDocument) API.
+      - When O(document_version) and O(version_name) are omitted, C($LATEST)
+        is requested to preserve the module default behavior.
+    type: str
   filters:
     description:
       - A dict of filters to apply when listing Systems Manager documents.
@@ -23,6 +40,11 @@ options:
       - Systems Manager document names used to limit the result set.
     elements: str
     type: list
+  version_name:
+    description:
+      - The document version name to request from the Systems Manager
+        C(GetDocument) API.
+    type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -39,6 +61,12 @@ EXAMPLES = r"""
   linuxhq.aws.ssm_document_info:
     filters:
       DocumentType: Command
+
+- name: Gather information about a named Systems Manager document version
+  linuxhq.aws.ssm_document_info:
+    names:
+      - molecule-command-shell
+    version_name: production
 """
 
 RETURN = r"""
@@ -81,11 +109,20 @@ def ssm_filter_list(filters):
 
 
 def get_document(client, module, name):
+    version_name = module.params["version_name"]
     try:
         document = client.get_document(
-            DocumentFormat="JSON",
-            DocumentVersion="$LATEST",
-            Name=name,
+            **{
+                key: value
+                for key, value in {
+                    "DocumentFormat": module.params["document_format"],
+                    "DocumentVersion": module.params["document_version"]
+                    or (None if version_name else "$LATEST"),
+                    "Name": name,
+                    "VersionName": version_name,
+                }.items()
+                if value is not None
+            },
             aws_retry=True,
         )
     except is_boto3_error_code(("InvalidDocument", "InvalidDocumentOperation")):
@@ -136,9 +173,17 @@ def normalized_document(document):
 def main():
     module = AnsibleAWSModule(
         argument_spec={
+            "document_format": {
+                "choices": ["JSON", "TEXT", "YAML"],
+                "default": "JSON",
+                "type": "str",
+            },
+            "document_version": {"type": "str"},
             "filters": {"type": "dict"},
             "names": {"elements": "str", "type": "list"},
+            "version_name": {"type": "str"},
         },
+        mutually_exclusive=[["document_version", "version_name"]],
         supports_check_mode=True,
     )
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())

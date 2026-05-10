@@ -25,40 +25,50 @@
           - _route53_resolver_info_dict['molecule-cloudflare'].ip_address_count == 2
           - _route53_resolver_info_dict['molecule-cloudflare'].ip_addresses | length == 2
           - route53_resolver_list.0.ip_addresses.0.ip in
-              (_route53_resolver_info_dict['molecule-cloudflare'].ip_addresses |
-               map(attribute='ip') | list)
+              _route53_resolver_info_dict['molecule-cloudflare'].ip_addresses |
+              map(attribute='ip') |
+              list
           - route53_resolver_list.0.ip_addresses.0.subnet_id in
-              (_route53_resolver_info_dict['molecule-cloudflare'].ip_addresses |
-               map(attribute='subnet_id') | list)
+              _route53_resolver_info_dict['molecule-cloudflare'].ip_addresses |
+              map(attribute='subnet_id') |
+              list
           - route53_resolver_list.0.ip_addresses.1.ip in
-              (_route53_resolver_info_dict['molecule-cloudflare'].ip_addresses |
-               map(attribute='ip') | list)
+              _route53_resolver_info_dict['molecule-cloudflare'].ip_addresses |
+              map(attribute='ip') |
+              list
           - route53_resolver_list.0.ip_addresses.1.subnet_id in
-              (_route53_resolver_info_dict['molecule-cloudflare'].ip_addresses |
-               map(attribute='subnet_id') | list)
+              _route53_resolver_info_dict['molecule-cloudflare'].ip_addresses |
+              map(attribute='subnet_id') |
+              list
           - _route53_resolver_info_dict['molecule-cloudflare'].protocols.0 == 'Do53'
           - _route53_resolver_info_dict['molecule-cloudflare'].resolver_endpoint_type == 'IPV4'
-          - _route53_resolver_info_dict['molecule-cloudflare'].security_group_ids.0 == _ec2_security_group_info_dict['molecule-route53resolver'].group_id
+          - _route53_resolver_info_dict['molecule-cloudflare'].security_group_ids.0 ==
+              _ec2_security_group_info_dict['molecule-route53resolver'].group_id
           - _route53_resolver_info_dict['molecule-google'].arn is defined
           - _route53_resolver_info_dict['molecule-google'].direction == 'OUTBOUND'
           - _route53_resolver_info_dict['molecule-google'].id is defined
           - _route53_resolver_info_dict['molecule-google'].ip_address_count == 2
           - _route53_resolver_info_dict['molecule-google'].ip_addresses | length == 2
           - route53_resolver_list.1.ip_addresses.0.ip in
-              (_route53_resolver_info_dict['molecule-google'].ip_addresses |
-               map(attribute='ip') | list)
+              _route53_resolver_info_dict['molecule-google'].ip_addresses |
+              map(attribute='ip') |
+              list
           - route53_resolver_list.1.ip_addresses.0.subnet_id in
-              (_route53_resolver_info_dict['molecule-google'].ip_addresses |
-               map(attribute='subnet_id') | list)
+              _route53_resolver_info_dict['molecule-google'].ip_addresses |
+              map(attribute='subnet_id') |
+              list
           - route53_resolver_list.1.ip_addresses.1.ip in
-              (_route53_resolver_info_dict['molecule-google'].ip_addresses |
-               map(attribute='ip') | list)
+              _route53_resolver_info_dict['molecule-google'].ip_addresses |
+              map(attribute='ip') |
+              list
           - route53_resolver_list.1.ip_addresses.1.subnet_id in
-              (_route53_resolver_info_dict['molecule-google'].ip_addresses |
-               map(attribute='subnet_id') | list)
+              _route53_resolver_info_dict['molecule-google'].ip_addresses |
+              map(attribute='subnet_id') |
+              list
           - _route53_resolver_info_dict['molecule-google'].protocols.0 == 'Do53'
           - _route53_resolver_info_dict['molecule-google'].resolver_endpoint_type == 'IPV4'
-          - _route53_resolver_info_dict['molecule-google'].security_group_ids.0 == _ec2_security_group_info_dict['molecule-route53resolver'].group_id
+          - _route53_resolver_info_dict['molecule-google'].security_group_ids.0 ==
+              _ec2_security_group_info_dict['molecule-route53resolver'].group_id
 
     - name: Ensure role is included with name
       ansible.builtin.include_role:
