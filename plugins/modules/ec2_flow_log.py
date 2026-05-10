@@ -377,17 +377,6 @@ def delete_flow_logs(client, module, flow_log_ids):
         )
 
 
-def tag_changes(module, flow_log):
-    if module.params["tags"] is None:
-        return {}, []
-    current_tags = boto3_tag_list_to_ansible_dict((flow_log or {}).get("Tags", []))
-    return compare_aws_tags(
-        current_tags,
-        module.params["tags"],
-        purge_tags=module.params["purge_tags"],
-    )
-
-
 def apply_tag_changes(client, module, flow_log_id, tags_to_set, tag_keys_to_unset):
     if tag_keys_to_unset:
         try:
@@ -479,7 +468,13 @@ def ensure_present(client, module):
 
     tags_changed = []
     for flow_log in current:
-        tags_to_set, tag_keys_to_unset = tag_changes(module, flow_log)
+        tags_to_set, tag_keys_to_unset = ({}, [])
+        if module.params["tags"] is not None:
+            tags_to_set, tag_keys_to_unset = compare_aws_tags(
+                boto3_tag_list_to_ansible_dict((flow_log or {}).get("Tags", [])),
+                module.params["tags"],
+                purge_tags=module.params["purge_tags"],
+            )
         if tags_to_set or tag_keys_to_unset:
             tags_changed.append((flow_log, tags_to_set, tag_keys_to_unset))
 

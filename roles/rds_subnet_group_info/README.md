@@ -8,7 +8,7 @@ None
 
 ## Role Variables
 
-    rds_subnet_group_info_name: null
+    rds_subnet_group_info_names: []
 
 ## Return Values
 

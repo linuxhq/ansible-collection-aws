@@ -13,7 +13,7 @@
       ansible.builtin.include_role:
         name: sqs_queue_info
       vars:
-        sqs_queue_info_name: null
+        sqs_queue_info_names: []
 
     - name: Ensure info without name is verified
       ansible.builtin.assert:
@@ -29,7 +29,8 @@
       ansible.builtin.include_role:
         name: sqs_queue_info
       vars:
-        sqs_queue_info_name: molecule-bounce
+        sqs_queue_info_names:
+          - molecule-bounce
 
     - name: Ensure info with name is verified
       ansible.builtin.assert:

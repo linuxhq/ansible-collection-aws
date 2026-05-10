@@ -8,7 +8,7 @@ None
 
 ## Role Variables
 
-    route53_resolver_info_name: null
+    route53_resolver_info_filters: {}
 
 ## Return Values
 

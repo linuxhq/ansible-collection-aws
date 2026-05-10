@@ -3,7 +3,7 @@
   tags:
     - route53_resolver_info
   linuxhq.aws.route53_resolver_info:
-    name: "{{ route53_resolver_info_name or omit }}"
+    filters: "{{ route53_resolver_info_filters }}"
     validate_certs: true
   register: __route53_resolver_info_query
 

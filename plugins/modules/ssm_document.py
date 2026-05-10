@@ -194,7 +194,13 @@ def ensure_present(client, module):
         )
         resource_changed = changed
 
-    tags_to_set, tag_keys_to_unset = tag_changes(module, current)
+    tags_to_set, tag_keys_to_unset = ({}, [])
+    if module.params["tags"] is not None:
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(
+            boto3_tag_list_to_ansible_dict((current or {}).get("Tags", [])),
+            module.params["tags"],
+            purge_tags=module.params["purge_tags"],
+        )
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
@@ -262,7 +268,11 @@ def ensure_present(client, module):
                 )
         current = get_document(client, module)
         if current is not None and module.params["tags"] is not None:
-            tags_to_set, tag_keys_to_unset = tag_changes(module, current)
+            tags_to_set, tag_keys_to_unset = compare_aws_tags(
+                boto3_tag_list_to_ansible_dict((current or {}).get("Tags", [])),
+                module.params["tags"],
+                purge_tags=module.params["purge_tags"],
+            )
             apply_tag_changes(
                 client,
                 module,
@@ -332,17 +342,6 @@ def get_resource_tags(client, module, resource_type, resource_id):
             e,
             msg=f"Unable to list tags for AWS Systems Manager {resource_type} {resource_id}",
         )
-
-
-def tag_changes(module, current):
-    if module.params["tags"] is None:
-        return {}, []
-    current_tags = boto3_tag_list_to_ansible_dict((current or {}).get("Tags", []))
-    return compare_aws_tags(
-        current_tags,
-        module.params["tags"],
-        purge_tags=module.params["purge_tags"],
-    )
 
 
 def apply_tag_changes(client, module, resource_id, tags_to_set, tag_keys_to_unset):

@@ -3,7 +3,7 @@
   tags:
     - notifications_contacts_info
   linuxhq.aws.notifications_contacts_info:
-    name: "{{ notifications_contacts_info_name or omit }}"
+    arns: "{{ notifications_contacts_info_arns or omit }}"
     validate_certs: true
   register: __notifications_contacts_info_query
 

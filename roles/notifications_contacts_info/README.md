@@ -8,7 +8,7 @@ None
 
 ## Role Variables
 
-    notifications_contacts_info_name: null
+    notifications_contacts_info_arns: []
 
 ## Return Values
 

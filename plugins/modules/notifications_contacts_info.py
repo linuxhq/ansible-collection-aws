@@ -12,11 +12,11 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  name:
+  arns:
     description:
-      - The notifications contact name to query.
-      - When omitted, all notifications contacts are returned.
-    type: str
+      - AWS Notifications contact ARNs used to limit the result set.
+    elements: str
+    type: list
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -29,7 +29,8 @@ EXAMPLES = r"""
 
 - name: Gather information about a single AWS Notifications contact
   linuxhq.aws.notifications_contacts_info:
-    name: molecule-dummy01
+    arns:
+      - arn:aws:notifications-contacts::123456789012:emailcontact/example
 """
 
 RETURN = r"""
@@ -42,6 +43,7 @@ email_contacts:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -68,25 +70,40 @@ def contact_with_tags(client, module, contact):
     return contact
 
 
+def get_email_contact(client, module, arn):
+    try:
+        return client.get_email_contact(arn=arn, aws_retry=True).get("emailContact")
+    except is_boto3_error_code("ResourceNotFoundException"):
+        return None
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to get AWS Notifications contact {arn}",
+        )
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
-            "name": {"type": "str"},
+            "arns": {"elements": "str", "type": "list"},
         },
         supports_check_mode=True,
     )
     client = module.client(
         "notificationscontacts", retry_decorator=AWSRetry.jittered_backoff()
     )
-    email_contacts = paginated_query_with_retries(client, "list_email_contacts").get(
-        "emailContacts", []
-    )
-    if module.params["name"] is not None:
+    if module.params["arns"]:
         email_contacts = [
             contact
-            for contact in email_contacts
-            if contact.get("name") == module.params["name"]
+            for contact in [
+                get_email_contact(client, module, arn) for arn in module.params["arns"]
+            ]
+            if contact is not None
         ]
+    else:
+        email_contacts = paginated_query_with_retries(
+            client, "list_email_contacts"
+        ).get("emailContacts", [])
 
     module.exit_json(
         changed=False,

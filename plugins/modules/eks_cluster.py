@@ -613,16 +613,6 @@ def validate_create_only_fields(module, current):
             )
 
 
-def tag_changes(module, cluster):
-    if module.params["tags"] is None:
-        return {}, []
-    return compare_aws_tags(
-        (cluster or {}).get("tags") or {},
-        module.params["tags"],
-        purge_tags=module.params["purge_tags"],
-    )
-
-
 def apply_tag_changes(client, module, cluster, tags_to_set, tag_keys_to_unset):
     arn = cluster.get("arn")
     if not arn:
@@ -740,7 +730,13 @@ def ensure_present(client, module):
     version_changed = module.params["version"] is not None and module.params[
         "version"
     ] != current.get("version")
-    tags_to_set, tag_keys_to_unset = tag_changes(module, current)
+    tags_to_set, tag_keys_to_unset = ({}, [])
+    if module.params["tags"] is not None:
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(
+            (current or {}).get("tags") or {},
+            module.params["tags"],
+            purge_tags=module.params["purge_tags"],
+        )
     tags_changed = bool(tags_to_set or tag_keys_to_unset)
     resource_changed = bool(config_changed or version_changed or tags_changed)
 

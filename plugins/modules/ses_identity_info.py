@@ -12,11 +12,18 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  name:
+  identity_type:
     description:
-      - The SES identity to query.
-      - When omitted, all identities are returned.
+      - Optional SES identity type used to limit the result set when O(names) is omitted.
+    choices:
+      - Domain
+      - EmailAddress
     type: str
+  names:
+    description:
+      - SES identity names used to limit the result set.
+    elements: str
+    type: list
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -29,7 +36,12 @@ EXAMPLES = r"""
 
 - name: Gather information about a single SES identity
   linuxhq.aws.ses_identity_info:
-    name: molecule.org
+    names:
+      - molecule.org
+
+- name: Gather information about SES domain identities
+  linuxhq.aws.ses_identity_info:
+    identity_type: Domain
 """
 
 RETURN = r"""
@@ -57,20 +69,31 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 def main():
     module = AnsibleAWSModule(
         argument_spec={
-            "name": {"type": "str"},
+            "identity_type": {"choices": ["Domain", "EmailAddress"], "type": "str"},
+            "names": {"elements": "str", "type": "list"},
         },
         supports_check_mode=True,
     )
     ses_client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
     sesv2_client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
-    requested_name = module.params["name"]
+    requested_names = module.params["names"]
+    identities = []
 
-    if requested_name is not None:
+    if requested_names:
+        identity_names = requested_names
+    else:
+        identity_names = paginated_query_with_retries(
+            ses_client,
+            "list_identities",
+            **scrub_none_parameters({"IdentityType": module.params["identity_type"]}),
+        ).get("Identities", [])
+
+    for identity_name in identity_names:
         try:
             details = sesv2_client.get_email_identity(
                 **scrub_none_parameters(
                     snake_dict_to_camel_dict(
-                        {"email_identity": requested_name},
+                        {"email_identity": identity_name},
                         capitalize_first=True,
                     )
                 ),
@@ -81,33 +104,11 @@ def main():
         except Exception as e:
             module.fail_json_aws(
                 e,
-                msg=f"Unable to get AWS SES identity {requested_name}",
+                msg=f"Unable to get AWS SES identity {identity_name}",
             )
-        identities = []
         if details is not None:
             identity = boto3_resource_to_ansible_dict(
                 details, transform_tags=False, force_tags=False
-            )
-            identity["name"] = requested_name
-            identities.append(identity)
-    else:
-        identities = []
-        for identity_name in paginated_query_with_retries(
-            ses_client,
-            "list_identities",
-        ).get("Identities", []):
-            identity = boto3_resource_to_ansible_dict(
-                sesv2_client.get_email_identity(
-                    **scrub_none_parameters(
-                        snake_dict_to_camel_dict(
-                            {"email_identity": identity_name},
-                            capitalize_first=True,
-                        )
-                    ),
-                    aws_retry=True,
-                ),
-                transform_tags=False,
-                force_tags=False,
             )
             identity["name"] = identity_name
             identities.append(identity)

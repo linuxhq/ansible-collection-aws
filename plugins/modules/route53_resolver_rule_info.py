@@ -12,11 +12,11 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  name:
+  filters:
     description:
-      - The Route53 Resolver rule name to query.
-      - When omitted, all resolver rules are returned.
-    type: str
+      - A dict of filters to apply when listing Route53 Resolver rules.
+      - Filter names and values are passed to the Route53 Resolver C(ListResolverRules) API.
+    type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -29,7 +29,8 @@ EXAMPLES = r"""
 
 - name: Gather information about a single Route53 Resolver rule
   linuxhq.aws.route53_resolver_rule_info:
-    name: molecule-cloudflare
+    filters:
+      Name: molecule-cloudflare
 """
 
 RETURN = r"""
@@ -74,22 +75,21 @@ def resource_tags(client, module, resource):
 def main():
     module = AnsibleAWSModule(
         argument_spec={
-            "name": {"type": "str"},
+            "filters": {"type": "dict"},
         },
         supports_check_mode=True,
     )
     client = module.client(
         "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
     )
-    resolver_rules = paginated_query_with_retries(client, "list_resolver_rules").get(
-        "ResolverRules", []
-    )
-    if module.params["name"] is not None:
-        resolver_rules = [
-            rule for rule in resolver_rules if rule.get("Name") == module.params["name"]
-        ]
+    request = {}
+    if module.params["filters"]:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+    resolver_rules = paginated_query_with_retries(
+        client, "list_resolver_rules", **request
+    ).get("ResolverRules", [])
 
-    if module.params["name"] is None:
+    if not module.params["filters"]:
         associations = paginated_query_with_retries(
             client, "list_resolver_rule_associations"
         ).get("ResolverRuleAssociations", [])

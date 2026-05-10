@@ -12,10 +12,18 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  name:
+  names:
     description:
-      - The AWS Simple Queue Service queue name to gather.
-      - When omitted, all queues in the region are returned.
+      - SQS queue names used to limit the result set.
+    elements: str
+    type: list
+  queue_name_prefix:
+    description:
+      - Optional queue name prefix used to filter the list of queues.
+    type: str
+  queue_owner_aws_account_id:
+    description:
+      - AWS account ID of the account that created the queues in O(names).
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -26,10 +34,15 @@ extends_documentation_fragment:
 EXAMPLES = r"""
 - name: Gather information about an SQS queue
   linuxhq.aws.sqs_queue_info:
-    name: molecule-bounce
+    names:
+      - molecule-bounce
 
 - name: Gather information about all SQS queues
   linuxhq.aws.sqs_queue_info:
+
+- name: Gather information about SQS queues using a name prefix
+  linuxhq.aws.sqs_queue_info:
+    queue_name_prefix: molecule-
 """
 
 RETURN = r"""
@@ -78,34 +91,55 @@ def get_queue(client, module, queue_url):
 
 def main():
     argument_spec = {
-        "name": {"type": "str"},
+        "names": {"elements": "str", "type": "list"},
+        "queue_name_prefix": {"type": "str"},
+        "queue_owner_aws_account_id": {"type": "str"},
     }
 
-    module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
+    module = AnsibleAWSModule(
+        argument_spec=argument_spec,
+        mutually_exclusive=[["names", "queue_name_prefix"]],
+        supports_check_mode=True,
+    )
     client = module.client("sqs", retry_decorator=AWSRetry.jittered_backoff())
 
-    if module.params["name"]:
-        try:
-            queue_url = client.get_queue_url(
-                **scrub_none_parameters(
-                    snake_dict_to_camel_dict(
-                        {"queue_name": module.params["name"]},
-                        capitalize_first=True,
-                    )
-                ),
-                aws_retry=True,
-            ).get("QueueUrl")
-        except is_boto3_error_code("AWS.SimpleQueueService.NonExistentQueue"):
-            queue_url = None
-        except Exception as e:
-            module.fail_json_aws(e, msg="Unable to get AWS SQS queue URL")
-        queues = [get_queue(client, module, queue_url)] if queue_url else []
+    if module.params["names"]:
+        queues = []
+        for name in module.params["names"]:
+            try:
+                queue_url = client.get_queue_url(
+                    **scrub_none_parameters(
+                        snake_dict_to_camel_dict(
+                            {
+                                "queue_name": name,
+                                "queue_owner_aws_account_id": module.params[
+                                    "queue_owner_aws_account_id"
+                                ],
+                            },
+                            capitalize_first=True,
+                        )
+                    ),
+                    aws_retry=True,
+                ).get("QueueUrl")
+            except is_boto3_error_code("AWS.SimpleQueueService.NonExistentQueue"):
+                queue_url = None
+            except Exception as e:
+                module.fail_json_aws(e, msg="Unable to get AWS SQS queue URL")
+            if queue_url:
+                queues.append(get_queue(client, module, queue_url))
     else:
+        request = scrub_none_parameters(
+            snake_dict_to_camel_dict(
+                {"queue_name_prefix": module.params["queue_name_prefix"]},
+                capitalize_first=True,
+            )
+        )
         queues = [
             get_queue(client, module, queue_url)
             for queue_url in paginated_query_with_retries(
                 client,
                 "list_queues",
+                **request,
             ).get("QueueUrls", [])
         ]
 

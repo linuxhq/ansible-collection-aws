@@ -13,10 +13,16 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  name:
+  filters:
     description:
-      - Optional managed prefix list name used to limit the result set.
-    type: str
+      - A dict of filters to apply when describing EC2 VPC managed prefix lists.
+      - Filter names and values are passed to the EC2 C(DescribeManagedPrefixLists) API.
+    type: dict
+  prefix_list_ids:
+    description:
+      - EC2 VPC managed prefix list IDs used to limit the result set.
+    elements: str
+    type: list
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -29,7 +35,13 @@ EXAMPLES = r"""
 
 - name: Gather information about a selected EC2 VPC prefix list
   linuxhq.aws.ec2_vpc_prefix_list_info:
-    name: molecule-localhost
+    prefix_list_ids:
+      - pl-0123456789abcdef0
+
+- name: Gather information about EC2 VPC prefix lists using filters
+  linuxhq.aws.ec2_vpc_prefix_list_info:
+    filters:
+      prefix-list-name: molecule-localhost
 """
 
 RETURN = r"""
@@ -56,19 +68,24 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 def main():
     module = AnsibleAWSModule(
-        argument_spec={"name": {"type": "str"}},
+        argument_spec={
+            "filters": {"type": "dict"},
+            "prefix_list_ids": {"elements": "str", "type": "list"},
+        },
         supports_check_mode=True,
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
-    name = module.params["name"]
-    filters = scrub_none_parameters({"prefix-list-name": name})
-    request = {"Filters": ansible_dict_to_boto3_filter_list(filters)} if filters else {}
+    request = scrub_none_parameters(
+        {"PrefixListIds": module.params["prefix_list_ids"] or None}
+    )
+    if module.params["filters"]:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
     prefix_lists = []
     for prefix_list in paginated_query_with_retries(
         client, "describe_managed_prefix_lists", **request
     ).get("PrefixLists", []):
         prefix_list_name = prefix_list.get("PrefixListName")
-        if prefix_list_name and (name is None or prefix_list_name == name):
+        if prefix_list_name:
             prefix_lists.append(prefix_list)
 
     module.exit_json(

@@ -8,7 +8,7 @@ None
 
 ## Role Variables
 
-    route53_delegation_set_info_name: null
+    route53_delegation_set_info_ids: []
 
 ## Return Values
 

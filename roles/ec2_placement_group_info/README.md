@@ -4,7 +4,9 @@ Gather information about ec2 placement groups
 
 ## Role Variables
 
-    ec2_placement_group_info_name: null
+    ec2_placement_group_info_filters: {}
+    ec2_placement_group_info_group_ids: []
+    ec2_placement_group_info_names: []
 
 ## Return Values
 

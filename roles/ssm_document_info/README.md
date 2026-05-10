@@ -4,7 +4,8 @@ Gather information about aws systems manager documents
 
 ## Role Variables
 
-    ssm_document_info_name: molecule-command-shell
+    ssm_document_info_filters: {}
+    ssm_document_info_names: []
 
 ## Return Values
 
@@ -21,4 +22,5 @@ None
       connection: local
       roles:
         - role: linuxhq.aws.ssm_document_info
-          ssm_document_info_name: molecule-command-shell
+          ssm_document_info_names:
+            - molecule-command-shell

@@ -17,7 +17,10 @@
   tags:
     - sqs_queue
   linuxhq.aws.sqs_queue_info:
-    name: "{{ sqs_queue_info_name or omit }}"
+    names: "{{ sqs_queue_info_names or omit }}"
+    queue_name_prefix: "{{ sqs_queue_info_queue_name_prefix or omit }}"
+    queue_owner_aws_account_id:
+      "{{ sqs_queue_info_queue_owner_aws_account_id or omit }}"
     region: "{{ __sqs_queue_info_region }}"
     validate_certs: true
   register: __sqs_queue_info_query

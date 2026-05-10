@@ -14,7 +14,7 @@
       ansible.builtin.include_role:
         name: route53_resolver_info
       vars:
-        route53_resolver_info_name: null
+        route53_resolver_info_filters: {}
 
     - name: Ensure info without name is verified
       ansible.builtin.assert:
@@ -64,7 +64,8 @@
       ansible.builtin.include_role:
         name: route53_resolver_info
       vars:
-        route53_resolver_info_name: "{{ route53_resolver_list.0.name }}"
+        route53_resolver_info_filters:
+          Name: "{{ route53_resolver_list.0.name }}"
 
     - name: Ensure info with name is verified
       ansible.builtin.assert:

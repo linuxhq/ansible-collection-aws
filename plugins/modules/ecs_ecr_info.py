@@ -12,13 +12,14 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
+  names:
+    description:
+      - ECR repository names used to limit the result set.
+    elements: str
+    type: list
   registry_id:
     description:
       - The AWS account ID associated with the registry to describe.
-    type: str
-  name:
-    description:
-      - Optional repository name to limit the result set.
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -32,7 +33,8 @@ EXAMPLES = r"""
 
 - name: Gather information about selected ECR repositories
   linuxhq.aws.ecs_ecr_info:
-    name: my-repository
+    names:
+      - my-repository
 """
 
 RETURN = r"""
@@ -46,6 +48,7 @@ repositories:
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -58,7 +61,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 def main():
     argument_spec = {
-        "name": {"type": "str"},
+        "names": {"elements": "str", "type": "list"},
         "registry_id": {"type": "str"},
     }
 
@@ -69,24 +72,27 @@ def main():
         snake_dict_to_camel_dict(
             {
                 "registry_id": module.params["registry_id"] or None,
-                "repository_names": (
-                    [module.params["name"]]
-                    if module.params["name"] is not None
-                    else None
-                ),
+                "repository_names": module.params["names"] or None,
             },
             capitalize_first=False,
         )
     )
 
+    try:
+        repositories = paginated_query_with_retries(
+            client,
+            "describe_repositories",
+            **params,
+        ).get("repositories", [])
+    except is_boto3_error_code("RepositoryNotFoundException"):
+        repositories = []
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to describe AWS ECR repositories")
+
     module.exit_json(
         changed=False,
         repositories=boto3_resource_list_to_ansible_dict(
-            paginated_query_with_retries(
-                client,
-                "describe_repositories",
-                **params,
-            ).get("repositories", []),
+            repositories,
             transform_tags=False,
             force_tags=False,
         ),

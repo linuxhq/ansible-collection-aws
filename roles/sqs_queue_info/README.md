@@ -4,7 +4,9 @@ Gather information about aws simple queue service queues
 
 ## Role Variables
 
-    sqs_queue_info_name: null
+    sqs_queue_info_names: []
+    sqs_queue_info_queue_name_prefix: null
+    sqs_queue_info_queue_owner_aws_account_id: null
 
 ## Return Values
 

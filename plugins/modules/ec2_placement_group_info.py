@@ -12,10 +12,21 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  name:
+  filters:
     description:
-      - Optional placement group name used to limit the result set.
-    type: str
+      - A dict of filters to apply when describing EC2 placement groups.
+      - Filter names and values are passed to the EC2 C(DescribePlacementGroups) API.
+    type: dict
+  group_ids:
+    description:
+      - EC2 placement group IDs used to limit the result set.
+    elements: str
+    type: list
+  names:
+    description:
+      - EC2 placement group names used to limit the result set.
+    elements: str
+    type: list
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -28,7 +39,13 @@ EXAMPLES = r"""
 
 - name: Gather information about selected EC2 placement groups
   linuxhq.aws.ec2_placement_group_info:
-    name: example-placement-group
+    names:
+      - example-placement-group
+
+- name: Gather information about EC2 placement groups using filters
+  linuxhq.aws.ec2_placement_group_info:
+    filters:
+      strategy: cluster
 """
 
 RETURN = r"""
@@ -51,20 +68,25 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 def main():
     argument_spec = {
-        "name": {"type": "str"},
+        "filters": {"type": "dict"},
+        "group_ids": {"elements": "str", "type": "list"},
+        "names": {"elements": "str", "type": "list"},
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
-    filters = scrub_none_parameters({"group-name": module.params["name"]})
+    request = scrub_none_parameters(
+        {
+            "GroupIds": module.params["group_ids"] or None,
+            "GroupNames": module.params["names"] or None,
+        }
+    )
+    if module.params["filters"]:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
 
     try:
         placement_groups = client.describe_placement_groups(
-            **(
-                {"Filters": ansible_dict_to_boto3_filter_list(filters)}
-                if filters
-                else {}
-            ),
+            **request,
             aws_retry=True,
         ).get("PlacementGroups", [])
     except Exception as e:
