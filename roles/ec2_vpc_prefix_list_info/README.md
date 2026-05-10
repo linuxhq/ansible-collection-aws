@@ -6,6 +6,7 @@ Gather information about virtual private cloud prefix lists
 
     ec2_vpc_prefix_list_info_filters: {}
     ec2_vpc_prefix_list_info_prefix_list_ids: []
+    ec2_vpc_prefix_list_info_target_version: null
 
 ## Return Values
 

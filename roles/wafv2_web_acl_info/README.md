@@ -4,6 +4,8 @@ Gather information about aws wafv2 web acls
 
 ## Role Variables
 
+    wafv2_web_acl_info_ids: []
+    wafv2_web_acl_info_names: []
     wafv2_web_acl_info_scope: regional
 
 ## Return Values

@@ -3,6 +3,10 @@
   tags:
     - iam_policy_info
   linuxhq.aws.iam_policy_info:
+    group_names: "{{ iam_policy_info_group_names or omit }}"
+    path_prefix: "{{ iam_policy_info_path_prefix or omit }}"
+    policy_names: "{{ iam_policy_info_policy_names or omit }}"
+    user_names: "{{ iam_policy_info_user_names or omit }}"
     validate_certs: true
   register: __iam_policy_info_query
 

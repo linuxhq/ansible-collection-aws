@@ -4,6 +4,7 @@
     - eks_cluster_info
   linuxhq.aws.eks_cluster_info:
     filters: "{{ eks_cluster_info_filters }}"
+    include: "{{ eks_cluster_info_include or omit }}"
     names: "{{ eks_cluster_info_names or omit }}"
     validate_certs: true
   register: __eks_cluster_info_query

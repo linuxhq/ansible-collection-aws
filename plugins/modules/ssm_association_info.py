@@ -11,6 +11,13 @@ description:
   - Gathers information about AWS Systems Manager associations.
 author:
   - Taylor Kimball (@tkimball83)
+options:
+  filters:
+    description:
+      - A dict of filters to apply when listing Systems Manager associations.
+      - Filter keys and values are passed to the Systems Manager
+        C(ListAssociations) API as C(AssociationFilterList).
+    type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -20,6 +27,11 @@ extends_documentation_fragment:
 EXAMPLES = r"""
 - name: Gather information about AWS Systems Manager associations
   linuxhq.aws.ssm_association_info:
+
+- name: Gather information about Systems Manager associations using filters
+  linuxhq.aws.ssm_association_info:
+    filters:
+      Name: AWS-RunShellScript
 """
 
 RETURN = r"""
@@ -43,6 +55,14 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 SSM_ASSOCIATION_RESOURCE_TYPE = "Association"
 
 
+def association_filter_list(filters):
+    result = []
+    for key, value in (filters or {}).items():
+        values = value if isinstance(value, list) else [value]
+        result.extend({"key": key, "value": str(item)} for item in values)
+    return result
+
+
 def association_with_tags(client, module, association):
     association_id = association.get("AssociationId")
     if not association_id:
@@ -63,13 +83,21 @@ def association_with_tags(client, module, association):
 
 
 def main():
-    module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
+    module = AnsibleAWSModule(
+        argument_spec={"filters": {"type": "dict"}},
+        supports_check_mode=True,
+    )
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
+    request = {}
+    if module.params["filters"]:
+        request["AssociationFilterList"] = association_filter_list(
+            module.params["filters"]
+        )
 
     associations = [
         association
         for association in paginated_query_with_retries(
-            client, "list_associations"
+            client, "list_associations", **request
         ).get("Associations", [])
         if association.get("Name") is not None
     ]

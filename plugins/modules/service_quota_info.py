@@ -12,6 +12,10 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
+  context_id:
+    description:
+      - The context ID for a resource-level quota.
+    type: str
   quota_code:
     description:
       - The quota code to gather.
@@ -39,6 +43,12 @@ EXAMPLES = r"""
     service_code: iam
     quota_code: L-0DA4ABF3
     region: us-east-1
+
+- name: Gather information about a resource-level service quota
+  linuxhq.aws.service_quota_info:
+    context_id: arn:aws:example:us-east-1:123456789012:resource/example
+    service_code: ec2
+    quota_code: L-0263D0A3
 """
 
 RETURN = r"""
@@ -68,6 +78,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 def main():
     argument_spec = {
+        "context_id": {"type": "str"},
         "quota_code": {"required": True, "type": "str"},
         "service_code": {"required": True, "type": "str"},
     }
@@ -80,6 +91,7 @@ def main():
         **scrub_none_parameters(
             snake_dict_to_camel_dict(
                 {
+                    "context_id": module.params["context_id"],
                     "quota_code": module.params["quota_code"],
                     "service_code": module.params["service_code"],
                 },

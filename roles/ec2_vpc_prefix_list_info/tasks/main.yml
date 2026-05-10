@@ -5,6 +5,7 @@
   linuxhq.aws.ec2_vpc_prefix_list_info:
     filters: "{{ ec2_vpc_prefix_list_info_filters }}"
     prefix_list_ids: "{{ ec2_vpc_prefix_list_info_prefix_list_ids or omit }}"
+    target_version: "{{ ec2_vpc_prefix_list_info_target_version or omit }}"
     validate_certs: true
   register: __ec2_vpc_prefix_list_info_query
 

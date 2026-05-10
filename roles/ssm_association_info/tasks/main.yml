@@ -3,6 +3,7 @@
   tags:
     - ssm_association_info
   linuxhq.aws.ssm_association_info:
+    filters: "{{ ssm_association_info_filters }}"
     validate_certs: true
   register: __ssm_association_info_query
 

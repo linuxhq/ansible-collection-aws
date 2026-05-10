@@ -4,7 +4,11 @@ Gather information about aws glue connections
 
 ## Role Variables
 
-None
+    glue_connection_info_apply_override_for_compute_environment: false
+    glue_connection_info_catalog_id: null
+    glue_connection_info_filters: {}
+    glue_connection_info_hide_password: true
+    glue_connection_info_names: []
 
 ## Return Values
 

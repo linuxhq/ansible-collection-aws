@@ -17,6 +17,7 @@
   tags:
     - service_quota_info
   linuxhq.aws.service_quota_info:
+    context_id: "{{ _servicequota.1.context_id | d(omit) }}"
     quota_code: "{{ _servicequota.1.quota_code }}"
     region: "{{ _servicequota.1.region | d(__service_quota_info_region) }}"
     service_code: "{{ _servicequota.0.service_code }}"

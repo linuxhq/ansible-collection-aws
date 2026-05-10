@@ -23,6 +23,11 @@ options:
       - EC2 VPC managed prefix list IDs used to limit the result set.
     elements: str
     type: list
+  target_version:
+    description:
+      - The version of the managed prefix list for which to return entries.
+      - When omitted, the current version entries are returned.
+    type: int
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -42,6 +47,12 @@ EXAMPLES = r"""
   linuxhq.aws.ec2_vpc_prefix_list_info:
     filters:
       prefix-list-name: molecule-localhost
+
+- name: Gather information about a selected EC2 VPC prefix list version
+  linuxhq.aws.ec2_vpc_prefix_list_info:
+    prefix_list_ids:
+      - pl-0123456789abcdef0
+    target_version: 1
 """
 
 RETURN = r"""
@@ -71,6 +82,7 @@ def main():
         argument_spec={
             "filters": {"type": "dict"},
             "prefix_list_ids": {"elements": "str", "type": "list"},
+            "target_version": {"type": "int"},
         },
         supports_check_mode=True,
     )
@@ -99,7 +111,12 @@ def main():
                     paginated_query_with_retries(
                         client,
                         "get_managed_prefix_list_entries",
-                        PrefixListId=prefix_list["PrefixListId"],
+                        **scrub_none_parameters(
+                            {
+                                "PrefixListId": prefix_list["PrefixListId"],
+                                "TargetVersion": module.params["target_version"],
+                            }
+                        ),
                     ).get("Entries", []),
                     transform_tags=False,
                     force_tags=False,

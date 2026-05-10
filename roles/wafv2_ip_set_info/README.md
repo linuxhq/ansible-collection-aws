@@ -4,6 +4,8 @@ Gather information about aws wafv2 ip sets
 
 ## Role Variables
 
+    wafv2_ip_set_info_ids: []
+    wafv2_ip_set_info_names: []
     wafv2_ip_set_info_scope: regional
 
 ## Return Values

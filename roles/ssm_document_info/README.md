@@ -4,8 +4,11 @@ Gather information about aws systems manager documents
 
 ## Role Variables
 
+    ssm_document_info_document_format: JSON
+    ssm_document_info_document_version: null
     ssm_document_info_filters: {}
     ssm_document_info_names: []
+    ssm_document_info_version_name: null
 
 ## Return Values
 
