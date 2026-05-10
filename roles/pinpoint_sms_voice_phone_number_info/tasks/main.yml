@@ -24,6 +24,6 @@
   ansible.builtin.set_fact:
     _pinpoint_sms_voice_phone_number_info_dict:
       "{{ dict(_pinpoint_sms_voice_phone_number_info_list |
-               json_query('[].phone_number') |
+               json_query('[].tags.Name') |
                zip(_pinpoint_sms_voice_phone_number_info_list)) }}"
 ...

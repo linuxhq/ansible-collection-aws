@@ -28,8 +28,6 @@ provisioner:
 
         pinpoint_sms_voice_phone_number_list:
           - name: molecule-pinpoint-simulator
-            client_token:
-              "{{ 'molecule-pinpoint-simulator-' ~ lookup('pipe', 'date +%s') }}"
             iso_country_code: US
             message_type: TRANSACTIONAL
             number_capabilities:

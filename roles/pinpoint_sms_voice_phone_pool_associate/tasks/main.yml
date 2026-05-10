@@ -1,0 +1,16 @@
+---
+- name: Ensure aws end user messaging sms phone pool associations are batched
+  tags:
+    - pinpoint_sms_voice_phone_pool_associate
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - pinpoint_sms_voice_phone_pool_associate
+    file: include.yml
+  loop:
+    "{{ pinpoint_sms_voice_phone_pool_associate_list |
+        batch(pinpoint_sms_voice_phone_pool_associate_batch) }}"
+  loop_control:
+    label: "{{ __pinpoint_sms_voice_phone_pool_associate_list | length }}"
+    loop_var: __pinpoint_sms_voice_phone_pool_associate_list
+...

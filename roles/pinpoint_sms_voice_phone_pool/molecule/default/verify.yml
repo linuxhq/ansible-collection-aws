@@ -1,0 +1,38 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - pinpoint_sms_voice_phone_pool_info
+    - pinpoint_sms_voice_phone_number_info
+
+  post_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        pinpoint_sms_voice_phone_number_list:
+          "{{ pinpoint_sms_voice_phone_number_list |
+              map('combine',
+                  {'phone_number_id':
+                   _pinpoint_sms_voice_phone_number_info_list.0.phone_number_id,
+                   'state':
+                   'absent'}) }}"
+        pinpoint_sms_voice_phone_pool_list:
+          "{{ pinpoint_sms_voice_phone_pool_list |
+              map('combine',
+                  {'pool_id':
+                   _pinpoint_sms_voice_phone_pool_info_list.0.pool_id,
+                   'state':
+                   'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - pinpoint_sms_voice_phone_pool
+        - pinpoint_sms_voice_phone_number
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

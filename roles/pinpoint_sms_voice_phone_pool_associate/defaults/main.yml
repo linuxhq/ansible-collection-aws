@@ -1,0 +1,8 @@
+---
+pinpoint_sms_voice_phone_pool_associate_async: 300
+pinpoint_sms_voice_phone_pool_associate_batch: 10
+pinpoint_sms_voice_phone_pool_associate_delay: 3
+pinpoint_sms_voice_phone_pool_associate_list: []
+pinpoint_sms_voice_phone_pool_associate_poll: 0
+pinpoint_sms_voice_phone_pool_associate_retries: 100
+...

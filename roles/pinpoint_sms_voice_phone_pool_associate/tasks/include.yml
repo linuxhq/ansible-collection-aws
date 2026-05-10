@@ -1,0 +1,49 @@
+---
+- name: Ensure aws end user messaging sms phone pool associations are managed
+  tags:
+    - pinpoint_sms_voice_phone_pool_associate
+  linuxhq.aws.pinpoint_sms_voice_phone_pool_associate:
+    client_token: "{{ _association.0.client_token | d(omit) }}"
+    iso_country_code: "{{ _association.0.iso_country_code }}"
+    origination_identity: "{{ _association.1.origination_identity }}"
+    pool_id: "{{ _association.0.pool_id }}"
+    state: "{{ _association.1.state | d('present') }}"
+    validate_certs: true
+  register: __pinpoint_sms_voice_phone_pool_associate_result
+  loop:
+    "{{ q('ansible.builtin.subelements',
+          __pinpoint_sms_voice_phone_pool_associate_list,
+          'associations',
+          {'skip_missing': true}) }}"
+  loop_control:
+    label: "{{ _association.1.origination_identity | d(none) }}"
+    loop_var: _association
+  async:
+    "{{ ansible_check_mode |
+        ternary(0, pinpoint_sms_voice_phone_pool_associate_async) }}"
+  poll: "{{ pinpoint_sms_voice_phone_pool_associate_poll }}"
+  when:
+    - _association.0.pool_id is defined
+    - _association.0.iso_country_code is defined
+    - _association.1.origination_identity is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __pinpoint_sms_voice_phone_pool_associate_result.changed | bool
+
+- name: Ensure managed aws end user messaging sms phone pool association jobs are complete
+  tags:
+    - pinpoint_sms_voice_phone_pool_associate
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __pinpoint_sms_voice_phone_pool_associate_status
+  loop: "{{ __pinpoint_sms_voice_phone_pool_associate_result.results }}"
+  loop_control:
+    label: "{{ _jid._association.1.origination_identity | d(none) }}"
+    loop_var: _jid
+  delay: "{{ pinpoint_sms_voice_phone_pool_associate_delay }}"
+  retries: "{{ pinpoint_sms_voice_phone_pool_associate_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __pinpoint_sms_voice_phone_pool_associate_status.finished | bool
+...

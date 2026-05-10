@@ -1,0 +1,54 @@
+---
+- name: Ensure aws end user messaging sms phone pools are managed
+  tags:
+    - pinpoint_sms_voice_phone_pool
+  linuxhq.aws.pinpoint_sms_voice_phone_pool:
+    client_token: "{{ _pool.client_token | d(omit) }}"
+    deletion_protection_enabled:
+      "{{ _pool.deletion_protection_enabled | d(omit) }}"
+    iso_country_code: "{{ _pool.iso_country_code }}"
+    message_type: "{{ _pool.message_type }}"
+    name: "{{ _pool.name }}"
+    origination_identity: "{{ _pool.origination_identity }}"
+    pool_id: "{{ _pool.pool_id | d(omit) }}"
+    purge_tags: "{{ _pool.purge_tags | d(omit) }}"
+    state: "{{ _pool.state | d('present') }}"
+    tags: "{{ _pool.tags | d(omit) }}"
+    validate_certs: true
+    wait: "{{ _pool.wait | d(omit) }}"
+    wait_delay: "{{ _pool.wait_delay | d(omit) }}"
+    wait_timeout: "{{ _pool.wait_timeout | d(omit) }}"
+  register: __pinpoint_sms_voice_phone_pool_result
+  loop: "{{ __pinpoint_sms_voice_phone_pool_list }}"
+  loop_control:
+    label: "{{ _pool.name | d(none) }}"
+    loop_var: _pool
+  async:
+    "{{ ansible_check_mode |
+        ternary(0, pinpoint_sms_voice_phone_pool_async) }}"
+  poll: "{{ pinpoint_sms_voice_phone_pool_poll }}"
+  when:
+    - _pool.name is defined
+    - _pool.message_type is defined
+    - _pool.origination_identity is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __pinpoint_sms_voice_phone_pool_result.changed | bool
+
+- name: Ensure managed aws end user messaging sms phone pool jobs are complete
+  tags:
+    - pinpoint_sms_voice_phone_pool
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __pinpoint_sms_voice_phone_pool_status
+  loop: "{{ __pinpoint_sms_voice_phone_pool_result.results }}"
+  loop_control:
+    label: "{{ _jid._pool.name | d(none) }}"
+    loop_var: _jid
+  delay: "{{ pinpoint_sms_voice_phone_pool_delay }}"
+  retries: "{{ pinpoint_sms_voice_phone_pool_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __pinpoint_sms_voice_phone_pool_status.finished | bool
+...
