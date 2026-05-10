@@ -3,7 +3,7 @@
   tags:
     - pinpoint_sms_voice_phone_number
   linuxhq.aws.pinpoint_sms_voice_phone_number:
-    client_token: "{{ _phone_number.client_token | d(_phone_number.name) }}"
+    client_token: "{{ _phone_number.client_token | d(omit) }}"
     deletion_protection_enabled:
       "{{ _phone_number.deletion_protection_enabled | d(omit) }}"
     international_sending_enabled:
@@ -22,6 +22,9 @@
           d({}) |
           combine({'Name': _phone_number.name}) }}"
     validate_certs: true
+    wait: "{{ _phone_number.wait | d(omit) }}"
+    wait_delay: "{{ _phone_number.wait_delay | d(omit) }}"
+    wait_timeout: "{{ _phone_number.wait_timeout | d(omit) }}"
   register: __pinpoint_sms_voice_phone_number_result
   loop: "{{ __pinpoint_sms_voice_phone_number_list }}"
   loop_control:

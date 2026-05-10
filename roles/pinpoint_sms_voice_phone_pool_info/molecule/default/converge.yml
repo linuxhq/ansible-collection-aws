@@ -1,0 +1,23 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - role: pinpoint_sms_voice_phone_pool_info
+      tags:
+        - molecule-idempotence-notest
+
+    - role: pinpoint_sms_voice_phone_number
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: pinpoint_sms_voice_phone_pool
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - pinpoint_sms_voice_phone_pool_info
+...

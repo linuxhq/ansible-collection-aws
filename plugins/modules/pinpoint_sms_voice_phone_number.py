@@ -17,8 +17,7 @@ options:
   client_token:
     description:
       - Unique idempotency token for the phone number request.
-      - When omitted, a deterministic token is generated from the request
-        parameters.
+      - When omitted, AWS generates an idempotency token for the request.
     type: str
   deletion_protection_enabled:
     default: false
@@ -95,6 +94,21 @@ options:
     description:
       - Tags to apply to the requested phone number.
     type: dict
+  wait:
+    default: true
+    description:
+      - Whether to wait for the phone number status to become C(ACTIVE).
+    type: bool
+  wait_delay:
+    default: 5
+    description:
+      - The delay between polling attempts when O(wait=true).
+    type: int
+  wait_timeout:
+    default: 300
+    description:
+      - The maximum number of seconds to wait when O(wait=true).
+    type: int
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -150,8 +164,7 @@ state:
   type: str
 """
 
-import hashlib
-import json
+import time
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
@@ -199,19 +212,8 @@ def request_parameters(module):
     )
 
 
-def deterministic_client_token(parameters):
-    token_parameters = dict(parameters)
-    token_parameters.pop("client_token", None)
-    return hashlib.sha256(
-        json.dumps(token_parameters, separators=(",", ":"), sort_keys=True).encode()
-    ).hexdigest()
-
-
 def request_phone_number_parameters(client, module):
     parameters = request_parameters(module)
-    if not parameters.get("client_token"):
-        parameters["client_token"] = deterministic_client_token(parameters)
-
     request = snake_dict_to_camel_dict(parameters, capitalize_first=True)
     supported_parameters = set(
         client.meta.service_model.operation_model(
@@ -372,6 +374,47 @@ def get_phone_number(client, module, phone_number_id):
     return phone_numbers[0] if phone_numbers else None
 
 
+def wait_for_phone_number_active(client, module, phone_number_id):
+    deadline = time.monotonic() + module.params["wait_timeout"]
+    phone_number = {}
+
+    while time.monotonic() < deadline:
+        phone_number = get_phone_number(client, module, phone_number_id) or {}
+        status = phone_number.get("Status")
+        if status == "ACTIVE":
+            if module.params["tags"] is not None and phone_number.get("PhoneNumberArn"):
+                phone_number = dict(phone_number)
+                phone_number["Tags"] = ansible_dict_to_boto3_tag_list(
+                    phone_number_tags(client, module, phone_number)
+                )
+            return phone_number
+        if status == "DELETED":
+            module.fail_json(
+                msg=(
+                    "AWS End User Messaging SMS phone number "
+                    f"{phone_number_id} was deleted before becoming active"
+                ),
+                phone_number=boto3_resource_to_ansible_dict(
+                    phone_number, transform_tags=False, force_tags=False
+                ),
+                phone_number_id=phone_number_id,
+                status=status,
+            )
+        time.sleep(max(1, module.params["wait_delay"]))
+
+    module.fail_json(
+        msg=(
+            "Timed out waiting for AWS End User Messaging SMS phone number "
+            f"{phone_number_id} to become active"
+        ),
+        phone_number=boto3_resource_to_ansible_dict(
+            phone_number, transform_tags=False, force_tags=False
+        ),
+        phone_number_id=phone_number_id,
+        status=phone_number.get("Status"),
+    )
+
+
 def release_phone_number(client, module, phone_number_id):
     try:
         return client.release_phone_number(
@@ -407,6 +450,10 @@ def ensure_present(client, module):
     validate_request(module)
     current = existing_phone_number(client, module)
     if current is not None:
+        if module.params["wait"] and current.get("Status") != "ACTIVE":
+            current = wait_for_phone_number_active(
+                client, module, current["PhoneNumberId"]
+            )
         exit_result(module, False, current)
 
     request = request_phone_number_parameters(client, module)
@@ -419,6 +466,15 @@ def ensure_present(client, module):
     except Exception as e:
         module.fail_json_aws(
             e, msg="Unable to request Pinpoint SMS Voice V2 phone number"
+        )
+
+    if (
+        module.params["wait"]
+        and response.get("Status") != "ACTIVE"
+        and response.get("PhoneNumberId")
+    ):
+        response = wait_for_phone_number_active(
+            client, module, response["PhoneNumberId"]
         )
 
     exit_result(module, True, response)
@@ -453,6 +509,9 @@ def main():
             "type": "str",
         },
         "tags": {"type": "dict"},
+        "wait": {"default": True, "type": "bool"},
+        "wait_delay": {"default": 5, "type": "int"},
+        "wait_timeout": {"default": 300, "type": "int"},
     }
 
     module = AnsibleAWSModule(

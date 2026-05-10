@@ -4,26 +4,26 @@
 
 DOCUMENTATION = r"""
 ---
-module: pinpoint_sms_voice_phone_number_info
+module: pinpoint_sms_voice_phone_pool_info
 version_added: "1.9.6"
-short_description: Gather information about AWS End User Messaging SMS phone numbers
+short_description: Gather information about AWS End User Messaging SMS phone pools
 description:
-  - Gathers information about AWS End User Messaging SMS phone numbers.
-  - This module maps to the Pinpoint SMS Voice V2 C(DescribePhoneNumbers) API,
-    the API behind C(aws pinpoint-sms-voice-v2 describe-phone-numbers).
+  - Gathers information about AWS End User Messaging SMS phone pools.
+  - This module maps to the Pinpoint SMS Voice V2 C(DescribePools) API,
+    the API behind C(aws pinpoint-sms-voice-v2 describe-pools).
 author:
   - Taylor Kimball (@tkimball83)
 options:
   filters:
     description:
-      - A dict of filters to apply when describing phone numbers.
+      - A dict of filters to apply when describing phone pools.
       - Filter names and values are passed to the Pinpoint SMS Voice V2
-        C(DescribePhoneNumbers) API.
+        C(DescribePools) API.
     type: dict
   max_results:
     description:
       - The maximum number of results returned by each API call.
-      - The module follows pagination and returns all matching phone numbers.
+      - The module follows pagination and returns all matching phone pools.
     type: int
   owner:
     choices:
@@ -31,13 +31,13 @@ options:
       - SHARED
     default: SELF
     description:
-      - The phone number owner to query.
-      - This is not sent when O(phone_number_ids) is set because
-        C(DescribePhoneNumbers) does not allow both parameters together.
+      - The phone pool owner to query.
+      - This is not sent when O(pool_ids) is set because C(DescribePools) does
+        not allow both parameters together.
     type: str
-  phone_number_ids:
+  pool_ids:
     description:
-      - Phone number IDs used to limit the result set.
+      - Phone pool IDs used to limit the result set.
     elements: str
     type: list
 extends_documentation_fragment:
@@ -47,33 +47,30 @@ extends_documentation_fragment:
 """
 
 EXAMPLES = r"""
-- name: Gather information about End User Messaging SMS phone numbers
-  linuxhq.aws.pinpoint_sms_voice_phone_number_info:
+- name: Gather information about End User Messaging SMS phone pools
+  linuxhq.aws.pinpoint_sms_voice_phone_pool_info:
 
-- name: Gather information about selected phone numbers
-  linuxhq.aws.pinpoint_sms_voice_phone_number_info:
-    phone_number_ids:
-      - phone-0123456789abcdef0123456789abcdef
+- name: Gather information about selected phone pools
+  linuxhq.aws.pinpoint_sms_voice_phone_pool_info:
+    pool_ids:
+      - pool-0123456789abcdef0123456789abcdef
 
-- name: Gather information about simulator SMS phone numbers
-  linuxhq.aws.pinpoint_sms_voice_phone_number_info:
+- name: Gather information about transactional SMS phone pools
+  linuxhq.aws.pinpoint_sms_voice_phone_pool_info:
     filters:
-      iso-country-code: US
       message-type: TRANSACTIONAL
-      number-capability: SMS
-      number-type: SIMULATOR
 """
 
 RETURN = r"""
-phone_number_ids:
+pool_ids:
   description:
-    - A list of matching phone number IDs.
+    - A list of matching phone pool IDs.
   returned: always
   type: list
   elements: str
-phone_numbers:
+pools:
   description:
-    - A list of End User Messaging SMS phone numbers.
+    - A list of End User Messaging SMS phone pools.
   returned: always
   type: list
   elements: dict
@@ -94,13 +91,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 
 def build_request(module):
-    phone_number_ids = module.params["phone_number_ids"] or None
+    pool_ids = module.params["pool_ids"] or None
     request = scrub_none_parameters(
         snake_dict_to_camel_dict(
             {
                 "max_results": module.params["max_results"],
-                "owner": module.params["owner"] if not phone_number_ids else None,
-                "phone_number_ids": phone_number_ids,
+                "owner": module.params["owner"] if not pool_ids else None,
+                "pool_ids": pool_ids,
             },
             capitalize_first=True,
         )
@@ -110,8 +107,8 @@ def build_request(module):
     return request
 
 
-def phone_number_tags(client, module, phone_number):
-    arn = phone_number.get("PhoneNumberArn")
+def pool_tags(client, module, pool):
+    arn = pool.get("PoolArn")
     if not arn:
         return []
     try:
@@ -123,15 +120,38 @@ def phone_number_tags(client, module, phone_number):
         return []
     except Exception as e:
         module.fail_json_aws(
-            e, msg=f"Unable to list tags for Pinpoint SMS Voice V2 phone number {arn}"
+            e, msg=f"Unable to list tags for Pinpoint SMS Voice V2 pool {arn}"
         )
 
 
-def normalize_phone_number(client, module, phone_number):
+def pool_origination_identities(client, module, pool):
+    pool_id = pool.get("PoolId")
+    if not pool_id:
+        return []
+    try:
+        return paginated_query_with_retries(
+            client,
+            "list_pool_origination_identities",
+            PoolId=pool_id,
+        ).get("OriginationIdentities", [])
+    except is_boto3_error_code("ResourceNotFoundException"):
+        return []
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=(
+                "Unable to list origination identities for Pinpoint SMS Voice "
+                f"V2 pool {pool_id}"
+            ),
+        )
+
+
+def normalize_pool(client, module, pool):
     return boto3_resource_to_ansible_dict(
         dict(
-            phone_number,
-            Tags=phone_number_tags(client, module, phone_number),
+            pool,
+            OriginationIdentities=pool_origination_identities(client, module, pool),
+            Tags=pool_tags(client, module, pool),
         ),
         transform_tags=True,
         force_tags=False,
@@ -143,7 +163,7 @@ def main():
         "filters": {"type": "dict"},
         "max_results": {"type": "int"},
         "owner": {"choices": ["SELF", "SHARED"], "default": "SELF", "type": "str"},
-        "phone_number_ids": {"elements": "str", "type": "list"},
+        "pool_ids": {"elements": "str", "type": "list"},
     }
 
     module = AnsibleAWSModule(
@@ -155,28 +175,19 @@ def main():
     )
 
     try:
-        phone_numbers = paginated_query_with_retries(
+        pools = paginated_query_with_retries(
             client,
-            "describe_phone_numbers",
+            "describe_pools",
             **build_request(module),
-        ).get("PhoneNumbers", [])
+        ).get("Pools", [])
     except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to describe Pinpoint SMS Voice V2 phone numbers"
-        )
+        module.fail_json_aws(e, msg="Unable to describe Pinpoint SMS Voice V2 pools")
 
-    phone_numbers = [
-        normalize_phone_number(client, module, phone_number)
-        for phone_number in phone_numbers
-    ]
+    pools = [normalize_pool(client, module, pool) for pool in pools]
     module.exit_json(
         changed=False,
-        phone_number_ids=[
-            phone_number["phone_number_id"]
-            for phone_number in phone_numbers
-            if phone_number.get("phone_number_id")
-        ],
-        phone_numbers=phone_numbers,
+        pool_ids=[pool["pool_id"] for pool in pools if pool.get("pool_id")],
+        pools=pools,
     )
 
 

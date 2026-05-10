@@ -34,6 +34,13 @@ provisioner:
               - SMS
             number_type: SIMULATOR
 
+        pinpoint_sms_voice_phone_pool_list:
+          - name: molecule-pinpoint-pool
+            origination_identity:
+              "{{ _pinpoint_sms_voice_phone_number_info_list.0.phone_number_id }}"
+            iso_country_code: US
+            message_type: TRANSACTIONAL
+
 scenario:
   test_sequence:
     - dependency
