@@ -4,7 +4,7 @@
     - notifications_contacts
   linuxhq.aws.notifications_contacts:
     email_address: "{{ _emailcontact.email_address }}"
-    name: "{{ _emailcontact.name | d(omit) }}"
+    name: "{{ _emailcontact.name }}"
     state: "{{ _emailcontact.state | d('present') }}"
     validate_certs: true
   register: __notifications_contacts_result

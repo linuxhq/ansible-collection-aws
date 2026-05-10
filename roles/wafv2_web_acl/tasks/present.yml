@@ -43,4 +43,5 @@
     validate_certs: true
   when:
     - __wafv2_web_acl_log_group.arn is defined
+    - __wafv2_web_acl_result.arn is defined
 ...
