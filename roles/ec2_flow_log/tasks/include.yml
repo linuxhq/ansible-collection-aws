@@ -13,7 +13,7 @@
     max_aggregation_interval: "{{ _flow_log.max_aggregation_interval | d(omit) }}"
     purge_tags: "{{ _flow_log.purge_tags | d(true) }}"
     resource_ids: "{{ _flow_log.resource_ids }}"
-    resource_type: "{{ _flow_log.resource_type | d(omit) }}"
+    resource_type: "{{ _flow_log.resource_type }}"
     state: "{{ _flow_log.state | d('present') }}"
     tags:
       "{{ _flow_log.tags |

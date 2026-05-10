@@ -4,7 +4,7 @@
     - ec2_vpc_prefix_list
   linuxhq.aws.ec2_vpc_prefix_list:
     address_family: "{{ _pl.address_family | d('IPv4') }}"
-    entries: "{{ _pl.entries | d(omit) }}"
+    entries: "{{ _pl.entries }}"
     name: "{{ _pl.name }}"
     state: "{{ _pl.state | d('present') }}"
     validate_certs: true
@@ -17,6 +17,7 @@
   poll: "{{ ec2_vpc_prefix_list_poll }}"
   when:
     - _pl.name is defined
+    - _pl.entries is defined
   changed_when:
     - ansible_check_mode | bool
     - __ec2_vpc_prefix_list_result.changed | bool

@@ -3,8 +3,8 @@
   tags:
     - ssm_document
   linuxhq.aws.ssm_document:
-    content: "{{ _document.content | d(omit) }}"
-    document_type: "{{ _document.document_type | d(omit) }}"
+    content: "{{ _document.content }}"
+    document_type: "{{ _document.document_type }}"
     document_version: "{{ _document.document_version | d(omit) }}"
     name: "{{ _document.name }}"
     state: "{{ _document.state | d('present') }}"
@@ -18,6 +18,8 @@
   poll: "{{ ssm_document_poll }}"
   when:
     - _document.name is defined
+    - _document.content is defined
+    - _document.document_type is defined
   changed_when:
     - ansible_check_mode | bool
     - __ssm_document_result.changed | bool

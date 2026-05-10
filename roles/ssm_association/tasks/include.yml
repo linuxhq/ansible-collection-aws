@@ -4,9 +4,9 @@
     - ssm_association
   linuxhq.aws.ssm_association:
     name: "{{ _association.name }}"
-    schedule_expression: "{{ _association.schedule_expression | d(omit) }}"
+    schedule_expression: "{{ _association.schedule_expression }}"
     state: "{{ _association.state | d('present') }}"
-    targets: "{{ _association.targets | d(omit) }}"
+    targets: "{{ _association.targets }}"
     validate_certs: true
   register: __ssm_association_result
   loop: "{{ __ssm_association_list }}"
@@ -17,6 +17,8 @@
   poll: "{{ ssm_association_poll }}"
   when:
     - _association.name is defined
+    - _association.schedule_expression is defined
+    - _association.targets is defined
   changed_when:
     - ansible_check_mode | bool
     - __ssm_association_result.changed | bool
