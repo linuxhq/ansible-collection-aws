@@ -6,7 +6,7 @@
     client_token: "{{ _pool.client_token | d(omit) }}"
     deletion_protection_enabled:
       "{{ _pool.deletion_protection_enabled | d(omit) }}"
-    iso_country_code: "{{ _pool.iso_country_code }}"
+    iso_country_code: "{{ _pool.iso_country_code | d(omit) }}"
     message_type: "{{ _pool.message_type }}"
     name: "{{ _pool.name }}"
     origination_identity: "{{ _pool.origination_identity }}"
