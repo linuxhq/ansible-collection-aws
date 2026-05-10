@@ -12,11 +12,11 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  name:
+  names:
     description:
-      - The RDS subnet group name to query.
-      - When omitted, all subnet groups are returned.
-    type: str
+      - RDS DB subnet group names used to limit the result set.
+    elements: str
+    type: list
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -29,7 +29,8 @@ EXAMPLES = r"""
 
 - name: Gather a specific RDS subnet group
   linuxhq.aws.rds_subnet_group_info:
-    name: molecule
+    names:
+      - molecule
 """
 
 RETURN = r"""
@@ -48,27 +49,38 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
 def main():
     module = AnsibleAWSModule(
         argument_spec={
-            "name": {"type": "str"},
+            "names": {"elements": "str", "type": "list"},
         },
         supports_check_mode=True,
     )
     client = module.client("rds", retry_decorator=AWSRetry.jittered_backoff())
-    kwargs = scrub_none_parameters({"DBSubnetGroupName": module.params["name"]})
     try:
-        subnet_groups = [
-            subnet_group
-            for subnet_group in paginated_query_with_retries(
+        subnet_groups = []
+        if module.params["names"]:
+            for name in module.params["names"]:
+                try:
+                    subnet_groups.extend(
+                        client.describe_db_subnet_groups(
+                            DBSubnetGroupName=name,
+                            aws_retry=True,
+                        ).get("DBSubnetGroups", [])
+                    )
+                except is_boto3_error_code("DBSubnetGroupNotFoundFault"):
+                    pass
+        else:
+            subnet_groups = paginated_query_with_retries(
                 client,
                 "describe_db_subnet_groups",
-                **kwargs,
             ).get("DBSubnetGroups", [])
+        subnet_groups = [
+            subnet_group
+            for subnet_group in subnet_groups
             if subnet_group.get("DBSubnetGroupName") is not None
         ]
     except is_boto3_error_code("DBSubnetGroupNotFoundFault"):

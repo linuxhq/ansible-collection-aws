@@ -3,7 +3,8 @@
   tags:
     - ses_identity_info
   linuxhq.aws.ses_identity_info:
-    name: "{{ ses_identity_info_name or omit }}"
+    identity_type: "{{ ses_identity_info_identity_type or omit }}"
+    names: "{{ ses_identity_info_names or omit }}"
     validate_certs: true
   register: __ses_identity_info_query
 

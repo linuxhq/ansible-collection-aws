@@ -12,7 +12,7 @@
       ansible.builtin.include_role:
         name: notifications_contacts_info
       vars:
-        notifications_contacts_info_name: null
+        notifications_contacts_info_arns: []
 
     - name: Ensure info without name is verified
       ansible.builtin.assert:
@@ -70,7 +70,8 @@
       ansible.builtin.include_role:
         name: notifications_contacts_info
       vars:
-        notifications_contacts_info_name: "{{ notifications_contacts_list.0.name }}"
+        notifications_contacts_info_arns:
+          - "{{ _notifications_contacts_info_dict[notifications_contacts_list.0.email_address].arn }}"
 
     - name: Ensure info with name is verified
       ansible.builtin.assert:

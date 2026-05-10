@@ -13,11 +13,16 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  name:
+  filters:
     description:
-      - The Systems Manager document name to gather.
-    required: true
-    type: str
+      - A dict of filters to apply when listing Systems Manager documents.
+      - Filter keys and values are passed to the Systems Manager C(ListDocuments) API.
+    type: dict
+  names:
+    description:
+      - Systems Manager document names used to limit the result set.
+    elements: str
+    type: list
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -27,21 +32,34 @@ extends_documentation_fragment:
 EXAMPLES = r"""
 - name: Gather information about a Systems Manager document
   linuxhq.aws.ssm_document_info:
-    name: molecule-command-shell
+    names:
+      - molecule-command-shell
+
+- name: Gather information about Systems Manager documents using filters
+  linuxhq.aws.ssm_document_info:
+    filters:
+      DocumentType: Command
 """
 
 RETURN = r"""
 document:
   description:
-    - The AWS Systems Manager document.
+    - The first AWS Systems Manager document, when one document is returned.
   returned: always
   type: dict
+documents:
+  description:
+    - The AWS Systems Manager documents.
+  returned: always
+  type: list
+  elements: dict
 """
 
 import json
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
+    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -52,60 +70,104 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 SSM_DOCUMENT_RESOURCE_TYPE = "Document"
 
 
-def main():
-    module = AnsibleAWSModule(
-        argument_spec={"name": {"required": True, "type": "str"}},
-        supports_check_mode=True,
-    )
-    client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
+def ssm_filter_list(filters):
+    return [
+        {
+            "Key": key,
+            "Values": value if isinstance(value, list) else [value],
+        }
+        for key, value in (filters or {}).items()
+    ]
+
+
+def get_document(client, module, name):
     try:
         document = client.get_document(
             DocumentFormat="JSON",
             DocumentVersion="$LATEST",
-            Name=module.params["name"],
+            Name=name,
             aws_retry=True,
         )
     except is_boto3_error_code(("InvalidDocument", "InvalidDocumentOperation")):
-        document = {}
+        return {}
     except Exception as e:
         module.fail_json_aws(
             e,
-            msg=f"Unable to get AWS Systems Manager document {module.params['name']}",
+            msg=f"Unable to get AWS Systems Manager document {name}",
         )
     if document:
         try:
             document["Tags"] = client.list_tags_for_resource(
                 ResourceType=SSM_DOCUMENT_RESOURCE_TYPE,
-                ResourceId=module.params["name"],
+                ResourceId=name,
                 aws_retry=True,
             ).get("TagList", [])
         except Exception as e:
             module.fail_json_aws(
                 e,
-                msg=f"Unable to list tags for AWS Systems Manager document {module.params['name']}",
+                msg=f"Unable to list tags for AWS Systems Manager document {name}",
             )
+    return document
 
-    def content_transform(content):
-        if content is None:
-            return {}
-        try:
-            content = json.loads(content)
-        except ValueError:
-            return content
-        if isinstance(content, dict):
-            return boto3_resource_to_ansible_dict(
-                content, transform_tags=False, force_tags=False
-            )
+
+def content_transform(content):
+    if content is None:
+        return {}
+    try:
+        content = json.loads(content)
+    except ValueError:
         return content
+    if isinstance(content, dict):
+        return boto3_resource_to_ansible_dict(
+            content, transform_tags=False, force_tags=False
+        )
+    return content
+
+
+def normalized_document(document):
+    return boto3_resource_to_ansible_dict(
+        document,
+        nested_transforms={"Content": content_transform},
+        transform_tags=True,
+        force_tags=False,
+    )
+
+
+def main():
+    module = AnsibleAWSModule(
+        argument_spec={
+            "filters": {"type": "dict"},
+            "names": {"elements": "str", "type": "list"},
+        },
+        supports_check_mode=True,
+    )
+    client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
+    if module.params["names"]:
+        document_names = module.params["names"]
+    else:
+        request = {}
+        if module.params["filters"]:
+            request["Filters"] = ssm_filter_list(module.params["filters"])
+        document_names = [
+            document["Name"]
+            for document in paginated_query_with_retries(
+                client,
+                "list_documents",
+                **request,
+            ).get("DocumentIdentifiers", [])
+            if document.get("Name")
+        ]
+
+    documents = [
+        normalized_document(document)
+        for document in [get_document(client, module, name) for name in document_names]
+        if document
+    ]
 
     module.exit_json(
         changed=False,
-        document=boto3_resource_to_ansible_dict(
-            document,
-            nested_transforms={"Content": content_transform},
-            transform_tags=True,
-            force_tags=False,
-        ),
+        document=documents[0] if len(documents) == 1 else {},
+        documents=documents,
     )
 
 

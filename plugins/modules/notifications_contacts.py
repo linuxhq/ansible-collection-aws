@@ -107,16 +107,6 @@ def contact_with_tags(client, module, contact):
     return contact
 
 
-def tag_changes(module, contact):
-    if module.params["tags"] is None:
-        return {}, []
-    return compare_aws_tags(
-        (contact or {}).get("tags", {}),
-        module.params["tags"],
-        purge_tags=module.params["purge_tags"],
-    )
-
-
 def apply_tag_changes(client, module, contact, tags_to_set, tag_keys_to_unset):
     if tag_keys_to_unset:
         try:
@@ -208,7 +198,13 @@ def ensure_present(client, module):
     resource_changed = (
         recursive_diff((current_contact) or {}, desired_contact) is not None
     )
-    tags_to_set, tag_keys_to_unset = tag_changes(module, contact)
+    tags_to_set, tag_keys_to_unset = ({}, [])
+    if module.params["tags"] is not None:
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(
+            (contact or {}).get("tags", {}),
+            module.params["tags"],
+            purge_tags=module.params["purge_tags"],
+        )
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:

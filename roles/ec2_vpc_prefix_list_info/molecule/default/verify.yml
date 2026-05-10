@@ -9,7 +9,7 @@
       ansible.builtin.include_role:
         name: ec2_vpc_prefix_list_info
       vars:
-        ec2_vpc_prefix_list_info_name: null
+        ec2_vpc_prefix_list_info_filters: {}
 
     - name: Ensure info without name is verified
       ansible.builtin.assert:
@@ -35,7 +35,8 @@
       ansible.builtin.include_role:
         name: ec2_vpc_prefix_list_info
       vars:
-        ec2_vpc_prefix_list_info_name: molecule-localhost
+        ec2_vpc_prefix_list_info_filters:
+          prefix-list-name: molecule-localhost
 
     - name: Ensure info with name is verified
       ansible.builtin.assert:

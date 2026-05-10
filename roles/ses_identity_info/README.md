@@ -8,7 +8,8 @@ None
 
 ## Role Variables
 
-    ses_identity_info_name: null
+    ses_identity_info_identity_type: null
+    ses_identity_info_names: []
 
 ## Return Values
 

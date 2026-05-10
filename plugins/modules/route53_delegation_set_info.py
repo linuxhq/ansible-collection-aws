@@ -12,11 +12,11 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  name:
+  ids:
     description:
-      - The reusable delegation set caller reference to query.
-      - When omitted, all reusable delegation sets are returned.
-    type: str
+      - Route53 reusable delegation set IDs used to limit the result set.
+    elements: str
+    type: list
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -29,7 +29,8 @@ EXAMPLES = r"""
 
 - name: Gather a specific Route53 reusable delegation set
   linuxhq.aws.route53_delegation_set_info:
-    name: molecule-01
+    ids:
+      - N1PA6795SAMPLE
 """
 
 RETURN = r"""
@@ -40,6 +41,9 @@ delegation_sets:
   type: list
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -47,31 +51,41 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
+def route53_id(value):
+    return value.rsplit("/", 1)[-1]
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
-            "name": {"type": "str"},
+            "ids": {"elements": "str", "type": "list"},
         },
         supports_check_mode=True,
     )
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
     delegation_sets = []
-    marker = None
-    while True:
-        request = {}
-        if marker:
-            request["Marker"] = marker
-        response = client.list_reusable_delegation_sets(**request, aws_retry=True)
-        delegation_sets.extend(response.get("DelegationSets", []))
-        marker = response.get("NextMarker")
-        if not response.get("IsTruncated") or not marker:
-            break
-    if module.params["name"] is not None:
-        delegation_sets = [
-            delegation_set
-            for delegation_set in delegation_sets
-            if delegation_set.get("CallerReference") == module.params["name"]
-        ]
+    if module.params["ids"]:
+        for delegation_set_id in module.params["ids"]:
+            try:
+                delegation_sets.append(
+                    client.get_reusable_delegation_set(
+                        Id=route53_id(delegation_set_id),
+                        aws_retry=True,
+                    ).get("DelegationSet", {})
+                )
+            except is_boto3_error_code("NoSuchDelegationSet"):
+                pass
+    else:
+        marker = None
+        while True:
+            request = {}
+            if marker:
+                request["Marker"] = marker
+            response = client.list_reusable_delegation_sets(**request, aws_retry=True)
+            delegation_sets.extend(response.get("DelegationSets", []))
+            marker = response.get("NextMarker")
+            if not response.get("IsTruncated") or not marker:
+                break
 
     module.exit_json(
         changed=False,

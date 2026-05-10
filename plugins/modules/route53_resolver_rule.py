@@ -337,7 +337,13 @@ def ensure_present(client, module):
             recursive_diff((current) or {}, (desired_comparable) or {}) is not None
         )
     resource_changed = changed
-    tags_to_set, tag_keys_to_unset = tag_changes(module, rule)
+    tags_to_set, tag_keys_to_unset = ({}, [])
+    if module.params["tags"] is not None:
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(
+            boto3_tag_list_to_ansible_dict((rule or {}).get("Tags", [])),
+            module.params["tags"],
+            purge_tags=module.params["purge_tags"],
+        )
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
     if current is None and not module.check_mode:
@@ -359,7 +365,11 @@ def ensure_present(client, module):
                 rule = create_resolver_rule(client, module, desired)
         if rule is not None and module.params["tags"] is not None:
             rule = resolver_rule_with_tags(client, module, rule)
-            tags_to_set, tag_keys_to_unset = tag_changes(module, rule)
+            tags_to_set, tag_keys_to_unset = compare_aws_tags(
+                boto3_tag_list_to_ansible_dict((rule or {}).get("Tags", [])),
+                module.params["tags"],
+                purge_tags=module.params["purge_tags"],
+            )
             apply_tag_changes(
                 client,
                 module,
@@ -420,17 +430,6 @@ def update_resolver_rule(client, module, rule, desired):
             desired["name"],
         )
     return updated_rule
-
-
-def tag_changes(module, resource):
-    if module.params["tags"] is None:
-        return {}, []
-    current_tags = boto3_tag_list_to_ansible_dict((resource or {}).get("Tags", []))
-    return compare_aws_tags(
-        current_tags,
-        module.params["tags"],
-        purge_tags=module.params["purge_tags"],
-    )
 
 
 def apply_tag_changes(client, module, resource_arn, tags_to_set, tag_keys_to_unset):

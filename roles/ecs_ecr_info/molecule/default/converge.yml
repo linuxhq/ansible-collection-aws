@@ -11,5 +11,6 @@
       check_mode: false
 
     - role: ecs_ecr_info
-      ecs_ecr_info_name: molecule-00
+      ecs_ecr_info_names:
+        - molecule-00
 ...

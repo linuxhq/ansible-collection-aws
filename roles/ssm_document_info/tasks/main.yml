@@ -3,7 +3,8 @@
   tags:
     - ssm_document_info
   linuxhq.aws.ssm_document_info:
-    name: "{{ ssm_document_info_name }}"
+    filters: "{{ ssm_document_info_filters }}"
+    names: "{{ ssm_document_info_names or omit }}"
     validate_certs: true
   register: __ssm_document_info_query
 
@@ -12,9 +13,8 @@
     - ssm_document_info
   ansible.builtin.set_fact:
     _ssm_document_info_list:
-      "{{ [__ssm_document_info_query.document] |
-          reject('equalto', {}) |
-          list }}"
+      "{{ __ssm_document_info_query.documents |
+          d([]) }}"
 
 - name: Ensure dict of aws systems manager document information is generated
   tags:

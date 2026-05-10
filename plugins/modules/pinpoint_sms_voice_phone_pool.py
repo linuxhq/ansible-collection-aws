@@ -364,18 +364,6 @@ def pool_update_request(module, pool):
     return request
 
 
-def tag_changes(module, pool):
-    tags = desired_tags(module)
-    if tags is None:
-        return {}, []
-    current_tags = boto3_tag_list_to_ansible_dict((pool or {}).get("Tags", []))
-    return compare_aws_tags(
-        current_tags,
-        tags,
-        purge_tags=module.params["purge_tags"],
-    )
-
-
 def apply_tag_changes(client, module, pool, tags_to_set, tag_keys_to_unset):
     arn = pool.get("PoolArn")
     if not arn:
@@ -517,7 +505,14 @@ def ensure_present(client, module):
         current = get_pool_by_id(client, module, current["PoolId"]) or current
 
     update_request = pool_update_request(module, current or {})
-    tags_to_set, tag_keys_to_unset = tag_changes(module, current or {})
+    tags = desired_tags(module)
+    tags_to_set, tag_keys_to_unset = ({}, [])
+    if tags is not None:
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(
+            boto3_tag_list_to_ansible_dict((current or {}).get("Tags", [])),
+            tags,
+            purge_tags=module.params["purge_tags"],
+        )
     changed = current is None or bool(
         update_request or tags_to_set or tag_keys_to_unset
     )

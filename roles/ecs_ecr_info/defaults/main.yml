@@ -1,3 +1,4 @@
 ---
-ecs_ecr_info_name: null
+ecs_ecr_info_names: []
+ecs_ecr_info_registry_id: null
 ...

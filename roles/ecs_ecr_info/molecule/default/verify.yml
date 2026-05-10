@@ -9,7 +9,8 @@
       ansible.builtin.include_role:
         name: ecs_ecr_info
       vars:
-        ecs_ecr_info_name: molecule-00
+        ecs_ecr_info_names:
+          - molecule-00
 
   post_tasks:
     - name: Ensure info is verified

@@ -3,7 +3,7 @@
   tags:
     - rds_subnet_group_info
   linuxhq.aws.rds_subnet_group_info:
-    name: "{{ rds_subnet_group_info_name or omit }}"
+    names: "{{ rds_subnet_group_info_names or omit }}"
     validate_certs: true
   register: __rds_subnet_group_info_query
 

@@ -12,11 +12,11 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  name:
+  filters:
     description:
-      - The Route53 Resolver endpoint name to query.
-      - When omitted, all resolver endpoints are returned.
-    type: str
+      - A dict of filters to apply when listing Route53 Resolver endpoints.
+      - Filter names and values are passed to the Route53 Resolver C(ListResolverEndpoints) API.
+    type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -29,7 +29,8 @@ EXAMPLES = r"""
 
 - name: Gather information about a single Route53 Resolver endpoint
   linuxhq.aws.route53_resolver_info:
-    name: molecule
+    filters:
+      Name: molecule
 """
 
 RETURN = r"""
@@ -47,6 +48,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
 )
 
@@ -69,22 +71,19 @@ def resource_tags(client, module, resource):
 def main():
     module = AnsibleAWSModule(
         argument_spec={
-            "name": {"type": "str"},
+            "filters": {"type": "dict"},
         },
         supports_check_mode=True,
     )
     client = module.client(
         "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
     )
+    request = {}
+    if module.params["filters"]:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
     resolver_endpoints = paginated_query_with_retries(
-        client, "list_resolver_endpoints"
+        client, "list_resolver_endpoints", **request
     ).get("ResolverEndpoints", [])
-    if module.params["name"] is not None:
-        resolver_endpoints = [
-            endpoint
-            for endpoint in resolver_endpoints
-            if endpoint.get("Name") == module.params["name"]
-        ]
 
     module.exit_json(
         changed=False,

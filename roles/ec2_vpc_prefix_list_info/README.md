@@ -4,7 +4,8 @@ Gather information about virtual private cloud prefix lists
 
 ## Role Variables
 
-    ec2_vpc_prefix_list_info_name: null
+    ec2_vpc_prefix_list_info_filters: {}
+    ec2_vpc_prefix_list_info_prefix_list_ids: []
 
 ## Return Values
 

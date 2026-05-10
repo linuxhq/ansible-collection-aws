@@ -316,7 +316,13 @@ def ensure_present(client, module):
             is not None
         )
         changed = bool(remove_entries or add_entries or resource_changed)
-        tags_to_set, tag_keys_to_unset = tag_changes(module, current)
+        tags_to_set, tag_keys_to_unset = ({}, [])
+        if module.params["tags"] is not None:
+            tags_to_set, tag_keys_to_unset = compare_aws_tags(
+                boto3_tag_list_to_ansible_dict((current or {}).get("Tags", [])),
+                module.params["tags"],
+                purge_tags=module.params["purge_tags"],
+            )
         changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
         if changed and not module.check_mode:
@@ -388,7 +394,11 @@ def ensure_present(client, module):
                 )
                 current, current_entries = get_current(client, module)
             if current is not None and module.params["tags"] is not None:
-                tags_to_set, tag_keys_to_unset = tag_changes(module, current)
+                tags_to_set, tag_keys_to_unset = compare_aws_tags(
+                    boto3_tag_list_to_ansible_dict((current or {}).get("Tags", [])),
+                    module.params["tags"],
+                    purge_tags=module.params["purge_tags"],
+                )
                 apply_tag_changes(
                     client,
                     module,
@@ -496,17 +506,6 @@ def get_managed_prefix_list_entries(client, prefix_list_id):
         "get_managed_prefix_list_entries",
         PrefixListId=prefix_list_id,
     ).get("Entries", [])
-
-
-def tag_changes(module, prefix_list):
-    if module.params["tags"] is None:
-        return {}, []
-    current_tags = boto3_tag_list_to_ansible_dict((prefix_list or {}).get("Tags", []))
-    return compare_aws_tags(
-        current_tags,
-        module.params["tags"],
-        purge_tags=module.params["purge_tags"],
-    )
 
 
 def apply_tag_changes(client, module, prefix_list_id, tags_to_set, tag_keys_to_unset):

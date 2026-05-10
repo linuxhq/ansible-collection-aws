@@ -9,7 +9,7 @@
       ansible.builtin.include_role:
         name: route53_delegation_set_info
       vars:
-        route53_delegation_set_info_name: null
+        route53_delegation_set_info_ids: []
 
     - name: Ensure info without name is verified
       ansible.builtin.assert:
@@ -31,7 +31,8 @@
       ansible.builtin.include_role:
         name: route53_delegation_set_info
       vars:
-        route53_delegation_set_info_name: "{{ route53_delegation_set_list.0.name }}"
+        route53_delegation_set_info_ids:
+          - "{{ _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].id }}"
 
     - name: Ensure info with name is verified
       ansible.builtin.assert:

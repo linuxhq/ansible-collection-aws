@@ -175,17 +175,6 @@ def desired_comparable_provider(module):
     }
 
 
-def tag_changes(module, current):
-    if module.params["tags"] is None:
-        return {}, []
-    current_tags = boto3_tag_list_to_ansible_dict((current or {}).get("Tags", []))
-    return compare_aws_tags(
-        current_tags,
-        module.params["tags"],
-        purge_tags=module.params["purge_tags"],
-    )
-
-
 def apply_client_id_changes(client, module, arn, current, desired):
     current_client_ids = set((current or {}).get("ClientIDList") or [])
     desired_client_ids = set(desired["client_id_list"])
@@ -319,7 +308,13 @@ def ensure_present(client, module):
     current = get_provider_by_url(client, module, module.params["url"])
     desired = desired_comparable_provider(module)
     current_comparable = comparable_provider(current)
-    tags_to_set, tag_keys_to_unset = tag_changes(module, current)
+    tags_to_set, tag_keys_to_unset = ({}, [])
+    if module.params["tags"] is not None:
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(
+            boto3_tag_list_to_ansible_dict((current or {}).get("Tags", [])),
+            module.params["tags"],
+            purge_tags=module.params["purge_tags"],
+        )
     resource_changed = recursive_diff((current_comparable) or {}, desired) is not None
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
 
