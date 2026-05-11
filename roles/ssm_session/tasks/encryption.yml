@@ -15,7 +15,7 @@
     tags: "{{ ssm_session_tags }}"
     validate_certs: true
 
-- name: Ensure aws systems manager session kms key information is gathered
+- name: Ensure information about aws systems manager session kms key is gathered
   tags:
     - ssm_session
   amazon.aws.kms_key_info:
