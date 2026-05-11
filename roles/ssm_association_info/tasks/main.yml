@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws systems manager association information is gathered
+- name: Ensure information about aws systems manager associations is gathered
   tags:
     - ssm_association_info
   linuxhq.aws.ssm_association_info:
@@ -7,7 +7,7 @@
     validate_certs: true
   register: __ssm_association_info_query
 
-- name: Ensure list of aws systems manager association information is generated
+- name: Ensure list of aws systems manager associations is generated
   tags:
     - ssm_association_info
   ansible.builtin.set_fact:
@@ -15,7 +15,7 @@
       "{{ __ssm_association_info_query.associations |
           d([]) }}"
 
-- name: Ensure dict of aws systems manager association information is generated
+- name: Ensure dict of aws systems manager associations is generated
   tags:
     - ssm_association_info
   ansible.builtin.set_fact:

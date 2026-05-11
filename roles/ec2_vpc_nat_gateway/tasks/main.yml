@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about aws virtual private cloud nat gateway is gathered
+- name: Ensure information about aws virtual private cloud nat gateways is gathered
   tags:
     - ec2_vpc_nat_gateway
   amazon.aws.ec2_vpc_nat_gateway_info:
@@ -9,7 +9,7 @@
     validate_certs: true
   register: __ec2_vpc_nat_gateway_info
 
-- name: Ensure dict of aws virtual private cloud nat gateway information is generated
+- name: Ensure dict of aws virtual private cloud nat gateways is generated
   tags:
     - ec2_vpc_nat_gateway
   ansible.builtin.set_fact:

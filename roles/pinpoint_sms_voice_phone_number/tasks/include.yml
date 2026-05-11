@@ -41,7 +41,7 @@
     - ansible_check_mode | bool
     - __pinpoint_sms_voice_phone_number_result.changed | bool
 
-- name: Ensure managed aws end user messaging sms phone number request jobs are complete
+- name: Ensure managed aws end user messaging sms phone number jobs are complete
   tags:
     - pinpoint_sms_voice_phone_number
   ansible.builtin.async_status:

@@ -11,7 +11,7 @@
     name: "{{ _pool.name }}"
     origination_identity: "{{ _pool.origination_identity }}"
     pool_id: "{{ _pool.pool_id | d(omit) }}"
-    purge_tags: "{{ _pool.purge_tags | d(omit) }}"
+    purge_tags: "{{ _pool.purge_tags | d(true) }}"
     state: "{{ _pool.state | d('present') }}"
     tags: "{{ _pool.tags | d({}) | combine({'Name': _pool.name}) }}"
     validate_certs: true

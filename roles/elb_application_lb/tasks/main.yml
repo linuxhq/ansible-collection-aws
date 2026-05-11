@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws elastic load balancer application load balancer defaults are generated
+- name: Ensure aws application load balancer defaults are generated
   tags:
     - elb_application_lb
   ansible.builtin.set_fact:
@@ -18,7 +18,7 @@
       - cidr_ip: 0.0.0.0/0
         proto: -1
 
-- name: Ensure aws elastic load balancer application load balancer state lists are generated
+- name: Ensure aws application load balancer lists are generated
   tags:
     - elb_application_lb
   ansible.builtin.set_fact:
@@ -29,7 +29,7 @@
       "{{ __elb_application_lb_list |
           selectattr('state', 'equalto', 'present') }}"
 
-- name: Ensure aws elastic load balancer application load balancer present tasks are included
+- name: Ensure aws application load balancer present tasks are included
   tags:
     - elb_application_lb
   ansible.builtin.include_tasks:
@@ -49,7 +49,7 @@
     - _loadbalancer.subnets | length > 0
     - _loadbalancer.vpc_id is defined
 
-- name: Ensure aws aws elastic load balancer application load balancer absent tasks are included
+- name: Ensure aws application load balancer absent tasks are included
   tags:
     - elb_application_lb
   ansible.builtin.include_tasks:

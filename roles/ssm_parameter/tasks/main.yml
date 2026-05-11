@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws systems manager parameter tasks are batched
+- name: Ensure aws systems manager parameters are batched
   tags:
     - ssm_parameter
   ansible.builtin.include_tasks:

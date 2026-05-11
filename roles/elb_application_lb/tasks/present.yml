@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws elastic load balancer application load balancer security group is present
+- name: Ensure aws application load balancer security group is present
   tags:
     - elb_application_lb
   amazon.aws.ec2_security_group:
@@ -15,7 +15,7 @@
     validate_certs: true
     vpc_id: "{{ _loadbalancer.vpc_id }}"
 
-- name: Ensure aws elastic load balancer application load balancer is present
+- name: Ensure aws application load balancer is present
   tags:
     - elb_application_lb
   amazon.aws.elb_application_lb:

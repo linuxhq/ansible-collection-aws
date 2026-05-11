@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws notifications hub default is present
+- name: Ensure aws notifications hub default is managed
   tags:
     - notifications_hub
   linuxhq.aws.notifications_hub:

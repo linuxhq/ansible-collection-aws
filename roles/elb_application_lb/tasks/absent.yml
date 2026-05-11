@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws elastic load balancer application load balancer is absent
+- name: Ensure aws application load balancer is absent
   tags:
     - elb_application_lb
   amazon.aws.elb_application_lb:
@@ -7,7 +7,7 @@
     state: "{{ _loadbalancer.state }}"
     validate_certs: true
 
-- name: Ensure aws elastic load balancer application load balancer security group is absent
+- name: Ensure aws application load balancer security group is absent
   tags:
     - elb_application_lb
   amazon.aws.ec2_security_group:

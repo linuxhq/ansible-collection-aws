@@ -26,7 +26,7 @@
       "{{ __iam_policy_info_query.user_policies |
           d([]) }}"
 
-- name: Ensure dict of aws iam group inline policy information is generated
+- name: Ensure dict of aws iam group inline policies is generated
   tags:
     - iam_policy_info
   ansible.builtin.set_fact:
@@ -35,7 +35,7 @@
                json_query('[].name') |
                zip(_iam_policy_info_group_list)) }}"
 
-- name: Ensure dict of aws iam user inline policy information is generated
+- name: Ensure dict of aws iam user inline policies is generated
   tags:
     - iam_policy_info
   ansible.builtin.set_fact:

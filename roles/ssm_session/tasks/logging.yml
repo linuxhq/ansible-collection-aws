@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws systems manager session cloudwatchlogs log group is managed
+- name: Ensure aws systems manager session cloudwatch logs log group is managed
   tags:
     - ssm_session
   amazon.aws.cloudwatchlogs_log_group:

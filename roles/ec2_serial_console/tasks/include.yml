@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws ec2 serial console region access is managed
+- name: Ensure aws ec2 serial console access is managed
   tags:
     - ec2_serial_console
   linuxhq.aws.ec2_serial_console:
@@ -17,7 +17,7 @@
     - ansible_check_mode | bool
     - __ec2_serial_console_result.changed | bool
 
-- name: Ensure managed aws ec2 serial console region jobs are complete
+- name: Ensure managed aws ec2 serial console access jobs are complete
   tags:
     - ec2_serial_console
   ansible.builtin.async_status:

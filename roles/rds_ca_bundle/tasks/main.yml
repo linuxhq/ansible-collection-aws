@@ -42,7 +42,7 @@
     - _bundle.state == 'absent'
     - _bundle.url is defined
 
-- name: Ensure aws rds certificate authority bundles are updated
+- name: Ensure aws rds certificate authority trust is generated
   tags:
     - rds_ca_bundle
   become: true

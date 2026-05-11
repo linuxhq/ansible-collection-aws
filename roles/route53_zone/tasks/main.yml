@@ -24,7 +24,7 @@
     label: "{{ __route53_zone_batch | length }}"
     loop_var: __route53_zone_batch
 
-- name: Ensure aws route53 public zones are batched
+- name: Ensure aws route53 private zones are batched
   tags:
     - route53_zone
   ansible.builtin.include_tasks:

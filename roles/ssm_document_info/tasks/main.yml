@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws systems manager document information is gathered
+- name: Ensure information about aws systems manager documents is gathered
   tags:
     - ssm_document_info
   linuxhq.aws.ssm_document_info:
@@ -11,7 +11,7 @@
     version_name: "{{ ssm_document_info_version_name or omit }}"
   register: __ssm_document_info_query
 
-- name: Ensure list of aws systems manager document information is generated
+- name: Ensure list of aws systems manager documents is generated
   tags:
     - ssm_document_info
   ansible.builtin.set_fact:
@@ -19,7 +19,7 @@
       "{{ __ssm_document_info_query.documents |
           d([]) }}"
 
-- name: Ensure dict of aws systems manager document information is generated
+- name: Ensure dict of aws systems manager documents is generated
   tags:
     - ssm_document_info
   ansible.builtin.set_fact:

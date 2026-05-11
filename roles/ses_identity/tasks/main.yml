@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws simple email service identity defaults are present
+- name: Ensure aws simple email service identity defaults are generated
   tags:
     - ses_identity
   ansible.builtin.set_fact:
@@ -17,7 +17,7 @@
   register: __ses_identity_az_info
   check_mode: false
 
-- name: Ensure aws simple email service region information is generated
+- name: Ensure string of aws simple email service region is generated
   tags:
     - ses_identity
   ansible.builtin.set_fact:

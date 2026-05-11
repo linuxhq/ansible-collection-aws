@@ -27,7 +27,7 @@
     - ansible_check_mode | bool
     - __iam_managed_policy_result.changed | bool
 
-- name: Ensure managed aws iam managed policies jobs are complete
+- name: Ensure managed aws iam managed policy jobs are complete
   tags:
     - iam_managed_policy
   ansible.builtin.async_status:
