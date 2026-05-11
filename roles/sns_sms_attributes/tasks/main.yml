@@ -1,0 +1,14 @@
+---
+- name: Ensure aws simple notification service sms attributes are managed
+  tags:
+    - sns_sms_attributes
+  linuxhq.aws.sns_sms_attributes:
+    default_sender_id: "{{ sns_sms_attributes_default_sender_id or omit }}"
+    default_sms_type: "{{ sns_sms_attributes_default_sms_type or omit }}"
+    delivery_status_iam_role: "{{ sns_sms_attributes_delivery_status_iam_role or omit }}"
+    delivery_status_success_sampling_rate:
+      "{{ sns_sms_attributes_delivery_status_success_sampling_rate or omit }}"
+    monthly_spend_limit: "{{ sns_sms_attributes_monthly_spend_limit or omit }}"
+    usage_report_s3_bucket: "{{ sns_sms_attributes_usage_report_s3_bucket or omit }}"
+    validate_certs: true
+...

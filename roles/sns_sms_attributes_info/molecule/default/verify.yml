@@ -1,0 +1,17 @@
+---
+- name: Verify
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - sns_sms_attributes_info
+
+  tasks:
+    - name: Ensure aws simple notification service sms attributes are verified
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - _sns_sms_attributes_info_dict is mapping
+          - _sns_sms_attributes_info_dict.monthly_spend_limit is defined
+...

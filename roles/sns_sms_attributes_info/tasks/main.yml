@@ -1,0 +1,17 @@
+---
+- name: Ensure information about aws simple notification service sms attributes is gathered
+  tags:
+    - sns_sms_attributes_info
+  linuxhq.aws.sns_sms_attributes_info:
+    attributes: "{{ sns_sms_attributes_info_attributes or omit }}"
+    validate_certs: true
+  register: __sns_sms_attributes_info_query
+
+- name: Ensure dict of aws simple notification service sms attributes is generated
+  tags:
+    - sns_sms_attributes_info
+  ansible.builtin.set_fact:
+    _sns_sms_attributes_info_dict:
+      "{{ __sns_sms_attributes_info_query.attributes |
+          d({}) }}"
+...
