@@ -1,0 +1,12 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - sns_sms_attributes
+
+    - role: sns_sms_attributes
+      sns_sms_attributes_default_sms_type: Transactional
+...
