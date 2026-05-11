@@ -13,10 +13,7 @@
     release_eip: "{{ _nat.release_eip | d(false) }}"
     state: "{{ _nat.state | d('present') }}"
     subnet_id: "{{ _nat.subnet_id | d(omit) }}"
-    tags:
-      "{{ _nat.tags |
-          d({}) |
-          combine({'Name': _nat.name}) }}"
+    tags: "{{ _nat.tags | d({}) | combine({'Name': _nat.name}) }}"
     validate_certs: true
     wait: "{{ _nat.wait | d(false) }}"
     wait_timeout: "{{ _nat.wait_timeout | d(320) }}"

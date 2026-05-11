@@ -35,10 +35,7 @@
     dnssec: "{{ _zone.dnssec | d(false) }}"
     purge_tags: "{{ _zone.purge_tags | d(true) }}"
     state: present
-    tags:
-      "{{ _zone.tags |
-          d({}) |
-          combine({'Name': _zone.zone}) }}"
+    tags: "{{ _zone.tags | d({}) | combine({'Name': _zone.zone}) }}"
     validate_certs: true
     vpc_id: "{{ _zone.vpc_id }}"
     vpc_region: "{{ _zone.vpc_region }}"
@@ -86,10 +83,7 @@
     dnssec: "{{ _zone.dnssec | d(false) }}"
     purge_tags: "{{ _zone.purge_tags | d(true) }}"
     state: absent
-    tags:
-      "{{ _zone.tags |
-          d({}) |
-          combine({'Name': _zone.zone}) }}"
+    tags: "{{ _zone.tags | d({}) | combine({'Name': _zone.zone}) }}"
     validate_certs: true
     vpc_id: "{{ _zone.vpc_id | d(omit) }}"
     vpc_region: "{{ _zone.vpc_region | d(omit) }}"

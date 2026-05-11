@@ -5,9 +5,11 @@
   linuxhq.aws.route53_resolver_rule:
     domain_name: "{{ _resolver_rule.domain_name }}"
     name: "{{ _resolver_rule.name }}"
+    purge_tags: "{{ _resolver_rule.purge_tags | d(true) }}"
     resolver_endpoint_id: "{{ _resolver_rule.resolver_endpoint_id }}"
     rule_type: "{{ _resolver_rule.rule_type }}"
     state: "{{ _resolver_rule.state | d('present') }}"
+    tags: "{{ _resolver_rule.tags | d({}) | combine({'Name': _resolver_rule.name}) }}"
     target_ips: "{{ _resolver_rule.target_ips }}"
     validate_certs: true
     wait: "{{ _resolver_rule.wait | d(true) }}"

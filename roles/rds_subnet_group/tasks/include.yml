@@ -8,10 +8,7 @@
     purge_tags: "{{ _subgrp.purge_tags | d(true) }}"
     state: "{{ _subgrp.state | d('present') }}"
     subnets: "{{ _subgrp.subnets }}"
-    tags:
-      "{{ _subgrp.tags |
-          d({}) |
-          combine({'Name': _subgrp.name}) }}"
+    tags: "{{ _subgrp.tags | d({}) | combine({'Name': _subgrp.name}) }}"
     validate_certs: true
   register: __rds_subnet_group_result
   loop: "{{ __rds_subnet_group_list }}"

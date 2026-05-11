@@ -20,10 +20,7 @@
     s3_key: "{{ _function.s3_key | d(omit) }}"
     s3_object_version: "{{ _function.s3_object_version | d(omit) }}"
     state: "{{ _function.state | d('present') }}"
-    tags:
-      "{{ _function.tags |
-          d({}) |
-          combine({'Name': _function.name}) }}"
+    tags: "{{ _function.tags | d({}) | combine({'Name': _function.name}) }}"
     timeout: "{{ _function.timeout | d(omit) }}"
     tracing_mode: "{{ _function.tracing_mode | d(omit) }}"
     validate_certs: true

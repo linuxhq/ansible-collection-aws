@@ -10,10 +10,7 @@
     path: "{{ _policy.path | d(omit) }}"
     policy: "{{ _policy.policy | to_json }}"
     state: "{{ _policy.state | d('present') }}"
-    tags:
-      "{{ _policy.tags |
-          d({}) |
-          combine({'Name': _policy.name}) }}"
+    tags: "{{ _policy.tags | d({}) | combine({'Name': _policy.name}) }}"
     validate_certs: true
   register: __iam_managed_policy_result
   loop: "{{ __iam_managed_policy_list }}"

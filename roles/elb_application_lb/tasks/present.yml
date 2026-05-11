@@ -11,10 +11,7 @@
     rules: "{{ _loadbalancer.rules | d(__elb_application_lb_rules) }}"
     rules_egress: "{{ _loadbalancer.rules_egress | d(__elb_application_lb_rules_egress) }}"
     state: "{{ _loadbalancer.state }}"
-    tags:
-      "{{ _loadbalancer.tags |
-          d({}) |
-          combine({'Name': _loadbalancer.name}) }}"
+    tags: "{{ _loadbalancer.tags | d({}) | combine({'Name': _loadbalancer.name}) }}"
     validate_certs: true
     vpc_id: "{{ _loadbalancer.vpc_id }}"
 
@@ -41,10 +38,7 @@
     security_groups: "{{ _loadbalancer.name if not ansible_check_mode else 'default' }}"
     state: "{{ _loadbalancer.state }}"
     subnets: "{{ _loadbalancer.subnets }}"
-    tags:
-      "{{ _loadbalancer.tags |
-          d({}) |
-          combine({'Name': _loadbalancer.name}) }}"
+    tags: "{{ _loadbalancer.tags | d({}) | combine({'Name': _loadbalancer.name}) }}"
     validate_certs: true
     waf_fail_open: "{{ _loadbalancer.waf_fail_open | d(false) }}"
     wait: "{{ _loadbalancer.wait | d(false) }}"

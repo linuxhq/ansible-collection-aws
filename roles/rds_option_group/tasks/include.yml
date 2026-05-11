@@ -11,10 +11,7 @@
     options: "{{ _og.options }}"
     purge_tags: "{{ _og.purge_tags | d(true) }}"
     state: "{{ _og.state | d('present') }}"
-    tags:
-      "{{ _og.tags |
-          d({}) |
-          combine({'Name': _og.option_group_name}) }}"
+    tags: "{{ _og.tags | d({}) | combine({'Name': _og.option_group_name}) }}"
     validate_certs: true
     wait: "{{ _og.wait | d(true) }}"
   register: __rds_option_group_result

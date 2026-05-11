@@ -8,10 +8,7 @@
     dnssec: "{{ _zone.dnssec | d(false) }}"
     purge_tags: "{{ _zone.purge_tags | d(true) }}"
     state: "{{ _zone.state }}"
-    tags:
-      "{{ _zone.tags |
-          d({}) |
-          combine({'Name': _zone.zone}) }}"
+    tags: "{{ _zone.tags | d({}) | combine({'Name': _zone.zone}) }}"
     validate_certs: true
     zone: "{{ _zone.zone }}"
   register: __route53_zone_result

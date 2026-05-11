@@ -5,10 +5,7 @@
   amazon.aws.ec2_eip:
     purge_tags: "{{ _eip.purge_tags | d(true) }}"
     state: present
-    tags:
-      "{{ _eip.tags |
-          d({}) |
-          combine({'Name': _eip.name}) }}"
+    tags: "{{ _eip.tags | d({}) | combine({'Name': _eip.name}) }}"
     validate_certs: true
   register: __ec2_eip_result_present
   loop: "{{ __ec2_eip_list }}"

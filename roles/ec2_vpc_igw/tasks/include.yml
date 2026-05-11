@@ -7,10 +7,7 @@
     force_attach: "{{ _igw.force_attach | d(omit) }}"
     purge_tags: "{{ _igw.purge_tags | d(true) }}"
     state: "{{ _igw.state | d('present') }}"
-    tags:
-      "{{ _igw.tags |
-          d({}) |
-          combine({'Name': _igw.name}) }}"
+    tags: "{{ _igw.tags | d({}) | combine({'Name': _igw.name}) }}"
     validate_certs: true
     vpc_id: "{{ _igw.vpc_id }}"
   register: __ec2_vpc_igw_result

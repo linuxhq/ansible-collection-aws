@@ -10,10 +10,7 @@
     provisioned_throughput_in_mibps: "{{ _efs.provisioned_throughput_in_mibps | d(omit) }}"
     purge_tags: "{{ _efs.purge_tags | d(true) }}"
     state: "{{ _efs.state | d('present') }}"
-    tags:
-      "{{ _efs.tags |
-          d({}) |
-          combine({'Name': _efs.name}) }}"
+    tags: "{{ _efs.tags | d({}) | combine({'Name': _efs.name}) }}"
     targets: "{{ __efs_targets | d([]) }}"
     throughput_mode: "{{ _efs.throughput_mode | d(omit) }}"
     transition_to_ia: "{{ _efs.transition_to_ia | d(omit) }}"

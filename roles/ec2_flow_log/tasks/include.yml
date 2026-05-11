@@ -15,10 +15,7 @@
     resource_ids: "{{ _flow_log.resource_ids }}"
     resource_type: "{{ _flow_log.resource_type }}"
     state: "{{ _flow_log.state | d('present') }}"
-    tags:
-      "{{ _flow_log.tags |
-          d({}) |
-          combine({'Name': _flow_log.name}) }}"
+    tags: "{{ _flow_log.tags | d({}) | combine({'Name': _flow_log.name}) }}"
     traffic_type: "{{ _flow_log.traffic_type | d(omit) }}"
     validate_certs: true
   register: __ec2_flow_log_result

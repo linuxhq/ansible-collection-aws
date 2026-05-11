@@ -11,10 +11,7 @@
     rules: "{{ _efs.rules | d(__efs_rules) }}"
     rules_egress: "{{ _efs.rules_egress | d(__efs_rules_egress) }}"
     state: "{{ _efs.state | d('present') }}"
-    tags:
-      "{{ _efs.tags |
-          d({}) |
-          combine({'Name': _efs.name}) }}"
+    tags: "{{ _efs.tags | d({}) | combine({'Name': _efs.name}) }}"
     validate_certs: true
     vpc_id: "{{ _efs.vpc_id }}"
   register: __efs_security_group_result

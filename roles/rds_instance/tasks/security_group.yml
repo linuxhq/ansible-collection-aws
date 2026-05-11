@@ -11,10 +11,7 @@
     rules: "{{ _db.rules | d(__rds_instance_rules[_db.engine]) }}"
     rules_egress: "{{ _db.rules_egress | d(__rds_instance_rules_egress) }}"
     state: "{{ _db.state }}"
-    tags:
-      "{{ _db.tags |
-          d({}) |
-          combine({'Name': _db.db_instance_identifier}) }}"
+    tags: "{{ _db.tags | d({}) | combine({'Name': _db.db_instance_identifier}) }}"
     validate_certs: true
     vpc_id: "{{ _db.vpc_id }}"
   register: __rds_instance_security_group_result

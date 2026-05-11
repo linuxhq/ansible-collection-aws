@@ -4,8 +4,10 @@
     - ssm_association
   linuxhq.aws.ssm_association:
     name: "{{ _association.name }}"
+    purge_tags: "{{ _association.purge_tags | d(true) }}"
     schedule_expression: "{{ _association.schedule_expression }}"
     state: "{{ _association.state | d('present') }}"
+    tags: "{{ _association.tags | d({}) | combine({'Name': _association.name}) }}"
     targets: "{{ _association.targets }}"
     validate_certs: true
   register: __ssm_association_result

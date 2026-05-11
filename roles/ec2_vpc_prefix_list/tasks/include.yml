@@ -6,7 +6,9 @@
     address_family: "{{ _pl.address_family | d('IPv4') }}"
     entries: "{{ _pl.entries }}"
     name: "{{ _pl.name }}"
+    purge_tags: "{{ _pl.purge_tags | d(true) }}"
     state: "{{ _pl.state | d('present') }}"
+    tags: "{{ _pl.tags | d({}) | combine({'Name': _pl.name}) }}"
     validate_certs: true
   register: __ec2_vpc_prefix_list_result
   loop: "{{ __ec2_vpc_prefix_list_entries }}"

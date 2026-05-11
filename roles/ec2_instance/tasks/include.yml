@@ -31,10 +31,7 @@
     security_groups: "{{ _i.security_groups | d(omit) }}"
     source_dest_check: "{{ _i.source_dest_check | d(omit) }}"
     state: "{{ _i.state | d('running') }}"
-    tags:
-      "{{ _i.tags |
-          d({}) |
-          combine({'Name': _i.name}) }}"
+    tags: "{{ _i.tags | d({}) | combine({'Name': _i.name}) }}"
     tenancy: "{{ _i.tenancy | d(omit) }}"
     termination_protection: "{{ _i.termination_protection | d(omit) }}"
     user_data: "{{ _i.user_data | d(omit) }}"

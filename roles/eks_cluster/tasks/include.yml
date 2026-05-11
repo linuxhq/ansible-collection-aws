@@ -17,10 +17,7 @@
     role_arn: "{{ _cluster.role_arn | d(omit) }}"
     state: "{{ _cluster.state | d('present') }}"
     storage_config: "{{ _cluster.storage_config | d(omit) }}"
-    tags:
-      "{{ _cluster.tags |
-          d({}) |
-          combine({'Name': _cluster.name}) }}"
+    tags: "{{ _cluster.tags | d({}) | combine({'Name': _cluster.name}) }}"
     upgrade_policy: "{{ _cluster.upgrade_policy | d(omit) }}"
     validate_certs: true
     version: "{{ _cluster.version | d(omit) }}"

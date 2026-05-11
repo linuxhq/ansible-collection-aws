@@ -11,10 +11,7 @@
     routes: "{{ _rtb.1.routes }}"
     state: "{{ _rtb.0.state | d('present') }}"
     subnets: "{{ _rtb.1.subnets }}"
-    tags:
-      "{{ _rtb.1.tags |
-          d({}) |
-          combine({'Name': _rtb.1.name}) }}"
+    tags: "{{ _rtb.1.tags | d({}) | combine({'Name': _rtb.1.name}) }}"
     validate_certs: true
     vpc_id: "{{ _rtb.0.vpc_id }}"
   register: __ec2_vpc_route_table_result

@@ -12,10 +12,7 @@
     purge_tags: "{{ _user.purge_tags | d(true) }}"
     remove_password: "{{ _user.remove_password | d(omit) }}"
     state: "{{ _user.state | d('present') }}"
-    tags:
-      "{{ _user.tags |
-          d({}) |
-          combine({'Name': _user.name}) }}"
+    tags: "{{ _user.tags | d({}) | combine({'Name': _user.name}) }}"
     update_password: "{{ _user.update_password | d('always') }}"
     validate_certs: true
     wait: "{{ _user.wait | d(true) }}"

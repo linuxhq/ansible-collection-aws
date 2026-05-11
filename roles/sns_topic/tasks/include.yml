@@ -12,10 +12,7 @@
     purge_tags: "{{ _topic.purge_tags | d(true) }}"
     state: "{{ _topic.state }}"
     subscriptions: "{{ _topic.subscriptions | d(omit) }}"
-    tags:
-      "{{ _topic.tags |
-          d({}) |
-          combine({'Name': _topic.name}) }}"
+    tags: "{{ _topic.tags | d({}) | combine({'Name': _topic.name}) }}"
     topic_type: "{{ _topic.topic_type | d('standard') }}"
     validate_certs: true
   register: __sns_topic_result

@@ -17,10 +17,7 @@
     receive_message_wait_time_seconds: "{{ _queue.receive_message_wait_time_seconds | d(omit) }}"
     redrive_policy: "{{ _queue.redrive_policy | d(omit) }}"
     state: "{{ _queue.state | d('present') }}"
-    tags:
-      "{{ _queue.tags |
-          d({}) |
-          combine({'Name': _queue.name}) }}"
+    tags: "{{ _queue.tags | d({}) | combine({'Name': _queue.name}) }}"
     validate_certs: true
     visibility_timeout: "{{ _queue.visibility_timeout | d(omit) }}"
   register: __sqs_queue_result

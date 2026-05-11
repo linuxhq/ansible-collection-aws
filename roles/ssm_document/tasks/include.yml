@@ -7,7 +7,9 @@
     document_type: "{{ _document.document_type }}"
     document_version: "{{ _document.document_version | d(omit) }}"
     name: "{{ _document.name }}"
+    purge_tags: "{{ _document.purge_tags | d(true) }}"
     state: "{{ _document.state | d('present') }}"
+    tags: "{{ _document.tags | d({}) | combine({'Name': _document.name}) }}"
     validate_certs: true
   register: __ssm_document_result
   loop: "{{ __ssm_document_list }}"
