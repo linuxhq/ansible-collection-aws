@@ -1,6 +1,6 @@
 # ec2\_instance\_type\_info
 
-Gather information about ec2 instance types
+Gather information about aws instance types
 
 ## Requirements
 

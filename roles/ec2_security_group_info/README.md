@@ -1,6 +1,6 @@
 # ec2\_security\_group\_info
 
-Gather information about ec2 security groups
+Gather information about aws security groups
 
 ## Requirements
 

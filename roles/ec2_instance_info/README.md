@@ -1,6 +1,6 @@
 # ec2\_instance\_info
 
-Gather information about ec2 instances
+Gather information about aws instances
 
 ## Requirements
 

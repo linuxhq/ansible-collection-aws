@@ -1,6 +1,6 @@
 # ec2\_key\_info
 
-Gather information about ec2 keys
+Gather information about aws keys
 
 ## Requirements
 

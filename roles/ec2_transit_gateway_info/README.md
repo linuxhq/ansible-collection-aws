@@ -1,6 +1,6 @@
 # ec2\_transit\_gateway\_info
 
-Gather information about ec2 transit gateways
+Gather information about aws transit gateways
 
 ## Requirements
 

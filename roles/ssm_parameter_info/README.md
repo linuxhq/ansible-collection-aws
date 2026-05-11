@@ -1,6 +1,6 @@
 # ssm\_parameter\_info
 
-Gather information about aws systems manager key-value pairs
+Gather information about aws systems manager parameters
 
 ## Requirements
 

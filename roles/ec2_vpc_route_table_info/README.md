@@ -1,6 +1,6 @@
 # ec2\_vpc\_route\_table\_info
 
-Gather information about virtual private cloud route tables
+Gather information about aws virtual private cloud route tables
 
 ## Requirements
 

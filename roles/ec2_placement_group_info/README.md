@@ -1,6 +1,6 @@
 # ec2\_placement\_group\_info
 
-Gather information about ec2 placement groups
+Gather information about aws placement groups
 
 ## Role Variables
 

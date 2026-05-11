@@ -1,6 +1,6 @@
 # ec2\_vpc\_igw\_info
 
-Gather information about virtual private cloud internet gateways
+Gather information about aws virtual private cloud internet gateways
 
 ## Requirements
 

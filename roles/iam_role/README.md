@@ -1,6 +1,6 @@
 # iam\_role
 
-Manage aws identity and access management roles
+Manage aws iam roles
 
 ## Requirements
 

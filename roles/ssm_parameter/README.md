@@ -1,6 +1,6 @@
 # ssm\_parameter
 
-Manage aws systems manager key-value pairs
+Manage aws systems manager parameters
 
 ## Requirements
 

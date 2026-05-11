@@ -1,6 +1,6 @@
 # iam\_managed\_policy
 
-Manage aws identity and access management policies
+Manage aws iam managed policies
 
 ## Requirements
 

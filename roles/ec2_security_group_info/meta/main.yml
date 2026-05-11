@@ -4,7 +4,7 @@ dependencies: []
 galaxy_info:
   role_name: ec2_security_group_info
   author: Taylor Kimball
-  description: Gather information about ec2 security groups
+  description: Gather information about aws security groups
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq

@@ -1,6 +1,6 @@
 # kms\_key\_info
 
-Gather information about key management service keys
+Gather information about aws key management service keys
 
 ## Requirements
 

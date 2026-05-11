@@ -1,6 +1,6 @@
 # elb\_target\_group\_info
 
-Gather information about elastic load balancer target groups
+Gather information about aws elastic load balancer target groups
 
 ## Requirements
 

@@ -1,5 +1,5 @@
 ---
-allow_duplicates: false
+allow_duplicates: true
 dependencies: []
 galaxy_info:
   role_name: aws_region_info

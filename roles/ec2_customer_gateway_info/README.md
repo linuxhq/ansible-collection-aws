@@ -1,6 +1,6 @@
 # ec2\_customer\_gateway\_info
 
-Gather information about ec2 customer gateways
+Gather information about aws customer gateways
 
 ## Requirements
 

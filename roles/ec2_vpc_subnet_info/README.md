@@ -1,6 +1,6 @@
 # ec2\_vpc\_subnet\_info
 
-Gather information about virtual private cloud subnets
+Gather information about aws virtual private cloud subnets
 
 ## Requirements
 

@@ -1,6 +1,6 @@
 # ec2\_ami\_info
 
-Gather information about ec2 amazon machine images
+Gather information about aws amazon machine images
 
 ## Requirements
 

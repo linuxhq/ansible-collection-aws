@@ -1,6 +1,6 @@
 # eks\_cluster\_info
 
-Gather information about eks clusters
+Gather information about aws eks clusters
 
 ## Requirements
 

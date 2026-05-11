@@ -1,6 +1,6 @@
 # iam\_policy\_info
 
-Gather information about identity and access management inline policies
+Gather information about aws iam inline policies
 
 ## Requirements
 

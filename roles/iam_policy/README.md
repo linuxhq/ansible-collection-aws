@@ -1,6 +1,6 @@
 # iam\_policy
 
-Manage aws identity and access management inline policies
+Manage aws iam inline policies
 
 ## Requirements
 

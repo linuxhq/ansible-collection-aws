@@ -15,7 +15,7 @@ dependencies:
 galaxy_info:
   role_name: ssm_parameter
   author: Taylor Kimball
-  description: Manage aws systems manager key-value pairs
+  description: Manage aws systems manager parameters
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq

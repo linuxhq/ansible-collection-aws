@@ -1,10 +1,10 @@
 ---
-allow_duplicates: false
+allow_duplicates: true
 dependencies: []
 galaxy_info:
   role_name: ec2_ami_info
   author: Taylor Kimball
-  description: Gather information about ec2 amazon machine images
+  description: Gather information about aws amazon machine images
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq

@@ -1,6 +1,6 @@
 # efs\_info
 
-Gather information about elastic filesystems
+Gather information about aws elastic filesystems
 
 ## Requirements
 

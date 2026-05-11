@@ -3,7 +3,7 @@ dependencies: []
 galaxy_info:
   role_name: iam_oidc_provider
   author: Taylor Kimball
-  description: Manage aws identity and access management oidc providers
+  description: Manage aws iam oidc providers
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq

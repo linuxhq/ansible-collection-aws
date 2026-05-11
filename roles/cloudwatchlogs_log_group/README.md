@@ -1,6 +1,6 @@
 # cloudwatchlogs\_log\_group
 
-Manage aws cloudwatchlogs log groups
+Manage aws cloudwatch logs log groups
 
 ## Requirements
 

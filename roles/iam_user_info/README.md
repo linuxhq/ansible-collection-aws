@@ -1,6 +1,6 @@
 # iam\_user\_info
 
-Gather information about iam users
+Gather information about aws iam users
 
 ## Requirements
 

@@ -1,6 +1,6 @@
 # iam\_oidc\_provider\_info
 
-Gather information about aws identity and access management oidc providers
+Gather information about aws iam oidc providers
 
 ## Requirements
 

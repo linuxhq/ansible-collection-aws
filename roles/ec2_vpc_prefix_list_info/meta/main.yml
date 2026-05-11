@@ -4,7 +4,7 @@ dependencies: []
 galaxy_info:
   role_name: ec2_vpc_prefix_list_info
   author: Taylor Kimball
-  description: Gather information about virtual private cloud prefix lists
+  description: Gather information about aws virtual private cloud prefix lists
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq

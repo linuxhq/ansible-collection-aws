@@ -1,10 +1,10 @@
 ---
-allow_duplicates: false
+allow_duplicates: true
 dependencies: []
 galaxy_info:
   role_name: iam_account_alias_info
   author: Taylor Kimball
-  description: Gather information about identity and access management account alias
+  description: Gather information about aws iam account aliases
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq

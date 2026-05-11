@@ -1,6 +1,6 @@
 # ec2\_launch\_template\_info
 
-Gather information about ec2 launch templates
+Gather information about aws launch templates
 
 ## Requirements
 
