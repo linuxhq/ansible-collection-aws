@@ -1,6 +1,6 @@
 # iam\_password\_policy
 
-Manage aws identity and access management password policy
+Manage aws iam password policy
 
 ## Requirements
 

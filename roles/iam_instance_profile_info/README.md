@@ -1,6 +1,6 @@
 # iam\_instance\_profile\_info
 
-Gather information about identity and access management instance profiles
+Gather information about aws iam instance profiles
 
 ## Requirements
 

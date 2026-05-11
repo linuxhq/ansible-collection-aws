@@ -1,6 +1,6 @@
 # ec2\_eip\_info
 
-Gather information about ec2 elastic ips
+Gather information about aws elastic ips
 
 ## Requirements
 

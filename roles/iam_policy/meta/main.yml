@@ -3,7 +3,7 @@ dependencies: []
 galaxy_info:
   role_name: iam_policy
   author: Taylor Kimball
-  description: Manage aws identity and access management inline policies
+  description: Manage aws iam inline policies
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq

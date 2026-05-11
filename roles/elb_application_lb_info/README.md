@@ -1,6 +1,6 @@
 # elb\_application\_lb\_info
 
-Gather information about elastic load balancer application load balancers
+Gather information about aws application load balancers
 
 ## Requirements
 

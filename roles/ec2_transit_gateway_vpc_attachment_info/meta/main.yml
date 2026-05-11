@@ -4,7 +4,7 @@ dependencies: []
 galaxy_info:
   role_name: ec2_transit_gateway_vpc_attachment_info
   author: Taylor Kimball
-  description: Gather information about ec2 transit gateway vpc attachments
+  description: Gather information about aws transit gateway vpc attachments
   license: GPL-3.0-or-later
   min_ansible_version: 2.18.0
   namespace: linuxhq

@@ -1,6 +1,6 @@
 # ec2\_vpc\_prefix\_list\_info
 
-Gather information about virtual private cloud prefix lists
+Gather information about aws virtual private cloud prefix lists
 
 ## Role Variables
 

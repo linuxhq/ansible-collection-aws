@@ -1,6 +1,6 @@
 # ec2\_transit\_gateway\_vpc\_attachment\_info
 
-Gather information about ec2 transit gateway vpc attachments
+Gather information about aws transit gateway vpc attachments
 
 ## Requirements
 

@@ -1,6 +1,6 @@
 # elb\_application\_lb
 
-Manage aws elastic load balancer application load balancers
+Manage aws application load balancers
 
 ## Requirements
 

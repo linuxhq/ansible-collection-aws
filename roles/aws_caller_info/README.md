@@ -1,6 +1,6 @@
 # aws\_caller\_info
 
-Gather information about aws user and account
+Gather information about aws caller identity
 
 ## Requirements
 

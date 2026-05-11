@@ -1,6 +1,6 @@
 # iam\_oidc\_provider
 
-Manage aws identity and access management oidc providers
+Manage aws iam oidc providers
 
 ## Requirements
 

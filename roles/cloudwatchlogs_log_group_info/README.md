@@ -1,6 +1,6 @@
 # cloudwatchlogs\_log\_group\_info
 
-Gather information about cloudwatchlogs log groups
+Gather information about aws cloudwatch logs log groups
 
 ## Requirements
 

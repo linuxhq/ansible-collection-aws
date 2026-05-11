@@ -1,6 +1,6 @@
 # ec2\_vpc\_net\_info
 
-Gather information about virtual private clouds
+Gather information about aws virtual private clouds
 
 ## Requirements
 

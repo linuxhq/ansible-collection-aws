@@ -1,6 +1,6 @@
 # ec2\_vpc\_nat\_gateway\_info
 
-Gather information about virtual private cloud nat gateways
+Gather information about aws virtual private cloud nat gateways
 
 ## Requirements
 

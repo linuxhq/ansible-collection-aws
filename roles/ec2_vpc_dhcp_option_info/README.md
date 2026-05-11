@@ -1,6 +1,6 @@
 # ec2\_vpc\_dhcp\_option\_info
 
-Gather information about virtual private cloud dhcp options
+Gather information about aws virtual private cloud dhcp options
 
 ## Requirements
 

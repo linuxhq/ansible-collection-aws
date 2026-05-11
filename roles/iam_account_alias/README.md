@@ -1,6 +1,6 @@
 # iam\_account\_alias
 
-Manage aws identity and access management account alias
+Manage aws iam account alias
 
 ## Requirements
 

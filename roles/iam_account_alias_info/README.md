@@ -1,6 +1,6 @@
 # iam\_account\_alias\_info
 
-Gather information about identity and access management account alias
+Gather information about aws iam account aliases
 
 ## Requirements
 
