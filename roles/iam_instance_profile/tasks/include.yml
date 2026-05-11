@@ -8,10 +8,7 @@
     purge_tags: "{{ _instance_profile.purge_tags | d(true) }}"
     role: "{{ _instance_profile.role | d(omit) }}"
     state: "{{ _instance_profile.state | d('present') }}"
-    tags:
-      "{{ _instance_profile.tags |
-          d({}) |
-          combine({'Name': _instance_profile.name}) }}"
+    tags: "{{ _instance_profile.tags | d({}) | combine({'Name': _instance_profile.name}) }}"
     validate_certs: true
   register: __iam_instance_profile_result
   loop: "{{ __iam_instance_profile_list }}"

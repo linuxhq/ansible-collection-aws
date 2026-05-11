@@ -9,10 +9,7 @@
     purge_rules_egress: false
     purge_tags: true
     state: "{{ _sg.1.state | d('present') }}"
-    tags:
-      "{{ _sg.1.tags |
-          d({}) |
-          combine({'Name': _sg.1.name}) }}"
+    tags: "{{ _sg.1.tags | d({}) | combine({'Name': _sg.1.name}) }}"
     validate_certs: true
     vpc_id: "{{ _sg.0.vpc_id }}"
   register: __ec2_security_group_create_result
@@ -58,10 +55,7 @@
     rules: "{{ _sg.1.rules | d(omit)  }}"
     rules_egress: "{{ _sg.1.rules_egress | d(omit) }}"
     state: "{{ _sg.1.state | d('present') }}"
-    tags:
-      "{{ _sg.1.tags |
-          d({}) |
-          combine({'Name': _sg.1.name}) }}"
+    tags: "{{ _sg.1.tags | d({}) | combine({'Name': _sg.1.name}) }}"
     validate_certs: true
     vpc_id: "{{ _sg.0.vpc_id }}"
   register: __ec2_security_group_rule_result

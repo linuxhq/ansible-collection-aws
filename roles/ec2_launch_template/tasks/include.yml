@@ -28,7 +28,7 @@
     source_version: "{{ _lt.source_version | d('latest') }}"
     state: "{{ _lt.state | d('present') }}"
     tag_specifications: "{{ _lt.tag_specifications | d(omit) }}"
-    tags: "{{ _lt.tags | d(omit) }}"
+    tags: "{{ _lt.tags | d({}) | combine({'Name': _lt.template_name}) }}"
     template_name: "{{ _lt.template_name }}"
     user_data: "{{ _lt.user_data | d(omit) }}"
     validate_certs: true

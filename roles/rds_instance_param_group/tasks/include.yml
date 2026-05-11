@@ -10,10 +10,7 @@
     params: "{{ _pg.params }}"
     purge_tags: "{{ _pg.purge_tags | d(true) }}"
     state: "{{ _pg.state | d('present') }}"
-    tags:
-      "{{ _pg.tags |
-          d({}) |
-          combine({'Name': _pg.name}) }}"
+    tags: "{{ _pg.tags | d({}) | combine({'Name': _pg.name}) }}"
     validate_certs: true
   register: __rds_instance_param_group_result
   loop: "{{ __rds_instance_param_group_list }}"

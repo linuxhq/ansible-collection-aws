@@ -15,10 +15,7 @@
     secret: "{{ _secret.secret | items2dict | to_json }}"
     secret_type: "{{ _secret.secret_type | d('string') }}"
     state: "{{ _secret.state | d('present') }}"
-    tags:
-      "{{ _secret.tags |
-          d({}) |
-          combine({'Name': _secret.name}) }}"
+    tags: "{{ _secret.tags | d({}) | combine({'Name': _secret.name}) }}"
     validate_certs: true
   register: __secretsmanager_secret_result
   loop: "{{ __secretsmanager_secret_list }}"

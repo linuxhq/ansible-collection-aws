@@ -15,10 +15,7 @@
     purge_policies: "{{ _role.purge_policies | d(true) }}"
     purge_tags: "{{ _role.purge_tags | d(true) }}"
     state: "{{ _role.state | d('present') }}"
-    tags:
-      "{{ _role.tags |
-          d({}) |
-          combine({'Name': _role.name}) }}"
+    tags: "{{ _role.tags | d({}) | combine({'Name': _role.name}) }}"
     validate_certs: true
     wait: "{{ _role.wait | d(true) }}"
     wait_timeout: "{{ _role.wait_timeout | d(120) }}"

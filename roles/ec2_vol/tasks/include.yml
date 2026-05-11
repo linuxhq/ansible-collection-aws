@@ -15,10 +15,7 @@
     purge_tags: "{{ _vol.1.purge_tags | d(true) }}"
     snapshot: "{{ _vol.1.snapshot | d(omit) }}"
     state: "{{ _vol.1.state | d('present') }}"
-    tags:
-      "{{ _vol.1.tags |
-          d({}) |
-          combine({'Name': _vol.1.name}) }}"
+    tags: "{{ _vol.1.tags | d({}) | combine({'Name': _vol.1.name}) }}"
     throughput: "{{ _vol.1.throughput | d(omit) }}"
     validate_certs: true
     volume_size: "{{ _vol.1.volume_size }}"

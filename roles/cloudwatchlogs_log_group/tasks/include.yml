@@ -10,10 +10,7 @@
     purge_tags: "{{ _log_group.purge_tags | d(true) }}"
     retention: "{{ _log_group.retention | d(omit) }}"
     state: "{{ _log_group.state | d('present') }}"
-    tags:
-      "{{ _log_group.tags |
-          d({}) |
-          combine({'Name': _log_group.name}) }}"
+    tags: "{{ _log_group.tags | d({}) | combine({'Name': _log_group.name}) }}"
     validate_certs: true
   register: __cloudwatchlogs_log_group_result
   loop: "{{ __cloudwatchlogs_log_group_list }}"

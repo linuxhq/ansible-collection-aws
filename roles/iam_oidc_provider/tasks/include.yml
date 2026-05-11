@@ -6,7 +6,7 @@
     client_id_list: "{{ _provider.client_id_list }}"
     purge_tags: "{{ _provider.purge_tags | d(omit) }}"
     state: "{{ _provider.state | d('present') }}"
-    tags: "{{ _provider.tags | d(omit) }}"
+    tags: "{{ _provider.tags | d({}) | combine({'Name': _provider.name}) }}"
     thumbprint_list: "{{ _provider.thumbprint_list }}"
     url: "{{ _provider.url }}"
     validate_certs: true
@@ -22,6 +22,7 @@
     - __iam_oidc_provider_result.changed | bool
   when:
     - _provider.url is defined
+    - _provider.name is defined
     - _provider.client_id_list is defined
     - _provider.thumbprint_list is defined
 

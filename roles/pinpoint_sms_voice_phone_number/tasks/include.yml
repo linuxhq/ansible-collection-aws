@@ -17,10 +17,7 @@
     pool_id: "{{ _phone_number.pool_id | d(omit) }}"
     registration_id: "{{ _phone_number.registration_id | d(omit) }}"
     state: "{{ _phone_number.state | d('present') }}"
-    tags:
-      "{{ _phone_number.tags |
-          d({}) |
-          combine({'Name': _phone_number.name}) }}"
+    tags: "{{ _phone_number.tags | d({}) | combine({'Name': _phone_number.name}) }}"
     validate_certs: true
     wait: "{{ _phone_number.wait | d(omit) }}"
     wait_delay: "{{ _phone_number.wait_delay | d(omit) }}"

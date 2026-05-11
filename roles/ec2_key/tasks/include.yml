@@ -8,10 +8,7 @@
     name: "{{ _key.name }}"
     purge_tags: "{{ _key.purge_tags | d(true) }}"
     state: "{{ _key.state | d('present') }}"
-    tags:
-      "{{ _key.tags |
-          d({}) |
-          combine({'Name': _key.name}) }}"
+    tags: "{{ _key.tags | d({}) | combine({'Name': _key.name}) }}"
     validate_certs: true
   register: __ec2_key_result
   loop: "{{ __ec2_key_list }}"

@@ -27,10 +27,7 @@
     stickiness_lb_cookie_duration: "{{ _tg.stickiness_lb_cookie_duration | d(omit) }}"
     stickiness_type: "{{ _tg.stickiness_type | d(omit) }}"
     successful_response_codes: "{{ _tg.successful_response_codes | d(omit) }}"
-    tags:
-      "{{ _tg.tags |
-          d({}) |
-          combine({'Name': _tg.name}) }}"
+    tags: "{{ _tg.tags | d({}) | combine({'Name': _tg.name}) }}"
     target_type: "{{ _tg.target_type | d('instance') }}"
     unhealthy_threshold_count: "{{ _tg.unhealthy_threshold_count | d(omit) }}"
     validate_certs: true

@@ -9,6 +9,9 @@ None
 ## Role Variables
 
     ec2_transit_gateway_vpc_attachment_info_filters: {}
+    ec2_transit_gateway_vpc_attachment_info_id: null
+    ec2_transit_gateway_vpc_attachment_info_include_deleted: false
+    ec2_transit_gateway_vpc_attachment_info_name: null
 
 ## Return Values
 

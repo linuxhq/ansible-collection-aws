@@ -12,10 +12,7 @@
     purge_tags: "{{ _subnet.1.purge_tags | d(true) }}"
     region: "{{ _subnet.1.region | d(omit) }}"
     state: "{{ _subnet.0.state | d('present') }}"
-    tags:
-      "{{ _subnet.1.tags |
-          d({}) |
-          combine({'Name': _subnet.1.name}) }}"
+    tags: "{{ _subnet.1.tags | d({}) | combine({'Name': _subnet.1.name}) }}"
     validate_certs: true
     vpc_id: "{{ _subnet.0.vpc_id }}"
     wait: "{{ _subnet.0.wait | d(true) }}"

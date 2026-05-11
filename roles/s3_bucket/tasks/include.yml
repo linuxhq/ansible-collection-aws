@@ -22,10 +22,7 @@
     purge_tags: "{{ _bucket.purge_tags | d(true) }}"
     requester_pays: "{{ _bucket.requester_pays | d(omit) }}"
     state: "{{ _bucket.state | d('present') }}"
-    tags:
-      "{{ _bucket.tags |
-          d({}) |
-          combine({'Name': _bucket.name}) }}"
+    tags: "{{ _bucket.tags | d({}) | combine({'Name': _bucket.name}) }}"
     validate_bucket_name: "{{ _bucket.validate_bucket_name | d(true) }}"
     validate_certs: true
     versioning: "{{ _bucket.versioning | d(omit) }}"

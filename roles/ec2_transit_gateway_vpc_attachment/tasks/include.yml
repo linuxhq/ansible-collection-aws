@@ -11,10 +11,7 @@
     purge_tags: "{{ _tgw_attach.purge_tags | d(true) }}"
     state: "{{ _tgw_attach.state | d('present') }}"
     subnets: "{{ _tgw_attach.subnets }}"
-    tags:
-      "{{ _tgw_attach.tags |
-          d({}) |
-          combine({'Name': _tgw_attach.name}) }}"
+    tags: "{{ _tgw_attach.tags | d({}) | combine({'Name': _tgw_attach.name}) }}"
     transit_gateway: "{{ _tgw_attach.transit_gateway }}"
     validate_certs: true
     wait: "{{ _tgw_attach.wait | d(true) }}"

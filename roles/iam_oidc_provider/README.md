@@ -30,10 +30,9 @@ None
       roles:
         - role: linuxhq.aws.iam_oidc_provider
           iam_oidc_provider_list:
-            - url: https://token.actions.githubusercontent.com
+            - name: github-actions
+              url: https://token.actions.githubusercontent.com
               client_id_list:
                 - sts.amazonaws.com
               thumbprint_list:
                 - 6938fd4d98bab03faadb97b34396831e3780aea1
-              tags:
-                Name: github-actions

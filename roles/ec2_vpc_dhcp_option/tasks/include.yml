@@ -12,10 +12,7 @@
     ntp_servers: "{{ _dopt.ntp_servers | d(omit) }}"
     purge_tags: "{{ _dopt.purge_tags | d(true) }}"
     state: "{{ _dopt.state | d('present') }}"
-    tags:
-      "{{ _dopt.tags |
-          d({}) |
-          combine({'Name': _dopt.name}) }}"
+    tags: "{{ _dopt.tags | d({}) | combine({'Name': _dopt.name}) }}"
     validate_certs: true
     vpc_id: "{{ _dopt.vpc_id | d(omit) }}"
   register: __ec2_vpc_dhcp_option_result

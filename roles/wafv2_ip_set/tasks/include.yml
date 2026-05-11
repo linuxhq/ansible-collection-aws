@@ -11,10 +11,7 @@
     purge_tags: "{{ _ipset.purge_tags | d(true) }}"
     scope: "{{ _ipset.scope | upper }}"
     state: "{{ _ipset.state | d('present') }}"
-    tags:
-      "{{ _ipset.tags |
-          d({}) |
-          combine({'Name': _ipset.name}) }}"
+    tags: "{{ _ipset.tags | d({}) | combine({'Name': _ipset.name}) }}"
     validate_certs: true
   register: __wafv2_ip_set_result
   loop: "{{ __wafv2_ip_set_list }}"

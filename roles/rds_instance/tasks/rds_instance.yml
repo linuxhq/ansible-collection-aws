@@ -49,10 +49,7 @@
     storage_encrypted: "{{ _db.storage_encrypted | d(omit) }}"
     storage_throughput: "{{ _db.storage_throughput | d(omit) }}"
     storage_type: "{{ _db.storage_type | d(omit) }}"
-    tags:
-      "{{ _db.tags |
-          d({}) |
-          combine({'Name': _db.db_instance_identifier}) }}"
+    tags: "{{ _db.tags | d({}) | combine({'Name': _db.db_instance_identifier}) }}"
     timezone: "{{ _db.timezone | d(omit) }}"
     validate_certs: true
     vpc_security_group_ids: "{{ __rds_instance_security_group | d(omit) }}"

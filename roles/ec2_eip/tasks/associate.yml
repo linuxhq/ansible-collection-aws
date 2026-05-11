@@ -11,10 +11,7 @@
     release_on_disassociation: "{{ _eip.release_on_disassociation | d(false) }}"
     reuse_existing_ip_allowed: "{{ _eip.reuse_existing_ip_allowed | d(false) }}"
     state: present
-    tags:
-      "{{ _eip.tags |
-          d({}) |
-          combine({'Name': _eip.name}) }}"
+    tags: "{{ _eip.tags | d({}) | combine({'Name': _eip.name}) }}"
     validate_certs: true
   register: __ec2_eip_result_associate
   loop: "{{ __ec2_eip_list }}"

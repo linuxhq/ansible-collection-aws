@@ -9,10 +9,7 @@
     route_table_ids: "{{ _vpce.route_table_ids | d(omit) }}"
     service: "{{ _vpce.service }}"
     state: "{{ _vpce.state | d('present') }}"
-    tags:
-      "{{ _vpce.tags |
-          d({}) |
-          combine({'Name': _vpce.name}) }}"
+    tags: "{{ _vpce.tags | d({}) | combine({'Name': _vpce.name}) }}"
     validate_certs: true
     vpc_endpoint_id: "{{ __ec2_vpc_endpoint_dict[_vpce.name] | d(omit) }}"
     vpc_endpoint_security_groups: "{{ _vpce.vpc_endpoint_security_groups | d(omit) }}"
