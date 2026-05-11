@@ -30,7 +30,7 @@
     - ansible_check_mode | bool
     - __rds_option_group_result.changed | bool
 
-- name: Ensure managed aws rds option groups jobs are complete
+- name: Ensure managed aws rds option group jobs are complete
   tags:
     - rds_option_group
   ansible.builtin.async_status:

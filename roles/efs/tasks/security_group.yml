@@ -16,7 +16,7 @@
     vpc_id: "{{ _efs.vpc_id }}"
   register: __efs_security_group_result
 
-- name: Ensure list of aws efs targets is generated
+- name: Ensure list of aws elastic filesystem targets is generated
   tags:
     - efs
   ansible.builtin.set_fact:

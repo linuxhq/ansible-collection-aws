@@ -4,7 +4,7 @@
     - iam_oidc_provider
   linuxhq.aws.iam_oidc_provider:
     client_id_list: "{{ _provider.client_id_list }}"
-    purge_tags: "{{ _provider.purge_tags | d(omit) }}"
+    purge_tags: "{{ _provider.purge_tags | d(true) }}"
     state: "{{ _provider.state | d('present') }}"
     tags: "{{ _provider.tags | d({}) | combine({'Name': _provider.name}) }}"
     thumbprint_list: "{{ _provider.thumbprint_list }}"

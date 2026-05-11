@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws cloudwatchlogs log groups are managed
+- name: Ensure aws cloudwatch logs log groups are managed
   tags:
     - cloudwatchlogs_log_group
   amazon.aws.cloudwatchlogs_log_group:
@@ -25,7 +25,7 @@
     - ansible_check_mode | bool
     - __cloudwatchlogs_log_group_result.changed | bool
 
-- name: Ensure managed aws cloudwatchlogs log group jobs are complete
+- name: Ensure managed aws cloudwatch logs log group jobs are complete
   tags:
     - cloudwatchlogs_log_group
   ansible.builtin.async_status:

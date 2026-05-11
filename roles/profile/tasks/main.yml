@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws profile configuration directory is present
+- name: Ensure aws profile directory is present
   tags:
     - profile
   ansible.builtin.file:
@@ -15,7 +15,7 @@
     mode: '0600'
     src: config.j2
 
-- name: Ensure aws profile credentials is managed
+- name: Ensure aws profile credentials are managed
   tags:
     - profile
   no_log: "{{ profile_no_log }}"

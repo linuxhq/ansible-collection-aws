@@ -41,7 +41,7 @@
                  recursive=_parameter.recursive | d(false),
                  region=__ssm_parameter_info_region) }}"
 
-- name: Ensure list of aws systems manager parameters is generated
+- name: Ensure empty list of aws systems manager parameters is generated
   tags:
     - ssm_parameter_info
   ansible.builtin.set_fact:

@@ -1,19 +1,19 @@
 ---
-- name: Ensure aws systems manager session availability zone info is gathered
+- name: Ensure information about aws systems manager session availability zones is gathered
   tags:
     - ssm_session
   amazon.aws.aws_az_info:
     validate_certs: true
   register: __ssm_session_az_info
 
-- name: Ensure aws systems manager session caller info is gathered
+- name: Ensure information about aws systems manager session caller identity is gathered
   tags:
     - ssm_session
   amazon.aws.aws_caller_info:
     validate_certs: true
   register: __ssm_session_caller_info
 
-- name: Ensure aws systems manager session profile information is generated
+- name: Ensure aws systems manager session profile strings are generated
   tags:
     - ssm_session
   ansible.builtin.set_fact:
@@ -50,7 +50,7 @@
     tags: "{{ ssm_session_tags }}"
     validate_certs: true
 
-- name: Ensure aws systems manager session regional tasks are included
+- name: Ensure aws systems manager session tasks are included
   tags:
     - ssm_session
   ansible.builtin.include_tasks:

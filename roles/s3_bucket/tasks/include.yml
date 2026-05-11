@@ -39,7 +39,7 @@
     - ansible_check_mode | bool
     - __s3_bucket_result.changed | bool
 
-- name: Ensure managed aws simple storage bucket jobs are complete
+- name: Ensure managed aws simple storage service bucket jobs are complete
   tags:
     - s3_bucket
   ansible.builtin.async_status:

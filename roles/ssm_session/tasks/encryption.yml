@@ -15,7 +15,7 @@
     tags: "{{ ssm_session_tags }}"
     validate_certs: true
 
-- name: Ensure aws systems manager session kms key info is gathered
+- name: Ensure aws systems manager session kms key information is gathered
   tags:
     - ssm_session
   amazon.aws.kms_key_info:
@@ -23,7 +23,7 @@
     validate_certs: true
   register: __ssm_session_kms_key_info
 
-- name: Ensure aws systems manager session kms key fact is generated
+- name: Ensure string of aws systems manager session kms key arn is generated
   tags:
     - ssm_session
   ansible.builtin.set_fact:

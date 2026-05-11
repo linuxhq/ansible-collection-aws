@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about aws service quota availability zone is gathered
+- name: Ensure information about aws service quota availability zones is gathered
   tags:
     - service_quota_info
   amazon.aws.aws_az_info:
@@ -13,7 +13,7 @@
     __service_quota_info_region:
       "{{ __service_quota_info_availability_zone.availability_zones.0.region_name }}"
 
-- name: Ensure aws service quota information is gathered
+- name: Ensure information about aws service quotas is gathered
   tags:
     - service_quota_info
   linuxhq.aws.service_quota_info:
@@ -32,7 +32,7 @@
     label: "{{ _servicequota.1.quota_code | d(none) }}"
     loop_var: _servicequota
 
-- name: Ensure list of aws service quota information is generated
+- name: Ensure list of aws service quotas is generated
   tags:
     - service_quota_info
   ansible.builtin.set_fact:
@@ -42,7 +42,7 @@
           map(attribute='quota', default=[]) |
           list }}"
 
-- name: Ensure dict of aws service quota information is generated
+- name: Ensure dict of aws service quotas is generated
   tags:
     - service_quota_info
   ansible.builtin.set_fact:

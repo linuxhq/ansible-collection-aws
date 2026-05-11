@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about aws simple notification service topics is gathered
+- name: Ensure information about aws simple notification service topic arns is gathered
   tags:
     - sns_topic_info
   community.aws.sns_topic_info:
@@ -13,7 +13,7 @@
     __sns_topic_info_arn:
       "{{ __sns_topic_info_query_arn.result }}"
 
-- name: Ensure information about aws simple notification service topics is gathered
+- name: Ensure information about aws simple notification service topic attributes is gathered
   tags:
     - sns_topic_info
   community.aws.sns_topic_info:

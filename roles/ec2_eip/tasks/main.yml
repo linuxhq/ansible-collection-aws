@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws elastic ip info tasks are executed
+- name: Ensure aws elastic ip info tasks are included
   tags:
     - ec2_eip
   ansible.builtin.include_tasks:
@@ -8,7 +8,7 @@
         - ec2_eip
     file: info.yml
 
-- name: Ensure aws elastic ip present tasks are executed
+- name: Ensure aws elastic ip present tasks are included
   tags:
     - ec2_eip
   ansible.builtin.include_tasks:
@@ -23,7 +23,7 @@
     label: "{{ __ec2_eip_list | length }}"
     loop_var: __ec2_eip_list
 
-- name: Ensure aws elastic ip info tasks are executed
+- name: Ensure aws elastic ip info tasks are included
   tags:
     - ec2_eip
   ansible.builtin.include_tasks:
@@ -32,7 +32,7 @@
         - ec2_eip
     file: info.yml
 
-- name: Ensure aws elastic ip associate tasks are executed
+- name: Ensure aws elastic ip associate tasks are included
   tags:
     - ec2_eip
   ansible.builtin.include_tasks:
@@ -47,7 +47,7 @@
     label: "{{ __ec2_eip_list | length }}"
     loop_var: __ec2_eip_list
 
-- name: Ensure aws elastic ip info tasks are executed
+- name: Ensure aws elastic ip info tasks are included
   tags:
     - ec2_eip
   ansible.builtin.include_tasks:
@@ -56,7 +56,7 @@
         - ec2_eip
     file: info.yml
 
-- name: Ensure aws elastic ip absent tasks are executed
+- name: Ensure aws elastic ip absent tasks are included
   tags:
     - ec2_eip
   ansible.builtin.include_tasks:

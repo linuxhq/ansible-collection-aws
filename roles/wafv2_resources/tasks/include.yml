@@ -23,7 +23,7 @@
     - ansible_check_mode | bool
     - __wafv2_resources_result.changed | bool
 
-- name: Ensure managed aws wafv2 resources jobs are complete
+- name: Ensure managed aws wafv2 resource jobs are complete
   tags:
     - wafv2_resources
   ansible.builtin.async_status:

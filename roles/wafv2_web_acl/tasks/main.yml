@@ -9,7 +9,7 @@
           map('combine') |
           list }}"
 
-- name: Ensure aws wafv2 web acl state lists are generated
+- name: Ensure aws wafv2 web acl lists are generated
   tags:
     - wafv2_web_acl
   ansible.builtin.set_fact:

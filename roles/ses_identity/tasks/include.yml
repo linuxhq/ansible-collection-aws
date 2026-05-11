@@ -1,5 +1,5 @@
 ---
-- name: Ensure aws simple email service identity tokens are gathered
+- name: Ensure information about aws simple email service identity tokens is gathered
   tags:
     - ses_identity
   linuxhq.aws.ses_identity_tokens_info:
@@ -8,7 +8,7 @@
     validate_certs: true
   register: __ses_identity_tokens_query
 
-- name: Ensure aws simple email service identity txt records are gathered
+- name: Ensure information about aws simple email service identity txt records is gathered
   tags:
     - ses_identity
   amazon.aws.route53:

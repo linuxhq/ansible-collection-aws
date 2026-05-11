@@ -1,12 +1,12 @@
 ---
-- name: Ensure information about aws virtual private cloud endpoint is gathered
+- name: Ensure information about aws virtual private cloud endpoints is gathered
   tags:
     - ec2_vpc_endpoint
   amazon.aws.ec2_vpc_endpoint_info:
     validate_certs: true
   register: __ec2_vpc_endpoint_info
 
-- name: Ensure dict of aws virtual private cloud endpoint information is generated
+- name: Ensure dict of aws virtual private cloud endpoints is generated
   tags:
     - ec2_vpc_endpoint
   ansible.builtin.set_fact:

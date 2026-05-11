@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about aws simple queue service availability zone is gathered
+- name: Ensure information about aws simple queue service availability zones is gathered
   tags:
     - sqs_queue
   amazon.aws.aws_az_info:
@@ -25,7 +25,7 @@
     validate_certs: true
   register: __sqs_queue_info_query
 
-- name: Ensure list of aws simple queue service queue information is generated
+- name: Ensure list of aws simple queue service queues is generated
   tags:
     - sqs_queue
   ansible.builtin.set_fact:
@@ -34,7 +34,7 @@
           d([]) |
           list }}"
 
-- name: Ensure dict of aws simple queue service queue information is generated
+- name: Ensure dict of aws simple queue service queues is generated
   tags:
     - sqs_queue_info
   ansible.builtin.set_fact:

@@ -24,7 +24,7 @@
     - ansible_check_mode | bool
     - __ec2_eip_result_absent.changed | bool
 
-- name: Ensure absent aws elastic ip address jobs are complete
+- name: Ensure aws elastic ip address absent jobs are complete
   tags:
     - ec2_eip
   ansible.builtin.async_status:

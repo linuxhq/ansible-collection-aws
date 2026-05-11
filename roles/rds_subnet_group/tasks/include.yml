@@ -24,7 +24,7 @@
     - ansible_check_mode | bool
     - __rds_subnet_group_result.changed | bool
 
-- name: Ensure managed aws rds subnet groups jobs are complete
+- name: Ensure managed aws rds subnet group jobs are complete
   tags:
     - rds_subnet_group
   ansible.builtin.async_status:

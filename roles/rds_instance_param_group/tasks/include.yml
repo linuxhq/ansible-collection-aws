@@ -28,7 +28,7 @@
     - ansible_check_mode | bool
     - __rds_instance_param_group_result.changed | bool
 
-- name: Ensure managed aws rds instance parameter groups jobs are complete
+- name: Ensure managed aws rds instance parameter group jobs are complete
   tags:
     - rds_instance_param_group
   ansible.builtin.async_status:

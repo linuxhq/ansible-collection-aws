@@ -1,12 +1,12 @@
 ---
-- name: Ensure information about aws iam account alias is gathered
+- name: Ensure information about aws iam account aliases is gathered
   tags:
     - iam_account_alias_info
   linuxhq.aws.iam_account_alias_info:
     validate_certs: true
   register: __iam_account_alias_info_query
 
-- name: Ensure list of aws iam account alias information is generated
+- name: Ensure list of aws iam account aliases is generated
   tags:
     - iam_account_alias_info
   ansible.builtin.set_fact:

@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about aws subnets is gathered
+- name: Ensure information about aws virtual private cloud subnets is gathered
   tags:
     - ec2_vpc_subnet_info
   amazon.aws.ec2_vpc_subnet_info:

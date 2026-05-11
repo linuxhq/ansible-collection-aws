@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about aws cloudwatchlogs log groups is gathered
+- name: Ensure information about aws cloudwatch logs log groups is gathered
   tags:
     - cloudwatchlogs_log_group_info
   amazon.aws.cloudwatchlogs_log_group_info:
@@ -7,7 +7,7 @@
     validate_certs: true
   register: __cloudwatchlogs_log_group_info_query
 
-- name: Ensure list of aws cloudwatchlogs log groups is generated
+- name: Ensure list of aws cloudwatch logs log groups is generated
   tags:
     - cloudwatchlogs_log_group_info
   ansible.builtin.set_fact:
@@ -16,7 +16,7 @@
           selectattr('log_group_name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of aws cloudwatchlogs log groups is generated
+- name: Ensure dict of aws cloudwatch logs log groups is generated
   tags:
     - cloudwatchlogs_log_group_info
   ansible.builtin.set_fact:

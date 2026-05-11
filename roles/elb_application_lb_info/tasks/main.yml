@@ -1,5 +1,5 @@
 ---
-- name: Ensure information about aws elastic load balancer application load balancers is gathered
+- name: Ensure information about aws application load balancers is gathered
   tags:
     - elb_application_lb_info
   amazon.aws.elb_application_lb_info:
@@ -11,7 +11,7 @@
     validate_certs: true
   register: __elb_application_lb_info_query
 
-- name: Ensure list of aws elastic load balancer application load balancers is generated
+- name: Ensure list of aws application load balancers is generated
   tags:
     - elb_application_lb_info
   ansible.builtin.set_fact:
@@ -20,7 +20,7 @@
           selectattr('load_balancer_name', 'defined')) |
           d([]) }}"
 
-- name: Ensure dict of aws elastic load balancer application load balancers is generated
+- name: Ensure dict of aws application load balancers is generated
   tags:
     - elb_application_lb_info
   ansible.builtin.set_fact:
