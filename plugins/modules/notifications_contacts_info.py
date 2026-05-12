@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: notifications_contacts_info
-version_added: "1.9.5"
-short_description: Gather information about AWS Notifications contacts
+short_description: Gather information about aws notifications contacts
 description:
   - Gathers information about AWS Notifications email contacts.
 author:

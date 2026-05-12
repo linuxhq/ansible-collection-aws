@@ -6,8 +6,7 @@
 DOCUMENTATION = r"""
 ---
 module: glue_connection_info
-version_added: "1.9.5"
-short_description: Gather information about AWS Glue connections
+short_description: Gather information about aws glue connections
 description:
   - Gathers information about AWS Glue connections.
 author:

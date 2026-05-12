@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: iam_oidc_provider_info
-version_added: "1.9.5"
-short_description: Gather information about AWS IAM OpenID Connect providers
+short_description: Gather information about aws iam oidc providers
 description:
   - Gathers information about AWS IAM OpenID Connect (OIDC) identity providers.
 author:

@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: iam_policy_info
-version_added: "1.9.5"
-short_description: Gather information about AWS IAM inline policies
+short_description: Gather information about aws iam inline policies
 description:
   - Gathers information about AWS IAM inline policies for users and groups.
 author:

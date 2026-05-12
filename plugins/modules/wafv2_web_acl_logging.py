@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: wafv2_web_acl_logging
-version_added: "1.9.5"
-short_description: Manage AWS WAFv2 web ACL logging configuration
+short_description: Manage aws wafv2 web acls
 description:
   - Manages AWS WAFv2 web ACL logging configuration.
   - Supports enabling, updating, and removing logging for a web ACL.

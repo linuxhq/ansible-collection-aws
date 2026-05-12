@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ses_identity_info
-version_added: "1.9.5"
-short_description: Gather information about AWS SES identities
+short_description: Gather information about aws simple email service identities
 description:
   - Gathers information about AWS SES identities.
 author:

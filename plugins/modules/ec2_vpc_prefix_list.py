@@ -6,8 +6,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_vpc_prefix_list
-version_added: "1.9.5"
-short_description: Manage EC2 VPC managed prefix lists
+short_description: Manage aws virtual private cloud prefix lists
 description:
   - Creates, updates, and deletes EC2 VPC managed prefix lists.
   - Manages prefix list entries idempotently.

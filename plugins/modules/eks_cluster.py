@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: eks_cluster
-version_added: "1.9.5"
-short_description: Manage AWS EKS clusters
+short_description: Manage aws elastic kubernetes service clusters
 description:
   - Creates, updates, and deletes AWS EKS clusters.
   - Supports modern EKS cluster settings exposed by the EKS API.

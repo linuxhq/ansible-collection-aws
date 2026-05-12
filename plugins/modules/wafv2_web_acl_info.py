@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: wafv2_web_acl_info
-version_added: "1.9.5"
-short_description: Gather information about AWS WAFv2 web ACLs
+short_description: Gather information about aws wafv2 web acls
 description:
   - Gathers information about AWS WAFv2 web ACLs.
   - Lists web ACLs for the requested scope and returns each full web ACL definition.

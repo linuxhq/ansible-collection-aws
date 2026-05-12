@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: route53_zone_associate
-version_added: "1.9.5"
-short_description: Manage AWS Route53 private hosted zone VPC associations
+short_description: Manage aws route53 zone associations
 description:
   - Manages AWS Route53 private hosted zone VPC associations.
 author:

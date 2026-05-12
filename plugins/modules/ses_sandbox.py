@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ses_sandbox
-version_added: "1.9.5"
-short_description: Manage AWS Simple Email Service account details
+short_description: Manage aws simple email service account details
 description:
   - Requests production access for an AWS Simple Email Service account and manages the submitted account details.
 author:

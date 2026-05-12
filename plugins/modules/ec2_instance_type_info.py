@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_instance_type_info
-version_added: "1.9.6"
-short_description: Gather information about EC2 instance types
+short_description: Gather information about aws instance types
 description:
   - Gathers information about EC2 instance types.
   - This module maps to the EC2 C(DescribeInstanceTypes) API, the API behind

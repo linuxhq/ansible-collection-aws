@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_pricing_info
-version_added: "1.9.6"
-short_description: Gather AWS Price List product information
+short_description: Gather information about aws pricing products
 description:
   - Gathers AWS Price List product information.
   - This module maps to the AWS Pricing C(GetProducts) API, the API behind

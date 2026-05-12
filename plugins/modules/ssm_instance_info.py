@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ssm_instance_info
-version_added: "1.9.5"
-short_description: Gather information about AWS Systems Manager managed instances
+short_description: Gather information about aws systems manager instances
 description:
   - Gathers information about AWS Systems Manager managed instances.
   - This includes the Systems Manager ping status used to determine whether an

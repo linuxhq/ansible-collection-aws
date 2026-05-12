@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: sns_topic_attributes
-version_added: "1.9.5"
-short_description: Manage AWS Simple Notification Service topic attributes
+short_description: Manage aws simple notification service topics
 description:
   - Manages selected AWS Simple Notification Service topic attributes.
   - Supports managing the topic KMS master key attribute.

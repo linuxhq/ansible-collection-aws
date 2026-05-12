@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: pinpoint_sms_voice_phone_number
-version_added: "1.9.6"
-short_description: Manage AWS End User Messaging SMS phone numbers
+short_description: Manage aws end user messaging sms phone numbers
 description:
   - Requests and releases AWS End User Messaging SMS origination phone numbers.
   - This module maps to the Pinpoint SMS Voice V2 C(RequestPhoneNumber) API,

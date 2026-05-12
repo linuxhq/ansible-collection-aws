@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: service_quota_info
-version_added: "1.9.5"
-short_description: Gather information about an AWS service quota
+short_description: Gather information about aws service quotas
 description:
   - Gathers information about an AWS service quota.
 author:
