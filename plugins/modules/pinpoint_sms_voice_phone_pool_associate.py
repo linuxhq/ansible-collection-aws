@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: pinpoint_sms_voice_phone_pool_associate
-version_added: "1.9.6"
-short_description: Manage AWS End User Messaging SMS phone pool associations
+short_description: Manage aws end user messaging sms phone pool associations
 description:
   - Manages AWS End User Messaging SMS phone pool origination identity
     associations.

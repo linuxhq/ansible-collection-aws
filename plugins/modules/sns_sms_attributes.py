@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: sns_sms_attributes
-version_added: "1.9.5"
-short_description: Manage AWS Simple Notification Service SMS attributes
+short_description: Manage aws simple notification service sms attributes
 description:
   - Manages AWS Simple Notification Service SMS attributes.
   - This module maps to the SNS C(SetSMSAttributes) API.

@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: route53_resolver_rule_info
-version_added: "1.9.5"
-short_description: Gather information about AWS Route53 Resolver rules
+short_description: Gather information about aws route53 resolver rules
 description:
   - Gathers information about AWS Route53 Resolver rules.
 author:

@@ -5,7 +5,6 @@
 DOCUMENTATION = r"""
 ---
 module: ssm_send_command
-version_added: "1.9.5"
 short_description: Send AWS Systems Manager commands
 description:
   - Sends an AWS Systems Manager Run Command request.

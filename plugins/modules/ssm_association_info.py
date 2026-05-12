@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ssm_association_info
-version_added: "1.9.5"
-short_description: Gather information about AWS Systems Manager associations
+short_description: Gather information about aws systems manager associations
 description:
   - Gathers information about AWS Systems Manager associations.
 author:

@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: sns_sms_attributes_info
-version_added: "1.9.5"
-short_description: Gather information about AWS Simple Notification Service SMS attributes
+short_description: Gather information about aws simple notification service sms attributes
 description:
   - Gathers information about AWS Simple Notification Service SMS attributes.
   - This module maps to the SNS C(GetSMSAttributes) API.

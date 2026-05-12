@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ssm_document
-version_added: "1.9.5"
-short_description: Manage AWS Systems Manager documents
+short_description: Manage aws systems manager documents
 description:
   - Manages AWS Systems Manager documents.
   - Supports creating, updating, and deleting JSON documents.

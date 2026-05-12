@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_serial_console_info
-version_added: "1.9.5"
-short_description: Gather EC2 serial console access status
+short_description: Gather information about aws ec2 serial console access
 description:
   - Gathers EC2 serial console access status for a region.
 author:

@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: sqs_queue_info
-version_added: "1.9.5"
-short_description: Gather information about AWS Simple Queue Service queues
+short_description: Gather information about aws simple queue service queues
 description:
   - Gathers information about AWS Simple Queue Service queues.
 author:

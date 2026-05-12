@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ses_identity_tokens_info
-version_added: "1.9.5"
-short_description: Gather AWS SES domain identity tokens
+short_description: Manage aws simple email service identities
 description:
   - Gathers AWS SES DKIM and verification tokens for a domain identity.
 author:

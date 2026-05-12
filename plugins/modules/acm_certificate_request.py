@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: acm_certificate_request
-version_added: "1.9.5"
-short_description: Request AWS ACM certificates
+short_description: Manage aws certificate manager certificates
 description:
   - Requests AWS Certificate Manager certificates using DNS validation.
 author:

@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_instance_metadata
-version_added: "1.9.5"
-short_description: Manage EC2 account-level instance metadata defaults
+short_description: Manage aws ec2 instance metadata defaults
 description:
   - Updates EC2 account-level instance metadata defaults for a region.
 author:

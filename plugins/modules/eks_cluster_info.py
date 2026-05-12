@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: eks_cluster_info
-version_added: "1.9.5"
-short_description: Gather information about AWS EKS clusters
+short_description: Gather information about aws eks clusters
 description:
   - Gathers information about AWS EKS clusters.
 author:

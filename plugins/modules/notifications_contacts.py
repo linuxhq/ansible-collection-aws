@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: notifications_contacts
-version_added: "1.9.5"
-short_description: Manage AWS Notifications contacts
+short_description: Manage aws notifications contacts
 description:
   - Manages AWS Notifications email contacts.
 author:

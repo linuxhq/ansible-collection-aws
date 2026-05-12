@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_flow_log_info
-version_added: "1.9.5"
-short_description: Gather information about EC2 flow logs
+short_description: Gather information about aws ec2 flow logs
 description:
   - Gathers information about EC2 flow logs.
 author:

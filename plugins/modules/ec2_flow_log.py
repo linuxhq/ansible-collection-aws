@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_flow_log
-version_added: "1.9.5"
-short_description: Manage EC2 flow logs
+short_description: Manage aws ec2 flow logs
 description:
   - Creates and deletes EC2 flow logs for VPC, subnet, network interface,
     and transit gateway resources.

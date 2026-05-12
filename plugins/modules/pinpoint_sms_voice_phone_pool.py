@@ -5,8 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: pinpoint_sms_voice_phone_pool
-version_added: "1.9.6"
-short_description: Manage AWS End User Messaging SMS phone pools
+short_description: Manage aws end user messaging sms phone pools
 description:
   - Manages AWS End User Messaging SMS phone pools.
   - This module maps to the Pinpoint SMS Voice V2 C(CreatePool) API,
