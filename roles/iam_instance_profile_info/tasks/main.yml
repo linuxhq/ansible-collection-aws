@@ -4,7 +4,7 @@
     - iam_instance_profile_info
   amazon.aws.iam_instance_profile_info:
     name: "{{ iam_instance_profile_info_name or omit }}"
-    path_prefix: "{{ iam_instance_profile_info_path_prefix }}"
+    path_prefix: "{{ iam_instance_profile_info_path_prefix or omit }}"
     validate_certs: true
   register: __iam_instance_profile_info_query
   check_mode: false
