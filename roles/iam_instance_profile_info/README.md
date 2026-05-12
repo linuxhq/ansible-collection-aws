@@ -8,7 +8,8 @@ None
 
 ## Role Variables
 
-None
+    iam_instance_profile_info_name: null
+    iam_instance_profile_info_path_prefix: null
 
 ## Return Values
 
