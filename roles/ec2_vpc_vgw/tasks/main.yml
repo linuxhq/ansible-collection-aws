@@ -1,0 +1,39 @@
+---
+- name: Ensure information about aws virtual private cloud vpn gateways is gathered
+  tags:
+    - ec2_vpc_vgw
+  amazon.aws.ec2_vpc_vgw_info:
+    filters:
+      state:
+        - available
+    validate_certs: true
+  register: __ec2_vpc_vgw_info
+
+- name: Ensure dict of aws virtual private cloud vpn gateways is generated
+  tags:
+    - ec2_vpc_vgw
+  ansible.builtin.set_fact:
+    __ec2_vpc_vgw_dict:
+      "{{ __ec2_vpc_vgw_info.virtual_gateways |
+          selectattr('resource_tags.Name', 'defined') |
+          json_query('[].{
+            key: resource_tags.Name,
+            value: vpn_gateway_id
+          }') |
+          items2dict }}"
+
+- name: Ensure aws virtual private cloud vpn gateways are batched
+  tags:
+    - ec2_vpc_vgw
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_vpc_vgw
+    file: include.yml
+  loop:
+    "{{ ec2_vpc_vgw_list |
+        batch(ec2_vpc_vgw_batch) }}"
+  loop_control:
+    label: "{{ __ec2_vpc_vgw_list | length }}"
+    loop_var: __ec2_vpc_vgw_list
+...

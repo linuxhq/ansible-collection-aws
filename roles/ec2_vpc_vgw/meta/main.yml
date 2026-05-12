@@ -1,0 +1,26 @@
+---
+dependencies:
+  - role: ec2_vpc_net_info
+    tags: ec2_vpc_vgw
+galaxy_info:
+  role_name: ec2_vpc_vgw
+  author: Taylor Kimball
+  description: Manage aws virtual private cloud vpn gateways
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - amazon
+    - aws
+    - ec2
+    - gateway
+    - vgw
+    - vpc
+...

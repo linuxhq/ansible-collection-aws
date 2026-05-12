@@ -41,6 +41,10 @@ provisioner:
           state:
             - available
 
+        ec2_transit_gateway_vpc_attachment_info_filters:
+          state:
+            - available
+
         ec2_transit_gateway_list:
           - name: molecule
 
