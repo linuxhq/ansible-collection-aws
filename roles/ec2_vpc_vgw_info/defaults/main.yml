@@ -1,0 +1,4 @@
+---
+ec2_vpc_vgw_info_filters: {}
+ec2_vpc_vgw_info_vpn_gateway_ids: []
+...

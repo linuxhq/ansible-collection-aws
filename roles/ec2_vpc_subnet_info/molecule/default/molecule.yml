@@ -25,6 +25,10 @@ provisioner:
     group_vars:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
+        ec2_vpc_subnet_info_filters:
+          state:
+            - available
+
         ec2_vpc_net_list:
           - name: molecule
             cidr_block: 10.0.0.0/16

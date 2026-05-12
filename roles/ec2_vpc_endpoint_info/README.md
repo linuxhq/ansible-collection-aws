@@ -24,4 +24,7 @@ None
     - hosts: aws
       connection: local
       roles:
-        - linuxhq.aws.ec2_vpc_endpoint_info
+        - role: linuxhq.aws.ec2_vpc_endpoint_info
+          ec2_vpc_endpoint_info_filters:
+            vpc-endpoint-state:
+              - available

@@ -1,0 +1,28 @@
+---
+- name: Ensure information about aws virtual private cloud vpn gateways is gathered
+  tags:
+    - ec2_vpc_vgw_info
+  amazon.aws.ec2_vpc_vgw_info:
+    filters: "{{ ec2_vpc_vgw_info_filters }}"
+    validate_certs: true
+    vpn_gateway_ids: "{{ ec2_vpc_vgw_info_vpn_gateway_ids }}"
+  register: __ec2_vpc_vgw_info_query
+
+- name: Ensure list of aws virtual private cloud vpn gateways is generated
+  tags:
+    - ec2_vpc_vgw_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_vgw_info_list:
+      "{{ (__ec2_vpc_vgw_info_query.virtual_gateways |
+          selectattr('resource_tags.Name', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of aws virtual private cloud vpn gateways is generated
+  tags:
+    - ec2_vpc_vgw_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_vgw_info_dict:
+      "{{ dict(_ec2_vpc_vgw_info_list |
+               json_query('[].resource_tags.Name') |
+               zip(_ec2_vpc_vgw_info_list)) }}"
+...

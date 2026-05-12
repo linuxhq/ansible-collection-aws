@@ -27,4 +27,7 @@ None
     - hosts: aws
       connection: local
       roles:
-        - linuxhq.aws.ec2_transit_gateway_vpc_attachment_info
+        - role: linuxhq.aws.ec2_transit_gateway_vpc_attachment_info
+          ec2_transit_gateway_vpc_attachment_info_filters:
+            state:
+              - available

@@ -34,6 +34,10 @@ provisioner:
               is-public: true
               virtualization-type: hvm
 
+        ec2_instance_info_filters:
+          instance-state-name:
+            - running
+
         ec2_instance_list:
           - name: molecule-a
             exact_count: 1

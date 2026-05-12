@@ -25,6 +25,10 @@ provisioner:
     group_vars:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
+        ec2_vpc_endpoint_info_filters:
+          vpc-endpoint-state:
+            - available
+
         ec2_vpc_endpoint_list:
           - name: molecule
             route_table_ids:

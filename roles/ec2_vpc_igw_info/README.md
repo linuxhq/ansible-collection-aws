@@ -25,4 +25,7 @@ None
     - hosts: aws
       connection: local
       roles:
-        - linuxhq.aws.ec2_vpc_igw_info
+        - role: linuxhq.aws.ec2_vpc_igw_info
+          ec2_vpc_igw_info_filters:
+            attachment.state:
+              - available

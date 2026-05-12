@@ -27,4 +27,7 @@ None
     - hosts: aws
       connection: local
       roles:
-        - linuxhq.aws.ec2_instance_info
+        - role: linuxhq.aws.ec2_instance_info
+          ec2_instance_info_filters:
+            instance-state-name:
+              - running
