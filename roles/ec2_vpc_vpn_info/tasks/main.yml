@@ -1,0 +1,28 @@
+---
+- name: Ensure information about aws virtual private cloud vpn connections is gathered
+  tags:
+    - ec2_vpc_vpn_info
+  amazon.aws.ec2_vpc_vpn_info:
+    filters: "{{ ec2_vpc_vpn_info_filters or omit }}"
+    validate_certs: true
+    vpn_connection_ids: "{{ ec2_vpc_vpn_info_vpn_connection_ids or omit }}"
+  register: __ec2_vpc_vpn_info_query
+
+- name: Ensure list of aws virtual private cloud vpn connections is generated
+  tags:
+    - ec2_vpc_vpn_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_vpn_info_list:
+      "{{ (__ec2_vpc_vpn_info_query.vpn_connections |
+          selectattr('tags.Name', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of aws virtual private cloud vpn connections is generated
+  tags:
+    - ec2_vpc_vpn_info
+  ansible.builtin.set_fact:
+    _ec2_vpc_vpn_info_dict:
+      "{{ dict(_ec2_vpc_vpn_info_list |
+               json_query('[].tags.Name') |
+               zip(_ec2_vpc_vpn_info_list)) }}"
+...

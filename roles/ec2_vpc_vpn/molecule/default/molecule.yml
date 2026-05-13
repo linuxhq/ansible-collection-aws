@@ -1,0 +1,104 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../requirements.yml
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: almalinux9
+    box: bento/almalinux-9.6
+    cpus: 4
+    memory: 4096
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ACTION_WARNINGS: false
+    ANSIBLE_DEPRECATION_WARNINGS: false
+  log: true
+  options:
+    diff: true
+  inventory:
+    group_vars:
+      all:
+        ansible_python_interpreter: /opt/awscli/bin/python
+        ec2_customer_gateway_list:
+          - name: molecule-00
+            ip_address: 1.1.1.10
+          - name: molecule-01
+            ip_address: 1.1.1.11
+
+        ec2_transit_gateway_info_filters:
+          state:
+            - available
+
+        ec2_transit_gateway_list:
+          - name: molecule
+
+        ec2_vpc_vpn_list:
+          - name: molecule-00
+            customer_gateway_id:
+              "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id }}"
+            transit_gateway_id:
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+
+          - name: molecule-01
+            customer_gateway_id:
+              "{{ _ec2_customer_gateway_info_dict['molecule-01'].customer_gateway_id }}"
+            transit_gateway_id:
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+            static_only: true
+            tunnel_options:
+              - IKEVersions:
+                  - Value: ikev2
+                Phase1EncryptionAlgorithms:
+                  - Value: AES256
+                Phase1IntegrityAlgorithms:
+                  - Value: SHA2-256
+                Phase1DHGroupNumbers:
+                  - Value: 16
+                Phase2EncryptionAlgorithms:
+                  - Value: AES256
+                Phase2IntegrityAlgorithms:
+                  - Value: SHA2-256
+                Phase2DHGroupNumbers:
+                  - Value: 16
+              - IKEVersions:
+                  - Value: ikev2
+                Phase1EncryptionAlgorithms:
+                  - Value: AES256
+                Phase1IntegrityAlgorithms:
+                  - Value: SHA2-256
+                Phase1DHGroupNumbers:
+                  - Value: 16
+                Phase2EncryptionAlgorithms:
+                  - Value: AES256
+                Phase2IntegrityAlgorithms:
+                  - Value: SHA2-256
+                Phase2DHGroupNumbers:
+                  - Value: 16
+
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible
+  options:
+    diff: true
+...

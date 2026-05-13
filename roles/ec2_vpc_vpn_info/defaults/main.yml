@@ -1,0 +1,4 @@
+---
+ec2_vpc_vpn_info_filters: {}
+ec2_vpc_vpn_info_vpn_connection_ids: []
+...
