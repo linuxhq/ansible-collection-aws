@@ -1,0 +1,16 @@
+---
+- name: Ensure aws virtual private cloud vpn connections are batched
+  tags:
+    - ec2_vpc_vpn
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_vpc_vpn
+    file: include.yml
+  loop:
+    "{{ ec2_vpc_vpn_list |
+        batch(ec2_vpc_vpn_batch) }}"
+  loop_control:
+    label: "{{ __ec2_vpc_vpn_list | length }}"
+    loop_var: __ec2_vpc_vpn_list
+...

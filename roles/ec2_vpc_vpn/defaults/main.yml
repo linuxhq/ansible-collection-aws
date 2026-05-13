@@ -1,0 +1,8 @@
+---
+ec2_vpc_vpn_async: 600
+ec2_vpc_vpn_batch: 10
+ec2_vpc_vpn_delay: 3
+ec2_vpc_vpn_list: []
+ec2_vpc_vpn_poll: 0
+ec2_vpc_vpn_retries: 100
+...

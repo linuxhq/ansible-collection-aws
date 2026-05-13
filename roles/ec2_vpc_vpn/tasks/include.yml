@@ -1,0 +1,55 @@
+---
+- name: Ensure aws virtual private cloud vpn connections are managed
+  tags:
+    - ec2_vpc_vpn
+  linuxhq.aws.ec2_vpc_vpn:
+    connection_type: "{{ _vpn.connection_type | d('ipsec.1') }}"
+    customer_gateway_id: "{{ _vpn.customer_gateway_id }}"
+    delay: "{{ _vpn.delay | d(15) }}"
+    filters: "{{ _vpn.filters | d(omit) }}"
+    local_ipv4_network_cidr: "{{ _vpn.local_ipv4_network_cidr | d(omit) }}"
+    purge_routes: "{{ _vpn.purge_routes | d(false) }}"
+    purge_tags: "{{ _vpn.purge_tags | d(true) }}"
+    routes: "{{ _vpn.routes | d([]) }}"
+    state: "{{ _vpn.state | d('present') }}"
+    static_only: "{{ _vpn.static_only | d(false) }}"
+    tags: "{{ _vpn.tags | d({}) | combine({'Name': _vpn.name}) }}"
+    transit_gateway_id: "{{ _vpn.transit_gateway_id | d(omit) }}"
+    tunnel_options: "{{ _vpn.tunnel_options | d([]) }}"
+    validate_certs: true
+    vpn_connection_id: "{{ _vpn.vpn_connection_id | d(omit) }}"
+    vpn_gateway_id: "{{ _vpn.vpn_gateway_id | d(omit) }}"
+    wait_timeout: "{{ _vpn.wait_timeout | d(600) }}"
+  register: __ec2_vpc_vpn_result
+  loop: "{{ __ec2_vpc_vpn_list }}"
+  loop_control:
+    label: "{{ _vpn.name | d(none) }}"
+    loop_var: _vpn
+  async: "{{ ansible_check_mode | ternary(0, ec2_vpc_vpn_async) }}"
+  poll: "{{ ec2_vpc_vpn_poll }}"
+  when:
+    - _vpn.name is defined
+    - _vpn.customer_gateway_id is defined
+    - _vpn.transit_gateway_id is defined or
+      _vpn.vpn_gateway_id is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_vpc_vpn_result.changed | bool
+
+- name: Ensure managed aws virtual private cloud vpn connection jobs are complete
+  tags:
+    - ec2_vpc_vpn
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_vpc_vpn_status
+  loop: "{{ __ec2_vpc_vpn_result.results }}"
+  loop_control:
+    label: "{{ _jid._vpn.name | d(none) }}"
+    loop_var: _jid
+  delay: "{{ ec2_vpc_vpn_delay }}"
+  retries: "{{ ec2_vpc_vpn_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_vpc_vpn_status.finished | bool
+...
