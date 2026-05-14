@@ -1,0 +1,51 @@
+---
+- name: Ensure aws transit gateway route tables are managed
+  tags:
+    - ec2_transit_gateway_route_table
+  linuxhq.aws.ec2_transit_gateway_route_table:
+    name: "{{ _rtb.name }}"
+    purge_routes: "{{ _rtb.purge_routes | d(false) }}"
+    purge_tags: "{{ _rtb.purge_tags | d(true) }}"
+    routes: "{{ _rtb.routes | d([]) }}"
+    state: "{{ _rtb.state | d('present') }}"
+    tags: "{{ _rtb.tags | d(omit) }}"
+    transit_gateway_id: "{{ _rtb.transit_gateway_id }}"
+    transit_gateway_route_table_id:
+      "{{ __ec2_transit_gateway_route_table_dict[_rtb.name] | d(omit) }}"
+    validate_certs: true
+    wait: "{{ _rtb.wait | d(true) }}"
+    wait_delay: "{{ _rtb.wait_delay | d(5) }}"
+    wait_timeout: "{{ _rtb.wait_timeout | d(600) }}"
+  register: __ec2_transit_gateway_route_table_result
+  loop: "{{ __ec2_transit_gateway_route_table_list }}"
+  loop_control:
+    label: "{{ _rtb.name | d(_rtb.transit_gateway_route_table_id | d(none)) }}"
+    loop_var: _rtb
+  async: "{{ ansible_check_mode | ternary(0, ec2_transit_gateway_route_table_async) }}"
+  poll: "{{ ec2_transit_gateway_route_table_poll }}"
+  when:
+    - _rtb.name is defined
+    - _rtb.transit_gateway_id is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __ec2_transit_gateway_route_table_result.changed | bool
+
+- name: Ensure managed aws transit gateway route table jobs are complete
+  tags:
+    - ec2_transit_gateway_route_table
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __ec2_transit_gateway_route_table_status
+  loop: "{{ __ec2_transit_gateway_route_table_result.results }}"
+  loop_control:
+    label:
+      "{{ _jid._rtb.name |
+          d(_jid._rtb.transit_gateway_route_table_id | d(none)) }}"
+    loop_var: _jid
+  delay: "{{ ec2_transit_gateway_route_table_delay }}"
+  retries: "{{ ec2_transit_gateway_route_table_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __ec2_transit_gateway_route_table_status.finished | bool
+...

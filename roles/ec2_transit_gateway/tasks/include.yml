@@ -46,48 +46,28 @@
   until:
     - __ec2_transit_gateway_create_status.finished | bool
 
-- name: Ensure aws transit gateway route table name tags are managed
+- name: Ensure aws transit gateway route table tags are managed
   tags:
     - ec2_transit_gateway
   amazon.aws.ec2_tag:
     purge_tags: false
     resource: "{{ _tgw.options.association_default_route_table_id }}"
     state: present
-    tags: {Name: "{{ _tgw.tags.Name }}"}
+    tags: "{{ _tgw.tags }}"
     validate_certs: true
   register: __ec2_transit_gateway_tag_result
   loop:
-    "{{ (__ec2_transit_gateway_create_status.results |
+    "{{ ((__ec2_transit_gateway_create_status.results | d([])) +
+         (__ec2_transit_gateway_create_result.results | d([]))) |
+        selectattr('transit_gateway', 'defined') |
         map(attribute='transit_gateway') |
-        list) |
-        d([]) }}"
+        list }}"
   loop_control:
     label: "{{ _tgw.tags.Name | d(none) }}"
     loop_var: _tgw
-  async: "{{ ansible_check_mode | ternary(0, ec2_transit_gateway_async) }}"
-  poll: "{{ ec2_transit_gateway_poll }}"
   when:
-    - _tgw.tags.Name is defined
+    - _tgw.tags is defined
+    - _tgw.tags | length > 0
     - _tgw.options.association_default_route_table_id is defined
     - _tgw.state == 'available'
-  changed_when:
-    - ansible_check_mode | bool
-    - __ec2_transit_gateway_tag_result.changed | bool
-
-- name: Ensure managed aws transit gateway name tag jobs are complete
-  tags:
-    - ec2_transit_gateway
-  ansible.builtin.async_status:
-    jid: "{{ _jid.ansible_job_id }}"
-  register: __ec2_transit_gateway_tag_status
-  loop: "{{ __ec2_transit_gateway_tag_result.results }}"
-  loop_control:
-    label: "{{ _jid._tgw.tags.Name | d(none) }}"
-    loop_var: _jid
-  delay: "{{ ec2_transit_gateway_delay }}"
-  retries: "{{ ec2_transit_gateway_retries }}"
-  when:
-    - _jid.ansible_job_id is defined
-  until:
-    - __ec2_transit_gateway_tag_status.finished | bool
 ...

@@ -48,4 +48,28 @@
     - _jid.ansible_job_id is defined
   until:
     - __ec2_vpc_nat_gateway_status.finished | bool
+
+- name: Ensure aws virtual private cloud nat gateway eip tags are managed
+  tags:
+    - ec2_vpc_nat_gateway
+  amazon.aws.ec2_tag:
+    purge_tags: false
+    resource: "{{ _nat.nat_gateway_addresses.0.allocation_id }}"
+    state: present
+    tags: "{{ _nat.tags }}"
+    validate_certs: true
+  register: __ec2_vpc_nat_gateway_eip_tag_result
+  loop:
+    "{{ ((__ec2_vpc_nat_gateway_status.results | d([])) +
+         (__ec2_vpc_nat_gateway_result.results | d([]))) |
+        selectattr('nat_gateway_id', 'defined') |
+        list }}"
+  loop_control:
+    label: "{{ _nat.nat_gateway_addresses.0.allocation_id | d(none) }}"
+    loop_var: _nat
+  when:
+    - _nat.tags is defined
+    - _nat.tags | length > 0
+    - _nat.state not in ['deleted', 'deleting']
+    - _nat.nat_gateway_addresses.0.allocation_id is defined
 ...
