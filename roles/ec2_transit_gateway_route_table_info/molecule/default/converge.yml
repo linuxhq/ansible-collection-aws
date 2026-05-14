@@ -1,0 +1,36 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - ec2_transit_gateway_route_table_info
+
+    - role: ec2_vpc_net
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_vpc_subnet
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_transit_gateway
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_transit_gateway_vpc_attachment
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_transit_gateway_route_table
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - ec2_transit_gateway_route_table_info
+...

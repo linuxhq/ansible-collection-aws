@@ -1,0 +1,49 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - role: ec2_vpc_net
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_vpc_subnet
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_transit_gateway
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_transit_gateway_vpc_attachment
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_transit_gateway_route_table
+      ec2_transit_gateway_route_table_list: []
+      tags:
+        - molecule-idempotence-notest
+
+    - role: ec2_transit_gateway_route_table
+      ec2_transit_gateway_route_table_list:
+        - name: molecule-rtb
+          transit_gateway_id:
+            "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+          routes:
+            - destination_cidr_block: 10.10.0.0/16
+              blackhole: true
+            - destination_cidr_block: 10.20.0.0/16
+              blackhole: true
+            - destination_cidr_block: 10.30.0.0/16
+              blackhole: true
+      tags:
+        - molecule-idempotence-notest
+
+    - ec2_transit_gateway_route_table
+...

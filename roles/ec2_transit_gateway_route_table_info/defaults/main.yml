@@ -1,0 +1,4 @@
+---
+ec2_transit_gateway_route_table_info_filters: {}
+ec2_transit_gateway_route_table_info_transit_gateway_route_table_ids: []
+...

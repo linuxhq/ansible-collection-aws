@@ -1,0 +1,29 @@
+---
+- name: Ensure information about aws transit gateway route tables is gathered
+  tags:
+    - ec2_transit_gateway_route_table_info
+  linuxhq.aws.ec2_transit_gateway_route_table_info:
+    filters: "{{ ec2_transit_gateway_route_table_info_filters or omit }}"
+    transit_gateway_route_table_ids:
+      "{{ ec2_transit_gateway_route_table_info_transit_gateway_route_table_ids or omit }}"
+    validate_certs: true
+  register: __ec2_transit_gateway_route_table_info_query
+
+- name: Ensure list of aws transit gateway route tables is generated
+  tags:
+    - ec2_transit_gateway_route_table_info
+  ansible.builtin.set_fact:
+    _ec2_transit_gateway_route_table_info_list:
+      "{{ (__ec2_transit_gateway_route_table_info_query.transit_gateway_route_tables |
+          selectattr('tags.Name', 'defined')) |
+          d([]) }}"
+
+- name: Ensure dict of aws transit gateway route tables is generated
+  tags:
+    - ec2_transit_gateway_route_table_info
+  ansible.builtin.set_fact:
+    _ec2_transit_gateway_route_table_info_dict:
+      "{{ dict(_ec2_transit_gateway_route_table_info_list |
+               json_query('[].tags.Name') |
+               zip(_ec2_transit_gateway_route_table_info_list)) }}"
+...
