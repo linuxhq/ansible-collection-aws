@@ -141,7 +141,8 @@ def main():
 
     if changed and not module.check_mode:
         set_sms_attributes(client, module, desired)
-        current_attributes = get_sms_attributes(client, module)
+        current_attributes = dict(current_attributes)
+        current_attributes.update(desired)
     elif changed and module.check_mode:
         current_attributes = dict(current_attributes)
         current_attributes.update(desired)

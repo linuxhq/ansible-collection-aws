@@ -496,7 +496,8 @@ def ensure_present(client, module):
                 tags_to_set,
                 tag_keys_to_unset,
             )
-        current = matching_flow_logs(module, get_flow_logs(client, module), desired)
+        if tags_changed:
+            current = matching_flow_logs(module, get_flow_logs(client, module), desired)
     elif changed and module.check_mode:
         current = [with_check_mode_tags(module, flow_log) for flow_log in current] + [
             check_mode_flow_log(module, resource_id)

@@ -136,10 +136,10 @@ def ensure_present(client, module):
 
     if changed and not module.check_mode:
         try:
-            client.put_logging_configuration(
+            current = client.put_logging_configuration(
                 LoggingConfiguration=desired,
                 aws_retry=True,
-            )
+            ).get("LoggingConfiguration")
         except Exception as e:
             module.fail_json_aws(
                 e,
@@ -148,9 +148,6 @@ def ensure_present(client, module):
                     f"{module.params['resource_arn']}"
                 ),
             )
-        current = get_logging_configuration(
-            client, module, module.params["resource_arn"]
-        )
     elif changed and module.check_mode:
         current = desired
 
