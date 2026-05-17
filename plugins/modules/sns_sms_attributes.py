@@ -135,8 +135,7 @@ def main():
     client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
 
     desired = desired_sms_attributes(module)
-    attribute_names = list(desired) if desired and not module.check_mode else None
-    current_attributes = get_sms_attributes(client, module, attribute_names)
+    current_attributes = get_sms_attributes(client, module)
     current = {key: current_attributes.get(key) for key in desired}
     changed = recursive_diff(current, desired) is not None
 
@@ -146,8 +145,6 @@ def main():
     elif changed and module.check_mode:
         current_attributes = dict(current_attributes)
         current_attributes.update(desired)
-    elif desired:
-        current_attributes = get_sms_attributes(client, module)
 
     module.exit_json(
         attributes=boto3_resource_to_ansible_dict(

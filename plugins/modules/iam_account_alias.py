@@ -94,9 +94,7 @@ def ensure_absent(client, module):
             module.fail_json_aws(
                 e, msg=f"Unable to delete AWS IAM account alias {name}"
             )
-        aliases = paginated_query_with_retries(client, "list_account_aliases").get(
-            "AccountAliases", []
-        )
+        aliases = desired_aliases
     elif changed and module.check_mode:
         aliases = desired_aliases
 
@@ -149,11 +147,9 @@ def ensure_present(client, module):
                     e, msg=f"Unable to create AWS IAM account alias {alias}"
                 )
 
-        aliases = paginated_query_with_retries(client, "list_account_aliases").get(
-            "AccountAliases", []
-        )
+        aliases = desired_aliases
     elif changed and module.check_mode:
-        aliases = [name]
+        aliases = desired_aliases
 
     module.exit_json(
         changed=changed,
