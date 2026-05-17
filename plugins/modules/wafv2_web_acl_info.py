@@ -101,12 +101,14 @@ def main():
     scope = module.params["scope"].upper()
     marker = None
     web_acls = []
+    remaining_ids = set(module.params["ids"] or [])
     while True:
         request = {"Scope": scope, "Limit": 100}
         if marker:
             request["NextMarker"] = marker
         response = client.list_web_acls(**request, aws_retry=True)
         for summary in response.get("WebACLs", []):
+            remaining_ids.discard(summary.get("Id"))
             if not summary_matches(module, summary):
                 continue
             web_acls.append(
@@ -118,7 +120,7 @@ def main():
                 ).get("WebACL", {})
             )
         marker = response.get("NextMarker")
-        if not marker:
+        if not marker or (module.params["ids"] and not remaining_ids):
             break
 
     module.exit_json(

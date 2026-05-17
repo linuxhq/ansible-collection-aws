@@ -101,12 +101,14 @@ def main():
     scope = module.params["scope"].upper()
     marker = None
     ip_sets = []
+    remaining_ids = set(module.params["ids"] or [])
     while True:
         request = {"Scope": scope, "Limit": 100}
         if marker:
             request["NextMarker"] = marker
         response = client.list_ip_sets(**request, aws_retry=True)
         for summary in response.get("IPSets", []):
+            remaining_ids.discard(summary.get("Id"))
             if not summary_matches(module, summary):
                 continue
             ip_sets.append(
@@ -118,7 +120,7 @@ def main():
                 ).get("IPSet", {})
             )
         marker = response.get("NextMarker")
-        if not marker:
+        if not marker or (module.params["ids"] and not remaining_ids):
             break
 
     module.exit_json(
