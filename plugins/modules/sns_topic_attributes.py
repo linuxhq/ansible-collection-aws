@@ -120,7 +120,8 @@ def main():
                         f"attributes for {module.params['topic_arn']}"
                     ),
                 )
-        current_attributes = get_topic_attributes(client, module)
+        current_attributes = dict(current_attributes)
+        current_attributes.update(desired_attributes)
     elif changed and module.check_mode:
         current_attributes = dict(current_attributes)
         current_attributes.update(desired_attributes)

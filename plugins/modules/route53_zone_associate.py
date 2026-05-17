@@ -110,7 +110,8 @@ def ensure_absent(client, module, hosted_zone_id):
                     f"Route53 hosted zone {hosted_zone_id}"
                 ),
             )
-        vpcs = get_vpc_associations(client, module, hosted_zone_id)
+    if changed:
+        vpcs = [vpc for vpc in current_vpcs if vpc != requested_vpc]
 
     module.exit_json(
         changed=changed,
@@ -146,7 +147,8 @@ def ensure_present(client, module, hosted_zone_id):
                     f"Route53 hosted zone {hosted_zone_id}"
                 ),
             )
-        vpcs = get_vpc_associations(client, module, hosted_zone_id)
+    if changed:
+        vpcs = route53_vpc_list(current_vpcs + [requested_vpc])
 
     module.exit_json(
         changed=changed,

@@ -93,14 +93,13 @@ def main():
             else "disable_serial_console_access"
         )
         try:
-            getattr(client, operation)(aws_retry=True)
+            current = boto3_resource_to_ansible_dict(
+                getattr(client, operation)(aws_retry=True),
+                transform_tags=False,
+                force_tags=False,
+            )
         except Exception as e:
             module.fail_json_aws(e, msg="Unable to manage EC2 serial console access")
-        current = boto3_resource_to_ansible_dict(
-            client.get_serial_console_access_status(aws_retry=True),
-            transform_tags=False,
-            force_tags=False,
-        )
 
     result = {
         "changed": changed,
