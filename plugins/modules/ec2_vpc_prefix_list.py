@@ -253,7 +253,7 @@ def delete_prefix_list(client, module, prefix_list_id):
 
 
 def ensure_absent(client, module):
-    current = get_current(client, module)[0]
+    current = get_customer_managed_prefix_list_by_name(client, module.params["name"])
     changed = current is not None
     prefix_list_id = (current or {}).get("PrefixListId")
 
