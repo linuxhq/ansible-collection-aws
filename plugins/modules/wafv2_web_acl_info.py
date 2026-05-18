@@ -69,6 +69,9 @@ web_acls:
   elements: dict
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -82,6 +85,46 @@ def summary_matches(module, summary):
     if module.params["names"] and summary.get("Name") not in module.params["names"]:
         return False
     return True
+
+
+def requested_summaries_found(module, remaining_ids, remaining_names):
+    if module.params["ids"]:
+        return not remaining_ids
+    if module.params["names"]:
+        return not remaining_names
+    return False
+
+
+def list_web_acl_summaries(client, module, scope):
+    can_paginate = getattr(client, "can_paginate", lambda operation_name: False)
+    if can_paginate("list_web_acls") and not (
+        module.params["ids"] or module.params["names"]
+    ):
+        return paginated_query_with_retries(
+            client,
+            "list_web_acls",
+            Scope=scope,
+        ).get("WebACLs", [])
+
+    marker = None
+    web_acls = []
+    remaining_ids = set(module.params["ids"] or [])
+    remaining_names = set(module.params["names"] or [])
+    while True:
+        request = {"Scope": scope, "Limit": 100}
+        if marker:
+            request["NextMarker"] = marker
+        response = client.list_web_acls(**request, aws_retry=True)
+        for summary in response.get("WebACLs", []):
+            web_acls.append(summary)
+            remaining_ids.discard(summary.get("Id"))
+            remaining_names.discard(summary.get("Name"))
+            if requested_summaries_found(module, remaining_ids, remaining_names):
+                return web_acls
+        marker = response.get("NextMarker")
+        if not marker:
+            break
+    return web_acls
 
 
 def main():
@@ -99,29 +142,18 @@ def main():
     client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
 
     scope = module.params["scope"].upper()
-    marker = None
     web_acls = []
-    remaining_ids = set(module.params["ids"] or [])
-    while True:
-        request = {"Scope": scope, "Limit": 100}
-        if marker:
-            request["NextMarker"] = marker
-        response = client.list_web_acls(**request, aws_retry=True)
-        for summary in response.get("WebACLs", []):
-            remaining_ids.discard(summary.get("Id"))
-            if not summary_matches(module, summary):
-                continue
-            web_acls.append(
-                client.get_web_acl(
-                    Id=summary["Id"],
-                    Name=summary["Name"],
-                    Scope=scope,
-                    aws_retry=True,
-                ).get("WebACL", {})
-            )
-        marker = response.get("NextMarker")
-        if not marker or (module.params["ids"] and not remaining_ids):
-            break
+    for summary in list_web_acl_summaries(client, module, scope):
+        if not summary_matches(module, summary):
+            continue
+        web_acls.append(
+            client.get_web_acl(
+                Id=summary["Id"],
+                Name=summary["Name"],
+                Scope=scope,
+                aws_retry=True,
+            ).get("WebACL", {})
+        )
 
     module.exit_json(
         changed=False,

@@ -20,6 +20,23 @@
           - _wafv2_ip_set_info_dict['molecule-google'].ip_address_version == 'IPV4'
           - _wafv2_ip_set_info_dict['molecule-google'].id is defined
 
+    - name: Ensure ip set id filter target is generated
+      ansible.builtin.set_fact:
+        wafv2_ip_set_info_id_filter:
+          "{{ [_wafv2_ip_set_info_dict['molecule-cloudflare'].id] }}"
+
+    - name: Ensure info role supports ip set id filters
+      ansible.builtin.include_role:
+        name: wafv2_ip_set_info
+      vars:
+        wafv2_ip_set_info_ids: "{{ wafv2_ip_set_info_id_filter }}"
+
+    - name: Ensure ip set id filter is verified
+      ansible.builtin.assert:
+        that:
+          - _wafv2_ip_set_info_list | length == 1
+          - _wafv2_ip_set_info_dict['molecule-cloudflare'].id == wafv2_ip_set_info_id_filter[0]
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         wafv2_ip_set_list:
