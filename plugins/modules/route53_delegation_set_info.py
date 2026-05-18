@@ -42,6 +42,7 @@ delegation_sets:
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
+    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -52,6 +53,27 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 def route53_id(value):
     return value.rsplit("/", 1)[-1]
+
+
+def list_reusable_delegation_sets(client):
+    can_paginate = getattr(client, "can_paginate", lambda operation_name: False)
+    if can_paginate("list_reusable_delegation_sets"):
+        return paginated_query_with_retries(
+            client, "list_reusable_delegation_sets"
+        ).get("DelegationSets", [])
+
+    marker = None
+    delegation_sets = []
+    while True:
+        request = {}
+        if marker:
+            request["Marker"] = marker
+        response = client.list_reusable_delegation_sets(**request, aws_retry=True)
+        delegation_sets.extend(response.get("DelegationSets", []))
+        marker = response.get("NextMarker")
+        if not response.get("IsTruncated") or not marker:
+            break
+    return delegation_sets
 
 
 def main():
@@ -75,16 +97,7 @@ def main():
             except is_boto3_error_code("NoSuchDelegationSet"):
                 pass
     else:
-        marker = None
-        while True:
-            request = {}
-            if marker:
-                request["Marker"] = marker
-            response = client.list_reusable_delegation_sets(**request, aws_retry=True)
-            delegation_sets.extend(response.get("DelegationSets", []))
-            marker = response.get("NextMarker")
-            if not response.get("IsTruncated") or not marker:
-                break
+        delegation_sets = list_reusable_delegation_sets(client)
 
     module.exit_json(
         changed=False,

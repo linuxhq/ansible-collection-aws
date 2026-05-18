@@ -65,6 +65,9 @@ state:
 """
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -149,6 +152,20 @@ def ensure_present(client, module):
 
 
 def get_reusable_delegation_set(client, name):
+    can_paginate = getattr(client, "can_paginate", lambda operation_name: False)
+    if can_paginate("list_reusable_delegation_sets"):
+        delegation_sets = paginated_query_with_retries(
+            client, "list_reusable_delegation_sets"
+        ).get("DelegationSets", [])
+        return next(
+            (
+                delegation_set
+                for delegation_set in delegation_sets
+                if delegation_set.get("CallerReference") == name
+            ),
+            None,
+        )
+
     marker = None
     while True:
         request = {}
