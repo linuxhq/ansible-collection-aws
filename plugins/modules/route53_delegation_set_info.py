@@ -95,7 +95,7 @@ def main():
                     ).get("DelegationSet", {})
                 )
             except is_boto3_error_code("NoSuchDelegationSet"):
-                pass
+                continue
     else:
         delegation_sets = list_reusable_delegation_sets(client)
 

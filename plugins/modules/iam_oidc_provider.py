@@ -256,6 +256,16 @@ def apply_tag_changes(client, module, arn, tags_to_set, tag_keys_to_unset):
             )
 
 
+def provider_with_updated_tags(provider, tags_to_set, tag_keys_to_unset):
+    provider = dict(provider)
+    tags = boto3_tag_list_to_ansible_dict((provider or {}).get("Tags", []))
+    for tag_key in tag_keys_to_unset:
+        tags.pop(tag_key, None)
+    tags.update(tags_to_set)
+    provider["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+    return provider
+
+
 def check_mode_provider(module, current=None):
     provider = dict(current or {})
     provider["Url"] = module.params["url"]
@@ -340,10 +350,13 @@ def ensure_present(client, module):
                 )
         else:
             arn = current["OpenIDConnectProviderArn"]
+            provider_changed = False
             if current_comparable["client_id_list"] != desired["client_id_list"]:
                 apply_client_id_changes(client, module, arn, current, desired)
+                provider_changed = True
             if current_comparable["thumbprint_list"] != desired["thumbprint_list"]:
                 apply_thumbprint_changes(client, module, arn, desired)
+                provider_changed = True
             apply_tag_changes(
                 client,
                 module,
@@ -351,7 +364,14 @@ def ensure_present(client, module):
                 tags_to_set,
                 tag_keys_to_unset,
             )
-        current = get_provider_by_arn(client, module, arn) if arn else None
+            if provider_changed:
+                current = get_provider_by_arn(client, module, arn) if arn else None
+            else:
+                current = provider_with_updated_tags(
+                    current, tags_to_set, tag_keys_to_unset
+                )
+        if current is None:
+            current = get_provider_by_arn(client, module, arn) if arn else None
     elif changed and module.check_mode:
         current = check_mode_provider(module, current)
 

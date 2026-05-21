@@ -2,7 +2,7 @@
 
 ## Model
 
-gpt-5.5 xhigh
+gpt-5.5 high
 
 ## Standards
 
@@ -46,13 +46,11 @@ gpt-5.5 xhigh
   * ansible_collections.amazon.aws.plugins.module_utils.iterators.chunked_payload
   * ansible_collections.amazon.aws.plugins.module_utils.iterators.chunks
   * ansible_collections.amazon.aws.plugins.module_utils.modules.aws_argument_spec
-  * ansible_collections.amazon.aws.plugins.module_utils.policy.compare_policies
   * ansible_collections.amazon.aws.plugins.module_utils.tagging.ansible_dict_to_boto3_tag_list
   * ansible_collections.amazon.aws.plugins.module_utils.tagging.ansible_dict_to_tag_filter_dict
   * ansible_collections.amazon.aws.plugins.module_utils.tagging.boto3_tag_list_to_ansible_dict
   * ansible_collections.amazon.aws.plugins.module_utils.tagging.boto3_tag_specifications
   * ansible_collections.amazon.aws.plugins.module_utils.tagging.compare_aws_tags
-  * ansible_collections.amazon.aws.plugins.module_utils.tower.tower_callback_script
   * ansible_collections.amazon.aws.plugins.module_utils.transformation.ansible_dict_to_boto3_filter_list
   * ansible_collections.amazon.aws.plugins.module_utils.transformation.boto3_resource_list_to_ansible_dict
   * ansible_collections.amazon.aws.plugins.module_utils.transformation.boto3_resource_to_ansible_dict

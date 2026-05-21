@@ -301,13 +301,15 @@ def phone_number_tags(client, module, phone_number):
         )
 
 
-def phone_number_tags_match(client, module, phone_number):
+def matching_phone_number_tags(client, module, phone_number):
     if module.params["tags"] is None:
-        return True
+        return None
     current_tags = phone_number_tags(client, module, phone_number)
-    return all(
+    if all(
         current_tags.get(key) == value for key, value in module.params["tags"].items()
-    )
+    ):
+        return current_tags
+    return None
 
 
 def existing_phone_number(client, module):
@@ -327,14 +329,13 @@ def existing_phone_number(client, module):
         )
 
     for phone_number in phone_numbers:
-        if phone_number_matches_desired(
-            module, phone_number
-        ) and phone_number_tags_match(client, module, phone_number):
+        if not phone_number_matches_desired(module, phone_number):
+            continue
+        current_tags = matching_phone_number_tags(client, module, phone_number)
+        if module.params["tags"] is None or current_tags is not None:
             if module.params["tags"] is not None:
                 phone_number = dict(phone_number)
-                phone_number["Tags"] = ansible_dict_to_boto3_tag_list(
-                    phone_number_tags(client, module, phone_number)
-                )
+                phone_number["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
             return phone_number
     return None
 

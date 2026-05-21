@@ -282,12 +282,10 @@ def ensure_present(client, module, current):
     if changed and not module.check_mode:
         association_id = association.get("AssociationId")
         if association_id and module.params["tags"] is not None:
+            if resource_changed:
+                association = association_with_tags(client, module, association)
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                boto3_tag_list_to_ansible_dict(
-                    (association_with_tags(client, module, association) or {}).get(
-                        "Tags", []
-                    )
-                ),
+                boto3_tag_list_to_ansible_dict((association or {}).get("Tags", [])),
                 module.params["tags"],
                 purge_tags=module.params["purge_tags"],
             )
@@ -298,7 +296,9 @@ def ensure_present(client, module, current):
                 tags_to_set,
                 tag_keys_to_unset,
             )
-            association = association_with_tags(client, module, association)
+            association = association_with_updated_tags(
+                association, tags_to_set, tag_keys_to_unset
+            )
     elif changed and module.check_mode and module.params["tags"] is not None:
         association["Tags"] = ansible_dict_to_boto3_tag_list(module.params["tags"])
 
@@ -330,6 +330,16 @@ def association_with_tags(client, module, association):
         SSM_ASSOCIATION_RESOURCE_TYPE,
         association_id,
     )
+    return association
+
+
+def association_with_updated_tags(association, tags_to_set, tag_keys_to_unset):
+    association = dict(association)
+    tags = boto3_tag_list_to_ansible_dict((association or {}).get("Tags", []))
+    for tag_key in tag_keys_to_unset:
+        tags.pop(tag_key, None)
+    tags.update(tags_to_set)
+    association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
     return association
 
 

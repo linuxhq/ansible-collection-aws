@@ -8,12 +8,12 @@ None
 
 ## Role Variables
 
-    ec2_transit_gateway_vpc_attachment_async: 300
+    ec2_transit_gateway_vpc_attachment_async: 600
     ec2_transit_gateway_vpc_attachment_batch: 10
     ec2_transit_gateway_vpc_attachment_delay: 3
     ec2_transit_gateway_vpc_attachment_list: []
     ec2_transit_gateway_vpc_attachment_poll: 0
-    ec2_transit_gateway_vpc_attachment_retries: 100
+    ec2_transit_gateway_vpc_attachment_retries: 200
 
 ## Return Values
 

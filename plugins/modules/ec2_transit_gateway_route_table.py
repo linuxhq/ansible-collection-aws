@@ -460,7 +460,12 @@ def ensure_tags(client, module, route_table):
             )
 
     if changed:
-        route_table = get_route_table(client, module, resource_id)
+        route_table = dict(route_table)
+        current = current_tags(route_table)
+        for tag_key in tag_keys_to_unset:
+            current.pop(tag_key, None)
+        current.update(tags_to_set)
+        route_table["Tags"] = ansible_dict_to_boto3_tag_list(current)
     return changed, route_table
 
 
@@ -539,7 +544,7 @@ def route_is_static(route):
     )
 
 
-def create_route(client, module, transit_gateway_route_table_id, desired):
+def route_request(transit_gateway_route_table_id, desired):
     request = {
         "DestinationCidrBlock": desired["destination_cidr_block"],
         "TransitGatewayRouteTableId": transit_gateway_route_table_id,
@@ -548,6 +553,11 @@ def create_route(client, module, transit_gateway_route_table_id, desired):
         request["Blackhole"] = True
     else:
         request["TransitGatewayAttachmentId"] = desired["transit_gateway_attachment_id"]
+    return request
+
+
+def create_route(client, module, transit_gateway_route_table_id, desired):
+    request = route_request(transit_gateway_route_table_id, desired)
     try:
         return client.create_transit_gateway_route(
             **request,
@@ -564,14 +574,7 @@ def create_route(client, module, transit_gateway_route_table_id, desired):
 
 
 def replace_route(client, module, transit_gateway_route_table_id, desired):
-    request = {
-        "DestinationCidrBlock": desired["destination_cidr_block"],
-        "TransitGatewayRouteTableId": transit_gateway_route_table_id,
-    }
-    if desired.get("blackhole"):
-        request["Blackhole"] = True
-    else:
-        request["TransitGatewayAttachmentId"] = desired["transit_gateway_attachment_id"]
+    request = route_request(transit_gateway_route_table_id, desired)
     try:
         return client.replace_transit_gateway_route(
             **request,
@@ -779,24 +782,8 @@ def manage_routes(client, module, transit_gateway_route_table_id):
             )
             changed = changed or route_changed
 
-    if not module.check_mode:
-        if module.params["purge_routes"]:
-            routes = static_routes(client, module, transit_gateway_route_table_id)
-        else:
-            routes = [
-                route
-                for route in [
-                    get_route(
-                        client,
-                        module,
-                        transit_gateway_route_table_id,
-                        desired["destination_cidr_block"],
-                    )
-                    for desired in module.params["routes"] or []
-                    if desired.get("state", "present") == "present"
-                ]
-                if route
-            ]
+    if module.params["purge_routes"] and not module.check_mode:
+        routes = static_routes(client, module, transit_gateway_route_table_id)
     return changed, routes
 
 

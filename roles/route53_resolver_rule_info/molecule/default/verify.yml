@@ -86,7 +86,7 @@
           - _route53_resolver_rule_info_dict[route53_resolver_rule_list.0.name].rule_type ==
               route53_resolver_rule_list.0.rule_type | upper
           - _route53_resolver_rule_info_dict[route53_resolver_rule_list.0.name].vpc_ids ==
-              [route53_resolver_rule_associate_list.0.vpc_id]
+              [_ec2_vpc_net_info_dict['molecule'].id]
 
     - name: Ensure role is included without name
       ansible.builtin.include_role:

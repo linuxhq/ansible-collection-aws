@@ -458,6 +458,16 @@ def check_mode_pool(module, current=None):
     return pool
 
 
+def pool_with_updated_tags(pool, tags_to_set, tag_keys_to_unset):
+    pool = dict(pool)
+    tags = boto3_tag_list_to_ansible_dict((pool or {}).get("Tags", []))
+    for tag_key in tag_keys_to_unset:
+        tags.pop(tag_key, None)
+    tags.update(tags_to_set)
+    pool["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+    return pool
+
+
 def exit_result(module, changed, pool, state):
     normalized_pool = boto3_resource_to_ansible_dict(
         pool or {}, transform_tags=True, force_tags=False
@@ -517,18 +527,24 @@ def ensure_present(client, module):
     )
 
     if changed and not module.check_mode:
+        pool_changed = current is None or bool(update_request)
         if current is None:
             current = create_pool(client, module)
         else:
             current = update_pool(client, module, current, update_request)
             apply_tag_changes(client, module, current, tags_to_set, tag_keys_to_unset)
+            if not update_request:
+                current = pool_with_updated_tags(
+                    current, tags_to_set, tag_keys_to_unset
+                )
         if (
             module.params["wait"]
             and current.get("Status") != "ACTIVE"
             and current.get("PoolId")
         ):
             wait_for_pool_active(client, module, current["PoolId"])
-        if current.get("PoolId"):
+            pool_changed = True
+        if pool_changed and current.get("PoolId"):
             current = get_pool_by_id(client, module, current["PoolId"]) or current
     elif changed and module.check_mode:
         current = check_mode_pool(module, current)
