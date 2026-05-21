@@ -642,6 +642,16 @@ def apply_tag_changes(client, module, cluster, tags_to_set, tag_keys_to_unset):
             )
 
 
+def cluster_with_updated_tags(cluster, tags_to_set, tag_keys_to_unset):
+    cluster = dict(cluster)
+    tags = dict((cluster or {}).get("tags") or {})
+    for tag_key in tag_keys_to_unset:
+        tags.pop(tag_key, None)
+    tags.update(tags_to_set)
+    cluster["tags"] = tags
+    return cluster
+
+
 def check_mode_cluster(module, current):
     cluster = dict(current or {})
     desired = scrub_none_parameters(
@@ -737,7 +747,8 @@ def ensure_present(client, module):
             purge_tags=module.params["purge_tags"],
         )
     tags_changed = bool(tags_to_set or tag_keys_to_unset)
-    resource_changed = bool(config_changed or version_changed or tags_changed)
+    cluster_changed = bool(config_changed or version_changed)
+    resource_changed = bool(cluster_changed or tags_changed)
 
     if resource_changed and module.check_mode:
         exit_result(module, True, check_mode_cluster(module, current), "present")
@@ -761,17 +772,18 @@ def ensure_present(client, module):
             wait_for_cluster(client, module, "cluster_active")
 
     if tags_changed:
-        current_for_tags = describe_cluster(client, module) or current
         apply_tag_changes(
             client,
             module,
-            current_for_tags,
+            current,
             tags_to_set,
             tag_keys_to_unset,
         )
 
-    if resource_changed:
+    if cluster_changed:
         current = describe_cluster(client, module)
+    elif tags_changed:
+        current = cluster_with_updated_tags(current, tags_to_set, tag_keys_to_unset)
 
     exit_result(module, resource_changed, current, "present")
 

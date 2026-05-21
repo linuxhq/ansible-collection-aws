@@ -13,7 +13,7 @@ None
     ec2_instance_delay: 3
     ec2_instance_list: []
     ec2_instance_poll: 0
-    ec2_instance_retries: 300
+    ec2_instance_retries: 200
 
 ## Return Values
 

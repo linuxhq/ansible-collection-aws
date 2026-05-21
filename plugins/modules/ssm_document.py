@@ -265,7 +265,8 @@ def ensure_present(client, module):
                         f"{module.params['name']}"
                     ),
                 )
-        current = get_document(client, module)
+        if current is None or resource_changed:
+            current = get_document(client, module)
         if current is not None and module.params["tags"] is not None:
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
                 boto3_tag_list_to_ansible_dict((current or {}).get("Tags", [])),
@@ -279,7 +280,9 @@ def ensure_present(client, module):
                 tags_to_set,
                 tag_keys_to_unset,
             )
-            current = get_document(client, module)
+            current = document_with_updated_tags(
+                current, tags_to_set, tag_keys_to_unset
+            )
     elif changed and module.check_mode:
         current = desired
         if module.params["tags"] is not None:
@@ -341,6 +344,16 @@ def get_resource_tags(client, module, resource_type, resource_id):
             e,
             msg=f"Unable to list tags for AWS Systems Manager {resource_type} {resource_id}",
         )
+
+
+def document_with_updated_tags(document, tags_to_set, tag_keys_to_unset):
+    document = dict(document)
+    tags = boto3_tag_list_to_ansible_dict((document or {}).get("Tags", []))
+    for tag_key in tag_keys_to_unset:
+        tags.pop(tag_key, None)
+    tags.update(tags_to_set)
+    document["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+    return document
 
 
 def apply_tag_changes(client, module, resource_id, tags_to_set, tag_keys_to_unset):

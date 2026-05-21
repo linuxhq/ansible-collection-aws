@@ -71,6 +71,25 @@ def resource_tags(client, module, resource):
         )
 
 
+def normalize_rule(client, module, rule, associations):
+    normalized = boto3_resource_to_ansible_dict(
+        dict(rule, Tags=resource_tags(client, module, rule)),
+        transform_tags=True,
+        force_tags=False,
+    )
+    normalized["associations"] = boto3_resource_list_to_ansible_dict(
+        associations,
+        transform_tags=False,
+        force_tags=False,
+    )
+    normalized["vpc_ids"] = [
+        association["vpc_id"]
+        for association in normalized["associations"]
+        if association.get("vpc_id") is not None
+    ]
+    return normalized
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -110,23 +129,15 @@ def main():
 
     normalized_rules = []
     for rule in resolver_rules:
-        normalized = boto3_resource_to_ansible_dict(
-            dict(rule, Tags=resource_tags(client, module, rule)),
-            transform_tags=True,
-            force_tags=False,
-        )
         resolver_rule_id = rule.get("Id")
-        normalized["associations"] = boto3_resource_list_to_ansible_dict(
-            associations_by_rule_id.get(resolver_rule_id, []),
-            transform_tags=False,
-            force_tags=False,
+        normalized_rules.append(
+            normalize_rule(
+                client,
+                module,
+                rule,
+                associations_by_rule_id.get(resolver_rule_id, []),
+            )
         )
-        normalized["vpc_ids"] = []
-        for association in normalized["associations"]:
-            vpc_id = association.get("vpc_id")
-            if vpc_id is not None:
-                normalized["vpc_ids"].append(vpc_id)
-        normalized_rules.append(normalized)
 
     module.exit_json(
         changed=False,

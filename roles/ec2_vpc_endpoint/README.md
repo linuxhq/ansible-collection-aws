@@ -8,12 +8,12 @@ None
 
 ## Role Variables
 
-    ec2_vpc_endpoint_async: 300
+    ec2_vpc_endpoint_async: 320
     ec2_vpc_endpoint_batch: 10
-    ec2_vpc_endpoint_delay: 3
+    ec2_vpc_endpoint_delay: 4
     ec2_vpc_endpoint_list: []
     ec2_vpc_endpoint_poll: 0
-    ec2_vpc_endpoint_retries: 100
+    ec2_vpc_endpoint_retries: 80
 
 ## Return Values
 

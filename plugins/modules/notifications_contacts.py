@@ -134,6 +134,16 @@ def apply_tag_changes(client, module, contact, tags_to_set, tag_keys_to_unset):
             )
 
 
+def contact_with_updated_tags(contact, tags_to_set, tag_keys_to_unset):
+    contact = dict(contact)
+    tags = dict((contact or {}).get("tags", {}))
+    for tag_key in tag_keys_to_unset:
+        tags.pop(tag_key, None)
+    tags.update(tags_to_set)
+    contact["tags"] = tags
+    return contact
+
+
 def ensure_absent(client, module):
     contact = next(
         (
@@ -257,7 +267,7 @@ def ensure_present(client, module):
                 contact["tags"] = module.params["tags"]
         elif contact is not None:
             apply_tag_changes(client, module, contact, tags_to_set, tag_keys_to_unset)
-            contact = contact_with_tags(client, module, contact)
+            contact = contact_with_updated_tags(contact, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
         contact = desired_contact
         if module.params["tags"] is not None:

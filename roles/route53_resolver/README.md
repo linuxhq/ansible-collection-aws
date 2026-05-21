@@ -35,9 +35,9 @@ None
             - name: molecule-cloudflare
               direction: outbound
               ip_addresses:
-                - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
                   ip: 192.168.0.125
-                - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
                   ip: 192.168.0.253
               protocols:
                 - do53
@@ -48,9 +48,9 @@ None
             - name: molecule-google
               direction: outbound
               ip_addresses:
-                - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.0.name].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
                   ip: 192.168.0.126
-                - subnet_id: "{{ _ec2_vpc_subnet_info_dict[ec2_vpc_subnet_list.0.subnets.1.name].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
                   ip: 192.168.0.254
               protocols:
                 - do53

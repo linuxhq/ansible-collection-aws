@@ -8,12 +8,12 @@ None
 
 ## Role Variables
 
-    iam_role_async: 300
+    iam_role_async: 120
     iam_role_batch: 10
     iam_role_delay: 3
     iam_role_list: []
     iam_role_poll: 0
-    iam_role_retries: 100
+    iam_role_retries: 40
 
 ## Return Values
 

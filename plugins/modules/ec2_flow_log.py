@@ -417,6 +417,14 @@ def with_check_mode_tags(module, flow_log):
     return flow_log
 
 
+def flow_log_updated_tags(flow_log, tags_to_set, tag_keys_to_unset):
+    current_tags = boto3_tag_list_to_ansible_dict((flow_log or {}).get("Tags", []))
+    for tag_key in tag_keys_to_unset:
+        current_tags.pop(tag_key, None)
+    current_tags.update(tags_to_set)
+    return {"Tags": ansible_dict_to_boto3_tag_list(current_tags)}
+
+
 def check_mode_flow_log(module, resource_id):
     flow_log = dict(
         desired_present_flow_log(module),
@@ -496,8 +504,9 @@ def ensure_present(client, module):
                 tags_to_set,
                 tag_keys_to_unset,
             )
-        if tags_changed:
-            current = matching_flow_logs(module, get_flow_logs(client, module), desired)
+            flow_log.update(
+                flow_log_updated_tags(flow_log, tags_to_set, tag_keys_to_unset)
+            )
     elif changed and module.check_mode:
         current = [with_check_mode_tags(module, flow_log) for flow_log in current] + [
             check_mode_flow_log(module, resource_id)

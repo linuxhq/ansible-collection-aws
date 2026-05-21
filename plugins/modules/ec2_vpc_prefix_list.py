@@ -405,7 +405,9 @@ def ensure_present(client, module):
                     tags_to_set,
                     tag_keys_to_unset,
                 )
-                current, current_entries = get_current(client, module)
+                current = prefix_list_with_updated_tags(
+                    current, tags_to_set, tag_keys_to_unset
+                )
         elif changed and module.check_mode:
             current = dict(current)
             current.update(
@@ -534,6 +536,16 @@ def apply_tag_changes(client, module, prefix_list_id, tags_to_set, tag_keys_to_u
                 e,
                 msg=f"Unable to tag EC2 VPC managed prefix list {prefix_list_id}",
             )
+
+
+def prefix_list_with_updated_tags(prefix_list, tags_to_set, tag_keys_to_unset):
+    prefix_list = dict(prefix_list)
+    tags = boto3_tag_list_to_ansible_dict((prefix_list or {}).get("Tags", []))
+    for tag_key in tag_keys_to_unset:
+        tags.pop(tag_key, None)
+    tags.update(tags_to_set)
+    prefix_list["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+    return prefix_list
 
 
 def comparable_prefix_list(prefix_list):

@@ -8,12 +8,12 @@ None
 
 ## Role Variables
 
-    elb_target_group_async: 300
+    elb_target_group_async: 200
     elb_target_group_batch: 10
-    elb_target_group_delay: 3
+    elb_target_group_delay: 4
     elb_target_group_list: []
     elb_target_group_poll: 0
-    elb_target_group_retries: 100
+    elb_target_group_retries: 50
 
 ## Return Values
 

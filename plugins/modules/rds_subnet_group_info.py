@@ -93,7 +93,7 @@ def main():
                         ).get("DBSubnetGroups", [])
                     )
                 except is_boto3_error_code("DBSubnetGroupNotFoundFault"):
-                    pass
+                    continue
         else:
             subnet_groups = paginated_query_with_retries(
                 client,

@@ -363,7 +363,8 @@ def ensure_present(client, module):
                 delete_resolver_rule(client, module, rule, desired["name"])
                 rule = create_resolver_rule(client, module, desired)
         if rule is not None and module.params["tags"] is not None:
-            rule = resolver_rule_with_tags(client, module, rule)
+            if resource_changed:
+                rule = resolver_rule_with_tags(client, module, rule)
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
                 boto3_tag_list_to_ansible_dict((rule or {}).get("Tags", [])),
                 module.params["tags"],
@@ -376,7 +377,7 @@ def ensure_present(client, module):
                 tags_to_set,
                 tag_keys_to_unset,
             )
-            rule = resolver_rule_with_tags(client, module, rule)
+            rule = rule_with_updated_tags(rule, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
         rule = desired
         if module.params["tags"] is not None:
@@ -458,6 +459,16 @@ def apply_tag_changes(client, module, resource_arn, tags_to_set, tag_keys_to_uns
                 e,
                 msg=f"Unable to tag AWS Route53 Resolver rule {resource_arn}",
             )
+
+
+def rule_with_updated_tags(rule, tags_to_set, tag_keys_to_unset):
+    rule = dict(rule)
+    tags = boto3_tag_list_to_ansible_dict((rule or {}).get("Tags", []))
+    for tag_key in tag_keys_to_unset:
+        tags.pop(tag_key, None)
+    tags.update(tags_to_set)
+    rule["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+    return rule
 
 
 def wait_for_resolver_rule_status(client, module, resolver_rule_id, statuses, name):

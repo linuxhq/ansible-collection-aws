@@ -13,7 +13,7 @@ None
     ec2_vpc_vpn_delay: 3
     ec2_vpc_vpn_list: []
     ec2_vpc_vpn_poll: 0
-    ec2_vpc_vpn_retries: 100
+    ec2_vpc_vpn_retries: 200
 
 ## Return Values
 

@@ -67,6 +67,26 @@ def resource_tags(client, module, resource):
         )
 
 
+def endpoint_ip_addresses(client, endpoint):
+    return paginated_query_with_retries(
+        client,
+        "list_resolver_endpoint_ip_addresses",
+        ResolverEndpointId=endpoint["Id"],
+    ).get("IpAddresses", [])
+
+
+def normalize_endpoint(client, module, endpoint):
+    return boto3_resource_to_ansible_dict(
+        dict(
+            endpoint,
+            IpAddresses=endpoint_ip_addresses(client, endpoint),
+            Tags=resource_tags(client, module, endpoint),
+        ),
+        transform_tags=True,
+        force_tags=False,
+    )
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -87,19 +107,7 @@ def main():
     module.exit_json(
         changed=False,
         resolver_endpoints=[
-            boto3_resource_to_ansible_dict(
-                dict(
-                    endpoint,
-                    IpAddresses=paginated_query_with_retries(
-                        client,
-                        "list_resolver_endpoint_ip_addresses",
-                        ResolverEndpointId=endpoint["Id"],
-                    ).get("IpAddresses", []),
-                    Tags=resource_tags(client, module, endpoint),
-                ),
-                transform_tags=True,
-                force_tags=False,
-            )
+            normalize_endpoint(client, module, endpoint)
             for endpoint in resolver_endpoints
         ],
     )

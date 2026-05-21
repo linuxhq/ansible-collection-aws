@@ -635,16 +635,14 @@ def create_filter(module, provided_filters: Dict[str, Any]) -> List[Dict[str, An
         "vpn_connection_id": "vpn-connection-id",
     }
 
+    provided_filters = dict(provided_filters or {})
     flat_filter_dict = {}
-    formatted_filter: List = []
 
-    for raw_param in dict(provided_filters):
+    for raw_param in list(provided_filters):
         # fix filter names to be recognized by boto3
         if raw_param in boto3ify_filter:
             param = boto3ify_filter[raw_param]
             provided_filters[param] = provided_filters.pop(raw_param)
-        elif raw_param in list(boto3ify_filter.items()):
-            param = raw_param
         else:
             module.fail_json(msg=f"{raw_param} is not a valid filter.")
 
@@ -895,7 +893,7 @@ def make_changes(
 def get_check_mode_results(
     module_params: Dict[str, Any],
     vpn_connection_id: Optional[str] = None,
-    current_state: Optional[str] = None,
+    current_state: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, Dict[str, Any]]:
     """Returns the changes that would be made to a VPN Connection"""
     changed: bool = False
@@ -910,9 +908,7 @@ def get_check_mode_results(
 
     present_tags = module_params.get("tags")
     # get combined current tags and tags to set
-    if present_tags is None:
-        pass
-    elif current_state and "Tags" in current_state:
+    if present_tags is not None and current_state and "Tags" in current_state:
         current_tags = boto3_tag_list_to_ansible_dict(current_state["Tags"])
         tags_to_add, tags_to_remove = compare_aws_tags(
             current_tags, present_tags, module_params.get("purge_tags")
@@ -922,23 +918,25 @@ def get_check_mode_results(
             current_tags = {}
         current_tags.update(present_tags)
         results["tags"] = current_tags
-    elif module_params.get("tags"):
+    elif present_tags:
         changed = True
 
     if present_tags:
         results["tags"] = present_tags
 
     # get combined current routes and routes to add
-    present_routes = module_params.get("routes")
+    present_routes = list(module_params.get("routes") or [])
     if current_state and "Routes" in current_state:
         current_routes = [
             route["DestinationCidrBlock"] for route in current_state["Routes"]
         ]
+        current_route_set = set(current_routes)
+        present_route_set = set(present_routes)
         if module_params.get("purge_routes"):
-            if set(current_routes) != set(present_routes):
+            if current_route_set != present_route_set:
                 changed = True
-        elif set(present_routes) != set(current_routes):
-            if not set(present_routes) < set(current_routes):
+        elif present_route_set != current_route_set:
+            if not present_route_set < current_route_set:
                 changed = True
             present_routes.extend(
                 [route for route in current_routes if route not in present_routes]
