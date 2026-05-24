@@ -54,7 +54,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 MANAGED_ATTRIBUTES = ["kms_master_key_id"]
@@ -62,12 +61,7 @@ MANAGED_ATTRIBUTES = ["kms_master_key_id"]
 
 def get_topic_attributes(client, module):
     return client.get_topic_attributes(
-        **scrub_none_parameters(
-            snake_dict_to_camel_dict(
-                {"topic_arn": module.params["topic_arn"]},
-                capitalize_first=True,
-            )
-        ),
+        TopicArn=module.params["topic_arn"],
         aws_retry=True,
     ).get("Attributes", {})
 
@@ -100,16 +94,9 @@ def main():
         for attribute, value in desired_attributes.items():
             try:
                 client.set_topic_attributes(
-                    **scrub_none_parameters(
-                        snake_dict_to_camel_dict(
-                            {
-                                "attribute_name": attribute,
-                                "attribute_value": value,
-                                "topic_arn": module.params["topic_arn"],
-                            },
-                            capitalize_first=True,
-                        )
-                    ),
+                    AttributeName=attribute,
+                    AttributeValue=value,
+                    TopicArn=module.params["topic_arn"],
                     aws_retry=True,
                 )
             except Exception as e:

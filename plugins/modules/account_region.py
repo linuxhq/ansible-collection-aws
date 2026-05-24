@@ -73,15 +73,11 @@ previous_region_opt_status:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import (
-    recursive_diff,
-    snake_dict_to_camel_dict,
-)
+from ansible.module_utils.common.dict_transformations import recursive_diff
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
     BaseWaiterFactory,
@@ -178,11 +174,7 @@ class AccountRegionWaiterFactory(BaseWaiterFactory):
 def get_region(client, module, region_name):
     try:
         return client.get_region_opt_status(
-            **scrub_none_parameters(
-                snake_dict_to_camel_dict(
-                    {"region_name": region_name}, capitalize_first=True
-                )
-            ),
+            RegionName=region_name,
             aws_retry=True,
         )
     except Exception as e:
@@ -266,11 +258,7 @@ def main():
     if changed and not module.check_mode:
         try:
             getattr(client, operation)(
-                **scrub_none_parameters(
-                    snake_dict_to_camel_dict(
-                        {"region_name": region_name}, capitalize_first=True
-                    )
-                ),
+                RegionName=region_name,
                 aws_retry=True,
             )
         except Exception as e:

@@ -190,6 +190,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
+    boto3_tag_specifications,
     compare_aws_tags,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -334,12 +335,11 @@ def create_flow_logs(client, module, resource_ids):
         snake_dict_to_camel_dict(request, capitalize_first=True)
     )
     if module.params["tags"] is not None:
-        request["TagSpecifications"] = [
-            {
-                "ResourceType": "vpc-flow-log",
-                "Tags": ansible_dict_to_boto3_tag_list(module.params["tags"]),
-            }
-        ]
+        tag_specifications = boto3_tag_specifications(
+            module.params["tags"], types="vpc-flow-log"
+        )
+        if tag_specifications is not None:
+            request["TagSpecifications"] = tag_specifications
 
     try:
         response = client.create_flow_logs(**request, aws_retry=True)
