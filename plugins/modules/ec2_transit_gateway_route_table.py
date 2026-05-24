@@ -915,7 +915,8 @@ def validate_routes(module):
 
 
 def validate_params(module):
-    if module.params["state"] == "present" and not (
+    state = module.params["state"]
+    if state == "present" and not (
         module.params["transit_gateway_route_table_id"]
         or (module.params["transit_gateway_id"] and module.params["name"])
     ):
@@ -925,7 +926,7 @@ def validate_params(module):
                 "both transit_gateway_id and name"
             )
         )
-    if module.params["state"] == "absent" and not (
+    if state == "absent" and not (
         module.params["transit_gateway_route_table_id"]
         or (module.params["transit_gateway_id"] and module.params["name"])
     ):
@@ -977,9 +978,13 @@ def main():
     validate_params(module)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    if module.params["state"] == "present":
+    state = module.params["state"]
+    if state == "present":
         ensure_present(client, module)
-    ensure_absent(client, module)
+    elif state == "absent":
+        ensure_absent(client, module)
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

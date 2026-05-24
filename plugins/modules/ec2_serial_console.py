@@ -74,7 +74,13 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    desired_enabled = module.params["state"] == "present"
+    state = module.params["state"]
+    if state == "present":
+        desired_enabled = True
+    elif state == "absent":
+        desired_enabled = False
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
     desired = {"serial_console_access_enabled": desired_enabled}
     current = boto3_resource_to_ansible_dict(
         client.get_serial_console_access_status(aws_retry=True),
@@ -105,7 +111,7 @@ def main():
         "changed": changed,
         "region": module.region,
         "serial_console_access": current,
-        "state": module.params["state"],
+        "state": state,
     }
 
     module.exit_json(**result)

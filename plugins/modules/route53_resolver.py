@@ -782,9 +782,13 @@ def main():
         "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
     )
 
-    if module.params["state"] == "present":
+    state = module.params["state"]
+    if state == "present":
         ensure_present(client, module)
-    ensure_absent(client, module)
+    elif state == "absent":
+        ensure_absent(client, module)
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

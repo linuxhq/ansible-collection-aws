@@ -574,10 +574,11 @@ def main():
         required_if=[("state", "present", ["resource_type"])],
         supports_check_mode=True,
     )
+    state = module.params["state"]
     if not normalized_resource_ids(module):
         module.fail_json(msg="resource_ids must contain at least one item")
     if (
-        module.params["state"] == "present"
+        state == "present"
         and module.params["traffic_type"] is not None
         and module.params["resource_type"]
         in ("TransitGateway", "TransitGatewayAttachment")
@@ -590,9 +591,12 @@ def main():
         )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    if module.params["state"] == "present":
+    if state == "present":
         ensure_present(client, module)
-    ensure_absent(client, module)
+    elif state == "absent":
+        ensure_absent(client, module)
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

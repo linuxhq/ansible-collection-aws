@@ -234,7 +234,16 @@ def main():
 
     region_name = module.params["name"]
     state = module.params["state"]
-    statuses = PRESENT_STATUSES if state == "present" else ABSENT_STATUSES
+    if state == "present":
+        statuses = PRESENT_STATUSES
+        operation = "enable_region"
+        action = "enable"
+    elif state == "absent":
+        statuses = ABSENT_STATUSES
+        operation = "disable_region"
+        action = "disable"
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
     previous = get_region(client, module, region_name)
     previous_region = boto3_resource_to_ansible_dict(
         previous, transform_tags=False, force_tags=False
@@ -255,8 +264,6 @@ def main():
     changed = recursive_diff(current, desired) is not None
 
     if changed and not module.check_mode:
-        operation = "enable_region" if state == "present" else "disable_region"
-        action = "enable" if state == "present" else "disable"
         try:
             getattr(client, operation)(
                 **scrub_none_parameters(
