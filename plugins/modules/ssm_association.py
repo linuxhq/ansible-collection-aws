@@ -430,9 +430,13 @@ def main():
         None,
     )
 
-    if module.params["state"] == "present":
+    state = module.params["state"]
+    if state == "present":
         ensure_present(client, module, current)
-    ensure_absent(client, module, current)
+    elif state == "absent":
+        ensure_absent(client, module, current)
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

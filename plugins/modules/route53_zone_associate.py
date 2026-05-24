@@ -215,9 +215,13 @@ def main():
     hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]
     module.params["hosted_zone_id"] = hosted_zone_id
 
-    if module.params["state"] == "present":
+    state = module.params["state"]
+    if state == "present":
         ensure_present(client, module, hosted_zone_id)
-    ensure_absent(client, module, hosted_zone_id)
+    elif state == "absent":
+        ensure_absent(client, module, hosted_zone_id)
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

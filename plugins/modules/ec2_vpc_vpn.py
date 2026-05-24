@@ -1117,7 +1117,7 @@ def main():
     client = module.client("ec2")
 
     response: Dict[str, Any] = {}
-    state = module.params.get("state")
+    state = module.params["state"]
 
     vpn_connection = find_vpn_connection(client, module)
 
@@ -1125,6 +1125,8 @@ def main():
         changed, response = ensure_present(client, module, vpn_connection)
     elif state == "absent":
         changed = ensure_absent(client, module, vpn_connection)
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
 
     module.exit_json(changed=changed, **camel_dict_to_snake_dict(response))
 
