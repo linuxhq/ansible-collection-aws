@@ -160,12 +160,7 @@ def ensure_absent(client, module):
     if changed and not module.check_mode:
         try:
             client.delete_email_contact(
-                **scrub_none_parameters(
-                    snake_dict_to_camel_dict(
-                        {"arn": contact.get("arn")},
-                        capitalize_first=False,
-                    )
-                ),
+                arn=contact["arn"],
                 aws_retry=True,
             )
         except Exception as e:

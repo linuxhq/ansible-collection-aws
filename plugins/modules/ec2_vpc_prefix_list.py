@@ -118,6 +118,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
+    boto3_tag_specifications,
     compare_aws_tags,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -203,12 +204,11 @@ def create_prefix_list(client, module, desired_prefix_list, desired_entries):
         )
     )
     if module.params["tags"] is not None:
-        request["TagSpecifications"] = [
-            {
-                "ResourceType": "prefix-list",
-                "Tags": ansible_dict_to_boto3_tag_list(module.params["tags"]),
-            }
-        ]
+        tag_specifications = boto3_tag_specifications(
+            module.params["tags"], types="prefix-list"
+        )
+        if tag_specifications is not None:
+            request["TagSpecifications"] = tag_specifications
 
     try:
         prefix_list = client.create_managed_prefix_list(
