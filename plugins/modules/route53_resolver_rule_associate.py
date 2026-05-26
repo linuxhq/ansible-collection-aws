@@ -93,7 +93,6 @@ state:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import recursive_diff
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
     paginated_query_with_retries,
@@ -224,10 +223,7 @@ def ensure_present(client, module):
         "resolver_rule_id": module.params["resolver_rule_id"],
         "vpc_id": module.params["vpc_id"],
     }
-    changed = (
-        recursive_diff((current_association) or {}, (desired_association) or {})
-        is not None
-    )
+    changed = (current_association or {}) != desired_association
 
     if changed and not module.check_mode:
         if association is not None:

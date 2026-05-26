@@ -79,13 +79,11 @@ vpcs:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
@@ -166,9 +164,7 @@ def ensure_present(client, module, hosted_zone_id):
 def get_vpc_associations(client, module, hosted_zone_id):
     try:
         return client.get_hosted_zone(
-            **scrub_none_parameters(
-                snake_dict_to_camel_dict({"id": hosted_zone_id}, capitalize_first=True)
-            ),
+            Id=hosted_zone_id,
             aws_retry=True,
         ).get("VPCs", [])
     except Exception as e:

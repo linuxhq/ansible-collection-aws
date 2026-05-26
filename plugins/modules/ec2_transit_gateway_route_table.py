@@ -182,7 +182,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 ROUTE_TABLE_TERMINAL_STATES = {"deleted"}
@@ -338,14 +337,12 @@ def wait_for_route_table(
 
 
 def create_route_table(client, module):
-    request = scrub_none_parameters(
-        {
-            "TransitGatewayId": module.params["transit_gateway_id"],
-            "TagSpecifications": boto3_tag_specifications(
-                desired_tags(module), types="transit-gateway-route-table"
-            ),
-        }
+    request = {"TransitGatewayId": module.params["transit_gateway_id"]}
+    tag_specs = boto3_tag_specifications(
+        desired_tags(module), types="transit-gateway-route-table"
     )
+    if tag_specs is not None:
+        request["TagSpecifications"] = tag_specs
     try:
         route_table = client.create_transit_gateway_route_table(
             **request, aws_retry=True

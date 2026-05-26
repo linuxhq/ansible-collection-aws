@@ -75,7 +75,6 @@ pools:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
     paginated_query_with_retries,
@@ -85,22 +84,18 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
 def build_request(module):
     pool_ids = module.params["pool_ids"] or None
-    request = scrub_none_parameters(
-        snake_dict_to_camel_dict(
-            {
-                "max_results": module.params["max_results"],
-                "owner": module.params["owner"] if not pool_ids else None,
-                "pool_ids": pool_ids,
-            },
-            capitalize_first=True,
-        )
-    )
+    request = {}
+    if module.params["max_results"] is not None:
+        request["MaxResults"] = module.params["max_results"]
+    if pool_ids:
+        request["PoolIds"] = pool_ids
+    elif module.params["owner"] is not None:
+        request["Owner"] = module.params["owner"]
     if module.params["filters"]:
         request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
     return request

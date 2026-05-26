@@ -73,7 +73,6 @@ previous_region_opt_status:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import recursive_diff
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -253,7 +252,7 @@ def main():
         "region_name": region_name,
         "region_opt_status": target_status,
     }
-    changed = recursive_diff(current, desired) is not None
+    changed = current != desired
 
     if changed and not module.check_mode:
         try:

@@ -77,7 +77,6 @@ service_code:
 """
 
 from ansible.module_utils.common.dict_transformations import (
-    recursive_diff,
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
@@ -104,15 +103,10 @@ def main():
         "service-quotas", retry_decorator=AWSRetry.jittered_backoff()
     )
 
-    quota_request = scrub_none_parameters(
-        snake_dict_to_camel_dict(
-            {
-                "quota_code": module.params["quota_code"],
-                "service_code": module.params["service_code"],
-            },
-            capitalize_first=True,
-        )
-    )
+    quota_request = {
+        "QuotaCode": module.params["quota_code"],
+        "ServiceCode": module.params["service_code"],
+    }
     current_quota = client.get_service_quota(**quota_request, aws_retry=True).get(
         "Quota", {}
     )
@@ -126,32 +120,23 @@ def main():
             ).get("RequestedQuotas", [])
         )
 
-    desired_quota = {"value": module.params["value"]}
-    current_quota_value = boto3_resource_to_ansible_dict(
+    desired_value = module.params["value"]
+    current_quota_details = boto3_resource_to_ansible_dict(
         current_quota,
         transform_tags=False,
         force_tags=False,
     )
-    current_quota_value = {"value": current_quota_value.get("value")}
-    desired_value = desired_quota["value"]
-    current_value = current_quota_value.get("value")
+    current_value = current_quota_details.get("value")
     has_pending_request = bool(pending_requests)
     changed = (
         not has_pending_request
         and current_value is not None
-        and recursive_diff((current_quota_value) or {}, (desired_quota) or {})
-        is not None
         and desired_value > current_value
     )
 
     requested_quota = None
     if changed:
         if module.check_mode:
-            current_quota_details = boto3_resource_to_ansible_dict(
-                current_quota,
-                transform_tags=False,
-                force_tags=False,
-            )
             requested_quota = scrub_none_parameters(
                 snake_dict_to_camel_dict(
                     {
@@ -171,16 +156,7 @@ def main():
         else:
             try:
                 requested_quota = client.request_service_quota_increase(
-                    **scrub_none_parameters(
-                        snake_dict_to_camel_dict(
-                            {
-                                "desired_value": desired_value,
-                                "quota_code": module.params["quota_code"],
-                                "service_code": module.params["service_code"],
-                            },
-                            capitalize_first=True,
-                        )
-                    ),
+                    **dict(quota_request, DesiredValue=desired_value),
                     aws_retry=True,
                 ).get("RequestedQuota")
             except Exception as e:
@@ -195,9 +171,7 @@ def main():
 
     module.exit_json(
         changed=changed,
-        current_quota=boto3_resource_to_ansible_dict(
-            current_quota, transform_tags=False, force_tags=False
-        ),
+        current_quota=current_quota_details,
         pending_requests=boto3_resource_list_to_ansible_dict(
             pending_requests, transform_tags=False, force_tags=False
         ),

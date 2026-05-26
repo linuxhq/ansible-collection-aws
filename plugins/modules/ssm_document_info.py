@@ -202,11 +202,11 @@ def main():
             if document.get("Name")
         ]
 
-    documents = [
-        normalized_document(document)
-        for document in [get_document(client, module, name) for name in document_names]
-        if document
-    ]
+    documents = []
+    for name in document_names:
+        document = get_document(client, module, name)
+        if document:
+            documents.append(normalized_document(document))
 
     module.exit_json(
         changed=False,

@@ -73,10 +73,6 @@ state:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import (
-    recursive_diff,
-    snake_dict_to_camel_dict,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     paginated_query_with_retries,
 )
@@ -85,7 +81,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import compare_aws_tags
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
@@ -136,7 +131,7 @@ def apply_tag_changes(client, module, contact, tags_to_set, tag_keys_to_unset):
 
 def contact_with_updated_tags(contact, tags_to_set, tag_keys_to_unset):
     contact = dict(contact)
-    tags = dict((contact or {}).get("tags", {}))
+    tags = dict(contact.get("tags", {}))
     for tag_key in tag_keys_to_unset:
         tags.pop(tag_key, None)
     tags.update(tags_to_set)
@@ -199,9 +194,7 @@ def ensure_present(client, module):
         "address": module.params["email_address"],
         "name": module.params["name"],
     }
-    resource_changed = (
-        recursive_diff((current_contact) or {}, desired_contact) is not None
-    )
+    resource_changed = (current_contact or {}) != desired_contact
     tags_to_set, tag_keys_to_unset = ({}, [])
     if module.params["tags"] is not None:
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
@@ -216,12 +209,7 @@ def ensure_present(client, module):
             if contact is not None:
                 try:
                     client.delete_email_contact(
-                        **scrub_none_parameters(
-                            snake_dict_to_camel_dict(
-                                {"arn": contact.get("arn")},
-                                capitalize_first=False,
-                            )
-                        ),
+                        arn=contact["arn"],
                         aws_retry=True,
                     )
                 except Exception as e:
@@ -234,19 +222,14 @@ def ensure_present(client, module):
                     )
 
             try:
-                contact_request = {
-                    "email_address": module.params["email_address"],
+                request = {
+                    "emailAddress": module.params["email_address"],
                     "name": module.params["name"],
-                    "tags": module.params["tags"],
                 }
+                if module.params["tags"] is not None:
+                    request["tags"] = module.params["tags"]
                 contact_arn = client.create_email_contact(
-                    **scrub_none_parameters(
-                        snake_dict_to_camel_dict(
-                            contact_request,
-                            capitalize_first=False,
-                        )
-                    ),
-                    aws_retry=True,
+                    **request, aws_retry=True
                 ).get("arn")
             except Exception as e:
                 module.fail_json_aws(

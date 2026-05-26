@@ -64,7 +64,6 @@ certificate_arn:
 import hashlib
 import json
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible.module_utils.common.text.converters import to_bytes
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -72,9 +71,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
     compare_aws_tags,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
 )
 
 
@@ -157,23 +153,15 @@ def main():
             to_bytes(json.dumps(token_data, separators=(",", ":"), sort_keys=True))
         ).hexdigest()[:32]
 
-    params = scrub_none_parameters(
-        snake_dict_to_camel_dict(
-            {
-                "domain_name": module.params["domain_name"],
-                "idempotency_token": idempotency_token,
-                "subject_alternative_names": module.params["subject_alternative_names"]
-                or None,
-                "tags": (
-                    ansible_dict_to_boto3_tag_list(module.params["tags"])
-                    if module.params["tags"] is not None
-                    else None
-                ),
-                "validation_method": "DNS",
-            },
-            capitalize_first=True,
-        )
-    )
+    params = {
+        "DomainName": module.params["domain_name"],
+        "IdempotencyToken": idempotency_token,
+        "ValidationMethod": "DNS",
+    }
+    if module.params["subject_alternative_names"]:
+        params["SubjectAlternativeNames"] = module.params["subject_alternative_names"]
+    if module.params["tags"] is not None:
+        params["Tags"] = ansible_dict_to_boto3_tag_list(module.params["tags"])
 
     try:
         certificate_arn = client.request_certificate(**params, aws_retry=True).get(

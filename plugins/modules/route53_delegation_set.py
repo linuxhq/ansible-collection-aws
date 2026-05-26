@@ -64,7 +64,6 @@ state:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     paginated_query_with_retries,
 )
@@ -72,7 +71,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
@@ -84,11 +82,7 @@ def ensure_absent(client, module):
     if changed and not module.check_mode:
         try:
             client.delete_reusable_delegation_set(
-                **scrub_none_parameters(
-                    snake_dict_to_camel_dict(
-                        {"id": delegation_set_id}, capitalize_first=True
-                    )
-                ),
+                Id=delegation_set_id,
                 aws_retry=True,
             )
         except Exception as e:
@@ -115,12 +109,7 @@ def ensure_present(client, module):
     if changed and not module.check_mode:
         try:
             delegation_set = client.create_reusable_delegation_set(
-                **scrub_none_parameters(
-                    snake_dict_to_camel_dict(
-                        {"caller_reference": module.params["name"]},
-                        capitalize_first=True,
-                    )
-                ),
+                CallerReference=module.params["name"],
                 aws_retry=True,
             ).get("DelegationSet")
         except Exception as e:

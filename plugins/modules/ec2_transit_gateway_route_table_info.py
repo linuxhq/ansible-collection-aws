@@ -63,7 +63,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
@@ -80,14 +79,11 @@ def route_sort_key(route):
 
 
 def build_request(module):
-    request = scrub_none_parameters(
-        {
-            "TransitGatewayRouteTableIds": module.params[
-                "transit_gateway_route_table_ids"
-            ]
-            or None
-        }
-    )
+    request = {}
+    if module.params["transit_gateway_route_table_ids"]:
+        request["TransitGatewayRouteTableIds"] = module.params[
+            "transit_gateway_route_table_ids"
+        ]
     if module.params["filters"]:
         request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
     return request

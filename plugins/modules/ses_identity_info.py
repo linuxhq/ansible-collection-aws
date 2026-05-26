@@ -52,7 +52,6 @@ identities:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
     paginated_query_with_retries,
@@ -61,7 +60,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
@@ -81,21 +79,19 @@ def main():
     if requested_names:
         identity_names = requested_names
     else:
+        list_kwargs = {}
+        if module.params["identity_type"] is not None:
+            list_kwargs["IdentityType"] = module.params["identity_type"]
         identity_names = paginated_query_with_retries(
             ses_client,
             "list_identities",
-            **scrub_none_parameters({"IdentityType": module.params["identity_type"]}),
+            **list_kwargs,
         ).get("Identities", [])
 
     for identity_name in identity_names:
         try:
             details = sesv2_client.get_email_identity(
-                **scrub_none_parameters(
-                    snake_dict_to_camel_dict(
-                        {"email_identity": identity_name},
-                        capitalize_first=True,
-                    )
-                ),
+                EmailIdentity=identity_name,
                 aws_retry=True,
             )
         except is_boto3_error_code("NotFoundException"):

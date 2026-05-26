@@ -69,7 +69,6 @@ attributes:
   type: dict
 """
 
-from ansible.module_utils.common.dict_transformations import recursive_diff
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -137,7 +136,7 @@ def main():
     desired = desired_sms_attributes(module)
     current_attributes = get_sms_attributes(client, module)
     current = {key: current_attributes.get(key) for key in desired}
-    changed = recursive_diff(current, desired) is not None
+    changed = current != desired
 
     if changed and not module.check_mode:
         set_sms_attributes(client, module, desired)

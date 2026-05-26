@@ -53,7 +53,6 @@ queues:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
     paginated_query_with_retries,
@@ -62,21 +61,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
 def get_queue(client, module, queue_url):
     attributes = client.get_queue_attributes(
-        **scrub_none_parameters(
-            snake_dict_to_camel_dict(
-                {
-                    "attribute_names": ["All"],
-                    "queue_url": queue_url,
-                },
-                capitalize_first=True,
-            )
-        ),
+        AttributeNames=["All"],
+        QueueUrl=queue_url,
         aws_retry=True,
     ).get("Attributes", {})
     queue = boto3_resource_to_ansible_dict(
@@ -106,18 +97,13 @@ def main():
         queues = []
         for name in module.params["names"]:
             try:
+                get_url_params = {"QueueName": name}
+                if module.params["queue_owner_aws_account_id"] is not None:
+                    get_url_params["QueueOwnerAWSAccountId"] = module.params[
+                        "queue_owner_aws_account_id"
+                    ]
                 queue_url = client.get_queue_url(
-                    **scrub_none_parameters(
-                        snake_dict_to_camel_dict(
-                            {
-                                "queue_name": name,
-                                "queue_owner_aws_account_id": module.params[
-                                    "queue_owner_aws_account_id"
-                                ],
-                            },
-                            capitalize_first=True,
-                        )
-                    ),
+                    **get_url_params,
                     aws_retry=True,
                 ).get("QueueUrl")
             except is_boto3_error_code("AWS.SimpleQueueService.NonExistentQueue"):
@@ -127,12 +113,9 @@ def main():
             if queue_url:
                 queues.append(get_queue(client, module, queue_url))
     else:
-        request = scrub_none_parameters(
-            snake_dict_to_camel_dict(
-                {"queue_name_prefix": module.params["queue_name_prefix"]},
-                capitalize_first=True,
-            )
-        )
+        request = {}
+        if module.params["queue_name_prefix"] is not None:
+            request["QueueNamePrefix"] = module.params["queue_name_prefix"]
         queues = [
             get_queue(client, module, queue_url)
             for queue_url in paginated_query_with_retries(

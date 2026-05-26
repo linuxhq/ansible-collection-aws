@@ -149,7 +149,6 @@ state:
 import json
 
 from ansible.module_utils.common.dict_transformations import (
-    recursive_diff,
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
@@ -332,9 +331,7 @@ def ensure_present(client, module):
     if current is None:
         changed = True
     else:
-        changed = (
-            recursive_diff((current) or {}, (desired_comparable) or {}) is not None
-        )
+        changed = current != desired_comparable
     resource_changed = changed
     tags_to_set, tag_keys_to_unset = ({}, [])
     if module.params["tags"] is not None:
@@ -359,14 +356,14 @@ def ensure_present(client, module):
             desired_comparable = comparable_rule(
                 {field: desired[field] for field in comparable_fields}
             )
-            if recursive_diff((current) or {}, (desired_comparable) or {}) is not None:
+            if current != desired_comparable:
                 delete_resolver_rule(client, module, rule, desired["name"])
                 rule = create_resolver_rule(client, module, desired)
         if rule is not None and module.params["tags"] is not None:
             if resource_changed:
                 rule = resolver_rule_with_tags(client, module, rule)
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                boto3_tag_list_to_ansible_dict((rule or {}).get("Tags", [])),
+                boto3_tag_list_to_ansible_dict(rule.get("Tags", [])),
                 module.params["tags"],
                 purge_tags=module.params["purge_tags"],
             )
@@ -463,7 +460,7 @@ def apply_tag_changes(client, module, resource_arn, tags_to_set, tag_keys_to_uns
 
 def rule_with_updated_tags(rule, tags_to_set, tag_keys_to_unset):
     rule = dict(rule)
-    tags = boto3_tag_list_to_ansible_dict((rule or {}).get("Tags", []))
+    tags = boto3_tag_list_to_ansible_dict(rule.get("Tags", []))
     for tag_key in tag_keys_to_unset:
         tags.pop(tag_key, None)
     tags.update(tags_to_set)

@@ -53,7 +53,6 @@ state:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     paginated_query_with_retries,
 )
@@ -61,7 +60,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
@@ -81,12 +79,7 @@ def ensure_absent(client, module):
     if changed and not module.check_mode:
         try:
             client.deregister_notification_hub(
-                **scrub_none_parameters(
-                    snake_dict_to_camel_dict(
-                        {"notification_hub_region": module.params["region"]},
-                        capitalize_first=False,
-                    )
-                ),
+                notificationHubRegion=module.params["region"],
                 aws_retry=True,
             )
         except Exception as e:
@@ -118,12 +111,7 @@ def ensure_present(client, module):
     if changed and not module.check_mode:
         try:
             client.register_notification_hub(
-                **scrub_none_parameters(
-                    snake_dict_to_camel_dict(
-                        {"notification_hub_region": module.params["region"]},
-                        capitalize_first=False,
-                    )
-                ),
+                notificationHubRegion=module.params["region"],
                 aws_retry=True,
             )
         except Exception as e:

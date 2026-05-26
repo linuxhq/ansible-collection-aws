@@ -68,7 +68,6 @@ region:
 """
 
 from ansible.module_utils.common.dict_transformations import (
-    recursive_diff,
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -141,7 +140,7 @@ def main():
         option_name: module.params[option_name] for option_name in desired_fields
     }
     current = {field: current_account_level.get(field) for field in desired_fields}
-    changed = recursive_diff(current, desired) is not None
+    changed = current != desired
 
     if changed and not module.check_mode:
         try:
@@ -157,6 +156,9 @@ def main():
             transform_tags=False,
             force_tags=False,
         )
+    elif changed and module.check_mode:
+        current_account_level = dict(current_account_level)
+        current_account_level.update(desired)
 
     result = {
         "changed": changed,

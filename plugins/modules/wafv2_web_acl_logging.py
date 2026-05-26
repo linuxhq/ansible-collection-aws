@@ -66,10 +66,6 @@ state:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import (
-    recursive_diff,
-    snake_dict_to_camel_dict,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
@@ -77,7 +73,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
@@ -88,12 +83,7 @@ def ensure_absent(client, module):
     if changed and not module.check_mode:
         try:
             client.delete_logging_configuration(
-                **scrub_none_parameters(
-                    snake_dict_to_camel_dict(
-                        {"resource_arn": module.params["resource_arn"]},
-                        capitalize_first=True,
-                    )
-                ),
+                ResourceArn=module.params["resource_arn"],
                 aws_retry=True,
             )
         except Exception as e:
@@ -129,10 +119,11 @@ def ensure_present(client, module):
         "log_destination_configs": module.params["log_destination_configs"],
         "resource_arn": module.params["resource_arn"],
     }
-    desired = scrub_none_parameters(
-        snake_dict_to_camel_dict(desired_comparable, capitalize_first=True)
-    )
-    changed = recursive_diff((current_comparable) or {}, desired_comparable) is not None
+    desired = {
+        "LogDestinationConfigs": module.params["log_destination_configs"],
+        "ResourceArn": module.params["resource_arn"],
+    }
+    changed = (current_comparable or {}) != desired_comparable
 
     if changed and not module.check_mode:
         try:
@@ -166,12 +157,7 @@ def ensure_present(client, module):
 def get_logging_configuration(client, module, resource_arn):
     try:
         return client.get_logging_configuration(
-            **scrub_none_parameters(
-                snake_dict_to_camel_dict(
-                    {"resource_arn": resource_arn},
-                    capitalize_first=True,
-                )
-            ),
+            ResourceArn=resource_arn,
             aws_retry=True,
         ).get("LoggingConfiguration")
     except is_boto3_error_code("WAFNonexistentItemException"):

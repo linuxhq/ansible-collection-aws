@@ -47,7 +47,6 @@ topic_arn:
 """
 
 from ansible.module_utils.common.dict_transformations import (
-    recursive_diff,
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -88,7 +87,7 @@ def main():
         current_attributes, transform_tags=False, force_tags=False
     )
     current = {key: current.get(key) for key in desired_parameters}
-    changed = recursive_diff(current, desired_parameters) is not None
+    changed = current != desired_parameters
 
     if changed and not module.check_mode:
         for attribute, value in desired_attributes.items():

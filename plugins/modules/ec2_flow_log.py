@@ -179,7 +179,6 @@ state:
 """
 
 from ansible.module_utils.common.dict_transformations import (
-    recursive_diff,
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
@@ -285,7 +284,7 @@ def comparable_flow_log(flow_log, desired):
 
 
 def flow_log_matches(flow_log, desired):
-    return recursive_diff(comparable_flow_log(flow_log, desired), desired) is None
+    return comparable_flow_log(flow_log, desired) == desired
 
 
 def matching_flow_logs(module, flow_logs, desired):
