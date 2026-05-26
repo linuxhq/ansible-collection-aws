@@ -66,12 +66,10 @@ service_code:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
@@ -86,19 +84,13 @@ def main():
     client = module.client(
         "service-quotas", retry_decorator=AWSRetry.jittered_backoff()
     )
-    quota = client.get_service_quota(
-        **scrub_none_parameters(
-            snake_dict_to_camel_dict(
-                {
-                    "context_id": module.params["context_id"],
-                    "quota_code": module.params["quota_code"],
-                    "service_code": module.params["service_code"],
-                },
-                capitalize_first=True,
-            )
-        ),
-        aws_retry=True,
-    ).get("Quota", {})
+    request = {
+        "QuotaCode": module.params["quota_code"],
+        "ServiceCode": module.params["service_code"],
+    }
+    if module.params["context_id"] is not None:
+        request["ContextId"] = module.params["context_id"]
+    quota = client.get_service_quota(**request, aws_retry=True).get("Quota", {})
 
     module.exit_json(
         changed=False,

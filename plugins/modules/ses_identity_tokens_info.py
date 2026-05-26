@@ -47,12 +47,8 @@ verification_token:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
-)
 
 
 def main():
@@ -64,15 +60,12 @@ def main():
     )
     client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
     identity = module.params["identity"]
-    params = scrub_none_parameters(
-        snake_dict_to_camel_dict({"domain": identity}, capitalize_first=True)
-    )
-    dkim_tokens = client.verify_domain_dkim(**params, aws_retry=True).get(
+    dkim_tokens = client.verify_domain_dkim(Domain=identity, aws_retry=True).get(
         "DkimTokens", []
     )
-    verification_token = client.verify_domain_identity(**params, aws_retry=True).get(
-        "VerificationToken"
-    )
+    verification_token = client.verify_domain_identity(
+        Domain=identity, aws_retry=True
+    ).get("VerificationToken")
 
     module.exit_json(
         changed=False,

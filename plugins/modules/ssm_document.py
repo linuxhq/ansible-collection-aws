@@ -101,7 +101,6 @@ state:
 import json
 
 from ansible.module_utils.common.dict_transformations import (
-    recursive_diff,
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
@@ -116,7 +115,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 SSM_DOCUMENT_RESOURCE_TYPE = "Document"
@@ -129,11 +127,7 @@ def ensure_absent(client, module):
     if changed and not module.check_mode:
         try:
             client.delete_document(
-                **scrub_none_parameters(
-                    snake_dict_to_camel_dict(
-                        {"name": module.params["name"]}, capitalize_first=True
-                    )
-                ),
+                Name=module.params["name"],
                 aws_retry=True,
             )
         except Exception as e:
@@ -187,10 +181,7 @@ def ensure_present(client, module):
                     f"{module.params['name']}: immutable fields differ"
                 )
             )
-        changed = (
-            recursive_diff((current_comparable) or {}, (desired_comparable) or {})
-            is not None
-        )
+        changed = current_comparable != desired_comparable
         resource_changed = changed
 
     tags_to_set, tag_keys_to_unset = ({}, [])
@@ -212,27 +203,17 @@ def ensure_present(client, module):
 
         if current is None:
             try:
-                client.create_document(
-                    **scrub_none_parameters(
-                        snake_dict_to_camel_dict(
-                            {
-                                "content": desired_content,
-                                "document_format": "JSON",
-                                "document_type": desired["document_type"],
-                                "name": desired["name"],
-                                "tags": (
-                                    ansible_dict_to_boto3_tag_list(
-                                        module.params["tags"]
-                                    )
-                                    if module.params["tags"] is not None
-                                    else None
-                                ),
-                            },
-                            capitalize_first=True,
-                        )
-                    ),
-                    aws_retry=True,
-                )
+                request = {
+                    "Content": desired_content,
+                    "DocumentFormat": "JSON",
+                    "DocumentType": desired["document_type"],
+                    "Name": desired["name"],
+                }
+                if module.params["tags"] is not None:
+                    request["Tags"] = ansible_dict_to_boto3_tag_list(
+                        module.params["tags"]
+                    )
+                client.create_document(**request, aws_retry=True)
             except Exception as e:
                 module.fail_json_aws(
                     e,
@@ -244,17 +225,10 @@ def ensure_present(client, module):
         elif resource_changed:
             try:
                 client.update_document(
-                    **scrub_none_parameters(
-                        snake_dict_to_camel_dict(
-                            {
-                                "content": desired_content,
-                                "document_format": "JSON",
-                                "document_version": module.params["document_version"],
-                                "name": desired["name"],
-                            },
-                            capitalize_first=True,
-                        )
-                    ),
+                    Content=desired_content,
+                    DocumentFormat="JSON",
+                    DocumentVersion=module.params["document_version"],
+                    Name=desired["name"],
                     aws_retry=True,
                 )
             except Exception as e:
@@ -269,7 +243,7 @@ def ensure_present(client, module):
             current = get_document(client, module)
         if current is not None and module.params["tags"] is not None:
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                boto3_tag_list_to_ansible_dict((current or {}).get("Tags", [])),
+                boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
                 module.params["tags"],
                 purge_tags=module.params["purge_tags"],
             )
@@ -304,16 +278,9 @@ def ensure_present(client, module):
 def get_document(client, module):
     try:
         document = client.get_document(
-            **scrub_none_parameters(
-                snake_dict_to_camel_dict(
-                    {
-                        "document_format": "JSON",
-                        "document_version": module.params["document_version"],
-                        "name": module.params["name"],
-                    },
-                    capitalize_first=True,
-                )
-            ),
+            DocumentFormat="JSON",
+            DocumentVersion=module.params["document_version"],
+            Name=module.params["name"],
             aws_retry=True,
         )
     except is_boto3_error_code(("InvalidDocument", "InvalidDocumentOperation")):
@@ -348,7 +315,7 @@ def get_resource_tags(client, module, resource_type, resource_id):
 
 def document_with_updated_tags(document, tags_to_set, tag_keys_to_unset):
     document = dict(document)
-    tags = boto3_tag_list_to_ansible_dict((document or {}).get("Tags", []))
+    tags = boto3_tag_list_to_ansible_dict(document.get("Tags", []))
     for tag_key in tag_keys_to_unset:
         tags.pop(tag_key, None)
     tags.update(tags_to_set)

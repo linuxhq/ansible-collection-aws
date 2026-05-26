@@ -53,7 +53,6 @@ state:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import recursive_diff
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -87,10 +86,7 @@ def main():
         transform_tags=False,
         force_tags=False,
     )
-    current_comparable = {
-        "serial_console_access_enabled": current.get("serial_console_access_enabled")
-    }
-    changed = recursive_diff(current_comparable, desired) is not None
+    changed = current.get("serial_console_access_enabled") != desired_enabled
 
     if changed and not module.check_mode:
         operation = (
@@ -106,6 +102,8 @@ def main():
             )
         except Exception as e:
             module.fail_json_aws(e, msg="Unable to manage EC2 serial console access")
+    elif changed and module.check_mode:
+        current = desired
 
     result = {
         "changed": changed,

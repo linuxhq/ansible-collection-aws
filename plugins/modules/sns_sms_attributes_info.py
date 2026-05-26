@@ -47,7 +47,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
@@ -59,11 +58,12 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
 
+    parameters = {}
+    if module.params["attributes"] is not None:
+        parameters["attributes"] = module.params["attributes"]
+
     try:
-        response = client.get_sms_attributes(
-            **scrub_none_parameters({"attributes": module.params["attributes"]}),
-            aws_retry=True,
-        )
+        response = client.get_sms_attributes(**parameters, aws_retry=True)
     except Exception as e:
         module.fail_json_aws(
             e, msg="Unable to get AWS Simple Notification Service SMS attributes"

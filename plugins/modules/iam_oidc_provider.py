@@ -93,7 +93,6 @@ url:
   type: str
 """
 
-from ansible.module_utils.common.dict_transformations import recursive_diff
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
@@ -175,7 +174,7 @@ def desired_comparable_provider(module):
 
 
 def apply_client_id_changes(client, module, arn, current, desired):
-    current_client_ids = set((current or {}).get("ClientIDList") or [])
+    current_client_ids = set(current.get("ClientIDList") or [])
     desired_client_ids = set(desired["client_id_list"])
 
     for client_id in sorted(current_client_ids - desired_client_ids):
@@ -258,7 +257,7 @@ def apply_tag_changes(client, module, arn, tags_to_set, tag_keys_to_unset):
 
 def provider_with_updated_tags(provider, tags_to_set, tag_keys_to_unset):
     provider = dict(provider)
-    tags = boto3_tag_list_to_ansible_dict((provider or {}).get("Tags", []))
+    tags = boto3_tag_list_to_ansible_dict(provider.get("Tags", []))
     for tag_key in tag_keys_to_unset:
         tags.pop(tag_key, None)
     tags.update(tags_to_set)
@@ -324,7 +323,7 @@ def ensure_present(client, module):
             module.params["tags"],
             purge_tags=module.params["purge_tags"],
         )
-    resource_changed = recursive_diff((current_comparable) or {}, desired) is not None
+    resource_changed = (current_comparable or {}) != desired
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:

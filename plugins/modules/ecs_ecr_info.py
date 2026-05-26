@@ -45,7 +45,6 @@ repositories:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
     paginated_query_with_retries,
@@ -54,7 +53,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
@@ -67,15 +65,11 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("ecr", retry_decorator=AWSRetry.jittered_backoff())
 
-    params = scrub_none_parameters(
-        snake_dict_to_camel_dict(
-            {
-                "registry_id": module.params["registry_id"] or None,
-                "repository_names": module.params["names"] or None,
-            },
-            capitalize_first=False,
-        )
-    )
+    params = {}
+    if module.params["registry_id"]:
+        params["registryId"] = module.params["registry_id"]
+    if module.params["names"]:
+        params["repositoryNames"] = module.params["names"]
 
     try:
         repositories = paginated_query_with_retries(

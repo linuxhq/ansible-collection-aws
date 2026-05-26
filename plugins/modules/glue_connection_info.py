@@ -76,28 +76,22 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
 def get_connection(client, module, name):
+    params = {
+        "HidePassword": module.params["hide_password"],
+        "Name": name,
+    }
+    if module.params["apply_override_for_compute_environment"] is not None:
+        params["ApplyOverrideForComputeEnvironment"] = module.params[
+            "apply_override_for_compute_environment"
+        ]
+    if module.params["catalog_id"] is not None:
+        params["CatalogId"] = module.params["catalog_id"]
     try:
-        return client.get_connection(
-            **scrub_none_parameters(
-                snake_dict_to_camel_dict(
-                    {
-                        "apply_override_for_compute_environment": module.params[
-                            "apply_override_for_compute_environment"
-                        ],
-                        "catalog_id": module.params["catalog_id"],
-                        "hide_password": module.params["hide_password"],
-                        "name": name,
-                    },
-                    capitalize_first=True,
-                )
-            ),
-            aws_retry=True,
-        ).get("Connection")
+        return client.get_connection(**params, aws_retry=True).get("Connection")
     except is_boto3_error_code("EntityNotFoundException"):
         return None
     except Exception as e:
@@ -105,15 +99,9 @@ def get_connection(client, module, name):
 
 
 def list_connections(client, module):
-    request = scrub_none_parameters(
-        snake_dict_to_camel_dict(
-            {
-                "catalog_id": module.params["catalog_id"],
-                "hide_password": module.params["hide_password"],
-            },
-            capitalize_first=True,
-        )
-    )
+    request = {"HidePassword": module.params["hide_password"]}
+    if module.params["catalog_id"] is not None:
+        request["CatalogId"] = module.params["catalog_id"]
     if module.params["filters"]:
         request["Filter"] = snake_dict_to_camel_dict(
             module.params["filters"], capitalize_first=True
@@ -137,13 +125,11 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("glue", retry_decorator=AWSRetry.jittered_backoff())
     if module.params["names"]:
-        connections = [
-            connection
-            for connection in [
-                get_connection(client, module, name) for name in module.params["names"]
-            ]
-            if connection
-        ]
+        connections = []
+        for name in module.params["names"]:
+            connection = get_connection(client, module, name)
+            if connection:
+                connections.append(connection)
     else:
         connections = list_connections(client, module)
 

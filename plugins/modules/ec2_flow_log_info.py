@@ -63,7 +63,6 @@ flow_logs:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     paginated_query_with_retries,
 )
@@ -72,7 +71,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
@@ -84,12 +82,9 @@ def normalized_filters(module):
 
 
 def build_request(module):
-    request = scrub_none_parameters(
-        snake_dict_to_camel_dict(
-            {"flow_log_ids": module.params["flow_log_ids"] or None},
-            capitalize_first=True,
-        )
-    )
+    request = {}
+    if module.params["flow_log_ids"]:
+        request["FlowLogIds"] = module.params["flow_log_ids"]
     filters = normalized_filters(module)
     if filters:
         request["Filter"] = ansible_dict_to_boto3_filter_list(filters)

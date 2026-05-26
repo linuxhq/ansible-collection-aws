@@ -159,7 +159,6 @@ state:
 import json
 
 from ansible.module_utils.common.dict_transformations import (
-    recursive_diff,
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
@@ -368,9 +367,7 @@ def ensure_present(client, module):
     if current is None:
         changed = True
     else:
-        changed = (
-            recursive_diff((current) or {}, (desired_comparable) or {}) is not None
-        )
+        changed = current != desired_comparable
     resource_changed = changed
     tags_to_set, tag_keys_to_unset = ({}, [])
     if module.params["tags"] is not None:
@@ -403,7 +400,7 @@ def ensure_present(client, module):
             desired_comparable = comparable_endpoint(
                 {field: desired[field] for field in comparable_fields}
             )
-            if recursive_diff((current) or {}, (desired_comparable) or {}) is not None:
+            if current != desired_comparable:
                 delete_resolver_endpoint(client, module, endpoint, desired["name"])
                 endpoint = resolver_endpoint_with_ip_addresses(
                     client,
@@ -413,7 +410,7 @@ def ensure_present(client, module):
             if resource_changed:
                 endpoint = resolver_endpoint_with_tags(client, module, endpoint)
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                boto3_tag_list_to_ansible_dict((endpoint or {}).get("Tags", [])),
+                boto3_tag_list_to_ansible_dict(endpoint.get("Tags", [])),
                 module.params["tags"],
                 purge_tags=module.params["purge_tags"],
             )
@@ -591,7 +588,7 @@ def apply_tag_changes(client, module, resource_arn, tags_to_set, tag_keys_to_uns
 
 def endpoint_with_updated_tags(endpoint, tags_to_set, tag_keys_to_unset):
     endpoint = dict(endpoint)
-    tags = boto3_tag_list_to_ansible_dict((endpoint or {}).get("Tags", []))
+    tags = boto3_tag_list_to_ansible_dict(endpoint.get("Tags", []))
     for tag_key in tag_keys_to_unset:
         tags.pop(tag_key, None)
     tags.update(tags_to_set)

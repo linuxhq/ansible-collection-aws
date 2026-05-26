@@ -69,15 +69,11 @@ user_policies:
   elements: dict
 """
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    scrub_none_parameters,
-)
 
 
 def build_entity_policies(client, module, entity_type, names):
@@ -94,12 +90,7 @@ def build_entity_policies(client, module, entity_type, names):
         all_policy_names = paginated_query_with_retries(
             client,
             list_operation,
-            **scrub_none_parameters(
-                snake_dict_to_camel_dict(
-                    {f"{entity_type.lower()}_name": name},
-                    capitalize_first=True,
-                )
-            ),
+            **{f"{entity_type}Name": name},
         ).get("PolicyNames", [])
         policy_names = [
             policy_name
@@ -115,15 +106,7 @@ def build_entity_policies(client, module, entity_type, names):
                     {
                         "policy_name": policy_name,
                         "policy_document": getattr(client, get_operation)(
-                            **scrub_none_parameters(
-                                snake_dict_to_camel_dict(
-                                    {
-                                        f"{entity_type.lower()}_name": name,
-                                        "policy_name": policy_name,
-                                    },
-                                    capitalize_first=True,
-                                )
-                            ),
+                            **{f"{entity_type}Name": name, "PolicyName": policy_name},
                             aws_retry=True,
                         ).get("PolicyDocument"),
                     }
@@ -142,17 +125,15 @@ def entity_names(client, module, entity_type):
         return explicit_names
     response_key = f"{entity_type}s"
     name_key = f"{entity_type}Name"
+    request = {}
+    if module.params["path_prefix"] is not None:
+        request["PathPrefix"] = module.params["path_prefix"]
     return [
         entity[name_key]
         for entity in paginated_query_with_retries(
             client,
             f"list_{entity_type.lower()}s",
-            **scrub_none_parameters(
-                snake_dict_to_camel_dict(
-                    {"path_prefix": module.params["path_prefix"]},
-                    capitalize_first=True,
-                )
-            ),
+            **request,
         ).get(response_key, [])
         if entity.get(name_key)
     ]

@@ -22,6 +22,6 @@ A collection of aws roles
 
     ansible-galaxy collection install linuxhq.aws
 
-# Playbooks
+## Testing
 
-All roles have test plays that provide example playbooks
+All roles have molecule tests which provide example playbooks

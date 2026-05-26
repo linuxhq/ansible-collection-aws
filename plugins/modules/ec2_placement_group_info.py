@@ -61,7 +61,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
@@ -74,12 +73,11 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
-    request = scrub_none_parameters(
-        {
-            "GroupIds": module.params["group_ids"] or None,
-            "GroupNames": module.params["names"] or None,
-        }
-    )
+    request = {}
+    if module.params["group_ids"]:
+        request["GroupIds"] = module.params["group_ids"]
+    if module.params["names"]:
+        request["GroupNames"] = module.params["names"]
     if module.params["filters"]:
         request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
 

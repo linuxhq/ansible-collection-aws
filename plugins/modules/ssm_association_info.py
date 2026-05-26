@@ -105,15 +105,12 @@ def main():
         changed=False,
         associations=[
             boto3_resource_to_ansible_dict(
-                association,
+                association_with_tags(client, module, association),
                 ignore_list=["TargetMaps"],
                 transform_tags=True,
                 force_tags=False,
             )
-            for association in [
-                association_with_tags(client, module, association)
-                for association in associations
-            ]
+            for association in associations
         ],
     )
 

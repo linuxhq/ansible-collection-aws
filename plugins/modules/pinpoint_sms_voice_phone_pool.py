@@ -460,7 +460,7 @@ def check_mode_pool(module, current=None):
 
 def pool_with_updated_tags(pool, tags_to_set, tag_keys_to_unset):
     pool = dict(pool)
-    tags = boto3_tag_list_to_ansible_dict((pool or {}).get("Tags", []))
+    tags = boto3_tag_list_to_ansible_dict(pool.get("Tags", []))
     for tag_key in tag_keys_to_unset:
         tags.pop(tag_key, None)
     tags.update(tags_to_set)

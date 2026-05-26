@@ -100,7 +100,6 @@ state:
 """
 
 from ansible.module_utils.common.dict_transformations import (
-    recursive_diff,
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
@@ -236,10 +235,7 @@ def ensure_present(client, module, current):
                     ),
                 )
     else:
-        changed = (
-            recursive_diff((current_comparable) or {}, (desired_comparable) or {})
-            is not None
-        )
+        changed = (current_comparable or {}) != desired_comparable
         resource_changed = changed
         if changed and not module.check_mode:
             try:
@@ -285,7 +281,7 @@ def ensure_present(client, module, current):
             if resource_changed:
                 association = association_with_tags(client, module, association)
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                boto3_tag_list_to_ansible_dict((association or {}).get("Tags", [])),
+                boto3_tag_list_to_ansible_dict(association.get("Tags", [])),
                 module.params["tags"],
                 purge_tags=module.params["purge_tags"],
             )
@@ -335,7 +331,7 @@ def association_with_tags(client, module, association):
 
 def association_with_updated_tags(association, tags_to_set, tag_keys_to_unset):
     association = dict(association)
-    tags = boto3_tag_list_to_ansible_dict((association or {}).get("Tags", []))
+    tags = boto3_tag_list_to_ansible_dict(association.get("Tags", []))
     for tag_key in tag_keys_to_unset:
         tags.pop(tag_key, None)
     tags.update(tags_to_set)

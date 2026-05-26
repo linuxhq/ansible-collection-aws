@@ -302,7 +302,6 @@ import time
 
 from ansible.module_utils.basic import _load_params
 from ansible.module_utils.common.dict_transformations import (
-    recursive_diff,
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
@@ -387,11 +386,7 @@ def comparable_subset(current, desired):
 
 
 def changed(current, desired):
-    current = normalized(current)
-    desired = normalized(desired)
-    if isinstance(current, dict) and isinstance(desired, dict):
-        return recursive_diff(current, desired) is not None
-    return current != desired
+    return normalized(current) != normalized(desired)
 
 
 def changed_request(current, desired):
@@ -405,7 +400,6 @@ def changed_request(current, desired):
         return request or None
     if changed(current, desired):
         return desired
-    return None
 
 
 def describe_cluster(client, module):
@@ -596,10 +590,9 @@ def validate_create_only_fields(module, current):
         snake_dict_to_camel_dict(desired_cluster(module), capitalize_first=False)
     )
     for field in CREATE_ONLY_FIELDS:
-        camel_field = snake_dict_to_camel_dict(
-            {field: None}, capitalize_first=False
-        ).keys()
-        camel_field = next(iter(camel_field))
+        camel_field = next(
+            iter(snake_dict_to_camel_dict({field: None}, capitalize_first=False))
+        )
         if desired.get(camel_field) is None:
             continue
         current_value = comparable_subset(current, {camel_field: desired[camel_field]})
@@ -644,7 +637,7 @@ def apply_tag_changes(client, module, cluster, tags_to_set, tag_keys_to_unset):
 
 def cluster_with_updated_tags(cluster, tags_to_set, tag_keys_to_unset):
     cluster = dict(cluster)
-    tags = dict((cluster or {}).get("tags") or {})
+    tags = dict(cluster.get("tags") or {})
     for tag_key in tag_keys_to_unset:
         tags.pop(tag_key, None)
     tags.update(tags_to_set)
@@ -742,13 +735,13 @@ def ensure_present(client, module):
     tags_to_set, tag_keys_to_unset = ({}, [])
     if module.params["tags"] is not None:
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
-            (current or {}).get("tags") or {},
+            current.get("tags") or {},
             module.params["tags"],
             purge_tags=module.params["purge_tags"],
         )
     tags_changed = bool(tags_to_set or tag_keys_to_unset)
-    cluster_changed = bool(config_changed or version_changed)
-    resource_changed = bool(cluster_changed or tags_changed)
+    cluster_changed = config_changed or version_changed
+    resource_changed = cluster_changed or tags_changed
 
     if resource_changed and module.check_mode:
         exit_result(module, True, check_mode_cluster(module, current), "present")

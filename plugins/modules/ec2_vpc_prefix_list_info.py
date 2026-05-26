@@ -72,7 +72,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
@@ -86,9 +85,9 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
-    request = scrub_none_parameters(
-        {"PrefixListIds": module.params["prefix_list_ids"] or None}
-    )
+    request = {}
+    if module.params["prefix_list_ids"]:
+        request["PrefixListIds"] = module.params["prefix_list_ids"]
     if module.params["filters"]:
         request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
     prefix_lists = []
@@ -99,9 +98,12 @@ def main():
         if prefix_list_name:
             prefix_lists.append(prefix_list)
 
-    module.exit_json(
-        changed=False,
-        prefix_lists=[
+    result_prefix_lists = []
+    for prefix_list in prefix_lists:
+        entry_request = {"PrefixListId": prefix_list["PrefixListId"]}
+        if module.params["target_version"] is not None:
+            entry_request["TargetVersion"] = module.params["target_version"]
+        result_prefix_lists.append(
             dict(
                 boto3_resource_to_ansible_dict(
                     prefix_list, transform_tags=True, force_tags=False
@@ -110,19 +112,17 @@ def main():
                     paginated_query_with_retries(
                         client,
                         "get_managed_prefix_list_entries",
-                        **scrub_none_parameters(
-                            {
-                                "PrefixListId": prefix_list["PrefixListId"],
-                                "TargetVersion": module.params["target_version"],
-                            }
-                        ),
+                        **entry_request,
                     ).get("Entries", []),
                     transform_tags=False,
                     force_tags=False,
                 ),
             )
-            for prefix_list in prefix_lists
-        ],
+        )
+
+    module.exit_json(
+        changed=False,
+        prefix_lists=result_prefix_lists,
     )
 
 

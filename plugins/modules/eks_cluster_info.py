@@ -72,7 +72,6 @@ clusters:
 
 from fnmatch import fnmatchcase
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
     paginated_query_with_retries,
@@ -81,7 +80,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
@@ -123,9 +121,7 @@ def filter_matches(resource, filters):
 def describe_cluster(client, module, name):
     try:
         return client.describe_cluster(
-            **scrub_none_parameters(
-                snake_dict_to_camel_dict({"name": name}, capitalize_first=False)
-            ),
+            name=name,
             aws_retry=True,
         ).get("cluster")
     except is_boto3_error_code("ResourceNotFoundException"):
@@ -137,12 +133,9 @@ def describe_cluster(client, module, name):
 def cluster_names(client, module):
     if module.params["names"]:
         return module.params["names"]
-    request = scrub_none_parameters(
-        snake_dict_to_camel_dict(
-            {"include": module.params["include"]},
-            capitalize_first=False,
-        )
-    )
+    request = {}
+    if module.params["include"] is not None:
+        request["include"] = module.params["include"]
     return paginated_query_with_retries(
         client,
         "list_clusters",

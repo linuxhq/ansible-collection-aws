@@ -163,11 +163,7 @@ def wait_for_command(client, module, command_id):
 
     while time.monotonic() < deadline:
         commands = client.list_commands(
-            **scrub_none_parameters(
-                snake_dict_to_camel_dict(
-                    {"command_id": command_id}, capitalize_first=True
-                )
-            ),
+            CommandId=command_id,
             aws_retry=True,
         ).get("Commands", [])
         if not commands:
@@ -181,15 +177,8 @@ def wait_for_command(client, module, command_id):
         invocations = paginated_query_with_retries(
             client,
             "list_command_invocations",
-            **scrub_none_parameters(
-                snake_dict_to_camel_dict(
-                    {
-                        "command_id": command_id,
-                        "details": True,
-                    },
-                    capitalize_first=True,
-                )
-            ),
+            CommandId=command_id,
+            Details=True,
         ).get("CommandInvocations", [])
         statuses = set()
         for invocation in invocations:

@@ -65,7 +65,6 @@ account:
   type: dict
 """
 
-from ansible.module_utils.common.dict_transformations import recursive_diff
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
@@ -156,7 +155,7 @@ def main():
         module.params["use_case_description"] is not None
         and module.params["website_url"] is not None
     )
-    changed = ready and recursive_diff((current) or {}, (desired) or {}) is not None
+    changed = ready and current != desired
 
     if changed and not module.check_mode:
         try:

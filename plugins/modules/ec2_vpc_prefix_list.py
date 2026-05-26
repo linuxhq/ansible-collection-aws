@@ -107,7 +107,6 @@ state:
 import json
 
 from ansible.module_utils.common.dict_transformations import (
-    recursive_diff,
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
@@ -310,15 +309,12 @@ def ensure_present(client, module):
         add_entries = [
             entry for entry in desired_entries if entry not in current_entries
         ]
-        resource_changed = (
-            recursive_diff((current_prefix_list) or {}, (desired_prefix_list) or {})
-            is not None
-        )
+        resource_changed = current_prefix_list != desired_prefix_list
         changed = bool(remove_entries or add_entries or resource_changed)
         tags_to_set, tag_keys_to_unset = ({}, [])
         if module.params["tags"] is not None:
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                boto3_tag_list_to_ansible_dict((current or {}).get("Tags", [])),
+                boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
                 module.params["tags"],
                 purge_tags=module.params["purge_tags"],
             )
@@ -343,12 +339,7 @@ def ensure_present(client, module):
 
             if resource_changed:
                 current_prefix_list = comparable_prefix_list(current)
-                if (
-                    recursive_diff(
-                        (current_prefix_list) or {}, (desired_prefix_list) or {}
-                    )
-                    is not None
-                ):
+                if (current_prefix_list or {}) != desired_prefix_list:
                     modify_prefix_list(
                         client,
                         module,
@@ -363,12 +354,7 @@ def ensure_present(client, module):
                     current, current_entries = get_current(client, module)
                     current_prefix_list = comparable_prefix_list(current)
 
-                if (
-                    recursive_diff(
-                        (current_prefix_list) or {}, (desired_prefix_list) or {}
-                    )
-                    is not None
-                ):
+                if (current_prefix_list or {}) != desired_prefix_list:
                     prefix_list_id = current.get("PrefixListId")
                     delete_prefix_list(client, module, prefix_list_id)
                     current, current_entries = create_prefix_list(
@@ -394,7 +380,7 @@ def ensure_present(client, module):
                 current, current_entries = get_current(client, module)
             if current is not None and module.params["tags"] is not None:
                 tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                    boto3_tag_list_to_ansible_dict((current or {}).get("Tags", [])),
+                    boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
                     module.params["tags"],
                     purge_tags=module.params["purge_tags"],
                 )
@@ -540,7 +526,7 @@ def apply_tag_changes(client, module, prefix_list_id, tags_to_set, tag_keys_to_u
 
 def prefix_list_with_updated_tags(prefix_list, tags_to_set, tag_keys_to_unset):
     prefix_list = dict(prefix_list)
-    tags = boto3_tag_list_to_ansible_dict((prefix_list or {}).get("Tags", []))
+    tags = boto3_tag_list_to_ansible_dict(prefix_list.get("Tags", []))
     for tag_key in tag_keys_to_unset:
         tags.pop(tag_key, None)
     tags.update(tags_to_set)

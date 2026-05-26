@@ -123,7 +123,6 @@ service_code:
 
 import json
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     paginated_query_with_retries,
 )
@@ -131,35 +130,28 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 
 def pricing_filters(filters):
     return [
-        snake_dict_to_camel_dict(
-            {
-                "field": pricing_filter["field"],
-                "type": pricing_filter.get("type") or "TERM_MATCH",
-                "value": pricing_filter["value"],
-            },
-            capitalize_first=True,
-        )
+        {
+            "Field": pricing_filter["field"],
+            "Type": pricing_filter.get("type") or "TERM_MATCH",
+            "Value": pricing_filter["value"],
+        }
         for pricing_filter in filters or []
     ]
 
 
 def build_request(module):
-    request = scrub_none_parameters(
-        snake_dict_to_camel_dict(
-            {
-                "format_version": module.params["format_version"],
-                "max_results": module.params["max_results"],
-                "service_code": module.params["service_code"],
-            },
-            capitalize_first=True,
-        )
-    )
+    request = {}
+    if module.params["format_version"] is not None:
+        request["FormatVersion"] = module.params["format_version"]
+    if module.params["max_results"] is not None:
+        request["MaxResults"] = module.params["max_results"]
+    if module.params["service_code"] is not None:
+        request["ServiceCode"] = module.params["service_code"]
     filters = pricing_filters(module.params["filters"])
     if filters:
         request["Filters"] = filters
