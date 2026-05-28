@@ -170,7 +170,8 @@ class AccountRegionWaiterFactory(BaseWaiterFactory):
         return ACCOUNT_REGION_WAITER_MODEL_DATA
 
 
-def get_region(client, module, region_name):
+def get_region(client, module):
+    region_name = module.params["name"]
     try:
         return client.get_region_opt_status(
             RegionName=region_name,
@@ -183,7 +184,8 @@ def get_region(client, module, region_name):
         )
 
 
-def wait_for_status(client, module, region_name, statuses):
+def wait_for_status(client, module, statuses):
+    region_name = module.params["name"]
     waiter_name = (
         "region_enabled" if statuses == PRESENT_STATUSES else "region_disabled"
     )
@@ -204,7 +206,7 @@ def wait_for_status(client, module, region_name, statuses):
                 f"to reach one of {sorted(statuses)}"
             ),
         )
-    return get_region(client, module, region_name)
+    return get_region(client, module)
 
 
 def main():
@@ -235,7 +237,7 @@ def main():
         action = "disable"
     else:
         module.fail_json(msg=f"Unsupported state: {state}")
-    previous = get_region(client, module, region_name)
+    previous = get_region(client, module)
     previous_region = boto3_resource_to_ansible_dict(
         previous, transform_tags=False, force_tags=False
     )
@@ -265,9 +267,9 @@ def main():
                 e, msg=f"Unable to {action} AWS account region {region_name}"
             )
         current_region = (
-            wait_for_status(client, module, region_name, statuses)
+            wait_for_status(client, module, statuses)
             if module.params["wait"]
-            else get_region(client, module, region_name)
+            else get_region(client, module)
         )
     elif changed and module.check_mode:
         current_region = desired
@@ -275,7 +277,7 @@ def main():
         current_region = previous
 
     if module.params["wait"] and not module.check_mode and not changed:
-        current_region = wait_for_status(client, module, region_name, statuses)
+        current_region = wait_for_status(client, module, statuses)
 
     module.exit_json(
         changed=changed,

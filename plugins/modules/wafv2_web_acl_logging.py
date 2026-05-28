@@ -16,6 +16,7 @@ options:
     description:
       - The logging destination ARNs for the web ACL.
       - AWS WAF allows one destination per web ACL.
+      - This is required when O(state=present).
     elements: str
     type: list
   resource_arn:
@@ -77,7 +78,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 
 def ensure_absent(client, module):
-    current = get_logging_configuration(client, module, module.params["resource_arn"])
+    current = get_logging_configuration(client, module)
     changed = current is not None
 
     if changed and not module.check_mode:
@@ -103,7 +104,7 @@ def ensure_absent(client, module):
 
 
 def ensure_present(client, module):
-    current = get_logging_configuration(client, module, module.params["resource_arn"])
+    current = get_logging_configuration(client, module)
     current_comparable = None
     if current:
         normalized_current = boto3_resource_to_ansible_dict(
@@ -154,7 +155,8 @@ def ensure_present(client, module):
     module.exit_json(**result)
 
 
-def get_logging_configuration(client, module, resource_arn):
+def get_logging_configuration(client, module):
+    resource_arn = module.params["resource_arn"]
     try:
         return client.get_logging_configuration(
             ResourceArn=resource_arn,

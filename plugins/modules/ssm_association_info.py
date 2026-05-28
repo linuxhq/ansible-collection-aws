@@ -93,13 +93,16 @@ def main():
             module.params["filters"]
         )
 
-    associations = [
-        association
-        for association in paginated_query_with_retries(
-            client, "list_associations", **request
-        ).get("Associations", [])
-        if association.get("Name") is not None
-    ]
+    try:
+        associations = [
+            association
+            for association in paginated_query_with_retries(
+                client, "list_associations", **request
+            ).get("Associations", [])
+            if association.get("Name") is not None
+        ]
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to list AWS Systems Manager associations")
 
     module.exit_json(
         changed=False,

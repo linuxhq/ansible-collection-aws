@@ -136,11 +136,14 @@ def cluster_names(client, module):
     request = {}
     if module.params["include"] is not None:
         request["include"] = module.params["include"]
-    return paginated_query_with_retries(
-        client,
-        "list_clusters",
-        **request,
-    ).get("clusters", [])
+    try:
+        return paginated_query_with_retries(
+            client,
+            "list_clusters",
+            **request,
+        ).get("clusters", [])
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to list AWS EKS clusters")
 
 
 def main():
@@ -154,14 +157,11 @@ def main():
     )
     client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())
 
-    clusters = [
-        cluster
-        for cluster in [
-            describe_cluster(client, module, name)
-            for name in cluster_names(client, module)
-        ]
-        if cluster is not None
-    ]
+    clusters = []
+    for name in cluster_names(client, module):
+        cluster = describe_cluster(client, module, name)
+        if cluster is not None:
+            clusters.append(cluster)
     clusters = boto3_resource_list_to_ansible_dict(
         clusters, transform_tags=False, force_tags=False
     )

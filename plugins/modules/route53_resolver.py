@@ -296,12 +296,12 @@ def create_resolver_endpoint(client, module, desired):
             module,
             resolver_endpoint_id,
             {"operational"},
-            desired["name"],
         )
     return endpoint
 
 
-def delete_resolver_endpoint(client, module, endpoint, name):
+def delete_resolver_endpoint(client, module, endpoint):
+    name = module.params["name"]
     resolver_endpoint_id = endpoint.get("Id")
     try:
         client.delete_resolver_endpoint(
@@ -318,16 +318,15 @@ def delete_resolver_endpoint(client, module, endpoint, name):
             module,
             resolver_endpoint_id,
             {"deleted"},
-            name,
         )
 
 
 def ensure_absent(client, module):
-    endpoint = get_resolver_endpoint_by_name(client, module.params["name"])
+    endpoint = get_resolver_endpoint_by_name(client, module)
     changed = endpoint is not None
 
     if changed and not module.check_mode:
-        delete_resolver_endpoint(client, module, endpoint, module.params["name"])
+        delete_resolver_endpoint(client, module, endpoint)
 
     module.exit_json(
         changed=changed,
@@ -347,9 +346,9 @@ def ensure_present(client, module):
         "resolver_endpoint_type": module.params["resolver_endpoint_type"].upper(),
         "security_group_ids": module.params["security_group_ids"],
     }
-    endpoint = get_resolver_endpoint_by_name(client, desired["name"])
+    endpoint = get_resolver_endpoint_by_name(client, module)
     if endpoint is not None:
-        endpoint = resolver_endpoint_with_ip_addresses(client, endpoint)
+        endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
         endpoint = resolver_endpoint_with_tags(client, module, endpoint)
 
     comparable_fields = (
@@ -381,6 +380,7 @@ def ensure_present(client, module):
     if current is None and not module.check_mode:
         endpoint = resolver_endpoint_with_ip_addresses(
             client,
+            module,
             create_resolver_endpoint(client, module, desired),
         )
         endpoint = resolver_endpoint_with_tags(client, module, endpoint)
@@ -401,9 +401,10 @@ def ensure_present(client, module):
                 {field: desired[field] for field in comparable_fields}
             )
             if current != desired_comparable:
-                delete_resolver_endpoint(client, module, endpoint, desired["name"])
+                delete_resolver_endpoint(client, module, endpoint)
                 endpoint = resolver_endpoint_with_ip_addresses(
                     client,
+                    module,
                     create_resolver_endpoint(client, module, desired),
                 )
         if endpoint is not None and module.params["tags"] is not None:
@@ -484,7 +485,6 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired):
                 module,
                 resolver_endpoint_id,
                 {"operational"},
-                desired["name"],
             )
 
     for ip_address in ip_addresses_to_remove:
@@ -518,11 +518,11 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired):
                 module,
                 resolver_endpoint_id,
                 {"operational"},
-                desired["name"],
             )
 
     return resolver_endpoint_with_ip_addresses(
         client,
+        module,
         get_resolver_endpoint(client, module, resolver_endpoint_id),
     )
 
@@ -536,7 +536,8 @@ def update_resolver_endpoint(client, module, endpoint, desired):
 
     endpoint = resolver_endpoint_with_ip_addresses(
         client,
-        update_resolver_endpoint_call(client, module, update_params, desired["name"]),
+        module,
+        update_resolver_endpoint_call(client, module, update_params),
     )
     if module.params["wait"]:
         resolver_endpoint_id = endpoint.get("Id")
@@ -545,7 +546,6 @@ def update_resolver_endpoint(client, module, endpoint, desired):
             module,
             resolver_endpoint_id,
             {"operational"},
-            desired["name"],
         )
     endpoint = reconcile_resolver_endpoint_ip_addresses(
         client,
@@ -596,9 +596,8 @@ def endpoint_with_updated_tags(endpoint, tags_to_set, tag_keys_to_unset):
     return endpoint
 
 
-def wait_for_resolver_endpoint_status(
-    client, module, resolver_endpoint_id, statuses, name
-):
+def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, statuses):
+    name = module.params["name"]
     deleted = "deleted" in statuses
     try:
         waiter = ResolverEndpointWaiterFactory().get_waiter(
@@ -621,7 +620,8 @@ def wait_for_resolver_endpoint_status(
     return get_resolver_endpoint(client, module, resolver_endpoint_id)
 
 
-def update_resolver_endpoint_call(client, module, update_params, name):
+def update_resolver_endpoint_call(client, module, update_params):
+    name = module.params["name"]
     try:
         return client.update_resolver_endpoint(
             **scrub_none_parameters(
@@ -685,28 +685,35 @@ def get_resolver_endpoint(client, module, resolver_endpoint_id):
     return resolver_endpoint_with_tags(client, module, endpoint)
 
 
-def get_resolver_endpoint_by_name(client, name):
+def get_resolver_endpoint_by_name(client, module):
+    name = module.params["name"]
+    try:
+        endpoints = paginated_query_with_retries(client, "list_resolver_endpoints").get(
+            "ResolverEndpoints", []
+        )
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver endpoints")
     return next(
-        (
-            endpoint
-            for endpoint in paginated_query_with_retries(
-                client, "list_resolver_endpoints"
-            ).get("ResolverEndpoints", [])
-            if endpoint.get("Name") == name
-        ),
+        (endpoint for endpoint in endpoints if endpoint.get("Name") == name),
         None,
     )
 
 
-def resolver_endpoint_with_ip_addresses(client, endpoint):
+def resolver_endpoint_with_ip_addresses(client, module, endpoint):
     if not endpoint:
         return endpoint
     endpoint = dict(endpoint)
-    endpoint["IpAddresses"] = paginated_query_with_retries(
-        client,
-        "list_resolver_endpoint_ip_addresses",
-        ResolverEndpointId=endpoint["Id"],
-    ).get("IpAddresses", [])
+    try:
+        endpoint["IpAddresses"] = paginated_query_with_retries(
+            client,
+            "list_resolver_endpoint_ip_addresses",
+            ResolverEndpointId=endpoint["Id"],
+        ).get("IpAddresses", [])
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to list AWS Route53 Resolver endpoint IP addresses for {endpoint['Id']}",
+        )
     return endpoint
 
 
@@ -715,9 +722,10 @@ def resolver_endpoint_with_tags(client, module, endpoint):
         return endpoint
     endpoint = dict(endpoint)
     try:
-        endpoint["Tags"] = client.list_tags_for_resource(
+        endpoint["Tags"] = paginated_query_with_retries(
+            client,
+            "list_tags_for_resource",
             ResourceArn=endpoint["Arn"],
-            aws_retry=True,
         ).get("Tags", [])
     except Exception as e:
         module.fail_json_aws(

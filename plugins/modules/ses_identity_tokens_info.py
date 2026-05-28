@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ses_identity_tokens_info
-short_description: Manage aws simple email service identities
+short_description: Gather aws simple email service identity tokens
 description:
   - Gathers AWS SES DKIM and verification tokens for a domain identity.
 author:
@@ -60,12 +60,15 @@ def main():
     )
     client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
     identity = module.params["identity"]
-    dkim_tokens = client.verify_domain_dkim(Domain=identity, aws_retry=True).get(
-        "DkimTokens", []
-    )
-    verification_token = client.verify_domain_identity(
-        Domain=identity, aws_retry=True
-    ).get("VerificationToken")
+    try:
+        dkim_tokens = client.verify_domain_dkim(Domain=identity, aws_retry=True).get(
+            "DkimTokens", []
+        )
+        verification_token = client.verify_domain_identity(
+            Domain=identity, aws_retry=True
+        ).get("VerificationToken")
+    except Exception as e:
+        module.fail_json_aws(e, msg=f"Unable to get AWS SES tokens for {identity}")
 
     module.exit_json(
         changed=False,

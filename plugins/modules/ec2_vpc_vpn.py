@@ -234,19 +234,19 @@ EXAMPLES = r"""
 # Note: These examples do not set authentication details, see the AWS Guide for details.
 
 - name: Create a VPN connection with vpn_gateway_id
-  amazon.aws.ec2_vpc_vpn:
+  linuxhq.aws.ec2_vpc_vpn:
     state: "present"
     vpn_gateway_id: "vgw-XXXXXXXX"
     customer_gateway_id: "cgw-XXXXXXXX"
 
 - name: Attach a vpn connection to transit gateway
-  amazon.aws.ec2_vpc_vpn:
+  linuxhq.aws.ec2_vpc_vpn:
     state: "present"
     transit_gateway_id: "tgw-XXXXXXXX"
     customer_gateway_id: "cgw-XXXXXXXX"
 
 - name: Modify VPN connection tags
-  amazon.aws.ec2_vpc_vpn:
+  linuxhq.aws.ec2_vpc_vpn:
     state: "present"
     vpn_connection_id: "vpn-XXXXXXXX"
     tags:
@@ -254,12 +254,12 @@ EXAMPLES = r"""
       Other: "ansible-tag-2"
 
 - name: Delete a connection
-  amazon.aws.ec2_vpc_vpn:
+  linuxhq.aws.ec2_vpc_vpn:
     vpn_connection_id: "vpn-XXXXXXXX"
     state: "absent"
 
 - name: Modify VPN tags (identifying VPN by filters)
-  amazon.aws.ec2_vpc_vpn:
+  linuxhq.aws.ec2_vpc_vpn:
     state: "present"
     filters:
       cidr: "194.168.1.0/24"
@@ -272,7 +272,7 @@ EXAMPLES = r"""
     static_only: true
 
 - name: Set up VPN with tunnel options utilizing 'TunnelInsideCidr' only
-  amazon.aws.ec2_vpc_vpn:
+  linuxhq.aws.ec2_vpc_vpn:
     state: "present"
     filters:
       vpn: "vpn-XXXXXXXX"
@@ -282,7 +282,7 @@ EXAMPLES = r"""
       - TunnelInsideCidr: "169.254.100.5/30"
 
 - name: Add routes and remove any preexisting ones
-  amazon.aws.ec2_vpc_vpn:
+  linuxhq.aws.ec2_vpc_vpn:
     state: "present"
     filters:
       vpn: "vpn-XXXXXXXX"
@@ -292,14 +292,14 @@ EXAMPLES = r"""
     purge_routes: true
 
 - name: Remove all routes
-  amazon.aws.ec2_vpc_vpn:
+  linuxhq.aws.ec2_vpc_vpn:
     state: "present"
     vpn_connection_id: "vpn-XXXXXXXX"
     routes: []
     purge_routes: true
 
 - name: Delete a VPN identified by filters
-  amazon.aws.ec2_vpc_vpn:
+  linuxhq.aws.ec2_vpc_vpn:
     state: "absent"
     filters:
       tags:
@@ -414,6 +414,7 @@ options:
 routes:
   description: The routes of the VPN connection.
   type: list
+  elements: dict
   returned: O(state=present)
   sample: [{
               "destination_cidr_block": "192.168.1.0/24",
@@ -453,6 +454,7 @@ type:
   sample: "ipsec.1"
 vgw_telemetry:
   type: list
+  elements: dict
   returned: O(state=present)
   description: The telemetry for the VPN tunnel.
   sample: [{
@@ -530,6 +532,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.ec2 import ensure_ec2_tags
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     boto3_tag_list_to_ansible_dict,
 )
@@ -1114,7 +1117,7 @@ def main():
         supports_check_mode=True,
         mutually_exclusive=mutually_exclusive,
     )
-    client = module.client("ec2")
+    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     response: Dict[str, Any] = {}
     state = module.params["state"]

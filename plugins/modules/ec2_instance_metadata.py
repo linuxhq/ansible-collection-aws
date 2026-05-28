@@ -85,6 +85,19 @@ MANAGED_OPTIONS = [
 ]
 
 
+def get_instance_metadata_defaults(client, module):
+    try:
+        return boto3_resource_to_ansible_dict(
+            client.get_instance_metadata_defaults(aws_retry=True).get(
+                "AccountLevel", {}
+            ),
+            transform_tags=False,
+            force_tags=False,
+        )
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to get EC2 instance metadata defaults")
+
+
 def main():
     argument_spec = {
         "http_endpoint": {
@@ -116,11 +129,7 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    current_account_level = boto3_resource_to_ansible_dict(
-        client.get_instance_metadata_defaults(aws_retry=True).get("AccountLevel", {}),
-        transform_tags=False,
-        force_tags=False,
-    )
+    current_account_level = get_instance_metadata_defaults(client, module)
     desired_update = scrub_none_parameters(
         snake_dict_to_camel_dict(
             {
@@ -149,13 +158,7 @@ def main():
             module.fail_json_aws(
                 e, msg="Unable to modify EC2 instance metadata defaults"
             )
-        current_account_level = boto3_resource_to_ansible_dict(
-            client.get_instance_metadata_defaults(aws_retry=True).get(
-                "AccountLevel", {}
-            ),
-            transform_tags=False,
-            force_tags=False,
-        )
+        current_account_level = get_instance_metadata_defaults(client, module)
     elif changed and module.check_mode:
         current_account_level = dict(current_account_level)
         current_account_level.update(desired)

@@ -17,11 +17,12 @@ options:
       - Filter names and values are passed to the RDS
         C(DescribeDBSubnetGroups) API.
     type: dict
-  names:
+  name:
     description:
-      - RDS DB subnet group names used to limit the result set.
-    elements: str
-    type: list
+      - RDS DB subnet group name used to limit the result set.
+      - This value is passed to the RDS C(DescribeDBSubnetGroups) API
+        as C(DBSubnetGroupName).
+    type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -34,8 +35,7 @@ EXAMPLES = r"""
 
 - name: Gather a specific RDS subnet group
   linuxhq.aws.rds_subnet_group_info:
-    names:
-      - molecule
+    name: molecule
 
 - name: Gather RDS subnet groups using filters
   linuxhq.aws.rds_subnet_group_info:
@@ -49,6 +49,7 @@ subnet_groups:
     - The RDS subnet groups for the current region.
   returned: always
   type: list
+  elements: dict
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
@@ -63,10 +64,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def build_request(module, name=None):
+def build_request(module):
     request = {}
-    if name:
-        request["DBSubnetGroupName"] = name
+    if module.params["name"]:
+        request["DBSubnetGroupName"] = module.params["name"]
     if module.params["filters"]:
         request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
     return request
@@ -76,30 +77,17 @@ def main():
     module = AnsibleAWSModule(
         argument_spec={
             "filters": {"type": "dict"},
-            "names": {"elements": "str", "type": "list"},
+            "name": {"type": "str"},
         },
         supports_check_mode=True,
     )
     client = module.client("rds", retry_decorator=AWSRetry.jittered_backoff())
     try:
-        subnet_groups = []
-        if module.params["names"]:
-            for name in module.params["names"]:
-                try:
-                    subnet_groups.extend(
-                        client.describe_db_subnet_groups(
-                            **build_request(module, name),
-                            aws_retry=True,
-                        ).get("DBSubnetGroups", [])
-                    )
-                except is_boto3_error_code("DBSubnetGroupNotFoundFault"):
-                    continue
-        else:
-            subnet_groups = paginated_query_with_retries(
-                client,
-                "describe_db_subnet_groups",
-                **build_request(module),
-            ).get("DBSubnetGroups", [])
+        subnet_groups = paginated_query_with_retries(
+            client,
+            "describe_db_subnet_groups",
+            **build_request(module),
+        ).get("DBSubnetGroups", [])
         subnet_groups = [
             subnet_group
             for subnet_group in subnet_groups

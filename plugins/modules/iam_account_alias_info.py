@@ -44,11 +44,16 @@ def main():
     )
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
 
+    try:
+        account_aliases = paginated_query_with_retries(
+            client, "list_account_aliases"
+        ).get("AccountAliases", [])
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to list AWS IAM account aliases")
+
     module.exit_json(
         changed=False,
-        account_aliases=paginated_query_with_retries(
-            client, "list_account_aliases"
-        ).get("AccountAliases", []),
+        account_aliases=account_aliases,
     )
 
 

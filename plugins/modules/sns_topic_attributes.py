@@ -59,10 +59,19 @@ MANAGED_ATTRIBUTES = ["kms_master_key_id"]
 
 
 def get_topic_attributes(client, module):
-    return client.get_topic_attributes(
-        TopicArn=module.params["topic_arn"],
-        aws_retry=True,
-    ).get("Attributes", {})
+    try:
+        return client.get_topic_attributes(
+            TopicArn=module.params["topic_arn"],
+            aws_retry=True,
+        ).get("Attributes", {})
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=(
+                "Unable to get AWS Simple Notification Service topic attributes "
+                f"for {module.params['topic_arn']}"
+            ),
+        )
 
 
 def main():

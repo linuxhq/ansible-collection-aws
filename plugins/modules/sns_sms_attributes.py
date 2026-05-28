@@ -93,15 +93,9 @@ def desired_sms_attributes(module):
     }
 
 
-def get_sms_attributes(client, module, attribute_names=None):
-    parameters = {}
-    if attribute_names:
-        parameters["attributes"] = attribute_names
-
+def get_sms_attributes(client, module):
     try:
-        return client.get_sms_attributes(**parameters, aws_retry=True).get(
-            "attributes", {}
-        )
+        return client.get_sms_attributes(aws_retry=True).get("attributes", {})
     except Exception as e:
         module.fail_json_aws(
             e, msg="Unable to get AWS Simple Notification Service SMS attributes"

@@ -58,9 +58,10 @@ def resource_tags(client, module, resource):
     if not resource.get("Arn"):
         return []
     try:
-        return client.list_tags_for_resource(
+        return paginated_query_with_retries(
+            client,
+            "list_tags_for_resource",
             ResourceArn=resource["Arn"],
-            aws_retry=True,
         ).get("Tags", [])
     except is_boto3_error_code("InvalidRequestException"):
         return []
@@ -103,24 +104,27 @@ def main():
     request = {}
     if module.params["filters"]:
         request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
-    resolver_rules = paginated_query_with_retries(
-        client, "list_resolver_rules", **request
-    ).get("ResolverRules", [])
+    try:
+        resolver_rules = paginated_query_with_retries(
+            client, "list_resolver_rules", **request
+        ).get("ResolverRules", [])
 
-    if not module.params["filters"]:
-        associations = paginated_query_with_retries(
-            client, "list_resolver_rule_associations"
-        ).get("ResolverRuleAssociations", [])
-    elif not resolver_rules:
-        associations = []
-    else:
-        associations = paginated_query_with_retries(
-            client,
-            "list_resolver_rule_associations",
-            Filters=ansible_dict_to_boto3_filter_list(
-                {"ResolverRuleId": [rule["Id"] for rule in resolver_rules]}
-            ),
-        ).get("ResolverRuleAssociations", [])
+        if not module.params["filters"]:
+            associations = paginated_query_with_retries(
+                client, "list_resolver_rule_associations"
+            ).get("ResolverRuleAssociations", [])
+        elif not resolver_rules:
+            associations = []
+        else:
+            associations = paginated_query_with_retries(
+                client,
+                "list_resolver_rule_associations",
+                Filters=ansible_dict_to_boto3_filter_list(
+                    {"ResolverRuleId": [rule["Id"] for rule in resolver_rules]}
+                ),
+            ).get("ResolverRuleAssociations", [])
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver rules")
 
     associations_by_rule_id = {}
     for association in associations:

@@ -200,11 +200,6 @@ def create_pool_request(client, module):
     return request
 
 
-def validate_present(module):
-    if module.params["message_type"] not in ("PROMOTIONAL", "TRANSACTIONAL"):
-        module.fail_json(msg="message_type must be one of PROMOTIONAL, TRANSACTIONAL")
-
-
 def describe_pools(client, module, **request):
     try:
         return paginated_query_with_retries(
@@ -269,6 +264,11 @@ def get_pool_by_id(client, module, pool_id):
     return enrich_pool(client, module, pools[0]) if pools else None
 
 
+def get_requested_pool_by_id(client, module):
+    pool_id = module.params["pool_id"]
+    return get_pool_by_id(client, module, pool_id)
+
+
 def get_pool_status(client, module, pool_id):
     pools = describe_pools(client, module, PoolIds=[pool_id])
     return pools[0] if pools else None
@@ -331,7 +331,7 @@ def pool_matches_origination(module, pool):
 
 def find_pool(client, module):
     if module.params["pool_id"] is not None:
-        return get_pool_by_id(client, module, module.params["pool_id"])
+        return get_requested_pool_by_id(client, module)
 
     filters = ansible_dict_to_boto3_filter_list(
         {"message-type": module.params["message_type"]}
@@ -420,7 +420,8 @@ def create_pool(client, module):
         module.fail_json_aws(e, msg="Unable to create Pinpoint SMS Voice V2 pool")
 
 
-def delete_pool(client, module, pool_id):
+def delete_pool(client, module):
+    pool_id = module.params["pool_id"]
     try:
         return client.delete_pool(
             PoolId=pool_id,
@@ -484,18 +485,17 @@ def exit_result(module, changed, pool, state):
 
 
 def ensure_absent(client, module):
-    current = get_pool_by_id(client, module, module.params["pool_id"])
+    current = get_requested_pool_by_id(client, module)
     changed = current is not None
     response = current
 
     if changed and not module.check_mode:
-        response = delete_pool(client, module, module.params["pool_id"])
+        response = delete_pool(client, module)
 
     exit_result(module, changed, response or current, "absent")
 
 
 def ensure_present(client, module):
-    validate_present(module)
     current = find_pool(client, module)
     if current is not None and pool_create_only_changed(module, current):
         module.fail_json(
@@ -557,7 +557,10 @@ def main():
         "client_token": {"no_log": False, "type": "str"},
         "deletion_protection_enabled": {"default": False, "type": "bool"},
         "iso_country_code": {"type": "str"},
-        "message_type": {"type": "str"},
+        "message_type": {
+            "choices": ["PROMOTIONAL", "TRANSACTIONAL"],
+            "type": "str",
+        },
         "name": {"type": "str"},
         "origination_identity": {"type": "str"},
         "pool_id": {"type": "str"},

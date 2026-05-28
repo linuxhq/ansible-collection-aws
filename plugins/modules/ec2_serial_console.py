@@ -60,6 +60,17 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
+def get_serial_console_access_status(client, module):
+    try:
+        return boto3_resource_to_ansible_dict(
+            client.get_serial_console_access_status(aws_retry=True),
+            transform_tags=False,
+            force_tags=False,
+        )
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to get EC2 serial console access")
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -81,11 +92,7 @@ def main():
     else:
         module.fail_json(msg=f"Unsupported state: {state}")
     desired = {"serial_console_access_enabled": desired_enabled}
-    current = boto3_resource_to_ansible_dict(
-        client.get_serial_console_access_status(aws_retry=True),
-        transform_tags=False,
-        force_tags=False,
-    )
+    current = get_serial_console_access_status(client, module)
     changed = current.get("serial_console_access_enabled") != desired_enabled
 
     if changed and not module.check_mode:

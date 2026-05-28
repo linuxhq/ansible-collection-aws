@@ -47,6 +47,7 @@ account_aliases:
     - The IAM account aliases after module execution.
   returned: always
   type: list
+  elements: str
 name:
   description:
     - The requested IAM account alias.
@@ -66,13 +67,20 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 
 
+def list_account_aliases(client, module):
+    try:
+        return sorted(
+            paginated_query_with_retries(client, "list_account_aliases").get(
+                "AccountAliases", []
+            )
+        )
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to list AWS IAM account aliases")
+
+
 def ensure_absent(client, module):
     name = module.params["name"]
-    aliases = sorted(
-        paginated_query_with_retries(client, "list_account_aliases").get(
-            "AccountAliases", []
-        )
-    )
+    aliases = list_account_aliases(client, module)
     desired_aliases = [alias for alias in aliases if alias != name]
     changed = name in aliases
 
@@ -100,11 +108,7 @@ def ensure_absent(client, module):
 
 def ensure_present(client, module):
     name = module.params["name"]
-    aliases = sorted(
-        paginated_query_with_retries(client, "list_account_aliases").get(
-            "AccountAliases", []
-        )
-    )
+    aliases = list_account_aliases(client, module)
     desired_aliases = [name]
     changed = aliases != desired_aliases
 

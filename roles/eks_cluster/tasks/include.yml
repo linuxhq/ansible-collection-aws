@@ -22,7 +22,7 @@
     validate_certs: true
     version: "{{ _cluster.version | d(omit) }}"
     wait: "{{ _cluster.wait | d(omit) }}"
-    wait_timeout: "{{ _cluster.wait_timeout | d(1200) }}"
+    wait_timeout: "{{ _cluster.wait_timeout | d(eks_cluster_wait_timeout) }}"
     zonal_shift_config: "{{ _cluster.zonal_shift_config | d(omit) }}"
   register: __eks_cluster_result
   loop: "{{ __eks_cluster_list }}"

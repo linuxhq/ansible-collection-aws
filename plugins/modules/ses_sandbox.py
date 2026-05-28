@@ -84,6 +84,17 @@ ACCOUNT_DETAILS_FIELDS = (
 )
 
 
+def get_account(client, module):
+    try:
+        return boto3_resource_to_ansible_dict(
+            client.get_account(aws_retry=True), transform_tags=False, force_tags=False
+        )
+    except Exception as e:
+        module.fail_json_aws(
+            e, msg="Unable to get AWS Simple Email Service account details"
+        )
+
+
 def main():
     argument_spec = {
         "additional_contact_email_addresses": {
@@ -104,9 +115,7 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
 
-    current_account = boto3_resource_to_ansible_dict(
-        client.get_account(aws_retry=True), transform_tags=False, force_tags=False
-    )
+    current_account = get_account(client, module)
     desired_details = {
         "additional_contact_email_addresses": (
             module.params["additional_contact_email_addresses"] or None
@@ -169,11 +178,7 @@ def main():
             module.fail_json_aws(
                 e, msg="Unable to manage AWS Simple Email Service account details"
             )
-        current_account = boto3_resource_to_ansible_dict(
-            client.get_account(aws_retry=True),
-            transform_tags=False,
-            force_tags=False,
-        )
+        current_account = get_account(client, module)
 
     result = {
         "changed": changed,

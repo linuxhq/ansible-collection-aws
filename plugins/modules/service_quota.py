@@ -107,17 +107,26 @@ def main():
         "QuotaCode": module.params["quota_code"],
         "ServiceCode": module.params["service_code"],
     }
-    current_quota = client.get_service_quota(**quota_request, aws_retry=True).get(
-        "Quota", {}
-    )
-    pending_requests = []
-    for status in ("CASE_OPENED", "PENDING"):
-        pending_requests.extend(
-            paginated_query_with_retries(
-                client,
-                "list_requested_service_quota_change_history_by_quota",
-                **dict(quota_request, Status=status),
-            ).get("RequestedQuotas", [])
+    try:
+        current_quota = client.get_service_quota(**quota_request, aws_retry=True).get(
+            "Quota", {}
+        )
+        pending_requests = []
+        for status in ("CASE_OPENED", "PENDING"):
+            pending_requests.extend(
+                paginated_query_with_retries(
+                    client,
+                    "list_requested_service_quota_change_history_by_quota",
+                    **dict(quota_request, Status=status),
+                ).get("RequestedQuotas", [])
+            )
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=(
+                "Unable to get AWS service quota "
+                f"{module.params['service_code']}/{module.params['quota_code']}"
+            ),
         )
 
     desired_value = module.params["value"]

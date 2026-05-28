@@ -69,9 +69,6 @@ scope:
   type: str
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -87,44 +84,21 @@ def summary_matches(module, summary):
     return True
 
 
-def requested_summaries_found(module, remaining_ids, remaining_names):
-    if module.params["ids"]:
-        return not remaining_ids
-    if module.params["names"]:
-        return not remaining_names
-    return False
-
-
 def list_ip_set_summaries(client, module, scope):
-    can_paginate = getattr(client, "can_paginate", lambda operation_name: False)
-    if can_paginate("list_ip_sets") and not (
-        module.params["ids"] or module.params["names"]
-    ):
-        return paginated_query_with_retries(
-            client,
-            "list_ip_sets",
-            Scope=scope,
-        ).get("IPSets", [])
-
     marker = None
     ip_sets = []
-    remaining_ids = set(module.params["ids"] or [])
-    remaining_names = set(module.params["names"] or [])
-    while True:
-        request = {"Scope": scope, "Limit": 100}
-        if marker:
-            request["NextMarker"] = marker
-        response = client.list_ip_sets(**request, aws_retry=True)
-        for summary in response.get("IPSets", []):
-            ip_sets.append(summary)
-            remaining_ids.discard(summary.get("Id"))
-            remaining_names.discard(summary.get("Name"))
-            if requested_summaries_found(module, remaining_ids, remaining_names):
+    try:
+        while True:
+            request = {"Scope": scope, "Limit": 100}
+            if marker:
+                request["NextMarker"] = marker
+            response = client.list_ip_sets(**request, aws_retry=True)
+            ip_sets.extend(response.get("IPSets", []))
+            marker = response.get("NextMarker")
+            if not marker:
                 return ip_sets
-        marker = response.get("NextMarker")
-        if not marker:
-            break
-    return ip_sets
+    except Exception as e:
+        module.fail_json_aws(e, msg=f"Unable to list AWS WAFv2 IP sets for {scope}")
 
 
 def main():
@@ -146,14 +120,23 @@ def main():
     for summary in list_ip_set_summaries(client, module, scope):
         if not summary_matches(module, summary):
             continue
-        ip_sets.append(
-            client.get_ip_set(
-                Id=summary["Id"],
-                Name=summary["Name"],
-                Scope=scope,
-                aws_retry=True,
-            ).get("IPSet", {})
-        )
+        try:
+            ip_sets.append(
+                client.get_ip_set(
+                    Id=summary["Id"],
+                    Name=summary["Name"],
+                    Scope=scope,
+                    aws_retry=True,
+                ).get("IPSet", {})
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    "Unable to get AWS WAFv2 IP set "
+                    f"{summary['Name']}/{summary['Id']}"
+                ),
+            )
 
     module.exit_json(
         changed=False,

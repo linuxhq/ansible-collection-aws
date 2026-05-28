@@ -357,9 +357,10 @@ def exit_result(module, changed, response):
 
 def get_phone_number(client, module, phone_number_id):
     try:
-        phone_numbers = client.describe_phone_numbers(
+        phone_numbers = paginated_query_with_retries(
+            client,
+            "describe_phone_numbers",
             PhoneNumberIds=[phone_number_id],
-            aws_retry=True,
         ).get("PhoneNumbers", [])
     except is_boto3_error_code("ResourceNotFoundException"):
         return None
@@ -372,6 +373,11 @@ def get_phone_number(client, module, phone_number_id):
             ),
         )
     return phone_numbers[0] if phone_numbers else None
+
+
+def get_requested_phone_number(client, module):
+    phone_number_id = module.params["phone_number_id"]
+    return get_phone_number(client, module, phone_number_id)
 
 
 def wait_for_phone_number_active(client, module, phone_number_id):
@@ -415,7 +421,8 @@ def wait_for_phone_number_active(client, module, phone_number_id):
     )
 
 
-def release_phone_number(client, module, phone_number_id):
+def release_phone_number(client, module):
+    phone_number_id = module.params["phone_number_id"]
     try:
         return client.release_phone_number(
             PhoneNumberId=phone_number_id,
@@ -434,14 +441,12 @@ def release_phone_number(client, module, phone_number_id):
 
 
 def ensure_absent(client, module):
-    current = get_phone_number(client, module, module.params["phone_number_id"])
+    current = get_requested_phone_number(client, module)
     changed = current is not None
     response = current
 
     if changed and not module.check_mode:
-        response = release_phone_number(
-            client, module, module.params["phone_number_id"]
-        )
+        response = release_phone_number(client, module)
 
     exit_result(module, changed, response or current)
 

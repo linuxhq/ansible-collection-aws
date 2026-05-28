@@ -6,22 +6,119 @@ gpt-5.5 high
 
 ## Standards
 
-* Support check mode
+### Module behavior
 
 * Keep present and absent flows explicit and easy to follow
 
 * Ensure modules remain idempotent and avoid unnecessary aws api calls
 
+* Support check mode
+  * Do not make mutating aws api calls in check mode
+  * Info modules
+    * Set `supports_check_mode=True`
+    * Return `changed=False`
+  * Return the predicted result shape when practical
+
+* Tag management
+  * Use the collection tagging helpers
+  * Compare desired and current tags before calling aws
+  * Only apply `purge_tags` when `tags` is provided
+
+* Long-running operations
+  * Expose wait controls consistent with nearby modules
+  * Prefer existing waiter helpers over custom polling loops
+
+### Arguments
+
+* Accept module parameters in snake_case and transform to boto3 formats using
+  existing helpers
+
+* Prefer `AnsibleAWSModule` validation arguments such as `required_if`,
+  `required_one_of`, `required_together`, and `mutually_exclusive` over manual
+  parameter validation when they express the rule clearly
+
+* Secret module parameters
+  * Mark parameters with `no_log=True`
+  * Do not include secret values in examples, return values, or error messages
+
+### Documentation
+
+* Keep `DOCUMENTATION`, `EXAMPLES`, `RETURN`, and `argument_spec` aligned when
+  adding or changing module parameters, return fields, aliases, choices, or
+  defaults
+
+* For aws modules, include the relevant amazon.aws documentation fragments for
+  common options, region handling, and boto3 requirements
+
+* For list options and list return values, include `elements` in
+  `DOCUMENTATION` and `RETURN`
+
+* Use the collection fqcn in `EXAMPLES`, such as `linuxhq.aws.<plugin_name>`
+
+* When an option is conditionally required through `required_if`, document
+  the condition in the description instead of marking the option `required: true`
+
+### Operations
+
+* Create aws clients with `AnsibleAWSModule.client` unless an existing pattern
+  in the module requires a different helper
+
+* Use `AWSRetry.jittered_backoff()` for aws api calls that need retries
+
+* When using aws apis that may be missing from older boto3 or botocore versions,
+  use the collection sdk/version helpers and fail with a clear module error
+
+* Scrub unset optional parameters before passing request dictionaries to boto3
+  operations
+
+* Use `paginated_query_with_retries` for paginated list and describe operations
+  instead of hand-rolled paginator loops
+
+* Wrap aws api failures with `module.fail_json_aws`, including the resource name
+  or identifier in the message when one is available
+
+### Result data
+
+* Return ansible-facing data in snake_case; normalize boto3 responses with the
+  existing transformation helpers before including them in `exit_json`
+
+### Implementation style
+
+* Keep changes focused on measurable behavior, consistency, or documentation
+  correctness; avoid broad style churn
+
 * Keep implementations consistent with existing amazon.aws module patterns
+  * Use direct `module.params[...]` access for simple or one-off values
+  * Introduce local variables only when the value is reused, normalized,
+    or clarifies request construction
+  * Do not pass `module` and `module.params[...]` to the same function call;
+    when the value is only forwarded from `module.params`, read it inside the
+    callee
+  * Do not add optional fallback parameters such as `name=None` for values that
+    are owned by `module.params`; make the callee read `module.params[...]`
+    directly
+  * If a helper must also handle non-parameter values returned by aws, keep that
+    value as a required explicit argument or use a separate helper instead of
+    mixing explicit arguments with `module.params` fallbacks
+  * Never mutate `module.params` after module initialization
 
-* Accept module parameters in snake_case and transform to boto3 formats
-  using existing helpers
+* Prefer explicit loops over nested comprehensions when the loop performs
+  aws api calls or filters missing aws resources
 
-* Prefer the following collection helpers before implementing custom logic
-  * ansible.module_utils
-  * ansible_collections.amazon.aws.plugins.module_utils
+* Do not extract shared module_utils helpers unless several modules genuinely
+  need the same stable behavior and the abstraction clearly reduces complexity
 
-* Use existing amazon.aws helpers listed below, including but not limited to
+### Lookup plugins
+
+* Validate unsupported positional terms and required keyword arguments
+  explicitly, and raise `AnsibleLookupError` with actionable messages
+
+## Helper reference
+
+* Prefer existing ansible and amazon.aws helpers before implementing custom
+  logic
+
+* Use existing amazon.aws helpers, including
   * ansible_collections.amazon.aws.plugins.module_utils.arn.parse_aws_arn
   * ansible_collections.amazon.aws.plugins.module_utils.arn.validate_aws_arn
   * ansible_collections.amazon.aws.plugins.module_utils.botocore.boto3_at_least
@@ -45,7 +142,9 @@ gpt-5.5 high
   * ansible_collections.amazon.aws.plugins.module_utils.exceptions.is_ansible_aws_error_message
   * ansible_collections.amazon.aws.plugins.module_utils.iterators.chunked_payload
   * ansible_collections.amazon.aws.plugins.module_utils.iterators.chunks
+  * ansible_collections.amazon.aws.plugins.module_utils.modules.AnsibleAWSModule
   * ansible_collections.amazon.aws.plugins.module_utils.modules.aws_argument_spec
+  * ansible_collections.amazon.aws.plugins.module_utils.retries.AWSRetry
   * ansible_collections.amazon.aws.plugins.module_utils.tagging.ansible_dict_to_boto3_tag_list
   * ansible_collections.amazon.aws.plugins.module_utils.tagging.ansible_dict_to_tag_filter_dict
   * ansible_collections.amazon.aws.plugins.module_utils.tagging.boto3_tag_list_to_ansible_dict
@@ -61,7 +160,7 @@ gpt-5.5 high
   * ansible_collections.amazon.aws.plugins.module_utils.waiters.get_waiter
   * ansible_collections.amazon.aws.plugins.module_utils.waiters.wait_for_resource_state
 
-* Use existing ansible helpers listed below, including but not limited to
+* Use existing ansible helpers, including
   * ansible.module_utils.basic.get_all_subclasses
   * ansible.module_utils.basic.get_module_path
   * ansible.module_utils.basic.get_platform
@@ -111,6 +210,32 @@ gpt-5.5 high
   * ansible.module_utils.common.validation.check_type_raw
   * ansible.module_utils.common.validation.check_type_str
   * ansible.module_utils.common.validation.count_terms
+
+## Validation
+
+* After plugin changes, run
+  * ansible-test
+    * Use the collection path `venv/ansible_collections/linuxhq/aws`
+    * Use a real git worktree or real directory for that collection path;
+      symlinks are not sufficient because `ansible-test` resolves the physical
+      path
+    * If the worktree does not exist, create it with
+      `mkdir -p venv/ansible_collections/linuxhq` and
+      `git worktree add --detach venv/ansible_collections/linuxhq/aws HEAD`
+    * To test uncommitted changes from the root checkout, overlay the current
+      tree into the worktree with
+      `rsync -a --delete --exclude='.git' --exclude='venv' ./ venv/ansible_collections/linuxhq/aws/`
+    * If the default Python discovery fails because local shims are unavailable,
+      run sanity from the worktree with the Python version from the active venv,
+      such as `../../../bin/ansible-test sanity --color no --python 3.12`
+  * black
+      `venv/bin/black --check plugins`
+  * git
+    * `git diff --check`
+  * python
+    * `venv/bin/python -m compileall -q plugins`
+
+## Workflow
 
 * Complete the requested implementation before stopping
 

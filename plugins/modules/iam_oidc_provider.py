@@ -119,15 +119,17 @@ def normalize_provider_url(url):
 
 def list_provider_arns(client, module):
     try:
-        return [
-            provider["Arn"]
-            for provider in client.list_open_id_connect_providers(
-                aws_retry=True,
-            ).get("OpenIDConnectProviderList", [])
-            if provider.get("Arn")
-        ]
+        providers = client.list_open_id_connect_providers(
+            aws_retry=True,
+        ).get("OpenIDConnectProviderList", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS IAM OIDC providers")
+    arns = []
+    for provider in providers:
+        arn = provider.get("Arn")
+        if arn:
+            arns.append(arn)
+    return arns
 
 
 def get_provider_by_arn(client, module, arn):
@@ -145,7 +147,8 @@ def get_provider_by_arn(client, module, arn):
     return provider
 
 
-def get_provider_by_url(client, module, url):
+def get_provider_by_url(client, module):
+    url = module.params["url"]
     desired_url = normalize_provider_url(url)
     for arn in list_provider_arns(client, module):
         provider = get_provider_by_arn(client, module, arn)
@@ -287,7 +290,7 @@ def check_mode_provider(module, current=None):
 
 
 def ensure_absent(client, module):
-    current = get_provider_by_url(client, module, module.params["url"])
+    current = get_provider_by_url(client, module)
     changed = current is not None
     arn = (current or {}).get("OpenIDConnectProviderArn")
 
@@ -313,7 +316,7 @@ def ensure_absent(client, module):
 
 
 def ensure_present(client, module):
-    current = get_provider_by_url(client, module, module.params["url"])
+    current = get_provider_by_url(client, module)
     desired = desired_comparable_provider(module)
     current_comparable = comparable_provider(current)
     tags_to_set, tag_keys_to_unset = ({}, [])

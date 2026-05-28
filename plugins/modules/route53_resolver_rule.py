@@ -267,12 +267,12 @@ def create_resolver_rule(client, module, desired):
             module,
             resolver_rule_id,
             {"complete"},
-            desired["name"],
         )
     return rule
 
 
-def delete_resolver_rule(client, module, rule, name):
+def delete_resolver_rule(client, module, rule):
+    name = module.params["name"]
     resolver_rule_id = rule.get("Id")
     try:
         client.delete_resolver_rule(
@@ -289,16 +289,15 @@ def delete_resolver_rule(client, module, rule, name):
             module,
             resolver_rule_id,
             {"deleted"},
-            name,
         )
 
 
 def ensure_absent(client, module):
-    rule = get_resolver_rule_by_name(client, module, module.params["name"])
+    rule = get_resolver_rule_by_name(client, module)
     changed = rule is not None
 
     if changed and not module.check_mode:
-        delete_resolver_rule(client, module, rule, module.params["name"])
+        delete_resolver_rule(client, module, rule)
 
     module.exit_json(
         changed=changed,
@@ -315,7 +314,7 @@ def ensure_present(client, module):
         "rule_type": module.params["rule_type"].upper(),
         "target_ips": module.params["target_ips"],
     }
-    rule = get_resolver_rule_by_name(client, module, desired["name"])
+    rule = get_resolver_rule_by_name(client, module)
 
     comparable_fields = (
         "domain_name",
@@ -357,7 +356,7 @@ def ensure_present(client, module):
                 {field: desired[field] for field in comparable_fields}
             )
             if current != desired_comparable:
-                delete_resolver_rule(client, module, rule, desired["name"])
+                delete_resolver_rule(client, module, rule)
                 rule = create_resolver_rule(client, module, desired)
         if rule is not None and module.params["tags"] is not None:
             if resource_changed:
@@ -424,7 +423,6 @@ def update_resolver_rule(client, module, rule, desired):
             module,
             resolver_rule_id,
             {"complete"},
-            desired["name"],
         )
     return updated_rule
 
@@ -468,7 +466,8 @@ def rule_with_updated_tags(rule, tags_to_set, tag_keys_to_unset):
     return rule
 
 
-def wait_for_resolver_rule_status(client, module, resolver_rule_id, statuses, name):
+def wait_for_resolver_rule_status(client, module, resolver_rule_id, statuses):
+    name = module.params["name"]
     deleted = "deleted" in statuses
     try:
         waiter = ResolverRuleWaiterFactory().get_waiter(
@@ -541,17 +540,15 @@ def get_resolver_rule(client, module, resolver_rule_id):
     return resolver_rule_with_tags(client, module, rule)
 
 
-def get_resolver_rule_by_name(client, module, name):
-    rule = next(
-        (
-            rule
-            for rule in paginated_query_with_retries(client, "list_resolver_rules").get(
-                "ResolverRules", []
-            )
-            if rule.get("Name") == name
-        ),
-        None,
-    )
+def get_resolver_rule_by_name(client, module):
+    name = module.params["name"]
+    try:
+        rules = paginated_query_with_retries(client, "list_resolver_rules").get(
+            "ResolverRules", []
+        )
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver rules")
+    rule = next((rule for rule in rules if rule.get("Name") == name), None)
     if rule is None:
         return None
     return get_resolver_rule(client, module, rule["Id"])
@@ -562,9 +559,10 @@ def resolver_rule_with_tags(client, module, rule):
         return rule
     rule = dict(rule)
     try:
-        rule["Tags"] = client.list_tags_for_resource(
+        rule["Tags"] = paginated_query_with_retries(
+            client,
+            "list_tags_for_resource",
             ResourceArn=rule["Arn"],
-            aws_retry=True,
         ).get("Tags", [])
     except Exception as e:
         module.fail_json_aws(

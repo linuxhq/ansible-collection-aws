@@ -26,6 +26,7 @@ options:
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
+  - amazon.aws.region.modules
   - amazon.aws.boto3
 """
 
@@ -64,12 +65,16 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 
 def ensure_absent(client, module):
+    try:
+        hubs = paginated_query_with_retries(client, "list_notification_hubs").get(
+            "notificationHubs", []
+        )
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to list AWS Notifications hubs")
     hub = next(
         (
             item
-            for item in paginated_query_with_retries(
-                client, "list_notification_hubs"
-            ).get("notificationHubs", [])
+            for item in hubs
             if item.get("notificationHubRegion") == module.params["region"]
         ),
         None,
@@ -95,12 +100,16 @@ def ensure_absent(client, module):
 
 
 def ensure_present(client, module):
+    try:
+        hubs = paginated_query_with_retries(client, "list_notification_hubs").get(
+            "notificationHubs", []
+        )
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to list AWS Notifications hubs")
     hub = next(
         (
             item
-            for item in paginated_query_with_retries(
-                client, "list_notification_hubs"
-            ).get("notificationHubs", [])
+            for item in hubs
             if item.get("notificationHubRegion") == module.params["region"]
         ),
         None,
@@ -135,7 +144,11 @@ def ensure_present(client, module):
 def main():
     module = AnsibleAWSModule(
         argument_spec={
-            "region": {"required": True, "type": "str"},
+            "region": {
+                "aliases": ["aws_region", "ec2_region"],
+                "required": True,
+                "type": "str",
+            },
             "state": {
                 "choices": ["absent", "present"],
                 "default": "present",

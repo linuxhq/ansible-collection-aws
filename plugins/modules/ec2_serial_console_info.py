@@ -45,11 +45,16 @@ def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
+    try:
+        serial_console_access = client.get_serial_console_access_status(aws_retry=True)
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to get EC2 serial console access")
+
     module.exit_json(
         changed=False,
         region=module.region,
         serial_console_access=boto3_resource_to_ansible_dict(
-            client.get_serial_console_access_status(aws_retry=True),
+            serial_console_access,
             transform_tags=False,
             force_tags=False,
         ),

@@ -9,7 +9,7 @@ None
 ## Role Variables
 
     rds_subnet_group_info_filters: {}
-    rds_subnet_group_info_names: []
+    rds_subnet_group_info_name: null
 
 ## Return Values
 

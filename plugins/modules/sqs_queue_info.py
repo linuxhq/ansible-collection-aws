@@ -65,11 +65,14 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 
 def get_queue(client, module, queue_url):
-    attributes = client.get_queue_attributes(
-        AttributeNames=["All"],
-        QueueUrl=queue_url,
-        aws_retry=True,
-    ).get("Attributes", {})
+    try:
+        attributes = client.get_queue_attributes(
+            AttributeNames=["All"],
+            QueueUrl=queue_url,
+            aws_retry=True,
+        ).get("Attributes", {})
+    except Exception as e:
+        module.fail_json_aws(e, msg=f"Unable to get AWS SQS queue {queue_url}")
     queue = boto3_resource_to_ansible_dict(
         attributes, transform_tags=False, force_tags=False
     )
@@ -116,14 +119,17 @@ def main():
         request = {}
         if module.params["queue_name_prefix"] is not None:
             request["QueueNamePrefix"] = module.params["queue_name_prefix"]
-        queues = [
-            get_queue(client, module, queue_url)
-            for queue_url in paginated_query_with_retries(
+        try:
+            queue_urls = paginated_query_with_retries(
                 client,
                 "list_queues",
                 **request,
             ).get("QueueUrls", [])
-        ]
+        except Exception as e:
+            module.fail_json_aws(e, msg="Unable to list AWS SQS queues")
+        queues = []
+        for queue_url in queue_urls:
+            queues.append(get_queue(client, module, queue_url))
 
     module.exit_json(
         changed=False,

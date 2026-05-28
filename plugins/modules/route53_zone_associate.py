@@ -113,10 +113,10 @@ def ensure_absent(client, module, hosted_zone_id):
 
     module.exit_json(
         changed=changed,
-        hosted_zone_id=module.params["hosted_zone_id"],
+        hosted_zone_id=hosted_zone_id,
         state=module.params["state"],
         vpc=boto3_resource_to_ansible_dict(
-            route53_vpc(module), transform_tags=False, force_tags=False
+            requested_vpc, transform_tags=False, force_tags=False
         ),
         vpcs=boto3_resource_list_to_ansible_dict(
             vpcs, transform_tags=False, force_tags=False
@@ -150,10 +150,10 @@ def ensure_present(client, module, hosted_zone_id):
 
     module.exit_json(
         changed=changed,
-        hosted_zone_id=module.params["hosted_zone_id"],
+        hosted_zone_id=hosted_zone_id,
         state=module.params["state"],
         vpc=boto3_resource_to_ansible_dict(
-            route53_vpc(module), transform_tags=False, force_tags=False
+            requested_vpc, transform_tags=False, force_tags=False
         ),
         vpcs=boto3_resource_list_to_ansible_dict(
             vpcs, transform_tags=False, force_tags=False
@@ -209,7 +209,6 @@ def main():
     )
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
     hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]
-    module.params["hosted_zone_id"] = hosted_zone_id
 
     state = module.params["state"]
     if state == "present":
