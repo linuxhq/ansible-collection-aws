@@ -68,15 +68,17 @@ def normalize_provider_url(url):
 
 def list_provider_arns(client, module):
     try:
-        return [
-            provider["Arn"]
-            for provider in client.list_open_id_connect_providers(
-                aws_retry=True,
-            ).get("OpenIDConnectProviderList", [])
-            if provider.get("Arn")
-        ]
+        providers = client.list_open_id_connect_providers(
+            aws_retry=True,
+        ).get("OpenIDConnectProviderList", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS IAM OIDC providers")
+    arns = []
+    for provider in providers:
+        arn = provider.get("Arn")
+        if arn:
+            arns.append(arn)
+    return arns
 
 
 def get_provider_by_arn(client, module, arn):
@@ -94,7 +96,13 @@ def get_provider_by_arn(client, module, arn):
     return provider
 
 
-def get_provider_by_url(client, module, url):
+def get_requested_provider_by_arn(client, module):
+    arn = module.params["arn"]
+    return get_provider_by_arn(client, module, arn)
+
+
+def get_provider_by_url(client, module):
+    url = module.params["url"]
     desired_url = normalize_provider_url(url)
     for arn in list_provider_arns(client, module):
         provider = get_provider_by_arn(client, module, arn)
@@ -115,20 +123,17 @@ def main():
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
 
     if module.params["arn"]:
-        provider = get_provider_by_arn(client, module, module.params["arn"])
+        provider = get_requested_provider_by_arn(client, module)
         providers = [provider] if provider else []
     elif module.params["url"]:
-        provider = get_provider_by_url(client, module, module.params["url"])
+        provider = get_provider_by_url(client, module)
         providers = [provider] if provider else []
     else:
-        providers = [
-            provider
-            for provider in [
-                get_provider_by_arn(client, module, arn)
-                for arn in list_provider_arns(client, module)
-            ]
-            if provider
-        ]
+        providers = []
+        for arn in list_provider_arns(client, module):
+            provider = get_provider_by_arn(client, module, arn)
+            if provider:
+                providers.append(provider)
 
     module.exit_json(
         changed=False,

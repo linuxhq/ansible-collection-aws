@@ -247,13 +247,14 @@ def present_route_destinations(module):
     }
 
 
-def get_route_table(client, module, transit_gateway_route_table_id):
+def get_route_table_by_id(client, module, transit_gateway_route_table_id):
     if not transit_gateway_route_table_id:
         return None
     try:
-        route_tables = client.describe_transit_gateway_route_tables(
+        route_tables = paginated_query_with_retries(
+            client,
+            "describe_transit_gateway_route_tables",
             TransitGatewayRouteTableIds=[transit_gateway_route_table_id],
-            aws_retry=True,
         ).get("TransitGatewayRouteTables", [])
     except is_boto3_error_code("InvalidTransitGatewayRouteTableID.NotFound"):
         return None
@@ -268,6 +269,11 @@ def get_route_table(client, module, transit_gateway_route_table_id):
             ),
         )
     return route_tables[0] if route_tables else None
+
+
+def get_route_table(client, module):
+    transit_gateway_route_table_id = module.params["transit_gateway_route_table_id"]
+    return get_route_table_by_id(client, module, transit_gateway_route_table_id)
 
 
 def describe_route_tables(client, module, filters):
@@ -285,9 +291,7 @@ def describe_route_tables(client, module, filters):
 
 def find_route_table(client, module):
     if module.params["transit_gateway_route_table_id"]:
-        return get_route_table(
-            client, module, module.params["transit_gateway_route_table_id"]
-        )
+        return get_route_table(client, module)
 
     filters = {"state": ["available", "pending"]}
     if module.params["transit_gateway_id"]:
@@ -317,7 +321,9 @@ def wait_for_route_table(
     route_table = {}
 
     while time.monotonic() < deadline:
-        route_table = get_route_table(client, module, transit_gateway_route_table_id)
+        route_table = get_route_table_by_id(
+            client, module, transit_gateway_route_table_id
+        )
         if route_table is None and absent_is_success:
             return None
         state = (route_table or {}).get("State")
@@ -771,12 +777,12 @@ def manage_routes(client, module, transit_gateway_route_table_id):
         for route in static_routes(client, module, transit_gateway_route_table_id):
             if route_destination(route) in desired_destinations:
                 continue
-            route_changed, _ = ensure_route_absent(
+            route_changed = ensure_route_absent(
                 client,
                 module,
                 transit_gateway_route_table_id,
                 route_destination(route),
-            )
+            )[0]
             changed = changed or route_changed
 
     if module.params["purge_routes"] and not module.check_mode:
@@ -891,14 +897,6 @@ def validate_routes(module):
 
         if route.get("state", "present") == "absent":
             continue
-        if route.get("blackhole") and route.get("transit_gateway_attachment_id"):
-            module.fail_json(
-                msg=(
-                    "routes[].blackhole and routes[].transit_gateway_attachment_id "
-                    "are mutually exclusive"
-                ),
-                destination_cidr_block=route["destination_cidr_block"],
-            )
         if not route.get("blackhole") and not route.get(
             "transit_gateway_attachment_id"
         ):
@@ -953,6 +951,7 @@ def main():
                 },
                 "transit_gateway_attachment_id": {"type": "str"},
             },
+            "mutually_exclusive": [["blackhole", "transit_gateway_attachment_id"]],
             "type": "list",
         },
         "state": {

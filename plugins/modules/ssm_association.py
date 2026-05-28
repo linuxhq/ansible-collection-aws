@@ -25,6 +25,7 @@ options:
   schedule_expression:
     description:
       - The cron or rate expression that defines the association schedule.
+      - This is required when O(state=present).
     type: str
   state:
     description:
@@ -41,6 +42,7 @@ options:
   targets:
     description:
       - The targets for the association.
+      - This is required when O(state=present).
     elements: dict
     suboptions:
       key:
@@ -413,14 +415,24 @@ def main():
     )
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
 
+    try:
+        associations = paginated_query_with_retries(
+            client,
+            "list_associations",
+            AssociationFilterList=[{"key": "Name", "value": module.params["name"]}],
+        ).get("Associations", [])
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=(
+                "Unable to list AWS Systems Manager associations for "
+                f"{module.params['name']}"
+            ),
+        )
     current = next(
         (
             association
-            for association in paginated_query_with_retries(
-                client,
-                "list_associations",
-                AssociationFilterList=[{"key": "Name", "value": module.params["name"]}],
-            ).get("Associations", [])
+            for association in associations
             if association.get("Name") == module.params["name"]
         ),
         None,

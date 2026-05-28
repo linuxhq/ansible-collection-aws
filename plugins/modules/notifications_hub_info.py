@@ -51,12 +51,17 @@ def main():
         retry_decorator=AWSRetry.jittered_backoff(),
     )
 
+    try:
+        notification_hubs = paginated_query_with_retries(
+            client, "list_notification_hubs"
+        ).get("notificationHubs", [])
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to list AWS Notifications hubs")
+
     module.exit_json(
         changed=False,
         notification_hubs=boto3_resource_list_to_ansible_dict(
-            paginated_query_with_retries(client, "list_notification_hubs").get(
-                "notificationHubs", []
-            ),
+            notification_hubs,
             transform_tags=False,
             force_tags=False,
         ),

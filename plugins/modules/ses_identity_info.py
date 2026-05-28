@@ -82,11 +82,14 @@ def main():
         list_kwargs = {}
         if module.params["identity_type"] is not None:
             list_kwargs["IdentityType"] = module.params["identity_type"]
-        identity_names = paginated_query_with_retries(
-            ses_client,
-            "list_identities",
-            **list_kwargs,
-        ).get("Identities", [])
+        try:
+            identity_names = paginated_query_with_retries(
+                ses_client,
+                "list_identities",
+                **list_kwargs,
+            ).get("Identities", [])
+        except Exception as e:
+            module.fail_json_aws(e, msg="Unable to list AWS SES identities")
 
     for identity_name in identity_names:
         try:

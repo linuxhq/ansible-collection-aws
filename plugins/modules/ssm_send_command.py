@@ -113,6 +113,7 @@ command_invocations:
     - The command invocations returned when O(wait=true).
   returned: when wait is true and not in check mode
   type: list
+  elements: dict
 status:
   description:
     - The aggregate command status.
@@ -162,10 +163,22 @@ def wait_for_command(client, module, command_id):
     deadline = time.monotonic() + module.params["wait_timeout"]
 
     while time.monotonic() < deadline:
-        commands = client.list_commands(
-            CommandId=command_id,
-            aws_retry=True,
-        ).get("Commands", [])
+        try:
+            commands = paginated_query_with_retries(
+                client,
+                "list_commands",
+                CommandId=command_id,
+            ).get("Commands", [])
+            invocations = paginated_query_with_retries(
+                client,
+                "list_command_invocations",
+                CommandId=command_id,
+                Details=True,
+            ).get("CommandInvocations", [])
+        except Exception as e:
+            module.fail_json_aws(
+                e, msg=f"Unable to get AWS Systems Manager command {command_id}"
+            )
         if not commands:
             module.fail_json(
                 msg=(
@@ -174,12 +187,6 @@ def wait_for_command(client, module, command_id):
                 ),
             )
         command = commands[0]
-        invocations = paginated_query_with_retries(
-            client,
-            "list_command_invocations",
-            CommandId=command_id,
-            Details=True,
-        ).get("CommandInvocations", [])
         statuses = set()
         for invocation in invocations:
             invocation_status = invocation.get("Status")

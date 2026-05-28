@@ -92,17 +92,18 @@ def main():
         "notificationscontacts", retry_decorator=AWSRetry.jittered_backoff()
     )
     if module.params["arns"]:
-        email_contacts = [
-            contact
-            for contact in [
-                get_email_contact(client, module, arn) for arn in module.params["arns"]
-            ]
-            if contact is not None
-        ]
+        email_contacts = []
+        for arn in module.params["arns"]:
+            contact = get_email_contact(client, module, arn)
+            if contact is not None:
+                email_contacts.append(contact)
     else:
-        email_contacts = paginated_query_with_retries(
-            client, "list_email_contacts"
-        ).get("emailContacts", [])
+        try:
+            email_contacts = paginated_query_with_retries(
+                client, "list_email_contacts"
+            ).get("emailContacts", [])
+        except Exception as e:
+            module.fail_json_aws(e, msg="Unable to list AWS Notifications contacts")
 
     module.exit_json(
         changed=False,

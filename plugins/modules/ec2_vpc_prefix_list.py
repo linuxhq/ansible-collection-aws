@@ -25,6 +25,7 @@ options:
     description:
       - The prefix list entries to manage.
       - Each entry must include O(entries[].cidr) and may include O(entries[].description).
+      - This is required when O(state=present).
     elements: dict
     suboptions:
       cidr:
@@ -252,7 +253,7 @@ def delete_prefix_list(client, module, prefix_list_id):
 
 
 def ensure_absent(client, module):
-    current = get_customer_managed_prefix_list_by_name(client, module.params["name"])
+    current = get_customer_managed_prefix_list_by_name(client, module)
     changed = current is not None
     prefix_list_id = (current or {}).get("PrefixListId")
 
@@ -416,13 +417,13 @@ def ensure_present(client, module):
 
 
 def get_current(client, module):
-    prefix_list = get_customer_managed_prefix_list_by_name(
-        client, module.params["name"]
-    )
+    prefix_list = get_customer_managed_prefix_list_by_name(client, module)
     if prefix_list is None:
         return None, None
 
-    entries = get_managed_prefix_list_entries(client, prefix_list.get("PrefixListId"))
+    entries = get_managed_prefix_list_entries(
+        client, module, prefix_list.get("PrefixListId")
+    )
     return prefix_list, entries
 
 
@@ -471,11 +472,17 @@ def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name):
         )
 
 
-def get_customer_managed_prefix_list_by_name(client, name):
+def get_customer_managed_prefix_list_by_name(client, module):
+    name = module.params["name"]
     filters = ansible_dict_to_boto3_filter_list({"prefix-list-name": name})
-    prefix_lists = paginated_query_with_retries(
-        client, "describe_managed_prefix_lists", Filters=filters
-    ).get("PrefixLists", [])
+    try:
+        prefix_lists = paginated_query_with_retries(
+            client, "describe_managed_prefix_lists", Filters=filters
+        ).get("PrefixLists", [])
+    except Exception as e:
+        module.fail_json_aws(
+            e, msg=f"Unable to describe EC2 VPC managed prefix list {name}"
+        )
     return next(
         (
             prefix_list
@@ -487,12 +494,18 @@ def get_customer_managed_prefix_list_by_name(client, name):
     )
 
 
-def get_managed_prefix_list_entries(client, prefix_list_id):
-    return paginated_query_with_retries(
-        client,
-        "get_managed_prefix_list_entries",
-        PrefixListId=prefix_list_id,
-    ).get("Entries", [])
+def get_managed_prefix_list_entries(client, module, prefix_list_id):
+    try:
+        return paginated_query_with_retries(
+            client,
+            "get_managed_prefix_list_entries",
+            PrefixListId=prefix_list_id,
+        ).get("Entries", [])
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to get EC2 VPC managed prefix list entries for {prefix_list_id}",
+        )
 
 
 def apply_tag_changes(client, module, prefix_list_id, tags_to_set, tag_keys_to_unset):

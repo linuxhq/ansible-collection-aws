@@ -90,7 +90,16 @@ def main():
     }
     if module.params["context_id"] is not None:
         request["ContextId"] = module.params["context_id"]
-    quota = client.get_service_quota(**request, aws_retry=True).get("Quota", {})
+    try:
+        quota = client.get_service_quota(**request, aws_retry=True).get("Quota", {})
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=(
+                "Unable to get AWS service quota "
+                f"{module.params['service_code']}/{module.params['quota_code']}"
+            ),
+        )
 
     module.exit_json(
         changed=False,

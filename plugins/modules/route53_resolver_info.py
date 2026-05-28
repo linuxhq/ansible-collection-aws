@@ -56,9 +56,10 @@ def resource_tags(client, module, resource):
     if not resource.get("Arn"):
         return []
     try:
-        return client.list_tags_for_resource(
+        return paginated_query_with_retries(
+            client,
+            "list_tags_for_resource",
             ResourceArn=resource["Arn"],
-            aws_retry=True,
         ).get("Tags", [])
     except Exception as e:
         module.fail_json_aws(
@@ -67,19 +68,25 @@ def resource_tags(client, module, resource):
         )
 
 
-def endpoint_ip_addresses(client, endpoint):
-    return paginated_query_with_retries(
-        client,
-        "list_resolver_endpoint_ip_addresses",
-        ResolverEndpointId=endpoint["Id"],
-    ).get("IpAddresses", [])
+def endpoint_ip_addresses(client, module, endpoint):
+    try:
+        return paginated_query_with_retries(
+            client,
+            "list_resolver_endpoint_ip_addresses",
+            ResolverEndpointId=endpoint["Id"],
+        ).get("IpAddresses", [])
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to list AWS Route53 Resolver endpoint IP addresses for {endpoint['Id']}",
+        )
 
 
 def normalize_endpoint(client, module, endpoint):
     return boto3_resource_to_ansible_dict(
         dict(
             endpoint,
-            IpAddresses=endpoint_ip_addresses(client, endpoint),
+            IpAddresses=endpoint_ip_addresses(client, module, endpoint),
             Tags=resource_tags(client, module, endpoint),
         ),
         transform_tags=True,
@@ -100,9 +107,12 @@ def main():
     request = {}
     if module.params["filters"]:
         request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
-    resolver_endpoints = paginated_query_with_retries(
-        client, "list_resolver_endpoints", **request
-    ).get("ResolverEndpoints", [])
+    try:
+        resolver_endpoints = paginated_query_with_retries(
+            client, "list_resolver_endpoints", **request
+        ).get("ResolverEndpoints", [])
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver endpoints")
 
     module.exit_json(
         changed=False,

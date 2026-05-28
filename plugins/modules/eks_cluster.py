@@ -140,14 +140,16 @@ options:
       - The VPC configuration for the cluster.
     suboptions:
       endpoint_private_access:
-        default: false
         description:
           - Whether the Kubernetes API server private endpoint is enabled.
+          - When omitted while creating a cluster, AWS uses its default value.
+          - When omitted while updating a cluster, the existing value is left unchanged.
         type: bool
       endpoint_public_access:
-        default: true
         description:
           - Whether the Kubernetes API server public endpoint is enabled.
+          - When omitted while creating a cluster, AWS uses its default value.
+          - When omitted while updating a cluster, the existing value is left unchanged.
         type: bool
       public_access_cidrs:
         description:
@@ -300,7 +302,6 @@ state:
 
 import time
 
-from ansible.module_utils.basic import _load_params
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
@@ -345,14 +346,6 @@ UPDATE_CONFIG_FIELDS = [
 CREATE_ONLY_FIELDS = [
     "encryption_config",
     "role_arn",
-]
-
-RESOURCES_VPC_CONFIG_FIELDS = [
-    "endpoint_private_access",
-    "endpoint_public_access",
-    "public_access_cidrs",
-    "security_group_ids",
-    "subnet_ids",
 ]
 
 RESOURCES_VPC_CONFIG_ENDPOINT_FIELDS = [
@@ -506,12 +499,6 @@ def update_config_request(module):
         if desired.get(field) is not None:
             request[field] = desired[field]
 
-    resources_vpc_config = explicit_resources_vpc_config(module, request)
-    if resources_vpc_config:
-        request["resources_vpc_config"] = resources_vpc_config
-    else:
-        request.pop("resources_vpc_config", None)
-
     access_config = request.get("access_config")
     if access_config is not None:
         access_config = {
@@ -527,19 +514,6 @@ def update_config_request(module):
     return scrub_none_parameters(
         snake_dict_to_camel_dict(request, capitalize_first=False)
     )
-
-
-def explicit_resources_vpc_config(module, request):
-    raw_resources_vpc_config = (
-        getattr(module, "_linuxhq_raw_params", {}).get("resources_vpc_config") or {}
-    )
-    resources_vpc_config = request.get("resources_vpc_config") or {}
-    return {
-        field: resources_vpc_config.get(field)
-        for field in RESOURCES_VPC_CONFIG_FIELDS
-        if field in raw_resources_vpc_config
-        and resources_vpc_config.get(field) is not None
-    }
 
 
 def update_config_requests(current, request):
@@ -803,7 +777,6 @@ def ensure_absent(client, module):
 
 
 def main():
-    raw_params = _load_params()
     argument_spec = {
         "access_config": {
             "default": {
@@ -837,7 +810,7 @@ def main():
             "options": {
                 "provider": {
                     "options": {
-                        "key_arn": {"type": "str"},
+                        "key_arn": {"no_log": False, "type": "str"},
                     },
                     "type": "dict",
                 },
@@ -875,8 +848,8 @@ def main():
         "purge_tags": {"default": True, "type": "bool"},
         "resources_vpc_config": {
             "options": {
-                "endpoint_private_access": {"default": False, "type": "bool"},
-                "endpoint_public_access": {"default": True, "type": "bool"},
+                "endpoint_private_access": {"type": "bool"},
+                "endpoint_public_access": {"type": "bool"},
                 "public_access_cidrs": {"elements": "str", "type": "list"},
                 "security_group_ids": {"elements": "str", "type": "list"},
                 "subnet_ids": {"elements": "str", "type": "list"},
@@ -927,7 +900,6 @@ def main():
         argument_spec=argument_spec,
         supports_check_mode=True,
     )
-    module._linuxhq_raw_params = raw_params
     client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]

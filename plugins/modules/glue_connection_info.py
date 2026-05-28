@@ -106,11 +106,14 @@ def list_connections(client, module):
         request["Filter"] = snake_dict_to_camel_dict(
             module.params["filters"], capitalize_first=True
         )
-    return paginated_query_with_retries(
-        client,
-        "get_connections",
-        **request,
-    ).get("ConnectionList", [])
+    try:
+        return paginated_query_with_retries(
+            client,
+            "get_connections",
+            **request,
+        ).get("ConnectionList", [])
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to list AWS Glue connections")
 
 
 def main():

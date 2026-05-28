@@ -64,9 +64,6 @@ state:
   type: str
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -75,7 +72,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 
 def ensure_absent(client, module):
-    delegation_set = get_reusable_delegation_set(client, module.params["name"])
+    delegation_set = get_reusable_delegation_set(client, module)
     changed = delegation_set is not None
     delegation_set_id = (delegation_set or {}).get("Id")
 
@@ -102,7 +99,7 @@ def ensure_absent(client, module):
 
 
 def ensure_present(client, module):
-    delegation_set = get_reusable_delegation_set(client, module.params["name"])
+    delegation_set = get_reusable_delegation_set(client, module)
     desired_delegation_set = {"caller_reference": module.params["name"]}
     changed = delegation_set is None
 
@@ -121,7 +118,7 @@ def ensure_present(client, module):
                 ),
             )
         if delegation_set is None:
-            delegation_set = get_reusable_delegation_set(client, module.params["name"])
+            delegation_set = get_reusable_delegation_set(client, module)
     elif changed and module.check_mode:
         delegation_set = desired_delegation_set
 
@@ -140,33 +137,42 @@ def ensure_present(client, module):
     module.exit_json(**result)
 
 
-def get_reusable_delegation_set(client, name):
-    can_paginate = getattr(client, "can_paginate", lambda operation_name: False)
-    if can_paginate("list_reusable_delegation_sets"):
-        delegation_sets = paginated_query_with_retries(
-            client, "list_reusable_delegation_sets"
-        ).get("DelegationSets", [])
-        return next(
-            (
-                delegation_set
-                for delegation_set in delegation_sets
-                if delegation_set.get("CallerReference") == name
-            ),
-            None,
-        )
-
+def list_reusable_delegation_sets(client, module):
     marker = None
+    delegation_sets = []
     while True:
         request = {}
         if marker:
             request["Marker"] = marker
-        response = client.list_reusable_delegation_sets(**request, aws_retry=True)
-        for delegation_set in response.get("DelegationSets", []):
-            if delegation_set.get("CallerReference") == name:
-                return delegation_set
+        try:
+            response = client.list_reusable_delegation_sets(**request, aws_retry=True)
+        except Exception as e:
+            module.fail_json_aws(
+                e, msg="Unable to list AWS Route53 reusable delegation sets"
+            )
+        delegation_sets.extend(response.get("DelegationSets", []))
+        if not response.get("IsTruncated"):
+            return delegation_sets
         marker = response.get("NextMarker")
-        if not response.get("IsTruncated") or not marker:
-            return None
+        if not marker:
+            module.fail_json(
+                msg=(
+                    "AWS Route53 reusable delegation sets response was "
+                    "truncated without a NextMarker"
+                )
+            )
+
+
+def get_reusable_delegation_set(client, module):
+    name = module.params["name"]
+    return next(
+        (
+            delegation_set
+            for delegation_set in list_reusable_delegation_sets(client, module)
+            if delegation_set.get("CallerReference") == name
+        ),
+        None,
+    )
 
 
 def main():

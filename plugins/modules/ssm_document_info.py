@@ -192,13 +192,17 @@ def main():
         request = {}
         if module.params["filters"]:
             request["Filters"] = ssm_filter_list(module.params["filters"])
-        document_names = [
-            document["Name"]
-            for document in paginated_query_with_retries(
+        try:
+            document_identifiers = paginated_query_with_retries(
                 client,
                 "list_documents",
                 **request,
             ).get("DocumentIdentifiers", [])
+        except Exception as e:
+            module.fail_json_aws(e, msg="Unable to list AWS Systems Manager documents")
+        document_names = [
+            document["Name"]
+            for document in document_identifiers
             if document.get("Name")
         ]
 

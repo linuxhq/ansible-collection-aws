@@ -3,8 +3,8 @@
   tags:
     - rds_subnet_group_info
   linuxhq.aws.rds_subnet_group_info:
-    filters: "{{ rds_subnet_group_info_filters }}"
-    names: "{{ rds_subnet_group_info_names or omit }}"
+    filters: "{{ rds_subnet_group_info_filters or omit }}"
+    name: "{{ rds_subnet_group_info_name or omit }}"
     validate_certs: true
   register: __rds_subnet_group_info_query
 

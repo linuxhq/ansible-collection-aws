@@ -139,17 +139,21 @@ def contact_with_updated_tags(contact, tags_to_set, tag_keys_to_unset):
     return contact
 
 
+def list_email_contacts(client, module):
+    try:
+        return paginated_query_with_retries(client, "list_email_contacts").get(
+            "emailContacts", []
+        )
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to list AWS Notifications contacts")
+
+
 def ensure_absent(client, module):
-    contact = next(
-        (
-            item
-            for item in paginated_query_with_retries(client, "list_email_contacts").get(
-                "emailContacts", []
-            )
-            if item.get("address") == module.params["email_address"]
-        ),
-        None,
-    )
+    contact = None
+    for item in list_email_contacts(client, module):
+        if item.get("address") == module.params["email_address"]:
+            contact = item
+            break
     changed = contact is not None
 
     if changed and not module.check_mode:
@@ -174,16 +178,11 @@ def ensure_absent(client, module):
 
 
 def ensure_present(client, module):
-    contact = next(
-        (
-            item
-            for item in paginated_query_with_retries(client, "list_email_contacts").get(
-                "emailContacts", []
-            )
-            if item.get("address") == module.params["email_address"]
-        ),
-        None,
-    )
+    contact = None
+    for item in list_email_contacts(client, module):
+        if item.get("address") == module.params["email_address"]:
+            contact = item
+            break
     contact = contact_with_tags(client, module, contact)
     current_contact = (
         {"address": contact.get("address"), "name": contact.get("name")}

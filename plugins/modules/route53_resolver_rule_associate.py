@@ -168,9 +168,7 @@ class ResolverRuleAssociationWaiterFactory(BaseWaiterFactory):
 
 
 def ensure_absent(client, module):
-    association = get_resolver_rule_association_by_rule_and_vpc(
-        client, module.params["resolver_rule_id"], module.params["vpc_id"]
-    )
+    association = get_resolver_rule_association_by_rule_and_vpc(client, module)
     changed = association is not None
     resolver_rule_association_id = (association or {}).get("Id")
 
@@ -195,7 +193,6 @@ def ensure_absent(client, module):
                 module,
                 resolver_rule_association_id,
                 {"deleted"},
-                module.params["name"],
             )
 
     module.exit_json(
@@ -206,9 +203,7 @@ def ensure_absent(client, module):
 
 
 def ensure_present(client, module):
-    association = get_resolver_rule_association_by_rule_and_vpc(
-        client, module.params["resolver_rule_id"], module.params["vpc_id"]
-    )
+    association = get_resolver_rule_association_by_rule_and_vpc(client, module)
     current_association = (
         {
             "name": association.get("Name"),
@@ -248,7 +243,6 @@ def ensure_present(client, module):
                     module,
                     resolver_rule_association_id,
                     {"deleted"},
-                    module.params["name"],
                 )
 
         try:
@@ -273,7 +267,6 @@ def ensure_present(client, module):
                 module,
                 resolver_rule_association_id,
                 {"complete"},
-                module.params["name"],
             )
     elif changed and module.check_mode:
         association = desired_association
@@ -294,8 +287,9 @@ def ensure_present(client, module):
 
 
 def wait_for_resolver_rule_association_status(
-    client, module, resolver_rule_association_id, statuses, name
+    client, module, resolver_rule_association_id, statuses
 ):
+    name = module.params["name"]
     deleted = "deleted" in statuses
     try:
         waiter = ResolverRuleAssociationWaiterFactory().get_waiter(
@@ -341,20 +335,32 @@ def get_resolver_rule_association(client, module, resolver_rule_association_id):
         )
 
 
-def get_resolver_rule_association_by_rule_and_vpc(client, resolver_rule_id, vpc_id):
+def get_resolver_rule_association_by_rule_and_vpc(client, module):
+    resolver_rule_id = module.params["resolver_rule_id"]
+    vpc_id = module.params["vpc_id"]
+    try:
+        associations = paginated_query_with_retries(
+            client,
+            "list_resolver_rule_associations",
+            Filters=ansible_dict_to_boto3_filter_list(
+                {
+                    "ResolverRuleId": resolver_rule_id,
+                    "VPCId": vpc_id,
+                }
+            ),
+        ).get("ResolverRuleAssociations", [])
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=(
+                "Unable to list AWS Route53 Resolver rule associations for "
+                f"{resolver_rule_id}/{vpc_id}"
+            ),
+        )
     return next(
         (
             association
-            for association in paginated_query_with_retries(
-                client,
-                "list_resolver_rule_associations",
-                Filters=ansible_dict_to_boto3_filter_list(
-                    {
-                        "ResolverRuleId": resolver_rule_id,
-                        "VPCId": vpc_id,
-                    }
-                ),
-            ).get("ResolverRuleAssociations", [])
+            for association in associations
             if association.get("ResolverRuleId") == resolver_rule_id
             and association.get("VPCId") == vpc_id
         ),

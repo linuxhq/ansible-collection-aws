@@ -87,31 +87,49 @@ def build_entity_policies(client, module, entity_type, names):
     results = []
 
     for name in names:
-        all_policy_names = paginated_query_with_retries(
-            client,
-            list_operation,
-            **{f"{entity_type}Name": name},
-        ).get("PolicyNames", [])
+        try:
+            all_policy_names = paginated_query_with_retries(
+                client,
+                list_operation,
+                **{f"{entity_type}Name": name},
+            ).get("PolicyNames", [])
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to list AWS IAM {entity_type.lower()} policies for {name}",
+            )
         policy_names = [
             policy_name
             for policy_name in all_policy_names
             if not module.params["policy_names"]
             or policy_name in module.params["policy_names"]
         ]
+        policies = []
+        for policy_name in policy_names:
+            try:
+                policy_document = getattr(client, get_operation)(
+                    **{f"{entity_type}Name": name, "PolicyName": policy_name},
+                    aws_retry=True,
+                ).get("PolicyDocument")
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        f"Unable to get AWS IAM {entity_type.lower()} policy "
+                        f"{policy_name} for {name}"
+                    ),
+                )
+            policies.append(
+                {
+                    "policy_name": policy_name,
+                    "policy_document": policy_document,
+                }
+            )
         results.append(
             {
                 "name": name,
                 "all_policy_names": all_policy_names,
-                "policies": [
-                    {
-                        "policy_name": policy_name,
-                        "policy_document": getattr(client, get_operation)(
-                            **{f"{entity_type}Name": name, "PolicyName": policy_name},
-                            aws_retry=True,
-                        ).get("PolicyDocument"),
-                    }
-                    for policy_name in policy_names
-                ],
+                "policies": policies,
                 "policy_names": policy_names,
             }
         )
@@ -128,15 +146,15 @@ def entity_names(client, module, entity_type):
     request = {}
     if module.params["path_prefix"] is not None:
         request["PathPrefix"] = module.params["path_prefix"]
-    return [
-        entity[name_key]
-        for entity in paginated_query_with_retries(
+    try:
+        entities = paginated_query_with_retries(
             client,
             f"list_{entity_type.lower()}s",
             **request,
         ).get(response_key, [])
-        if entity.get(name_key)
-    ]
+    except Exception as e:
+        module.fail_json_aws(e, msg=f"Unable to list AWS IAM {entity_type.lower()}s")
+    return [entity[name_key] for entity in entities if entity.get(name_key)]
 
 
 def main():

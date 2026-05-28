@@ -250,7 +250,6 @@ def ensure_present(client, module):
             apply_tag_changes(
                 client,
                 module,
-                module.params["name"],
                 tags_to_set,
                 tag_keys_to_unset,
             )
@@ -290,16 +289,12 @@ def get_document(client, module):
             e,
             msg=f"Unable to get AWS Systems Manager document {module.params['name']}",
         )
-    document["Tags"] = get_resource_tags(
-        client,
-        module,
-        SSM_DOCUMENT_RESOURCE_TYPE,
-        module.params["name"],
-    )
+    document["Tags"] = get_resource_tags(client, module, SSM_DOCUMENT_RESOURCE_TYPE)
     return document
 
 
-def get_resource_tags(client, module, resource_type, resource_id):
+def get_resource_tags(client, module, resource_type):
+    resource_id = module.params["name"]
     try:
         return client.list_tags_for_resource(
             ResourceType=resource_type,
@@ -323,7 +318,8 @@ def document_with_updated_tags(document, tags_to_set, tag_keys_to_unset):
     return document
 
 
-def apply_tag_changes(client, module, resource_id, tags_to_set, tag_keys_to_unset):
+def apply_tag_changes(client, module, tags_to_set, tag_keys_to_unset):
+    resource_id = module.params["name"]
     if tag_keys_to_unset:
         try:
             client.remove_tags_from_resource(

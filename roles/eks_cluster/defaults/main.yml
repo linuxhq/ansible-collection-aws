@@ -1,8 +1,9 @@
 ---
-eks_cluster_async: 1200
+eks_cluster_async: 3900
 eks_cluster_batch: 10
 eks_cluster_delay: 30
 eks_cluster_list: []
 eks_cluster_poll: 0
-eks_cluster_retries: 40
+eks_cluster_retries: 130
+eks_cluster_wait_timeout: 3600
 ...

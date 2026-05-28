@@ -89,7 +89,6 @@ options:
       - NetworkInterface
       - TransitGateway
       - TransitGatewayAttachment
-    required: true
     type: str
   state:
     description:

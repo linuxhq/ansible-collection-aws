@@ -45,12 +45,17 @@ def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
+    try:
+        account_level = client.get_instance_metadata_defaults(aws_retry=True).get(
+            "AccountLevel", {}
+        )
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to get EC2 instance metadata defaults")
+
     module.exit_json(
         changed=False,
         account_level=boto3_resource_to_ansible_dict(
-            client.get_instance_metadata_defaults(aws_retry=True).get(
-                "AccountLevel", {}
-            ),
+            account_level,
             transform_tags=False,
             force_tags=False,
         ),
