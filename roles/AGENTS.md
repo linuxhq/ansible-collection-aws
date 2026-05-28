@@ -59,9 +59,6 @@ gpt-5.5 high
   adding, removing, or changing role variables, defaults, dependencies, return
   facts, examples, or role descriptions
 
-* Ensure the role description matches between `README.md` and
-  `meta/main.yml`
-
 * Keep README sections consistent with existing roles
   * Requirements
   * Role Variables
@@ -162,3 +159,5 @@ gpt-5.5 high
 ## Workflow
 
 * Complete the requested implementation before stopping
+
+* Do not commit changes

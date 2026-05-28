@@ -219,15 +219,14 @@ gpt-5.5 high
     * Use a real git worktree or real directory for that collection path;
       symlinks are not sufficient because `ansible-test` resolves the physical
       path
-    * If the worktree does not exist, create it using the following
+    * If the worktree does not exist, create it
       * `mkdir -p venv/ansible_collections/linuxhq`
       * `git worktree add --detach venv/ansible_collections/linuxhq/aws HEAD`
     * To test uncommitted changes from the root checkout, overlay the current
-      tree into the worktree with the following
+      tree into the worktree
       * `rsync -a --delete --exclude='.git' --exclude='venv' ./ venv/ansible_collections/linuxhq/aws/`
     * If the default Python discovery fails because local shims are unavailable,
-      run sanity from the worktree with the Python version from the active venv,
-      such as the following
+      run sanity from the worktree with the Python version from the active venv
       * `../../../bin/ansible-test sanity --color no --python 3.12`
   * black
     * `venv/bin/black --check plugins`

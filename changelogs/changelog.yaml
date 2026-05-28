@@ -1,0 +1,14 @@
+---
+ancestor: null
+releases:
+  2.0.0:
+    changes:
+      minor_changes:
+        - Add support for absent state
+        - Add async support to applicable roles
+        - Add batch operation support to applicable roles
+        - Add molecule tests to all roles
+        - Add support for agent workflows
+      release_summary:
+        Initial release that includes a changelog
+...
