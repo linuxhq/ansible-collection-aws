@@ -22,6 +22,15 @@ A collection of aws roles
 
     ansible-galaxy collection install linuxhq.aws
 
+## Changelog
+
+    antsibull-changelog generate
+
+## Linting
+
+    ansible-lint
+    yamllint -s .
+
 ## Testing
 
 All roles have molecule tests which provide example playbooks
