@@ -4,10 +4,11 @@
   environment:
     PATH: '/opt/awscli/bin'
 
-  roles:
-    - iam_policy_info
+  tasks:
+    - name: Ensure role is included without filters
+      ansible.builtin.include_role:
+        name: iam_policy_info
 
-  post_tasks:
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
@@ -19,6 +20,36 @@
           - _iam_policy_info_user_dict['molecule-ec2'].policies.0.policy_document == iam_policy_list.0.policy_json
           - _iam_policy_info_user_dict['molecule-ec2'].policy_names is defined
           - _iam_policy_info_user_dict['molecule-ec2'].policy_names.0 == iam_policy_list.0.policy_name
+
+    - name: Ensure role is included with group and policy names
+      ansible.builtin.include_role:
+        name: iam_policy_info
+      vars:
+        iam_policy_info_group_name: molecule-rds
+        iam_policy_info_policy_name: MoleculeRdsFullAccess
+
+    - name: Ensure info with group and policy names is verified
+      ansible.builtin.assert:
+        that:
+          - _iam_policy_info_group_dict.keys() | list == ['molecule-rds']
+          - _iam_policy_info_group_dict['molecule-rds'].policy_names == ['MoleculeRdsFullAccess']
+          - _iam_policy_info_group_dict['molecule-rds'].policies.0.policy_document ==
+              iam_policy_list.1.policy_json
+
+    - name: Ensure role is included with user and policy names
+      ansible.builtin.include_role:
+        name: iam_policy_info
+      vars:
+        iam_policy_info_policy_name: MoleculeEc2FullAccess
+        iam_policy_info_user_name: molecule-ec2
+
+    - name: Ensure info with user and policy names is verified
+      ansible.builtin.assert:
+        that:
+          - _iam_policy_info_user_dict.keys() | list == ['molecule-ec2']
+          - _iam_policy_info_user_dict['molecule-ec2'].policy_names == ['MoleculeEc2FullAccess']
+          - _iam_policy_info_user_dict['molecule-ec2'].policies.0.policy_document ==
+              iam_policy_list.0.policy_json
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

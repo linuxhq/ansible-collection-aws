@@ -5,7 +5,7 @@
     PATH: '/opt/awscli/bin'
 
   tasks:
-    - name: Ensure role is included
+    - name: Ensure role is included without filters
       ansible.builtin.include_role:
         name: pinpoint_sms_voice_phone_number_info
 
@@ -20,6 +20,40 @@
           - _pinpoint_sms_voice_phone_number_info_list.0.phone_number_arn is defined
           - _pinpoint_sms_voice_phone_number_info_list.0.phone_number_id is defined
           - _pinpoint_sms_voice_phone_number_info_list.0.status == 'ACTIVE'
+
+    - name: Ensure phone number id filter target is generated
+      ansible.builtin.set_fact:
+        pinpoint_sms_voice_phone_number_info_id_filter:
+          "{{ _pinpoint_sms_voice_phone_number_info_list.0.phone_number_id }}"
+
+    - name: Ensure role is included with phone number id
+      ansible.builtin.include_role:
+        name: pinpoint_sms_voice_phone_number_info
+      vars:
+        pinpoint_sms_voice_phone_number_info_phone_number_ids:
+          - "{{ pinpoint_sms_voice_phone_number_info_id_filter }}"
+
+    - name: Ensure info with phone number id is verified
+      ansible.builtin.assert:
+        that:
+          - _pinpoint_sms_voice_phone_number_info_list | length == 1
+          - _pinpoint_sms_voice_phone_number_info_list.0.phone_number_id ==
+              pinpoint_sms_voice_phone_number_info_id_filter
+
+    - name: Ensure role is included with filters
+      ansible.builtin.include_role:
+        name: pinpoint_sms_voice_phone_number_info
+      vars:
+        pinpoint_sms_voice_phone_number_info_filters:
+          iso-country-code: US
+          message-type: TRANSACTIONAL
+          number-capability: SMS
+          number-type: SIMULATOR
+
+    - name: Ensure info with filters is verified
+      ansible.builtin.assert:
+        that:
+          - _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-simulator'].phone_number_id is defined
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

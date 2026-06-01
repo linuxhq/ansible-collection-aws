@@ -4,9 +4,9 @@
     - glue_connection_info
   linuxhq.aws.glue_connection_info:
     apply_override_for_compute_environment:
-      "{{ glue_connection_info_apply_override_for_compute_environment }}"
+      "{{ glue_connection_info_apply_override_for_compute_environment or omit }}"
     catalog_id: "{{ glue_connection_info_catalog_id or omit }}"
-    filters: "{{ glue_connection_info_filters }}"
+    filters: "{{ glue_connection_info_filters or omit }}"
     hide_password: "{{ glue_connection_info_hide_password }}"
     name: "{{ glue_connection_info_name or omit }}"
     validate_certs: true

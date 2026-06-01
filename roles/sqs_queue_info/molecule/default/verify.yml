@@ -40,6 +40,19 @@
           - _sqs_queue_info_dict['molecule-bounce'].queue_arn is defined
           - _sqs_queue_info_dict['molecule-bounce'].sqs_managed_sse_enabled | bool
 
+    - name: Ensure role is included with queue name prefix
+      ansible.builtin.include_role:
+        name: sqs_queue_info
+      vars:
+        sqs_queue_info_queue_name_prefix: molecule-
+
+    - name: Ensure info with queue name prefix is verified
+      ansible.builtin.assert:
+        that:
+          - _sqs_queue_info_list | length == 3
+          - _sqs_queue_info_dict.keys() | sort ==
+              ['molecule-bounce', 'molecule-complaint', 'molecule-delivery']
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         sqs_queue_list:

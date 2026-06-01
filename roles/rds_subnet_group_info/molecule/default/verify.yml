@@ -40,6 +40,19 @@
           - _rds_subnet_group_info_dict.keys() | list == [rds_subnet_group_list.0.name]
           - _rds_subnet_group_info_dict['molecule'].db_subnet_group_arn is defined
 
+    - name: Ensure role is included with filters
+      ansible.builtin.include_role:
+        name: rds_subnet_group_info
+      vars:
+        rds_subnet_group_info_filters:
+          db-subnet-group-name: molecule
+
+    - name: Ensure info with filters is verified
+      ansible.builtin.assert:
+        that:
+          - _rds_subnet_group_info_list | length == 1
+          - _rds_subnet_group_info_dict.keys() | list == [rds_subnet_group_list.0.name]
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_vpc_net_list:

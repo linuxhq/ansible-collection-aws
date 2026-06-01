@@ -5,7 +5,7 @@
     PATH: '/opt/awscli/bin'
 
   tasks:
-    - name: Ensure roles are included
+    - name: Ensure role is included with repository names
       ansible.builtin.include_role:
         name: ecs_ecr_info
       vars:
@@ -13,7 +13,7 @@
           - molecule-00
 
   post_tasks:
-    - name: Ensure info is verified
+    - name: Ensure info with repository names is verified
       ansible.builtin.assert:
         that:
           - _ecs_ecr_info_list | length == 1
@@ -26,11 +26,11 @@
           - _ecs_ecr_info_dict['molecule-00'].repository_name is defined
           - _ecs_ecr_info_dict['molecule-00'].repository_uri is defined
 
-    - name: Ensure roles are included
+    - name: Ensure role is included without filters
       ansible.builtin.include_role:
         name: ecs_ecr_info
 
-    - name: Ensure info is verified
+    - name: Ensure info without filters is verified
       ansible.builtin.assert:
         that:
           - _ecs_ecr_info_dict['molecule-00'].encryption_configuration.encryption_type == 'AES256'

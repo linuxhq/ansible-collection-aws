@@ -7,7 +7,7 @@
     - ec2_instance_metadata_info
 
   tasks:
-    - name: Ensure ec2 instance metadata defaults are verified
+    - name: Ensure info is verified
       ansible.builtin.assert:
         quiet: true
         that:
