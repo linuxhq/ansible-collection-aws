@@ -35,6 +35,10 @@ gpt-5.5 high
 * Mark secret parameters with `no_log=True` and exclude their values from
   examples, return values, and error messages
 
+* For info modules, expose singular lookup options (`name`, `id`, `arn`) when
+  the underlying api accepts a singular identifier; do not expose plural list
+  options (`names`, `ids`, `arns`) in place of the api's own parameter shape
+
 ### Documentation
 
 * Keep `DOCUMENTATION`, `EXAMPLES`, `RETURN`, and `argument_spec` aligned when
