@@ -8,7 +8,7 @@
     - sns_sms_attributes_info
 
   tasks:
-    - name: Ensure aws simple notification service sms attributes are verified
+    - name: Ensure info is verified
       ansible.builtin.assert:
         quiet: true
         that:

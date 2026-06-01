@@ -8,9 +8,12 @@
     - ec2_security_group_info
     - ec2_vpc_net_info
     - ec2_vpc_subnet_info
-    - glue_connection_info
 
   post_tasks:
+    - name: Ensure role is included without filters or name
+      ansible.builtin.include_role:
+        name: glue_connection_info
+
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
@@ -28,6 +31,32 @@
               glue_connection_list.0.security_groups
           - _glue_connection_info_dict['molecule'].physical_connection_requirements.subnet_id ==
               glue_connection_list.0.subnet_id
+
+    - name: Ensure role is included with name
+      ansible.builtin.include_role:
+        name: glue_connection_info
+      vars:
+        glue_connection_info_name: molecule
+
+    - name: Ensure info with name is verified
+      ansible.builtin.assert:
+        that:
+          - _glue_connection_info_list | length == 1
+          - _glue_connection_info_dict.keys() | list == ['molecule']
+          - _glue_connection_info_dict['molecule'].connection_type ==
+              glue_connection_list.0.connection_type
+
+    - name: Ensure role is included with filters
+      ansible.builtin.include_role:
+        name: glue_connection_info
+      vars:
+        glue_connection_info_filters:
+          connection_type: "{{ glue_connection_list.0.connection_type }}"
+
+    - name: Ensure info with filters is verified
+      ansible.builtin.assert:
+        that:
+          - _glue_connection_info_dict['molecule'].name == glue_connection_list.0.name
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

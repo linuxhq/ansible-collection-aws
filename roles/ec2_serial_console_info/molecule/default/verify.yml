@@ -8,7 +8,7 @@
     - ec2_serial_console_info
 
   tasks:
-    - name: Ensure ec2 serial console access is verified
+    - name: Ensure info is verified
       ansible.builtin.assert:
         quiet: true
         that:

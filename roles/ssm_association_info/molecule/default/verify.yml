@@ -4,10 +4,11 @@
   environment:
     PATH: '/opt/awscli/bin'
 
-  roles:
-    - ssm_association_info
+  tasks:
+    - name: Ensure role is included without filters
+      ansible.builtin.include_role:
+        name: ssm_association_info
 
-  post_tasks:
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
@@ -18,6 +19,20 @@
               ssm_association_list.0.schedule_expression
           - _ssm_association_info_dict['AWS-UpdateSSMAgent'].targets ==
               ssm_association_list.0.targets
+
+    - name: Ensure role is included with filters
+      ansible.builtin.include_role:
+        name: ssm_association_info
+      vars:
+        ssm_association_info_filters:
+          Name: AWS-UpdateSSMAgent
+
+    - name: Ensure info with filters is verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].association_id is defined
+          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].name ==
+              ssm_association_list.0.name
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

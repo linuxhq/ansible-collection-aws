@@ -5,41 +5,55 @@
     PATH: '/opt/awscli/bin'
 
   tasks:
-    - name: Ensure aws systems manager command shell document info is gathered
+    - name: Ensure role is included with command shell name
       ansible.builtin.include_role:
         name: ssm_document_info
       vars:
         ssm_document_info_name: molecule-command-shell
 
-    - name: Ensure aws systems manager command shell document info is verified
+    - name: Ensure info with command shell name is verified
       ansible.builtin.assert:
         that:
           - _ssm_document_info_dict['molecule-command-shell'].document_type == 'Command'
           - _ssm_document_info_dict['molecule-command-shell'].content.main_steps.0.name == 'runShellScript'
 
-    - name: Ensure aws systems manager command env document info is gathered
+    - name: Ensure role is included with command env name
       ansible.builtin.include_role:
         name: ssm_document_info
       vars:
         ssm_document_info_name: molecule-command-env
 
-    - name: Ensure aws systems manager command env document info is verified
+    - name: Ensure info with command env name is verified
       ansible.builtin.assert:
         that:
           - _ssm_document_info_dict['molecule-command-env'].document_type == 'Command'
           - _ssm_document_info_dict['molecule-command-env'].content.main_steps.0.name == 'printEnvironment'
 
-    - name: Ensure aws systems manager session shell document info is gathered
+    - name: Ensure role is included with session shell name
       ansible.builtin.include_role:
         name: ssm_document_info
       vars:
         ssm_document_info_name: molecule-session-shell
 
-    - name: Ensure aws systems manager session shell document info is verified
+    - name: Ensure info with session shell name is verified
       ansible.builtin.assert:
         that:
           - _ssm_document_info_dict['molecule-session-shell'].document_type == 'Session'
           - _ssm_document_info_dict['molecule-session-shell'].content.session_type == 'Standard_Stream'
+
+    - name: Ensure role is included with filters
+      ansible.builtin.include_role:
+        name: ssm_document_info
+      vars:
+        ssm_document_info_filters:
+          Name: molecule-command-shell
+
+    - name: Ensure info with filters is verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_document_info_list | length == 1
+          - _ssm_document_info_dict['molecule-command-shell'].document_type == 'Command'
+          - _ssm_document_info_dict['molecule-command-shell'].content.main_steps.0.name == 'runShellScript'
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

@@ -4,10 +4,11 @@
   environment:
     PATH: '/opt/awscli/bin'
 
-  roles:
-    - wafv2_ip_set_info
+  tasks:
+    - name: Ensure role is included without filters
+      ansible.builtin.include_role:
+        name: wafv2_ip_set_info
 
-  post_tasks:
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
@@ -25,17 +26,30 @@
         wafv2_ip_set_info_id_filter:
           "{{ _wafv2_ip_set_info_dict['molecule-cloudflare'].id }}"
 
-    - name: Ensure info role supports ip set id filters
+    - name: Ensure role is included with ip set id
       ansible.builtin.include_role:
         name: wafv2_ip_set_info
       vars:
         wafv2_ip_set_info_id: "{{ wafv2_ip_set_info_id_filter }}"
 
-    - name: Ensure ip set id filter is verified
+    - name: Ensure info with ip set id is verified
       ansible.builtin.assert:
         that:
           - _wafv2_ip_set_info_list | length == 1
           - _wafv2_ip_set_info_dict['molecule-cloudflare'].id == wafv2_ip_set_info_id_filter
+
+    - name: Ensure role is included with ip set name
+      ansible.builtin.include_role:
+        name: wafv2_ip_set_info
+      vars:
+        wafv2_ip_set_info_name: molecule-google
+
+    - name: Ensure info with ip set name is verified
+      ansible.builtin.assert:
+        that:
+          - _wafv2_ip_set_info_list | length == 1
+          - _wafv2_ip_set_info_dict.keys() | list == ['molecule-google']
+          - _wafv2_ip_set_info_dict['molecule-google'].addresses | length == 2
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

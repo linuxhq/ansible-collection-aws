@@ -3,7 +3,7 @@
   tags:
     - ec2_placement_group_info
   linuxhq.aws.ec2_placement_group_info:
-    filters: "{{ ec2_placement_group_info_filters }}"
+    filters: "{{ ec2_placement_group_info_filters or omit }}"
     group_ids: "{{ ec2_placement_group_info_group_ids or omit }}"
     group_names: "{{ ec2_placement_group_info_group_names or omit }}"
     validate_certs: true
