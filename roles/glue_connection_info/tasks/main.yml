@@ -8,7 +8,7 @@
     catalog_id: "{{ glue_connection_info_catalog_id or omit }}"
     filters: "{{ glue_connection_info_filters }}"
     hide_password: "{{ glue_connection_info_hide_password }}"
-    names: "{{ glue_connection_info_names or omit }}"
+    name: "{{ glue_connection_info_name or omit }}"
     validate_certs: true
   register: __glue_connection_info_query
 

@@ -8,7 +8,7 @@ None
 
 ## Role Variables
 
-    ecs_ecr_info_names: []
+    ecs_ecr_info_repository_names: []
     ecs_ecr_info_registry_id: null
 
 ## Return Values
@@ -26,5 +26,5 @@ None
       connection: local
       roles:
         - role: linuxhq.aws.ecs_ecr_info
-          ecs_ecr_info_names:
+          ecs_ecr_info_repository_names:
             - molecule-00

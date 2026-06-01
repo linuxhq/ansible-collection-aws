@@ -11,7 +11,7 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  names:
+  repository_names:
     description:
       - ECR repository names used to limit the result set.
     elements: str
@@ -32,7 +32,7 @@ EXAMPLES = r"""
 
 - name: Gather information about selected ECR repositories
   linuxhq.aws.ecs_ecr_info:
-    names:
+    repository_names:
       - my-repository
 """
 
@@ -58,7 +58,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 def main():
     argument_spec = {
-        "names": {"elements": "str", "type": "list"},
+        "repository_names": {"elements": "str", "type": "list"},
         "registry_id": {"type": "str"},
     }
 
@@ -68,8 +68,8 @@ def main():
     params = {}
     if module.params["registry_id"]:
         params["registryId"] = module.params["registry_id"]
-    if module.params["names"]:
-        params["repositoryNames"] = module.params["names"]
+    if module.params["repository_names"]:
+        params["repositoryNames"] = module.params["repository_names"]
 
     try:
         repositories = paginated_query_with_retries(

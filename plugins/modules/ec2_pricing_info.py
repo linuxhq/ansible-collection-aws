@@ -133,41 +133,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def pricing_filters(filters):
-    return [
-        {
-            "Field": pricing_filter["field"],
-            "Type": pricing_filter.get("type") or "TERM_MATCH",
-            "Value": pricing_filter["value"],
-        }
-        for pricing_filter in filters or []
-    ]
-
-
-def build_request(module):
-    request = {}
-    if module.params["format_version"] is not None:
-        request["FormatVersion"] = module.params["format_version"]
-    if module.params["max_results"] is not None:
-        request["MaxResults"] = module.params["max_results"]
-    if module.params["service_code"] is not None:
-        request["ServiceCode"] = module.params["service_code"]
-    filters = pricing_filters(module.params["filters"])
-    if filters:
-        request["Filters"] = filters
-    return request
-
-
-def parse_products(module, price_list):
-    products = []
-    for product in price_list:
-        try:
-            products.append(json.loads(product))
-        except ValueError as e:
-            module.fail_json(msg=f"Unable to parse AWS Price List product: {e}")
-    return products
-
-
 def main():
     argument_spec = {
         "filters": {
@@ -213,20 +178,47 @@ def main():
         region="us-east-1",
     )
 
+    request = {}
+    if module.params["format_version"] is not None:
+        request["FormatVersion"] = module.params["format_version"]
+    if module.params["max_results"] is not None:
+        request["MaxResults"] = module.params["max_results"]
+    if module.params["service_code"] is not None:
+        request["ServiceCode"] = module.params["service_code"]
+    filters = []
+
+    for pricing_filter in module.params["filters"] or []:
+        filters.append(
+            {
+                "Field": pricing_filter["field"],
+                "Type": pricing_filter.get("type") or "TERM_MATCH",
+                "Value": pricing_filter["value"],
+            }
+        )
+    if filters:
+        request["Filters"] = filters
+
     try:
         response = paginated_query_with_retries(
             client,
             "get_products",
-            **build_request(module),
+            **request,
         )
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to get AWS Price List products")
+
+    products = []
+    for product in response.get("PriceList", []):
+        try:
+            products.append(json.loads(product))
+        except ValueError as e:
+            module.fail_json(msg=f"Unable to parse AWS Price List product: {e}")
 
     module.exit_json(
         changed=False,
         format_version=response.get("FormatVersion", module.params["format_version"]),
         products=boto3_resource_list_to_ansible_dict(
-            parse_products(module, response.get("PriceList", [])),
+            products,
             transform_tags=False,
             force_tags=False,
         ),

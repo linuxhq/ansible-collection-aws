@@ -11,11 +11,10 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  arns:
+  arn:
     description:
-      - AWS Notifications contact ARNs used to limit the result set.
-    elements: str
-    type: list
+      - AWS Notifications contact ARN used to limit the result set.
+    type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -28,8 +27,7 @@ EXAMPLES = r"""
 
 - name: Gather information about a single AWS Notifications contact
   linuxhq.aws.notifications_contacts_info:
-    arns:
-      - arn:aws:notifications-contacts::123456789012:emailcontact/example
+    arn: arn:aws:notifications-contacts::123456789012:emailcontact/example
 """
 
 RETURN = r"""
@@ -42,6 +40,7 @@ email_contacts:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
@@ -52,51 +51,46 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def contact_with_tags(client, module, contact):
-    if not contact.get("arn"):
-        return contact
-    contact = dict(contact)
-    try:
-        contact["tags"] = client.list_tags_for_resource(
-            arn=contact["arn"],
-            aws_retry=True,
-        ).get("tags", {})
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list tags for AWS Notifications contact {contact['arn']}",
-        )
-    return contact
-
-
-def get_email_contact(client, module, arn):
-    try:
-        return client.get_email_contact(arn=arn, aws_retry=True).get("emailContact")
-    except is_boto3_error_code("ResourceNotFoundException"):
-        return None
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS Notifications contact {arn}",
-        )
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={
-            "arns": {"elements": "str", "type": "list"},
+            "arn": {"type": "str"},
         },
         supports_check_mode=True,
     )
     client = module.client(
         "notificationscontacts", retry_decorator=AWSRetry.jittered_backoff()
     )
-    if module.params["arns"]:
-        email_contacts = []
-        for arn in module.params["arns"]:
-            contact = get_email_contact(client, module, arn)
-            if contact is not None:
-                email_contacts.append(contact)
+
+    for method_name in (
+        "get_email_contact",
+        "list_email_contacts",
+        "list_tags_for_resource",
+    ):
+        try:
+            get_boto3_client_method_parameters(client, method_name)
+        except Exception:
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support AWS Notifications Contacts "
+                    f"{method_name}"
+                )
+            )
+
+    if module.params["arn"]:
+        try:
+            contact = client.get_email_contact(
+                arn=module.params["arn"], aws_retry=True
+            ).get("emailContact")
+        except is_boto3_error_code("ResourceNotFoundException"):
+            contact = None
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to get AWS Notifications contact {module.params['arn']}",
+            )
+
+        email_contacts = [contact] if contact is not None else []
     else:
         try:
             email_contacts = paginated_query_with_retries(
@@ -105,10 +99,31 @@ def main():
         except Exception as e:
             module.fail_json_aws(e, msg="Unable to list AWS Notifications contacts")
 
+    email_contacts_with_tags = []
+    for contact in email_contacts:
+        if not contact.get("arn"):
+            email_contacts_with_tags.append(contact)
+            continue
+
+        contact = dict(contact)
+
+        try:
+            contact["tags"] = client.list_tags_for_resource(
+                arn=contact["arn"],
+                aws_retry=True,
+            ).get("tags", {})
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to list tags for AWS Notifications contact {contact['arn']}",
+            )
+
+        email_contacts_with_tags.append(contact)
+
     module.exit_json(
         changed=False,
         email_contacts=boto3_resource_list_to_ansible_dict(
-            [contact_with_tags(client, module, contact) for contact in email_contacts],
+            email_contacts_with_tags,
             transform_tags=False,
             force_tags=False,
         ),

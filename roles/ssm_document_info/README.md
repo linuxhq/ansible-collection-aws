@@ -7,7 +7,7 @@ Gather information about aws systems manager documents
     ssm_document_info_document_format: JSON
     ssm_document_info_document_version: null
     ssm_document_info_filters: {}
-    ssm_document_info_names: []
+    ssm_document_info_name: null
     ssm_document_info_version_name: null
 
 ## Return Values
@@ -25,5 +25,5 @@ None
       connection: local
       roles:
         - role: linuxhq.aws.ssm_document_info
-          ssm_document_info_names:
+          ssm_document_info_name:
             - molecule-command-shell

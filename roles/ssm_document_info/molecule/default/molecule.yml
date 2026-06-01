@@ -62,8 +62,7 @@ provisioner:
                 shellProfile:
                   linux: cd
                   windows: ''
-        ssm_document_info_names:
-          - molecule-command-shell
+        ssm_document_info_name: molecule-command-shell
 
 scenario:
   test_sequence:

@@ -3,7 +3,7 @@
   tags:
     - ecs_ecr_info
   linuxhq.aws.ecs_ecr_info:
-    names: "{{ ecs_ecr_info_names or omit }}"
+    repository_names: "{{ ecs_ecr_info_repository_names or omit }}"
     registry_id: "{{ ecs_ecr_info_registry_id or omit }}"
     validate_certs: true
   register: __ecs_ecr_info_query

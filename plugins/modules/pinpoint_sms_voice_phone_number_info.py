@@ -79,6 +79,7 @@ phone_numbers:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
@@ -88,48 +89,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
 )
-
-
-def build_request(module):
-    phone_number_ids = module.params["phone_number_ids"] or None
-    request = {}
-    if module.params["max_results"] is not None:
-        request["MaxResults"] = module.params["max_results"]
-    if phone_number_ids:
-        request["PhoneNumberIds"] = phone_number_ids
-    elif module.params["owner"] is not None:
-        request["Owner"] = module.params["owner"]
-    if module.params["filters"]:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
-    return request
-
-
-def phone_number_tags(client, module, phone_number):
-    arn = phone_number.get("PhoneNumberArn")
-    if not arn:
-        return []
-    try:
-        return client.list_tags_for_resource(
-            ResourceArn=arn,
-            aws_retry=True,
-        ).get("Tags", [])
-    except is_boto3_error_code("ResourceNotFoundException"):
-        return []
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg=f"Unable to list tags for Pinpoint SMS Voice V2 phone number {arn}"
-        )
-
-
-def normalize_phone_number(client, module, phone_number):
-    return boto3_resource_to_ansible_dict(
-        dict(
-            phone_number,
-            Tags=phone_number_tags(client, module, phone_number),
-        ),
-        transform_tags=True,
-        force_tags=False,
-    )
 
 
 def main():
@@ -148,29 +107,89 @@ def main():
         "pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff()
     )
 
+    request = {}
+    if module.params["max_results"] is not None:
+        request["MaxResults"] = module.params["max_results"]
+    if module.params["phone_number_ids"]:
+        request["PhoneNumberIds"] = module.params["phone_number_ids"]
+    elif module.params["owner"] is not None:
+        request["Owner"] = module.params["owner"]
+    if module.params["filters"]:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+
+    try:
+        supported_parameters = set(
+            get_boto3_client_method_parameters(client, "describe_phone_numbers")
+        )
+    except Exception:
+        module.fail_json(
+            msg=(
+                "Installed botocore does not support Pinpoint SMS Voice V2 "
+                "DescribePhoneNumbers"
+            )
+        )
+
+    unsupported_parameters = sorted(set(request) - supported_parameters)
+
+    if unsupported_parameters:
+        module.fail_json(
+            msg=(
+                "Installed botocore does not support Pinpoint SMS Voice V2 "
+                "DescribePhoneNumbers parameter(s): "
+                f"{', '.join(unsupported_parameters)}"
+            )
+        )
+
     try:
         phone_numbers = paginated_query_with_retries(
             client,
             "describe_phone_numbers",
-            **build_request(module),
+            **request,
         ).get("PhoneNumbers", [])
     except Exception as e:
         module.fail_json_aws(
             e, msg="Unable to describe Pinpoint SMS Voice V2 phone numbers"
         )
 
-    phone_numbers = [
-        normalize_phone_number(client, module, phone_number)
-        for phone_number in phone_numbers
-    ]
+    normalized_phone_numbers = []
+    for phone_number in phone_numbers:
+        arn = phone_number.get("PhoneNumberArn")
+        tags = []
+
+        if arn:
+            try:
+                tags = client.list_tags_for_resource(
+                    ResourceArn=arn,
+                    aws_retry=True,
+                ).get("Tags", [])
+            except is_boto3_error_code("ResourceNotFoundException"):
+                tags = []
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        "Unable to list tags for Pinpoint SMS Voice V2 phone number "
+                        f"{arn}"
+                    ),
+                )
+
+        normalized_phone_numbers.append(
+            boto3_resource_to_ansible_dict(
+                dict(phone_number, Tags=tags),
+                transform_tags=True,
+                force_tags=False,
+            )
+        )
+
+    phone_number_ids = []
+    for phone_number in normalized_phone_numbers:
+        if phone_number.get("phone_number_id"):
+            phone_number_ids.append(phone_number["phone_number_id"])
+
     module.exit_json(
         changed=False,
-        phone_number_ids=[
-            phone_number["phone_number_id"]
-            for phone_number in phone_numbers
-            if phone_number.get("phone_number_id")
-        ],
-        phone_numbers=phone_numbers,
+        phone_number_ids=phone_number_ids,
+        phone_numbers=normalized_phone_numbers,
     )
 
 

@@ -11,11 +11,10 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  ids:
+  id:
     description:
-      - Route53 reusable delegation set IDs used to limit the result set.
-    elements: str
-    type: list
+      - Route53 reusable delegation set ID used to limit the result set.
+    type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -28,8 +27,7 @@ EXAMPLES = r"""
 
 - name: Gather a specific Route53 reusable delegation set
   linuxhq.aws.route53_delegation_set_info:
-    ids:
-      - N1PA6795SAMPLE
+    id: N1PA6795SAMPLE
 """
 
 RETURN = r"""
@@ -51,66 +49,64 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def route53_id(value):
-    return value.rsplit("/", 1)[-1]
-
-
-def list_reusable_delegation_sets(client, module):
-    marker = None
-    delegation_sets = []
-    while True:
-        request = {}
-        if marker:
-            request["Marker"] = marker
-        try:
-            response = client.list_reusable_delegation_sets(**request, aws_retry=True)
-        except Exception as e:
-            module.fail_json_aws(
-                e, msg="Unable to list AWS Route53 reusable delegation sets"
-            )
-        delegation_sets.extend(response.get("DelegationSets", []))
-        if not response.get("IsTruncated"):
-            return delegation_sets
-        marker = response.get("NextMarker")
-        if not marker:
-            module.fail_json(
-                msg=(
-                    "AWS Route53 reusable delegation sets response was "
-                    "truncated without a NextMarker"
-                )
-            )
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={
-            "ids": {"elements": "str", "type": "list"},
+            "id": {"type": "str"},
         },
         supports_check_mode=True,
     )
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
     delegation_sets = []
-    if module.params["ids"]:
-        for delegation_set_id in module.params["ids"]:
+    if module.params["id"]:
+        delegation_set_id = module.params["id"]
+
+        try:
+            delegation_set = client.get_reusable_delegation_set(
+                Id=delegation_set_id.rsplit("/", 1)[-1],
+                aws_retry=True,
+            ).get("DelegationSet", {})
+        except is_boto3_error_code("NoSuchDelegationSet"):
+            delegation_set = {}
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    "Unable to get AWS Route53 reusable delegation set "
+                    f"{delegation_set_id}"
+                ),
+            )
+
+        if delegation_set:
+            delegation_sets.append(delegation_set)
+    else:
+        marker = None
+        while True:
+            request = {}
+            if marker:
+                request["Marker"] = marker
+
             try:
-                delegation_sets.append(
-                    client.get_reusable_delegation_set(
-                        Id=route53_id(delegation_set_id),
-                        aws_retry=True,
-                    ).get("DelegationSet", {})
+                response = client.list_reusable_delegation_sets(
+                    **request, aws_retry=True
                 )
-            except is_boto3_error_code("NoSuchDelegationSet"):
-                continue
             except Exception as e:
                 module.fail_json_aws(
-                    e,
-                    msg=(
-                        "Unable to get AWS Route53 reusable delegation set "
-                        f"{delegation_set_id}"
-                    ),
+                    e, msg="Unable to list AWS Route53 reusable delegation sets"
                 )
-    else:
-        delegation_sets = list_reusable_delegation_sets(client, module)
+
+            delegation_sets.extend(response.get("DelegationSets", []))
+            if not response.get("IsTruncated"):
+                break
+
+            marker = response.get("NextMarker")
+            if not marker:
+                module.fail_json(
+                    msg=(
+                        "AWS Route53 reusable delegation sets response was "
+                        "truncated without a NextMarker"
+                    )
+                )
 
     module.exit_json(
         changed=False,

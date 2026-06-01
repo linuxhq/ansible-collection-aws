@@ -8,7 +8,7 @@ Gather information about aws glue connections
     glue_connection_info_catalog_id: null
     glue_connection_info_filters: {}
     glue_connection_info_hide_password: true
-    glue_connection_info_names: []
+    glue_connection_info_name: null
 
 ## Return Values
 

@@ -64,15 +64,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def build_request(module):
-    request = {}
-    if module.params["name"]:
-        request["DBSubnetGroupName"] = module.params["name"]
-    if module.params["filters"]:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
-    return request
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -82,17 +73,26 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("rds", retry_decorator=AWSRetry.jittered_backoff())
+
+    request = {}
+    if module.params["name"]:
+        request["DBSubnetGroupName"] = module.params["name"]
+    if module.params["filters"]:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+
     try:
         subnet_groups = paginated_query_with_retries(
             client,
             "describe_db_subnet_groups",
-            **build_request(module),
+            **request,
         ).get("DBSubnetGroups", [])
-        subnet_groups = [
-            subnet_group
-            for subnet_group in subnet_groups
-            if subnet_group.get("DBSubnetGroupName") is not None
-        ]
+
+        described_subnet_groups = subnet_groups
+        subnet_groups = []
+
+        for subnet_group in described_subnet_groups:
+            if subnet_group.get("DBSubnetGroupName") is not None:
+                subnet_groups.append(subnet_group)
     except is_boto3_error_code("DBSubnetGroupNotFoundFault"):
         subnet_groups = []
     except Exception as e:

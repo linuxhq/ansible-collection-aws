@@ -11,29 +11,26 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  group_names:
+  group_name:
     description:
-      - IAM group names used to limit group inline policy results.
+      - IAM group name used to limit group inline policy results.
       - When omitted, all groups matching O(path_prefix) are queried.
-    elements: str
-    type: list
+    type: str
   path_prefix:
     description:
       - IAM path prefix used when listing users and groups.
     type: str
-  policy_names:
+  policy_name:
     description:
-      - IAM inline policy names used to limit returned policy documents.
-      - Policy names are filtered after listing inline policies for each
+      - IAM inline policy name used to limit returned policy documents.
+      - The policy name is filtered after listing inline policies for each
         selected user or group.
-    elements: str
-    type: list
-  user_names:
+    type: str
+  user_name:
     description:
-      - IAM user names used to limit user inline policy results.
+      - IAM user name used to limit user inline policy results.
       - When omitted, all users matching O(path_prefix) are queried.
-    elements: str
-    type: list
+    type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -46,8 +43,7 @@ EXAMPLES = r"""
 
 - name: Gather information about inline policies for selected users
   linuxhq.aws.iam_policy_info:
-    user_names:
-      - molecule
+    user_name: molecule
 
 - name: Gather information about inline policies below an IAM path
   linuxhq.aws.iam_policy_info:
@@ -98,12 +94,17 @@ def build_entity_policies(client, module, entity_type, names):
                 e,
                 msg=f"Unable to list AWS IAM {entity_type.lower()} policies for {name}",
             )
-        policy_names = [
-            policy_name
-            for policy_name in all_policy_names
-            if not module.params["policy_names"]
-            or policy_name in module.params["policy_names"]
-        ]
+
+        policy_names = []
+        for policy_name in all_policy_names:
+            if (
+                module.params["policy_name"]
+                and policy_name != module.params["policy_name"]
+            ):
+                continue
+
+            policy_names.append(policy_name)
+
         policies = []
         for policy_name in policy_names:
             try:
@@ -119,6 +120,7 @@ def build_entity_policies(client, module, entity_type, names):
                         f"{policy_name} for {name}"
                     ),
                 )
+
             policies.append(
                 {
                     "policy_name": policy_name,
@@ -138,14 +140,16 @@ def build_entity_policies(client, module, entity_type, names):
 
 
 def entity_names(client, module, entity_type):
-    explicit_names = module.params[f"{entity_type.lower()}_names"]
-    if explicit_names:
-        return explicit_names
+    explicit_name = module.params[f"{entity_type.lower()}_name"]
+
+    if explicit_name:
+        return [explicit_name]
     response_key = f"{entity_type}s"
     name_key = f"{entity_type}Name"
     request = {}
     if module.params["path_prefix"] is not None:
         request["PathPrefix"] = module.params["path_prefix"]
+
     try:
         entities = paginated_query_with_retries(
             client,
@@ -154,15 +158,21 @@ def entity_names(client, module, entity_type):
         ).get(response_key, [])
     except Exception as e:
         module.fail_json_aws(e, msg=f"Unable to list AWS IAM {entity_type.lower()}s")
-    return [entity[name_key] for entity in entities if entity.get(name_key)]
+
+    names = []
+    for entity in entities:
+        if entity.get(name_key):
+            names.append(entity[name_key])
+
+    return names
 
 
 def main():
     argument_spec = {
-        "group_names": {"elements": "str", "type": "list"},
+        "group_name": {"type": "str"},
         "path_prefix": {"type": "str"},
-        "policy_names": {"elements": "str", "type": "list"},
-        "user_names": {"elements": "str", "type": "list"},
+        "policy_name": {"type": "str"},
+        "user_name": {"type": "str"},
     }
 
     module = AnsibleAWSModule(

@@ -10,7 +10,7 @@ None
 
     eks_cluster_info_filters: {}
     eks_cluster_info_include: []
-    eks_cluster_info_names: []
+    eks_cluster_info_name: null
 
 ## Return Values
 

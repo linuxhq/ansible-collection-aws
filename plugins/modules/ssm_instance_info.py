@@ -88,29 +88,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def normalized_filters(module):
-    filters = dict(module.params["filters"] or {})
-    if module.params["instance_ids"]:
-        filters["InstanceIds"] = module.params["instance_ids"]
-    if module.params["ping_status"]:
-        filters["PingStatus"] = module.params["ping_status"]
-    return filters
-
-
-def ssm_filter_list(filters):
-    return [
-        {"Key": item["Name"], "Values": item["Values"]}
-        for item in ansible_dict_to_boto3_filter_list(filters)
-    ]
-
-
-def build_request(module):
-    filters = normalized_filters(module)
-    if not filters:
-        return {}
-    return {"Filters": ssm_filter_list(filters)}
-
-
 def main():
     argument_spec = {
         "filters": {"type": "dict"},
@@ -127,11 +104,23 @@ def main():
     )
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
 
+    request = {}
+    filters = dict(module.params["filters"] or {})
+
+    if module.params["instance_ids"]:
+        filters["InstanceIds"] = module.params["instance_ids"]
+    if module.params["ping_status"]:
+        filters["PingStatus"] = module.params["ping_status"]
+    if filters:
+        request["Filters"] = []
+        for item in ansible_dict_to_boto3_filter_list(filters):
+            request["Filters"].append({"Key": item["Name"], "Values": item["Values"]})
+
     try:
         instances = paginated_query_with_retries(
             client,
             "describe_instance_information",
-            **build_request(module),
+            **request,
         ).get("InstanceInformationList", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to describe AWS Systems Manager instances")
@@ -139,13 +128,15 @@ def main():
     instances = boto3_resource_list_to_ansible_dict(
         instances, transform_tags=False, force_tags=False
     )
+
+    instance_ids = []
+    for instance in instances:
+        if instance.get("instance_id"):
+            instance_ids.append(instance["instance_id"])
+
     module.exit_json(
         changed=False,
-        instance_ids=[
-            instance["instance_id"]
-            for instance in instances
-            if instance.get("instance_id")
-        ],
+        instance_ids=instance_ids,
         instances=instances,
     )
 

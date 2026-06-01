@@ -9,8 +9,7 @@
       ansible.builtin.include_role:
         name: ssm_document_info
       vars:
-        ssm_document_info_names:
-          - molecule-command-shell
+        ssm_document_info_name: molecule-command-shell
 
     - name: Ensure aws systems manager command shell document info is verified
       ansible.builtin.assert:
@@ -22,8 +21,7 @@
       ansible.builtin.include_role:
         name: ssm_document_info
       vars:
-        ssm_document_info_names:
-          - molecule-command-env
+        ssm_document_info_name: molecule-command-env
 
     - name: Ensure aws systems manager command env document info is verified
       ansible.builtin.assert:
@@ -35,8 +33,7 @@
       ansible.builtin.include_role:
         name: ssm_document_info
       vars:
-        ssm_document_info_names:
-          - molecule-session-shell
+        ssm_document_info_name: molecule-session-shell
 
     - name: Ensure aws systems manager session shell document info is verified
       ansible.builtin.assert:

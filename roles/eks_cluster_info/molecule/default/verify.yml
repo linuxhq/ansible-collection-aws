@@ -11,11 +11,11 @@
     - ec2_vpc_subnet_info
 
   post_tasks:
-    - name: Ensure role is included without filters or names
+    - name: Ensure role is included without filters or name
       ansible.builtin.include_role:
         name: eks_cluster_info
 
-    - name: Ensure info without filters or names is verified
+    - name: Ensure info without filters or name is verified
       ansible.builtin.assert:
         that:
           - _eks_cluster_info_dict['molecule-eks1'].arn is defined
@@ -33,8 +33,7 @@
       ansible.builtin.include_role:
         name: eks_cluster_info
       vars:
-        eks_cluster_info_names:
-          - "{{ eks_cluster_list.0.name }}"
+        eks_cluster_info_name: "{{ eks_cluster_list.0.name }}"
 
     - name: Ensure info with one name is verified
       ansible.builtin.assert:
@@ -64,20 +63,18 @@
           - _eks_cluster_info_dict[eks_cluster_list.1.name].resources_vpc_config.endpoint_private_access
           - _eks_cluster_info_dict[eks_cluster_list.1.name].version == '1.35'
 
-    - name: Ensure role is included with names
+    - name: Ensure role is included with another name
       ansible.builtin.include_role:
         name: eks_cluster_info
       vars:
-        eks_cluster_info_names:
-          - "{{ eks_cluster_list.0.name }}"
-          - "{{ eks_cluster_list.1.name }}"
+        eks_cluster_info_name: "{{ eks_cluster_list.1.name }}"
 
-    - name: Ensure info with names is verified
+    - name: Ensure info with another name is verified
       ansible.builtin.assert:
         that:
-          - _eks_cluster_info_list | length == 2
-          - _eks_cluster_info_dict[eks_cluster_list.0.name].resources_vpc_config.endpoint_public_access
-          - _eks_cluster_info_dict[eks_cluster_list.0.name].version == '1.34'
+          - _eks_cluster_info_list | length == 1
+          - _eks_cluster_info_list.0.name == eks_cluster_list.1.name
+          - _eks_cluster_info_dict.keys() | list == [eks_cluster_list.1.name]
           - _eks_cluster_info_dict[eks_cluster_list.1.name].resources_vpc_config.endpoint_private_access
           - _eks_cluster_info_dict[eks_cluster_list.1.name].version == '1.35'
 

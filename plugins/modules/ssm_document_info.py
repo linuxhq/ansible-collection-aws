@@ -34,11 +34,10 @@ options:
       - A dict of filters to apply when listing Systems Manager documents.
       - Filter keys and values are passed to the Systems Manager C(ListDocuments) API.
     type: dict
-  names:
+  name:
     description:
-      - Systems Manager document names used to limit the result set.
-    elements: str
-    type: list
+      - Systems Manager document name used to limit the result set.
+    type: str
   version_name:
     description:
       - The document version name to request from the Systems Manager
@@ -53,8 +52,7 @@ extends_documentation_fragment:
 EXAMPLES = r"""
 - name: Gather information about a Systems Manager document
   linuxhq.aws.ssm_document_info:
-    names:
-      - molecule-command-shell
+    name: molecule-command-shell
 
 - name: Gather information about Systems Manager documents using filters
   linuxhq.aws.ssm_document_info:
@@ -63,8 +61,7 @@ EXAMPLES = r"""
 
 - name: Gather information about a named Systems Manager document version
   linuxhq.aws.ssm_document_info:
-    names:
-      - molecule-command-shell
+    name: molecule-command-shell
     version_name: production
 """
 
@@ -97,76 +94,20 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 SSM_DOCUMENT_RESOURCE_TYPE = "Document"
 
 
-def ssm_filter_list(filters):
-    return [
-        {
-            "Key": key,
-            "Values": value if isinstance(value, list) else [value],
-        }
-        for key, value in (filters or {}).items()
-    ]
-
-
-def get_document(client, module, name):
-    version_name = module.params["version_name"]
-    try:
-        document = client.get_document(
-            **{
-                key: value
-                for key, value in {
-                    "DocumentFormat": module.params["document_format"],
-                    "DocumentVersion": module.params["document_version"]
-                    or (None if version_name else "$LATEST"),
-                    "Name": name,
-                    "VersionName": version_name,
-                }.items()
-                if value is not None
-            },
-            aws_retry=True,
-        )
-    except is_boto3_error_code(("InvalidDocument", "InvalidDocumentOperation")):
-        return {}
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS Systems Manager document {name}",
-        )
-    if document:
-        try:
-            document["Tags"] = client.list_tags_for_resource(
-                ResourceType=SSM_DOCUMENT_RESOURCE_TYPE,
-                ResourceId=name,
-                aws_retry=True,
-            ).get("TagList", [])
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to list tags for AWS Systems Manager document {name}",
-            )
-    return document
-
-
 def content_transform(content):
     if content is None:
         return {}
+
     try:
         content = json.loads(content)
     except ValueError:
         return content
+
     if isinstance(content, dict):
         return boto3_resource_to_ansible_dict(
             content, transform_tags=False, force_tags=False
         )
     return content
-
-
-def normalized_document(document):
-    return boto3_resource_to_ansible_dict(
-        document,
-        nested_transforms={"Content": content_transform},
-        transform_tags=True,
-        force_tags=False,
-    )
 
 
 def main():
@@ -179,19 +120,27 @@ def main():
             },
             "document_version": {"type": "str"},
             "filters": {"type": "dict"},
-            "names": {"elements": "str", "type": "list"},
+            "name": {"type": "str"},
             "version_name": {"type": "str"},
         },
         mutually_exclusive=[["document_version", "version_name"]],
         supports_check_mode=True,
     )
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
-    if module.params["names"]:
-        document_names = module.params["names"]
+    if module.params["name"]:
+        document_names = [module.params["name"]]
     else:
         request = {}
         if module.params["filters"]:
-            request["Filters"] = ssm_filter_list(module.params["filters"])
+            request["Filters"] = []
+            for key, value in module.params["filters"].items():
+                request["Filters"].append(
+                    {
+                        "Key": key,
+                        "Values": value if isinstance(value, list) else [value],
+                    }
+                )
+
         try:
             document_identifiers = paginated_query_with_retries(
                 client,
@@ -200,17 +149,59 @@ def main():
             ).get("DocumentIdentifiers", [])
         except Exception as e:
             module.fail_json_aws(e, msg="Unable to list AWS Systems Manager documents")
-        document_names = [
-            document["Name"]
-            for document in document_identifiers
-            if document.get("Name")
-        ]
+
+        document_names = []
+        for document in document_identifiers:
+            if document.get("Name"):
+                document_names.append(document["Name"])
 
     documents = []
     for name in document_names:
-        document = get_document(client, module, name)
-        if document:
-            documents.append(normalized_document(document))
+        version_name = module.params["version_name"]
+        request = {
+            "DocumentFormat": module.params["document_format"],
+            "DocumentVersion": module.params["document_version"]
+            or (None if version_name else "$LATEST"),
+            "Name": name,
+            "VersionName": version_name,
+        }
+        for key in list(request):
+            if request[key] is None:
+                del request[key]
+
+        try:
+            document = client.get_document(
+                **request,
+                aws_retry=True,
+            )
+        except is_boto3_error_code(("InvalidDocument", "InvalidDocumentOperation")):
+            continue
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to get AWS Systems Manager document {name}",
+            )
+
+        try:
+            document["Tags"] = client.list_tags_for_resource(
+                ResourceType=SSM_DOCUMENT_RESOURCE_TYPE,
+                ResourceId=name,
+                aws_retry=True,
+            ).get("TagList", [])
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to list tags for AWS Systems Manager document {name}",
+            )
+
+        documents.append(
+            boto3_resource_to_ansible_dict(
+                document,
+                nested_transforms={"Content": content_transform},
+                transform_tags=True,
+                force_tags=False,
+            )
+        )
 
     module.exit_json(
         changed=False,

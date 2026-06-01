@@ -31,6 +31,7 @@ notification_hubs:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -50,6 +51,13 @@ def main():
         region="us-east-1",
         retry_decorator=AWSRetry.jittered_backoff(),
     )
+
+    try:
+        get_boto3_client_method_parameters(client, "list_notification_hubs")
+    except Exception:
+        module.fail_json(
+            msg="Installed botocore does not support AWS Notifications ListNotificationHubs"
+        )
 
     try:
         notification_hubs = paginated_query_with_retries(

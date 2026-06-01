@@ -54,33 +54,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 SSM_ASSOCIATION_RESOURCE_TYPE = "Association"
 
 
-def association_filter_list(filters):
-    result = []
-    for key, value in (filters or {}).items():
-        values = value if isinstance(value, list) else [value]
-        result.extend({"key": key, "value": str(item)} for item in values)
-    return result
-
-
-def association_with_tags(client, module, association):
-    association_id = association.get("AssociationId")
-    if not association_id:
-        return association
-    association = dict(association)
-    try:
-        association["Tags"] = client.list_tags_for_resource(
-            ResourceType=SSM_ASSOCIATION_RESOURCE_TYPE,
-            ResourceId=association_id,
-            aws_retry=True,
-        ).get("TagList", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list tags for AWS Systems Manager association {association_id}",
-        )
-    return association
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={"filters": {"type": "dict"}},
@@ -89,32 +62,60 @@ def main():
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
     request = {}
     if module.params["filters"]:
-        request["AssociationFilterList"] = association_filter_list(
-            module.params["filters"]
-        )
+        request["AssociationFilterList"] = []
+        for key, value in module.params["filters"].items():
+            values = value if isinstance(value, list) else [value]
+            for item in values:
+                request["AssociationFilterList"].append(
+                    {"key": key, "value": str(item)}
+                )
 
     try:
-        associations = [
-            association
-            for association in paginated_query_with_retries(
-                client, "list_associations", **request
-            ).get("Associations", [])
-            if association.get("Name") is not None
-        ]
+        listed_associations = paginated_query_with_retries(
+            client, "list_associations", **request
+        ).get("Associations", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Systems Manager associations")
 
-    module.exit_json(
-        changed=False,
-        associations=[
+    associations = []
+    for association in listed_associations:
+        if association.get("Name") is not None:
+            associations.append(association)
+
+    normalized_associations = []
+    for association in associations:
+        association_id = association.get("AssociationId")
+
+        if association_id:
+            association = dict(association)
+
+            try:
+                association["Tags"] = client.list_tags_for_resource(
+                    ResourceType=SSM_ASSOCIATION_RESOURCE_TYPE,
+                    ResourceId=association_id,
+                    aws_retry=True,
+                ).get("TagList", [])
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        "Unable to list tags for AWS Systems Manager association "
+                        f"{association_id}"
+                    ),
+                )
+
+        normalized_associations.append(
             boto3_resource_to_ansible_dict(
-                association_with_tags(client, module, association),
+                association,
                 ignore_list=["TargetMaps"],
                 transform_tags=True,
                 force_tags=False,
             )
-            for association in associations
-        ],
+        )
+
+    module.exit_json(
+        changed=False,
+        associations=normalized_associations,
     )
 
 

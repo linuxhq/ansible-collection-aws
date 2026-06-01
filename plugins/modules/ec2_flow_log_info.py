@@ -74,23 +74,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def normalized_filters(module):
-    filters = dict(module.params["filters"] or {})
-    if module.params["resource_ids"]:
-        filters["resource-id"] = module.params["resource_ids"]
-    return filters
-
-
-def build_request(module):
-    request = {}
-    if module.params["flow_log_ids"]:
-        request["FlowLogIds"] = module.params["flow_log_ids"]
-    filters = normalized_filters(module)
-    if filters:
-        request["Filter"] = ansible_dict_to_boto3_filter_list(filters)
-    return request
-
-
 def main():
     argument_spec = {
         "filters": {"type": "dict"},
@@ -104,11 +87,21 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
+    request = {}
+    if module.params["flow_log_ids"]:
+        request["FlowLogIds"] = module.params["flow_log_ids"]
+    filters = dict(module.params["filters"] or {})
+
+    if module.params["resource_ids"]:
+        filters["resource-id"] = module.params["resource_ids"]
+    if filters:
+        request["Filter"] = ansible_dict_to_boto3_filter_list(filters)
+
     try:
         flow_logs = paginated_query_with_retries(
             client,
             "describe_flow_logs",
-            **build_request(module),
+            **request,
         ).get("FlowLogs", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to describe EC2 flow logs")

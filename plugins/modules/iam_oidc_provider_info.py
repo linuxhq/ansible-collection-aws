@@ -73,6 +73,7 @@ def list_provider_arns(client, module):
         ).get("OpenIDConnectProviderList", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS IAM OIDC providers")
+
     arns = []
     for provider in providers:
         arn = provider.get("Arn")
@@ -96,21 +97,6 @@ def get_provider_by_arn(client, module, arn):
     return provider
 
 
-def get_requested_provider_by_arn(client, module):
-    arn = module.params["arn"]
-    return get_provider_by_arn(client, module, arn)
-
-
-def get_provider_by_url(client, module):
-    url = module.params["url"]
-    desired_url = normalize_provider_url(url)
-    for arn in list_provider_arns(client, module):
-        provider = get_provider_by_arn(client, module, arn)
-        if provider and normalize_provider_url(provider.get("Url")) == desired_url:
-            return provider
-    return None
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -123,11 +109,32 @@ def main():
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
 
     if module.params["arn"]:
-        provider = get_requested_provider_by_arn(client, module)
+        try:
+            provider = client.get_open_id_connect_provider(
+                OpenIDConnectProviderArn=module.params["arn"],
+                aws_retry=True,
+            )
+        except is_boto3_error_code("NoSuchEntity"):
+            provider = None
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to get AWS IAM OIDC provider {module.params['arn']}",
+            )
+
+        if provider:
+            provider["OpenIDConnectProviderArn"] = module.params["arn"]
+
         providers = [provider] if provider else []
     elif module.params["url"]:
-        provider = get_provider_by_url(client, module)
-        providers = [provider] if provider else []
+        providers = []
+        desired_url = normalize_provider_url(module.params["url"])
+
+        for arn in list_provider_arns(client, module):
+            provider = get_provider_by_arn(client, module, arn)
+            if provider and normalize_provider_url(provider.get("Url")) == desired_url:
+                providers.append(provider)
+                break
     else:
         providers = []
         for arn in list_provider_arns(client, module):

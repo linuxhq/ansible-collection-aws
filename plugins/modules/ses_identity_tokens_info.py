@@ -60,6 +60,15 @@ def main():
     )
     client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
     identity = module.params["identity"]
+
+    if module.check_mode:
+        module.exit_json(
+            changed=False,
+            dkim_tokens=[],
+            identity=identity,
+            verification_token=None,
+        )
+
     try:
         dkim_tokens = client.verify_domain_dkim(Domain=identity, aws_retry=True).get(
             "DkimTokens", []

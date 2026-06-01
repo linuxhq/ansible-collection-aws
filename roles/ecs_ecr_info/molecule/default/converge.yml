@@ -11,6 +11,6 @@
       check_mode: false
 
     - role: ecs_ecr_info
-      ecs_ecr_info_names:
+      ecs_ecr_info_repository_names:
         - molecule-00
 ...

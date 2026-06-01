@@ -76,6 +76,7 @@ pools:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
@@ -85,71 +86,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
 )
-
-
-def build_request(module):
-    pool_ids = module.params["pool_ids"] or None
-    request = {}
-    if module.params["max_results"] is not None:
-        request["MaxResults"] = module.params["max_results"]
-    if pool_ids:
-        request["PoolIds"] = pool_ids
-    elif module.params["owner"] is not None:
-        request["Owner"] = module.params["owner"]
-    if module.params["filters"]:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
-    return request
-
-
-def pool_tags(client, module, pool):
-    arn = pool.get("PoolArn")
-    if not arn:
-        return []
-    try:
-        return client.list_tags_for_resource(
-            ResourceArn=arn,
-            aws_retry=True,
-        ).get("Tags", [])
-    except is_boto3_error_code("ResourceNotFoundException"):
-        return []
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg=f"Unable to list tags for Pinpoint SMS Voice V2 pool {arn}"
-        )
-
-
-def pool_origination_identities(client, module, pool):
-    pool_id = pool.get("PoolId")
-    if not pool_id:
-        return []
-    try:
-        return paginated_query_with_retries(
-            client,
-            "list_pool_origination_identities",
-            PoolId=pool_id,
-        ).get("OriginationIdentities", [])
-    except is_boto3_error_code("ResourceNotFoundException"):
-        return []
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to list origination identities for Pinpoint SMS Voice "
-                f"V2 pool {pool_id}"
-            ),
-        )
-
-
-def normalize_pool(client, module, pool):
-    return boto3_resource_to_ansible_dict(
-        dict(
-            pool,
-            OriginationIdentities=pool_origination_identities(client, module, pool),
-            Tags=pool_tags(client, module, pool),
-        ),
-        transform_tags=True,
-        force_tags=False,
-    )
 
 
 def main():
@@ -168,20 +104,105 @@ def main():
         "pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff()
     )
 
+    request = {}
+    if module.params["max_results"] is not None:
+        request["MaxResults"] = module.params["max_results"]
+    if module.params["pool_ids"]:
+        request["PoolIds"] = module.params["pool_ids"]
+    elif module.params["owner"] is not None:
+        request["Owner"] = module.params["owner"]
+    if module.params["filters"]:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+
+    try:
+        supported_parameters = set(
+            get_boto3_client_method_parameters(client, "describe_pools")
+        )
+    except Exception:
+        module.fail_json(
+            msg=(
+                "Installed botocore does not support Pinpoint SMS Voice V2 "
+                "DescribePools"
+            )
+        )
+
+    unsupported_parameters = sorted(set(request) - supported_parameters)
+
+    if unsupported_parameters:
+        module.fail_json(
+            msg=(
+                "Installed botocore does not support Pinpoint SMS Voice V2 "
+                "DescribePools parameter(s): "
+                f"{', '.join(unsupported_parameters)}"
+            )
+        )
+
     try:
         pools = paginated_query_with_retries(
             client,
             "describe_pools",
-            **build_request(module),
+            **request,
         ).get("Pools", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to describe Pinpoint SMS Voice V2 pools")
 
-    pools = [normalize_pool(client, module, pool) for pool in pools]
+    normalized_pools = []
+    for pool in pools:
+        pool_id = pool.get("PoolId")
+        origination_identities = []
+
+        if pool_id:
+            try:
+                origination_identities = paginated_query_with_retries(
+                    client,
+                    "list_pool_origination_identities",
+                    PoolId=pool_id,
+                ).get("OriginationIdentities", [])
+            except is_boto3_error_code("ResourceNotFoundException"):
+                origination_identities = []
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        "Unable to list origination identities for Pinpoint SMS Voice "
+                        f"V2 pool {pool_id}"
+                    ),
+                )
+
+        arn = pool.get("PoolArn")
+        tags = []
+
+        if arn:
+            try:
+                tags = client.list_tags_for_resource(
+                    ResourceArn=arn,
+                    aws_retry=True,
+                ).get("Tags", [])
+            except is_boto3_error_code("ResourceNotFoundException"):
+                tags = []
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=f"Unable to list tags for Pinpoint SMS Voice V2 pool {arn}",
+                )
+
+        normalized_pools.append(
+            boto3_resource_to_ansible_dict(
+                dict(pool, OriginationIdentities=origination_identities, Tags=tags),
+                transform_tags=True,
+                force_tags=False,
+            )
+        )
+
+    pool_ids = []
+    for pool in normalized_pools:
+        if pool.get("pool_id"):
+            pool_ids.append(pool["pool_id"])
+
     module.exit_json(
         changed=False,
-        pool_ids=[pool["pool_id"] for pool in pools if pool.get("pool_id")],
-        pools=pools,
+        pool_ids=pool_ids,
+        pools=normalized_pools,
     )
 
 
