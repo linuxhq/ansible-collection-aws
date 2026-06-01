@@ -66,73 +66,12 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def route_destination(route):
-    return route.get("DestinationCidrBlock") or route.get("PrefixListId") or ""
-
-
 def route_sort_key(route):
     return (
-        route_destination(route),
+        route.get("DestinationCidrBlock") or route.get("PrefixListId") or "",
         route.get("Type") or "",
         route.get("State") or "",
     )
-
-
-def build_request(module):
-    request = {}
-    if module.params["transit_gateway_route_table_ids"]:
-        request["TransitGatewayRouteTableIds"] = module.params[
-            "transit_gateway_route_table_ids"
-        ]
-    if module.params["filters"]:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
-    return request
-
-
-def search_routes(client, module, transit_gateway_route_table_id):
-    try:
-        response = client.search_transit_gateway_routes(
-            TransitGatewayRouteTableId=transit_gateway_route_table_id,
-            Filters=ansible_dict_to_boto3_filter_list(
-                {"type": ["static", "propagated"]}
-            ),
-            MaxResults=1000,
-            aws_retry=True,
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to search EC2 transit gateway routes in route table "
-                f"{transit_gateway_route_table_id}"
-            ),
-        )
-
-    if response.get("AdditionalRoutesAvailable"):
-        module.fail_json(
-            msg=(
-                "Unable to gather all EC2 transit gateway routes because the "
-                "search returned more than 1000 matching routes"
-            ),
-            transit_gateway_route_table_id=transit_gateway_route_table_id,
-        )
-
-    return sorted(response.get("Routes", []), key=route_sort_key)
-
-
-def add_routes_to_route_tables(client, module, route_tables):
-    results = []
-    for route_table in route_tables:
-        route_table = dict(route_table)
-        route_table["Routes"] = []
-
-        if route_table.get("State") == "available":
-            route_table["Routes"] = search_routes(
-                client, module, route_table["TransitGatewayRouteTableId"]
-            )
-
-        results.append(route_table)
-    return results
 
 
 def main():
@@ -147,21 +86,70 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
+    request = {}
+    if module.params["transit_gateway_route_table_ids"]:
+        request["TransitGatewayRouteTableIds"] = module.params[
+            "transit_gateway_route_table_ids"
+        ]
+    if module.params["filters"]:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+
     try:
         route_tables = paginated_query_with_retries(
             client,
             "describe_transit_gateway_route_tables",
-            **build_request(module),
+            **request,
         ).get("TransitGatewayRouteTables", [])
     except Exception as e:
         module.fail_json_aws(
             e, msg="Unable to describe EC2 transit gateway route tables"
         )
 
+    route_tables_with_routes = []
+    for route_table in route_tables:
+        route_table = dict(route_table)
+        route_table["Routes"] = []
+
+        if route_table.get("State") == "available":
+            transit_gateway_route_table_id = route_table["TransitGatewayRouteTableId"]
+
+            try:
+                response = client.search_transit_gateway_routes(
+                    TransitGatewayRouteTableId=transit_gateway_route_table_id,
+                    Filters=ansible_dict_to_boto3_filter_list(
+                        {"type": ["static", "propagated"]}
+                    ),
+                    MaxResults=1000,
+                    aws_retry=True,
+                )
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        "Unable to search EC2 transit gateway routes in route table "
+                        f"{transit_gateway_route_table_id}"
+                    ),
+                )
+
+            if response.get("AdditionalRoutesAvailable"):
+                module.fail_json(
+                    msg=(
+                        "Unable to gather all EC2 transit gateway routes because the "
+                        "search returned more than 1000 matching routes"
+                    ),
+                    transit_gateway_route_table_id=transit_gateway_route_table_id,
+                )
+
+            route_table["Routes"] = sorted(
+                response.get("Routes", []), key=route_sort_key
+            )
+
+        route_tables_with_routes.append(route_table)
+
     module.exit_json(
         changed=False,
         transit_gateway_route_tables=boto3_resource_list_to_ansible_dict(
-            add_routes_to_route_tables(client, module, route_tables),
+            route_tables_with_routes,
             transform_tags=True,
             force_tags=False,
         ),

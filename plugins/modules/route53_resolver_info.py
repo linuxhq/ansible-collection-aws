@@ -52,48 +52,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def resource_tags(client, module, resource):
-    if not resource.get("Arn"):
-        return []
-    try:
-        return paginated_query_with_retries(
-            client,
-            "list_tags_for_resource",
-            ResourceArn=resource["Arn"],
-        ).get("Tags", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list tags for AWS Route53 Resolver endpoint {resource['Arn']}",
-        )
-
-
-def endpoint_ip_addresses(client, module, endpoint):
-    try:
-        return paginated_query_with_retries(
-            client,
-            "list_resolver_endpoint_ip_addresses",
-            ResolverEndpointId=endpoint["Id"],
-        ).get("IpAddresses", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list AWS Route53 Resolver endpoint IP addresses for {endpoint['Id']}",
-        )
-
-
-def normalize_endpoint(client, module, endpoint):
-    return boto3_resource_to_ansible_dict(
-        dict(
-            endpoint,
-            IpAddresses=endpoint_ip_addresses(client, module, endpoint),
-            Tags=resource_tags(client, module, endpoint),
-        ),
-        transform_tags=True,
-        force_tags=False,
-    )
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -107,6 +65,7 @@ def main():
     request = {}
     if module.params["filters"]:
         request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+
     try:
         resolver_endpoints = paginated_query_with_retries(
             client, "list_resolver_endpoints", **request
@@ -114,12 +73,51 @@ def main():
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver endpoints")
 
+    normalized_endpoints = []
+    for endpoint in resolver_endpoints:
+        try:
+            ip_addresses = paginated_query_with_retries(
+                client,
+                "list_resolver_endpoint_ip_addresses",
+                ResolverEndpointId=endpoint["Id"],
+            ).get("IpAddresses", [])
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    "Unable to list AWS Route53 Resolver endpoint IP addresses "
+                    f"for {endpoint['Id']}"
+                ),
+            )
+
+        tags = []
+        if endpoint.get("Arn"):
+            try:
+                tags = paginated_query_with_retries(
+                    client,
+                    "list_tags_for_resource",
+                    ResourceArn=endpoint["Arn"],
+                ).get("Tags", [])
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        "Unable to list tags for AWS Route53 Resolver endpoint "
+                        f"{endpoint['Arn']}"
+                    ),
+                )
+
+        normalized_endpoints.append(
+            boto3_resource_to_ansible_dict(
+                dict(endpoint, IpAddresses=ip_addresses, Tags=tags),
+                transform_tags=True,
+                force_tags=False,
+            )
+        )
+
     module.exit_json(
         changed=False,
-        resolver_endpoints=[
-            normalize_endpoint(client, module, endpoint)
-            for endpoint in resolver_endpoints
-        ],
+        resolver_endpoints=normalized_endpoints,
     )
 
 

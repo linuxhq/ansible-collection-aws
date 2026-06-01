@@ -27,12 +27,11 @@ options:
       - Values are passed to the EKS C(ListClusters) API.
     elements: str
     type: list
-  names:
+  name:
     description:
-      - EKS cluster names used to limit the result set.
+      - EKS cluster name used to limit the result set.
       - When omitted, all EKS clusters are returned.
-    elements: str
-    type: list
+    type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -45,9 +44,7 @@ EXAMPLES = r"""
 
 - name: Gather information about selected EKS clusters
   linuxhq.aws.eks_cluster_info:
-    names:
-      - molecule-eks1
-      - molecule-eks2
+    name: molecule-eks1
 
 - name: Gather information about active private endpoint EKS clusters
   linuxhq.aws.eks_cluster_info:
@@ -83,24 +80,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def filter_values(value):
-    if isinstance(value, (list, tuple, set)):
-        return list(value)
-    return [value]
-
-
-def nested_value(resource, key):
-    if key.startswith("tag:"):
-        return (resource.get("tags") or {}).get(key[4:])
-
-    value = resource
-    for part in key.replace("-", "_").split("."):
-        if not isinstance(value, dict):
-            return None
-        value = value.get(part)
-    return value
-
-
 def value_matches(current, desired):
     if isinstance(current, (list, tuple, set)):
         return any(value_matches(item, desired) for item in current)
@@ -109,68 +88,82 @@ def value_matches(current, desired):
     return current == desired
 
 
-def filter_matches(resource, filters):
-    return all(
-        any(value_matches(nested_value(resource, key), desired) for desired in values)
-        for key, values in (
-            (key, filter_values(value)) for key, value in (filters or {}).items()
-        )
-    )
-
-
-def describe_cluster(client, module, name):
-    try:
-        return client.describe_cluster(
-            name=name,
-            aws_retry=True,
-        ).get("cluster")
-    except is_boto3_error_code("ResourceNotFoundException"):
-        return None
-    except Exception as e:
-        module.fail_json_aws(e, msg=f"Unable to describe AWS EKS cluster {name}")
-
-
-def cluster_names(client, module):
-    if module.params["names"]:
-        return module.params["names"]
-    request = {}
-    if module.params["include"] is not None:
-        request["include"] = module.params["include"]
-    try:
-        return paginated_query_with_retries(
-            client,
-            "list_clusters",
-            **request,
-        ).get("clusters", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS EKS clusters")
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={
             "filters": {"type": "dict"},
             "include": {"elements": "str", "type": "list"},
-            "names": {"elements": "str", "type": "list"},
+            "name": {"type": "str"},
         },
         supports_check_mode=True,
     )
     client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())
 
+    if module.params["name"]:
+        cluster_names = [module.params["name"]]
+    else:
+        request = {}
+        if module.params["include"] is not None:
+            request["include"] = module.params["include"]
+
+        try:
+            cluster_names = paginated_query_with_retries(
+                client,
+                "list_clusters",
+                **request,
+            ).get("clusters", [])
+        except Exception as e:
+            module.fail_json_aws(e, msg="Unable to list AWS EKS clusters")
+
     clusters = []
-    for name in cluster_names(client, module):
-        cluster = describe_cluster(client, module, name)
-        if cluster is not None:
-            clusters.append(cluster)
+    for name in cluster_names:
+        try:
+            cluster = client.describe_cluster(
+                name=name,
+                aws_retry=True,
+            ).get("cluster")
+        except is_boto3_error_code("ResourceNotFoundException"):
+            continue
+        except Exception as e:
+            module.fail_json_aws(e, msg=f"Unable to describe AWS EKS cluster {name}")
+
+        clusters.append(cluster)
+
     clusters = boto3_resource_list_to_ansible_dict(
         clusters, transform_tags=False, force_tags=False
     )
+
     if module.params["filters"]:
-        clusters = [
-            cluster
-            for cluster in clusters
-            if filter_matches(cluster, module.params["filters"])
-        ]
+        filtered_clusters = []
+        for cluster in clusters:
+            matches = True
+            for key, expected in module.params["filters"].items():
+                if isinstance(expected, (list, tuple, set)):
+                    expected_values = list(expected)
+                else:
+                    expected_values = [expected]
+
+                if key.startswith("tag:"):
+                    current = (cluster.get("tags") or {}).get(key[4:])
+                else:
+                    current = cluster
+                    for part in key.replace("-", "_").split("."):
+                        if not isinstance(current, dict):
+                            current = None
+                            break
+
+                        current = current.get(part)
+
+                if not any(
+                    value_matches(current, expected) for expected in expected_values
+                ):
+                    matches = False
+                    break
+
+            if matches:
+                filtered_clusters.append(cluster)
+
+        clusters = filtered_clusters
 
     module.exit_json(
         changed=False,

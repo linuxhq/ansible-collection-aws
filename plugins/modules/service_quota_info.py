@@ -90,6 +90,7 @@ def main():
     }
     if module.params["context_id"] is not None:
         request["ContextId"] = module.params["context_id"]
+
     try:
         quota = client.get_service_quota(**request, aws_retry=True).get("Quota", {})
     except Exception as e:

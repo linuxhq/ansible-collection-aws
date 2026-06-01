@@ -6,7 +6,7 @@
     document_format: "{{ ssm_document_info_document_format }}"
     document_version: "{{ ssm_document_info_document_version or omit }}"
     filters: "{{ ssm_document_info_filters }}"
-    names: "{{ ssm_document_info_names or omit }}"
+    name: "{{ ssm_document_info_name or omit }}"
     validate_certs: true
     version_name: "{{ ssm_document_info_version_name or omit }}"
   register: __ssm_document_info_query

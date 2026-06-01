@@ -15,7 +15,7 @@ options:
   apply_override_for_compute_environment:
     description:
       - Whether to apply an override for the compute environment when getting
-        selected Glue connections by O(names).
+        a selected Glue connection by O(name).
     type: bool
   catalog_id:
     description:
@@ -31,12 +31,11 @@ options:
     description:
       - Whether to hide passwords in the returned connection properties.
     type: bool
-  names:
+  name:
     description:
-      - Glue connection names used to limit the result set.
+      - Glue connection name used to limit the result set.
       - When set, the module uses the Glue C(GetConnection) API.
-    elements: str
-    type: list
+    type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -49,8 +48,7 @@ EXAMPLES = r"""
 
 - name: Gather information about selected Glue connections
   linuxhq.aws.glue_connection_info:
-    names:
-      - molecule
+    name: molecule
 
 - name: Gather information about Glue connections using filters
   linuxhq.aws.glue_connection_info:
@@ -79,62 +77,58 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def get_connection(client, module, name):
-    params = {
-        "HidePassword": module.params["hide_password"],
-        "Name": name,
-    }
-    if module.params["apply_override_for_compute_environment"] is not None:
-        params["ApplyOverrideForComputeEnvironment"] = module.params[
-            "apply_override_for_compute_environment"
-        ]
-    if module.params["catalog_id"] is not None:
-        params["CatalogId"] = module.params["catalog_id"]
-    try:
-        return client.get_connection(**params, aws_retry=True).get("Connection")
-    except is_boto3_error_code("EntityNotFoundException"):
-        return None
-    except Exception as e:
-        module.fail_json_aws(e, msg=f"Unable to get AWS Glue connection {name}")
-
-
-def list_connections(client, module):
-    request = {"HidePassword": module.params["hide_password"]}
-    if module.params["catalog_id"] is not None:
-        request["CatalogId"] = module.params["catalog_id"]
-    if module.params["filters"]:
-        request["Filter"] = snake_dict_to_camel_dict(
-            module.params["filters"], capitalize_first=True
-        )
-    try:
-        return paginated_query_with_retries(
-            client,
-            "get_connections",
-            **request,
-        ).get("ConnectionList", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Glue connections")
-
-
 def main():
     argument_spec = {
         "apply_override_for_compute_environment": {"type": "bool"},
         "catalog_id": {"type": "str"},
         "filters": {"type": "dict"},
         "hide_password": {"default": True, "no_log": False, "type": "bool"},
-        "names": {"elements": "str", "type": "list"},
+        "name": {"type": "str"},
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("glue", retry_decorator=AWSRetry.jittered_backoff())
-    if module.params["names"]:
-        connections = []
-        for name in module.params["names"]:
-            connection = get_connection(client, module, name)
-            if connection:
-                connections.append(connection)
+    if module.params["name"]:
+        request = {
+            "HidePassword": module.params["hide_password"],
+            "Name": module.params["name"],
+        }
+        if module.params["apply_override_for_compute_environment"] is not None:
+            request["ApplyOverrideForComputeEnvironment"] = module.params[
+                "apply_override_for_compute_environment"
+            ]
+        if module.params["catalog_id"] is not None:
+            request["CatalogId"] = module.params["catalog_id"]
+
+        try:
+            connection = client.get_connection(**request, aws_retry=True).get(
+                "Connection"
+            )
+        except is_boto3_error_code("EntityNotFoundException"):
+            connection = None
+        except Exception as e:
+            module.fail_json_aws(
+                e, msg=f"Unable to get AWS Glue connection {module.params['name']}"
+            )
+
+        connections = [connection] if connection else []
     else:
-        connections = list_connections(client, module)
+        request = {"HidePassword": module.params["hide_password"]}
+        if module.params["catalog_id"] is not None:
+            request["CatalogId"] = module.params["catalog_id"]
+        if module.params["filters"]:
+            request["Filter"] = snake_dict_to_camel_dict(
+                module.params["filters"], capitalize_first=True
+            )
+
+        try:
+            connections = paginated_query_with_retries(
+                client,
+                "get_connections",
+                **request,
+            ).get("ConnectionList", [])
+        except Exception as e:
+            module.fail_json_aws(e, msg="Unable to list AWS Glue connections")
 
     module.exit_json(
         changed=False,

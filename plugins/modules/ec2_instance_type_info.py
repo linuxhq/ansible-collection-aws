@@ -76,16 +76,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def build_request(module):
-    request = {}
-    if module.params["instance_types"]:
-        request["InstanceTypes"] = module.params["instance_types"]
-    filters = module.params["filters"] or {}
-    if filters:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
-    return request
-
-
 def main():
     argument_spec = {
         "filters": {"type": "dict"},
@@ -98,11 +88,17 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
+    request = {}
+    if module.params["instance_types"]:
+        request["InstanceTypes"] = module.params["instance_types"]
+    if module.params["filters"]:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+
     try:
         instance_types = paginated_query_with_retries(
             client,
             "describe_instance_types",
-            **build_request(module),
+            **request,
         ).get("InstanceTypes", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to describe EC2 instance types")

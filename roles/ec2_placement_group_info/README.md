@@ -6,7 +6,7 @@ Gather information about aws placement groups
 
     ec2_placement_group_info_filters: {}
     ec2_placement_group_info_group_ids: []
-    ec2_placement_group_info_names: []
+    ec2_placement_group_info_group_names: []
 
 ## Return Values
 

@@ -12,20 +12,18 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  ids:
+  id:
     description:
-      - WAFv2 web ACL IDs used to limit the result set.
+      - WAFv2 web ACL ID used to limit the result set.
       - The module lists web ACL summaries for the selected O(scope), filters
         by ID, and then gathers each full web ACL definition.
-    elements: str
-    type: list
-  names:
+    type: str
+  name:
     description:
-      - WAFv2 web ACL names used to limit the result set.
+      - WAFv2 web ACL name used to limit the result set.
       - The module lists web ACL summaries for the selected O(scope), filters
         by name, and then gathers each full web ACL definition.
-    elements: str
-    type: list
+    type: str
   scope:
     description:
       - The scope of the web ACLs to gather.
@@ -52,8 +50,7 @@ EXAMPLES = r"""
 
 - name: Gather information about selected WAFv2 web ACLs
   linuxhq.aws.wafv2_web_acl_info:
-    names:
-      - molecule
+    name: molecule
 """
 
 RETURN = r"""
@@ -76,35 +73,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def summary_matches(module, summary):
-    if module.params["ids"] and summary.get("Id") not in module.params["ids"]:
-        return False
-    if module.params["names"] and summary.get("Name") not in module.params["names"]:
-        return False
-    return True
-
-
-def list_web_acl_summaries(client, module, scope):
-    marker = None
-    web_acls = []
-    try:
-        while True:
-            request = {"Scope": scope, "Limit": 100}
-            if marker:
-                request["NextMarker"] = marker
-            response = client.list_web_acls(**request, aws_retry=True)
-            web_acls.extend(response.get("WebACLs", []))
-            marker = response.get("NextMarker")
-            if not marker:
-                return web_acls
-    except Exception as e:
-        module.fail_json_aws(e, msg=f"Unable to list AWS WAFv2 web ACLs for {scope}")
-
-
 def main():
     argument_spec = {
-        "ids": {"elements": "str", "type": "list"},
-        "names": {"elements": "str", "type": "list"},
+        "id": {"type": "str"},
+        "name": {"type": "str"},
         "scope": {
             "choices": ["cloudfront", "regional"],
             "default": "regional",
@@ -116,10 +88,31 @@ def main():
     client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
 
     scope = module.params["scope"].upper()
+    web_acl_summaries = []
+    marker = None
+
+    try:
+        while True:
+            request = {"Scope": scope, "Limit": 100}
+            if marker:
+                request["NextMarker"] = marker
+            response = client.list_web_acls(**request, aws_retry=True)
+
+            web_acl_summaries.extend(response.get("WebACLs", []))
+            marker = response.get("NextMarker")
+            if not marker:
+                break
+    except Exception as e:
+        module.fail_json_aws(e, msg=f"Unable to list AWS WAFv2 web ACLs for {scope}")
+
     web_acls = []
-    for summary in list_web_acl_summaries(client, module, scope):
-        if not summary_matches(module, summary):
+    for summary in web_acl_summaries:
+        if module.params["id"] and summary.get("Id") != module.params["id"]:
             continue
+
+        if module.params["name"] and summary.get("Name") != module.params["name"]:
+            continue
+
         try:
             web_acls.append(
                 client.get_web_acl(

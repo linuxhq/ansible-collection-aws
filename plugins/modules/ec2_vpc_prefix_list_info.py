@@ -91,14 +91,17 @@ def main():
     if module.params["filters"]:
         request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
     prefix_lists = []
+
     try:
         described_prefix_lists = paginated_query_with_retries(
             client, "describe_managed_prefix_lists", **request
         ).get("PrefixLists", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to describe EC2 VPC managed prefix lists")
+
     for prefix_list in described_prefix_lists:
         prefix_list_name = prefix_list.get("PrefixListName")
+
         if prefix_list_name:
             prefix_lists.append(prefix_list)
 
@@ -107,6 +110,7 @@ def main():
         entry_request = {"PrefixListId": prefix_list["PrefixListId"]}
         if module.params["target_version"] is not None:
             entry_request["TargetVersion"] = module.params["target_version"]
+
         try:
             entries = paginated_query_with_retries(
                 client,
@@ -121,6 +125,7 @@ def main():
                     f"{prefix_list['PrefixListId']}"
                 ),
             )
+
         result_prefix_lists.append(
             dict(
                 boto3_resource_to_ansible_dict(

@@ -3,7 +3,7 @@
   tags:
     - route53_delegation_set_info
   linuxhq.aws.route53_delegation_set_info:
-    ids: "{{ route53_delegation_set_info_ids or omit }}"
+    id: "{{ route53_delegation_set_info_id or omit }}"
     validate_certs: true
   register: __route53_delegation_set_info_query
 

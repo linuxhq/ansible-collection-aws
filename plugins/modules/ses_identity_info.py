@@ -13,16 +13,15 @@ author:
 options:
   identity_type:
     description:
-      - Optional SES identity type used to limit the result set when O(names) is omitted.
+      - Optional SES identity type used to limit the result set when O(name) is omitted.
     choices:
       - Domain
       - EmailAddress
     type: str
-  names:
+  name:
     description:
-      - SES identity names used to limit the result set.
-    elements: str
-    type: list
+      - SES identity name used to limit the result set.
+    type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -35,8 +34,7 @@ EXAMPLES = r"""
 
 - name: Gather information about a single SES identity
   linuxhq.aws.ses_identity_info:
-    names:
-      - molecule.org
+    name: molecule.org
 
 - name: Gather information about SES domain identities
   linuxhq.aws.ses_identity_info:
@@ -67,21 +65,21 @@ def main():
     module = AnsibleAWSModule(
         argument_spec={
             "identity_type": {"choices": ["Domain", "EmailAddress"], "type": "str"},
-            "names": {"elements": "str", "type": "list"},
+            "name": {"type": "str"},
         },
         supports_check_mode=True,
     )
     ses_client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
     sesv2_client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
-    requested_names = module.params["names"]
     identities = []
 
-    if requested_names:
-        identity_names = requested_names
+    if module.params["name"]:
+        identity_names = [module.params["name"]]
     else:
         list_kwargs = {}
         if module.params["identity_type"] is not None:
             list_kwargs["IdentityType"] = module.params["identity_type"]
+
         try:
             identity_names = paginated_query_with_retries(
                 ses_client,
@@ -104,10 +102,12 @@ def main():
                 e,
                 msg=f"Unable to get AWS SES identity {identity_name}",
             )
+
         if details is not None:
             identity = boto3_resource_to_ansible_dict(
                 details, transform_tags=False, force_tags=False
             )
+
             identity["name"] = identity_name
             identities.append(identity)
 

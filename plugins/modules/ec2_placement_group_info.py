@@ -21,7 +21,7 @@ options:
       - EC2 placement group IDs used to limit the result set.
     elements: str
     type: list
-  names:
+  group_names:
     description:
       - EC2 placement group names used to limit the result set.
     elements: str
@@ -38,7 +38,7 @@ EXAMPLES = r"""
 
 - name: Gather information about selected EC2 placement groups
   linuxhq.aws.ec2_placement_group_info:
-    names:
+    group_names:
       - example-placement-group
 
 - name: Gather information about EC2 placement groups using filters
@@ -68,7 +68,7 @@ def main():
     argument_spec = {
         "filters": {"type": "dict"},
         "group_ids": {"elements": "str", "type": "list"},
-        "names": {"elements": "str", "type": "list"},
+        "group_names": {"elements": "str", "type": "list"},
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
@@ -76,8 +76,8 @@ def main():
     request = {}
     if module.params["group_ids"]:
         request["GroupIds"] = module.params["group_ids"]
-    if module.params["names"]:
-        request["GroupNames"] = module.params["names"]
+    if module.params["group_names"]:
+        request["GroupNames"] = module.params["group_names"]
     if module.params["filters"]:
         request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
 

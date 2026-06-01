@@ -9,7 +9,7 @@
       ansible.builtin.include_role:
         name: ec2_placement_group_info
       vars:
-        ec2_placement_group_info_names: []
+        ec2_placement_group_info_group_names: []
 
     - name: Ensure info without name is verified
       ansible.builtin.assert:
@@ -109,7 +109,7 @@
       ansible.builtin.include_role:
         name: ec2_placement_group_info
       vars:
-        ec2_placement_group_info_names:
+        ec2_placement_group_info_group_names:
           - molecule-cluster-1
 
     - name: Ensure info with name is verified

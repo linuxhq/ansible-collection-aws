@@ -13,7 +13,7 @@
       ansible.builtin.include_role:
         name: ses_identity_info
       vars:
-        ses_identity_info_names: []
+        ses_identity_info_name: null
 
     - name: Ensure info without name is verified
       ansible.builtin.assert:
@@ -39,8 +39,7 @@
       ansible.builtin.include_role:
         name: ses_identity_info
       vars:
-        ses_identity_info_names:
-          - molecule.org
+        ses_identity_info_name: molecule.org
 
     - name: Ensure info with name is verified
       ansible.builtin.assert:

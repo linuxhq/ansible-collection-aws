@@ -8,10 +8,10 @@ None
 
 ## Role Variables
 
-    iam_policy_info_group_names: []
+    iam_policy_info_group_name: null
     iam_policy_info_path_prefix: null
-    iam_policy_info_policy_names: []
-    iam_policy_info_user_names: []
+    iam_policy_info_policy_name: null
+    iam_policy_info_user_name: null
 
 ## Return Values
 

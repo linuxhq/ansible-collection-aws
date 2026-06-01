@@ -3,8 +3,8 @@
   tags:
     - wafv2_web_acl_info
   linuxhq.aws.wafv2_web_acl_info:
-    ids: "{{ wafv2_web_acl_info_ids or omit }}"
-    names: "{{ wafv2_web_acl_info_names or omit }}"
+    id: "{{ wafv2_web_acl_info_id or omit }}"
+    name: "{{ wafv2_web_acl_info_name or omit }}"
     scope: "{{ wafv2_web_acl_info_scope }}"
     validate_certs: true
   register: __wafv2_web_acl_info_query

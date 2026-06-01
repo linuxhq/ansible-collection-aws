@@ -54,43 +54,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def resource_tags(client, module, resource):
-    if not resource.get("Arn"):
-        return []
-    try:
-        return paginated_query_with_retries(
-            client,
-            "list_tags_for_resource",
-            ResourceArn=resource["Arn"],
-        ).get("Tags", [])
-    except is_boto3_error_code("InvalidRequestException"):
-        return []
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list tags for AWS Route53 Resolver rule {resource['Arn']}",
-        )
-
-
-def normalize_rule(client, module, rule, associations):
-    normalized = boto3_resource_to_ansible_dict(
-        dict(rule, Tags=resource_tags(client, module, rule)),
-        transform_tags=True,
-        force_tags=False,
-    )
-    normalized["associations"] = boto3_resource_list_to_ansible_dict(
-        associations,
-        transform_tags=False,
-        force_tags=False,
-    )
-    normalized["vpc_ids"] = [
-        association["vpc_id"]
-        for association in normalized["associations"]
-        if association.get("vpc_id") is not None
-    ]
-    return normalized
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -104,6 +67,7 @@ def main():
     request = {}
     if module.params["filters"]:
         request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+
     try:
         resolver_rules = paginated_query_with_retries(
             client, "list_resolver_rules", **request
@@ -116,11 +80,15 @@ def main():
         elif not resolver_rules:
             associations = []
         else:
+            resolver_rule_ids = []
+            for rule in resolver_rules:
+                resolver_rule_ids.append(rule["Id"])
+
             associations = paginated_query_with_retries(
                 client,
                 "list_resolver_rule_associations",
                 Filters=ansible_dict_to_boto3_filter_list(
-                    {"ResolverRuleId": [rule["Id"] for rule in resolver_rules]}
+                    {"ResolverRuleId": resolver_rule_ids}
                 ),
             ).get("ResolverRuleAssociations", [])
     except Exception as e:
@@ -134,14 +102,40 @@ def main():
     normalized_rules = []
     for rule in resolver_rules:
         resolver_rule_id = rule.get("Id")
-        normalized_rules.append(
-            normalize_rule(
-                client,
-                module,
-                rule,
-                associations_by_rule_id.get(resolver_rule_id, []),
-            )
+        tags = []
+        if rule.get("Arn"):
+            try:
+                tags = paginated_query_with_retries(
+                    client,
+                    "list_tags_for_resource",
+                    ResourceArn=rule["Arn"],
+                ).get("Tags", [])
+            except is_boto3_error_code("InvalidRequestException"):
+                tags = []
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=f"Unable to list tags for AWS Route53 Resolver rule {rule['Arn']}",
+                )
+
+        normalized_rule = boto3_resource_to_ansible_dict(
+            dict(rule, Tags=tags),
+            transform_tags=True,
+            force_tags=False,
         )
+
+        normalized_rule["associations"] = boto3_resource_list_to_ansible_dict(
+            associations_by_rule_id.get(resolver_rule_id, []),
+            transform_tags=False,
+            force_tags=False,
+        )
+
+        normalized_rule["vpc_ids"] = []
+
+        for association in normalized_rule["associations"]:
+            if association.get("vpc_id") is not None:
+                normalized_rule["vpc_ids"].append(association["vpc_id"])
+        normalized_rules.append(normalized_rule)
 
     module.exit_json(
         changed=False,
