@@ -3,11 +3,11 @@
   tags:
     - account_region
   linuxhq.aws.account_region:
-    delay: "{{ account_region_delay }}"
     name: "{{ _region.name }}"
-    retries: "{{ account_region_retries }}"
     state: "{{ _region.state | d('present') }}"
     wait: "{{ account_region_wait }}"
+    wait_delay: "{{ account_region_delay }}"
+    wait_timeout: "{{ (account_region_delay | int) * (account_region_retries | int) }}"
     validate_certs: true
   loop: "{{ __account_region_list }}"
   loop_control:

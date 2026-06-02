@@ -8,6 +8,7 @@ module: ec2_instance_metadata
 short_description: Manage aws ec2 instance metadata defaults
 description:
   - Updates EC2 account-level instance metadata defaults for a region.
+  - At least one metadata default option must be provided.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -70,6 +71,9 @@ region:
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -77,12 +81,12 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 
-MANAGED_OPTIONS = [
+MANAGED_OPTIONS = (
     "http_endpoint",
     "http_put_response_hop_limit",
     "http_tokens",
     "instance_metadata_tags",
-]
+)
 
 
 def get_instance_metadata_defaults(client, module):
@@ -95,7 +99,10 @@ def get_instance_metadata_defaults(client, module):
             force_tags=False,
         )
     except Exception as e:
-        module.fail_json_aws(e, msg="Unable to get EC2 instance metadata defaults")
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to get EC2 instance metadata defaults in region {module.region}",
+        )
 
 
 def main():
@@ -129,26 +136,54 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    current_account_level = get_instance_metadata_defaults(client, module)
-    desired_update = scrub_none_parameters(
-        snake_dict_to_camel_dict(
-            {
-                option_name: module.params[option_name]
-                for option_name in MANAGED_OPTIONS
-            },
-            capitalize_first=True,
-        )
-    )
-    desired_fields = [
-        option_name
-        for option_name in MANAGED_OPTIONS
-        if module.params[option_name] is not None
-    ]
+    desired_params = {}
+    desired = {}
+    for option_name in MANAGED_OPTIONS:
+        option_value = module.params[option_name]
+        if option_value is None:
+            continue
 
-    desired = {
-        option_name: module.params[option_name] for option_name in desired_fields
-    }
-    current = {field: current_account_level.get(field) for field in desired_fields}
+        desired_params[option_name] = option_value
+        desired[option_name] = option_value
+
+    desired_update = scrub_none_parameters(
+        snake_dict_to_camel_dict(desired_params, capitalize_first=True)
+    )
+
+    method_names = (
+        "get_instance_metadata_defaults",
+        "modify_instance_metadata_defaults",
+    )
+    method_parameters = {}
+    for method_name in method_names:
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=f"Installed botocore does not support EC2 {method_name}"
+            )
+
+    modify_parameters = method_parameters["modify_instance_metadata_defaults"]
+
+    for parameter_name in desired_update:
+        if parameter_name in modify_parameters:
+            continue
+
+        module.fail_json(
+            msg=(
+                "Installed botocore does not support EC2 "
+                f"modify_instance_metadata_defaults parameter {parameter_name}"
+            )
+        )
+
+    current_account_level = get_instance_metadata_defaults(client, module)
+
+    current = {}
+    for option_name in desired:
+        current[option_name] = current_account_level.get(option_name)
+
     changed = current != desired
 
     if changed and not module.check_mode:
@@ -156,8 +191,13 @@ def main():
             client.modify_instance_metadata_defaults(**desired_update, aws_retry=True)
         except Exception as e:
             module.fail_json_aws(
-                e, msg="Unable to modify EC2 instance metadata defaults"
+                e,
+                msg=(
+                    "Unable to modify EC2 instance metadata defaults in region "
+                    f"{module.region}"
+                ),
             )
+
         current_account_level = get_instance_metadata_defaults(client, module)
     elif changed and module.check_mode:
         current_account_level = dict(current_account_level)

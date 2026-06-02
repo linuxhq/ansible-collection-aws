@@ -181,6 +181,7 @@ from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -198,288 +199,214 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 
+ABSENT_MATCH_FIELDS = (
+    "deliver_cross_account_role",
+    "deliver_logs_permission_arn",
+    "log_destination",
+    "log_destination_type",
+    "log_format",
+    "log_group_name",
+    "max_aggregation_interval",
+    "traffic_type",
+)
+
+OPTIONAL_CREATE_FLOW_LOG_PARAMETER_BY_OPTION = {
+    "deliver_cross_account_role": "DeliverCrossAccountRole",
+    "deliver_logs_permission_arn": "DeliverLogsPermissionArn",
+    "log_destination": "LogDestination",
+    "log_format": "LogFormat",
+    "log_group_name": "LogGroupName",
+    "max_aggregation_interval": "MaxAggregationInterval",
+}
+
+DESTINATION_OPTION_PARAMETER_BY_OPTION = {
+    "file_format": "FileFormat",
+    "hive_compatible_partitions": "HiveCompatiblePartitions",
+    "per_hour_partition": "PerHourPartition",
+}
+
+PRESENT_MATCH_FIELDS = (
+    "deliver_cross_account_role",
+    "deliver_logs_permission_arn",
+    "log_destination",
+    "log_format",
+    "log_group_name",
+    "max_aggregation_interval",
+)
+
+TRAFFIC_TYPE_RESOURCE_TYPES = (
+    "VPC",
+    "Subnet",
+    "NetworkInterface",
+)
+
+TRANSIT_GATEWAY_RESOURCE_TYPES = (
+    "TransitGateway",
+    "TransitGatewayAttachment",
+)
+
 
 def normalized_resource_ids(module):
     return list(dict.fromkeys(module.params["resource_ids"] or []))
 
 
-def comparable_destination_options(destination_options):
+def comparable_destination_options(module):
     return {
         key: value
-        for key, value in (destination_options or {}).items()
+        for key, value in (module.params["destination_options"] or {}).items()
         if value is not None
     }
 
 
-def desired_present_flow_log(module):
-    desired = {
-        "log_destination_type": module.params["log_destination_type"]
-        or "cloud-watch-logs",
-    }
-    if module.params["resource_type"] not in (
-        "TransitGateway",
-        "TransitGatewayAttachment",
-    ):
-        desired["traffic_type"] = module.params["traffic_type"] or "ALL"
-
-    for field in (
-        "deliver_cross_account_role",
-        "deliver_logs_permission_arn",
-        "log_destination",
-        "log_format",
-        "log_group_name",
-        "max_aggregation_interval",
-    ):
-        if module.params[field] is not None:
-            desired[field] = module.params[field]
-
-    destination_options = comparable_destination_options(
-        module.params["destination_options"]
-    )
-    if destination_options:
-        desired["destination_options"] = destination_options
-    return desired
-
-
-def desired_absent_flow_log(module):
-    desired = {}
-    for field in (
-        "deliver_cross_account_role",
-        "deliver_logs_permission_arn",
-        "log_destination",
-        "log_destination_type",
-        "log_format",
-        "log_group_name",
-        "max_aggregation_interval",
-        "traffic_type",
-    ):
-        if module.params[field] is not None:
-            desired[field] = module.params[field]
-
-    destination_options = comparable_destination_options(
-        module.params["destination_options"]
-    )
-    if destination_options:
-        desired["destination_options"] = destination_options
-    return desired
-
-
-def comparable_flow_log(flow_log, desired):
-    normalized = boto3_resource_to_ansible_dict(
-        flow_log or {}, transform_tags=False, force_tags=False
-    )
-    comparable = {}
-    for key in desired:
-        if key == "destination_options":
-            comparable[key] = {
-                option_key: (normalized.get("destination_options") or {}).get(
-                    option_key
-                )
-                for option_key in desired["destination_options"]
-            }
-        else:
-            comparable[key] = normalized.get(key)
-    return comparable
-
-
-def flow_log_matches(flow_log, desired):
-    return comparable_flow_log(flow_log, desired) == desired
-
-
 def matching_flow_logs(module, flow_logs, desired):
     resource_ids = set(normalized_resource_ids(module))
-    return [
-        flow_log
-        for flow_log in flow_logs
-        if flow_log.get("ResourceId") in resource_ids
-        and flow_log_matches(flow_log, desired)
-    ]
+    matching = []
+    for flow_log in flow_logs:
+        if flow_log.get("ResourceId") not in resource_ids:
+            continue
+
+        normalized = boto3_resource_to_ansible_dict(
+            flow_log or {}, transform_tags=False, force_tags=False
+        )
+        comparable = {}
+        for key in desired:
+            if key == "destination_options":
+                current_destination_options = (
+                    normalized.get("destination_options") or {}
+                )
+                destination_options = {}
+                for option_key in desired["destination_options"]:
+                    destination_options[option_key] = current_destination_options.get(
+                        option_key
+                    )
+
+                comparable[key] = destination_options
+            else:
+                comparable[key] = normalized.get(key)
+
+        if comparable != desired:
+            continue
+
+        matching.append(flow_log)
+    return matching
 
 
 def get_flow_logs(client, module):
+    resource_ids = normalized_resource_ids(module)
     request = {
-        "Filter": ansible_dict_to_boto3_filter_list(
-            {"resource-id": normalized_resource_ids(module)}
-        )
+        "Filter": ansible_dict_to_boto3_filter_list({"resource-id": resource_ids})
     }
+
     try:
         return paginated_query_with_retries(
             client, "describe_flow_logs", **request
         ).get("FlowLogs", [])
     except Exception as e:
-        module.fail_json_aws(e, msg="Unable to describe EC2 flow logs")
-
-
-def flow_logs_by_ids(client, module, flow_log_ids):
-    if not flow_log_ids:
-        return []
-    try:
-        return paginated_query_with_retries(
-            client,
-            "describe_flow_logs",
-            FlowLogIds=flow_log_ids,
-        ).get("FlowLogs", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to describe EC2 flow logs")
-
-
-def create_flow_logs(client, module, resource_ids):
-    request = dict(
-        desired_present_flow_log(module),
-        resource_ids=resource_ids,
-        resource_type=module.params["resource_type"],
-    )
-    request = scrub_none_parameters(
-        snake_dict_to_camel_dict(request, capitalize_first=True)
-    )
-    if module.params["tags"] is not None:
-        tag_specifications = boto3_tag_specifications(
-            module.params["tags"], types="vpc-flow-log"
-        )
-        if tag_specifications is not None:
-            request["TagSpecifications"] = tag_specifications
-
-    try:
-        response = client.create_flow_logs(**request, aws_retry=True)
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to create EC2 flow logs")
-
-    unsuccessful = response.get("Unsuccessful", [])
-    if unsuccessful:
-        module.fail_json(
-            msg="Unable to create EC2 flow logs for one or more resources",
-            unsuccessful=boto3_resource_list_to_ansible_dict(
-                unsuccessful, transform_tags=False, force_tags=False
-            ),
-        )
-    return response.get("FlowLogIds", [])
-
-
-def delete_flow_logs(client, module, flow_log_ids):
-    try:
-        response = client.delete_flow_logs(
-            FlowLogIds=flow_log_ids,
-            aws_retry=True,
-        )
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to delete EC2 flow logs")
-
-    unsuccessful = response.get("Unsuccessful", [])
-    if unsuccessful:
-        module.fail_json(
-            msg="Unable to delete one or more EC2 flow logs",
-            unsuccessful=boto3_resource_list_to_ansible_dict(
-                unsuccessful, transform_tags=False, force_tags=False
+        module.fail_json_aws(
+            e,
+            msg=(
+                "Unable to describe EC2 flow logs for resources "
+                f"{', '.join(resource_ids)}"
             ),
         )
 
 
-def apply_tag_changes(client, module, flow_log_id, tags_to_set, tag_keys_to_unset):
-    if tag_keys_to_unset:
+def ensure_absent(client, module):
+    resource_ids = normalized_resource_ids(module)
+    desired = {}
+    for field in ABSENT_MATCH_FIELDS:
+        if module.params[field] is not None:
+            desired[field] = module.params[field]
+
+    destination_options = comparable_destination_options(module)
+
+    if destination_options:
+        desired["destination_options"] = destination_options
+
+    current = matching_flow_logs(module, get_flow_logs(client, module), desired)
+
+    flow_log_ids = []
+    for flow_log in current:
+        if not flow_log.get("FlowLogId"):
+            continue
+
+        flow_log_ids.append(flow_log["FlowLogId"])
+
+    changed = bool(flow_log_ids)
+
+    if changed and not module.check_mode:
         try:
-            client.delete_tags(
-                Resources=[flow_log_id],
-                Tags=[{"Key": key} for key in tag_keys_to_unset],
+            response = client.delete_flow_logs(
+                FlowLogIds=flow_log_ids,
                 aws_retry=True,
             )
         except Exception as e:
             module.fail_json_aws(
-                e, msg=f"Unable to remove tags from EC2 flow log {flow_log_id}"
+                e, msg=f"Unable to delete EC2 flow logs {', '.join(flow_log_ids)}"
             )
 
-    if tags_to_set:
-        try:
-            client.create_tags(
-                Resources=[flow_log_id],
-                Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                aws_retry=True,
+        unsuccessful = response.get("Unsuccessful", [])
+
+        if unsuccessful:
+            module.fail_json(
+                msg="Unable to delete one or more EC2 flow logs",
+                unsuccessful=boto3_resource_list_to_ansible_dict(
+                    unsuccessful, transform_tags=False, force_tags=False
+                ),
             )
-        except Exception as e:
-            module.fail_json_aws(e, msg=f"Unable to tag EC2 flow log {flow_log_id}")
-
-
-def with_check_mode_tags(module, flow_log):
-    if module.params["tags"] is None:
-        return flow_log
-    flow_log = dict(flow_log or {})
-    current_tags = boto3_tag_list_to_ansible_dict(flow_log.get("Tags", []))
-    tags_to_set, tag_keys_to_unset = compare_aws_tags(
-        current_tags,
-        module.params["tags"],
-        purge_tags=module.params["purge_tags"],
-    )
-    for tag_key in tag_keys_to_unset:
-        current_tags.pop(tag_key, None)
-    current_tags.update(tags_to_set)
-    flow_log["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
-    return flow_log
-
-
-def flow_log_updated_tags(flow_log, tags_to_set, tag_keys_to_unset):
-    current_tags = boto3_tag_list_to_ansible_dict((flow_log or {}).get("Tags", []))
-    for tag_key in tag_keys_to_unset:
-        current_tags.pop(tag_key, None)
-    current_tags.update(tags_to_set)
-    return {"Tags": ansible_dict_to_boto3_tag_list(current_tags)}
-
-
-def check_mode_flow_log(module, resource_id):
-    flow_log = dict(
-        desired_present_flow_log(module),
-        flow_log_status="ACTIVE",
-        resource_id=resource_id,
-        resource_type=module.params["resource_type"],
-    )
-    flow_log = snake_dict_to_camel_dict(flow_log, capitalize_first=True)
-    if module.params["tags"] is not None:
-        flow_log["Tags"] = ansible_dict_to_boto3_tag_list(module.params["tags"])
-    return flow_log
-
-
-def normalize_flow_logs(flow_logs):
-    return boto3_resource_list_to_ansible_dict(
-        flow_logs or [], transform_tags=True, force_tags=False
-    )
-
-
-def ensure_absent(client, module):
-    desired = desired_absent_flow_log(module)
-    current = matching_flow_logs(module, get_flow_logs(client, module), desired)
-    flow_log_ids = [
-        flow_log["FlowLogId"] for flow_log in current if flow_log.get("FlowLogId")
-    ]
-    changed = bool(flow_log_ids)
-
-    if changed and not module.check_mode:
-        delete_flow_logs(client, module, flow_log_ids)
 
     module.exit_json(
         changed=changed,
         flow_log_ids=flow_log_ids,
-        resource_ids=normalized_resource_ids(module),
+        resource_ids=resource_ids,
         state="absent",
     )
 
 
 def ensure_present(client, module):
-    desired = desired_present_flow_log(module)
+    resource_ids = normalized_resource_ids(module)
+    resource_type = module.params["resource_type"]
+    tags = module.params["tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
+    desired = {
+        "log_destination_type": module.params["log_destination_type"]
+        or "cloud-watch-logs",
+    }
+    if resource_type in TRAFFIC_TYPE_RESOURCE_TYPES:
+        desired["traffic_type"] = module.params["traffic_type"] or "ALL"
+
+    for field in PRESENT_MATCH_FIELDS:
+        if module.params[field] is not None:
+            desired[field] = module.params[field]
+
+    destination_options = comparable_destination_options(module)
+
+    if destination_options:
+        desired["destination_options"] = destination_options
+
     current = matching_flow_logs(module, get_flow_logs(client, module), desired)
-    matched_resource_ids = {flow_log.get("ResourceId") for flow_log in current}
-    missing_resource_ids = [
-        resource_id
-        for resource_id in normalized_resource_ids(module)
-        if resource_id not in matched_resource_ids
-    ]
+
+    matched_resource_ids = set()
+    for flow_log in current:
+        matched_resource_ids.add(flow_log.get("ResourceId"))
+
+    missing_resource_ids = []
+    for resource_id in resource_ids:
+        if resource_id in matched_resource_ids:
+            continue
+
+        missing_resource_ids.append(resource_id)
 
     tags_changed = []
     for flow_log in current:
         tags_to_set, tag_keys_to_unset = ({}, [])
-        if module.params["tags"] is not None:
+        if tags is not None:
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
                 boto3_tag_list_to_ansible_dict((flow_log or {}).get("Tags", [])),
-                module.params["tags"],
-                purge_tags=module.params["purge_tags"],
+                tags,
+                purge_tags=purge_tags,
             )
+
         if tags_to_set or tag_keys_to_unset:
             tags_changed.append((flow_log, tags_to_set, tag_keys_to_unset))
 
@@ -488,37 +415,150 @@ def ensure_present(client, module):
     if changed and not module.check_mode:
         created_flow_log_ids = []
         if missing_resource_ids:
-            created_flow_log_ids = create_flow_logs(
-                client, module, missing_resource_ids
+            request = dict(
+                desired,
+                resource_ids=missing_resource_ids,
+                resource_type=resource_type,
             )
+            request = scrub_none_parameters(
+                snake_dict_to_camel_dict(request, capitalize_first=True)
+            )
+            if tags is not None:
+                tag_specifications = boto3_tag_specifications(
+                    tags, types="vpc-flow-log"
+                )
+
+                if tag_specifications is not None:
+                    request["TagSpecifications"] = tag_specifications
+
+            try:
+                response = client.create_flow_logs(**request, aws_retry=True)
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        "Unable to create EC2 flow logs for resources "
+                        f"{', '.join(missing_resource_ids)}"
+                    ),
+                )
+
+            unsuccessful = response.get("Unsuccessful", [])
+
+            if unsuccessful:
+                module.fail_json(
+                    msg="Unable to create EC2 flow logs for one or more resources",
+                    unsuccessful=boto3_resource_list_to_ansible_dict(
+                        unsuccessful, transform_tags=False, force_tags=False
+                    ),
+                )
+
+            created_flow_log_ids = response.get("FlowLogIds", [])
+
         if created_flow_log_ids:
-            current = current + flow_logs_by_ids(client, module, created_flow_log_ids)
+            try:
+                created_flow_logs = paginated_query_with_retries(
+                    client,
+                    "describe_flow_logs",
+                    FlowLogIds=created_flow_log_ids,
+                ).get("FlowLogs", [])
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        "Unable to describe EC2 flow logs "
+                        f"{', '.join(created_flow_log_ids)}"
+                    ),
+                )
+
+            current = current + created_flow_logs
 
         for flow_log, tags_to_set, tag_keys_to_unset in tags_changed:
-            apply_tag_changes(
-                client,
-                module,
-                flow_log["FlowLogId"],
-                tags_to_set,
-                tag_keys_to_unset,
-            )
-            flow_log.update(
-                flow_log_updated_tags(flow_log, tags_to_set, tag_keys_to_unset)
-            )
-    elif changed and module.check_mode:
-        current = [with_check_mode_tags(module, flow_log) for flow_log in current] + [
-            check_mode_flow_log(module, resource_id)
-            for resource_id in missing_resource_ids
-        ]
+            flow_log_id = flow_log["FlowLogId"]
+            if tag_keys_to_unset:
+                try:
+                    client.delete_tags(
+                        Resources=[flow_log_id],
+                        Tags=[{"Key": key} for key in tag_keys_to_unset],
+                        aws_retry=True,
+                    )
+                except Exception as e:
+                    module.fail_json_aws(
+                        e, msg=f"Unable to remove tags from EC2 flow log {flow_log_id}"
+                    )
 
-    flow_log_ids = [
-        flow_log["FlowLogId"] for flow_log in current if flow_log.get("FlowLogId")
-    ]
+            if tags_to_set:
+                try:
+                    client.create_tags(
+                        Resources=[flow_log_id],
+                        Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
+                        aws_retry=True,
+                    )
+                except Exception as e:
+                    module.fail_json_aws(
+                        e, msg=f"Unable to tag EC2 flow log {flow_log_id}"
+                    )
+
+            current_tags = boto3_tag_list_to_ansible_dict(
+                (flow_log or {}).get("Tags", [])
+            )
+
+            for tag_key in tag_keys_to_unset:
+                current_tags.pop(tag_key, None)
+            current_tags.update(tags_to_set)
+            flow_log["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
+    elif changed and module.check_mode:
+        updated_current = []
+        for flow_log in current:
+            if tags is None:
+                updated_current.append(flow_log)
+                continue
+
+            flow_log = dict(flow_log or {})
+            current_tags = boto3_tag_list_to_ansible_dict(flow_log.get("Tags", []))
+
+            tags_to_set, tag_keys_to_unset = compare_aws_tags(
+                current_tags,
+                tags,
+                purge_tags=purge_tags,
+            )
+
+            for tag_key in tag_keys_to_unset:
+                current_tags.pop(tag_key, None)
+            current_tags.update(tags_to_set)
+            flow_log["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
+            updated_current.append(flow_log)
+
+        predicted_flow_logs = []
+        for resource_id in missing_resource_ids:
+            flow_log = dict(
+                desired,
+                flow_log_status="ACTIVE",
+                resource_id=resource_id,
+                resource_type=resource_type,
+            )
+            flow_log = snake_dict_to_camel_dict(flow_log, capitalize_first=True)
+
+            if tags is not None:
+                flow_log["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+
+            predicted_flow_logs.append(flow_log)
+
+        current = updated_current + predicted_flow_logs
+
+    flow_log_ids = []
+    for flow_log in current:
+        if not flow_log.get("FlowLogId"):
+            continue
+
+        flow_log_ids.append(flow_log["FlowLogId"])
+
     module.exit_json(
         changed=changed,
         flow_log_ids=flow_log_ids,
-        flow_logs=normalize_flow_logs(current),
-        resource_ids=normalized_resource_ids(module),
+        flow_logs=boto3_resource_list_to_ansible_dict(
+            current or [], transform_tags=True, force_tags=False
+        ),
+        resource_ids=resource_ids,
         state="present",
     )
 
@@ -573,13 +613,18 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
-    if not normalized_resource_ids(module):
+    resource_ids = normalized_resource_ids(module)
+    resource_type = module.params["resource_type"]
+    tags = module.params["tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
+    destination_options = comparable_destination_options(module)
+
+    if not resource_ids:
         module.fail_json(msg="resource_ids must contain at least one item")
     if (
         state == "present"
         and module.params["traffic_type"] is not None
-        and module.params["resource_type"]
-        in ("TransitGateway", "TransitGatewayAttachment")
+        and resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES
     ):
         module.fail_json(
             msg=(
@@ -588,6 +633,88 @@ def main():
             )
         )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
+    method_names = ["describe_flow_logs"]
+    if state == "present":
+        method_names.append("create_flow_logs")
+        if tags is not None:
+            method_names.append("create_tags")
+            if purge_tags:
+                method_names.append("delete_tags")
+    elif state == "absent":
+        method_names.append("delete_flow_logs")
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
+
+    method_parameters = {}
+    for method_name in method_names:
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=f"Installed botocore does not support EC2 {method_name}"
+            )
+
+    if state == "present":
+        create_flow_logs_parameters = method_parameters["create_flow_logs"]
+        required_create_parameters = [
+            "LogDestinationType",
+            "ResourceIds",
+            "ResourceType",
+        ]
+        if resource_type in TRAFFIC_TYPE_RESOURCE_TYPES:
+            required_create_parameters.append("TrafficType")
+        if tags is not None:
+            required_create_parameters.append("TagSpecifications")
+
+        for (
+            option_name,
+            parameter_name,
+        ) in OPTIONAL_CREATE_FLOW_LOG_PARAMETER_BY_OPTION.items():
+            if module.params[option_name] is None:
+                continue
+
+            required_create_parameters.append(parameter_name)
+
+        if destination_options:
+            required_create_parameters.append("DestinationOptions")
+
+        for parameter_name in required_create_parameters:
+            if parameter_name in create_flow_logs_parameters:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support EC2 "
+                    f"create_flow_logs parameter {parameter_name}"
+                )
+            )
+
+        if destination_options and "DestinationOptions" in create_flow_logs_parameters:
+            destination_option_parameters = (
+                client.meta.service_model.operation_model("CreateFlowLogs")
+                .input_shape.members["DestinationOptions"]
+                .members
+            )
+
+            for (
+                option_name,
+                parameter_name,
+            ) in DESTINATION_OPTION_PARAMETER_BY_OPTION.items():
+                if option_name not in destination_options:
+                    continue
+
+                if parameter_name in destination_option_parameters:
+                    continue
+
+                module.fail_json(
+                    msg=(
+                        "Installed botocore does not support EC2 "
+                        "create_flow_logs DestinationOptions parameter "
+                        f"{parameter_name}"
+                    )
+                )
 
     if state == "present":
         ensure_present(client, module)
