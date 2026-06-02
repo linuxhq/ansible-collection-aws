@@ -35,9 +35,10 @@ gpt-5.5 high
 * Mark secret parameters with `no_log=True` and exclude their values from
   examples, return values, and error messages
 
-* For info modules, expose singular lookup options (`name`, `id`, `arn`) when
-  the underlying api accepts a singular identifier; do not expose plural list
-  options (`names`, `ids`, `arns`) in place of the api's own parameter shape
+* When writing info modules, expose singular lookup parameters (`name`, `id`,
+  `arn`) only when the underlying api accepts a singular identifier. Do not
+  substitute plural list parameters (`names`, `ids`, `arns`) for the api's
+  native parameter shape
 
 ### Documentation
 
@@ -98,6 +99,10 @@ gpt-5.5 high
   arguments rather than mixing explicit and `module.params` fallback parameters
 
 * Never mutate `module.params` after module initialization
+
+* Dispatch on `state` with an explicit `if`/`elif`/`else` chain; always close
+  with `module.fail_json(msg=f"Unsupported state: {state}")` in the final
+  branch, even when `choices` validation makes it unreachable
 
 * Prefer explicit loops over nested comprehensions when the loop performs
   api calls or filters missing resources
