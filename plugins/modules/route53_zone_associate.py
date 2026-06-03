@@ -79,6 +79,9 @@ vpcs:
   elements: dict
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -108,8 +111,14 @@ def ensure_absent(client, module, hosted_zone_id):
                     f"Route53 hosted zone {hosted_zone_id}"
                 ),
             )
+
     if changed:
-        vpcs = [vpc for vpc in current_vpcs if vpc != requested_vpc]
+        vpcs = []
+        for vpc in current_vpcs:
+            if vpc == requested_vpc:
+                continue
+
+            vpcs.append(vpc)
 
     module.exit_json(
         changed=changed,
@@ -145,6 +154,7 @@ def ensure_present(client, module, hosted_zone_id):
                     f"Route53 hosted zone {hosted_zone_id}"
                 ),
             )
+
     if changed:
         vpcs = route53_vpc_list(current_vpcs + [requested_vpc])
 
@@ -211,6 +221,45 @@ def main():
     hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]
 
     state = module.params["state"]
+    method_names = {"get_hosted_zone"}
+    if state == "present":
+        method_names.add("associate_vpc_with_hosted_zone")
+    elif state == "absent":
+        method_names.add("disassociate_vpc_from_hosted_zone")
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
+
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=f"Installed botocore does not support Route53 {method_name}"
+            )
+
+    required_method_parameters = {
+        "associate_vpc_with_hosted_zone": {"HostedZoneId", "VPC"},
+        "disassociate_vpc_from_hosted_zone": {"HostedZoneId", "VPC"},
+        "get_hosted_zone": {"Id"},
+    }
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support Route53 "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
+
     if state == "present":
         ensure_present(client, module, hosted_zone_id)
     elif state == "absent":

@@ -48,6 +48,7 @@ open_id_connect_providers:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -108,10 +109,45 @@ def main():
     )
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
 
-    if module.params["arn"]:
+    arn = module.params["arn"]
+    url = module.params["url"]
+    method_names = {"get_open_id_connect_provider"}
+    if not arn:
+        method_names.add("list_open_id_connect_providers")
+
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=f"Installed botocore does not support IAM {method_name}"
+            )
+
+    required_method_parameters = {
+        "get_open_id_connect_provider": {"OpenIDConnectProviderArn"},
+    }
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support IAM "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
+
+    if arn:
         try:
             provider = client.get_open_id_connect_provider(
-                OpenIDConnectProviderArn=module.params["arn"],
+                OpenIDConnectProviderArn=arn,
                 aws_retry=True,
             )
         except is_boto3_error_code("NoSuchEntity"):
@@ -119,16 +155,16 @@ def main():
         except Exception as e:
             module.fail_json_aws(
                 e,
-                msg=f"Unable to get AWS IAM OIDC provider {module.params['arn']}",
+                msg=f"Unable to get AWS IAM OIDC provider {arn}",
             )
 
         if provider:
-            provider["OpenIDConnectProviderArn"] = module.params["arn"]
+            provider["OpenIDConnectProviderArn"] = arn
 
         providers = [provider] if provider else []
-    elif module.params["url"]:
+    elif url:
         providers = []
-        desired_url = normalize_provider_url(module.params["url"])
+        desired_url = normalize_provider_url(url)
 
         for arn in list_provider_arns(client, module):
             provider = get_provider_by_arn(client, module, arn)

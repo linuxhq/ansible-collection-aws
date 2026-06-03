@@ -68,6 +68,7 @@ state:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -79,12 +80,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 def ensure_absent(client, module):
     current = get_logging_configuration(client, module)
+    resource_arn = module.params["resource_arn"]
     changed = current is not None
 
     if changed and not module.check_mode:
         try:
             client.delete_logging_configuration(
-                ResourceArn=module.params["resource_arn"],
+                ResourceArn=resource_arn,
                 aws_retry=True,
             )
         except Exception as e:
@@ -92,18 +94,20 @@ def ensure_absent(client, module):
                 e,
                 msg=(
                     "Unable to delete AWS WAFv2 logging configuration for "
-                    f"{module.params['resource_arn']}"
+                    f"{resource_arn}"
                 ),
             )
 
     module.exit_json(
         changed=changed,
-        resource_arn=module.params["resource_arn"],
+        resource_arn=resource_arn,
         state="absent",
     )
 
 
 def ensure_present(client, module):
+    log_destination_configs = module.params["log_destination_configs"]
+    resource_arn = module.params["resource_arn"]
     current = get_logging_configuration(client, module)
     current_comparable = None
     if current:
@@ -117,12 +121,12 @@ def ensure_present(client, module):
             "resource_arn": normalized_current.get("resource_arn"),
         }
     desired_comparable = {
-        "log_destination_configs": module.params["log_destination_configs"],
-        "resource_arn": module.params["resource_arn"],
+        "log_destination_configs": log_destination_configs,
+        "resource_arn": resource_arn,
     }
     desired = {
-        "LogDestinationConfigs": module.params["log_destination_configs"],
-        "ResourceArn": module.params["resource_arn"],
+        "LogDestinationConfigs": log_destination_configs,
+        "ResourceArn": resource_arn,
     }
     changed = (current_comparable or {}) != desired_comparable
 
@@ -137,7 +141,7 @@ def ensure_present(client, module):
                 e,
                 msg=(
                     "Unable to manage AWS WAFv2 logging configuration for "
-                    f"{module.params['resource_arn']}"
+                    f"{resource_arn}"
                 ),
             )
     elif changed and module.check_mode:
@@ -145,7 +149,7 @@ def ensure_present(client, module):
 
     result = {
         "changed": changed,
-        "resource_arn": module.params["resource_arn"],
+        "resource_arn": resource_arn,
         "state": "present",
         "logging_configuration": boto3_resource_to_ansible_dict(
             current or desired, transform_tags=False, force_tags=False
@@ -190,6 +194,45 @@ def main():
     client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]
+    method_names = {"get_logging_configuration"}
+    if state == "present":
+        method_names.add("put_logging_configuration")
+    elif state == "absent":
+        method_names.add("delete_logging_configuration")
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
+
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=f"Installed botocore does not support WAFv2 {method_name}"
+            )
+
+    required_method_parameters = {
+        "delete_logging_configuration": {"ResourceArn"},
+        "get_logging_configuration": {"ResourceArn"},
+        "put_logging_configuration": {"LoggingConfiguration"},
+    }
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support WAFv2 "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
+
     if state == "present":
         ensure_present(client, module)
     elif state == "absent":

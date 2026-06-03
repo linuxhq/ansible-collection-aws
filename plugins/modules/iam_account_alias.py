@@ -61,6 +61,7 @@ state:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -81,7 +82,11 @@ def list_account_aliases(client, module):
 def ensure_absent(client, module):
     name = module.params["name"]
     aliases = list_account_aliases(client, module)
-    desired_aliases = [alias for alias in aliases if alias != name]
+    desired_aliases = []
+    for alias in aliases:
+        if alias != name:
+            desired_aliases.append(alias)
+
     changed = name in aliases
 
     if changed and not module.check_mode:
@@ -116,6 +121,7 @@ def ensure_present(client, module):
         for alias in aliases:
             if alias in desired_aliases:
                 continue
+
             try:
                 client.delete_account_alias(
                     AccountAlias=alias,
@@ -129,6 +135,7 @@ def ensure_present(client, module):
         for alias in desired_aliases:
             if alias in aliases:
                 continue
+
             try:
                 client.create_account_alias(
                     AccountAlias=alias,
@@ -166,6 +173,44 @@ def main():
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]
+    method_names = {"list_account_aliases"}
+    if state == "present":
+        method_names.update({"create_account_alias", "delete_account_alias"})
+    elif state == "absent":
+        method_names.add("delete_account_alias")
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
+
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=f"Installed botocore does not support IAM {method_name}"
+            )
+
+    required_method_parameters = {
+        "create_account_alias": {"AccountAlias"},
+        "delete_account_alias": {"AccountAlias"},
+    }
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support IAM "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
+
     if state == "present":
         ensure_present(client, module)
     elif state == "absent":

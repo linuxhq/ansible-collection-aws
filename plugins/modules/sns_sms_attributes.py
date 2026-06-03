@@ -69,6 +69,9 @@ attributes:
   type: dict
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -83,32 +86,6 @@ MANAGED_ATTRIBUTES = {
     "monthly_spend_limit": "MonthlySpendLimit",
     "usage_report_s3_bucket": "UsageReportS3Bucket",
 }
-
-
-def desired_sms_attributes(module):
-    return {
-        attribute_name: str(module.params[module_key])
-        for module_key, attribute_name in MANAGED_ATTRIBUTES.items()
-        if module.params[module_key] is not None
-    }
-
-
-def get_sms_attributes(client, module):
-    try:
-        return client.get_sms_attributes(aws_retry=True).get("attributes", {})
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to get AWS Simple Notification Service SMS attributes"
-        )
-
-
-def set_sms_attributes(client, module, attributes):
-    try:
-        client.set_sms_attributes(attributes=attributes, aws_retry=True)
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to manage AWS Simple Notification Service SMS attributes"
-        )
 
 
 def main():
@@ -127,13 +104,76 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
 
-    desired = desired_sms_attributes(module)
-    current_attributes = get_sms_attributes(client, module)
-    current = {key: current_attributes.get(key) for key in desired}
+    method_names = {"get_sms_attributes", "set_sms_attributes"}
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=f"Installed botocore does not support SNS {method_name}"
+            )
+
+    required_method_parameters = {
+        "get_sms_attributes": set(),
+        "set_sms_attributes": {"attributes"},
+    }
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support SNS "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
+
+    desired = {}
+    for module_key, attribute_name in MANAGED_ATTRIBUTES.items():
+        module_value = module.params[module_key]
+        if module_value is None:
+            continue
+
+        if module_key == "delivery_status_success_sampling_rate" and not (
+            0 <= module_value <= 100
+        ):
+            module.fail_json(
+                msg="delivery_status_success_sampling_rate must be between 0 and 100"
+            )
+
+        desired[attribute_name] = str(module_value)
+
+    try:
+        current_attributes = client.get_sms_attributes(aws_retry=True).get(
+            "attributes", {}
+        )
+    except Exception as e:
+        module.fail_json_aws(
+            e, msg="Unable to get AWS Simple Notification Service SMS attributes"
+        )
+
+    current = {}
+    for attribute_name in desired:
+        current[attribute_name] = current_attributes.get(attribute_name)
+
     changed = current != desired
 
     if changed and not module.check_mode:
-        set_sms_attributes(client, module, desired)
+        try:
+            client.set_sms_attributes(attributes=desired, aws_retry=True)
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg="Unable to manage AWS Simple Notification Service SMS attributes",
+            )
+
         current_attributes = dict(current_attributes)
         current_attributes.update(desired)
     elif changed and module.check_mode:

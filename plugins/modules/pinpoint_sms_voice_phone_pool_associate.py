@@ -121,48 +121,47 @@ def current_associations(client, module):
         )
 
 
-def association_keys(module, association):
-    if (
-        module.params["iso_country_code"] is not None
-        and association.get("IsoCountryCode") != module.params["iso_country_code"]
-    ):
-        return []
-    return [
-        identity
+def current_association(module, associations):
+    desired_identity = module.params["origination_identity"]
+    iso_country_code = module.params["iso_country_code"]
+
+    for association in associations:
+        if (
+            iso_country_code is not None
+            and association.get("IsoCountryCode") != iso_country_code
+        ):
+            continue
+
         for identity in (
             association.get("OriginationIdentity"),
             association.get("OriginationIdentityArn"),
-        )
-        if identity is not None
-    ]
+        ):
+            if identity is None:
+                continue
 
+            if identity == desired_identity:
+                return association
 
-def current_association(module, associations):
-    desired_identity = module.params["origination_identity"]
-    for association in associations:
-        if desired_identity in association_keys(module, association):
-            return association
     return None
 
 
-def association_parameters(module):
-    return scrub_none_parameters(
-        {
-            "client_token": module.params["client_token"],
-            "iso_country_code": module.params["iso_country_code"],
-            "origination_identity": module.params["origination_identity"],
-            "pool_id": module.params["pool_id"],
-        }
-    )
-
-
 def association_request(client, module, operation):
-    parameters = association_parameters(module)
-    request = snake_dict_to_camel_dict(parameters, capitalize_first=True)
+    request = snake_dict_to_camel_dict(
+        scrub_none_parameters(
+            {
+                "client_token": module.params["client_token"],
+                "iso_country_code": module.params["iso_country_code"],
+                "origination_identity": module.params["origination_identity"],
+                "pool_id": module.params["pool_id"],
+            }
+        ),
+        capitalize_first=True,
+    )
     supported_parameters = set(
         client.meta.service_model.operation_model(operation).input_shape.members
     )
     unsupported_parameters = sorted(set(request) - supported_parameters)
+
     if unsupported_parameters:
         module.fail_json(
             msg=(
@@ -172,54 +171,6 @@ def association_request(client, module, operation):
             )
         )
     return request
-
-
-def associate_identity(client, module):
-    try:
-        return client.associate_origination_identity(
-            **association_request(client, module, "AssociateOriginationIdentity"),
-            aws_retry=True,
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to associate origination identity "
-                f"{module.params['origination_identity']} with "
-                "Pinpoint SMS Voice V2 pool "
-                f"{module.params['pool_id']}"
-            ),
-        )
-
-
-def disassociate_identity(client, module):
-    try:
-        return client.disassociate_origination_identity(
-            **association_request(client, module, "DisassociateOriginationIdentity"),
-            aws_retry=True,
-        )
-    except is_boto3_error_code("ResourceNotFoundException"):
-        return None
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to disassociate origination identity "
-                f"{module.params['origination_identity']} from "
-                "Pinpoint SMS Voice V2 pool "
-                f"{module.params['pool_id']}"
-            ),
-        )
-
-
-def check_mode_association(module):
-    return scrub_none_parameters(
-        {
-            "IsoCountryCode": module.params["iso_country_code"],
-            "OriginationIdentity": module.params["origination_identity"],
-            "PoolId": module.params["pool_id"],
-        }
-    )
 
 
 def exit_result(module, changed, association):
@@ -240,9 +191,29 @@ def ensure_present(client, module):
     changed = association is None
 
     if changed and not module.check_mode:
-        association = associate_identity(client, module)
+        try:
+            association = client.associate_origination_identity(
+                **association_request(client, module, "AssociateOriginationIdentity"),
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    "Unable to associate origination identity "
+                    f"{module.params['origination_identity']} with "
+                    "Pinpoint SMS Voice V2 pool "
+                    f"{module.params['pool_id']}"
+                ),
+            )
     elif changed and module.check_mode:
-        association = check_mode_association(module)
+        association = scrub_none_parameters(
+            {
+                "IsoCountryCode": module.params["iso_country_code"],
+                "OriginationIdentity": module.params["origination_identity"],
+                "PoolId": module.params["pool_id"],
+            }
+        )
 
     exit_result(module, changed, association)
 
@@ -253,7 +224,26 @@ def ensure_absent(client, module):
     changed = association is not None
 
     if changed and not module.check_mode:
-        disassociate_identity(client, module)
+        try:
+            client.disassociate_origination_identity(
+                **association_request(
+                    client, module, "DisassociateOriginationIdentity"
+                ),
+                aws_retry=True,
+            )
+        except is_boto3_error_code("ResourceNotFoundException"):
+            pass
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    "Unable to disassociate origination identity "
+                    f"{module.params['origination_identity']} from "
+                    "Pinpoint SMS Voice V2 pool "
+                    f"{module.params['pool_id']}"
+                ),
+            )
+
         association = None
 
     exit_result(module, changed, association)

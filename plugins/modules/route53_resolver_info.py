@@ -42,6 +42,7 @@ resolver_endpoints:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -62,6 +63,50 @@ def main():
     client = module.client(
         "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
     )
+
+    method_names = {
+        "list_resolver_endpoint_ip_addresses",
+        "list_resolver_endpoints",
+        "list_tags_for_resource",
+    }
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support Route53 Resolver "
+                    f"{method_name}"
+                )
+            )
+
+    required_method_parameters = {
+        "list_resolver_endpoint_ip_addresses": {
+            "MaxResults",
+            "NextToken",
+            "ResolverEndpointId",
+        },
+        "list_resolver_endpoints": {"Filters", "MaxResults", "NextToken"},
+        "list_tags_for_resource": {"MaxResults", "NextToken", "ResourceArn"},
+    }
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support Route53 Resolver "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
+
     request = {}
     if module.params["filters"]:
         request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
