@@ -66,8 +66,11 @@ gpt-5.5 high
   and pass `aws_retry=True` on individual boto3 api calls that should be retried;
   `paginated_query_with_retries` handles retries internally and does not take `aws_retry`
 
-* When using apis that may be missing from older boto3 or botocore versions,
-  use the collection sdk/version helpers and fail with a clear module error
+* When apis or request parameters may be missing from older boto3 or botocore
+  versions, validate sdk support in `main()` with `get_boto3_client_method_parameters()`
+  before dispatching to state handlers; keep the result local to `main()` and do not
+  pass it into `ensure_*` helpers. Fail with `module.fail_json()` naming the
+  unsupported service method or parameter.
 
 * Scrub unset optional parameters before passing request dictionaries to boto3
   operations
