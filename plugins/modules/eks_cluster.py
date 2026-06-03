@@ -134,6 +134,7 @@ options:
     default: true
     description:
       - Whether to remove tags not present in O(tags).
+      - This option is only used when O(tags) is provided.
     type: bool
   resources_vpc_config:
     description:
@@ -222,6 +223,11 @@ options:
     description:
       - Whether to wait for cluster create, update, or delete operations.
     type: bool
+  wait_delay:
+    default: 15
+    description:
+      - The delay in seconds between update polling attempts when O(wait=true).
+    type: int
   wait_timeout:
     default: 1200
     description:
@@ -306,6 +312,7 @@ from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -362,19 +369,25 @@ RESOURCES_VPC_CONFIG_NETWORK_FIELDS = [
 
 def normalized(value):
     if isinstance(value, dict):
-        return {key: normalized(value[key]) for key in sorted(value)}
+        result = {}
+        for key in sorted(value):
+            result[key] = normalized(value[key])
+        return result
     if isinstance(value, list):
-        return sorted((normalized(item) for item in value), key=repr)
+        result = []
+        for item in value:
+            result.append(normalized(item))
+        return sorted(result, key=repr)
     return value
 
 
 def comparable_subset(current, desired):
     if isinstance(desired, dict):
         current = current or {}
-        return {
-            key: comparable_subset(current.get(key), value)
-            for key, value in desired.items()
-        }
+        result = {}
+        for key, value in desired.items():
+            result[key] = comparable_subset(current.get(key), value)
+        return result
     return current
 
 
@@ -396,40 +409,44 @@ def changed_request(current, desired):
 
 
 def describe_cluster(client, module):
+    name = module.params["name"]
+
     try:
         return client.describe_cluster(
-            name=module.params["name"],
+            name=name,
             aws_retry=True,
         ).get("cluster")
     except is_boto3_error_code("ResourceNotFoundException"):
         return None
     except Exception as e:
-        module.fail_json_aws(
-            e, msg=f"Unable to describe AWS EKS cluster {module.params['name']}"
-        )
+        module.fail_json_aws(e, msg=f"Unable to describe AWS EKS cluster {name}")
 
 
 def wait_for_cluster(client, module, waiter_name):
+    name = module.params["name"]
+    wait_timeout = module.params["wait_timeout"]
     waiter = get_waiter(client, waiter_name)
-    attempts = 1 + int(module.params["wait_timeout"] / waiter.config.delay)
+    attempts = 1 + int(wait_timeout / waiter.config.delay)
+
     try:
         waiter.wait(
-            name=module.params["name"],
+            name=name,
             WaiterConfig={"MaxAttempts": attempts},
         )
     except Exception as e:
-        module.fail_json_aws(
-            e, msg=f"Timed out waiting for AWS EKS cluster {module.params['name']}"
-        )
+        module.fail_json_aws(e, msg=f"Timed out waiting for AWS EKS cluster {name}")
 
 
 def wait_for_update(client, module, update_id):
-    deadline = time.time() + module.params["wait_timeout"]
+    name = module.params["name"]
+    wait_delay = max(1, module.params["wait_delay"])
+    wait_timeout = module.params["wait_timeout"]
+    deadline = time.time() + wait_timeout
     last_update = {}
     while time.time() < deadline:
         try:
             last_update = client.describe_update(
-                name=module.params["name"],
+                name=name,
                 updateId=update_id,
                 aws_retry=True,
             ).get("update", {})
@@ -438,29 +455,27 @@ def wait_for_update(client, module, update_id):
                 e,
                 msg=(
                     "Unable to describe AWS EKS cluster update "
-                    f"{update_id} for {module.params['name']}"
+                    f"{update_id} for {name}"
                 ),
             )
+
         status = last_update.get("status")
+
         if status == "Successful":
             return last_update
         if status in ("Cancelled", "Failed"):
             module.fail_json(
                 msg=(
-                    "AWS EKS cluster update "
-                    f"{update_id} for {module.params['name']} {status.lower()}"
+                    "AWS EKS cluster update " f"{update_id} for {name} {status.lower()}"
                 ),
                 update=boto3_resource_to_ansible_dict(
                     last_update, transform_tags=False, force_tags=False
                 ),
             )
-        time.sleep(min(15, max(1, int(deadline - time.time()))))
+        time.sleep(min(wait_delay, max(1, int(deadline - time.time()))))
 
     module.fail_json(
-        msg=(
-            "Timed out waiting for AWS EKS cluster update "
-            f"{update_id} for {module.params['name']}"
-        ),
+        msg=f"Timed out waiting for AWS EKS cluster update {update_id} for {name}",
         update=boto3_resource_to_ansible_dict(
             last_update, transform_tags=False, force_tags=False
         ),
@@ -468,251 +483,174 @@ def wait_for_update(client, module, update_id):
 
 
 def desired_cluster(module):
-    desired = {
-        field: module.params[field]
-        for field in CREATE_FIELDS
-        if field != "resources_vpc_config"
-    }
+    desired = {}
+    for field in CREATE_FIELDS:
+        if field == "resources_vpc_config":
+            continue
+
+        desired[field] = module.params[field]
     desired["resources_vpc_config"] = module.params["resources_vpc_config"]
     return scrub_none_parameters(desired)
 
 
-def create_request(module):
-    desired = desired_cluster(module)
-    request = {
-        field: desired.get(field)
-        for field in CREATE_FIELDS
-        if desired.get(field) is not None
-    }
-    request["name"] = module.params["name"]
-    if module.params["tags"] is not None:
-        request["tags"] = module.params["tags"]
-    return scrub_none_parameters(
-        snake_dict_to_camel_dict(request, capitalize_first=False)
-    )
-
-
-def update_config_request(module):
-    desired = desired_cluster(module)
-    request = {}
-    for field in UPDATE_CONFIG_FIELDS:
-        if desired.get(field) is not None:
-            request[field] = desired[field]
-
-    access_config = request.get("access_config")
-    if access_config is not None:
-        access_config = {
-            "authentication_mode": access_config.get("authentication_mode"),
-        }
-        if scrub_none_parameters(access_config):
-            request["access_config"] = access_config
-        else:
-            request.pop("access_config")
-
-    if not request:
-        return {}
-    return scrub_none_parameters(
-        snake_dict_to_camel_dict(request, capitalize_first=False)
-    )
-
-
-def update_config_requests(current, request):
-    requests = []
-    for field, value in request.items():
-        field_request = {field: value}
-        update_request = changed_request(current, field_request)
-        if update_request is None:
-            continue
-        if field == "resourcesVpcConfig":
-            requests.extend(resources_vpc_config_update_requests(update_request))
-        else:
-            requests.append(update_request)
-    return requests
-
-
-def resources_vpc_config_update_requests(request):
-    resources_vpc_config = request.get("resourcesVpcConfig") or {}
-    requests = []
-    endpoint_config = {
-        field: resources_vpc_config[field]
-        for field in RESOURCES_VPC_CONFIG_ENDPOINT_FIELDS
-        if field in resources_vpc_config
-    }
-    network_config = {
-        field: resources_vpc_config[field]
-        for field in RESOURCES_VPC_CONFIG_NETWORK_FIELDS
-        if field in resources_vpc_config
-    }
-    if endpoint_config:
-        requests.append({"resourcesVpcConfig": endpoint_config})
-    if network_config:
-        requests.append({"resourcesVpcConfig": network_config})
-    return requests
-
-
-def validate_create(module, request):
-    if request.get("roleArn") is None:
-        module.fail_json(msg="role_arn is required to create an EKS cluster")
-    if not (request.get("resourcesVpcConfig") or {}).get("subnetIds"):
-        module.fail_json(
-            msg="resources_vpc_config.subnet_ids is required to create an EKS cluster"
-        )
-
-
-def validate_create_only_fields(module, current):
-    desired = scrub_none_parameters(
-        snake_dict_to_camel_dict(desired_cluster(module), capitalize_first=False)
-    )
-    for field in CREATE_ONLY_FIELDS:
-        camel_field = next(
-            iter(snake_dict_to_camel_dict({field: None}, capitalize_first=False))
-        )
-        if desired.get(camel_field) is None:
-            continue
-        current_value = comparable_subset(current, {camel_field: desired[camel_field]})
-        if changed(current_value, {camel_field: desired[camel_field]}):
-            module.fail_json(
-                msg=(
-                    f"Cannot modify {field} for existing EKS cluster "
-                    f"{module.params['name']}"
-                )
-            )
-
-
-def apply_tag_changes(client, module, cluster, tags_to_set, tag_keys_to_unset):
-    arn = cluster.get("arn")
-    if not arn:
-        module.fail_json(msg=f"Unable to tag EKS cluster {module.params['name']}")
-
-    if tag_keys_to_unset:
-        try:
-            client.untag_resource(
-                resourceArn=arn,
-                tagKeys=tag_keys_to_unset,
-                aws_retry=True,
-            )
-        except Exception as e:
-            module.fail_json_aws(
-                e, msg=f"Unable to remove tags from EKS cluster {module.params['name']}"
-            )
-
-    if tags_to_set:
-        try:
-            client.tag_resource(
-                resourceArn=arn,
-                tags=tags_to_set,
-                aws_retry=True,
-            )
-        except Exception as e:
-            module.fail_json_aws(
-                e, msg=f"Unable to tag EKS cluster {module.params['name']}"
-            )
-
-
-def cluster_with_updated_tags(cluster, tags_to_set, tag_keys_to_unset):
-    cluster = dict(cluster)
-    tags = dict(cluster.get("tags") or {})
-    for tag_key in tag_keys_to_unset:
-        tags.pop(tag_key, None)
-    tags.update(tags_to_set)
-    cluster["tags"] = tags
-    return cluster
-
-
 def check_mode_cluster(module, current):
+    name = module.params["name"]
+    tags = module.params["tags"]
     cluster = dict(current or {})
     desired = scrub_none_parameters(
         snake_dict_to_camel_dict(desired_cluster(module), capitalize_first=False)
     )
     cluster.update(desired)
-    cluster["name"] = module.params["name"]
-    if module.params["tags"] is not None:
-        cluster["tags"] = module.params["tags"]
+    cluster["name"] = name
+    if tags is not None:
+        cluster["tags"] = tags
     return cluster
 
 
 def exit_result(module, changed, cluster, state):
+    name = module.params["name"]
     normalized_cluster = boto3_resource_to_ansible_dict(
         cluster or {}, transform_tags=False, force_tags=False
     )
+
     result = {
         "changed": changed,
         "cluster": normalized_cluster,
-        "name": module.params["name"],
+        "name": name,
         "state": state,
     }
     result.update(normalized_cluster)
     module.exit_json(**result)
 
 
-def create_cluster(client, module, request):
-    validate_create(module, request)
-    try:
-        return client.create_cluster(**request, aws_retry=True).get("cluster")
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg=f"Unable to create EKS cluster {module.params['name']}"
-        )
-
-
-def update_cluster_config(client, module, request):
-    request = dict(request)
-    request["name"] = module.params["name"]
-    try:
-        return client.update_cluster_config(
-            **request,
-            aws_retry=True,
-        ).get("update", {})
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg=f"Unable to update EKS cluster {module.params['name']}"
-        )
-
-
-def update_cluster_version(client, module):
-    try:
-        return client.update_cluster_version(
-            name=module.params["name"],
-            version=module.params["version"],
-            aws_retry=True,
-        ).get("update", {})
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg=f"Unable to update EKS cluster {module.params['name']} version"
-        )
-
-
 def ensure_present(client, module):
+    name = module.params["name"]
+    purge_tags = module.params["purge_tags"]
+    tags = module.params["tags"]
+    version = module.params["version"]
+    wait = module.params["wait"]
     current = describe_cluster(client, module)
-    request = create_request(module)
+    desired = desired_cluster(module)
+    create_request = {}
+    for field in CREATE_FIELDS:
+        if desired.get(field) is not None:
+            create_request[field] = desired[field]
+
+    create_request["name"] = name
+    if tags is not None:
+        create_request["tags"] = tags
+    create_request = scrub_none_parameters(
+        snake_dict_to_camel_dict(create_request, capitalize_first=False)
+    )
 
     if current is None:
+        if create_request.get("roleArn") is None:
+            module.fail_json(msg="role_arn is required to create an EKS cluster")
+        if not (create_request.get("resourcesVpcConfig") or {}).get("subnetIds"):
+            module.fail_json(
+                msg=(
+                    "resources_vpc_config.subnet_ids is required to create "
+                    "an EKS cluster"
+                )
+            )
+
         if module.check_mode:
             exit_result(module, True, check_mode_cluster(module, None), "present")
-        cluster = create_cluster(client, module, request)
-        if module.params["wait"]:
+
+        try:
+            cluster = client.create_cluster(**create_request, aws_retry=True).get(
+                "cluster"
+            )
+        except Exception as e:
+            module.fail_json_aws(e, msg=f"Unable to create EKS cluster {name}")
+
+        if wait:
             wait_for_cluster(client, module, "cluster_active")
             cluster = describe_cluster(client, module)
+
         exit_result(module, True, cluster, "present")
 
-    if module.params["wait"] and current.get("status") != "ACTIVE":
+    if wait and current.get("status") != "ACTIVE":
         wait_for_cluster(client, module, "cluster_active")
         current = describe_cluster(client, module)
 
-    validate_create_only_fields(module, current)
+    desired_boto3 = scrub_none_parameters(
+        snake_dict_to_camel_dict(desired, capitalize_first=False)
+    )
+    for field in CREATE_ONLY_FIELDS:
+        camel_field = next(
+            iter(snake_dict_to_camel_dict({field: None}, capitalize_first=False))
+        )
+        if desired_boto3.get(camel_field) is None:
+            continue
 
-    update_requests = update_config_requests(current, update_config_request(module))
+        current_value = comparable_subset(
+            current, {camel_field: desired_boto3[camel_field]}
+        )
+
+        if changed(current_value, {camel_field: desired_boto3[camel_field]}):
+            module.fail_json(
+                msg=f"Cannot modify {field} for existing EKS cluster {name}"
+            )
+
+    config_request = {}
+    for field in UPDATE_CONFIG_FIELDS:
+        if desired.get(field) is not None:
+            config_request[field] = desired[field]
+
+    access_config = config_request.get("access_config")
+    if access_config is not None:
+        access_config = {
+            "authentication_mode": access_config.get("authentication_mode"),
+        }
+        if scrub_none_parameters(access_config):
+            config_request["access_config"] = access_config
+        else:
+            config_request.pop("access_config")
+
+    if config_request:
+        config_request = scrub_none_parameters(
+            snake_dict_to_camel_dict(config_request, capitalize_first=False)
+        )
+
+    update_requests = []
+    for field, value in config_request.items():
+        field_request = {field: value}
+        update_request = changed_request(current, field_request)
+        if update_request is None:
+            continue
+
+        if field == "resourcesVpcConfig":
+            resources_vpc_config = update_request.get("resourcesVpcConfig") or {}
+            endpoint_config = {}
+            for endpoint_field in RESOURCES_VPC_CONFIG_ENDPOINT_FIELDS:
+                if endpoint_field in resources_vpc_config:
+                    endpoint_config[endpoint_field] = resources_vpc_config[
+                        endpoint_field
+                    ]
+
+            network_config = {}
+            for network_field in RESOURCES_VPC_CONFIG_NETWORK_FIELDS:
+                if network_field in resources_vpc_config:
+                    network_config[network_field] = resources_vpc_config[network_field]
+
+            if endpoint_config:
+                update_requests.append({"resourcesVpcConfig": endpoint_config})
+            if network_config:
+                update_requests.append({"resourcesVpcConfig": network_config})
+        else:
+            update_requests.append(update_request)
+
     config_changed = bool(update_requests)
-    version_changed = module.params["version"] is not None and module.params[
-        "version"
-    ] != current.get("version")
+    version_changed = version is not None and version != current.get("version")
     tags_to_set, tag_keys_to_unset = ({}, [])
-    if module.params["tags"] is not None:
+    if tags is not None:
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
             current.get("tags") or {},
-            module.params["tags"],
-            purge_tags=module.params["purge_tags"],
+            tags,
+            purge_tags=purge_tags,
         )
+
     tags_changed = bool(tags_to_set or tag_keys_to_unset)
     cluster_changed = config_changed or version_changed
     resource_changed = cluster_changed or tags_changed
@@ -722,41 +660,87 @@ def ensure_present(client, module):
 
     if config_changed:
         for index, update_request in enumerate(update_requests):
-            update = update_cluster_config(client, module, update_request)
+            update_request = dict(update_request)
+            update_request["name"] = name
+
+            try:
+                update = client.update_cluster_config(
+                    **update_request,
+                    aws_retry=True,
+                ).get("update", {})
+            except Exception as e:
+                module.fail_json_aws(e, msg=f"Unable to update EKS cluster {name}")
+
             update_id = update.get("id")
             wait_for_next_update = index < len(update_requests) - 1
-            if update_id and (
-                module.params["wait"] or version_changed or wait_for_next_update
-            ):
+
+            if update_id and (wait or version_changed or wait_for_next_update):
                 wait_for_update(client, module, update_id)
                 wait_for_cluster(client, module, "cluster_active")
 
     if version_changed:
-        update = update_cluster_version(client, module)
+        try:
+            update = client.update_cluster_version(
+                name=name,
+                version=version,
+                aws_retry=True,
+            ).get("update", {})
+        except Exception as e:
+            module.fail_json_aws(e, msg=f"Unable to update EKS cluster {name} version")
+
         update_id = update.get("id")
-        if update_id and module.params["wait"]:
+
+        if update_id and wait:
             wait_for_update(client, module, update_id)
             wait_for_cluster(client, module, "cluster_active")
 
     if tags_changed:
-        apply_tag_changes(
-            client,
-            module,
-            current,
-            tags_to_set,
-            tag_keys_to_unset,
-        )
+        arn = current.get("arn")
+
+        if not arn:
+            module.fail_json(msg=f"Unable to tag EKS cluster {name}")
+
+        if tag_keys_to_unset:
+            try:
+                client.untag_resource(
+                    resourceArn=arn,
+                    tagKeys=tag_keys_to_unset,
+                    aws_retry=True,
+                )
+            except Exception as e:
+                module.fail_json_aws(
+                    e, msg=f"Unable to remove tags from EKS cluster {name}"
+                )
+
+        if tags_to_set:
+            try:
+                client.tag_resource(
+                    resourceArn=arn,
+                    tags=tags_to_set,
+                    aws_retry=True,
+                )
+            except Exception as e:
+                module.fail_json_aws(e, msg=f"Unable to tag EKS cluster {name}")
 
     if cluster_changed:
         current = describe_cluster(client, module)
     elif tags_changed:
-        current = cluster_with_updated_tags(current, tags_to_set, tag_keys_to_unset)
+        current = dict(current)
+        current_tags = dict(current.get("tags") or {})
+
+        for tag_key in tag_keys_to_unset:
+            current_tags.pop(tag_key, None)
+        current_tags.update(tags_to_set)
+        current["tags"] = current_tags
 
     exit_result(module, resource_changed, current, "present")
 
 
 def ensure_absent(client, module):
+    name = module.params["name"]
+    wait = module.params["wait"]
     current = describe_cluster(client, module)
+
     if current is None:
         exit_result(module, False, {}, "absent")
 
@@ -764,13 +748,11 @@ def ensure_absent(client, module):
         exit_result(module, True, current, "absent")
 
     try:
-        client.delete_cluster(name=module.params["name"], aws_retry=True)
+        client.delete_cluster(name=name, aws_retry=True)
     except Exception as e:
-        module.fail_json_aws(
-            e, msg=f"Unable to delete EKS cluster {module.params['name']}"
-        )
+        module.fail_json_aws(e, msg=f"Unable to delete EKS cluster {name}")
 
-    if module.params["wait"]:
+    if wait:
         wait_for_cluster(client, module, "cluster_deleted")
 
     exit_result(module, True, current, "absent")
@@ -887,6 +869,7 @@ def main():
         },
         "version": {"type": "str"},
         "wait": {"default": True, "type": "bool"},
+        "wait_delay": {"default": 15, "type": "int"},
         "wait_timeout": {"default": 1200, "type": "int"},
         "zonal_shift_config": {
             "options": {
@@ -903,6 +886,88 @@ def main():
     client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]
+    tags = module.params["tags"]
+    purge_tags = module.params["purge_tags"]
+    version = module.params["version"]
+    desired = desired_cluster(module)
+    method_names = {"describe_cluster"}
+
+    if state == "present":
+        method_names.update(
+            {
+                "create_cluster",
+                "describe_update",
+                "update_cluster_config",
+            }
+        )
+        if version is not None:
+            method_names.add("update_cluster_version")
+        if tags is not None:
+            method_names.add("tag_resource")
+            if purge_tags:
+                method_names.add("untag_resource")
+    elif state == "absent":
+        method_names.add("delete_cluster")
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
+
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=f"Installed botocore does not support EKS {method_name}"
+            )
+
+    create_cluster_parameters = {"name"}
+    for field in CREATE_FIELDS:
+        if desired.get(field) is None:
+            continue
+
+        create_cluster_parameters.update(
+            snake_dict_to_camel_dict({field: None}, capitalize_first=False)
+        )
+    if tags is not None:
+        create_cluster_parameters.add("tags")
+
+    update_cluster_config_parameters = {"name"}
+    for field in UPDATE_CONFIG_FIELDS:
+        if desired.get(field) is None:
+            continue
+
+        update_cluster_config_parameters.update(
+            snake_dict_to_camel_dict({field: None}, capitalize_first=False)
+        )
+
+    required_method_parameters = {
+        "create_cluster": create_cluster_parameters,
+        "delete_cluster": {"name"},
+        "describe_cluster": {"name"},
+        "describe_update": {"name", "updateId"},
+        "tag_resource": {"resourceArn", "tags"},
+        "untag_resource": {"resourceArn", "tagKeys"},
+        "update_cluster_config": update_cluster_config_parameters,
+        "update_cluster_version": {"name", "version"},
+    }
+
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support EKS "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
+
     if state == "present":
         ensure_present(client, module)
     elif state == "absent":

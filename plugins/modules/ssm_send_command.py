@@ -125,6 +125,7 @@ import time
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -139,7 +140,6 @@ SUCCESS_STATUSES = {"Success"}
 TERMINAL_STATUSES = {"Cancelled", "Cancelling", "Failed", "Success", "TimedOut"}
 SEND_COMMAND_OPTIONS = [
     "comment",
-    "document_name",
     "instance_ids",
     "max_concurrency",
     "max_errors",
@@ -156,75 +156,6 @@ def normalize_command(command):
         ],
         transform_tags=False,
         force_tags=False,
-    )
-
-
-def wait_for_command(client, module, command_id):
-    deadline = time.monotonic() + module.params["wait_timeout"]
-
-    while time.monotonic() < deadline:
-        try:
-            commands = paginated_query_with_retries(
-                client,
-                "list_commands",
-                CommandId=command_id,
-            ).get("Commands", [])
-            invocations = paginated_query_with_retries(
-                client,
-                "list_command_invocations",
-                CommandId=command_id,
-                Details=True,
-            ).get("CommandInvocations", [])
-        except Exception as e:
-            module.fail_json_aws(
-                e, msg=f"Unable to get AWS Systems Manager command {command_id}"
-            )
-        if not commands:
-            module.fail_json(
-                msg=(
-                    f"AWS Systems Manager command {command_id} was not returned "
-                    "by list_commands"
-                ),
-            )
-        command = commands[0]
-        statuses = set()
-        for invocation in invocations:
-            invocation_status = invocation.get("Status")
-            if invocation_status:
-                statuses.add(invocation_status)
-        command_status = command.get("Status")
-
-        if command_status in TERMINAL_STATUSES and not invocations:
-            if command_status in SUCCESS_STATUSES:
-                return command, invocations
-
-            module.fail_json(
-                msg=f"AWS Systems Manager command {command_id} did not complete successfully",
-                command=normalize_command(command),
-                command_id=command_id,
-                command_invocations=[],
-                status=command_status,
-            )
-
-        if invocations and statuses and statuses.issubset(TERMINAL_STATUSES):
-            if statuses.issubset(SUCCESS_STATUSES):
-                return command, invocations
-
-            module.fail_json(
-                msg=f"AWS Systems Manager command {command_id} did not complete successfully",
-                command=normalize_command(command),
-                command_id=command_id,
-                command_invocations=boto3_resource_list_to_ansible_dict(
-                    invocations, transform_tags=False, force_tags=False
-                ),
-                status=command_status,
-            )
-
-        time.sleep(module.params["wait_delay"])
-
-    module.fail_json(
-        msg=f"Timed out waiting for AWS Systems Manager command {command_id}",
-        command_id=command_id,
     )
 
 
@@ -256,19 +187,62 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
+    document_name = module.params["document_name"]
+    parameters = module.params["parameters"]
+    targets = module.params["targets"]
+    wait = module.params["wait"]
     send_command_request = {
         option: module.params[option] for option in SEND_COMMAND_OPTIONS
     }
-    send_command_request["parameters"] = module.params["parameters"]
-    if module.params["targets"] is not None:
+    send_command_request["document_name"] = document_name
+    send_command_request["parameters"] = parameters
+    if targets is not None:
         send_command_request["targets"] = [
             snake_dict_to_camel_dict(target, capitalize_first=True)
-            for target in module.params["targets"]
+            for target in targets
         ]
     send_command_args = scrub_none_parameters(
         snake_dict_to_camel_dict(send_command_request, capitalize_first=True)
     )
-    send_command_args["Parameters"] = module.params["parameters"]
+    send_command_args["Parameters"] = parameters
+
+    method_names = {"send_command"}
+    if wait:
+        method_names.update({"list_commands", "list_command_invocations"})
+
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support Systems Manager "
+                    f"{method_name}"
+                )
+            )
+
+    required_method_parameters = {
+        "send_command": set(send_command_args),
+        "list_commands": {"CommandId"},
+        "list_command_invocations": {"CommandId", "Details"},
+    }
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support Systems Manager "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
 
     if module.check_mode:
         module.exit_json(changed=True)
@@ -281,8 +255,7 @@ def main():
         module.fail_json_aws(
             e,
             msg=(
-                "Unable to send AWS Systems Manager command using "
-                f"{module.params['document_name']}"
+                "Unable to send AWS Systems Manager command using " f"{document_name}"
             ),
         )
 
@@ -293,13 +266,86 @@ def main():
         "status": command.get("Status"),
     }
 
-    if module.params["wait"]:
+    if wait:
         command_id = command.get("CommandId")
-        command, invocations = wait_for_command(
-            client,
-            module,
-            command_id,
-        )
+        wait_delay = max(1, module.params["wait_delay"])
+        deadline = time.monotonic() + module.params["wait_timeout"]
+
+        while time.monotonic() < deadline:
+            try:
+                commands = paginated_query_with_retries(
+                    client,
+                    "list_commands",
+                    CommandId=command_id,
+                ).get("Commands", [])
+                invocations = paginated_query_with_retries(
+                    client,
+                    "list_command_invocations",
+                    CommandId=command_id,
+                    Details=True,
+                ).get("CommandInvocations", [])
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg=f"Unable to get AWS Systems Manager command {command_id}",
+                )
+
+            if not commands:
+                module.fail_json(
+                    msg=(
+                        f"AWS Systems Manager command {command_id} was not returned "
+                        "by list_commands"
+                    ),
+                )
+
+            command = commands[0]
+            statuses = set()
+            for invocation in invocations:
+                invocation_status = invocation.get("Status")
+                if invocation_status:
+                    statuses.add(invocation_status)
+
+            command_status = command.get("Status")
+
+            if command_status in TERMINAL_STATUSES and not invocations:
+                if command_status in SUCCESS_STATUSES:
+                    break
+
+                module.fail_json(
+                    msg=(
+                        f"AWS Systems Manager command {command_id} did not complete "
+                        "successfully"
+                    ),
+                    command=normalize_command(command),
+                    command_id=command_id,
+                    command_invocations=[],
+                    status=command_status,
+                )
+
+            if invocations and statuses and statuses.issubset(TERMINAL_STATUSES):
+                if statuses.issubset(SUCCESS_STATUSES):
+                    break
+
+                module.fail_json(
+                    msg=(
+                        f"AWS Systems Manager command {command_id} did not complete "
+                        "successfully"
+                    ),
+                    command=normalize_command(command),
+                    command_id=command_id,
+                    command_invocations=boto3_resource_list_to_ansible_dict(
+                        invocations, transform_tags=False, force_tags=False
+                    ),
+                    status=command_status,
+                )
+
+            time.sleep(wait_delay)
+        else:
+            module.fail_json(
+                msg=f"Timed out waiting for AWS Systems Manager command {command_id}",
+                command_id=command_id,
+            )
+
         result["command"] = normalize_command(command)
         result["command_invocations"] = boto3_resource_list_to_ansible_dict(
             invocations, transform_tags=False, force_tags=False

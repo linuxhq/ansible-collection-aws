@@ -55,6 +55,7 @@ state:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -65,32 +66,33 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 
 def ensure_absent(client, module):
+    region = module.params["region"]
+
     try:
         hubs = paginated_query_with_retries(client, "list_notification_hubs").get(
             "notificationHubs", []
         )
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Notifications hubs")
-    hub = next(
-        (
-            item
-            for item in hubs
-            if item.get("notificationHubRegion") == module.params["region"]
-        ),
-        None,
-    )
+
+    hub = None
+    for item in hubs:
+        if item.get("notificationHubRegion") == region:
+            hub = item
+            break
+
     changed = hub is not None
 
     if changed and not module.check_mode:
         try:
             client.deregister_notification_hub(
-                notificationHubRegion=module.params["region"],
+                notificationHubRegion=region,
                 aws_retry=True,
             )
         except Exception as e:
             module.fail_json_aws(
                 e,
-                msg=f"Unable to delete AWS Notifications hub {module.params['region']}",
+                msg=f"Unable to delete AWS Notifications hub {region}",
             )
 
     module.exit_json(
@@ -100,33 +102,34 @@ def ensure_absent(client, module):
 
 
 def ensure_present(client, module):
+    region = module.params["region"]
+
     try:
         hubs = paginated_query_with_retries(client, "list_notification_hubs").get(
             "notificationHubs", []
         )
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Notifications hubs")
-    hub = next(
-        (
-            item
-            for item in hubs
-            if item.get("notificationHubRegion") == module.params["region"]
-        ),
-        None,
-    )
-    desired_hub = {"notification_hub_region": module.params["region"]}
+
+    hub = None
+    for item in hubs:
+        if item.get("notificationHubRegion") == region:
+            hub = item
+            break
+
+    desired_hub = {"notification_hub_region": region}
     changed = hub is None
 
     if changed and not module.check_mode:
         try:
             client.register_notification_hub(
-                notificationHubRegion=module.params["region"],
+                notificationHubRegion=region,
                 aws_retry=True,
             )
         except Exception as e:
             module.fail_json_aws(
                 e,
-                msg=f"Unable to create AWS Notifications hub {module.params['region']}",
+                msg=f"Unable to create AWS Notifications hub {region}",
             )
         hub = desired_hub
     elif changed and module.check_mode:
@@ -164,6 +167,45 @@ def main():
     )
 
     state = module.params["state"]
+    method_names = {"list_notification_hubs"}
+    if state == "present":
+        method_names.add("register_notification_hub")
+    elif state == "absent":
+        method_names.add("deregister_notification_hub")
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
+
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=f"Installed botocore does not support Notifications {method_name}"
+            )
+
+    required_method_parameters = {
+        "deregister_notification_hub": {"notificationHubRegion"},
+        "list_notification_hubs": {"maxResults", "nextToken"},
+        "register_notification_hub": {"notificationHubRegion"},
+    }
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support Notifications "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
+
     if state == "present":
         ensure_present(client, module)
     elif state == "absent":

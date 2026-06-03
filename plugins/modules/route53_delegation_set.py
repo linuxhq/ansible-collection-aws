@@ -64,6 +64,9 @@ state:
   type: str
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -72,6 +75,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 
 def ensure_absent(client, module):
+    name = module.params["name"]
     delegation_set = get_reusable_delegation_set(client, module)
     changed = delegation_set is not None
     delegation_set_id = (delegation_set or {}).get("Id")
@@ -85,38 +89,34 @@ def ensure_absent(client, module):
         except Exception as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to delete AWS Route53 reusable delegation set "
-                    f"{module.params['name']}"
-                ),
+                msg=f"Unable to delete AWS Route53 reusable delegation set {name}",
             )
 
     module.exit_json(
         changed=changed,
-        name=module.params["name"],
+        name=name,
         state="absent",
     )
 
 
 def ensure_present(client, module):
+    name = module.params["name"]
     delegation_set = get_reusable_delegation_set(client, module)
-    desired_delegation_set = {"caller_reference": module.params["name"]}
+    desired_delegation_set = {"CallerReference": name}
     changed = delegation_set is None
 
     if changed and not module.check_mode:
         try:
             delegation_set = client.create_reusable_delegation_set(
-                CallerReference=module.params["name"],
+                CallerReference=name,
                 aws_retry=True,
             ).get("DelegationSet")
         except Exception as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to create AWS Route53 reusable delegation set "
-                    f"{module.params['name']}"
-                ),
+                msg=f"Unable to create AWS Route53 reusable delegation set {name}",
             )
+
         if delegation_set is None:
             delegation_set = get_reusable_delegation_set(client, module)
     elif changed and module.check_mode:
@@ -127,32 +127,40 @@ def ensure_present(client, module):
         "delegation_set": boto3_resource_to_ansible_dict(
             delegation_set, transform_tags=False, force_tags=False
         ),
-        "name": module.params["name"],
+        "name": name,
         "state": "present",
     }
     delegation_set_id = (delegation_set or {}).get("Id")
+
     if delegation_set_id is not None:
         result["delegation_set_id"] = delegation_set_id
 
     module.exit_json(**result)
 
 
-def list_reusable_delegation_sets(client, module):
+def get_reusable_delegation_set(client, module):
+    name = module.params["name"]
     marker = None
-    delegation_sets = []
+
     while True:
         request = {}
         if marker:
             request["Marker"] = marker
+
         try:
             response = client.list_reusable_delegation_sets(**request, aws_retry=True)
         except Exception as e:
             module.fail_json_aws(
                 e, msg="Unable to list AWS Route53 reusable delegation sets"
             )
-        delegation_sets.extend(response.get("DelegationSets", []))
+
+        for delegation_set in response.get("DelegationSets", []):
+            if delegation_set.get("CallerReference") == name:
+                return delegation_set
+
         if not response.get("IsTruncated"):
-            return delegation_sets
+            return None
+
         marker = response.get("NextMarker")
         if not marker:
             module.fail_json(
@@ -161,18 +169,6 @@ def list_reusable_delegation_sets(client, module):
                     "truncated without a NextMarker"
                 )
             )
-
-
-def get_reusable_delegation_set(client, module):
-    name = module.params["name"]
-    return next(
-        (
-            delegation_set
-            for delegation_set in list_reusable_delegation_sets(client, module)
-            if delegation_set.get("CallerReference") == name
-        ),
-        None,
-    )
 
 
 def main():
@@ -190,6 +186,45 @@ def main():
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]
+    method_names = {"list_reusable_delegation_sets"}
+    if state == "present":
+        method_names.add("create_reusable_delegation_set")
+    elif state == "absent":
+        method_names.add("delete_reusable_delegation_set")
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
+
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=f"Installed botocore does not support Route53 {method_name}"
+            )
+
+    required_method_parameters = {
+        "create_reusable_delegation_set": {"CallerReference"},
+        "delete_reusable_delegation_set": {"Id"},
+        "list_reusable_delegation_sets": {"Marker"},
+    }
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support Route53 "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
+
     if state == "present":
         ensure_present(client, module)
     elif state == "absent":

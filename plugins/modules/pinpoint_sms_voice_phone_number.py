@@ -167,6 +167,7 @@ import time
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
@@ -183,111 +184,11 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def sorted_tag_list(tags):
-    return sorted(ansible_dict_to_boto3_tag_list(tags), key=lambda tag: tag["Key"])
-
-
-def request_parameters(module):
-    return scrub_none_parameters(
-        {
-            "client_token": module.params["client_token"],
-            "deletion_protection_enabled": module.params["deletion_protection_enabled"],
-            "international_sending_enabled": module.params[
-                "international_sending_enabled"
-            ],
-            "iso_country_code": module.params["iso_country_code"],
-            "message_type": module.params["message_type"],
-            "number_capabilities": module.params["number_capabilities"],
-            "number_type": module.params["number_type"],
-            "opt_out_list_name": module.params["opt_out_list_name"],
-            "pool_id": module.params["pool_id"],
-            "registration_id": module.params["registration_id"],
-            "tags": (
-                sorted_tag_list(module.params["tags"])
-                if module.params["tags"] is not None
-                else None
-            ),
-        }
-    )
-
-
-def request_phone_number_parameters(client, module):
-    parameters = request_parameters(module)
-    request = snake_dict_to_camel_dict(parameters, capitalize_first=True)
-    supported_parameters = set(
-        client.meta.service_model.operation_model(
-            "RequestPhoneNumber"
-        ).input_shape.members
-    )
-    unsupported_parameters = sorted(set(request) - supported_parameters)
-    if unsupported_parameters:
-        module.fail_json(
-            msg=(
-                "Installed botocore does not support Pinpoint SMS Voice V2 "
-                "RequestPhoneNumber parameter(s): "
-                f"{', '.join(unsupported_parameters)}"
-            )
-        )
-    return request
-
-
-def validate_request(module):
-    if (
-        module.params["number_type"] == "SIMULATOR"
-        and module.params["message_type"] != "TRANSACTIONAL"
-    ):
-        module.fail_json(
-            msg="message_type must be TRANSACTIONAL when number_type is SIMULATOR"
-        )
-
-
-def desired_present_filters(module):
-    filters = {
-        "iso-country-code": module.params["iso_country_code"],
-        "message-type": module.params["message_type"],
-        "number-capability": module.params["number_capabilities"],
-        "number-type": module.params["number_type"],
-        "deletion-protection-enabled": module.params["deletion_protection_enabled"],
-    }
-    if module.params["opt_out_list_name"] is not None:
-        filters["opt-out-list-name"] = module.params["opt_out_list_name"]
-    return filters
-
-
-def comparable_desired(module):
-    desired = {
-        "DeletionProtectionEnabled": module.params["deletion_protection_enabled"],
-        "IsoCountryCode": module.params["iso_country_code"],
-        "MessageType": module.params["message_type"],
-        "NumberCapabilities": sorted(module.params["number_capabilities"] or []),
-        "NumberType": module.params["number_type"],
-    }
-    for module_key, response_key in (
-        ("international_sending_enabled", "InternationalSendingEnabled"),
-        ("opt_out_list_name", "OptOutListName"),
-        ("pool_id", "PoolId"),
-        ("registration_id", "RegistrationId"),
-    ):
-        if module.params[module_key] is not None:
-            desired[response_key] = module.params[module_key]
-    return desired
-
-
-def phone_number_matches_desired(module, phone_number):
-    desired = comparable_desired(module)
-    for key, value in desired.items():
-        current = phone_number.get(key)
-        if key == "NumberCapabilities":
-            current = sorted(current or [])
-        if current != value:
-            return False
-    return phone_number.get("Status") != "DELETED"
-
-
 def phone_number_tags(client, module, phone_number):
     arn = phone_number.get("PhoneNumberArn")
     if not arn:
         return {}
+
     try:
         return boto3_tag_list_to_ansible_dict(
             client.list_tags_for_resource(
@@ -301,46 +202,8 @@ def phone_number_tags(client, module, phone_number):
         )
 
 
-def matching_phone_number_tags(client, module, phone_number):
-    if module.params["tags"] is None:
-        return None
-    current_tags = phone_number_tags(client, module, phone_number)
-    if all(
-        current_tags.get(key) == value for key, value in module.params["tags"].items()
-    ):
-        return current_tags
-    return None
-
-
-def existing_phone_number(client, module):
-    request = {
-        "Filters": ansible_dict_to_boto3_filter_list(desired_present_filters(module)),
-        "Owner": "SELF",
-    }
-    try:
-        phone_numbers = paginated_query_with_retries(
-            client,
-            "describe_phone_numbers",
-            **request,
-        ).get("PhoneNumbers", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to describe Pinpoint SMS Voice V2 phone numbers"
-        )
-
-    for phone_number in phone_numbers:
-        if not phone_number_matches_desired(module, phone_number):
-            continue
-        current_tags = matching_phone_number_tags(client, module, phone_number)
-        if module.params["tags"] is None or current_tags is not None:
-            if module.params["tags"] is not None:
-                phone_number = dict(phone_number)
-                phone_number["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
-            return phone_number
-    return None
-
-
 def exit_result(module, changed, response):
+    state = module.params["state"]
     phone_number = boto3_resource_to_ansible_dict(
         response or {}, transform_tags=True, force_tags=False
     )
@@ -349,7 +212,7 @@ def exit_result(module, changed, response):
         "phone_number": phone_number,
         "phone_number_arn": phone_number.get("phone_number_arn"),
         "phone_number_id": phone_number.get("phone_number_id"),
-        "state": module.params["state"],
+        "state": state,
     }
     result.update(phone_number)
     module.exit_json(**result)
@@ -375,20 +238,18 @@ def get_phone_number(client, module, phone_number_id):
     return phone_numbers[0] if phone_numbers else None
 
 
-def get_requested_phone_number(client, module):
-    phone_number_id = module.params["phone_number_id"]
-    return get_phone_number(client, module, phone_number_id)
-
-
 def wait_for_phone_number_active(client, module, phone_number_id):
-    deadline = time.monotonic() + module.params["wait_timeout"]
+    tags = module.params["tags"]
+    wait_delay = max(1, module.params["wait_delay"])
+    wait_timeout = module.params["wait_timeout"]
+    deadline = time.monotonic() + wait_timeout
     phone_number = {}
 
     while time.monotonic() < deadline:
         phone_number = get_phone_number(client, module, phone_number_id) or {}
         status = phone_number.get("Status")
         if status == "ACTIVE":
-            if module.params["tags"] is not None and phone_number.get("PhoneNumberArn"):
+            if tags is not None and phone_number.get("PhoneNumberArn"):
                 phone_number = dict(phone_number)
                 phone_number["Tags"] = ansible_dict_to_boto3_tag_list(
                     phone_number_tags(client, module, phone_number)
@@ -406,7 +267,7 @@ def wait_for_phone_number_active(client, module, phone_number_id):
                 phone_number_id=phone_number_id,
                 status=status,
             )
-        time.sleep(max(1, module.params["wait_delay"]))
+        time.sleep(wait_delay)
 
     module.fail_json(
         msg=(
@@ -421,47 +282,155 @@ def wait_for_phone_number_active(client, module, phone_number_id):
     )
 
 
-def release_phone_number(client, module):
-    phone_number_id = module.params["phone_number_id"]
-    try:
-        return client.release_phone_number(
-            PhoneNumberId=phone_number_id,
-            aws_retry=True,
-        )
-    except is_boto3_error_code("ResourceNotFoundException"):
-        return None
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to release Pinpoint SMS Voice V2 phone number "
-                f"{phone_number_id}"
-            ),
-        )
-
-
 def ensure_absent(client, module):
-    current = get_requested_phone_number(client, module)
+    phone_number_id = module.params["phone_number_id"]
+    current = get_phone_number(client, module, phone_number_id)
     changed = current is not None
     response = current
 
     if changed and not module.check_mode:
-        response = release_phone_number(client, module)
+        try:
+            response = client.release_phone_number(
+                PhoneNumberId=phone_number_id,
+                aws_retry=True,
+            )
+        except is_boto3_error_code("ResourceNotFoundException"):
+            response = None
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    "Unable to release Pinpoint SMS Voice V2 phone number "
+                    f"{phone_number_id}"
+                ),
+            )
 
     exit_result(module, changed, response or current)
 
 
 def ensure_present(client, module):
-    validate_request(module)
-    current = existing_phone_number(client, module)
+    client_token = module.params["client_token"]
+    deletion_protection_enabled = module.params["deletion_protection_enabled"]
+    international_sending_enabled = module.params["international_sending_enabled"]
+    iso_country_code = module.params["iso_country_code"]
+    message_type = module.params["message_type"]
+    number_capabilities = module.params["number_capabilities"]
+    number_type = module.params["number_type"]
+    opt_out_list_name = module.params["opt_out_list_name"]
+    pool_id = module.params["pool_id"]
+    registration_id = module.params["registration_id"]
+    tags = module.params["tags"]
+    wait = module.params["wait"]
+
+    if number_type == "SIMULATOR" and message_type != "TRANSACTIONAL":
+        module.fail_json(
+            msg="message_type must be TRANSACTIONAL when number_type is SIMULATOR"
+        )
+
+    filters = {
+        "iso-country-code": iso_country_code,
+        "message-type": message_type,
+        "number-capability": number_capabilities,
+        "number-type": number_type,
+        "deletion-protection-enabled": deletion_protection_enabled,
+    }
+    if opt_out_list_name is not None:
+        filters["opt-out-list-name"] = opt_out_list_name
+
+    request = {
+        "Filters": ansible_dict_to_boto3_filter_list(filters),
+        "Owner": "SELF",
+    }
+
+    try:
+        phone_numbers = paginated_query_with_retries(
+            client,
+            "describe_phone_numbers",
+            **request,
+        ).get("PhoneNumbers", [])
+    except Exception as e:
+        module.fail_json_aws(
+            e, msg="Unable to describe Pinpoint SMS Voice V2 phone numbers"
+        )
+
+    desired = {
+        "DeletionProtectionEnabled": deletion_protection_enabled,
+        "IsoCountryCode": iso_country_code,
+        "MessageType": message_type,
+        "NumberCapabilities": sorted(number_capabilities or []),
+        "NumberType": number_type,
+    }
+    for module_value, response_key in (
+        (international_sending_enabled, "InternationalSendingEnabled"),
+        (opt_out_list_name, "OptOutListName"),
+        (pool_id, "PoolId"),
+        (registration_id, "RegistrationId"),
+    ):
+        if module_value is not None:
+            desired[response_key] = module_value
+
+    current = None
+    for phone_number in phone_numbers:
+        matched = True
+        for key, value in desired.items():
+            current_value = phone_number.get(key)
+            if key == "NumberCapabilities":
+                current_value = sorted(current_value or [])
+            if current_value != value:
+                matched = False
+                break
+
+        if not matched:
+            continue
+
+        if phone_number.get("Status") == "DELETED":
+            continue
+
+        if tags is None:
+            current = phone_number
+            break
+
+        current_tags = phone_number_tags(client, module, phone_number)
+        tags_match = True
+        for key, value in tags.items():
+            if current_tags.get(key) != value:
+                tags_match = False
+                break
+
+        if not tags_match:
+            continue
+
+        current = dict(phone_number)
+        current["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
+        break
+
     if current is not None:
-        if module.params["wait"] and current.get("Status") != "ACTIVE":
+        if wait and current.get("Status") != "ACTIVE":
             current = wait_for_phone_number_active(
                 client, module, current["PhoneNumberId"]
             )
         exit_result(module, False, current)
 
-    request = request_phone_number_parameters(client, module)
+    parameters = scrub_none_parameters(
+        {
+            "client_token": client_token,
+            "deletion_protection_enabled": deletion_protection_enabled,
+            "international_sending_enabled": international_sending_enabled,
+            "iso_country_code": iso_country_code,
+            "message_type": message_type,
+            "number_capabilities": number_capabilities,
+            "number_type": number_type,
+            "opt_out_list_name": opt_out_list_name,
+            "pool_id": pool_id,
+            "registration_id": registration_id,
+            "tags": (
+                sorted(ansible_dict_to_boto3_tag_list(tags), key=lambda tag: tag["Key"])
+                if tags is not None
+                else None
+            ),
+        }
+    )
+    request = snake_dict_to_camel_dict(parameters, capitalize_first=True)
 
     if module.check_mode:
         exit_result(module, True, request)
@@ -473,11 +442,7 @@ def ensure_present(client, module):
             e, msg="Unable to request Pinpoint SMS Voice V2 phone number"
         )
 
-    if (
-        module.params["wait"]
-        and response.get("Status") != "ACTIVE"
-        and response.get("PhoneNumberId")
-    ):
+    if wait and response.get("Status") != "ACTIVE" and response.get("PhoneNumberId"):
         response = wait_for_phone_number_active(
             client, module, response["PhoneNumberId"]
         )
@@ -542,6 +507,78 @@ def main():
     )
 
     state = module.params["state"]
+    tags = module.params["tags"]
+    method_names = {"describe_phone_numbers"}
+    if state == "present":
+        method_names.add("request_phone_number")
+        if tags is not None:
+            method_names.add("list_tags_for_resource")
+    elif state == "absent":
+        method_names.add("release_phone_number")
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
+
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support Pinpoint SMS Voice V2 "
+                    f"{method_name}"
+                )
+            )
+
+    required_method_parameters = {
+        "describe_phone_numbers": {
+            "Filters",
+            "MaxResults",
+            "NextToken",
+            "Owner",
+            "PhoneNumberIds",
+        },
+        "list_tags_for_resource": {"ResourceArn"},
+        "release_phone_number": {"PhoneNumberId"},
+        "request_phone_number": {
+            "ClientToken",
+            "DeletionProtectionEnabled",
+            "IsoCountryCode",
+            "MessageType",
+            "NumberCapabilities",
+            "NumberType",
+            "OptOutListName",
+            "PoolId",
+            "RegistrationId",
+        },
+    }
+    if (
+        state == "present"
+        and module.params["international_sending_enabled"] is not None
+    ):
+        required_method_parameters["request_phone_number"].add(
+            "InternationalSendingEnabled"
+        )
+    if state == "present" and tags is not None:
+        required_method_parameters["request_phone_number"].add("Tags")
+
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support Pinpoint SMS Voice V2 "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
+
     if state == "present":
         ensure_present(client, module)
     elif state == "absent":

@@ -36,10 +36,12 @@ options:
   use_case_description:
     description:
       - Description of the intended SES use case.
+      - This is required with O(website_url) to request production access.
     type: str
   website_url:
     description:
       - Website URL associated with the SES account request.
+      - This is required with O(use_case_description) to request production access.
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -66,6 +68,7 @@ account:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -81,6 +84,13 @@ ACCOUNT_DETAILS_FIELDS = (
     "mail_type",
     "use_case_description",
     "website_url",
+)
+ACCOUNT_DETAILS_REQUEST_FIELDS = (
+    ("AdditionalContactEmailAddresses", "additional_contact_email_addresses"),
+    ("ContactLanguage", "contact_language"),
+    ("MailType", "mail_type"),
+    ("UseCaseDescription", "use_case_description"),
+    ("WebsiteURL", "website_url"),
 )
 
 
@@ -112,39 +122,76 @@ def main():
         "website_url": {"type": "str"},
     }
 
-    module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
+    module = AnsibleAWSModule(
+        argument_spec=argument_spec,
+        required_together=[["use_case_description", "website_url"]],
+        supports_check_mode=True,
+    )
     client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
 
-    current_account = get_account(client, module)
-    desired_details = {
-        "additional_contact_email_addresses": (
-            module.params["additional_contact_email_addresses"] or None
-        ),
-        "contact_language": module.params["contact_language"].upper(),
-        "mail_type": module.params["mail_type"].upper(),
-        "use_case_description": (
-            None
-            if module.params["use_case_description"] is None
-            else module.params["use_case_description"].strip()
-        ),
-        "website_url": module.params["website_url"],
+    method_names = {"get_account", "put_account_details"}
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=f"Installed botocore does not support SESv2 {method_name}"
+            )
+
+    required_method_parameters = {
+        "get_account": set(),
+        "put_account_details": {
+            "AdditionalContactEmailAddresses",
+            "ContactLanguage",
+            "MailType",
+            "ProductionAccessEnabled",
+            "UseCaseDescription",
+            "WebsiteURL",
+        },
     }
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support SESv2 "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
+
+    current_account = get_account(client, module)
+    use_case_description = module.params["use_case_description"]
+    website_url = module.params["website_url"]
+    desired_details = scrub_none_parameters(
+        {
+            "additional_contact_email_addresses": (
+                module.params["additional_contact_email_addresses"] or None
+            ),
+            "contact_language": module.params["contact_language"].upper(),
+            "mail_type": module.params["mail_type"].upper(),
+            "use_case_description": (
+                None if use_case_description is None else use_case_description.strip()
+            ),
+            "website_url": website_url,
+        }
+    )
     desired = {
         "details": desired_details,
         "production_access_enabled": True,
     }
-    request = scrub_none_parameters(
-        {
-            "AdditionalContactEmailAddresses": desired_details[
-                "additional_contact_email_addresses"
-            ],
-            "ContactLanguage": desired_details["contact_language"],
-            "MailType": desired_details["mail_type"],
-            "ProductionAccessEnabled": True,
-            "UseCaseDescription": desired_details["use_case_description"],
-            "WebsiteURL": desired_details["website_url"],
-        }
-    )
+    request = {"ProductionAccessEnabled": True}
+    for request_field, details_field in ACCOUNT_DETAILS_REQUEST_FIELDS:
+        if details_field in desired_details:
+            request[request_field] = desired_details[details_field]
+
     current = {
         "details": current_account.get("details", {}),
         "production_access_enabled": current_account.get(
@@ -160,10 +207,7 @@ def main():
         "production_access_enabled": current["production_access_enabled"],
     }
 
-    ready = (
-        module.params["use_case_description"] is not None
-        and module.params["website_url"] is not None
-    )
+    ready = use_case_description is not None and website_url is not None
     changed = ready and current != desired
 
     if changed and not module.check_mode:
@@ -178,7 +222,11 @@ def main():
             module.fail_json_aws(
                 e, msg="Unable to manage AWS Simple Email Service account details"
             )
+
         current_account = get_account(client, module)
+    elif changed and module.check_mode:
+        current_account = dict(current_account)
+        current_account.update(desired)
 
     result = {
         "changed": changed,

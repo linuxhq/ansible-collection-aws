@@ -162,6 +162,7 @@ from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
@@ -415,16 +416,47 @@ def ensure_present(client, module):
                 module.params["tags"],
                 purge_tags=module.params["purge_tags"],
             )
-            apply_tag_changes(
-                client,
-                module,
-                endpoint.get("Arn"),
-                tags_to_set,
-                tag_keys_to_unset,
-            )
-            endpoint = endpoint_with_updated_tags(
-                endpoint, tags_to_set, tag_keys_to_unset
-            )
+            resource_arn = endpoint.get("Arn")
+            if resource_arn:
+                if tag_keys_to_unset:
+                    try:
+                        client.untag_resource(
+                            ResourceArn=resource_arn,
+                            TagKeys=tag_keys_to_unset,
+                            aws_retry=True,
+                        )
+                    except Exception as e:
+                        module.fail_json_aws(
+                            e,
+                            msg=(
+                                "Unable to remove tags from AWS Route53 Resolver "
+                                f"endpoint {resource_arn}"
+                            ),
+                        )
+
+                if tags_to_set:
+                    try:
+                        client.tag_resource(
+                            ResourceArn=resource_arn,
+                            Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
+                            aws_retry=True,
+                        )
+                    except Exception as e:
+                        module.fail_json_aws(
+                            e,
+                            msg=(
+                                "Unable to tag AWS Route53 Resolver endpoint "
+                                f"{resource_arn}"
+                            ),
+                        )
+
+            endpoint = dict(endpoint)
+            endpoint_tags = boto3_tag_list_to_ansible_dict(endpoint.get("Tags", []))
+            for tag_key in tag_keys_to_unset:
+                endpoint_tags.pop(tag_key, None)
+
+            endpoint_tags.update(tags_to_set)
+            endpoint["Tags"] = ansible_dict_to_boto3_tag_list(endpoint_tags)
     elif changed and module.check_mode:
         endpoint = desired
         if module.params["tags"] is not None:
@@ -453,16 +485,19 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired):
 
     current_comparable = comparable_ip_addresses(current_ip_addresses)
     desired_comparable = comparable_ip_addresses(desired_ip_addresses)
-    ip_addresses_to_add = [
-        ip_address
-        for ip_address in desired_ip_addresses
-        if comparable_ip_address(ip_address) not in current_comparable
-    ]
-    ip_addresses_to_remove = [
-        ip_address
-        for ip_address in current_ip_addresses
-        if comparable_ip_address(ip_address) not in desired_comparable
-    ]
+    ip_addresses_to_add = []
+    for ip_address in desired_ip_addresses:
+        if comparable_ip_address(ip_address) in current_comparable:
+            continue
+
+        ip_addresses_to_add.append(ip_address)
+
+    ip_addresses_to_remove = []
+    for ip_address in current_ip_addresses:
+        if comparable_ip_address(ip_address) in desired_comparable:
+            continue
+
+        ip_addresses_to_remove.append(ip_address)
 
     for ip_address in ip_addresses_to_add:
         try:
@@ -534,11 +569,22 @@ def update_resolver_endpoint(client, module, endpoint, desired):
         "resolver_endpoint_type": desired["resolver_endpoint_type"],
     }
 
-    endpoint = resolver_endpoint_with_ip_addresses(
-        client,
-        module,
-        update_resolver_endpoint_call(client, module, update_params),
-    )
+    name = module.params["name"]
+
+    try:
+        endpoint = client.update_resolver_endpoint(
+            **scrub_none_parameters(
+                snake_dict_to_camel_dict(update_params, capitalize_first=True)
+            ),
+            aws_retry=True,
+        ).get("ResolverEndpoint")
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to update AWS Route53 Resolver endpoint {name}",
+        )
+
+    endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
     if module.params["wait"]:
         resolver_endpoint_id = endpoint.get("Id")
         endpoint = wait_for_resolver_endpoint_status(
@@ -554,45 +600,6 @@ def update_resolver_endpoint(client, module, endpoint, desired):
         desired,
     )
 
-    return endpoint
-
-
-def apply_tag_changes(client, module, resource_arn, tags_to_set, tag_keys_to_unset):
-    if not resource_arn:
-        return
-    if tag_keys_to_unset:
-        try:
-            client.untag_resource(
-                ResourceArn=resource_arn,
-                TagKeys=tag_keys_to_unset,
-                aws_retry=True,
-            )
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to remove tags from AWS Route53 Resolver endpoint {resource_arn}",
-            )
-    if tags_to_set:
-        try:
-            client.tag_resource(
-                ResourceArn=resource_arn,
-                Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                aws_retry=True,
-            )
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to tag AWS Route53 Resolver endpoint {resource_arn}",
-            )
-
-
-def endpoint_with_updated_tags(endpoint, tags_to_set, tag_keys_to_unset):
-    endpoint = dict(endpoint)
-    tags = boto3_tag_list_to_ansible_dict(endpoint.get("Tags", []))
-    for tag_key in tag_keys_to_unset:
-        tags.pop(tag_key, None)
-    tags.update(tags_to_set)
-    endpoint["Tags"] = ansible_dict_to_boto3_tag_list(tags)
     return endpoint
 
 
@@ -618,22 +625,6 @@ def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, stat
     if deleted:
         return None
     return get_resolver_endpoint(client, module, resolver_endpoint_id)
-
-
-def update_resolver_endpoint_call(client, module, update_params):
-    name = module.params["name"]
-    try:
-        return client.update_resolver_endpoint(
-            **scrub_none_parameters(
-                snake_dict_to_camel_dict(update_params, capitalize_first=True)
-            ),
-            aws_retry=True,
-        ).get("ResolverEndpoint")
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to update AWS Route53 Resolver endpoint {name}",
-        )
 
 
 def comparable_endpoint(endpoint):
@@ -693,10 +684,11 @@ def get_resolver_endpoint_by_name(client, module):
         )
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver endpoints")
-    return next(
-        (endpoint for endpoint in endpoints if endpoint.get("Name") == name),
-        None,
-    )
+    for endpoint in endpoints:
+        if endpoint.get("Name") == name:
+            return endpoint
+
+    return None
 
 
 def resolver_endpoint_with_ip_addresses(client, module, endpoint):
@@ -788,6 +780,96 @@ def main():
     )
 
     state = module.params["state"]
+    method_names = {"list_resolver_endpoints"}
+    if state == "present":
+        method_names.update(
+            {
+                "associate_resolver_endpoint_ip_address",
+                "create_resolver_endpoint",
+                "delete_resolver_endpoint",
+                "disassociate_resolver_endpoint_ip_address",
+                "get_resolver_endpoint",
+                "list_resolver_endpoint_ip_addresses",
+                "list_tags_for_resource",
+                "update_resolver_endpoint",
+            }
+        )
+        if module.params["tags"] is not None:
+            method_names.add("tag_resource")
+            if module.params["purge_tags"]:
+                method_names.add("untag_resource")
+    elif state == "absent":
+        method_names.add("delete_resolver_endpoint")
+        if module.params["wait"]:
+            method_names.add("get_resolver_endpoint")
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
+
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support Route53 Resolver "
+                    f"{method_name}"
+                )
+            )
+
+    required_method_parameters = {
+        "associate_resolver_endpoint_ip_address": {
+            "IpAddress",
+            "ResolverEndpointId",
+        },
+        "create_resolver_endpoint": {
+            "CreatorRequestId",
+            "Direction",
+            "IpAddresses",
+            "Name",
+            "Protocols",
+            "ResolverEndpointType",
+            "SecurityGroupIds",
+            "Tags",
+        },
+        "delete_resolver_endpoint": {"ResolverEndpointId"},
+        "disassociate_resolver_endpoint_ip_address": {
+            "IpAddress",
+            "ResolverEndpointId",
+        },
+        "get_resolver_endpoint": {"ResolverEndpointId"},
+        "list_resolver_endpoint_ip_addresses": {
+            "MaxResults",
+            "NextToken",
+            "ResolverEndpointId",
+        },
+        "list_resolver_endpoints": {"Filters", "MaxResults", "NextToken"},
+        "list_tags_for_resource": {"MaxResults", "NextToken", "ResourceArn"},
+        "tag_resource": {"ResourceArn", "Tags"},
+        "untag_resource": {"ResourceArn", "TagKeys"},
+        "update_resolver_endpoint": {
+            "Protocols",
+            "ResolverEndpointId",
+            "ResolverEndpointType",
+        },
+    }
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support Route53 Resolver "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
+
     if state == "present":
         ensure_present(client, module)
     elif state == "absent":

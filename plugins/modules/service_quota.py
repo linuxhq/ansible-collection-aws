@@ -80,6 +80,7 @@ from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -103,14 +104,65 @@ def main():
         "service-quotas", retry_decorator=AWSRetry.jittered_backoff()
     )
 
-    quota_request = {
-        "QuotaCode": module.params["quota_code"],
-        "ServiceCode": module.params["service_code"],
+    method_names = {
+        "get_service_quota",
+        "list_requested_service_quota_change_history_by_quota",
+        "request_service_quota_increase",
     }
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=f"Installed botocore does not support Service Quotas {method_name}"
+            )
+
+    required_method_parameters = {
+        "get_service_quota": {"QuotaCode", "ServiceCode"},
+        "list_requested_service_quota_change_history_by_quota": {
+            "MaxResults",
+            "NextToken",
+            "QuotaCode",
+            "ServiceCode",
+            "Status",
+        },
+        "request_service_quota_increase": {
+            "DesiredValue",
+            "QuotaCode",
+            "ServiceCode",
+        },
+    }
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support Service Quotas "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
+
+    quota_code = module.params["quota_code"]
+    service_code = module.params["service_code"]
+    desired_value = module.params["value"]
+    quota_request = {
+        "QuotaCode": quota_code,
+        "ServiceCode": service_code,
+    }
+
     try:
         current_quota = client.get_service_quota(**quota_request, aws_retry=True).get(
             "Quota", {}
         )
+
         pending_requests = []
         for status in ("CASE_OPENED", "PENDING"):
             pending_requests.extend(
@@ -123,13 +175,9 @@ def main():
     except Exception as e:
         module.fail_json_aws(
             e,
-            msg=(
-                "Unable to get AWS service quota "
-                f"{module.params['service_code']}/{module.params['quota_code']}"
-            ),
+            msg=("Unable to get AWS service quota " f"{service_code}/{quota_code}"),
         )
 
-    desired_value = module.params["value"]
     current_quota_details = boto3_resource_to_ansible_dict(
         current_quota,
         transform_tags=False,
@@ -152,9 +200,9 @@ def main():
                         "desired_value": desired_value,
                         "global_quota": current_quota_details.get("global_quota"),
                         "quota_arn": current_quota_details.get("quota_arn"),
-                        "quota_code": module.params["quota_code"],
+                        "quota_code": quota_code,
                         "quota_name": current_quota_details.get("quota_name"),
-                        "service_code": module.params["service_code"],
+                        "service_code": service_code,
                         "service_name": current_quota_details.get("service_name"),
                         "status": "PENDING",
                         "unit": current_quota_details.get("unit"),
@@ -173,8 +221,7 @@ def main():
                     e,
                     msg=(
                         "Unable to request AWS service quota increase for "
-                        f"{module.params['quota_code']} for service "
-                        f"{module.params['service_code']}"
+                        f"{quota_code} for service {service_code}"
                     ),
                 )
 
@@ -187,8 +234,8 @@ def main():
         requested_quota=boto3_resource_to_ansible_dict(
             requested_quota, transform_tags=False, force_tags=False
         ),
-        quota_code=module.params["quota_code"],
-        service_code=module.params["service_code"],
+        quota_code=quota_code,
+        service_code=service_code,
     )
 
 
