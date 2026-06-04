@@ -2,6 +2,10 @@
 
 Manage aws systems manager associations
 
+## Requirements
+
+None
+
 ## Role Variables
 
     ssm_association_async: 300

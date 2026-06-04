@@ -2,6 +2,10 @@
 
 Gather information about aws glue connections
 
+## Requirements
+
+None
+
 ## Role Variables
 
     glue_connection_info_apply_override_for_compute_environment: null

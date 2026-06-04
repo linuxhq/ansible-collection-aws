@@ -2,6 +2,10 @@
 
 Manage aws systems manager documents
 
+## Requirements
+
+None
+
 ## Role Variables
 
     ssm_document_async: 300

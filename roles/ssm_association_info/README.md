@@ -2,6 +2,10 @@
 
 Gather information about aws systems manager associations
 
+## Requirements
+
+None
+
 ## Role Variables
 
     ssm_association_info_filters: {}

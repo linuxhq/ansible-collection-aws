@@ -2,6 +2,10 @@
 
 Gather information about aws placement groups
 
+## Requirements
+
+None
+
 ## Role Variables
 
     ec2_placement_group_info_filters: {}

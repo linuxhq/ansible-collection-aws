@@ -2,6 +2,10 @@
 
 Gather information about aws systems manager documents
 
+## Requirements
+
+None
+
 ## Role Variables
 
     ssm_document_info_document_format: JSON

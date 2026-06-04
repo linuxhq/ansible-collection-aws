@@ -2,6 +2,10 @@
 
 Gather information about aws virtual private cloud prefix lists
 
+## Requirements
+
+None
+
 ## Role Variables
 
     ec2_vpc_prefix_list_info_filters: {}
