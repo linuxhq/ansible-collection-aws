@@ -2,6 +2,10 @@
 
 Gather information about aws simple queue service queues
 
+## Requirements
+
+None
+
 ## Role Variables
 
     sqs_queue_info_name: null

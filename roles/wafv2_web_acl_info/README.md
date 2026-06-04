@@ -2,6 +2,10 @@
 
 Gather information about aws wafv2 web acls
 
+## Requirements
+
+None
+
 ## Role Variables
 
     wafv2_web_acl_info_id: null

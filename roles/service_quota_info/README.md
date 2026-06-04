@@ -2,6 +2,10 @@
 
 Gather information about aws service quotas
 
+## Requirements
+
+None
+
 ## Role Variables
 
     service_quota_info_list: []

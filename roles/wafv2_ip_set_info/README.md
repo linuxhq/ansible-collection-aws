@@ -2,6 +2,10 @@
 
 Gather information about aws wafv2 ip sets
 
+## Requirements
+
+None
+
 ## Role Variables
 
     wafv2_ip_set_info_id: null

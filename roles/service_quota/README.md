@@ -2,6 +2,10 @@
 
 Manage aws service quotas
 
+## Requirements
+
+None
+
 ## Role Variables
 
     service_quota_async: 300

@@ -2,6 +2,10 @@
 
 Manage aws simple notification service topics
 
+## Requirements
+
+None
+
 ## Role Variables
 
     sns_topic_list: []

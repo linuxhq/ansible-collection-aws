@@ -2,6 +2,10 @@
 
 Manage aws systems manager session configuration
 
+## Requirements
+
+None
+
 ## Role Variables
 
 Defaults can be found in [here](defaults/main)
