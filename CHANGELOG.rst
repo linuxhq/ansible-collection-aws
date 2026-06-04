@@ -24,7 +24,7 @@ v2.0.4
 Release Summary
 ---------------
 
-Update non info roles to current standards
+Update standard roles to new standards
 
 v2.0.3
 ======
@@ -32,7 +32,7 @@ v2.0.3
 Release Summary
 ---------------
 
-Update non info roles to current standards
+Update standard roles to new standards
 
 v2.0.2
 ======
@@ -48,12 +48,7 @@ v2.0.1
 Release Summary
 ---------------
 
-Additional standardization of info modules and associated roles
-
-Minor Changes
--------------
-
-- Additional standardization of info modules and associated roles
+Update info roles to new standards
 
 v2.0.0
 ======
