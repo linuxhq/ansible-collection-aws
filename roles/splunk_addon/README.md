@@ -26,12 +26,26 @@ None
             - 'arn:aws:iam::*:user/${aws:username}'
         - Effect: Allow
           Action:
+            - sqs:GetQueueAttributes
+            - sqs:GetQueueUrl
+            - sqs:ListQueues
+            - s3:ListAllMyBuckets
+          Resource:
+            - '*'
+        - Effect: Allow
+          Action:
             - sqs:DeleteMessage
             - sqs:ReceiveMessage
           Resource:
             - "arn:aws:sqs:*:{{ __splunk_addon_account }}:{{ splunk_addon_sqs_queue_name }}"
         - Effect: Allow
           Action:
+            - s3:ListBucket
+          Resource:
+            - "arn:aws:s3:::{{ __splunk_addon_account }}-{{ splunk_addon_bucket_name }}"
+        - Effect: Allow
+          Action:
+            - s3:DeleteObject
             - s3:GetObject
           Resource:
             - "arn:aws:s3:::{{ __splunk_addon_account }}-{{ splunk_addon_bucket_name }}/*"
