@@ -226,6 +226,7 @@ def ensure_present(client, module):
     if changed and not module.check_mode:
         if association is not None:
             resolver_rule_association_id = association.get("Id")
+
             try:
                 client.disassociate_resolver_rule(
                     ResolverRuleId=resolver_rule_id,
@@ -292,8 +293,8 @@ def ensure_present(client, module):
 def wait_for_resolver_rule_association_status(
     client, module, resolver_rule_association_id, statuses
 ):
-    name = module.params["name"]
     deleted = "deleted" in statuses
+
     try:
         waiter = ResolverRuleAssociationWaiterFactory().get_waiter(
             client,
@@ -313,7 +314,10 @@ def wait_for_resolver_rule_association_status(
     except Exception as e:
         module.fail_json_aws(
             e,
-            msg=f"Timed out waiting for AWS Route53 Resolver rule association {name}",
+            msg=(
+                "Timed out waiting for AWS Route53 Resolver rule association "
+                f"{module.params['name']}"
+            ),
         )
 
     if deleted:
@@ -339,6 +343,7 @@ def wait_for_resolver_rule_association_status(
 def get_resolver_rule_association_by_rule_and_vpc(client, module):
     resolver_rule_id = module.params["resolver_rule_id"]
     vpc_id = module.params["vpc_id"]
+
     try:
         associations = paginated_query_with_retries(
             client,
@@ -358,6 +363,7 @@ def get_resolver_rule_association_by_rule_and_vpc(client, module):
                 f"{resolver_rule_id}/{vpc_id}"
             ),
         )
+
     for association in associations:
         if association.get("ResolverRuleId") != resolver_rule_id:
             continue

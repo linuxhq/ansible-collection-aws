@@ -130,6 +130,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
+    scrub_none_parameters,
 )
 
 
@@ -178,13 +179,13 @@ def main():
         region="us-east-1",
     )
 
-    request = {}
-    if module.params["format_version"] is not None:
-        request["FormatVersion"] = module.params["format_version"]
-    if module.params["max_results"] is not None:
-        request["MaxResults"] = module.params["max_results"]
-    if module.params["service_code"] is not None:
-        request["ServiceCode"] = module.params["service_code"]
+    request = scrub_none_parameters(
+        {
+            "FormatVersion": module.params["format_version"],
+            "MaxResults": module.params["max_results"],
+            "ServiceCode": module.params["service_code"],
+        }
+    )
     filters = []
 
     for pricing_filter in module.params["filters"] or []:

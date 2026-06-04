@@ -200,6 +200,7 @@ def enrich_pool(client, module, pool):
                     f"V2 pool {pool_id}"
                 ),
             )
+
     else:
         pool["OriginationIdentities"] = []
 
@@ -272,7 +273,6 @@ def find_pool(client, module):
     filters = ansible_dict_to_boto3_filter_list(
         {"message-type": module.params["message_type"]}
     )
-    desired_identity = module.params["origination_identity"]
     iso_country_code = module.params["iso_country_code"]
 
     for pool in describe_pools(client, module, Filters=filters, Owner="SELF"):
@@ -281,7 +281,7 @@ def find_pool(client, module):
 
         pool = enrich_pool(client, module, pool)
         for origination in pool.get("OriginationIdentities", []):
-            if desired_identity not in (
+            if module.params["origination_identity"] not in (
                 origination.get("OriginationIdentity"),
                 origination.get("OriginationIdentityArn"),
             ):
@@ -442,6 +442,7 @@ def ensure_present(client, module):
                 module.fail_json_aws(
                     e, msg="Unable to create Pinpoint SMS Voice V2 pool"
                 )
+
         else:
             if update_request:
                 try:

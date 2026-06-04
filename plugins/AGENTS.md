@@ -4,6 +4,41 @@
 
 gpt-5.5 high
 
+## Workflow
+
+* Read this entire file before making changes
+* Apply every section relevant to the requested change
+* Use existing collection patterns and helpers before introducing new implementations
+* Complete the requested implementation before stopping
+* Run the required validation steps after plugin changes
+* Do not commit changes to git
+
+## Validation
+
+After plugin changes, run:
+
+* **ansible-test**
+  * Use the collection path `venv/ansible_collections/linuxhq/aws`
+  * Use a real git worktree or real directory; symlinks are not sufficient
+    because `ansible-test` resolves the physical path
+  * If the worktree does not exist, create it:
+    ```
+    mkdir -p venv/ansible_collections/linuxhq
+    git worktree add --detach venv/ansible_collections/linuxhq/aws HEAD
+    ```
+  * Overlay uncommitted changes from the root checkout before running:
+    ```
+    rsync -a --delete --exclude='.git' --exclude='venv' ./ venv/ansible_collections/linuxhq/aws/
+    ```
+  * Run from the worktree, using the Python version from the active venv if
+    local shim discovery fails:
+    ```
+    ../../../bin/ansible-test sanity --color no --python 3.12
+    ```
+* **black**: `venv/bin/black --check plugins`
+* **git**: `git diff --check`
+* **python**: `venv/bin/python -m compileall -q plugins`
+
 ## Standards
 
 ### Module behavior
@@ -21,14 +56,14 @@ gpt-5.5 high
   is provided
 
 * Long-running operations: expose wait controls consistent with nearby modules
-  and prefer existing waiter helpers over custom polling loops
+  and use existing waiter helpers over custom polling loops
 
 ### Arguments
 
 * Accept module parameters in snake_case and transform to boto3 formats using
   existing helpers
 
-* Prefer `AnsibleAWSModule` validation arguments such as `required_by`,
+* Use `AnsibleAWSModule` validation arguments such as `required_by`,
   `required_if`, `required_one_of`, `required_together`, and `mutually_exclusive`
   over manual parameter validation when they express the rule clearly
 
@@ -107,7 +142,7 @@ gpt-5.5 high
   with `module.fail_json(msg=f"Unsupported state: {state}")` in the final
   branch, even when `choices` validation makes it unreachable
 
-* Prefer explicit loops over nested comprehensions when the loop performs
+* Use explicit loops over nested comprehensions when the loop performs
   api calls or filters missing resources
 
 * Inline a helper into its one call site when it is called from exactly one
@@ -133,7 +168,7 @@ gpt-5.5 high
 
 ## Helper reference
 
-Prefer existing helpers before implementing custom logic.
+Use existing helpers before implementing custom logic.
 
 * `amazon.aws` module_utils:
   * **arn**:
@@ -246,34 +281,3 @@ Prefer existing helpers before implementing custom logic.
     * check_type_raw
     * check_type_str
     * count_terms
-
-## Validation
-
-After plugin changes, run:
-
-* **ansible-test**
-  * Use the collection path `venv/ansible_collections/linuxhq/aws`
-  * Use a real git worktree or real directory; symlinks are not sufficient
-    because `ansible-test` resolves the physical path
-  * If the worktree does not exist, create it:
-    ```
-    mkdir -p venv/ansible_collections/linuxhq
-    git worktree add --detach venv/ansible_collections/linuxhq/aws HEAD
-    ```
-  * Overlay uncommitted changes from the root checkout before running:
-    ```
-    rsync -a --delete --exclude='.git' --exclude='venv' ./ venv/ansible_collections/linuxhq/aws/
-    ```
-  * Run from the worktree, using the Python version from the active venv if
-    local shim discovery fails:
-    ```
-    ../../../bin/ansible-test sanity --color no --python 3.12
-    ```
-* **black**: `venv/bin/black --check plugins`
-* **git**: `git diff --check`
-* **python**: `venv/bin/python -m compileall -q plugins`
-
-## Workflow
-
-* Complete the requested implementation before stopping
-* Do not commit changes

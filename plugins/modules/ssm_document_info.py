@@ -89,6 +89,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
 
 SSM_DOCUMENT_RESOURCE_TYPE = "Document"
@@ -165,9 +166,7 @@ def main():
             "Name": name,
             "VersionName": version_name,
         }
-        for key in list(request):
-            if request[key] is None:
-                del request[key]
+        request = scrub_none_parameters(request)
 
         try:
             document = client.get_document(

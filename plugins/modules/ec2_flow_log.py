@@ -616,7 +616,6 @@ def main():
     resource_ids = normalized_resource_ids(module)
     resource_type = module.params["resource_type"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
     destination_options = comparable_destination_options(module)
 
     if not resource_ids:
@@ -638,7 +637,7 @@ def main():
         method_names.append("create_flow_logs")
         if tags is not None:
             method_names.append("create_tags")
-            if purge_tags:
+            if module.params["purge_tags"]:
                 method_names.append("delete_tags")
     elif state == "absent":
         method_names.append("delete_flow_logs")

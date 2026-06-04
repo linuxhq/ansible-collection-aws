@@ -171,6 +171,7 @@ def main():
             if provider and normalize_provider_url(provider.get("Url")) == desired_url:
                 providers.append(provider)
                 break
+
     else:
         providers = []
         for arn in list_provider_arns(client, module):

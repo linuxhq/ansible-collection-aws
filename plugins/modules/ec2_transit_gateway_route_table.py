@@ -597,14 +597,13 @@ def ensure_present(client, module):
             client, module, route_table_id(route_table), {"available"}
         )
 
-    tags = desired_tags(module)
-    if tags:
-        purge_tags = (
-            module.params["purge_tags"] if module.params["tags"] is not None else False
-        )
+    tags = module.params["tags"]
+    desired_route_table_tags = desired_tags(module)
+    if desired_route_table_tags or tags is not None:
+        purge_tags = module.params["purge_tags"] if tags is not None else False
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
             current_tags(route_table),
-            tags,
+            desired_route_table_tags,
             purge_tags=purge_tags,
         )
 
@@ -633,6 +632,7 @@ def ensure_present(client, module):
                             f"route table {resource_id}"
                         ),
                     )
+
             if tags_to_set:
                 try:
                     client.create_tags(
@@ -752,6 +752,7 @@ def ensure_present(client, module):
                                         f"{destination_cidr_block}"
                                     ),
                                 )
+
                         else:
                             try:
                                 current_route = client.replace_transit_gateway_route(
@@ -831,6 +832,7 @@ def ensure_absent(client, module):
         exit_module(module, changed, dict(route_table, State="deleted"))
 
     transit_gateway_route_table_id = route_table_id(route_table)
+
     try:
         route_table = client.delete_transit_gateway_route_table(
             TransitGatewayRouteTableId=transit_gateway_route_table_id,
@@ -909,9 +911,7 @@ def main():
     state = module.params["state"]
     name = module.params["name"]
     purge_routes = module.params["purge_routes"]
-    purge_tags = module.params["purge_tags"]
     routes = module.params["routes"]
-    tags = module.params["tags"]
     transit_gateway_id = module.params["transit_gateway_id"]
     transit_gateway_route_table_id = module.params["transit_gateway_route_table_id"]
     has_absent_route = False
@@ -971,8 +971,8 @@ def main():
             method_names.add("create_transit_gateway_route_table")
         if desired_tags(module):
             method_names.add("create_tags")
-            if tags is not None and purge_tags:
-                method_names.add("delete_tags")
+        if module.params["tags"] is not None and module.params["purge_tags"]:
+            method_names.add("delete_tags")
         if routes or purge_routes:
             method_names.add("search_transit_gateway_routes")
         if has_present_route:

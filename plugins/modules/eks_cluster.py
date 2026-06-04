@@ -424,9 +424,8 @@ def describe_cluster(client, module):
 
 def wait_for_cluster(client, module, waiter_name):
     name = module.params["name"]
-    wait_timeout = module.params["wait_timeout"]
     waiter = get_waiter(client, waiter_name)
-    attempts = 1 + int(wait_timeout / waiter.config.delay)
+    attempts = 1 + int(module.params["wait_timeout"] / waiter.config.delay)
 
     try:
         waiter.wait(
@@ -440,8 +439,7 @@ def wait_for_cluster(client, module, waiter_name):
 def wait_for_update(client, module, update_id):
     name = module.params["name"]
     wait_delay = max(1, module.params["wait_delay"])
-    wait_timeout = module.params["wait_timeout"]
-    deadline = time.time() + wait_timeout
+    deadline = time.time() + module.params["wait_timeout"]
     last_update = {}
     while time.time() < deadline:
         try:
@@ -494,21 +492,19 @@ def desired_cluster(module):
 
 
 def check_mode_cluster(module, current):
-    name = module.params["name"]
     tags = module.params["tags"]
     cluster = dict(current or {})
     desired = scrub_none_parameters(
         snake_dict_to_camel_dict(desired_cluster(module), capitalize_first=False)
     )
     cluster.update(desired)
-    cluster["name"] = name
+    cluster["name"] = module.params["name"]
     if tags is not None:
         cluster["tags"] = tags
     return cluster
 
 
 def exit_result(module, changed, cluster, state):
-    name = module.params["name"]
     normalized_cluster = boto3_resource_to_ansible_dict(
         cluster or {}, transform_tags=False, force_tags=False
     )
@@ -516,7 +512,7 @@ def exit_result(module, changed, cluster, state):
     result = {
         "changed": changed,
         "cluster": normalized_cluster,
-        "name": name,
+        "name": module.params["name"],
         "state": state,
     }
     result.update(normalized_cluster)
@@ -525,8 +521,8 @@ def exit_result(module, changed, cluster, state):
 
 def ensure_present(client, module):
     name = module.params["name"]
-    purge_tags = module.params["purge_tags"]
     tags = module.params["tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
     version = module.params["version"]
     wait = module.params["wait"]
     current = describe_cluster(client, module)
@@ -738,7 +734,6 @@ def ensure_present(client, module):
 
 def ensure_absent(client, module):
     name = module.params["name"]
-    wait = module.params["wait"]
     current = describe_cluster(client, module)
 
     if current is None:
@@ -752,7 +747,7 @@ def ensure_absent(client, module):
     except Exception as e:
         module.fail_json_aws(e, msg=f"Unable to delete EKS cluster {name}")
 
-    if wait:
+    if module.params["wait"]:
         wait_for_cluster(client, module, "cluster_deleted")
 
     exit_result(module, True, current, "absent")
@@ -887,8 +882,7 @@ def main():
 
     state = module.params["state"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"]
-    version = module.params["version"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
     desired = desired_cluster(module)
     method_names = {"describe_cluster"}
 
@@ -900,7 +894,7 @@ def main():
                 "update_cluster_config",
             }
         )
-        if version is not None:
+        if module.params["version"] is not None:
             method_names.add("update_cluster_version")
         if tags is not None:
             method_names.add("tag_resource")

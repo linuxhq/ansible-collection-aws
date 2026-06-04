@@ -152,10 +152,9 @@ def ensure_absent(client, module, current):
 
 def ensure_present(client, module, current):
     name = module.params["name"]
-    purge_tags = module.params["purge_tags"]
     schedule_expression = module.params["schedule_expression"]
     tags = module.params["tags"]
-    targets = module.params["targets"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
     if tags is not None:
         current = association_with_tags(client, module, current)
 
@@ -180,7 +179,9 @@ def ensure_present(client, module, current):
         }
     desired_comparable = {
         "schedule_expression": schedule_expression,
-        "targets": [dict(TARGET_DEFAULTS, **target) for target in targets],
+        "targets": [
+            dict(TARGET_DEFAULTS, **target) for target in module.params["targets"]
+        ],
     }
     aws_targets = desired_comparable["targets"]
     association_id = (current or {}).get("AssociationId")
@@ -228,6 +229,7 @@ def ensure_present(client, module, current):
                     e,
                     msg=("Unable to create AWS Systems Manager association " f"{name}"),
                 )
+
     else:
         changed = (current_comparable or {}) != desired_comparable
         resource_changed = changed
@@ -251,6 +253,7 @@ def ensure_present(client, module, current):
                     e,
                     msg=("Unable to update AWS Systems Manager association " f"{name}"),
                 )
+
         elif changed and module.check_mode:
             association = desired
         else:
@@ -396,8 +399,8 @@ def main():
 
     state = module.params["state"]
     name = module.params["name"]
-    purge_tags = module.params["purge_tags"]
     tags = module.params["tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
     method_names = {"list_associations"}
     if state == "present":
         method_names.update(

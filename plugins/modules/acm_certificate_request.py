@@ -98,6 +98,7 @@ def main():
     idempotency_token = module.params["idempotency_token"]
     subject_alternative_names = module.params["subject_alternative_names"]
     tags = module.params["tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
 
     method_names = ["request_certificate"]
     if tags is not None:
@@ -186,7 +187,7 @@ def main():
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
             current_tags,
             tags,
-            purge_tags=module.params["purge_tags"],
+            purge_tags=purge_tags,
         )
 
         if tag_keys_to_unset:

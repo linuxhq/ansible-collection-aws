@@ -125,8 +125,8 @@ def ensure_absent(client, module):
 def ensure_present(client, module):
     email_address = module.params["email_address"]
     name = module.params["name"]
-    purge_tags = module.params["purge_tags"]
     tags = module.params["tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
     contact = None
     for item in list_email_contacts(client, module):
         if item.get("address") == email_address:
@@ -282,7 +282,7 @@ def main():
 
     state = module.params["state"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
     method_names = {"list_email_contacts"}
     if state == "present":
         method_names.update({"create_email_contact", "delete_email_contact"})
