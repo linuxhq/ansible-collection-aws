@@ -10,7 +10,6 @@ None
 
     splunk_addon_bucket_name: splunk-addon
     splunk_addon_cloudtrail_name: splunk-addon
-    splunk_addon_region: us-east-1
     splunk_addon_iam_managed_policies:
       - CloudWatchReadOnlyAccess
     splunk_addon_iam_policy:
@@ -39,6 +38,7 @@ None
     splunk_addon_iam_policy_name: splunk-addon
     splunk_addon_iam_user_name: splunk-addon
     splunk_addon_kms_key_name: splunk-addon
+    splunk_addon_region: us-east-1
     splunk_addon_sns_topic_name: splunk-addon
     splunk_addon_sqs_queue_name: splunk-addon
     splunk_addon_state: present
