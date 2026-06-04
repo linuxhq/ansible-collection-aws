@@ -1,0 +1,264 @@
+---
+- name: Ensure splunk addon caller information is gathered
+  tags:
+    - splunk_addon
+  amazon.aws.aws_caller_info:
+    validate_certs: true
+  register: __splunk_addon_caller_info
+
+- name: Ensure splunk addon facts are generated
+  tags:
+    - splunk_addon
+  ansible.builtin.set_fact:
+    __splunk_addon_account:
+      "{{ __splunk_addon_caller_info.account }}"
+
+- name: Ensure splunk addon key management service key is managed
+  tags:
+    - splunk_addon
+  amazon.aws.kms_key:
+    alias: "{{ splunk_addon_kms_key_name }}"
+    description: "{{ splunk_addon_kms_key_name }}"
+    enable_key_rotation: true
+    policy:
+      Version: '2012-10-17'
+      Statement:
+        - Effect: Allow
+          Principal:
+            AWS: "arn:aws:iam::{{ __splunk_addon_account }}:root"
+          Action:
+            - kms:*
+          Resource:
+            - '*'
+        - Effect: Allow
+          Principal:
+            Service: cloudtrail.amazonaws.com
+          Action:
+            - kms:Decrypt
+            - kms:DescribeKey
+            - kms:GenerateDataKey*
+          Resource:
+            - '*'
+          Condition:
+            ArnEquals:
+              'aws:SourceArn':
+                "arn:aws:cloudtrail:{{ splunk_addon_region }}:{{ __splunk_addon_account }}:trail/{{ splunk_addon_cloudtrail_name }}"
+        - Effect: Allow
+          Principal:
+            Service: sns.amazonaws.com
+          Action:
+            - kms:Decrypt
+            - kms:GenerateDataKey*
+          Resource:
+            - '*'
+          Condition:
+            ArnEquals:
+              'aws:SourceArn':
+                "arn:aws:sns:{{ splunk_addon_region }}:{{ __splunk_addon_account }}:{{ splunk_addon_sns_topic_name }}"
+        - Effect: Allow
+          Principal:
+            Service: sqs.amazonaws.com
+          Action:
+            - kms:Decrypt
+            - kms:GenerateDataKey*
+          Resource:
+            - '*'
+          Condition:
+            ArnEquals:
+              'aws:SourceArn':
+                "arn:aws:sqs:{{ splunk_addon_region }}:{{ __splunk_addon_account }}:{{ splunk_addon_sqs_queue_name }}"
+        - Effect: Allow
+          Principal:
+            AWS: "arn:aws:iam::{{ __splunk_addon_account }}:root"
+          Action:
+            - kms:Decrypt
+            - kms:DescribeKey
+          Resource:
+            - '*'
+          Condition:
+            ArnEquals:
+              'aws:PrincipalArn':
+                "arn:aws:iam::{{ __splunk_addon_account }}:user/{{ splunk_addon_iam_user_name }}"
+    purge_tags: true
+    region: "{{ splunk_addon_region }}"
+    state: "{{ splunk_addon_state }}"
+    tags: "{{ splunk_addon_tags }}"
+    validate_certs: true
+
+- name: Ensure splunk addon simple storage service bucket is managed
+  tags:
+    - splunk_addon
+  amazon.aws.s3_bucket:
+    bucket_key_enabled: true
+    encryption: aws:kms
+    encryption_key_id: "alias/{{ splunk_addon_kms_key_name }}"
+    force: true
+    name: "{{ __splunk_addon_account }}-{{ splunk_addon_bucket_name }}"
+    policy:
+      Version: '2012-10-17'
+      Statement:
+        - Effect: Allow
+          Principal:
+            Service: cloudtrail.amazonaws.com
+          Action:
+            - s3:GetBucketAcl
+          Resource:
+            - "arn:aws:s3:::{{ __splunk_addon_account }}-{{ splunk_addon_bucket_name }}"
+        - Effect: Allow
+          Principal:
+            Service: cloudtrail.amazonaws.com
+          Action:
+            - s3:PutObject
+          Resource:
+            - "arn:aws:s3:::{{ __splunk_addon_account }}-{{ splunk_addon_bucket_name }}/*"
+          Condition:
+            StringEquals:
+              's3:x-amz-acl': bucket-owner-full-control
+    public_access:
+      block_public_acls: true
+      block_public_policy: true
+      ignore_public_acls: true
+      restrict_public_buckets: true
+    purge_tags: true
+    region: "{{ splunk_addon_region }}"
+    state: "{{ splunk_addon_state }}"
+    tags: "{{ splunk_addon_tags }}"
+    validate_certs: true
+
+- name: Ensure splunk addon simple storage service bucket lifecycle is managed
+  tags:
+    - splunk_addon
+  community.aws.s3_lifecycle:
+    expiration_days: 365
+    name: "{{ __splunk_addon_account }}-{{ splunk_addon_bucket_name }}"
+    region: "{{ splunk_addon_region }}"
+    rule_id: splunk-addon-cloudtrail-retention
+    state: present
+    status: enabled
+    validate_certs: true
+  when:
+    - splunk_addon_state == 'present'
+
+- name: Ensure splunk addon simple queue service queue is managed
+  tags:
+    - splunk_addon
+  community.aws.sqs_queue:
+    name: "{{ splunk_addon_sqs_queue_name }}"
+    policy:
+      Version: '2012-10-17'
+      Statement:
+        - Effect: Allow
+          Principal:
+            AWS:
+              - "arn:aws:iam::{{ __splunk_addon_account }}:root"
+          Action:
+            - sqs:*
+          Resource:
+            - "arn:aws:sqs:{{ splunk_addon_region }}:{{ __splunk_addon_account }}:{{ splunk_addon_sqs_queue_name }}"
+        - Effect: Allow
+          Principal:
+            Service: sns.amazonaws.com
+          Action:
+            - sqs:SendMessage
+          Resource:
+            - "arn:aws:sqs:{{ splunk_addon_region }}:{{ __splunk_addon_account }}:{{ splunk_addon_sqs_queue_name }}"
+          Condition:
+            ArnEquals:
+              'aws:SourceArn':
+                "arn:aws:sns:{{ splunk_addon_region }}:{{ __splunk_addon_account }}:{{ splunk_addon_sns_topic_name }}"
+    purge_tags: true
+    queue_type: standard
+    kms_master_key_id: "alias/{{ splunk_addon_kms_key_name }}"
+    region: "{{ splunk_addon_region }}"
+    state: "{{ splunk_addon_state }}"
+    tags: "{{ splunk_addon_tags }}"
+    validate_certs: true
+
+- name: Ensure splunk addon simple notification service topic is managed
+  tags:
+    - splunk_addon
+  community.aws.sns_topic:
+    display_name: "{{ splunk_addon_sns_topic_name }}"
+    name: "{{ splunk_addon_sns_topic_name }}"
+    policy:
+      Version: '2012-10-17'
+      Statement:
+        - Effect: Allow
+          Principal:
+            Service: cloudtrail.amazonaws.com
+          Action:
+            - sns:Publish
+          Resource:
+            - "arn:aws:sns:{{ splunk_addon_region }}:{{ __splunk_addon_account }}:{{ splunk_addon_sns_topic_name }}"
+          Condition:
+            ArnEquals:
+              'AWS:SourceArn':
+                - "arn:aws:cloudtrail:{{ splunk_addon_region }}:{{ __splunk_addon_account }}:trail/{{ splunk_addon_cloudtrail_name }}"
+    subscriptions:
+      - endpoint: "arn:aws:sqs:{{ splunk_addon_region }}:{{ __splunk_addon_account }}:{{ splunk_addon_sqs_queue_name }}"
+        protocol: sqs
+    purge_tags: true
+    region: "{{ splunk_addon_region }}"
+    state: "{{ splunk_addon_state }}"
+    tags: "{{ splunk_addon_tags }}"
+    validate_certs: true
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Ensure splunk addon simple notification service topic encryption is managed
+  tags:
+    - splunk_addon
+  linuxhq.aws.sns_topic_attributes:
+    kms_master_key_id: "alias/{{ splunk_addon_kms_key_name }}"
+    region: "{{ splunk_addon_region }}"
+    topic_arn: "arn:aws:sns:{{ splunk_addon_region }}:{{ __splunk_addon_account }}:{{ splunk_addon_sns_topic_name }}"
+    validate_certs: true
+  when:
+    - splunk_addon_state == 'present'
+
+- name: Ensure splunk addon cloudtrail is managed
+  tags:
+    - splunk_addon
+  amazon.aws.cloudtrail:
+    enable_log_file_validation: true
+    enable_logging: true
+    include_global_events: true
+    is_multi_region_trail: true
+    kms_key_id: "alias/{{ splunk_addon_kms_key_name }}"
+    name: "{{ splunk_addon_cloudtrail_name }}"
+    purge_tags: true
+    region: "{{ splunk_addon_region }}"
+    s3_bucket_name: "{{ __splunk_addon_account }}-{{ splunk_addon_bucket_name }}"
+    sns_topic_name: "{{ splunk_addon_sns_topic_name }}"
+    state: "{{ splunk_addon_state }}"
+    tags: "{{ splunk_addon_tags }}"
+    validate_certs: true
+
+- name: Ensure splunk addon iam managed policy is managed
+  tags:
+    - splunk_addon
+  amazon.aws.iam_managed_policy:
+    description: "{{ splunk_addon_iam_policy_name }}"
+    make_default: true
+    name: "{{ splunk_addon_iam_policy_name }}"
+    only_version: false
+    policy: "{{ splunk_addon_iam_policy | to_json }}"
+    purge_tags: true
+    state: "{{ splunk_addon_state }}"
+    tags: "{{ splunk_addon_tags }}"
+    validate_certs: true
+
+- name: Ensure splunk addon iam user is managed
+  tags:
+    - splunk_addon
+  amazon.aws.iam_user:
+    managed_policies:
+      "{{ [splunk_addon_iam_policy_name] +
+          splunk_addon_iam_managed_policies }}"
+    name: "{{ splunk_addon_iam_user_name }}"
+    purge_policies: true
+    purge_tags: true
+    state: "{{ splunk_addon_state }}"
+    validate_certs: true
+    wait: true
+    wait_timeout: 120
+...

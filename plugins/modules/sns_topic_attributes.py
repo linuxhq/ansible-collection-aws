@@ -51,6 +51,7 @@ from ansible.module_utils.common.dict_transformations import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     get_boto3_client_method_parameters,
+    is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -103,11 +104,29 @@ def main():
 
     topic_arn = module.params["topic_arn"]
 
+    desired_parameters = {}
+    for attribute in MANAGED_ATTRIBUTES:
+        module_value = module.params[attribute]
+        if module_value is None:
+            continue
+
+        desired_parameters[attribute] = module_value
+
     try:
         current_attributes = client.get_topic_attributes(
             TopicArn=topic_arn,
             aws_retry=True,
         ).get("Attributes", {})
+    except is_boto3_error_code("NotFound"):
+        if not module.check_mode:
+            module.fail_json(
+                msg=(
+                    "AWS Simple Notification Service topic does not exist "
+                    f"{topic_arn}"
+                )
+            )
+
+        current_attributes = {}
     except Exception as e:
         module.fail_json_aws(
             e,
@@ -116,14 +135,6 @@ def main():
                 f"for {topic_arn}"
             ),
         )
-
-    desired_parameters = {}
-    for attribute in MANAGED_ATTRIBUTES:
-        module_value = module.params[attribute]
-        if module_value is None:
-            continue
-
-        desired_parameters[attribute] = module_value
 
     desired_attributes = snake_dict_to_camel_dict(
         desired_parameters, capitalize_first=True
