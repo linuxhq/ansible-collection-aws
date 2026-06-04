@@ -147,8 +147,8 @@ def ensure_absent(client, module):
 
 def ensure_present(client, module):
     name = module.params["name"]
-    purge_tags = module.params["purge_tags"]
     tags = module.params["tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
     current = get_document(client, module, include_tags=tags is not None)
     desired = {
         "content": module.params["content"],
@@ -223,6 +223,7 @@ def ensure_present(client, module):
                     e,
                     msg=f"Unable to manage AWS Systems Manager document {name}",
                 )
+
         elif resource_changed:
             try:
                 client.update_document(
@@ -389,8 +390,8 @@ def main():
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]
-    purge_tags = module.params["purge_tags"]
     tags = module.params["tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
     method_names = {"get_document"}
     if state == "present":
         method_names.update({"create_document", "update_document"})

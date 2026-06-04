@@ -131,6 +131,7 @@ def ensure_present(client, module):
                 e,
                 msg=f"Unable to create AWS Notifications hub {region}",
             )
+
         hub = desired_hub
     elif changed and module.check_mode:
         hub = desired_hub

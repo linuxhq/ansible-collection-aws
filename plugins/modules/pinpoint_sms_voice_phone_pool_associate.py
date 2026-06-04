@@ -122,7 +122,6 @@ def current_associations(client, module):
 
 
 def current_association(module, associations):
-    desired_identity = module.params["origination_identity"]
     iso_country_code = module.params["iso_country_code"]
 
     for association in associations:
@@ -139,7 +138,7 @@ def current_association(module, associations):
             if identity is None:
                 continue
 
-            if identity == desired_identity:
+            if identity == module.params["origination_identity"]:
                 return association
 
     return None
@@ -206,6 +205,7 @@ def ensure_present(client, module):
                     f"{module.params['pool_id']}"
                 ),
             )
+
     elif changed and module.check_mode:
         association = scrub_none_parameters(
             {

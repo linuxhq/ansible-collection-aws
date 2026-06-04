@@ -221,7 +221,6 @@ class EC2WaiterFactory(BaseWaiterFactory):
 
 
 def create_prefix_list(client, module, desired_prefix_list, desired_entries):
-    name = module.params["name"]
     tags = module.params["tags"]
     request = scrub_none_parameters(
         snake_dict_to_camel_dict(
@@ -242,7 +241,7 @@ def create_prefix_list(client, module, desired_prefix_list, desired_entries):
     except Exception as e:
         module.fail_json_aws(
             e,
-            msg=f"Unable to create EC2 VPC managed prefix list {name}",
+            msg=f"Unable to create EC2 VPC managed prefix list {module.params['name']}",
         )
 
     created_prefix_list_id = prefix_list.get("PrefixListId")
@@ -253,7 +252,6 @@ def create_prefix_list(client, module, desired_prefix_list, desired_entries):
 
 
 def delete_prefix_list(client, module, prefix_list_id):
-    name = module.params["name"]
     try:
         client.delete_managed_prefix_list(
             PrefixListId=prefix_list_id,
@@ -262,7 +260,7 @@ def delete_prefix_list(client, module, prefix_list_id):
     except Exception as e:
         module.fail_json_aws(
             e,
-            msg=f"Unable to delete EC2 VPC managed prefix list {name}",
+            msg=f"Unable to delete EC2 VPC managed prefix list {module.params['name']}",
         )
 
     if prefix_list_id and module.params["wait"]:
@@ -275,7 +273,6 @@ def delete_prefix_list(client, module, prefix_list_id):
 
 
 def ensure_absent(client, module):
-    name = module.params["name"]
     current = get_customer_managed_prefix_list_by_name(client, module)
 
     changed = current is not None
@@ -286,7 +283,7 @@ def ensure_absent(client, module):
 
     result = {
         "changed": changed,
-        "name": name,
+        "name": module.params["name"],
         "state": "absent",
     }
     if prefix_list_id:
@@ -295,10 +292,9 @@ def ensure_absent(client, module):
 
 
 def ensure_present(client, module):
-    address_family = module.params["address_family"]
     name = module.params["name"]
-    purge_tags = module.params["purge_tags"]
     tags = module.params["tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
     wait = module.params["wait"]
     current, current_entries = get_current(client, module)
     desired_entries = comparable_entries(module.params["entries"])
@@ -310,7 +306,7 @@ def ensure_present(client, module):
     changed = current is None
 
     desired_prefix_list = {
-        "address_family": address_family,
+        "address_family": module.params["address_family"],
         "max_entries": len(desired_entries),
         "prefix_list_name": name,
     }
@@ -447,6 +443,7 @@ def ensure_present(client, module):
                                     f"prefix list {prefix_list_id}"
                                 ),
                             )
+
                     if tags_to_set:
                         try:
                             client.create_tags(
@@ -506,6 +503,7 @@ def get_current(client, module):
         return None, None
 
     prefix_list_id = prefix_list.get("PrefixListId")
+
     try:
         entries = paginated_query_with_retries(
             client,
@@ -522,7 +520,6 @@ def get_current(client, module):
 
 
 def modify_prefix_list(client, module, current, **kwargs):
-    name = module.params["name"]
     request = {
         "prefix_list_id": current.get("PrefixListId"),
     }
@@ -540,7 +537,7 @@ def modify_prefix_list(client, module, current, **kwargs):
     except Exception as e:
         module.fail_json_aws(
             e,
-            msg=f"Unable to modify EC2 VPC managed prefix list {name}",
+            msg=f"Unable to modify EC2 VPC managed prefix list {module.params['name']}",
         )
 
 
@@ -573,6 +570,7 @@ def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name):
 def get_customer_managed_prefix_list_by_name(client, module):
     name = module.params["name"]
     filters = ansible_dict_to_boto3_filter_list({"prefix-list-name": name})
+
     try:
         prefix_lists = paginated_query_with_retries(
             client, "describe_managed_prefix_lists", Filters=filters
@@ -581,6 +579,7 @@ def get_customer_managed_prefix_list_by_name(client, module):
         module.fail_json_aws(
             e, msg=f"Unable to describe EC2 VPC managed prefix list {name}"
         )
+
     for prefix_list in prefix_lists:
         if prefix_list.get("PrefixListName") != name:
             continue
@@ -656,7 +655,7 @@ def main():
 
     state = module.params["state"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
     method_names = {"describe_managed_prefix_lists"}
     if state == "present":
         method_names.update(

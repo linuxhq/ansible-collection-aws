@@ -144,6 +144,7 @@ def ensure_present(client, module):
                     f"{resource_arn}"
                 ),
             )
+
     elif changed and module.check_mode:
         current = desired
 
@@ -161,6 +162,7 @@ def ensure_present(client, module):
 
 def get_logging_configuration(client, module):
     resource_arn = module.params["resource_arn"]
+
     try:
         return client.get_logging_configuration(
             ResourceArn=resource_arn,

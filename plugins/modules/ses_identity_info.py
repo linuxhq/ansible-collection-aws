@@ -96,20 +96,19 @@ def main():
                 aws_retry=True,
             )
         except is_boto3_error_code("NotFoundException"):
-            details = None
+            continue
         except Exception as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to get AWS SES identity {identity_name}",
             )
 
-        if details is not None:
-            identity = boto3_resource_to_ansible_dict(
-                details, transform_tags=False, force_tags=False
-            )
+        identity = boto3_resource_to_ansible_dict(
+            details, transform_tags=False, force_tags=False
+        )
 
-            identity["name"] = identity_name
-            identities.append(identity)
+        identity["name"] = identity_name
+        identities.append(identity)
 
     module.exit_json(
         changed=False,

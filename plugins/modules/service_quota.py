@@ -162,8 +162,15 @@ def main():
         current_quota = client.get_service_quota(**quota_request, aws_retry=True).get(
             "Quota", {}
         )
+    except Exception as e:
+        module.fail_json_aws(
+            e,
+            msg=("Unable to get AWS service quota " f"{service_code}/{quota_code}"),
+        )
 
-        pending_requests = []
+    pending_requests = []
+
+    try:
         for status in ("CASE_OPENED", "PENDING"):
             pending_requests.extend(
                 paginated_query_with_retries(
@@ -175,7 +182,10 @@ def main():
     except Exception as e:
         module.fail_json_aws(
             e,
-            msg=("Unable to get AWS service quota " f"{service_code}/{quota_code}"),
+            msg=(
+                "Unable to list AWS service quota change history for "
+                f"{service_code}/{quota_code}"
+            ),
         )
 
     current_quota_details = boto3_resource_to_ansible_dict(

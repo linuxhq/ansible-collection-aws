@@ -203,7 +203,6 @@ def phone_number_tags(client, module, phone_number):
 
 
 def exit_result(module, changed, response):
-    state = module.params["state"]
     phone_number = boto3_resource_to_ansible_dict(
         response or {}, transform_tags=True, force_tags=False
     )
@@ -212,7 +211,7 @@ def exit_result(module, changed, response):
         "phone_number": phone_number,
         "phone_number_arn": phone_number.get("phone_number_arn"),
         "phone_number_id": phone_number.get("phone_number_id"),
-        "state": state,
+        "state": module.params["state"],
     }
     result.update(phone_number)
     module.exit_json(**result)
@@ -235,21 +234,20 @@ def get_phone_number(client, module, phone_number_id):
                 f"{phone_number_id}"
             ),
         )
+
     return phone_numbers[0] if phone_numbers else None
 
 
 def wait_for_phone_number_active(client, module, phone_number_id):
-    tags = module.params["tags"]
     wait_delay = max(1, module.params["wait_delay"])
-    wait_timeout = module.params["wait_timeout"]
-    deadline = time.monotonic() + wait_timeout
+    deadline = time.monotonic() + module.params["wait_timeout"]
     phone_number = {}
 
     while time.monotonic() < deadline:
         phone_number = get_phone_number(client, module, phone_number_id) or {}
         status = phone_number.get("Status")
         if status == "ACTIVE":
-            if tags is not None and phone_number.get("PhoneNumberArn"):
+            if module.params["tags"] is not None and phone_number.get("PhoneNumberArn"):
                 phone_number = dict(phone_number)
                 phone_number["Tags"] = ansible_dict_to_boto3_tag_list(
                     phone_number_tags(client, module, phone_number)
@@ -309,7 +307,6 @@ def ensure_absent(client, module):
 
 
 def ensure_present(client, module):
-    client_token = module.params["client_token"]
     deletion_protection_enabled = module.params["deletion_protection_enabled"]
     international_sending_enabled = module.params["international_sending_enabled"]
     iso_country_code = module.params["iso_country_code"]
@@ -413,7 +410,7 @@ def ensure_present(client, module):
 
     parameters = scrub_none_parameters(
         {
-            "client_token": client_token,
+            "client_token": module.params["client_token"],
             "deletion_protection_enabled": deletion_protection_enabled,
             "international_sending_enabled": international_sending_enabled,
             "iso_country_code": iso_country_code,

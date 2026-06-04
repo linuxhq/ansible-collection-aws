@@ -128,6 +128,7 @@ def main():
                         f"{module.region}"
                     ),
                 )
+
         elif state == "absent":
             try:
                 current = boto3_resource_to_ansible_dict(
@@ -143,6 +144,7 @@ def main():
                         f"{module.region}"
                     ),
                 )
+
         else:
             module.fail_json(msg=f"Unsupported state: {state}")
     elif changed and module.check_mode:

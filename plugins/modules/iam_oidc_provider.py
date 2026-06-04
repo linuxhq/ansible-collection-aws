@@ -134,8 +134,7 @@ def get_provider_by_arn(client, module, arn):
 
 
 def get_provider_by_url(client, module):
-    url = module.params["url"]
-    desired_url = normalize_provider_url(url)
+    desired_url = normalize_provider_url(module.params["url"])
 
     try:
         providers = client.list_open_id_connect_providers(
@@ -182,8 +181,8 @@ def ensure_absent(client, module):
 
 def ensure_present(client, module):
     client_id_list = module.params["client_id_list"]
-    purge_tags = module.params["purge_tags"]
     tags = module.params["tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
     thumbprint_list = module.params["thumbprint_list"]
     url = module.params["url"]
     current = get_provider_by_url(client, module)
@@ -231,6 +230,7 @@ def ensure_present(client, module):
                     e,
                     msg=f"Unable to create AWS IAM OIDC provider {url}",
                 )
+
         else:
             arn = current["OpenIDConnectProviderArn"]
             provider_changed = False
@@ -379,7 +379,7 @@ def main():
 
     state = module.params["state"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
     method_names = {
         "get_open_id_connect_provider",
         "list_open_id_connect_providers",

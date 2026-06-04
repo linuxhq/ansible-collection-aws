@@ -261,6 +261,7 @@ def create_resolver_rule(client, module, desired):
         module.fail_json_aws(
             e, msg=f"Unable to create AWS Route53 Resolver rule {desired['name']}"
         )
+
     if module.params["wait"]:
         resolver_rule_id = rule.get("Id")
         rule = wait_for_resolver_rule_status(
@@ -273,8 +274,8 @@ def create_resolver_rule(client, module, desired):
 
 
 def delete_resolver_rule(client, module, rule):
-    name = module.params["name"]
     resolver_rule_id = rule.get("Id")
+
     try:
         client.delete_resolver_rule(
             ResolverRuleId=resolver_rule_id,
@@ -282,8 +283,10 @@ def delete_resolver_rule(client, module, rule):
         )
     except Exception as e:
         module.fail_json_aws(
-            e, msg=f"Unable to delete AWS Route53 Resolver rule {name}"
+            e,
+            msg=f"Unable to delete AWS Route53 Resolver rule {module.params['name']}",
         )
+
     if module.params["wait"]:
         wait_for_resolver_rule_status(
             client,
@@ -308,6 +311,8 @@ def ensure_absent(client, module):
 
 
 def ensure_present(client, module):
+    tags = module.params["tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
     desired = {
         "domain_name": module.params["domain_name"],
         "name": module.params["name"],
@@ -334,11 +339,11 @@ def ensure_present(client, module):
         changed = current != desired_comparable
     resource_changed = changed
     tags_to_set, tag_keys_to_unset = ({}, [])
-    if module.params["tags"] is not None:
+    if tags is not None:
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
             boto3_tag_list_to_ansible_dict((rule or {}).get("Tags", [])),
-            module.params["tags"],
-            purge_tags=module.params["purge_tags"],
+            tags,
+            purge_tags=purge_tags,
         )
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
@@ -347,8 +352,8 @@ def ensure_present(client, module):
         rule = resolver_rule_with_tags(client, module, rule)
     elif current is None and module.check_mode:
         rule = desired
-        if module.params["tags"] is not None:
-            rule["Tags"] = ansible_dict_to_boto3_tag_list(module.params["tags"])
+        if tags is not None:
+            rule["Tags"] = ansible_dict_to_boto3_tag_list(tags)
     elif changed and not module.check_mode:
         if resource_changed:
             config = scrub_none_parameters(
@@ -390,13 +395,13 @@ def ensure_present(client, module):
             if current != desired_comparable:
                 delete_resolver_rule(client, module, rule)
                 rule = create_resolver_rule(client, module, desired)
-        if rule is not None and module.params["tags"] is not None:
+        if rule is not None and tags is not None:
             if resource_changed:
                 rule = resolver_rule_with_tags(client, module, rule)
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
                 boto3_tag_list_to_ansible_dict(rule.get("Tags", [])),
-                module.params["tags"],
-                purge_tags=module.params["purge_tags"],
+                tags,
+                purge_tags=purge_tags,
             )
             resource_arn = rule.get("Arn")
             if resource_arn:
@@ -461,8 +466,8 @@ def ensure_present(client, module):
 
 
 def wait_for_resolver_rule_status(client, module, resolver_rule_id, statuses):
-    name = module.params["name"]
     deleted = "deleted" in statuses
+
     try:
         waiter = ResolverRuleWaiterFactory().get_waiter(
             client,
@@ -477,8 +482,10 @@ def wait_for_resolver_rule_status(client, module, resolver_rule_id, statuses):
         )
     except Exception as e:
         module.fail_json_aws(
-            e, msg=f"Timed out waiting for AWS Route53 Resolver rule {name}"
+            e,
+            msg=f"Timed out waiting for AWS Route53 Resolver rule {module.params['name']}",
         )
+
     if deleted:
         return None
     return get_resolver_rule(client, module, resolver_rule_id)
@@ -531,19 +538,20 @@ def get_resolver_rule(client, module, resolver_rule_id):
             e,
             msg=f"Unable to get AWS Route53 Resolver rule {resolver_rule_id}",
         )
+
     return resolver_rule_with_tags(client, module, rule)
 
 
 def get_resolver_rule_by_name(client, module):
-    name = module.params["name"]
     try:
         rules = paginated_query_with_retries(client, "list_resolver_rules").get(
             "ResolverRules", []
         )
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver rules")
+
     for rule in rules:
-        if rule.get("Name") != name:
+        if rule.get("Name") != module.params["name"]:
             continue
 
         return get_resolver_rule(client, module, rule["Id"])
@@ -555,6 +563,7 @@ def resolver_rule_with_tags(client, module, rule):
     if not rule or not rule.get("Arn"):
         return rule
     rule = dict(rule)
+
     try:
         rule["Tags"] = paginated_query_with_retries(
             client,
@@ -566,6 +575,7 @@ def resolver_rule_with_tags(client, module, rule):
             e,
             msg=f"Unable to list tags for AWS Route53 Resolver rule {rule['Arn']}",
         )
+
     return rule
 
 
@@ -615,6 +625,8 @@ def main():
     )
 
     state = module.params["state"]
+    tags = module.params["tags"]
+    purge_tags = module.params["purge_tags"] if tags is not None else False
     method_names = {"list_resolver_rules"}
     if state == "present":
         method_names.update(
@@ -626,9 +638,9 @@ def main():
                 "update_resolver_rule",
             }
         )
-        if module.params["tags"] is not None:
+        if tags is not None:
             method_names.add("tag_resource")
-            if module.params["purge_tags"]:
+            if purge_tags:
                 method_names.add("untag_resource")
     elif state == "absent":
         method_names.add("delete_resolver_rule")

@@ -99,6 +99,7 @@ def ensure_absent(client, module):
             module.fail_json_aws(
                 e, msg=f"Unable to delete AWS IAM account alias {name}"
             )
+
         aliases = desired_aliases
     elif changed and module.check_mode:
         aliases = desired_aliases

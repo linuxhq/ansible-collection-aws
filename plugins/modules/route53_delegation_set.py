@@ -139,7 +139,6 @@ def ensure_present(client, module):
 
 
 def get_reusable_delegation_set(client, module):
-    name = module.params["name"]
     marker = None
 
     while True:
@@ -155,7 +154,7 @@ def get_reusable_delegation_set(client, module):
             )
 
         for delegation_set in response.get("DelegationSets", []):
-            if delegation_set.get("CallerReference") == name:
+            if delegation_set.get("CallerReference") == module.params["name"]:
                 return delegation_set
 
         if not response.get("IsTruncated"):
