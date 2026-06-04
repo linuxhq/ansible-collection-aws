@@ -1,6 +1,32 @@
 ---
 ancestor: null
 releases:
+  2.0.5:
+    changes:
+      minor_changes:
+        - splunk_addon - initial commit
+        - sns_topic_attributes.py - fix check_mode if topic doesn't exist
+      release_summary:
+        Addition of splunk_addon role and fixes check_mode
+        in sns_topic_attributes.py if topic doesn't exist
+  2.0.4:
+    changes:
+      release_summary:
+        Update non info roles to current standards
+  2.0.3:
+    changes:
+      release_summary:
+        Update non info roles to current standards
+  2.0.2:
+    changes:
+      release_summary:
+        Update ec2 service module to new standards
+  2.0.1:
+    changes:
+      minor_changes:
+        - Additional standardization of info modules and associated roles
+      release_summary:
+        Additional standardization of info modules and associated roles
   2.0.0:
     changes:
       minor_changes:

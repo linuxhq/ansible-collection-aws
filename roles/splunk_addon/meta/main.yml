@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  role_name: splunk_addon
+  author: Taylor Kimball
+  description: Manage splunk addon dependencies
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - addon
+    - amazon
+    - aws
+    - splunk
+...
