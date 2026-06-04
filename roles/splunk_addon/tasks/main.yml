@@ -25,7 +25,7 @@
       Statement:
         - Effect: Allow
           Principal:
-            AWS: "arn:aws:iam::{{ __splunk_addon_account }}:root"
+            AWS: '*'
           Action:
             - kms:*
           Resource:
