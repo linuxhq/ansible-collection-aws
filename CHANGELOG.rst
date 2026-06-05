@@ -4,6 +4,22 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.0.7
+======
+
+Release Summary
+---------------
+
+Update splunk_addon kms key principals
+
+v2.0.6
+======
+
+Release Summary
+---------------
+
+Update splunk_addon iam and kms policies
+
 v2.0.5
 ======
 
