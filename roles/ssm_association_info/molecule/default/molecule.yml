@@ -27,6 +27,8 @@ provisioner:
         ansible_python_interpreter: /opt/awscli/bin/python
         ssm_association_list:
           - name: AWS-UpdateSSMAgent
+            tags:
+              molecule: ssm_association_info
             schedule_expression: 'cron(0 0 * * ? *)'
             targets:
               - key: InstanceIds

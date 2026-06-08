@@ -88,6 +88,8 @@ provisioner:
 
         route53_resolver_rule_list:
           - name: molecule-cloudflare
+            tags:
+              molecule: route53_resolver_rule_info
             domain_name: cloudflare.com
             resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].id }}"
             rule_type: forward

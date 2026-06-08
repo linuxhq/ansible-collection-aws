@@ -22,6 +22,8 @@
           - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].pool_arn is defined
           - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].pool_id is defined
           - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].status == 'ACTIVE'
+          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].tags.molecule ==
+              'pinpoint_sms_voice_phone_pool_info'
 
     - name: Ensure pool id filter target is generated
       ansible.builtin.set_fact:

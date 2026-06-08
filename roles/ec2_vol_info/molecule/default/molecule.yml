@@ -54,6 +54,8 @@ provisioner:
           - instance: "{{ _ec2_instance_info_dict['molecule-a'].instance_id }}"
             volumes:
               - name: molecule-vol-a-01
+                tags:
+                  molecule: ec2_vol_info
                 device_name: sdf
                 volume_size: "{{ 10 | random(start=1) }}"
               - name: molecule-vol-a-02

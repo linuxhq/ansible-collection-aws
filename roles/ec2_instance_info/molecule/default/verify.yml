@@ -18,6 +18,7 @@
               _ec2_ami_info_latest[ec2_ami_info_list.0.name]
           - _ec2_instance_info_dict['molecule-a'].instance_id is defined
           - _ec2_instance_info_dict['molecule-a'].instance_type == 't2.medium'
+          - _ec2_instance_info_dict['molecule-a'].tags.molecule == 'ec2_instance_info'
           - _ec2_instance_info_dict['molecule-b'].image_id ==
               _ec2_ami_info_latest[ec2_ami_info_list.0.name]
           - _ec2_instance_info_dict['molecule-b'].instance_id is defined

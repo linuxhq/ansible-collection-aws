@@ -17,6 +17,8 @@
               ssm_association_list.0.name
           - _ssm_association_info_dict['AWS-UpdateSSMAgent'].schedule_expression ==
               ssm_association_list.0.schedule_expression
+          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].tags.molecule ==
+              'ssm_association_info'
           - _ssm_association_info_dict['AWS-UpdateSSMAgent'].targets ==
               ssm_association_list.0.targets
 

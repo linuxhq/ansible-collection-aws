@@ -20,6 +20,8 @@
           - _pinpoint_sms_voice_phone_number_info_list.0.phone_number_arn is defined
           - _pinpoint_sms_voice_phone_number_info_list.0.phone_number_id is defined
           - _pinpoint_sms_voice_phone_number_info_list.0.status == 'ACTIVE'
+          - _pinpoint_sms_voice_phone_number_info_list.0.tags.molecule ==
+              'pinpoint_sms_voice_phone_number_info'
 
     - name: Ensure phone number id filter target is generated
       ansible.builtin.set_fact:

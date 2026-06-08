@@ -41,15 +41,13 @@ provisioner:
           state:
             - available
 
-        ec2_transit_gateway_vpc_attachment_info_filters:
-          state:
-            - available
-
         ec2_transit_gateway_list:
           - name: molecule
 
         ec2_transit_gateway_vpc_attachment_list:
           - name: molecule
+            tags:
+              molecule: ec2_transit_gateway_vpc_attachment_info
             subnets:
               - "{{ _ec2_vpc_subnet_info_dict['molecule'].id }}"
             transit_gateway: "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"

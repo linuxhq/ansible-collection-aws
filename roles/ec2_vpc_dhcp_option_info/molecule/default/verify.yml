@@ -12,6 +12,8 @@
       ansible.builtin.assert:
         that:
           - _ec2_vpc_dhcp_option_info_dict['molecule-00'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['molecule-00'].tags.molecule ==
+              'ec2_vpc_dhcp_option_info'
           - _ec2_vpc_dhcp_option_info_dict['molecule-01'].dhcp_options_id is defined
           - _ec2_vpc_dhcp_option_info_dict['molecule-02'].dhcp_options_id is defined
           - _ec2_vpc_dhcp_option_info_dict['molecule-03'].dhcp_options_id is defined

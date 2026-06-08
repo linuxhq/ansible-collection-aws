@@ -31,6 +31,8 @@ provisioner:
 
         ec2_vpc_endpoint_list:
           - name: molecule
+            tags:
+              molecule: ec2_vpc_endpoint_info
             route_table_ids:
               - "{{ _ec2_vpc_route_table_info_dict['molecule'].id }}"
             service: com.amazonaws.us-east-1.s3

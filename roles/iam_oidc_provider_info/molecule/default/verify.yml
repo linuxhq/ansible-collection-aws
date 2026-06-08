@@ -14,6 +14,8 @@
         that:
           - _iam_oidc_provider_info_dict['oidc.molecule.example.com'].client_id_list.0 == 'sts.amazonaws.com'
           - _iam_oidc_provider_info_dict['oidc.molecule.example.com'].tags.Name == 'molecule-oidc-provider'
+          - _iam_oidc_provider_info_dict['oidc.molecule.example.com'].tags.molecule ==
+              'iam_oidc_provider_info'
 
     - name: Ensure oidc provider arn filter target is generated
       ansible.builtin.set_fact:

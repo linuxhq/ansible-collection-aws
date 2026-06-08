@@ -40,6 +40,8 @@ provisioner:
 
         ec2_instance_list:
           - name: molecule-a
+            tags:
+              molecule: ec2_instance_info
             exact_count: 1
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t2.medium

@@ -22,6 +22,7 @@
           - _eks_cluster_info_dict['molecule-eks1'].endpoint is defined
           - _eks_cluster_info_dict['molecule-eks1'].resources_vpc_config.endpoint_public_access
           - _eks_cluster_info_dict['molecule-eks1'].status == 'ACTIVE'
+          - _eks_cluster_info_dict['molecule-eks1'].tags.molecule == 'eks_cluster_info'
           - _eks_cluster_info_dict['molecule-eks1'].version == '1.34'
           - _eks_cluster_info_dict['molecule-eks2'].arn is defined
           - _eks_cluster_info_dict['molecule-eks2'].endpoint is defined

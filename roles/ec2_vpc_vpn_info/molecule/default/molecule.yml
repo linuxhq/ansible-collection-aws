@@ -44,6 +44,8 @@ provisioner:
 
         ec2_vpc_vpn_list:
           - name: molecule-00
+            tags:
+              molecule: ec2_vpc_vpn_info
             customer_gateway_id:
               "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id }}"
             transit_gateway_id:

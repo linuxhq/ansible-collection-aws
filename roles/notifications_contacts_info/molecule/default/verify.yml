@@ -21,6 +21,8 @@
           - _notifications_contacts_info_dict['dummy01@molecule.org'].arn is defined
           - _notifications_contacts_info_dict['dummy01@molecule.org'].name is defined
           - _notifications_contacts_info_dict['dummy01@molecule.org'].status == 'inactive'
+          - _notifications_contacts_info_dict['dummy01@molecule.org'].tags.molecule ==
+              'notifications_contacts_info'
           - _notifications_contacts_info_dict['dummy02@molecule.org'].address is defined
           - _notifications_contacts_info_dict['dummy02@molecule.org'].arn is defined
           - _notifications_contacts_info_dict['dummy02@molecule.org'].name is defined

@@ -15,6 +15,7 @@
       ansible.builtin.assert:
         that:
           - _ssm_document_info_dict['molecule-command-shell'].document_type == 'Command'
+          - _ssm_document_info_dict['molecule-command-shell'].tags.molecule == 'ssm_document_info'
           - _ssm_document_info_dict['molecule-command-shell'].content.main_steps.0.name == 'runShellScript'
 
     - name: Ensure role is included with command env name

@@ -31,6 +31,8 @@ provisioner:
 
         ec2_transit_gateway_list:
           - name: molecule-00
+            tags:
+              molecule: ec2_transit_gateway_info
           - name: molecule-01
           - name: molecule-02
           - name: molecule-03

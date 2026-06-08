@@ -31,6 +31,8 @@ provisioner:
 
         ec2_vpc_net_list:
           - name: molecule-00
+            tags:
+              molecule: ec2_vpc_net_info
             cidr_block: 10.0.0.0/16
           - name: molecule-01
             cidr_block: 10.1.0.0/16

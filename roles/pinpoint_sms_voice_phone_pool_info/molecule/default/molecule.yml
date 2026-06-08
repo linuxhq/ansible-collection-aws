@@ -36,6 +36,8 @@ provisioner:
 
         pinpoint_sms_voice_phone_pool_list:
           - name: molecule-pinpoint-pool
+            tags:
+              molecule: pinpoint_sms_voice_phone_pool_info
             origination_identity:
               "{{ _pinpoint_sms_voice_phone_number_info_dict[
                     'molecule-pinpoint-simulator'
