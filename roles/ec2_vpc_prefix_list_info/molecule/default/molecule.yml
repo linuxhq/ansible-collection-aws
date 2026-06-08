@@ -27,6 +27,8 @@ provisioner:
         ansible_python_interpreter: /opt/awscli/bin/python
         ec2_vpc_prefix_list_entries:
           - name: molecule-localhost
+            tags:
+              molecule: ec2_vpc_prefix_list_info
             entries:
               - cidr: 127.0.0.1/32
                 description: localhost-1

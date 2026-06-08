@@ -33,6 +33,8 @@ provisioner:
           - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             security_groups:
               - name: molecule-ftp
+                tags:
+                  molecule: ec2_security_group_info
                 rules:
                   - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
                     ports:

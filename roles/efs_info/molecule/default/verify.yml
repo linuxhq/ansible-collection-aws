@@ -17,6 +17,7 @@
           - _efs_info_dict['molecule-efs1'].mount_point is defined
           - _efs_info_dict['molecule-efs1'].mount_targets | length == 3
           - _efs_info_dict['molecule-efs1'].performance_mode == 'generalPurpose'
+          - _efs_info_dict['molecule-efs1'].tags.molecule == 'efs_info'
           - _efs_info_dict['molecule-efs2'].encrypted | bool
           - _efs_info_dict['molecule-efs2'].mount_point is defined
           - _efs_info_dict['molecule-efs2'].mount_targets | length == 3

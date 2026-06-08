@@ -12,14 +12,16 @@
   tags:
     - ec2_vpc_endpoint_info
   ansible.builtin.set_fact:
-    _ec2_vpc_endpoint_info_list: >-
-      {%- set __ec2_vpc_endpoint_info_list = [] -%}
-      {%- for e in __ec2_vpc_endpoint_info_query.vpc_endpoints -%}
-        {%- set tags_dict = e.tags | items2dict -%}
-        {%- set endpoint = e | combine({'tags': tags_dict}) -%}
-        {%- set _ = __ec2_vpc_endpoint_info_list.append(endpoint) -%}
-      {%- endfor -%}
-      {{ __ec2_vpc_endpoint_info_list }}
+    _ec2_vpc_endpoint_info_list:
+      "{{ __ec2_vpc_endpoint_info_query.vpc_endpoints | d([]) |
+          zip(__ec2_vpc_endpoint_info_query.vpc_endpoints | d([]) |
+              map(attribute='tags') |
+              map('default', []) |
+              map('json_query', '[].{key: key || Key, value: value || Value}') |
+              map('items2dict') |
+              map('community.general.dict_kv', 'tags')) |
+          map('combine') |
+          list }}"
 
 - name: Ensure dict of aws virtual private cloud endpoints is generated
   tags:

@@ -24,6 +24,8 @@
           - _route53_resolver_info_dict['molecule-cloudflare'].id is defined
           - _route53_resolver_info_dict['molecule-cloudflare'].ip_address_count == 2
           - _route53_resolver_info_dict['molecule-cloudflare'].ip_addresses | length == 2
+          - _route53_resolver_info_dict['molecule-cloudflare'].tags.molecule ==
+              'route53_resolver_info'
           - route53_resolver_list.0.ip_addresses.0.ip in
               _route53_resolver_info_dict['molecule-cloudflare'].ip_addresses |
               map(attribute='ip') |

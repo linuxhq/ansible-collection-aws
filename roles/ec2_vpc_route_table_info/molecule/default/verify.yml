@@ -16,6 +16,8 @@
       ansible.builtin.assert:
         that:
           - _ec2_vpc_route_table_info_dict['molecule-pub'].id is defined
+          - _ec2_vpc_route_table_info_dict['molecule-pub'].tags.molecule ==
+              'ec2_vpc_route_table_info'
           - _ec2_vpc_route_table_info_dict['molecule-pub'].associations.0.association_state.state ==
               'associated'
           - _ec2_vpc_route_table_info_dict['molecule-pub'].associations.1.association_state.state ==

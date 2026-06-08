@@ -12,6 +12,7 @@
       ansible.builtin.assert:
         that:
           - _ec2_vpc_net_info_dict['molecule-00'].id is defined
+          - _ec2_vpc_net_info_dict['molecule-00'].tags.molecule == 'ec2_vpc_net_info'
           - _ec2_vpc_net_info_dict['molecule-01'].id is defined
           - _ec2_vpc_net_info_dict['molecule-02'].id is defined
           - _ec2_vpc_net_info_dict['molecule-03'].id is defined

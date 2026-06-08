@@ -27,6 +27,8 @@ provisioner:
         ansible_python_interpreter: /opt/awscli/bin/python
         ssm_document_list:
           - name: molecule-command-shell
+            tags:
+              molecule: ssm_document_info
             document_type: Command
             content:
               schemaVersion: '2.2'

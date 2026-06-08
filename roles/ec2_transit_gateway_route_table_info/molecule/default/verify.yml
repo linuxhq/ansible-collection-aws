@@ -19,6 +19,8 @@
       ansible.builtin.assert:
         that:
           - _ec2_transit_gateway_route_table_info_dict['molecule'].state == 'available'
+          - _ec2_transit_gateway_route_table_info_dict['molecule'].tags.molecule ==
+              'ec2_transit_gateway_route_table_info'
           - _ec2_transit_gateway_route_table_info_dict['molecule'].transit_gateway_id ==
               _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id
           - _ec2_transit_gateway_route_table_info_dict['molecule'].transit_gateway_route_table_id is defined

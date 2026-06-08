@@ -103,6 +103,8 @@ provisioner:
 
         ec2_flow_log_list:
           - name: molecule-vpc
+            tags:
+              molecule: ec2_flow_log_info
             resource_ids:
               - "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             resource_type: VPC

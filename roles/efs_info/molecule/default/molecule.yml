@@ -44,6 +44,8 @@ provisioner:
 
         efs_list:
           - name: molecule-efs1
+            tags:
+              molecule: efs_info
             encrypt: true
             targets:
               - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"

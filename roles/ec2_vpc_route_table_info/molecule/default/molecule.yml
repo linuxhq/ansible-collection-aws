@@ -80,6 +80,8 @@ provisioner:
           - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             route_tables:
               - name: "molecule-pub"
+                tags:
+                  molecule: ec2_vpc_route_table_info
                 routes:
                   - dest: '0.0.0.0/0'
                     gateway_id: igw

@@ -27,6 +27,8 @@ provisioner:
         ansible_python_interpreter: /opt/awscli/bin/python
         notifications_contacts_list:
           - name: molecule-dummy01
+            tags:
+              molecule: notifications_contacts_info
             email_address: dummy01@molecule.org
           - name: molecule-dummy02
             email_address: dummy02@molecule.org

@@ -37,6 +37,8 @@ provisioner:
           - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             subnets:
               - name: molecule-a-00
+                tags:
+                  molecule: ec2_vpc_subnet_info
                 az: us-east-1a
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,0) }}"
               - name: molecule-a-01

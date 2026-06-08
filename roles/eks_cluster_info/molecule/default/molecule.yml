@@ -74,6 +74,8 @@ provisioner:
 
         eks_cluster_list:
           - name: molecule-eks1
+            tags:
+              molecule: eks_cluster_info
             resources_vpc_config:
               endpoint_private_access: false
               endpoint_public_access: true

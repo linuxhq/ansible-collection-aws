@@ -67,6 +67,8 @@ provisioner:
 
         route53_resolver_list:
           - name: molecule-cloudflare
+            tags:
+              molecule: route53_resolver_info
             direction: outbound
             ip_addresses:
               - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"

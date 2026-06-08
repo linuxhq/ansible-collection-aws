@@ -27,6 +27,8 @@ provisioner:
         ansible_python_interpreter: /opt/awscli/bin/python
         ec2_eip_list:
           - name: molecule-eip-01
+            tags:
+              molecule: ec2_eip_info
           - name: molecule-eip-02
           - name: molecule-eip-03
           - name: molecule-eip-04

@@ -28,6 +28,8 @@ provisioner:
 
         pinpoint_sms_voice_phone_number_list:
           - name: molecule-pinpoint-simulator
+            tags:
+              molecule: pinpoint_sms_voice_phone_number_info
             iso_country_code: US
             message_type: TRANSACTIONAL
             number_capabilities:

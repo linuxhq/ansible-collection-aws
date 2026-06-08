@@ -15,6 +15,7 @@
         that:
           - _ec2_vpc_vpn_info_dict['molecule-00'].vpn_connection_id is defined
           - _ec2_vpc_vpn_info_dict['molecule-00'].customer_gateway_id == ec2_vpc_vpn_list.0.customer_gateway_id
+          - _ec2_vpc_vpn_info_dict['molecule-00'].tags.molecule == 'ec2_vpc_vpn_info'
           - _ec2_vpc_vpn_info_dict['molecule-00'].transit_gateway_id == ec2_vpc_vpn_list.0.transit_gateway_id
           - _ec2_vpc_vpn_info_dict['molecule-01'].vpn_connection_id is defined
           - _ec2_vpc_vpn_info_dict['molecule-01'].customer_gateway_id == ec2_vpc_vpn_list.1.customer_gateway_id

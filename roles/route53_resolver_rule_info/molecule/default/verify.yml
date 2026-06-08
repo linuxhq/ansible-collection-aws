@@ -29,6 +29,8 @@
           - _route53_resolver_rule_info_dict['molecule-cloudflare'].rule_type ==
               route53_resolver_rule_list.0.rule_type | upper
           - _route53_resolver_rule_info_dict['molecule-cloudflare'].status == 'COMPLETE'
+          - _route53_resolver_rule_info_dict['molecule-cloudflare'].tags.molecule ==
+              'route53_resolver_rule_info'
           - _route53_resolver_rule_info_dict['molecule-cloudflare'].target_ips |
             json_query('[].[ip, port]') |
             sort ==

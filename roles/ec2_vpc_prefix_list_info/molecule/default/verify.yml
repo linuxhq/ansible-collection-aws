@@ -22,6 +22,8 @@
               'localhost-1'
           - _ec2_vpc_prefix_list_info_dict['molecule-localhost'].prefix_list_id is defined
           - _ec2_vpc_prefix_list_info_dict['molecule-localhost'].prefix_list_name == 'molecule-localhost'
+          - _ec2_vpc_prefix_list_info_dict['molecule-localhost'].tags.molecule ==
+              'ec2_vpc_prefix_list_info'
           - _ec2_vpc_prefix_list_info_dict['molecule-private'].entries | length == 5
           - _ec2_vpc_prefix_list_info_dict['molecule-private'].entries |
             selectattr('cidr', 'equalto', '192.168.1.0/24') |
