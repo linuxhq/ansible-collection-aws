@@ -148,6 +148,9 @@ def get_provider_by_url(client, module):
         if not arn:
             continue
 
+        if not arn.endswith(f":oidc-provider/{desired_url}"):
+            continue
+
         provider = get_provider_by_arn(client, module, arn)
         if provider and normalize_provider_url(provider.get("Url")) == desired_url:
             return provider

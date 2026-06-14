@@ -5,8 +5,8 @@
   linuxhq.aws.pinpoint_sms_voice_phone_pool_info:
     filters: "{{ pinpoint_sms_voice_phone_pool_info_filters }}"
     max_results: "{{ pinpoint_sms_voice_phone_pool_info_max_results or omit }}"
-    owner: "{{ pinpoint_sms_voice_phone_pool_info_owner }}"
-    pool_ids: "{{ pinpoint_sms_voice_phone_pool_info_pool_ids }}"
+    owner: "{{ pinpoint_sms_voice_phone_pool_info_owner or omit }}"
+    pool_ids: "{{ pinpoint_sms_voice_phone_pool_info_pool_ids or omit }}"
     validate_certs: true
   register: __pinpoint_sms_voice_phone_pool_info_query
 

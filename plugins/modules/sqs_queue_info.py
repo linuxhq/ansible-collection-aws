@@ -14,14 +14,17 @@ options:
   name:
     description:
       - SQS queue name used to limit the result set.
+      - Mutually exclusive with O(queue_name_prefix).
     type: str
   queue_name_prefix:
     description:
       - Optional queue name prefix used to filter the list of queues.
+      - Mutually exclusive with O(name).
     type: str
   queue_owner_aws_account_id:
     description:
       - AWS account ID of the account that created the queue in O(name).
+      - Requires O(name).
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -92,6 +95,7 @@ def main():
     module = AnsibleAWSModule(
         argument_spec=argument_spec,
         mutually_exclusive=[["name", "queue_name_prefix"]],
+        required_by={"queue_owner_aws_account_id": "name"},
         supports_check_mode=True,
     )
     client = module.client("sqs", retry_decorator=AWSRetry.jittered_backoff())

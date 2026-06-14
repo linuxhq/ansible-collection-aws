@@ -59,10 +59,12 @@ options:
       ip:
         description:
           - The IPv4 address of the target.
+          - Mutually exclusive with O(target_ips[].ipv6).
         type: str
       ipv6:
         description:
           - The IPv6 address of the target.
+          - Mutually exclusive with O(target_ips[].ip).
         type: str
       port:
         description:
@@ -164,6 +166,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     compare_aws_tags,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
 )
@@ -543,15 +546,19 @@ def get_resolver_rule(client, module, resolver_rule_id):
 
 
 def get_resolver_rule_by_name(client, module):
+    name = module.params["name"]
+
     try:
-        rules = paginated_query_with_retries(client, "list_resolver_rules").get(
-            "ResolverRules", []
-        )
+        rules = paginated_query_with_retries(
+            client,
+            "list_resolver_rules",
+            Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
+        ).get("ResolverRules", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver rules")
 
     for rule in rules:
-        if rule.get("Name") != module.params["name"]:
+        if rule.get("Name") != name:
             continue
 
         return get_resolver_rule(client, module, rule["Id"])
@@ -595,6 +602,7 @@ def main():
             "tags": {"type": "dict"},
             "target_ips": {
                 "elements": "dict",
+                "mutually_exclusive": [["ip", "ipv6"]],
                 "options": {
                     "ip": {"type": "str"},
                     "ipv6": {"type": "str"},

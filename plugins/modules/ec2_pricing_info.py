@@ -186,18 +186,17 @@ def main():
             "ServiceCode": module.params["service_code"],
         }
     )
-    filters = []
 
-    for pricing_filter in module.params["filters"] or []:
+    filters = []
+    for pricing_filter in module.params["filters"]:
         filters.append(
             {
                 "Field": pricing_filter["field"],
-                "Type": pricing_filter.get("type") or "TERM_MATCH",
+                "Type": pricing_filter["type"],
                 "Value": pricing_filter["value"],
             }
         )
-    if filters:
-        request["Filters"] = filters
+    request["Filters"] = filters
 
     try:
         response = paginated_query_with_retries(

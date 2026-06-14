@@ -48,6 +48,7 @@
       vars:
         ssm_document_info_filters:
           Name: molecule-command-shell
+        ssm_document_info_name: null
 
     - name: Ensure info with filters is verified
       ansible.builtin.assert:

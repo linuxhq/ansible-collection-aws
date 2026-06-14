@@ -25,12 +25,14 @@ options:
     description:
       - Additional EKS cluster types to include when listing clusters.
       - Values are passed to the EKS C(ListClusters) API.
+      - Mutually exclusive with O(name).
     elements: str
     type: list
   name:
     description:
       - EKS cluster name used to limit the result set.
       - When omitted, all EKS clusters are returned.
+      - Mutually exclusive with O(include).
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -95,6 +97,7 @@ def main():
             "include": {"elements": "str", "type": "list"},
             "name": {"type": "str"},
         },
+        mutually_exclusive=[["include", "name"]],
         supports_check_mode=True,
     )
     client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())

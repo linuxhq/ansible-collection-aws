@@ -86,13 +86,6 @@ def main():
             "describe_db_subnet_groups",
             **request,
         ).get("DBSubnetGroups", [])
-
-        described_subnet_groups = subnet_groups
-        subnet_groups = []
-
-        for subnet_group in described_subnet_groups:
-            if subnet_group.get("DBSubnetGroupName") is not None:
-                subnet_groups.append(subnet_group)
     except is_boto3_error_code("DBSubnetGroupNotFoundFault"):
         subnet_groups = []
     except Exception as e:

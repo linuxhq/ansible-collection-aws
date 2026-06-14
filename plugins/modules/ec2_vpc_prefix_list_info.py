@@ -89,20 +89,13 @@ def main():
         request["PrefixListIds"] = module.params["prefix_list_ids"]
     if module.params["filters"]:
         request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
-    prefix_lists = []
 
     try:
-        described_prefix_lists = paginated_query_with_retries(
+        prefix_lists = paginated_query_with_retries(
             client, "describe_managed_prefix_lists", **request
         ).get("PrefixLists", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to describe EC2 VPC managed prefix lists")
-
-    for prefix_list in described_prefix_lists:
-        prefix_list_name = prefix_list.get("PrefixListName")
-
-        if prefix_list_name:
-            prefix_lists.append(prefix_list)
 
     result_prefix_lists = []
     for prefix_list in prefix_lists:

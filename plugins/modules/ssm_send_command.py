@@ -24,6 +24,7 @@ options:
   instance_ids:
     description:
       - A list of instance IDs to target directly.
+      - At least one of O(instance_ids) or O(targets) is required.
     elements: str
     type: list
   max_concurrency:
@@ -44,6 +45,7 @@ options:
       - The command targets.
       - Target keys may be provided in snake_case or AWS native PascalCase.
       - Each target requires a target key and values.
+      - At least one of O(instance_ids) or O(targets) is required.
     elements: dict
     suboptions:
       key:

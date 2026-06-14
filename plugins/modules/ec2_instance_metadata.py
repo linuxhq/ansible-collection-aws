@@ -15,6 +15,8 @@ options:
   http_endpoint:
     description:
       - Whether the instance metadata service endpoint is enabled by default.
+      - At least one of O(http_endpoint), O(http_put_response_hop_limit),
+        O(http_tokens), or O(instance_metadata_tags) is required.
     choices:
       - disabled
       - enabled
@@ -23,10 +25,14 @@ options:
   http_put_response_hop_limit:
     description:
       - The default desired HTTP PUT response hop limit.
+      - At least one of O(http_endpoint), O(http_put_response_hop_limit),
+        O(http_tokens), or O(instance_metadata_tags) is required.
     type: int
   http_tokens:
     description:
       - Whether IMDSv2 tokens are required by default.
+      - At least one of O(http_endpoint), O(http_put_response_hop_limit),
+        O(http_tokens), or O(instance_metadata_tags) is required.
     choices:
       - optional
       - required
@@ -35,6 +41,8 @@ options:
   instance_metadata_tags:
     description:
       - Whether access to instance tags from the instance metadata service is enabled by default.
+      - At least one of O(http_endpoint), O(http_put_response_hop_limit),
+        O(http_tokens), or O(instance_metadata_tags) is required.
     choices:
       - disabled
       - enabled
@@ -78,7 +86,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 MANAGED_OPTIONS = (
@@ -136,19 +143,15 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    desired_params = {}
     desired = {}
     for option_name in MANAGED_OPTIONS:
         option_value = module.params[option_name]
         if option_value is None:
             continue
 
-        desired_params[option_name] = option_value
         desired[option_name] = option_value
 
-    desired_update = scrub_none_parameters(
-        snake_dict_to_camel_dict(desired_params, capitalize_first=True)
-    )
+    desired_update = snake_dict_to_camel_dict(desired, capitalize_first=True)
 
     method_names = (
         "get_instance_metadata_defaults",

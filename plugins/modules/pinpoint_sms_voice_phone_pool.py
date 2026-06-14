@@ -179,12 +179,10 @@ def describe_pools(client, module, **request):
         module.fail_json_aws(e, msg="Unable to describe Pinpoint SMS Voice V2 pools")
 
 
-def enrich_pool(client, module, pool):
-    if not pool:
-        return None
-
+def pool_with_origination_identities(client, module, pool):
     pool = dict(pool)
     pool_id = pool.get("PoolId")
+
     if pool_id:
         try:
             pool["OriginationIdentities"] = paginated_query_with_retries(
@@ -204,8 +202,14 @@ def enrich_pool(client, module, pool):
     else:
         pool["OriginationIdentities"] = []
 
+    return pool
+
+
+def pool_with_tags(client, module, pool):
+    pool = dict(pool)
     arn = pool.get("PoolArn")
     tags = {}
+
     if arn:
         try:
             tags = boto3_tag_list_to_ansible_dict(
@@ -225,7 +229,12 @@ def enrich_pool(client, module, pool):
 
 def get_pool_by_id(client, module, pool_id):
     pools = describe_pools(client, module, PoolIds=[pool_id])
-    return enrich_pool(client, module, pools[0]) if pools else None
+    if not pools:
+        return None
+
+    pool = pool_with_origination_identities(client, module, pools[0])
+
+    return pool_with_tags(client, module, pool)
 
 
 def wait_for_pool_active(client, module, pool_id):
@@ -279,7 +288,7 @@ def find_pool(client, module):
         if pool.get("Status") == "DELETING":
             continue
 
-        pool = enrich_pool(client, module, pool)
+        pool = pool_with_origination_identities(client, module, pool)
         for origination in pool.get("OriginationIdentities", []):
             if module.params["origination_identity"] not in (
                 origination.get("OriginationIdentity"),
@@ -293,7 +302,7 @@ def find_pool(client, module):
             ):
                 continue
 
-            return pool
+            return pool_with_tags(client, module, pool)
 
     return None
 

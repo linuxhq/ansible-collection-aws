@@ -14,10 +14,12 @@ options:
   arn:
     description:
       - Optional IAM OIDC provider ARN used to limit the result set.
+      - Mutually exclusive with O(url).
     type: str
   url:
     description:
       - Optional IAM OIDC provider URL used to limit the result set.
+      - Mutually exclusive with O(arn).
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -145,28 +147,16 @@ def main():
             )
 
     if arn:
-        try:
-            provider = client.get_open_id_connect_provider(
-                OpenIDConnectProviderArn=arn,
-                aws_retry=True,
-            )
-        except is_boto3_error_code("NoSuchEntity"):
-            provider = None
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to get AWS IAM OIDC provider {arn}",
-            )
-
-        if provider:
-            provider["OpenIDConnectProviderArn"] = arn
-
+        provider = get_provider_by_arn(client, module, arn)
         providers = [provider] if provider else []
     elif url:
         providers = []
         desired_url = normalize_provider_url(url)
 
         for arn in list_provider_arns(client, module):
+            if not arn.endswith(f":oidc-provider/{desired_url}"):
+                continue
+
             provider = get_provider_by_arn(client, module, arn)
             if provider and normalize_provider_url(provider.get("Url")) == desired_url:
                 providers.append(provider)

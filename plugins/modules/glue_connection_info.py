@@ -15,6 +15,7 @@ options:
     description:
       - Whether to apply an override for the compute environment when getting
         a selected Glue connection by O(name).
+      - Requires O(name).
     type: bool
   catalog_id:
     description:
@@ -24,6 +25,7 @@ options:
     description:
       - A dict of filters to apply when listing Glue connections.
       - Filter keys and values are passed to the Glue C(GetConnections) API.
+      - Mutually exclusive with O(name).
     type: dict
   hide_password:
     default: true
@@ -34,6 +36,7 @@ options:
     description:
       - Glue connection name used to limit the result set.
       - When set, the module uses the Glue C(GetConnection) API.
+      - Mutually exclusive with O(filters).
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -85,7 +88,12 @@ def main():
         "name": {"type": "str"},
     }
 
-    module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
+    module = AnsibleAWSModule(
+        argument_spec=argument_spec,
+        mutually_exclusive=[["name", "filters"]],
+        required_by={"apply_override_for_compute_environment": "name"},
+        supports_check_mode=True,
+    )
     client = module.client("glue", retry_decorator=AWSRetry.jittered_backoff())
     if module.params["name"]:
         request = {

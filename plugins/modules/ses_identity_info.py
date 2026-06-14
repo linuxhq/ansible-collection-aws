@@ -14,6 +14,7 @@ options:
   identity_type:
     description:
       - Optional SES identity type used to limit the result set when O(name) is omitted.
+      - Mutually exclusive with O(name).
     choices:
       - Domain
       - EmailAddress
@@ -21,6 +22,7 @@ options:
   name:
     description:
       - SES identity name used to limit the result set.
+      - Mutually exclusive with O(identity_type).
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -67,6 +69,7 @@ def main():
             "identity_type": {"choices": ["Domain", "EmailAddress"], "type": "str"},
             "name": {"type": "str"},
         },
+        mutually_exclusive=[["identity_type", "name"]],
         supports_check_mode=True,
     )
     ses_client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
