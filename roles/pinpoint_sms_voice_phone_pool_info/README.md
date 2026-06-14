@@ -10,7 +10,7 @@ None
 
     pinpoint_sms_voice_phone_pool_info_filters: {}
     pinpoint_sms_voice_phone_pool_info_max_results: null
-    pinpoint_sms_voice_phone_pool_info_owner: SELF
+    pinpoint_sms_voice_phone_pool_info_owner: null
     pinpoint_sms_voice_phone_pool_info_pool_ids: []
 
 ## Return Values

@@ -483,11 +483,7 @@ def wait_for_update(client, module, update_id):
 def desired_cluster(module):
     desired = {}
     for field in CREATE_FIELDS:
-        if field == "resources_vpc_config":
-            continue
-
         desired[field] = module.params[field]
-    desired["resources_vpc_config"] = module.params["resources_vpc_config"]
     return scrub_none_parameters(desired)
 
 

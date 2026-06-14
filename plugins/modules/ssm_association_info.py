@@ -71,16 +71,11 @@ def main():
                 )
 
     try:
-        listed_associations = paginated_query_with_retries(
+        associations = paginated_query_with_retries(
             client, "list_associations", **request
         ).get("Associations", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Systems Manager associations")
-
-    associations = []
-    for association in listed_associations:
-        if association.get("Name") is not None:
-            associations.append(association)
 
     normalized_associations = []
     for association in associations:

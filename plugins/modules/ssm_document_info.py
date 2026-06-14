@@ -26,6 +26,7 @@ options:
     description:
       - The document version to request from the Systems Manager
         C(GetDocument) API.
+      - Mutually exclusive with O(version_name).
       - When O(document_version) and O(version_name) are omitted, C($LATEST)
         is requested to preserve the module default behavior.
     type: str
@@ -33,15 +34,18 @@ options:
     description:
       - A dict of filters to apply when listing Systems Manager documents.
       - Filter keys and values are passed to the Systems Manager C(ListDocuments) API.
+      - Mutually exclusive with O(name).
     type: dict
   name:
     description:
       - Systems Manager document name used to limit the result set.
+      - Mutually exclusive with O(filters).
     type: str
   version_name:
     description:
       - The document version name to request from the Systems Manager
         C(GetDocument) API.
+      - Mutually exclusive with O(document_version).
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -124,7 +128,10 @@ def main():
             "name": {"type": "str"},
             "version_name": {"type": "str"},
         },
-        mutually_exclusive=[["document_version", "version_name"]],
+        mutually_exclusive=[
+            ["document_version", "version_name"],
+            ["filters", "name"],
+        ],
         supports_check_mode=True,
     )
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())

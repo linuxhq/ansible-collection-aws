@@ -18,9 +18,7 @@ options:
     description:
       - The route table name.
       - This value is managed as the C(Name) tag.
-      - Required with O(transit_gateway_id) when creating a route table.
-      - When O(transit_gateway_route_table_id) is omitted, this is used with
-        O(transit_gateway_id) to find the route table.
+      - Required when O(transit_gateway_route_table_id) is omitted.
     type: str
   purge_routes:
     description:
@@ -62,6 +60,7 @@ options:
       transit_gateway_attachment_id:
         description:
           - The transit gateway attachment ID to route traffic to.
+          - Mutually exclusive with O(routes[].blackhole).
           - Required when O(routes[].state=present) unless
             O(routes[].blackhole=true).
         type: str
@@ -82,11 +81,12 @@ options:
   transit_gateway_id:
     description:
       - The transit gateway ID for the route table.
-      - Required with O(name) when creating a route table.
+      - Required when O(transit_gateway_route_table_id) is omitted.
     type: str
   transit_gateway_route_table_id:
     description:
       - The transit gateway route table ID.
+      - Required when O(transit_gateway_id) and O(name) are omitted.
     type: str
   wait:
     description:
@@ -906,6 +906,10 @@ def main():
 
     module = AnsibleAWSModule(
         argument_spec=argument_spec,
+        required_one_of=[
+            ["transit_gateway_route_table_id", "transit_gateway_id"],
+            ["transit_gateway_route_table_id", "name"],
+        ],
         supports_check_mode=True,
     )
     state = module.params["state"]
@@ -916,25 +920,6 @@ def main():
     transit_gateway_route_table_id = module.params["transit_gateway_route_table_id"]
     has_absent_route = False
     has_present_route = False
-
-    if state == "present":
-        if not (transit_gateway_route_table_id or (transit_gateway_id and name)):
-            module.fail_json(
-                msg=(
-                    "state=present requires transit_gateway_route_table_id or "
-                    "both transit_gateway_id and name"
-                )
-            )
-    elif state == "absent":
-        if not (transit_gateway_route_table_id or (transit_gateway_id and name)):
-            module.fail_json(
-                msg=(
-                    "state=absent requires transit_gateway_route_table_id or both "
-                    "transit_gateway_id and name"
-                )
-            )
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
     destinations = set()
     for route in routes or []:

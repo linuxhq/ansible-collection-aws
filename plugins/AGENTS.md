@@ -63,9 +63,17 @@ After plugin changes, run:
 * Accept module parameters in snake_case and transform to boto3 formats using
   existing helpers
 
-* Use `AnsibleAWSModule` validation arguments such as `required_by`,
-  `required_if`, `required_one_of`, `required_together`, and `mutually_exclusive`
-  over manual parameter validation when they express the rule clearly
+* When adding or touching module options, trace each execution path and boto3
+  request shape for parameter constraints. Use `AnsibleAWSModule` validation
+  arguments such as `required_by`, `required_if`, `required_one_of`,
+  `required_together`, and `mutually_exclusive` over manual parameter
+  validation when they express the rule clearly. For compound alternatives such
+  as `id` or both `name` and `parent_id`, use multiple `required_one_of`
+  entries that share the standalone identifier
+
+* For nested dict options, define per-item constraints inside the nested
+  `argument_spec` entry, such as `mutually_exclusive` under a list element's
+  `options`, when fields represent alternate api inputs
 
 * Mark secret parameters with `no_log=True` and exclude their values from
   examples, return values, and error messages
@@ -73,7 +81,8 @@ After plugin changes, run:
 * When writing info modules, expose singular lookup parameters (`name`, `id`,
   `arn`) only when the underlying api accepts a singular identifier. Do not
   substitute plural list parameters (`names`, `ids`, `arns`) for the api's
-  native parameter shape
+  native parameter shape. If singular lookup options and list or filter options
+  drive different api paths, make those modes mutually exclusive
 
 ### Documentation
 
@@ -89,8 +98,17 @@ After plugin changes, run:
 
 * Use the collection fqcn in `EXAMPLES`, such as `linuxhq.aws.<plugin_name>`
 
-* When an option is conditionally required through `required_if`, document
-  the condition in the description instead of marking the option `required: true`
+* Document every `AnsibleAWSModule` validation rule in the affected option
+  descriptions, including `mutually_exclusive`, `required_by`, `required_if`,
+  `required_together`, and `required_one_of`; for conditionally required
+  options, document the condition instead of marking the option `required: true`.
+  Use nested option references such as `O(ip_addresses[].ipv6)` when the rule
+  applies inside list elements
+
+* For info modules with both singular lookup options and list or filter
+  options, document the mode split explicitly: singular identifiers such as
+  `O(name)` are mutually exclusive with list filters, and options only used by
+  the singular lookup path should say `Requires O(name)`
 
 ### Operations
 

@@ -29,10 +29,12 @@ options:
       ip:
         description:
           - The IPv4 address for the endpoint.
+          - Mutually exclusive with O(ip_addresses[].ipv6).
         type: str
       ipv6:
         description:
           - The IPv6 address for the endpoint.
+          - Mutually exclusive with O(ip_addresses[].ip).
         type: str
       subnet_id:
         description:
@@ -174,6 +176,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     compare_aws_tags,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
 )
@@ -695,15 +698,19 @@ def get_resolver_endpoint(client, module, resolver_endpoint_id):
 
 
 def get_resolver_endpoint_by_name(client, module):
+    name = module.params["name"]
+
     try:
-        endpoints = paginated_query_with_retries(client, "list_resolver_endpoints").get(
-            "ResolverEndpoints", []
-        )
+        endpoints = paginated_query_with_retries(
+            client,
+            "list_resolver_endpoints",
+            Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
+        ).get("ResolverEndpoints", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver endpoints")
 
     for endpoint in endpoints:
-        if endpoint.get("Name") == module.params["name"]:
+        if endpoint.get("Name") == name:
             return endpoint
 
     return None
@@ -758,6 +765,7 @@ def main():
             },
             "ip_addresses": {
                 "elements": "dict",
+                "mutually_exclusive": [["ip", "ipv6"]],
                 "options": {
                     "ip": {"type": "str"},
                     "ipv6": {"type": "str"},

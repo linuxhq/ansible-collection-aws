@@ -131,6 +131,9 @@ def main():
                 ),
             )
 
+        if module.params["id"] or module.params["name"]:
+            break
+
     module.exit_json(
         changed=False,
         scope=scope.lower(),

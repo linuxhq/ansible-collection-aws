@@ -31,12 +31,12 @@ options:
     default: SELF
     description:
       - The phone pool owner to query.
-      - This is not sent when O(pool_ids) is set because C(DescribePools) does
-        not allow both parameters together.
+      - Mutually exclusive with O(pool_ids).
     type: str
   pool_ids:
     description:
       - Phone pool IDs used to limit the result set.
+      - Mutually exclusive with O(owner).
     elements: str
     type: list
 extends_documentation_fragment:
@@ -98,6 +98,7 @@ def main():
 
     module = AnsibleAWSModule(
         argument_spec=argument_spec,
+        mutually_exclusive=[["owner", "pool_ids"]],
         supports_check_mode=True,
     )
     client = module.client(

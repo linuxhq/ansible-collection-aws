@@ -119,33 +119,15 @@ def ensure_present(client, module):
     changed = aliases != desired_aliases
 
     if changed and not module.check_mode:
-        for alias in aliases:
-            if alias in desired_aliases:
-                continue
-
-            try:
-                client.delete_account_alias(
-                    AccountAlias=alias,
-                    aws_retry=True,
-                )
-            except Exception as e:
-                module.fail_json_aws(
-                    e, msg=f"Unable to delete AWS IAM account alias {alias}"
-                )
-
-        for alias in desired_aliases:
-            if alias in aliases:
-                continue
-
-            try:
-                client.create_account_alias(
-                    AccountAlias=alias,
-                    aws_retry=True,
-                )
-            except Exception as e:
-                module.fail_json_aws(
-                    e, msg=f"Unable to create AWS IAM account alias {alias}"
-                )
+        try:
+            client.create_account_alias(
+                AccountAlias=name,
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e, msg=f"Unable to create AWS IAM account alias {name}"
+            )
 
         aliases = desired_aliases
     elif changed and module.check_mode:
@@ -176,7 +158,7 @@ def main():
     state = module.params["state"]
     method_names = {"list_account_aliases"}
     if state == "present":
-        method_names.update({"create_account_alias", "delete_account_alias"})
+        method_names.add("create_account_alias")
     elif state == "absent":
         method_names.add("delete_account_alias")
     else:

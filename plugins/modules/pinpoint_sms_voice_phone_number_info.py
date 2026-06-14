@@ -31,12 +31,12 @@ options:
     default: SELF
     description:
       - The phone number owner to query.
-      - This is not sent when O(phone_number_ids) is set because
-        C(DescribePhoneNumbers) does not allow both parameters together.
+      - Mutually exclusive with O(phone_number_ids).
     type: str
   phone_number_ids:
     description:
       - Phone number IDs used to limit the result set.
+      - Mutually exclusive with O(owner).
     elements: str
     type: list
 extends_documentation_fragment:
@@ -101,6 +101,7 @@ def main():
 
     module = AnsibleAWSModule(
         argument_spec=argument_spec,
+        mutually_exclusive=[["owner", "phone_number_ids"]],
         supports_check_mode=True,
     )
     client = module.client(
