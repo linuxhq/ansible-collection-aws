@@ -91,6 +91,7 @@ state:
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
@@ -144,7 +145,7 @@ def current_association(module, associations):
     return None
 
 
-def association_request(client, module, operation):
+def association_request(client, module, method_name):
     request = snake_dict_to_camel_dict(
         scrub_none_parameters(
             {
@@ -156,16 +157,26 @@ def association_request(client, module, operation):
         ),
         capitalize_first=True,
     )
-    supported_parameters = set(
-        client.meta.service_model.operation_model(operation).input_shape.members
-    )
+
+    try:
+        supported_parameters = set(
+            get_boto3_client_method_parameters(client, method_name)
+        )
+    except Exception:
+        module.fail_json(
+            msg=(
+                "Installed botocore does not support Pinpoint SMS Voice V2 "
+                f"{method_name}"
+            )
+        )
+
     unsupported_parameters = sorted(set(request) - supported_parameters)
 
     if unsupported_parameters:
         module.fail_json(
             msg=(
                 "Installed botocore does not support Pinpoint SMS Voice V2 "
-                f"{operation} parameter(s): "
+                f"{method_name} parameter(s): "
                 f"{', '.join(unsupported_parameters)}"
             )
         )
@@ -192,7 +203,7 @@ def ensure_present(client, module):
     if changed and not module.check_mode:
         try:
             association = client.associate_origination_identity(
-                **association_request(client, module, "AssociateOriginationIdentity"),
+                **association_request(client, module, "associate_origination_identity"),
                 aws_retry=True,
             )
         except Exception as e:
@@ -227,7 +238,7 @@ def ensure_absent(client, module):
         try:
             client.disassociate_origination_identity(
                 **association_request(
-                    client, module, "DisassociateOriginationIdentity"
+                    client, module, "disassociate_origination_identity"
                 ),
                 aws_retry=True,
             )

@@ -709,11 +709,7 @@ def get_resolver_endpoint_by_name(client, module):
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver endpoints")
 
-    for endpoint in endpoints:
-        if endpoint.get("Name") == name:
-            return endpoint
-
-    return None
+    return endpoints[0] if endpoints else None
 
 
 def resolver_endpoint_with_ip_addresses(client, module, endpoint):

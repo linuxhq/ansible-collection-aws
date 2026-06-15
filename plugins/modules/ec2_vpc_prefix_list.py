@@ -580,9 +580,6 @@ def get_customer_managed_prefix_list_by_name(client, module):
         )
 
     for prefix_list in prefix_lists:
-        if prefix_list.get("PrefixListName") != name:
-            continue
-
         if prefix_list.get("OwnerId") == "AWS":
             continue
 

@@ -364,16 +364,7 @@ def get_resolver_rule_association_by_rule_and_vpc(client, module):
             ),
         )
 
-    for association in associations:
-        if association.get("ResolverRuleId") != resolver_rule_id:
-            continue
-
-        if association.get("VPCId") != vpc_id:
-            continue
-
-        return association
-
-    return None
+    return associations[0] if associations else None
 
 
 def main():

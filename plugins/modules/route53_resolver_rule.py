@@ -557,13 +557,7 @@ def get_resolver_rule_by_name(client, module):
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver rules")
 
-    for rule in rules:
-        if rule.get("Name") != name:
-            continue
-
-        return get_resolver_rule(client, module, rule["Id"])
-
-    return None
+    return get_resolver_rule(client, module, rules[0]["Id"]) if rules else None
 
 
 def resolver_rule_with_tags(client, module, rule):

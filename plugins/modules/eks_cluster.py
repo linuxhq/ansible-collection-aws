@@ -490,9 +490,7 @@ def desired_cluster(module):
 def check_mode_cluster(module, current):
     tags = module.params["tags"]
     cluster = dict(current or {})
-    desired = scrub_none_parameters(
-        snake_dict_to_camel_dict(desired_cluster(module), capitalize_first=False)
-    )
+    desired = snake_dict_to_camel_dict(desired_cluster(module), capitalize_first=False)
     cluster.update(desired)
     cluster["name"] = module.params["name"]
     if tags is not None:
