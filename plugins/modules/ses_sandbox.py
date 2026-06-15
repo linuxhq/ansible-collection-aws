@@ -192,19 +192,16 @@ def main():
         if details_field in desired_details:
             request[request_field] = desired_details[details_field]
 
+    current_details = current_account.get("details") or {}
     current = {
-        "details": current_account.get("details", {}),
+        "details": {
+            field: current_details[field]
+            for field in ACCOUNT_DETAILS_FIELDS
+            if current_details.get(field) is not None
+        },
         "production_access_enabled": current_account.get(
             "production_access_enabled", False
         ),
-    }
-    current = {
-        "details": {
-            field: current["details"].get(field)
-            for field in ACCOUNT_DETAILS_FIELDS
-            if current["details"].get(field) is not None
-        },
-        "production_access_enabled": current["production_access_enabled"],
     }
 
     ready = use_case_description is not None and website_url is not None
