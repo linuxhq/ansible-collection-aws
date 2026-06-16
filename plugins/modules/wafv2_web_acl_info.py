@@ -88,7 +88,10 @@ def main():
     client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
 
     scope = module.params["scope"].upper()
-    web_acl_summaries = []
+    target_id = module.params["id"]
+    target_name = module.params["name"]
+    single_target = bool(target_id or target_name)
+    summaries = []
     marker = None
 
     try:
@@ -98,7 +101,17 @@ def main():
                 request["NextMarker"] = marker
             response = client.list_web_acls(**request, aws_retry=True)
 
-            web_acl_summaries.extend(response.get("WebACLs", []))
+            for summary in response.get("WebACLs", []):
+                if target_id and summary.get("Id") != target_id:
+                    continue
+                if target_name and summary.get("Name") != target_name:
+                    continue
+                summaries.append(summary)
+                if single_target:
+                    break
+
+            if single_target and summaries:
+                break
             marker = response.get("NextMarker")
             if not marker:
                 break
@@ -106,13 +119,7 @@ def main():
         module.fail_json_aws(e, msg=f"Unable to list AWS WAFv2 web ACLs for {scope}")
 
     web_acls = []
-    for summary in web_acl_summaries:
-        if module.params["id"] and summary.get("Id") != module.params["id"]:
-            continue
-
-        if module.params["name"] and summary.get("Name") != module.params["name"]:
-            continue
-
+    for summary in summaries:
         try:
             web_acls.append(
                 client.get_web_acl(
@@ -130,9 +137,6 @@ def main():
                     f"{summary['Name']}/{summary['Id']}"
                 ),
             )
-
-        if module.params["id"] or module.params["name"]:
-            break
 
     module.exit_json(
         changed=False,
