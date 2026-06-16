@@ -142,7 +142,6 @@ def main():
             )
 
     required_method_parameters = {
-        "get_account": set(),
         "put_account_details": {
             "AdditionalContactEmailAddresses",
             "ContactLanguage",

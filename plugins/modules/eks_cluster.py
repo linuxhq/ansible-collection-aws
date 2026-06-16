@@ -521,12 +521,7 @@ def ensure_present(client, module):
     wait = module.params["wait"]
     current = describe_cluster(client, module)
     desired = desired_cluster(module)
-    create_request = {}
-    for field in CREATE_FIELDS:
-        if desired.get(field) is not None:
-            create_request[field] = desired[field]
-
-    create_request["name"] = name
+    create_request = dict(desired, name=name)
     if tags is not None:
         create_request["tags"] = tags
     create_request = scrub_none_parameters(
@@ -564,9 +559,7 @@ def ensure_present(client, module):
         wait_for_cluster(client, module, "cluster_active")
         current = describe_cluster(client, module)
 
-    desired_boto3 = scrub_none_parameters(
-        snake_dict_to_camel_dict(desired, capitalize_first=False)
-    )
+    desired_boto3 = snake_dict_to_camel_dict(desired, capitalize_first=False)
     for field in CREATE_ONLY_FIELDS:
         camel_field = next(
             iter(snake_dict_to_camel_dict({field: None}, capitalize_first=False))

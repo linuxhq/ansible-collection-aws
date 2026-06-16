@@ -117,7 +117,6 @@ def main():
             )
 
     required_method_parameters = {
-        "get_sms_attributes": set(),
         "set_sms_attributes": {"attributes"},
     }
     for method_name, parameter_names in required_method_parameters.items():
@@ -165,18 +164,16 @@ def main():
 
     changed = current != desired
 
-    if changed and not module.check_mode:
-        try:
-            client.set_sms_attributes(attributes=desired, aws_retry=True)
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to manage AWS Simple Notification Service SMS attributes",
-            )
+    if changed:
+        if not module.check_mode:
+            try:
+                client.set_sms_attributes(attributes=desired, aws_retry=True)
+            except Exception as e:
+                module.fail_json_aws(
+                    e,
+                    msg="Unable to manage AWS Simple Notification Service SMS attributes",
+                )
 
-        current_attributes = dict(current_attributes)
-        current_attributes.update(desired)
-    elif changed and module.check_mode:
         current_attributes = dict(current_attributes)
         current_attributes.update(desired)
 

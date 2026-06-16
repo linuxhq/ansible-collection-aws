@@ -148,27 +148,25 @@ def main():
 
     changed = current != desired_parameters
 
-    if changed and not module.check_mode:
-        for attribute, value in desired_attributes.items():
-            try:
-                client.set_topic_attributes(
-                    AttributeName=attribute,
-                    AttributeValue=value,
-                    TopicArn=topic_arn,
-                    aws_retry=True,
-                )
-            except Exception as e:
-                module.fail_json_aws(
-                    e,
-                    msg=(
-                        "Unable to manage AWS Simple Notification Service topic "
-                        f"attributes for {topic_arn}"
-                    ),
-                )
+    if changed:
+        if not module.check_mode:
+            for attribute, value in desired_attributes.items():
+                try:
+                    client.set_topic_attributes(
+                        AttributeName=attribute,
+                        AttributeValue=value,
+                        TopicArn=topic_arn,
+                        aws_retry=True,
+                    )
+                except Exception as e:
+                    module.fail_json_aws(
+                        e,
+                        msg=(
+                            "Unable to manage AWS Simple Notification Service topic "
+                            f"attributes for {topic_arn}"
+                        ),
+                    )
 
-        current_attributes = dict(current_attributes)
-        current_attributes.update(desired_attributes)
-    elif changed and module.check_mode:
         current_attributes = dict(current_attributes)
         current_attributes.update(desired_attributes)
 

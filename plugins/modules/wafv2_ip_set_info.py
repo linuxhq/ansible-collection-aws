@@ -88,7 +88,10 @@ def main():
     client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
 
     scope = module.params["scope"].upper()
-    ip_set_summaries = []
+    target_id = module.params["id"]
+    target_name = module.params["name"]
+    single_target = bool(target_id or target_name)
+    summaries = []
     marker = None
 
     try:
@@ -98,7 +101,17 @@ def main():
                 request["NextMarker"] = marker
             response = client.list_ip_sets(**request, aws_retry=True)
 
-            ip_set_summaries.extend(response.get("IPSets", []))
+            for summary in response.get("IPSets", []):
+                if target_id and summary.get("Id") != target_id:
+                    continue
+                if target_name and summary.get("Name") != target_name:
+                    continue
+                summaries.append(summary)
+                if single_target:
+                    break
+
+            if single_target and summaries:
+                break
             marker = response.get("NextMarker")
             if not marker:
                 break
@@ -106,13 +119,7 @@ def main():
         module.fail_json_aws(e, msg=f"Unable to list AWS WAFv2 IP sets for {scope}")
 
     ip_sets = []
-    for summary in ip_set_summaries:
-        if module.params["id"] and summary.get("Id") != module.params["id"]:
-            continue
-
-        if module.params["name"] and summary.get("Name") != module.params["name"]:
-            continue
-
+    for summary in summaries:
         try:
             ip_sets.append(
                 client.get_ip_set(
@@ -130,9 +137,6 @@ def main():
                     f"{summary['Name']}/{summary['Id']}"
                 ),
             )
-
-        if module.params["id"] or module.params["name"]:
-            break
 
     module.exit_json(
         changed=False,
