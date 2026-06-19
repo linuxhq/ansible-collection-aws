@@ -5,8 +5,8 @@
     PATH: '/opt/awscli/bin'
 
   roles:
-    - pinpoint_sms_voice_phone_pool_info
     - pinpoint_sms_voice_phone_number_info
+    - pinpoint_sms_voice_phone_pool_info
 
   post_tasks:
     - name: Ensure inventory lists are formatted

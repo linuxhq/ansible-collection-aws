@@ -392,9 +392,6 @@ def ensure_present(client, module):
                 )
 
             current = comparable_rule(rule)
-            desired_comparable = comparable_rule(
-                {field: desired[field] for field in comparable_fields}
-            )
             if current != desired_comparable:
                 delete_resolver_rule(client, module, rule)
                 rule = create_resolver_rule(client, module, desired)
@@ -546,13 +543,11 @@ def get_resolver_rule(client, module, resolver_rule_id):
 
 
 def get_resolver_rule_by_name(client, module):
-    name = module.params["name"]
-
     try:
         rules = paginated_query_with_retries(
             client,
             "list_resolver_rules",
-            Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
+            Filters=ansible_dict_to_boto3_filter_list({"Name": module.params["name"]}),
         ).get("ResolverRules", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver rules")

@@ -5,8 +5,8 @@
     PATH: '/opt/awscli/bin'
 
   roles:
-    - aws_caller_info
     - aws_az_info
+    - aws_caller_info
     - ec2_ami_info
     - ec2_instance_info
     - ec2_vpc_nat_gateway_info
