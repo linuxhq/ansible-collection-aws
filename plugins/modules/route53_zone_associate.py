@@ -196,8 +196,8 @@ def route53_vpc_list(vpcs):
     for vpc in vpcs or []:
         normalized.append(
             {
-                "VPCId": vpc.get("VPCId") or vpc.get("vpc_id"),
-                "VPCRegion": vpc.get("VPCRegion") or vpc.get("vpc_region"),
+                "VPCId": vpc["VPCId"],
+                "VPCRegion": vpc["VPCRegion"],
             }
         )
     return sorted(normalized, key=lambda vpc: (vpc.get("VPCId"), vpc.get("VPCRegion")))

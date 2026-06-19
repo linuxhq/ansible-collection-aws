@@ -913,11 +913,8 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
-    name = module.params["name"]
     purge_routes = module.params["purge_routes"]
     routes = module.params["routes"]
-    transit_gateway_id = module.params["transit_gateway_id"]
-    transit_gateway_route_table_id = module.params["transit_gateway_route_table_id"]
     has_absent_route = False
     has_present_route = False
 
@@ -952,7 +949,7 @@ def main():
         "describe_transit_gateway_route_tables",
     }
     if state == "present":
-        if not transit_gateway_route_table_id:
+        if not module.params["transit_gateway_route_table_id"]:
             method_names.add("create_transit_gateway_route_table")
         if desired_tags(module):
             method_names.add("create_tags")

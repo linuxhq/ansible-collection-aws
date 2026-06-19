@@ -409,9 +409,6 @@ def ensure_present(client, module):
                 desired,
             )
             current = comparable_endpoint(endpoint)
-            desired_comparable = comparable_endpoint(
-                {field: desired[field] for field in comparable_fields}
-            )
             if current != desired_comparable:
                 delete_resolver_endpoint(client, module, endpoint)
                 endpoint = resolver_endpoint_with_ip_addresses(
@@ -585,9 +582,7 @@ def update_resolver_endpoint(client, module, endpoint, desired):
 
     try:
         endpoint = client.update_resolver_endpoint(
-            **scrub_none_parameters(
-                snake_dict_to_camel_dict(update_params, capitalize_first=True)
-            ),
+            **snake_dict_to_camel_dict(update_params, capitalize_first=True),
             aws_retry=True,
         ).get("ResolverEndpoint")
     except Exception as e:
@@ -698,13 +693,11 @@ def get_resolver_endpoint(client, module, resolver_endpoint_id):
 
 
 def get_resolver_endpoint_by_name(client, module):
-    name = module.params["name"]
-
     try:
         endpoints = paginated_query_with_retries(
             client,
             "list_resolver_endpoints",
-            Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
+            Filters=ansible_dict_to_boto3_filter_list({"Name": module.params["name"]}),
         ).get("ResolverEndpoints", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver endpoints")
