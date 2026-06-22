@@ -66,6 +66,9 @@ web_acls:
   elements: dict
 """
 
+import json
+
+from ansible.module_utils.common.text.converters import to_text
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -121,13 +124,30 @@ def main():
     web_acls = []
     for summary in summaries:
         try:
+            web_acl = client.get_web_acl(
+                Id=summary["Id"],
+                Name=summary["Name"],
+                Scope=scope,
+                aws_retry=True,
+            ).get("WebACL", {})
             web_acls.append(
-                client.get_web_acl(
-                    Id=summary["Id"],
-                    Name=summary["Name"],
-                    Scope=scope,
-                    aws_retry=True,
-                ).get("WebACL", {})
+                json.loads(
+                    json.dumps(
+                        web_acl,
+                        default=lambda value: (
+                            to_text(
+                                bytes(value) if isinstance(value, bytearray) else value,
+                                errors="surrogate_or_strict",
+                            )
+                            if isinstance(value, (bytes, bytearray))
+                            else (
+                                value.isoformat()
+                                if hasattr(value, "isoformat")
+                                else str(value)
+                            )
+                        ),
+                    )
+                )
             )
         except Exception as e:
             module.fail_json_aws(
