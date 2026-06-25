@@ -35,6 +35,7 @@
     purge_listeners: "{{ _loadbalancer.purge_listeners | d(true) }}"
     purge_rules: "{{ _loadbalancer.purge_rules | d(true) }}"
     purge_tags: "{{ _loadbalancer.purge_tags | d(true) }}"
+    scheme: "{{ _loadbalancer.scheme | d(omit) }}"
     security_groups: "{{ _loadbalancer.name if not ansible_check_mode else 'default' }}"
     state: "{{ _loadbalancer.state }}"
     subnets: "{{ _loadbalancer.subnets }}"

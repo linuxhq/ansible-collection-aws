@@ -4,6 +4,14 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.1.2
+======
+
+Release Summary
+---------------
+
+Add scheme support to elb_application_lb role
+
 v2.1.1
 ======
 
