@@ -1,6 +1,10 @@
 ---
 ancestor: null
 releases:
+  2.1.2:
+    changes:
+      release_summary:
+        Add scheme support to elb_application_lb role
   2.1.1:
     changes:
       release_summary:
