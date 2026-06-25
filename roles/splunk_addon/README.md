@@ -40,6 +40,7 @@ None
             - "arn:aws:sqs:*:{{ __splunk_addon_account }}:{{ splunk_addon_sqs_queue_name }}"
         - Effect: Allow
           Action:
+            - s3:GetBucketLocation
             - s3:ListBucket
           Resource:
             - "arn:aws:s3:::{{ __splunk_addon_account }}-{{ splunk_addon_bucket_name }}"

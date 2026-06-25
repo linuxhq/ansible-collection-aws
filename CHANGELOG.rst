@@ -4,6 +4,38 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.1.1
+======
+
+Release Summary
+---------------
+
+Additional permissions added to splunk_addon role
+
+v2.1.0
+======
+
+Release Summary
+---------------
+
+Bugfixes and optimizations in custom modules
+
+v2.0.9
+======
+
+Release Summary
+---------------
+
+Bugfixes and optimizations in custom modules
+
+v2.0.8
+======
+
+Release Summary
+---------------
+
+Bugfixes and optimizations in custom modules
+
 v2.0.7
 ======
 
