@@ -1,0 +1,16 @@
+---
+- name: Ensure aws global accelerators are batched
+  tags:
+    - global_accelerator
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - global_accelerator
+    file: include.yml
+  loop:
+    "{{ global_accelerator_list |
+        batch(global_accelerator_batch) }}"
+  loop_control:
+    label: "{{ __global_accelerator_list | length }}"
+    loop_var: __global_accelerator_list
+...

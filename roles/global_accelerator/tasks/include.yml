@@ -1,0 +1,51 @@
+---
+- name: Ensure aws global accelerators are managed
+  tags:
+    - global_accelerator
+  linuxhq.aws.global_accelerator:
+    arn: "{{ _accelerator.arn | d(omit) }}"
+    enabled: "{{ _accelerator.enabled | d(true) }}"
+    idempotency_token: "{{ _accelerator.idempotency_token | d(omit) }}"
+    ip_addresses: "{{ _accelerator.ip_addresses | d(omit) }}"
+    ip_address_type: "{{ _accelerator.ip_address_type | d(omit) }}"
+    listeners: "{{ _accelerator.listeners | d(omit) }}"
+    name: "{{ _accelerator.name }}"
+    purge_endpoint_groups: "{{ _accelerator.purge_endpoint_groups | d(true) }}"
+    purge_listeners: "{{ _accelerator.purge_listeners | d(true) }}"
+    purge_tags: "{{ _accelerator.purge_tags | d(true) }}"
+    state: "{{ _accelerator.state | d('present') }}"
+    tags: "{{ _accelerator.tags | d({}) | combine({'Name': _accelerator.name}) }}"
+    validate_certs: true
+    wait: "{{ _accelerator.wait | d(omit) }}"
+    wait_delay: "{{ _accelerator.wait_delay | d(omit) }}"
+    wait_timeout: "{{ _accelerator.wait_timeout | d(omit) }}"
+  register: __global_accelerator_result
+  loop: "{{ __global_accelerator_list }}"
+  loop_control:
+    label: "{{ _accelerator.name | d(none) }}"
+    loop_var: _accelerator
+  async: "{{ ansible_check_mode | ternary(0, global_accelerator_async) }}"
+  poll: "{{ global_accelerator_poll }}"
+  when:
+    - _accelerator.name is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __global_accelerator_result.changed | bool
+
+- name: Ensure managed aws global accelerator jobs are complete
+  tags:
+    - global_accelerator
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __global_accelerator_status
+  loop: "{{ __global_accelerator_result.results }}"
+  loop_control:
+    label: "{{ _jid._accelerator.name | d(_jid._accelerator.arn) | d(none) }}"
+    loop_var: _jid
+  delay: "{{ global_accelerator_delay }}"
+  retries: "{{ global_accelerator_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __global_accelerator_status.finished | bool
+...

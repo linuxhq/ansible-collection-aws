@@ -1,0 +1,30 @@
+---
+- name: Ensure information about aws global accelerators is gathered
+  tags:
+    - global_accelerator_info
+  linuxhq.aws.global_accelerator_info:
+    arn: "{{ global_accelerator_info_arn or omit }}"
+    include_endpoint_groups:
+      "{{ global_accelerator_info_include_endpoint_groups }}"
+    include_listeners: "{{ global_accelerator_info_include_listeners }}"
+    validate_certs: true
+  register: __global_accelerator_info_query
+
+- name: Ensure list of aws global accelerators is generated
+  tags:
+    - global_accelerator_info
+  ansible.builtin.set_fact:
+    _global_accelerator_info_list:
+      "{{ __global_accelerator_info_query.accelerators |
+          d([]) |
+          selectattr('name', 'defined') }}"
+
+- name: Ensure dict of aws global accelerators is generated
+  tags:
+    - global_accelerator_info
+  ansible.builtin.set_fact:
+    _global_accelerator_info_dict:
+      "{{ dict(_global_accelerator_info_list |
+               json_query('[].name') |
+               zip(_global_accelerator_info_list)) }}"
+...

@@ -1,0 +1,26 @@
+---
+dependencies:
+  - role: ec2_instance_info
+    tags: global_accelerator
+  - role: elb_application_lb_info
+    tags: global_accelerator
+galaxy_info:
+  role_name: global_accelerator
+  author: Taylor Kimball
+  description: Manage aws global accelerators
+  license: GPL-3.0-or-later
+  min_ansible_version: 2.18.0
+  namespace: linuxhq
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+    - name: macOS
+      versions:
+        - all
+  galaxy_tags:
+    - accelerator
+    - amazon
+    - aws
+    - global
+...
