@@ -1,0 +1,47 @@
+---
+- name: Converge
+  hosts: all
+  environment:
+    PATH: '/opt/awscli/bin'
+
+  roles:
+    - role: ec2_vpc_net
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_vpc_igw
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_vpc_subnet
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: elb_target_group
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: elb_application_lb
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: global_accelerator
+      global_accelerator_list: []
+      tags:
+        - molecule-idempotence-notest
+
+    - role: global_accelerator
+      global_accelerator_list:
+        "{{ global_accelerator_list_create }}"
+      tags:
+        - molecule-idempotence-notest
+
+    - role: global_accelerator
+      global_accelerator_list:
+        "{{ global_accelerator_list_update }}"
+...

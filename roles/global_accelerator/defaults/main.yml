@@ -1,0 +1,8 @@
+---
+global_accelerator_async: 1500
+global_accelerator_batch: 10
+global_accelerator_delay: 10
+global_accelerator_list: []
+global_accelerator_poll: 0
+global_accelerator_retries: 150
+...

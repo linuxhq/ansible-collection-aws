@@ -1,0 +1,5 @@
+---
+global_accelerator_info_arn: null
+global_accelerator_info_include_endpoint_groups: false
+global_accelerator_info_include_listeners: false
+...
