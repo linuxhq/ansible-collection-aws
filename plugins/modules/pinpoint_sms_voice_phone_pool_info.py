@@ -11,7 +11,7 @@ description:
   - This module maps to the Pinpoint SMS Voice V2 C(DescribePools) API,
     the API behind C(aws pinpoint-sms-voice-v2 describe-pools).
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   filters:
     description:
@@ -22,6 +22,7 @@ options:
   max_results:
     description:
       - The maximum number of results returned by each API call.
+      - This must be between 1 and 100.
       - The module follows pagination and returns all matching phone pools.
     type: int
   owner:
@@ -70,6 +71,8 @@ pool_ids:
 pools:
   description:
     - A list of End User Messaging SMS phone pools.
+    - Each pool includes C(origination_identities) and C(tags) gathered by
+      the module.
   returned: always
   type: list
   elements: dict
@@ -101,19 +104,27 @@ def main():
         mutually_exclusive=[["owner", "pool_ids"]],
         supports_check_mode=True,
     )
+    filters = module.params["filters"]
+    max_results = module.params["max_results"]
+    owner = module.params["owner"]
+    pool_ids = module.params["pool_ids"]
+
+    if max_results is not None and not 1 <= max_results <= 100:
+        module.fail_json(msg="max_results must be between 1 and 100")
+
     client = module.client(
         "pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff()
     )
 
     request = {}
-    if module.params["max_results"] is not None:
-        request["MaxResults"] = module.params["max_results"]
-    if module.params["pool_ids"]:
-        request["PoolIds"] = module.params["pool_ids"]
-    elif module.params["owner"] is not None:
-        request["Owner"] = module.params["owner"]
-    if module.params["filters"]:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+    if max_results is not None:
+        request["MaxResults"] = max_results
+    if pool_ids:
+        request["PoolIds"] = pool_ids
+    elif owner is not None:
+        request["Owner"] = owner
+    if filters:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
     try:
         supported_parameters = set(
@@ -123,7 +134,7 @@ def main():
         module.fail_json(
             msg=(
                 "Installed botocore does not support Pinpoint SMS Voice V2 "
-                "DescribePools"
+                "describe_pools"
             )
         )
 
@@ -133,7 +144,7 @@ def main():
         module.fail_json(
             msg=(
                 "Installed botocore does not support Pinpoint SMS Voice V2 "
-                "DescribePools parameter(s): "
+                "describe_pools parameter(s): "
                 f"{', '.join(unsupported_parameters)}"
             )
         )
@@ -160,7 +171,7 @@ def main():
                     PoolId=pool_id,
                 ).get("OriginationIdentities", [])
             except is_boto3_error_code("ResourceNotFoundException"):
-                origination_identities = []
+                continue
             except Exception as e:
                 module.fail_json_aws(
                     e,
@@ -180,7 +191,7 @@ def main():
                     aws_retry=True,
                 ).get("Tags", [])
             except is_boto3_error_code("ResourceNotFoundException"):
-                tags = []
+                continue
             except Exception as e:
                 module.fail_json_aws(
                     e,
@@ -195,14 +206,16 @@ def main():
             )
         )
 
-    pool_ids = []
+    matching_pool_ids = []
     for pool in normalized_pools:
-        if pool.get("pool_id"):
-            pool_ids.append(pool["pool_id"])
+        pool_id = pool.get("pool_id")
+
+        if pool_id:
+            matching_pool_ids.append(pool_id)
 
     module.exit_json(
         changed=False,
-        pool_ids=pool_ids,
+        pool_ids=matching_pool_ids,
         pools=normalized_pools,
     )
 

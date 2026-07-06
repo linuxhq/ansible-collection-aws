@@ -8,8 +8,12 @@ module: acm_certificate_request
 short_description: Manage aws certificate manager certificates
 description:
   - Requests AWS Certificate Manager certificates using DNS validation.
+  - An existing certificate is reused instead of requesting a new one when it
+    is C(AMAZON_ISSUED), uses DNS validation, is C(PENDING_VALIDATION) or
+    C(ISSUED), and its domain name and subject alternative names match; the
+    most recently created certificate is reused when several match.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   domain_name:
     description:
@@ -20,19 +24,20 @@ options:
     description:
       - Custom ACM idempotency token for the certificate request.
       - When omitted, a deterministic token is generated from O(domain_name) and O(subject_alternative_names).
-      - ACM requires a token of 32 or fewer ASCII word characters.
+      - ACM requires a token of 1 to 32 ASCII word characters.
+      - This option is only used when requesting a certificate.
     type: str
+  purge_tags:
+    description:
+      - Whether tags not listed in O(tags) should be removed from the certificate.
+      - This option is only applied when O(tags) is provided.
+    default: true
+    type: bool
   subject_alternative_names:
     description:
       - Subject alternative names for the certificate.
     elements: str
     type: list
-  purge_tags:
-    description:
-      - Whether tags not listed in O(tags) should be removed from the certificate.
-      - This option is only used when O(tags) is provided.
-    default: true
-    type: bool
   tags:
     description:
       - Tags to apply to the certificate.
@@ -56,8 +61,8 @@ EXAMPLES = r"""
 RETURN = r"""
 certificate_arn:
   description:
-    - ARN of the requested certificate.
-  returned: when not in check mode
+    - ARN of the matching or requested certificate.
+  returned: except when a new certificate would be requested in check mode
   type: str
 """
 
@@ -68,6 +73,7 @@ import re
 from ansible.module_utils.common.text.converters import to_bytes
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     get_boto3_client_method_parameters,
+    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -93,22 +99,31 @@ def main():
         supports_check_mode=True,
     )
 
-    client = module.client("acm", retry_decorator=AWSRetry.jittered_backoff())
     domain_name = module.params["domain_name"]
     idempotency_token = module.params["idempotency_token"]
+    purge_tags = module.params["purge_tags"]
     subject_alternative_names = module.params["subject_alternative_names"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
 
-    method_names = ["request_certificate"]
-    if tags is not None:
-        method_names.extend(
-            [
-                "add_tags_to_certificate",
-                "list_tags_for_certificate",
-                "remove_tags_from_certificate",
-            ]
+    if idempotency_token is not None and not re.fullmatch(
+        r"\w{1,32}", idempotency_token, flags=re.ASCII
+    ):
+        module.fail_json(
+            msg="ACM certificate request idempotency_token must be 1 to 32 ASCII word characters"
         )
+
+    client = module.client("acm", retry_decorator=AWSRetry.jittered_backoff())
+
+    method_names = [
+        "describe_certificate",
+        "list_certificates",
+        "request_certificate",
+    ]
+    if tags is not None:
+        method_names.append("add_tags_to_certificate")
+        method_names.append("list_tags_for_certificate")
+        if purge_tags:
+            method_names.append("remove_tags_from_certificate")
 
     for method_name in method_names:
         try:
@@ -121,53 +136,108 @@ def main():
                 )
             )
 
-    if idempotency_token is not None and not re.fullmatch(
-        r"\w{1,32}", idempotency_token, flags=re.ASCII
-    ):
-        module.fail_json(
-            msg="ACM certificate request idempotency_token must be 1 to 32 ASCII word characters"
-        )
-
-    if idempotency_token is None:
-        token_data = {
-            "domain_name": domain_name.lower(),
-            "subject_alternative_names": sorted(
-                name.lower() for name in subject_alternative_names or []
-            ),
-        }
-        idempotency_token = hashlib.sha256(
-            to_bytes(json.dumps(token_data, separators=(",", ":"), sort_keys=True))
-        ).hexdigest()[:32]
-
-    request = scrub_none_parameters(
-        {
-            "DomainName": domain_name,
-            "IdempotencyToken": idempotency_token,
-            "SubjectAlternativeNames": subject_alternative_names or None,
-            "Tags": (
-                ansible_dict_to_boto3_tag_list(tags) if tags is not None else None
-            ),
-            "ValidationMethod": "DNS",
-        }
-    )
-
-    if module.check_mode:
-        module.exit_json(changed=True)
+    normalized_domain_name = domain_name.lower()
+    desired_names = {normalized_domain_name}
+    for name in subject_alternative_names or []:
+        desired_names.add(name.lower())
 
     try:
-        certificate_arn = client.request_certificate(**request, aws_retry=True).get(
-            "CertificateArn"
-        )
+        summaries = paginated_query_with_retries(
+            client,
+            "list_certificates",
+            CertificateStatuses=["PENDING_VALIDATION", "ISSUED"],
+        ).get("CertificateSummaryList", [])
     except Exception as e:
         module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to request AWS Certificate Manager certificate "
-                f"{domain_name}"
-            ),
+            e, msg="Unable to list AWS Certificate Manager certificates"
         )
 
-    if tags is not None:
+    matched = None
+    for summary in summaries:
+        if summary.get("DomainName", "").lower() != normalized_domain_name:
+            continue
+
+        certificate_arn = summary["CertificateArn"]
+
+        try:
+            certificate = client.describe_certificate(
+                CertificateArn=certificate_arn,
+                aws_retry=True,
+            ).get("Certificate", {})
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    "Unable to describe AWS Certificate Manager certificate "
+                    f"{certificate_arn}"
+                ),
+            )
+
+        if certificate.get("Type") != "AMAZON_ISSUED":
+            continue
+
+        validation_methods = set()
+        for option in certificate.get("DomainValidationOptions", []):
+            validation_methods.add(option.get("ValidationMethod"))
+
+        if validation_methods != {"DNS"}:
+            continue
+
+        certificate_names = set()
+        for name in certificate.get("SubjectAlternativeNames", []):
+            certificate_names.add(name.lower())
+
+        if certificate_names != desired_names:
+            continue
+
+        if matched is None or certificate["CreatedAt"] > matched["CreatedAt"]:
+            matched = certificate
+
+    created = matched is None
+
+    if created:
+        if module.check_mode:
+            module.exit_json(changed=True)
+
+        if idempotency_token is None:
+            token_data = {
+                "domain_name": normalized_domain_name,
+                "subject_alternative_names": sorted(
+                    name.lower() for name in subject_alternative_names or []
+                ),
+            }
+            idempotency_token = hashlib.sha256(
+                to_bytes(json.dumps(token_data, separators=(",", ":"), sort_keys=True))
+            ).hexdigest()[:32]
+
+        request = scrub_none_parameters(
+            {
+                "DomainName": domain_name,
+                "IdempotencyToken": idempotency_token,
+                "SubjectAlternativeNames": subject_alternative_names or None,
+                "Tags": ansible_dict_to_boto3_tag_list(tags) if tags else None,
+                "ValidationMethod": "DNS",
+            }
+        )
+
+        try:
+            certificate_arn = client.request_certificate(**request, aws_retry=True).get(
+                "CertificateArn"
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    "Unable to request AWS Certificate Manager certificate "
+                    f"{domain_name}"
+                ),
+            )
+    else:
+        certificate_arn = matched["CertificateArn"]
+
+    changed = created
+
+    if not created and tags is not None:
         try:
             current_tags = boto3_tag_list_to_ansible_dict(
                 client.list_tags_for_certificate(
@@ -190,7 +260,9 @@ def main():
             purge_tags=purge_tags,
         )
 
-        if tag_keys_to_unset:
+        changed = bool(tags_to_set or tag_keys_to_unset)
+
+        if tag_keys_to_unset and not module.check_mode:
             try:
                 client.remove_tags_from_certificate(
                     CertificateArn=certificate_arn,
@@ -206,7 +278,7 @@ def main():
                     ),
                 )
 
-        if tags_to_set:
+        if tags_to_set and not module.check_mode:
             try:
                 client.add_tags_to_certificate(
                     CertificateArn=certificate_arn,
@@ -223,7 +295,7 @@ def main():
                 )
 
     module.exit_json(
-        changed=True,
+        changed=changed,
         certificate_arn=certificate_arn,
     )
 

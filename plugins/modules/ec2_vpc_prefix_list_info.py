@@ -9,7 +9,7 @@ short_description: Gather information about aws virtual private cloud prefix lis
 description:
   - Gathers information about EC2 VPC managed prefix lists.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   filters:
     description:
@@ -63,6 +63,7 @@ prefix_lists:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -84,11 +85,16 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
+
+    filters = module.params["filters"]
+    prefix_list_ids = module.params["prefix_list_ids"]
+    target_version = module.params["target_version"]
+
     request = {}
-    if module.params["prefix_list_ids"]:
-        request["PrefixListIds"] = module.params["prefix_list_ids"]
-    if module.params["filters"]:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+    if prefix_list_ids:
+        request["PrefixListIds"] = prefix_list_ids
+    if filters:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
     try:
         prefix_lists = paginated_query_with_retries(
@@ -100,8 +106,8 @@ def main():
     result_prefix_lists = []
     for prefix_list in prefix_lists:
         entry_request = {"PrefixListId": prefix_list["PrefixListId"]}
-        if module.params["target_version"] is not None:
-            entry_request["TargetVersion"] = module.params["target_version"]
+        if target_version is not None:
+            entry_request["TargetVersion"] = target_version
 
         try:
             entries = paginated_query_with_retries(
@@ -109,6 +115,8 @@ def main():
                 "get_managed_prefix_list_entries",
                 **entry_request,
             ).get("Entries", [])
+        except is_boto3_error_code("InvalidPrefixListID.NotFound"):
+            entries = []
         except Exception as e:
             module.fail_json_aws(
                 e,

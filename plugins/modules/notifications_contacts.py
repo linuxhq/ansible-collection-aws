@@ -9,16 +9,21 @@ short_description: Manage aws notifications contacts
 description:
   - Manages AWS Notifications email contacts.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   email_address:
     description:
       - The email address for the notifications contact.
+      - This must be a valid email address of 6 to 254 characters.
     required: true
     type: str
   name:
     description:
       - The notifications contact name.
+      - This must be 1 to 64 characters and contain at least one letter,
+        digit, or one of C(_), C(-), C(.), or C(~).
+      - Changing the name of an existing contact deletes and recreates the
+        contact, and the new contact must be activated by email again.
       - This is required when O(state=present).
     type: str
   purge_tags:
@@ -56,7 +61,6 @@ EXAMPLES = r"""
 - name: Ensure an AWS Notifications contact is absent
   linuxhq.aws.notifications_contacts:
     email_address: dummy01@molecule.org
-    name: molecule-dummy01
     state: absent
 """
 
@@ -64,6 +68,7 @@ RETURN = r"""
 email_contact:
   description:
     - The notifications contact.
+    - C(tags) is returned as provided by the AWS Notifications API.
   returned: when a contact exists after module execution
   type: dict
 state:
@@ -73,8 +78,11 @@ state:
   type: str
 """
 
+import re
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     get_boto3_client_method_parameters,
+    is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -85,23 +93,35 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def list_email_contacts(client, module):
+def apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset):
+    updated = dict(contact)
+    updated_tags = dict(updated.get("tags", {}))
+
+    for tag_key in tag_keys_to_unset:
+        updated_tags.pop(tag_key, None)
+    updated_tags.update(tags_to_set)
+    updated["tags"] = updated_tags
+    return updated
+
+
+def get_contact_by_address(client, module):
+    email_address = module.params["email_address"]
+
     try:
-        return paginated_query_with_retries(client, "list_email_contacts").get(
+        contacts = paginated_query_with_retries(client, "list_email_contacts").get(
             "emailContacts", []
         )
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Notifications contacts")
 
+    for contact in contacts:
+        if contact.get("address") == email_address:
+            return contact
+    return None
+
 
 def ensure_absent(client, module):
-    email_address = module.params["email_address"]
-    contact = None
-    for item in list_email_contacts(client, module):
-        if item.get("address") == email_address:
-            contact = item
-            break
-
+    contact = get_contact_by_address(client, module)
     changed = contact is not None
 
     if changed and not module.check_mode:
@@ -113,7 +133,10 @@ def ensure_absent(client, module):
         except Exception as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to delete AWS Notifications contact " f"{email_address}"),
+                msg=(
+                    "Unable to delete AWS Notifications contact "
+                    f"{module.params['email_address']}"
+                ),
             )
 
     module.exit_json(
@@ -126,14 +149,20 @@ def ensure_present(client, module):
     email_address = module.params["email_address"]
     name = module.params["name"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
-    contact = None
-    for item in list_email_contacts(client, module):
-        if item.get("address") == email_address:
-            contact = item
-            break
+    contact = get_contact_by_address(client, module)
+    current_contact = (
+        {"address": contact.get("address"), "name": contact.get("name")}
+        if contact
+        else None
+    )
+    desired_contact = {
+        "address": email_address,
+        "name": name,
+    }
+    resource_changed = (current_contact or {}) != desired_contact
 
-    if tags is not None and contact and contact.get("arn"):
+    tags_to_set, tag_keys_to_unset = ({}, [])
+    if tags is not None and contact is not None and not resource_changed:
         contact = dict(contact)
 
         try:
@@ -150,28 +179,16 @@ def ensure_present(client, module):
                 ),
             )
 
-    current_contact = (
-        {"address": contact.get("address"), "name": contact.get("name")}
-        if contact
-        else None
-    )
-    desired_contact = {
-        "address": email_address,
-        "name": name,
-    }
-    resource_changed = (current_contact or {}) != desired_contact
-    tags_to_set, tag_keys_to_unset = ({}, [])
-    if tags is not None:
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
-            (contact or {}).get("tags", {}),
+            contact["tags"],
             tags,
-            purge_tags=purge_tags,
+            purge_tags=module.params["purge_tags"],
         )
 
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
-        if contact is None or resource_changed:
+        if resource_changed:
             if contact is not None:
                 try:
                     client.delete_email_contact(
@@ -201,15 +218,29 @@ def ensure_present(client, module):
             except Exception as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to create AWS Notifications contact " f"{email_address}"
-                    ),
+                    msg=f"Unable to create AWS Notifications contact {email_address}",
                 )
 
-            contact = dict(desired_contact, arn=contact_arn)
+            contact = None
+            if contact_arn:
+                try:
+                    contact = client.get_email_contact(
+                        arn=contact_arn,
+                        aws_retry=True,
+                    ).get("emailContact")
+                except is_boto3_error_code("ResourceNotFoundException"):
+                    contact = None
+                except Exception as e:
+                    module.fail_json_aws(
+                        e,
+                        msg=f"Unable to get AWS Notifications contact {contact_arn}",
+                    )
+
+            if contact is None:
+                contact = dict(desired_contact, arn=contact_arn)
             if tags is not None:
                 contact["tags"] = tags
-        elif contact is not None:
+        else:
             contact_arn = contact["arn"]
             if tag_keys_to_unset:
                 try:
@@ -239,22 +270,19 @@ def ensure_present(client, module):
                         e, msg=f"Unable to tag AWS Notifications contact {contact_arn}"
                     )
 
-            contact = dict(contact)
-            current_tags = dict(contact.get("tags", {}))
-
-            for tag_key in tag_keys_to_unset:
-                current_tags.pop(tag_key, None)
-            current_tags.update(tags_to_set)
-            contact["tags"] = current_tags
+            contact = apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
-        contact = desired_contact
-        if tags is not None:
-            contact["tags"] = tags
+        if resource_changed:
+            contact = dict(desired_contact)
+            if tags is not None:
+                contact["tags"] = tags
+        else:
+            contact = apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset)
 
     module.exit_json(
         changed=changed,
         email_contact=boto3_resource_to_ansible_dict(
-            contact, transform_tags=False, force_tags=False
+            contact, transform_tags=False, force_tags=False, ignore_list=["tags"]
         ),
         state="present",
     )
@@ -276,19 +304,40 @@ def main():
         required_if=[("state", "present", ["name"])],
         supports_check_mode=True,
     )
+    state = module.params["state"]
+    tags = module.params["tags"]
+
+    if state == "present":
+        email_address = module.params["email_address"]
+
+        if not 6 <= len(email_address) <= 254 or not re.fullmatch(
+            r".+@.+", email_address
+        ):
+            module.fail_json(
+                msg="email_address must be a valid email address of 6 to 254 characters"
+            )
+
+        name = module.params["name"]
+
+        if not 1 <= len(name) <= 64 or not re.search(r"[\w\-.~]", name):
+            module.fail_json(
+                msg=(
+                    "name must be 1 to 64 characters and contain at least "
+                    "one letter, digit, underscore, hyphen, period, or tilde"
+                )
+            )
+
     client = module.client(
         "notificationscontacts", retry_decorator=AWSRetry.jittered_backoff()
     )
-
-    state = module.params["state"]
-    tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
     method_names = {"list_email_contacts"}
     if state == "present":
-        method_names.update({"create_email_contact", "delete_email_contact"})
+        method_names.update(
+            {"create_email_contact", "delete_email_contact", "get_email_contact"}
+        )
         if tags is not None:
             method_names.update({"list_tags_for_resource", "tag_resource"})
-            if purge_tags:
+            if module.params["purge_tags"]:
                 method_names.add("untag_resource")
     elif state == "absent":
         method_names.add("delete_email_contact")
@@ -312,6 +361,7 @@ def main():
     required_method_parameters = {
         "create_email_contact": {"emailAddress", "name"},
         "delete_email_contact": {"arn"},
+        "get_email_contact": {"arn"},
         "list_email_contacts": {"maxResults", "nextToken"},
         "list_tags_for_resource": {"arn"},
         "tag_resource": {"arn", "tags"},

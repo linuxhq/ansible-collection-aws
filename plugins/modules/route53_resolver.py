@@ -10,7 +10,7 @@ description:
   - Manages AWS Route53 Resolver endpoints.
   - Compares the desired endpoint settings against the current endpoint fetched by name.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   direction:
     description:
@@ -58,12 +58,19 @@ options:
       - do53
     elements: str
     type: list
+  purge_tags:
+    description:
+      - Whether tags not listed in O(tags) should be removed.
+      - This option is only used when O(tags) is provided.
+    default: true
+    type: bool
   resolver_endpoint_type:
     description:
       - The resolver endpoint type.
     choices:
-      - ipv4
       - dualstack
+      - ipv4
+      - ipv6
     default: ipv4
     type: str
   security_group_ids:
@@ -72,12 +79,6 @@ options:
       - This is required when O(state=present).
     elements: str
     type: list
-  purge_tags:
-    description:
-      - Whether tags not listed in O(tags) should be removed.
-      - This option is only used when O(tags) is provided.
-    default: true
-    type: bool
   state:
     description:
       - Whether the resolver endpoint should exist.
@@ -98,11 +99,13 @@ options:
   wait_delay:
     description:
       - The delay between polling attempts when O(wait=true).
+      - This must be 1 or greater.
     default: 5
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait when O(wait=true).
+      - This must be 1 or greater.
     default: 300
     type: int
 extends_documentation_fragment:
@@ -116,10 +119,10 @@ EXAMPLES = r"""
   linuxhq.aws.route53_resolver:
     direction: outbound
     ip_addresses:
-      - subnet_id: subnet-0123456789abcdef0
-        ip: 192.168.0.125
-      - subnet_id: subnet-0123456789abcdef1
-        ip: 192.168.0.253
+      - ip: 192.168.0.125
+        subnet_id: subnet-0123456789abcdef0
+      - ip: 192.168.0.253
+        subnet_id: subnet-0123456789abcdef1
     name: molecule
     protocols:
       - do53
@@ -136,6 +139,11 @@ EXAMPLES = r"""
 """
 
 RETURN = r"""
+name:
+  description:
+    - The requested resolver endpoint name.
+  returned: always
+  type: str
 resolver_endpoint:
   description:
     - The current resolver endpoint after module execution.
@@ -145,11 +153,6 @@ resolver_endpoint_id:
   description:
     - The resolver endpoint ID.
   returned: when a resolver endpoint exists after module execution
-  type: str
-name:
-  description:
-    - The requested resolver endpoint name.
-  returned: always
   type: str
 state:
   description:
@@ -264,6 +267,17 @@ class ResolverEndpointWaiterFactory(BaseWaiterFactory):
         return ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA
 
 
+def apply_tag_deltas(resource, tags_to_set, tag_keys_to_unset):
+    updated = dict(resource)
+    updated_tags = boto3_tag_list_to_ansible_dict(updated.get("Tags", []))
+
+    for tag_key in tag_keys_to_unset:
+        updated_tags.pop(tag_key, None)
+    updated_tags.update(tags_to_set)
+    updated["Tags"] = ansible_dict_to_boto3_tag_list(updated_tags)
+    return updated
+
+
 def create_resolver_endpoint(client, module, desired):
     try:
         endpoint = client.create_resolver_endpoint(
@@ -294,7 +308,7 @@ def create_resolver_endpoint(client, module, desired):
             msg=f"Unable to create AWS Route53 Resolver endpoint {desired['name']}",
         )
 
-    if module.params["wait"]:
+    if endpoint is not None and module.params["wait"]:
         resolver_endpoint_id = endpoint.get("Id")
         endpoint = wait_for_resolver_endpoint_status(
             client,
@@ -347,7 +361,7 @@ def ensure_absent(client, module):
 
 def ensure_present(client, module):
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
+    purge_tags = module.params["purge_tags"]
     desired = {
         "direction": module.params["direction"].upper(),
         "ip_addresses": module.params["ip_addresses"],
@@ -359,6 +373,7 @@ def ensure_present(client, module):
         "security_group_ids": module.params["security_group_ids"],
     }
     endpoint = get_resolver_endpoint_by_name(client, module)
+
     if endpoint is not None:
         endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
         endpoint = resolver_endpoint_with_tags(client, module, endpoint)
@@ -389,28 +404,76 @@ def ensure_present(client, module):
         )
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
-    if current is None and not module.check_mode:
+    if changed and module.check_mode:
+        endpoint = dict(endpoint or {})
+        endpoint.update(snake_dict_to_camel_dict(desired, capitalize_first=True))
+        if tags is not None:
+            endpoint = apply_tag_deltas(endpoint, tags_to_set, tag_keys_to_unset)
+    elif current is None:
         endpoint = resolver_endpoint_with_ip_addresses(
             client,
             module,
             create_resolver_endpoint(client, module, desired),
         )
         endpoint = resolver_endpoint_with_tags(client, module, endpoint)
-    elif current is None and module.check_mode:
-        endpoint = desired
-        if tags is not None:
-            endpoint["Tags"] = ansible_dict_to_boto3_tag_list(tags)
-    elif changed and not module.check_mode:
+    elif changed:
         if resource_changed:
-            endpoint = update_resolver_endpoint(
-                client,
-                module,
-                endpoint,
-                desired,
-            )
+            if (
+                current["protocols"] != desired_comparable["protocols"]
+                or current["resolver_endpoint_type"]
+                != desired_comparable["resolver_endpoint_type"]
+            ):
+                update_params = {
+                    "protocols": desired["protocols"],
+                    "resolver_endpoint_id": endpoint.get("Id"),
+                    "resolver_endpoint_type": desired["resolver_endpoint_type"],
+                }
+
+                try:
+                    endpoint = client.update_resolver_endpoint(
+                        **snake_dict_to_camel_dict(
+                            update_params, capitalize_first=True
+                        ),
+                        aws_retry=True,
+                    ).get("ResolverEndpoint")
+                except Exception as e:
+                    module.fail_json_aws(
+                        e,
+                        msg=(
+                            "Unable to update AWS Route53 Resolver endpoint "
+                            f"{module.params['name']}"
+                        ),
+                    )
+
+                endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
+
+                if endpoint is not None and module.params["wait"]:
+                    endpoint = wait_for_resolver_endpoint_status(
+                        client,
+                        module,
+                        endpoint.get("Id"),
+                        {"operational"},
+                    )
+
+                if endpoint is not None:
+                    endpoint = reconcile_resolver_endpoint_ip_addresses(
+                        client,
+                        module,
+                        endpoint,
+                        desired,
+                    )
+            else:
+                endpoint = reconcile_resolver_endpoint_ip_addresses(
+                    client,
+                    module,
+                    endpoint,
+                    desired,
+                )
             current = comparable_endpoint(endpoint)
+
             if current != desired_comparable:
-                delete_resolver_endpoint(client, module, endpoint)
+                if endpoint is not None:
+                    delete_resolver_endpoint(client, module, endpoint)
                 endpoint = resolver_endpoint_with_ip_addresses(
                     client,
                     module,
@@ -425,6 +488,7 @@ def ensure_present(client, module):
                 purge_tags=purge_tags,
             )
             resource_arn = endpoint.get("Arn")
+
             if resource_arn:
                 if tag_keys_to_unset:
                     try:
@@ -458,17 +522,7 @@ def ensure_present(client, module):
                             ),
                         )
 
-            endpoint = dict(endpoint)
-            endpoint_tags = boto3_tag_list_to_ansible_dict(endpoint.get("Tags", []))
-            for tag_key in tag_keys_to_unset:
-                endpoint_tags.pop(tag_key, None)
-
-            endpoint_tags.update(tags_to_set)
-            endpoint["Tags"] = ansible_dict_to_boto3_tag_list(endpoint_tags)
-    elif changed and module.check_mode:
-        endpoint = desired
-        if module.params["tags"] is not None:
-            endpoint["Tags"] = ansible_dict_to_boto3_tag_list(module.params["tags"])
+            endpoint = apply_tag_deltas(endpoint, tags_to_set, tag_keys_to_unset)
 
     result_endpoint = boto3_resource_to_ansible_dict(
         endpoint, transform_tags=True, force_tags=False
@@ -480,6 +534,7 @@ def ensure_present(client, module):
         "state": "present",
     }
     resolver_endpoint_id = result_endpoint.get("id")
+
     if resolver_endpoint_id is not None:
         result["resolver_endpoint_id"] = resolver_endpoint_id
 
@@ -573,46 +628,6 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired):
     )
 
 
-def update_resolver_endpoint(client, module, endpoint, desired):
-    update_params = {
-        "protocols": desired["protocols"],
-        "resolver_endpoint_id": endpoint.get("Id"),
-        "resolver_endpoint_type": desired["resolver_endpoint_type"],
-    }
-
-    try:
-        endpoint = client.update_resolver_endpoint(
-            **snake_dict_to_camel_dict(update_params, capitalize_first=True),
-            aws_retry=True,
-        ).get("ResolverEndpoint")
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to update AWS Route53 Resolver endpoint "
-                f"{module.params['name']}"
-            ),
-        )
-
-    endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
-    if module.params["wait"]:
-        resolver_endpoint_id = endpoint.get("Id")
-        endpoint = wait_for_resolver_endpoint_status(
-            client,
-            module,
-            resolver_endpoint_id,
-            {"operational"},
-        )
-    endpoint = reconcile_resolver_endpoint_ip_addresses(
-        client,
-        module,
-        endpoint,
-        desired,
-    )
-
-    return endpoint
-
-
 def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, statuses):
     deleted = "deleted" in statuses
 
@@ -625,7 +640,7 @@ def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, stat
             ResolverEndpointId=resolver_endpoint_id,
             WaiterConfig=custom_waiter_config(
                 module.params["wait_timeout"],
-                default_pause=max(1, module.params["wait_delay"]),
+                default_pause=module.params["wait_delay"],
             ),
         )
     except Exception as e:
@@ -693,14 +708,25 @@ def get_resolver_endpoint(client, module, resolver_endpoint_id):
 
 
 def get_resolver_endpoint_by_name(client, module):
+    name = module.params["name"]
+
     try:
         endpoints = paginated_query_with_retries(
             client,
             "list_resolver_endpoints",
-            Filters=ansible_dict_to_boto3_filter_list({"Name": module.params["name"]}),
+            Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
         ).get("ResolverEndpoints", [])
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver endpoints")
+
+    if len(endpoints) > 1:
+        endpoint_ids = sorted(endpoint.get("Id", "") for endpoint in endpoints)
+        module.fail_json(
+            msg=(
+                f"Multiple AWS Route53 Resolver endpoints are named {name}: "
+                f"{', '.join(endpoint_ids)}"
+            )
+        )
 
     return endpoints[0] if endpoints else None
 
@@ -763,15 +789,15 @@ def main():
                 "type": "list",
             },
             "name": {"required": True, "type": "str"},
-            "purge_tags": {"default": True, "type": "bool"},
             "protocols": {
                 "choices": ["do53", "doh", "doh-fips"],
                 "default": ["do53"],
                 "elements": "str",
                 "type": "list",
             },
+            "purge_tags": {"default": True, "type": "bool"},
             "resolver_endpoint_type": {
-                "choices": ["ipv4", "dualstack"],
+                "choices": ["dualstack", "ipv4", "ipv6"],
                 "default": "ipv4",
                 "type": "str",
             },
@@ -794,13 +820,19 @@ def main():
         ],
         supports_check_mode=True,
     )
+    state = module.params["state"]
+    tags = module.params["tags"]
+
+    if module.params["wait"]:
+        if module.params["wait_delay"] < 1:
+            module.fail_json(msg="wait_delay must be 1 or greater")
+
+        if module.params["wait_timeout"] < 1:
+            module.fail_json(msg="wait_timeout must be 1 or greater")
+
     client = module.client(
         "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
     )
-
-    state = module.params["state"]
-    tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
     method_names = {"list_resolver_endpoints"}
     if state == "present":
         method_names.update(
@@ -817,7 +849,7 @@ def main():
         )
         if tags is not None:
             method_names.add("tag_resource")
-            if purge_tags:
+            if module.params["purge_tags"]:
                 method_names.add("untag_resource")
     elif state == "absent":
         method_names.add("delete_resolver_endpoint")

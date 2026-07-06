@@ -12,7 +12,7 @@ description:
   - Manages static transit gateway routes in the route table.
   - This module does not manage route table associations or propagations.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   name:
     description:
@@ -23,7 +23,7 @@ options:
   purge_routes:
     description:
       - Whether static routes not listed in O(routes) should be removed.
-      - Propagated routes are ignored.
+      - Propagated routes and routes referencing a prefix list are ignored.
     default: false
     type: bool
   purge_tags:
@@ -96,11 +96,13 @@ options:
   wait_delay:
     description:
       - The delay between polling attempts when O(wait=true).
+      - This must be 1 or greater.
     default: 5
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait when O(wait=true).
+      - This must be 1 or greater.
     default: 600
     type: int
 extends_documentation_fragment:
@@ -188,6 +190,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 ROUTE_TABLE_TERMINAL_STATES = {"deleted"}
 ROUTE_DELETED_STATES = {"deleted", "deleting"}
 ROUTE_PRESENT_STATES = {"active", "blackhole", "pending"}
+ROUTE_STATE_ORDER = {
+    "active": 0,
+    "blackhole": 1,
+    "pending": 2,
+    "deleting": 3,
+    "deleted": 4,
+}
 
 
 def route_table_id(route_table):
@@ -209,8 +218,10 @@ def normalize_routes(routes):
 def desired_tags(module):
     name = module.params["name"]
     tags = dict(module.params["tags"] or {})
+
     if name:
         tags["Name"] = name
+
     return tags
 
 
@@ -219,14 +230,7 @@ def current_tags(route_table):
 
 
 def route_sort_key(route):
-    state_order = {
-        "active": 0,
-        "blackhole": 1,
-        "pending": 2,
-        "deleting": 3,
-        "deleted": 4,
-    }
-    return state_order.get(route.get("State"), 99)
+    return ROUTE_STATE_ORDER.get(route.get("State"), 99)
 
 
 def route_destination(route):
@@ -263,6 +267,7 @@ def find_route_table(client, module):
     transit_gateway_route_table_id = module.params["transit_gateway_route_table_id"]
     transit_gateway_id = module.params["transit_gateway_id"]
     name = module.params["name"]
+
     if transit_gateway_route_table_id:
         return get_route_table_by_id(client, module, transit_gateway_route_table_id)
 
@@ -313,10 +318,13 @@ def wait_for_route_table(
 
         if route_table is None and absent_is_success:
             return None
+
         state = (route_table or {}).get("State")
+
         if state in desired_states:
             return route_table
-        time.sleep(max(1, module.params["wait_delay"]))
+
+        time.sleep(module.params["wait_delay"])
 
     module.fail_json(
         msg=(
@@ -403,6 +411,7 @@ def desired_route_matches(route, desired):
     attachment_ids = set()
     for attachment in route.get("TransitGatewayAttachments", []):
         attachment_id = attachment.get("TransitGatewayAttachmentId")
+
         if not attachment_id:
             continue
 
@@ -452,7 +461,7 @@ def wait_for_route(client, module, transit_gateway_route_table_id, desired):
             "blackhole",
         ):
             return route
-        time.sleep(max(1, module.params["wait_delay"]))
+        time.sleep(module.params["wait_delay"])
 
     module.fail_json(
         msg=(
@@ -477,7 +486,7 @@ def wait_for_route_absent(
 
         if not route_is_static(route):
             return route
-        time.sleep(max(1, module.params["wait_delay"]))
+        time.sleep(module.params["wait_delay"])
 
     module.fail_json(
         msg=(
@@ -599,6 +608,7 @@ def ensure_present(client, module):
 
     tags = module.params["tags"]
     desired_route_table_tags = desired_tags(module)
+
     if desired_route_table_tags or tags is not None:
         purge_tags = module.params["purge_tags"] if tags is not None else False
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
@@ -608,61 +618,58 @@ def ensure_present(client, module):
         )
 
         tag_changed = bool(tags_to_set or tag_keys_to_unset)
-        if module.check_mode:
+
+        if tag_changed:
+            if not module.check_mode:
+                resource_id = route_table_id(route_table)
+                if tag_keys_to_unset:
+                    try:
+                        client.delete_tags(
+                            Resources=[resource_id],
+                            Tags=[{"Key": key} for key in tag_keys_to_unset],
+                            aws_retry=True,
+                        )
+                    except Exception as e:
+                        module.fail_json_aws(
+                            e,
+                            msg=(
+                                "Unable to remove tags from EC2 transit gateway "
+                                f"route table {resource_id}"
+                            ),
+                        )
+
+                if tags_to_set:
+                    try:
+                        client.create_tags(
+                            Resources=[resource_id],
+                            Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
+                            aws_retry=True,
+                        )
+                    except Exception as e:
+                        module.fail_json_aws(
+                            e,
+                            msg=(
+                                "Unable to tag EC2 transit gateway route table "
+                                f"{resource_id}"
+                            ),
+                        )
+
             route_table = dict(route_table)
             current = current_tags(route_table)
             for tag_key in tag_keys_to_unset:
                 current.pop(tag_key, None)
+
             current.update(tags_to_set)
             route_table["Tags"] = ansible_dict_to_boto3_tag_list(current)
-        else:
-            resource_id = route_table_id(route_table)
-            if tag_keys_to_unset:
-                try:
-                    client.delete_tags(
-                        Resources=[resource_id],
-                        Tags=[{"Key": key} for key in tag_keys_to_unset],
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=(
-                            "Unable to remove tags from EC2 transit gateway "
-                            f"route table {resource_id}"
-                        ),
-                    )
-
-            if tags_to_set:
-                try:
-                    client.create_tags(
-                        Resources=[resource_id],
-                        Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=(
-                            "Unable to tag EC2 transit gateway route table "
-                            f"{resource_id}"
-                        ),
-                    )
-
-            if tag_changed:
-                route_table = dict(route_table)
-                current = current_tags(route_table)
-                for tag_key in tag_keys_to_unset:
-                    current.pop(tag_key, None)
-                current.update(tags_to_set)
-                route_table["Tags"] = ansible_dict_to_boto3_tag_list(current)
 
         changed = changed or tag_changed
 
     route_changed = False
-    routes = []
+    routes = None
     if desired_routes or purge_routes:
+        routes = []
         transit_gateway_route_table_id = route_table_id(route_table)
+
         if module.check_mode and not transit_gateway_route_table_id:
             for desired_route in desired_routes:
                 if desired_route.get("state", "present") != "present":
@@ -788,9 +795,13 @@ def ensure_present(client, module):
 
                     desired_destinations.add(desired_route["destination_cidr_block"])
 
+                purged_any = False
                 for current_route in static_routes(
                     client, module, transit_gateway_route_table_id
                 ):
+                    if not route_destination(current_route):
+                        continue
+
                     if route_destination(current_route) in desired_destinations:
                         continue
 
@@ -800,10 +811,14 @@ def ensure_present(client, module):
                         transit_gateway_route_table_id,
                         route_destination(current_route),
                     )[0]
-                    route_changed = route_changed or purged_route_changed
+                    purged_any = purged_any or purged_route_changed
 
-            if purge_routes and not module.check_mode:
-                routes = static_routes(client, module, transit_gateway_route_table_id)
+                route_changed = route_changed or purged_any
+
+                if purged_any and not module.check_mode:
+                    routes = static_routes(
+                        client, module, transit_gateway_route_table_id
+                    )
     changed = changed or route_changed
 
     exit_module(module, changed, route_table, routes=routes)
@@ -862,8 +877,9 @@ def exit_module(module, changed, route_table, routes=None):
     result = {
         "changed": changed,
         "state": module.params["state"],
-        "transit_gateway_route_table": normalize_route_table(route_table),
     }
+    if route_table:
+        result["transit_gateway_route_table"] = normalize_route_table(route_table)
     if route_table_id(route_table):
         result["transit_gateway_route_table_id"] = route_table_id(route_table)
     if routes is not None:
@@ -912,10 +928,20 @@ def main():
         ],
         supports_check_mode=True,
     )
+
+    if module.params["wait"]:
+        if module.params["wait_delay"] < 1:
+            module.fail_json(msg="wait_delay must be 1 or greater")
+
+        if module.params["wait_timeout"] < 1:
+            module.fail_json(msg="wait_timeout must be 1 or greater")
+
     state = module.params["state"]
     purge_routes = module.params["purge_routes"]
     routes = module.params["routes"]
     has_absent_route = False
+    has_attachment_route = False
+    has_blackhole_route = False
     has_present_route = False
 
     destinations = set()
@@ -932,9 +958,11 @@ def main():
             continue
 
         has_present_route = True
-        if not route.get("blackhole") and not route.get(
-            "transit_gateway_attachment_id"
-        ):
+        if route.get("blackhole"):
+            has_blackhole_route = True
+        elif route.get("transit_gateway_attachment_id"):
+            has_attachment_route = True
+        else:
             module.fail_json(
                 msg=(
                     "routes[].transit_gateway_attachment_id is required when "
@@ -1008,25 +1036,16 @@ def main():
             "TransitGatewayRouteTableId",
         ),
     }
-    if routes:
-        for route in routes:
-            if route.get("state", "present") == "absent":
-                continue
-
-            if route.get("blackhole"):
-                required_method_parameters["create_transit_gateway_route"] += (
-                    "Blackhole",
-                )
-                required_method_parameters["replace_transit_gateway_route"] += (
-                    "Blackhole",
-                )
-            else:
-                required_method_parameters["create_transit_gateway_route"] += (
-                    "TransitGatewayAttachmentId",
-                )
-                required_method_parameters["replace_transit_gateway_route"] += (
-                    "TransitGatewayAttachmentId",
-                )
+    if has_blackhole_route:
+        required_method_parameters["create_transit_gateway_route"] += ("Blackhole",)
+        required_method_parameters["replace_transit_gateway_route"] += ("Blackhole",)
+    if has_attachment_route:
+        required_method_parameters["create_transit_gateway_route"] += (
+            "TransitGatewayAttachmentId",
+        )
+        required_method_parameters["replace_transit_gateway_route"] += (
+            "TransitGatewayAttachmentId",
+        )
 
     for method_name, parameter_names in required_method_parameters.items():
         if method_name not in method_parameters:

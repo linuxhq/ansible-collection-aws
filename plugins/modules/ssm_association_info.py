@@ -9,7 +9,7 @@ short_description: Gather information about aws systems manager associations
 description:
   - Gathers information about AWS Systems Manager associations.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   filters:
     description:
@@ -37,12 +37,14 @@ RETURN = r"""
 associations:
   description:
     - A list of AWS Systems Manager associations.
+    - Each association includes C(tags) gathered by the module.
   returned: always
   type: list
   elements: dict
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -60,11 +62,13 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
+    filters = module.params["filters"]
     request = {}
-    if module.params["filters"]:
+    if filters:
         request["AssociationFilterList"] = []
-        for key, value in module.params["filters"].items():
+        for key, value in filters.items():
             values = value if isinstance(value, list) else [value]
+
             for item in values:
                 request["AssociationFilterList"].append(
                     {"key": key, "value": str(item)}
@@ -90,6 +94,8 @@ def main():
                     ResourceId=association_id,
                     aws_retry=True,
                 ).get("TagList", [])
+            except is_boto3_error_code("InvalidResourceId"):
+                continue
             except Exception as e:
                 module.fail_json_aws(
                     e,

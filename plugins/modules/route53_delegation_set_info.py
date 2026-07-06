@@ -7,13 +7,15 @@ DOCUMENTATION = r"""
 module: route53_delegation_set_info
 short_description: Gather information about aws route53 delegation sets
 description:
-  - Gathers AWS Route53 reusable delegation sets.
+  - Gathers information about AWS Route53 reusable delegation sets.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   id:
     description:
       - Route53 reusable delegation set ID used to limit the result set.
+      - This accepts a bare ID or the full C(/delegationset/ID) path.
+      - A delegation set that does not exist results in an empty list.
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -57,13 +59,12 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
+    delegation_set_id = module.params["id"]
     delegation_sets = []
-    if module.params["id"]:
-        delegation_set_id = module.params["id"]
-
+    if delegation_set_id:
         try:
             delegation_set = client.get_reusable_delegation_set(
-                Id=delegation_set_id.rsplit("/", 1)[-1],
+                Id=delegation_set_id,
                 aws_retry=True,
             ).get("DelegationSet", {})
         except is_boto3_error_code("NoSuchDelegationSet"):
@@ -100,6 +101,7 @@ def main():
                 break
 
             marker = response.get("NextMarker")
+
             if not marker:
                 module.fail_json(
                     msg=(

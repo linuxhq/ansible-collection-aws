@@ -11,7 +11,7 @@ description:
     and transit gateway resources.
   - Manages tags on existing matching flow logs.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   deliver_cross_account_role:
     description:
@@ -24,6 +24,8 @@ options:
   destination_options:
     description:
       - Destination options for flow logs delivered to Amazon S3.
+      - Requires O(log_destination_type).
+      - O(log_destination_type) must be C(s3) when O(state=present).
     suboptions:
       file_format:
         description:
@@ -45,6 +47,7 @@ options:
     description:
       - The ARN of the destination for flow log data.
       - This is commonly used with S3, CloudWatch Logs, or Kinesis Data Firehose destinations.
+      - This is mutually exclusive with O(log_group_name).
     type: str
   log_destination_type:
     description:
@@ -62,6 +65,7 @@ options:
   log_group_name:
     description:
       - The CloudWatch Logs log group name for flow log data.
+      - This is mutually exclusive with O(log_destination).
     type: str
   max_aggregation_interval:
     description:
@@ -76,6 +80,7 @@ options:
   resource_ids:
     description:
       - The IDs of the resources for which flow logs are managed.
+      - This list must contain at least one entry.
     elements: str
     required: true
     type: list
@@ -196,7 +201,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 ABSENT_MATCH_FIELDS = (
@@ -266,7 +270,7 @@ def matching_flow_logs(module, flow_logs, desired):
             continue
 
         normalized = boto3_resource_to_ansible_dict(
-            flow_log or {}, transform_tags=False, force_tags=False
+            flow_log, transform_tags=False, force_tags=False
         )
         comparable = {}
         for key in desired:
@@ -288,6 +292,7 @@ def matching_flow_logs(module, flow_logs, desired):
             continue
 
         matching.append(flow_log)
+
     return matching
 
 
@@ -367,7 +372,6 @@ def ensure_present(client, module):
     resource_ids = normalized_resource_ids(module)
     resource_type = module.params["resource_type"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
     desired = {
         "log_destination_type": module.params["log_destination_type"]
         or "cloud-watch-logs",
@@ -398,31 +402,28 @@ def ensure_present(client, module):
         missing_resource_ids.append(resource_id)
 
     tags_changed = []
-    for flow_log in current:
-        tags_to_set, tag_keys_to_unset = ({}, [])
-        if tags is not None:
+    if tags is not None:
+        for flow_log in current:
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                boto3_tag_list_to_ansible_dict((flow_log or {}).get("Tags", [])),
+                boto3_tag_list_to_ansible_dict(flow_log.get("Tags", [])),
                 tags,
-                purge_tags=purge_tags,
+                purge_tags=module.params["purge_tags"],
             )
 
-        if tags_to_set or tag_keys_to_unset:
-            tags_changed.append((flow_log, tags_to_set, tag_keys_to_unset))
+            if tags_to_set or tag_keys_to_unset:
+                tags_changed.append((flow_log, tags_to_set, tag_keys_to_unset))
 
     changed = bool(missing_resource_ids or tags_changed)
 
-    if changed and not module.check_mode:
-        created_flow_log_ids = []
-        if missing_resource_ids:
+    if changed:
+        if missing_resource_ids and not module.check_mode:
             request = dict(
                 desired,
                 resource_ids=missing_resource_ids,
                 resource_type=resource_type,
             )
-            request = scrub_none_parameters(
-                snake_dict_to_camel_dict(request, capitalize_first=True)
-            )
+            request = snake_dict_to_camel_dict(request, capitalize_first=True)
+
             if tags is not None:
                 tag_specifications = boto3_tag_specifications(
                     tags, types="vpc-flow-log"
@@ -454,96 +455,90 @@ def ensure_present(client, module):
 
             created_flow_log_ids = response.get("FlowLogIds", [])
 
-        if created_flow_log_ids:
-            try:
-                created_flow_logs = paginated_query_with_retries(
-                    client,
-                    "describe_flow_logs",
-                    FlowLogIds=created_flow_log_ids,
-                ).get("FlowLogs", [])
-            except Exception as e:
-                module.fail_json_aws(
-                    e,
-                    msg=(
-                        "Unable to describe EC2 flow logs "
-                        f"{', '.join(created_flow_log_ids)}"
-                    ),
+            if created_flow_log_ids:
+                try:
+                    created_flow_logs = paginated_query_with_retries(
+                        client,
+                        "describe_flow_logs",
+                        FlowLogIds=created_flow_log_ids,
+                    ).get("FlowLogs", [])
+                except Exception as e:
+                    module.fail_json_aws(
+                        e,
+                        msg=(
+                            "Unable to describe EC2 flow logs "
+                            f"{', '.join(created_flow_log_ids)}"
+                        ),
+                    )
+
+                current = current + created_flow_logs
+        elif missing_resource_ids and module.check_mode:
+            for resource_id in missing_resource_ids:
+                flow_log = dict(
+                    desired,
+                    flow_log_status="ACTIVE",
+                    resource_id=resource_id,
+                    resource_type=resource_type,
                 )
+                flow_log = snake_dict_to_camel_dict(flow_log, capitalize_first=True)
 
-            current = current + created_flow_logs
+                if tags is not None:
+                    flow_log["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
-        for flow_log, tags_to_set, tag_keys_to_unset in tags_changed:
-            flow_log_id = flow_log["FlowLogId"]
-            if tag_keys_to_unset:
+                current.append(flow_log)
+
+        if tags_changed and not module.check_mode:
+            delete_groups = {}
+            create_groups = {}
+            for flow_log, tags_to_set, tag_keys_to_unset in tags_changed:
+                if tag_keys_to_unset:
+                    group = tuple(sorted(tag_keys_to_unset))
+                    delete_groups.setdefault(group, []).append(flow_log["FlowLogId"])
+
+                if tags_to_set:
+                    group = tuple(sorted(tags_to_set.items()))
+                    create_groups.setdefault(group, []).append(flow_log["FlowLogId"])
+
+            for tag_keys_to_unset, delete_resources in delete_groups.items():
                 try:
                     client.delete_tags(
-                        Resources=[flow_log_id],
+                        Resources=delete_resources,
                         Tags=[{"Key": key} for key in tag_keys_to_unset],
                         aws_retry=True,
                     )
                 except Exception as e:
                     module.fail_json_aws(
-                        e, msg=f"Unable to remove tags from EC2 flow log {flow_log_id}"
+                        e,
+                        msg=(
+                            "Unable to remove tags from EC2 flow logs "
+                            f"{', '.join(delete_resources)}"
+                        ),
                     )
 
-            if tags_to_set:
+            for tags_to_set, create_resources in create_groups.items():
                 try:
                     client.create_tags(
-                        Resources=[flow_log_id],
-                        Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
+                        Resources=create_resources,
+                        Tags=ansible_dict_to_boto3_tag_list(dict(tags_to_set)),
                         aws_retry=True,
                     )
                 except Exception as e:
                     module.fail_json_aws(
-                        e, msg=f"Unable to tag EC2 flow log {flow_log_id}"
+                        e,
+                        msg=(
+                            "Unable to tag EC2 flow logs "
+                            f"{', '.join(create_resources)}"
+                        ),
                     )
 
-            current_tags = boto3_tag_list_to_ansible_dict(
-                (flow_log or {}).get("Tags", [])
-            )
-
-            for tag_key in tag_keys_to_unset:
-                current_tags.pop(tag_key, None)
-            current_tags.update(tags_to_set)
-            flow_log["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
-    elif changed and module.check_mode:
-        updated_current = []
-        for flow_log in current:
-            if tags is None:
-                updated_current.append(flow_log)
-                continue
-
-            flow_log = dict(flow_log or {})
+        for flow_log, tags_to_set, tag_keys_to_unset in tags_changed:
             current_tags = boto3_tag_list_to_ansible_dict(flow_log.get("Tags", []))
 
-            tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                current_tags,
-                tags,
-                purge_tags=purge_tags,
-            )
-
             for tag_key in tag_keys_to_unset:
                 current_tags.pop(tag_key, None)
+
             current_tags.update(tags_to_set)
             flow_log["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
-            updated_current.append(flow_log)
-
-        predicted_flow_logs = []
-        for resource_id in missing_resource_ids:
-            flow_log = dict(
-                desired,
-                flow_log_status="ACTIVE",
-                resource_id=resource_id,
-                resource_type=resource_type,
-            )
-            flow_log = snake_dict_to_camel_dict(flow_log, capitalize_first=True)
-
-            if tags is not None:
-                flow_log["Tags"] = ansible_dict_to_boto3_tag_list(tags)
-
-            predicted_flow_logs.append(flow_log)
-
-        current = updated_current + predicted_flow_logs
 
     flow_log_ids = []
     for flow_log in current:
@@ -556,7 +551,7 @@ def ensure_present(client, module):
         changed=changed,
         flow_log_ids=flow_log_ids,
         flow_logs=boto3_resource_list_to_ansible_dict(
-            current or [], transform_tags=True, force_tags=False
+            current, transform_tags=True, force_tags=False
         ),
         resource_ids=resource_ids,
         state="present",
@@ -609,6 +604,8 @@ def main():
 
     module = AnsibleAWSModule(
         argument_spec=argument_spec,
+        mutually_exclusive=[["log_destination", "log_group_name"]],
+        required_by={"destination_options": ["log_destination_type"]},
         required_if=[("state", "present", ["resource_type"])],
         supports_check_mode=True,
     )
@@ -629,6 +626,17 @@ def main():
             msg=(
                 "traffic_type is not supported when resource_type is "
                 "TransitGateway or TransitGatewayAttachment"
+            )
+        )
+    if (
+        state == "present"
+        and destination_options
+        and module.params["log_destination_type"] != "s3"
+    ):
+        module.fail_json(
+            msg=(
+                "destination_options requires log_destination_type to be s3 "
+                "when state is present"
             )
         )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())

@@ -11,7 +11,7 @@ description:
   - This includes the Systems Manager ping status used to determine whether an
     instance is online for Session Manager.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   filters:
     description:
@@ -22,7 +22,9 @@ options:
   instance_ids:
     description:
       - EC2 instance IDs or managed instance IDs used to limit the result set.
-      - This is added as an C(InstanceIds) Systems Manager instance filter.
+      - This is added as an C(InstanceIds) Systems Manager instance filter and
+        takes precedence over an C(InstanceIds) key in O(filters).
+      - This must contain at most 100 instance IDs.
     elements: str
     type: list
   ping_status:
@@ -32,7 +34,8 @@ options:
       - Online
     description:
       - Systems Manager ping status used to limit the result set.
-      - This is added as a C(PingStatus) Systems Manager instance filter.
+      - This is added as a C(PingStatus) Systems Manager instance filter and
+        takes precedence over a C(PingStatus) key in O(filters).
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -83,7 +86,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
 )
 
@@ -102,19 +104,29 @@ def main():
         argument_spec=argument_spec,
         supports_check_mode=True,
     )
+    instance_ids = module.params["instance_ids"]
+    ping_status = module.params["ping_status"]
+
+    if instance_ids and len(instance_ids) > 100:
+        module.fail_json(msg="instance_ids must contain at most 100 instance IDs")
+
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
 
     request = {}
     filters = dict(module.params["filters"] or {})
 
-    if module.params["instance_ids"]:
-        filters["InstanceIds"] = module.params["instance_ids"]
-    if module.params["ping_status"]:
-        filters["PingStatus"] = module.params["ping_status"]
+    if instance_ids:
+        filters["InstanceIds"] = instance_ids
+    if ping_status:
+        filters["PingStatus"] = ping_status
     if filters:
         request["Filters"] = []
-        for item in ansible_dict_to_boto3_filter_list(filters):
-            request["Filters"].append({"Key": item["Name"], "Values": item["Values"]})
+        for key, value in filters.items():
+            values = value if isinstance(value, list) else [value]
+
+            request["Filters"].append(
+                {"Key": key, "Values": [str(item) for item in values]}
+            )
 
     try:
         instances = paginated_query_with_retries(
@@ -129,14 +141,16 @@ def main():
         instances, transform_tags=False, force_tags=False
     )
 
-    instance_ids = []
+    matching_instance_ids = []
     for instance in instances:
-        if instance.get("instance_id"):
-            instance_ids.append(instance["instance_id"])
+        instance_id = instance.get("instance_id")
+
+        if instance_id:
+            matching_instance_ids.append(instance_id)
 
     module.exit_json(
         changed=False,
-        instance_ids=instance_ids,
+        instance_ids=matching_instance_ids,
         instances=instances,
     )
 

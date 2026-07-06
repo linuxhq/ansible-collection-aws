@@ -8,12 +8,15 @@ module: route53_zone_associate
 short_description: Manage aws route53 zone associations
 description:
   - Manages AWS Route53 private hosted zone VPC associations.
+  - The last VPC association of a private hosted zone cannot be removed;
+    the Route53 API rejects the request.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   hosted_zone_id:
     description:
       - The private hosted zone ID.
+      - This accepts a bare ID or the full C(/hostedzone/ID) path.
     required: true
     type: str
   state:
@@ -32,6 +35,7 @@ options:
   vpc_region:
     description:
       - The AWS region of the VPC.
+      - This must match the AWS region name format, for example V(us-west-2).
     required: true
     type: str
 extends_documentation_fragment:
@@ -79,8 +83,11 @@ vpcs:
   elements: dict
 """
 
+import re
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     get_boto3_client_method_parameters,
+    is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -91,10 +98,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 
 def ensure_absent(client, module, hosted_zone_id):
-    vpcs = get_vpc_associations(client, module, hosted_zone_id)
-    current_vpcs = route53_vpc_list(vpcs)
+    vpcs = route53_vpc_list(get_vpc_associations(client, module, hosted_zone_id))
     requested_vpc = route53_vpc(module)
-    changed = requested_vpc in current_vpcs
+    changed = requested_vpc in vpcs
 
     if changed and not module.check_mode:
         try:
@@ -113,17 +119,12 @@ def ensure_absent(client, module, hosted_zone_id):
             )
 
     if changed:
-        vpcs = []
-        for vpc in current_vpcs:
-            if vpc == requested_vpc:
-                continue
-
-            vpcs.append(vpc)
+        vpcs = [vpc for vpc in vpcs if vpc != requested_vpc]
 
     module.exit_json(
         changed=changed,
         hosted_zone_id=hosted_zone_id,
-        state=module.params["state"],
+        state="absent",
         vpc=boto3_resource_to_ansible_dict(
             requested_vpc, transform_tags=False, force_tags=False
         ),
@@ -134,10 +135,9 @@ def ensure_absent(client, module, hosted_zone_id):
 
 
 def ensure_present(client, module, hosted_zone_id):
-    vpcs = get_vpc_associations(client, module, hosted_zone_id)
-    current_vpcs = route53_vpc_list(vpcs)
+    vpcs = route53_vpc_list(get_vpc_associations(client, module, hosted_zone_id))
     requested_vpc = route53_vpc(module)
-    changed = requested_vpc not in current_vpcs
+    changed = requested_vpc not in vpcs
 
     if changed and not module.check_mode:
         try:
@@ -156,12 +156,12 @@ def ensure_present(client, module, hosted_zone_id):
             )
 
     if changed:
-        vpcs = route53_vpc_list(current_vpcs + [requested_vpc])
+        vpcs = route53_vpc_list(vpcs + [requested_vpc])
 
     module.exit_json(
         changed=changed,
         hosted_zone_id=hosted_zone_id,
-        state=module.params["state"],
+        state="present",
         vpc=boto3_resource_to_ansible_dict(
             requested_vpc, transform_tags=False, force_tags=False
         ),
@@ -177,6 +177,8 @@ def get_vpc_associations(client, module, hosted_zone_id):
             Id=hosted_zone_id,
             aws_retry=True,
         ).get("VPCs", [])
+    except is_boto3_error_code("NoSuchHostedZone"):
+        return []
     except Exception as e:
         module.fail_json_aws(
             e,
@@ -200,7 +202,7 @@ def route53_vpc_list(vpcs):
                 "VPCRegion": vpc["VPCRegion"],
             }
         )
-    return sorted(normalized, key=lambda vpc: (vpc.get("VPCId"), vpc.get("VPCRegion")))
+    return sorted(normalized, key=lambda vpc: (vpc["VPCId"], vpc["VPCRegion"]))
 
 
 def main():
@@ -217,10 +219,17 @@ def main():
         },
         supports_check_mode=True,
     )
+    state = module.params["state"]
+
+    if not re.fullmatch(
+        r"([a-z]{1,2})-([a-z]{1,15}-)+([0-9])", module.params["vpc_region"]
+    ):
+        module.fail_json(
+            msg="vpc_region must match the AWS region name format, for example us-west-2"
+        )
+
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
     hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]
-
-    state = module.params["state"]
     method_names = {"get_hosted_zone"}
     if state == "present":
         method_names.add("associate_vpc_with_hosted_zone")

@@ -9,11 +9,13 @@ short_description: Manage aws systems manager documents
 description:
   - Manages AWS Systems Manager documents.
   - Supports creating, updating, and deleting JSON documents.
+  - Content updates create a new document version and promote it to the
+    default version.
   - Accepts structured Ansible YAML content and serializes it to JSON for AWS.
   - Converts document content input keys to AWS format for comparison and API requests.
   - O(document_type) is immutable after creation.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   content:
     description:
@@ -31,6 +33,8 @@ options:
   document_version:
     description:
       - The document version to read and update.
+      - V($LATEST) reconciles against the newest document version, while
+        V($DEFAULT) reconciles against the effective default version.
     default: $LATEST
     type: str
   name:
@@ -121,6 +125,17 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 SSM_DOCUMENT_RESOURCE_TYPE = "Document"
 
 
+def apply_tag_deltas(document, tags_to_set, tag_keys_to_unset):
+    updated = dict(document)
+    updated_tags = boto3_tag_list_to_ansible_dict(updated.get("Tags", []))
+
+    for tag_key in tag_keys_to_unset:
+        updated_tags.pop(tag_key, None)
+    updated_tags.update(tags_to_set)
+    updated["Tags"] = ansible_dict_to_boto3_tag_list(updated_tags)
+    return updated
+
+
 def ensure_absent(client, module):
     current = get_document(client, module)
     name = module.params["name"]
@@ -148,14 +163,14 @@ def ensure_absent(client, module):
 def ensure_present(client, module):
     name = module.params["name"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
+    purge_tags = module.params["purge_tags"]
     current = get_document(client, module, include_tags=tags is not None)
     desired = {
         "content": module.params["content"],
         "document_type": module.params["document_type"],
         "name": name,
     }
-    current_document = (
+    current_comparable = (
         {
             "content": snake_dict_to_camel_dict(
                 document_content(current), capitalize_first=False
@@ -169,7 +184,6 @@ def ensure_present(client, module):
         "content": snake_dict_to_camel_dict(desired["content"], capitalize_first=False),
         "document_type": desired["document_type"],
     }
-    current_comparable = current_document
     desired.update(desired_comparable)
 
     if current is None:
@@ -221,25 +235,43 @@ def ensure_present(client, module):
             except Exception as e:
                 module.fail_json_aws(
                     e,
-                    msg=f"Unable to manage AWS Systems Manager document {name}",
+                    msg=f"Unable to create AWS Systems Manager document {name}",
                 )
 
         elif resource_changed:
             try:
-                client.update_document(
+                updated = client.update_document(
                     Content=desired_content,
                     DocumentFormat="JSON",
                     DocumentVersion=module.params["document_version"],
                     Name=desired["name"],
                     aws_retry=True,
-                )
+                ).get("DocumentDescription", {})
             except Exception as e:
                 module.fail_json_aws(
                     e,
-                    msg=f"Unable to manage AWS Systems Manager document {name}",
+                    msg=f"Unable to update AWS Systems Manager document {name}",
                 )
 
-        if current is None or resource_changed:
+            new_version = updated.get("DocumentVersion")
+
+            if new_version:
+                try:
+                    client.update_document_default_version(
+                        DocumentVersion=new_version,
+                        Name=desired["name"],
+                        aws_retry=True,
+                    )
+                except Exception as e:
+                    module.fail_json_aws(
+                        e,
+                        msg=(
+                            "Unable to set the default version of AWS Systems "
+                            f"Manager document {name}"
+                        ),
+                    )
+
+        if resource_changed:
             current = get_document(client, module, include_tags=tags is not None)
 
         if current is not None and tags is not None:
@@ -280,17 +312,18 @@ def ensure_present(client, module):
                         msg=f"Unable to tag AWS Systems Manager document {name}",
                     )
 
-            current = dict(current)
-            current_tags = boto3_tag_list_to_ansible_dict(current.get("Tags", []))
-            for tag_key in tag_keys_to_unset:
-                current_tags.pop(tag_key, None)
-
-            current_tags.update(tags_to_set)
-            current["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
+            current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
-        current = desired
+        current = dict(current or {})
+        current.update(
+            {
+                "Content": desired["content"],
+                "DocumentType": desired["document_type"],
+                "Name": name,
+            }
+        )
         if tags is not None:
-            current["tags"] = tags
+            current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
 
     document = current
     if (current or {}).get("Name") is not None:
@@ -300,8 +333,6 @@ def ensure_present(client, module):
             transform_tags=True,
             force_tags=False,
         )
-        if "content" not in document:
-            document["content"] = {}
 
     result = {
         "changed": changed,
@@ -331,6 +362,8 @@ def get_document(client, module, include_tags=False):
             msg=f"Unable to get AWS Systems Manager document {name}",
         )
 
+    document.pop("ResponseMetadata", None)
+
     if include_tags:
         try:
             document["Tags"] = client.list_tags_for_resource(
@@ -350,21 +383,16 @@ def get_document(client, module, include_tags=False):
     return document
 
 
-def document_content(document, strict=True):
+def document_content(document):
     if not document or document.get("Content") is None:
         return {}
 
     content = document.get("Content")
+
     if not isinstance(content, str):
         return content
 
-    try:
-        return json.loads(content)
-    except ValueError:
-        if strict:
-            raise
-
-        return content
+    return json.loads(content)
 
 
 def main():
@@ -391,15 +419,20 @@ def main():
 
     state = module.params["state"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
     method_names = {"get_document"}
     if state == "present":
-        method_names.update({"create_document", "update_document"})
+        method_names.update(
+            {
+                "create_document",
+                "update_document",
+                "update_document_default_version",
+            }
+        )
         if tags is not None:
             method_names.add("list_tags_for_resource")
             if tags:
                 method_names.add("add_tags_to_resource")
-            if purge_tags:
+            if module.params["purge_tags"]:
                 method_names.add("remove_tags_from_resource")
     elif state == "absent":
         method_names.add("delete_document")
@@ -428,6 +461,7 @@ def main():
         "list_tags_for_resource": {"ResourceId", "ResourceType"},
         "remove_tags_from_resource": {"ResourceId", "ResourceType", "TagKeys"},
         "update_document": {"Content", "DocumentFormat", "DocumentVersion", "Name"},
+        "update_document_default_version": {"DocumentVersion", "Name"},
     }
     if tags:
         required_method_parameters["create_document"].add("Tags")

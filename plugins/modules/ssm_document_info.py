@@ -10,7 +10,7 @@ description:
   - Gathers information about AWS Systems Manager documents.
   - Retrieves each document as JSON and parses the returned content when possible.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   document_format:
     choices:
@@ -39,6 +39,7 @@ options:
   name:
     description:
       - Systems Manager document name used to limit the result set.
+      - A document that does not exist results in an empty list.
       - Mutually exclusive with O(filters).
     type: str
   version_name:
@@ -78,6 +79,7 @@ document:
 documents:
   description:
     - The AWS Systems Manager documents.
+    - Each document includes C(tags) gathered by the module.
   returned: always
   type: list
   elements: dict
@@ -135,13 +137,16 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
-    if module.params["name"]:
-        document_names = [module.params["name"]]
+    filters = module.params["filters"]
+    name = module.params["name"]
+
+    if name:
+        document_names = [name]
     else:
         request = {}
-        if module.params["filters"]:
+        if filters:
             request["Filters"] = []
-            for key, value in module.params["filters"].items():
+            for key, value in filters.items():
                 request["Filters"].append(
                     {
                         "Key": key,
@@ -163,21 +168,22 @@ def main():
             if document.get("Name"):
                 document_names.append(document["Name"])
 
-    documents = []
-    for name in document_names:
-        version_name = module.params["version_name"]
-        request = {
+    version_name = module.params["version_name"]
+    get_request = scrub_none_parameters(
+        {
             "DocumentFormat": module.params["document_format"],
             "DocumentVersion": module.params["document_version"]
             or (None if version_name else "$LATEST"),
-            "Name": name,
             "VersionName": version_name,
         }
-        request = scrub_none_parameters(request)
+    )
 
+    documents = []
+    for document_name in document_names:
         try:
             document = client.get_document(
-                **request,
+                **get_request,
+                Name=document_name,
                 aws_retry=True,
             )
         except is_boto3_error_code(("InvalidDocument", "InvalidDocumentOperation")):
@@ -185,19 +191,26 @@ def main():
         except Exception as e:
             module.fail_json_aws(
                 e,
-                msg=f"Unable to get AWS Systems Manager document {name}",
+                msg=f"Unable to get AWS Systems Manager document {document_name}",
             )
+
+        document.pop("ResponseMetadata", None)
 
         try:
             document["Tags"] = client.list_tags_for_resource(
                 ResourceType=SSM_DOCUMENT_RESOURCE_TYPE,
-                ResourceId=name,
+                ResourceId=document_name,
                 aws_retry=True,
             ).get("TagList", [])
+        except is_boto3_error_code("InvalidResourceId"):
+            continue
         except Exception as e:
             module.fail_json_aws(
                 e,
-                msg=f"Unable to list tags for AWS Systems Manager document {name}",
+                msg=(
+                    "Unable to list tags for AWS Systems Manager document "
+                    f"{document_name}"
+                ),
             )
 
         documents.append(

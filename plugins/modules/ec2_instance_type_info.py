@@ -11,7 +11,7 @@ description:
   - This module maps to the EC2 C(DescribeInstanceTypes) API, the API behind
     C(aws ec2 describe-instance-types).
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   filters:
     description:
@@ -88,11 +88,14 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
+    filters = module.params["filters"]
+    instance_types = module.params["instance_types"]
+
     request = {}
-    if module.params["instance_types"]:
-        request["InstanceTypes"] = module.params["instance_types"]
-    if module.params["filters"]:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+    if instance_types:
+        request["InstanceTypes"] = instance_types
+    if filters:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
     try:
         instance_types = paginated_query_with_retries(

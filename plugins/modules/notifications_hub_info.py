@@ -8,8 +8,9 @@ module: notifications_hub_info
 short_description: Gather information about aws notifications hubs
 description:
   - Gathers information about AWS Notifications hubs.
+  - The module always uses the C(us-east-1) AWS Notifications endpoint.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -56,7 +57,7 @@ def main():
         get_boto3_client_method_parameters(client, "list_notification_hubs")
     except Exception:
         module.fail_json(
-            msg="Installed botocore does not support AWS Notifications ListNotificationHubs"
+            msg="Installed botocore does not support Notifications list_notification_hubs"
         )
 
     try:

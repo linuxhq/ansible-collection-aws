@@ -10,11 +10,13 @@ description:
   - Gathers information about AWS Simple Notification Service SMS attributes.
   - This module maps to the SNS C(GetSMSAttributes) API.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   attributes:
     description:
       - A list of SMS attribute names for which values should be returned.
+      - Attribute names use the SNS API format, for example
+        C(DefaultSMSType).
       - If not supplied, all SMS attributes are returned.
     elements: str
     type: list
@@ -39,6 +41,8 @@ RETURN = r"""
 attributes:
   description:
     - The AWS Simple Notification Service SMS attributes.
+    - Attribute names are returned in snake case, for example
+      C(default_sms_type).
   returned: always
   type: dict
 """
@@ -58,12 +62,13 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
 
-    parameters = {}
-    if module.params["attributes"] is not None:
-        parameters["attributes"] = module.params["attributes"]
+    attributes = module.params["attributes"]
+    request = {}
+    if attributes:
+        request["attributes"] = attributes
 
     try:
-        response = client.get_sms_attributes(**parameters, aws_retry=True)
+        response = client.get_sms_attributes(**request, aws_retry=True)
     except Exception as e:
         module.fail_json_aws(
             e, msg="Unable to get AWS Simple Notification Service SMS attributes"

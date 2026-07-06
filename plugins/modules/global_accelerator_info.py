@@ -11,12 +11,13 @@ description:
     optionally their listeners and endpoint groups.
   - The Global Accelerator control plane uses the C(us-west-2) region.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   arn:
     description:
       - ARN of the accelerator to gather information about.
       - When omitted, all accelerators are returned.
+      - An accelerator that does not exist results in an empty list.
     aliases:
       - accelerator_arn
     type: str
@@ -207,6 +208,8 @@ def main():
                 "list_listeners",
                 AcceleratorArn=accelerator_arn,
             ).get("Listeners", [])
+        except is_boto3_error_code("AcceleratorNotFoundException"):
+            listeners = []
         except Exception as e:
             module.fail_json_aws(
                 e,
@@ -230,6 +233,8 @@ def main():
                     "list_endpoint_groups",
                     ListenerArn=listener_arn,
                 ).get("EndpointGroups", [])
+            except is_boto3_error_code("ListenerNotFoundException"):
+                listener["EndpointGroups"] = []
             except Exception as e:
                 module.fail_json_aws(
                     e,

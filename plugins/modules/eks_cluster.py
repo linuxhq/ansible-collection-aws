@@ -10,7 +10,7 @@ description:
   - Creates, updates, and deletes AWS EKS clusters.
   - Supports modern EKS cluster settings exposed by the EKS API.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   access_config:
     default:
@@ -63,6 +63,7 @@ options:
     description:
       - The cluster encryption configuration.
       - This setting is only used when creating a cluster.
+      - An empty list is treated the same as omitting this option.
     elements: dict
     suboptions:
       provider:
@@ -108,6 +109,9 @@ options:
   logging:
     description:
       - The cluster control plane logging configuration.
+      - The configuration is compared against the current cluster by its
+        effective set of enabled log types, so entry grouping does not affect
+        idempotency.
     suboptions:
       cluster_logging:
         description:
@@ -117,11 +121,13 @@ options:
           enabled:
             description:
               - Whether the log types are enabled.
+            required: true
             type: bool
           types:
             description:
               - The log types in this entry.
             elements: str
+            required: true
             type: list
         type: list
     type: dict
@@ -165,6 +171,7 @@ options:
       subnet_ids:
         description:
           - Subnet IDs for the cluster.
+          - Required when creating a cluster.
         elements: str
         type: list
     type: dict
@@ -217,6 +224,8 @@ options:
   version:
     description:
       - Kubernetes version.
+      - Quote the version in playbooks so YAML does not parse values such as
+        V(1.30) as the float C(1.3).
     type: str
   wait:
     default: true
@@ -227,11 +236,13 @@ options:
     default: 15
     description:
       - The delay in seconds between update polling attempts when O(wait=true).
+      - This must be 1 or greater.
     type: int
   wait_timeout:
     default: 1200
     description:
       - The maximum number of seconds to wait.
+      - This must be 1 or greater.
     type: int
   zonal_shift_config:
     description:
@@ -401,11 +412,24 @@ def changed_request(current, desired):
         request = {}
         for key, value in desired.items():
             subrequest = changed_request(current.get(key), value)
+
             if subrequest is not None:
                 request[key] = subrequest
         return request or None
     if changed(current, desired):
         return desired
+
+
+def enabled_log_types(logging_config):
+    enabled_types = set()
+    for entry in (logging_config or {}).get("clusterLogging") or []:
+        if not entry.get("enabled"):
+            continue
+
+        for log_type in entry.get("types") or []:
+            enabled_types.add(log_type)
+
+    return enabled_types
 
 
 def describe_cluster(client, module):
@@ -438,7 +462,7 @@ def wait_for_cluster(client, module, waiter_name):
 
 def wait_for_update(client, module, update_id):
     name = module.params["name"]
-    wait_delay = max(1, module.params["wait_delay"])
+    wait_delay = module.params["wait_delay"]
     deadline = time.time() + module.params["wait_timeout"]
     last_update = {}
     while time.time() < deadline:
@@ -484,7 +508,13 @@ def desired_cluster(module):
     desired = {}
     for field in CREATE_FIELDS:
         desired[field] = module.params[field]
-    return scrub_none_parameters(desired)
+
+    desired = scrub_none_parameters(desired)
+
+    if desired.get("encryption_config") == []:
+        del desired["encryption_config"]
+
+    return desired
 
 
 def check_mode_cluster(module, current):
@@ -503,32 +533,31 @@ def exit_result(module, changed, cluster, state):
         cluster or {}, transform_tags=False, force_tags=False
     )
 
-    result = {
-        "changed": changed,
-        "cluster": normalized_cluster,
-        "name": module.params["name"],
-        "state": state,
-    }
-    result.update(normalized_cluster)
-    module.exit_json(**result)
+    module.exit_json(
+        changed=changed,
+        cluster=normalized_cluster,
+        name=module.params["name"],
+        state=state,
+    )
 
 
 def ensure_present(client, module):
     name = module.params["name"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
     version = module.params["version"]
     wait = module.params["wait"]
     current = describe_cluster(client, module)
     desired = desired_cluster(module)
-    create_request = dict(desired, name=name)
-    if tags is not None:
-        create_request["tags"] = tags
-    create_request = scrub_none_parameters(
-        snake_dict_to_camel_dict(create_request, capitalize_first=False)
-    )
 
     if current is None:
+        create_request = dict(desired, name=name)
+        if tags is not None:
+            create_request["tags"] = tags
+
+        create_request = scrub_none_parameters(
+            snake_dict_to_camel_dict(create_request, capitalize_first=False)
+        )
+
         if create_request.get("roleArn") is None:
             module.fail_json(msg="role_arn is required to create an EKS cluster")
         if not (create_request.get("resourcesVpcConfig") or {}).get("subnetIds"):
@@ -582,6 +611,7 @@ def ensure_present(client, module):
             config_request[field] = desired[field]
 
     access_config = config_request.get("access_config")
+
     if access_config is not None:
         access_config = {
             "authentication_mode": access_config.get("authentication_mode"),
@@ -600,7 +630,13 @@ def ensure_present(client, module):
     for field, value in config_request.items():
         field_request = {field: value}
         update_request = changed_request(current, field_request)
+
         if update_request is None:
+            continue
+
+        if field == "logging" and enabled_log_types(
+            update_request.get("logging")
+        ) == enabled_log_types(current.get("logging")):
             continue
 
         if field == "resourcesVpcConfig":
@@ -631,7 +667,7 @@ def ensure_present(client, module):
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
             current.get("tags") or {},
             tags,
-            purge_tags=purge_tags,
+            purge_tags=module.params["purge_tags"],
         )
 
     tags_changed = bool(tags_to_set or tag_keys_to_unset)
@@ -800,8 +836,12 @@ def main():
                 "cluster_logging": {
                     "elements": "dict",
                     "options": {
-                        "enabled": {"type": "bool"},
-                        "types": {"elements": "str", "type": "list"},
+                        "enabled": {"required": True, "type": "bool"},
+                        "types": {
+                            "elements": "str",
+                            "required": True,
+                            "type": "list",
+                        },
                     },
                     "type": "list",
                 },
@@ -865,11 +905,18 @@ def main():
         argument_spec=argument_spec,
         supports_check_mode=True,
     )
+
+    if module.params["wait"]:
+        if module.params["wait_delay"] < 1:
+            module.fail_json(msg="wait_delay must be 1 or greater")
+
+        if module.params["wait_timeout"] < 1:
+            module.fail_json(msg="wait_timeout must be 1 or greater")
+
     client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
     desired = desired_cluster(module)
     method_names = {"describe_cluster"}
 
@@ -885,7 +932,7 @@ def main():
             method_names.add("update_cluster_version")
         if tags is not None:
             method_names.add("tag_resource")
-            if purge_tags:
+            if module.params["purge_tags"]:
                 method_names.add("untag_resource")
     elif state == "absent":
         method_names.add("delete_cluster")

@@ -9,12 +9,15 @@ short_description: Manage aws simple notification service topics
 description:
   - Manages selected AWS Simple Notification Service topic attributes.
   - Supports managing the topic KMS master key attribute.
+  - Without any attribute options the module only reports the current
+    attributes.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   kms_master_key_id:
     description:
       - The AWS KMS key identifier to use for topic encryption.
+      - Set to an empty string V("") to disable server-side encryption.
     type: str
   topic_arn:
     description:
@@ -38,6 +41,8 @@ RETURN = r"""
 attributes:
   description:
     - The current AWS Simple Notification Service topic attributes after module execution.
+    - Attribute names are returned in snake case, for example
+      C(kms_master_key_id).
   returned: always
   type: dict
 topic_arn:
@@ -107,6 +112,7 @@ def main():
     desired_parameters = {}
     for attribute in MANAGED_ATTRIBUTES:
         module_value = module.params[attribute]
+
         if module_value is None:
             continue
 
@@ -144,7 +150,7 @@ def main():
     )
     current = {}
     for attribute in desired_parameters:
-        current[attribute] = current_normalized.get(attribute)
+        current[attribute] = current_normalized.get(attribute) or ""
 
     changed = current != desired_parameters
 

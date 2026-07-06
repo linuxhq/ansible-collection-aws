@@ -10,7 +10,7 @@ description:
   - Sends an AWS Systems Manager Run Command request.
   - Optionally waits for command invocations to complete.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   comment:
     description:
@@ -25,6 +25,7 @@ options:
     description:
       - A list of instance IDs to target directly.
       - At least one of O(instance_ids) or O(targets) is required.
+      - Mutually exclusive with O(targets).
     elements: str
     type: list
   max_concurrency:
@@ -46,6 +47,7 @@ options:
       - Target keys may be provided in snake_case or AWS native PascalCase.
       - Each target requires a target key and values.
       - At least one of O(instance_ids) or O(targets) is required.
+      - Mutually exclusive with O(instance_ids).
     elements: dict
     suboptions:
       key:
@@ -63,20 +65,25 @@ options:
   timeout_seconds:
     description:
       - The timeout in seconds for the command execution.
+      - This must be between 30 and 2592000.
     type: int
   wait:
     description:
       - Whether to wait for command invocations to complete.
+      - When O(wait=true), the module fails unless every invocation succeeds,
+        regardless of O(max_errors).
     default: false
     type: bool
   wait_delay:
     description:
       - The delay between polling attempts when O(wait=true).
+      - This must be 1 or greater.
     default: 5
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait when O(wait=true).
+      - This must be 1 or greater.
     default: 600
     type: int
 extends_documentation_fragment:
@@ -139,7 +146,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 SUCCESS_STATUSES = {"Success"}
-TERMINAL_STATUSES = {"Cancelled", "Cancelling", "Failed", "Success", "TimedOut"}
+TERMINAL_STATUSES = {"Cancelled", "Failed", "Success", "TimedOut"}
 SEND_COMMAND_OPTIONS = [
     "comment",
     "instance_ids",
@@ -185,9 +192,18 @@ def main():
 
     module = AnsibleAWSModule(
         argument_spec=argument_spec,
+        mutually_exclusive=[["instance_ids", "targets"]],
         required_one_of=[["instance_ids", "targets"]],
         supports_check_mode=True,
     )
+
+    if module.params["wait"]:
+        if module.params["wait_delay"] < 1:
+            module.fail_json(msg="wait_delay must be 1 or greater")
+
+        if module.params["wait_timeout"] < 1:
+            module.fail_json(msg="wait_timeout must be 1 or greater")
+
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
     document_name = module.params["document_name"]
     parameters = module.params["parameters"]
@@ -270,7 +286,7 @@ def main():
 
     if wait:
         command_id = command.get("CommandId")
-        wait_delay = max(1, module.params["wait_delay"])
+        wait_delay = module.params["wait_delay"]
         deadline = time.monotonic() + module.params["wait_timeout"]
 
         while time.monotonic() < deadline:
@@ -301,16 +317,19 @@ def main():
                 )
 
             command = commands[0]
-            statuses = set()
-            for invocation in invocations:
-                invocation_status = invocation.get("Status")
-                if invocation_status:
-                    statuses.add(invocation_status)
-
+            statuses = {
+                invocation.get("Status")
+                for invocation in invocations
+                if invocation.get("Status")
+            }
             command_status = command.get("Status")
 
             if command_status in TERMINAL_STATUSES and not invocations:
                 if command_status in SUCCESS_STATUSES:
+                    module.warn(
+                        f"AWS Systems Manager command {command_id} completed "
+                        "without invocations; no targets matched"
+                    )
                     break
 
                 module.fail_json(
@@ -324,7 +343,12 @@ def main():
                     status=command_status,
                 )
 
-            if invocations and statuses and statuses.issubset(TERMINAL_STATUSES):
+            if (
+                command_status in TERMINAL_STATUSES
+                and invocations
+                and statuses
+                and statuses.issubset(TERMINAL_STATUSES)
+            ):
                 if statuses.issubset(SUCCESS_STATUSES):
                     break
 
@@ -345,7 +369,12 @@ def main():
         else:
             module.fail_json(
                 msg=f"Timed out waiting for AWS Systems Manager command {command_id}",
+                command=normalize_command(command),
                 command_id=command_id,
+                command_invocations=boto3_resource_list_to_ansible_dict(
+                    invocations, transform_tags=False, force_tags=False
+                ),
+                status=command.get("Status"),
             )
 
         result["command"] = normalize_command(command)

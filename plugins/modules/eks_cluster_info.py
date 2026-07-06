@@ -9,7 +9,7 @@ short_description: Gather information about aws eks clusters
 description:
   - Gathers information about AWS EKS clusters.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   filters:
     description:
@@ -20,6 +20,8 @@ options:
       - Dotted keys can be used for nested values such as
         C(resources_vpc_config.endpoint_private_access).
       - C(tag:Name) can be used to filter by cluster tag.
+      - String filter values support shell-style wildcards such as
+        C(molecule-*).
     type: dict
   include:
     description:
@@ -102,12 +104,16 @@ def main():
     )
     client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())
 
-    if module.params["name"]:
-        cluster_names = [module.params["name"]]
+    filters = module.params["filters"]
+    include = module.params["include"]
+    name = module.params["name"]
+
+    if name:
+        cluster_names = [name]
     else:
         request = {}
-        if module.params["include"] is not None:
-            request["include"] = module.params["include"]
+        if include:
+            request["include"] = include
 
         try:
             cluster_names = paginated_query_with_retries(
@@ -136,11 +142,11 @@ def main():
         clusters, transform_tags=False, force_tags=False
     )
 
-    if module.params["filters"]:
+    if filters:
         filtered_clusters = []
         for cluster in clusters:
             matches = True
-            for key, expected in module.params["filters"].items():
+            for key, expected in filters.items():
                 if isinstance(expected, (list, tuple, set)):
                     expected_values = list(expected)
                 else:

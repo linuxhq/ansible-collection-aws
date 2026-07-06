@@ -9,7 +9,7 @@ short_description: Gather information about aws route53 resolver rules
 description:
   - Gathers information about AWS Route53 Resolver rules.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   filters:
     description:
@@ -36,6 +36,8 @@ RETURN = r"""
 resolver_rules:
   description:
     - The Route53 Resolver rules.
+    - Each rule includes C(associations), C(tags), and C(vpc_ids) gathered
+      by the module.
   returned: always
   type: list
   elements: dict
@@ -64,35 +66,37 @@ def main():
     client = module.client(
         "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
     )
+    filters = module.params["filters"]
     request = {}
-    if module.params["filters"]:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+    if filters:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
     try:
         resolver_rules = paginated_query_with_retries(
             client, "list_resolver_rules", **request
         ).get("ResolverRules", [])
+    except Exception as e:
+        module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver rules")
 
-        if not module.params["filters"]:
-            associations = paginated_query_with_retries(
-                client, "list_resolver_rule_associations"
-            ).get("ResolverRuleAssociations", [])
-        elif not resolver_rules:
-            associations = []
-        else:
-            resolver_rule_ids = []
-            for rule in resolver_rules:
-                resolver_rule_ids.append(rule["Id"])
+    if filters and not resolver_rules:
+        associations = []
+    else:
+        association_request = {}
+        if filters:
+            association_request["Filters"] = ansible_dict_to_boto3_filter_list(
+                {"ResolverRuleId": [rule["Id"] for rule in resolver_rules]}
+            )
 
+        try:
             associations = paginated_query_with_retries(
                 client,
                 "list_resolver_rule_associations",
-                Filters=ansible_dict_to_boto3_filter_list(
-                    {"ResolverRuleId": resolver_rule_ids}
-                ),
+                **association_request,
             ).get("ResolverRuleAssociations", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver rules")
+        except Exception as e:
+            module.fail_json_aws(
+                e, msg="Unable to list AWS Route53 Resolver rule associations"
+            )
 
     associations_by_rule_id = {}
     for association in associations:
@@ -112,6 +116,8 @@ def main():
                 ).get("Tags", [])
             except is_boto3_error_code("InvalidRequestException"):
                 tags = []
+            except is_boto3_error_code("ResourceNotFoundException"):
+                continue
             except Exception as e:
                 module.fail_json_aws(
                     e,
@@ -130,11 +136,11 @@ def main():
             force_tags=False,
         )
 
-        normalized_rule["vpc_ids"] = []
-
-        for association in normalized_rule["associations"]:
-            if association.get("vpc_id") is not None:
-                normalized_rule["vpc_ids"].append(association["vpc_id"])
+        normalized_rule["vpc_ids"] = [
+            association["vpc_id"]
+            for association in normalized_rule["associations"]
+            if association.get("vpc_id") is not None
+        ]
         normalized_rules.append(normalized_rule)
 
     module.exit_json(

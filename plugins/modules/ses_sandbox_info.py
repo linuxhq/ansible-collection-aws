@@ -9,7 +9,7 @@ short_description: Gather information about aws simple email service account det
 description:
   - Gathers information about AWS Simple Email Service account details.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -47,6 +47,7 @@ def main():
             e, msg="Unable to get AWS Simple Email Service account details"
         )
 
+    account.pop("ResponseMetadata", None)
     module.exit_json(
         changed=False,
         account=boto3_resource_to_ansible_dict(
