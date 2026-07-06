@@ -11,7 +11,7 @@ description:
   - This module maps to the Pinpoint SMS Voice V2 C(DescribePhoneNumbers) API,
     the API behind C(aws pinpoint-sms-voice-v2 describe-phone-numbers).
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   filters:
     description:
@@ -22,6 +22,7 @@ options:
   max_results:
     description:
       - The maximum number of results returned by each API call.
+      - This must be between 1 and 100.
       - The module follows pagination and returns all matching phone numbers.
     type: int
   owner:
@@ -104,19 +105,27 @@ def main():
         mutually_exclusive=[["owner", "phone_number_ids"]],
         supports_check_mode=True,
     )
+    filters = module.params["filters"]
+    max_results = module.params["max_results"]
+    owner = module.params["owner"]
+    phone_number_ids = module.params["phone_number_ids"]
+
+    if max_results is not None and not 1 <= max_results <= 100:
+        module.fail_json(msg="max_results must be between 1 and 100")
+
     client = module.client(
         "pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff()
     )
 
     request = {}
-    if module.params["max_results"] is not None:
-        request["MaxResults"] = module.params["max_results"]
-    if module.params["phone_number_ids"]:
-        request["PhoneNumberIds"] = module.params["phone_number_ids"]
-    elif module.params["owner"] is not None:
-        request["Owner"] = module.params["owner"]
-    if module.params["filters"]:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+    if max_results is not None:
+        request["MaxResults"] = max_results
+    if phone_number_ids:
+        request["PhoneNumberIds"] = phone_number_ids
+    elif owner is not None:
+        request["Owner"] = owner
+    if filters:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
     try:
         supported_parameters = set(
@@ -126,7 +135,7 @@ def main():
         module.fail_json(
             msg=(
                 "Installed botocore does not support Pinpoint SMS Voice V2 "
-                "DescribePhoneNumbers"
+                "describe_phone_numbers"
             )
         )
 
@@ -136,7 +145,7 @@ def main():
         module.fail_json(
             msg=(
                 "Installed botocore does not support Pinpoint SMS Voice V2 "
-                "DescribePhoneNumbers parameter(s): "
+                "describe_phone_numbers parameter(s): "
                 f"{', '.join(unsupported_parameters)}"
             )
         )
@@ -164,7 +173,7 @@ def main():
                     aws_retry=True,
                 ).get("Tags", [])
             except is_boto3_error_code("ResourceNotFoundException"):
-                tags = []
+                continue
             except Exception as e:
                 module.fail_json_aws(
                     e,
@@ -182,14 +191,16 @@ def main():
             )
         )
 
-    phone_number_ids = []
+    matching_phone_number_ids = []
     for phone_number in normalized_phone_numbers:
-        if phone_number.get("phone_number_id"):
-            phone_number_ids.append(phone_number["phone_number_id"])
+        phone_number_id = phone_number.get("phone_number_id")
+
+        if phone_number_id:
+            matching_phone_number_ids.append(phone_number_id)
 
     module.exit_json(
         changed=False,
-        phone_number_ids=phone_number_ids,
+        phone_number_ids=matching_phone_number_ids,
         phone_numbers=normalized_phone_numbers,
     )
 

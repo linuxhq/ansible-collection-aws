@@ -10,7 +10,7 @@ description:
   - Enables or disables the opt-in status of an AWS account region.
   - Compares the desired state against the current region opt-in status fetched by name.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   name:
     description:
@@ -34,11 +34,13 @@ options:
   wait_delay:
     description:
       - Delay in seconds between status checks when O(wait=true).
+      - This must be 1 or greater.
     default: 30
     type: int
   wait_timeout:
     description:
       - Maximum number of seconds to wait when O(wait=true).
+      - This must be 1 or greater.
     default: 1800
     type: int
 extends_documentation_fragment:
@@ -64,12 +66,12 @@ name:
   description: The AWS region name that was managed.
   returned: always
   type: str
-region_opt_status:
-  description: The current AWS region opt-in status.
-  returned: always
-  type: str
 previous_region_opt_status:
   description: The AWS region opt-in status before any change was requested.
+  returned: always
+  type: str
+region_opt_status:
+  description: The current AWS region opt-in status.
   returned: always
   type: str
 """
@@ -79,9 +81,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
     BaseWaiterFactory,
     custom_waiter_config,
@@ -177,30 +176,19 @@ class AccountRegionWaiterFactory(BaseWaiterFactory):
         return ACCOUNT_REGION_WAITER_MODEL_DATA
 
 
-def get_region(client, module):
+def get_region_opt_status(client, module):
     region_name = module.params["name"]
 
     try:
         return client.get_region_opt_status(
             RegionName=region_name,
             aws_retry=True,
-        )
+        ).get("RegionOptStatus")
     except Exception as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to get AWS account region opt-in status for {region_name}",
         )
-
-
-def normalize_region(region):
-    if "RegionName" in region or "RegionOptStatus" in region:
-        return boto3_resource_to_ansible_dict(
-            region,
-            transform_tags=False,
-            force_tags=False,
-        )
-
-    return region
 
 
 def wait_for_status(client, module, waiter_name, statuses):
@@ -212,7 +200,7 @@ def wait_for_status(client, module, waiter_name, statuses):
             RegionName=region_name,
             WaiterConfig=custom_waiter_config(
                 module.params["wait_timeout"],
-                default_pause=max(1, module.params["wait_delay"]),
+                default_pause=module.params["wait_delay"],
             ),
         )
     except Exception as e:
@@ -224,26 +212,22 @@ def wait_for_status(client, module, waiter_name, statuses):
             ),
         )
 
-    return get_region(client, module)
+    return get_region_opt_status(client, module)
 
 
-def exit_region(module, previous_region, current_region, changed):
-    previous_region = normalize_region(previous_region)
-    current_region = normalize_region(current_region)
-
+def exit_region(module, previous_status, current_status, changed):
     module.exit_json(
         changed=changed,
         name=module.params["name"],
-        previous_region_opt_status=previous_region.get("region_opt_status"),
-        region_opt_status=current_region.get("region_opt_status"),
+        previous_region_opt_status=previous_status,
+        region_opt_status=current_status,
     )
 
 
 def ensure_present(client, module):
     region_name = module.params["name"]
-    previous_region = get_region(client, module)
+    previous_status = get_region_opt_status(client, module)
 
-    previous_status = normalize_region(previous_region).get("region_opt_status")
     changed = previous_status not in PRESENT_STATUSES
 
     if changed and not module.check_mode:
@@ -259,34 +243,29 @@ def ensure_present(client, module):
             )
 
     if changed and module.check_mode:
-        current_region = {
-            "region_name": region_name,
-            "region_opt_status": "ENABLED",
-        }
+        current_status = "ENABLED"
     elif (
         module.params["wait"]
         and not module.check_mode
         and (changed or previous_status not in PRESENT_STEADY_STATUSES)
     ):
-        current_region = wait_for_status(
+        current_status = wait_for_status(
             client,
             module,
             "region_enabled",
             PRESENT_STEADY_STATUSES,
         )
     elif changed:
-        current_region = get_region(client, module)
+        current_status = get_region_opt_status(client, module)
     else:
-        current_region = previous_region
+        current_status = previous_status
 
-    exit_region(module, previous_region, current_region, changed)
+    exit_region(module, previous_status, current_status, changed)
 
 
 def ensure_absent(client, module):
     region_name = module.params["name"]
-    previous_region = get_region(client, module)
-
-    previous_status = normalize_region(previous_region).get("region_opt_status")
+    previous_status = get_region_opt_status(client, module)
 
     if previous_status == "ENABLED_BY_DEFAULT":
         module.fail_json(
@@ -311,27 +290,24 @@ def ensure_absent(client, module):
             )
 
     if changed and module.check_mode:
-        current_region = {
-            "region_name": region_name,
-            "region_opt_status": "DISABLED",
-        }
+        current_status = "DISABLED"
     elif (
         module.params["wait"]
         and not module.check_mode
         and (changed or previous_status not in ABSENT_STEADY_STATUSES)
     ):
-        current_region = wait_for_status(
+        current_status = wait_for_status(
             client,
             module,
             "region_disabled",
             ABSENT_STEADY_STATUSES,
         )
     elif changed:
-        current_region = get_region(client, module)
+        current_status = get_region_opt_status(client, module)
     else:
-        current_region = previous_region
+        current_status = previous_status
 
-    exit_region(module, previous_region, current_region, changed)
+    exit_region(module, previous_status, current_status, changed)
 
 
 def main():
@@ -348,9 +324,26 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
+
+    if module.params["wait"]:
+        if module.params["wait_delay"] < 1:
+            module.fail_json(msg="wait_delay must be 1 or greater")
+
+        if module.params["wait_timeout"] < 1:
+            module.fail_json(msg="wait_timeout must be 1 or greater")
+
     client = module.client("account", retry_decorator=AWSRetry.jittered_backoff())
 
-    for method_name in ("get_region_opt_status", "enable_region", "disable_region"):
+    state = module.params["state"]
+    method_names = ["get_region_opt_status"]
+    if state == "present":
+        method_names.append("enable_region")
+    elif state == "absent":
+        method_names.append("disable_region")
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
+
+    for method_name in method_names:
         try:
             get_boto3_client_method_parameters(client, method_name)
         except Exception:
@@ -358,7 +351,6 @@ def main():
                 msg=f"Installed botocore does not support AWS Account {method_name}"
             )
 
-    state = module.params["state"]
     if state == "present":
         ensure_present(client, module)
     elif state == "absent":

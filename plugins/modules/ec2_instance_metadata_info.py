@@ -9,7 +9,7 @@ short_description: Gather information about aws ec2 instance metadata defaults
 description:
   - Gathers EC2 account-level instance metadata defaults for a region.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -26,6 +26,7 @@ RETURN = r"""
 account_level:
   description:
     - The current account-level EC2 instance metadata defaults for the selected region.
+    - Options without an account-level default are omitted.
   returned: always
   type: dict
 region:
@@ -34,6 +35,9 @@ region:
   type: str
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -46,11 +50,27 @@ def main():
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     try:
+        get_boto3_client_method_parameters(client, "get_instance_metadata_defaults")
+    except Exception:
+        module.fail_json(
+            msg=(
+                "Installed botocore does not support EC2 "
+                "get_instance_metadata_defaults"
+            )
+        )
+
+    try:
         account_level = client.get_instance_metadata_defaults(aws_retry=True).get(
             "AccountLevel", {}
         )
     except Exception as e:
-        module.fail_json_aws(e, msg="Unable to get EC2 instance metadata defaults")
+        module.fail_json_aws(
+            e,
+            msg=(
+                "Unable to get EC2 instance metadata defaults in region "
+                f"{module.region}"
+            ),
+        )
 
     module.exit_json(
         changed=False,

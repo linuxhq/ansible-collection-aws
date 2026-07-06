@@ -9,7 +9,7 @@ short_description: Gather information about aws placement groups
 description:
   - Gathers information about EC2 placement groups.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   filters:
     description:
@@ -73,13 +73,18 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
+
+    filters = module.params["filters"]
+    group_ids = module.params["group_ids"]
+    group_names = module.params["group_names"]
+
     request = {}
-    if module.params["group_ids"]:
-        request["GroupIds"] = module.params["group_ids"]
-    if module.params["group_names"]:
-        request["GroupNames"] = module.params["group_names"]
-    if module.params["filters"]:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+    if group_ids:
+        request["GroupIds"] = group_ids
+    if group_names:
+        request["GroupNames"] = group_names
+    if filters:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
     try:
         placement_groups = client.describe_placement_groups(
@@ -92,7 +97,7 @@ def main():
     module.exit_json(
         changed=False,
         placement_groups=boto3_resource_list_to_ansible_dict(
-            placement_groups, transform_tags=False, force_tags=False
+            placement_groups, transform_tags=True, force_tags=False
         ),
     )
 

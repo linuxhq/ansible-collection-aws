@@ -7,9 +7,10 @@ DOCUMENTATION = r"""
 module: rds_subnet_group_info
 short_description: Gather information about aws rds subnet groups
 description:
-  - Gathers AWS Relational Database Service subnet groups.
+  - Gathers information about AWS Relational Database Service (RDS) DB subnet
+    groups.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   filters:
     description:
@@ -22,6 +23,7 @@ options:
       - RDS DB subnet group name used to limit the result set.
       - This value is passed to the RDS C(DescribeDBSubnetGroups) API
         as C(DBSubnetGroupName).
+      - A subnet group that does not exist results in an empty list.
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -40,7 +42,7 @@ EXAMPLES = r"""
 - name: Gather RDS subnet groups using filters
   linuxhq.aws.rds_subnet_group_info:
     filters:
-      vpc-id: vpc-0123456789abcdef0
+      db-subnet-group-name: molecule
 """
 
 RETURN = r"""
@@ -74,11 +76,13 @@ def main():
     )
     client = module.client("rds", retry_decorator=AWSRetry.jittered_backoff())
 
+    filters = module.params["filters"]
+    name = module.params["name"]
     request = {}
-    if module.params["name"]:
-        request["DBSubnetGroupName"] = module.params["name"]
-    if module.params["filters"]:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+    if name:
+        request["DBSubnetGroupName"] = name
+    if filters:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
     try:
         subnet_groups = paginated_query_with_retries(

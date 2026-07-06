@@ -9,7 +9,7 @@ short_description: Gather information about EC2 transit gateway route tables
 description:
   - Gathers information about AWS EC2 transit gateway route tables.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   filters:
     description:
@@ -86,13 +86,14 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
+    filters = module.params["filters"]
+    transit_gateway_route_table_ids = module.params["transit_gateway_route_table_ids"]
+
     request = {}
-    if module.params["transit_gateway_route_table_ids"]:
-        request["TransitGatewayRouteTableIds"] = module.params[
-            "transit_gateway_route_table_ids"
-        ]
-    if module.params["filters"]:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+    if transit_gateway_route_table_ids:
+        request["TransitGatewayRouteTableIds"] = transit_gateway_route_table_ids
+    if filters:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
     try:
         route_tables = paginated_query_with_retries(

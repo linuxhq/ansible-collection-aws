@@ -9,11 +9,13 @@ short_description: Manage aws route53 resolver rule associations
 description:
   - Manages AWS Route53 Resolver rule associations.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   name:
     description:
       - The resolver rule association name.
+      - Changing the name of an existing association disassociates and
+        reassociates the resolver rule.
     required: true
     type: str
   resolver_rule_id:
@@ -42,11 +44,13 @@ options:
   wait_delay:
     description:
       - The delay between polling attempts when O(wait=true).
+      - This must be 1 or greater.
     default: 5
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait when O(wait=true).
+      - This must be 1 or greater.
     default: 300
     type: int
 extends_documentation_fragment:
@@ -138,6 +142,12 @@ ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA = {
                 "expected": "DELETING",
                 "matcher": "path",
                 "state": "retry",
+            },
+            {
+                "argument": "ResolverRuleAssociation.Status",
+                "expected": "FAILED",
+                "matcher": "path",
+                "state": "failure",
             },
         ],
     },
@@ -263,7 +273,7 @@ def ensure_present(client, module):
                 msg=f"Unable to create AWS Route53 Resolver rule association {name}",
             )
 
-        if module.params["wait"]:
+        if association is not None and module.params["wait"]:
             resolver_rule_association_id = association.get("Id")
             association = wait_for_resolver_rule_association_status(
                 client,
@@ -272,7 +282,14 @@ def ensure_present(client, module):
                 {"complete"},
             )
     elif changed and module.check_mode:
-        association = desired_association
+        association = dict(association or {})
+        association.update(
+            {
+                "Name": name,
+                "ResolverRuleId": resolver_rule_id,
+                "VPCId": vpc_id,
+            }
+        )
 
     result = {
         "changed": changed,
@@ -284,6 +301,7 @@ def ensure_present(client, module):
     }
 
     resolver_rule_association_id = (association or {}).get("Id")
+
     if resolver_rule_association_id is not None:
         result["resolver_rule_association_id"] = resolver_rule_association_id
 
@@ -308,7 +326,7 @@ def wait_for_resolver_rule_association_status(
             ResolverRuleAssociationId=resolver_rule_association_id,
             WaiterConfig=custom_waiter_config(
                 module.params["wait_timeout"],
-                default_pause=max(1, module.params["wait_delay"]),
+                default_pause=module.params["wait_delay"],
             ),
         )
     except Exception as e:
@@ -384,11 +402,18 @@ def main():
         },
         supports_check_mode=True,
     )
+    state = module.params["state"]
+
+    if module.params["wait"]:
+        if module.params["wait_delay"] < 1:
+            module.fail_json(msg="wait_delay must be 1 or greater")
+
+        if module.params["wait_timeout"] < 1:
+            module.fail_json(msg="wait_timeout must be 1 or greater")
+
     client = module.client(
         "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
     )
-
-    state = module.params["state"]
     method_names = {"list_resolver_rule_associations"}
     if state == "present":
         method_names.update(

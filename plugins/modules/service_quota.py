@@ -10,8 +10,9 @@ description:
   - Requests AWS service quota increases.
   - Only submits a quota increase request when the desired value is greater than the current applied quota
     and there is no existing open or pending request for the same quota.
+  - Falls back to the AWS default quota when the quota has no applied value.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   quota_code:
     description:
@@ -26,6 +27,7 @@ options:
   value:
     description:
       - The desired quota value.
+      - This must be between 0 and 10000000000.
     required: true
     type: float
 extends_documentation_fragment:
@@ -37,16 +39,16 @@ extends_documentation_fragment:
 EXAMPLES = r"""
 - name: Request an EC2 quota increase
   linuxhq.aws.service_quota:
-    service_code: ec2
     quota_code: L-0263D0A3
+    service_code: ec2
     value: 10
 
 - name: Request an IAM quota increase in a specific region
   linuxhq.aws.service_quota:
-    service_code: iam
     quota_code: L-0DA4ABF3
-    value: 20
     region: us-east-1
+    service_code: iam
+    value: 20
 """
 
 RETURN = r"""
@@ -61,15 +63,15 @@ pending_requests:
   returned: always
   type: list
   elements: dict
+quota_code:
+  description: The managed quota code.
+  returned: always
+  type: str
 requested_quota:
   description:
     - The quota increase request that was submitted or would be submitted in check mode.
   returned: when changed
   type: dict
-quota_code:
-  description: The managed quota code.
-  returned: always
-  type: str
 service_code:
   description: The managed service code.
   returned: always
@@ -81,6 +83,7 @@ from ansible.module_utils.common.dict_transformations import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     get_boto3_client_method_parameters,
+    is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -100,11 +103,16 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
+
+    if not 0 <= module.params["value"] <= 10000000000:
+        module.fail_json(msg="value must be between 0 and 10000000000")
+
     client = module.client(
         "service-quotas", retry_decorator=AWSRetry.jittered_backoff()
     )
 
     method_names = {
+        "get_aws_default_service_quota",
         "get_service_quota",
         "list_requested_service_quota_change_history_by_quota",
         "request_service_quota_increase",
@@ -121,6 +129,7 @@ def main():
             )
 
     required_method_parameters = {
+        "get_aws_default_service_quota": {"QuotaCode", "ServiceCode"},
         "get_service_quota": {"QuotaCode", "ServiceCode"},
         "list_requested_service_quota_change_history_by_quota": {
             "MaxResults",
@@ -162,10 +171,23 @@ def main():
         current_quota = client.get_service_quota(**quota_request, aws_retry=True).get(
             "Quota", {}
         )
+    except is_boto3_error_code("NoSuchResourceException"):
+        try:
+            current_quota = client.get_aws_default_service_quota(
+                **quota_request, aws_retry=True
+            ).get("Quota", {})
+        except Exception as e:
+            module.fail_json_aws(
+                e,
+                msg=(
+                    "Unable to get AWS default service quota "
+                    f"{service_code}/{quota_code}"
+                ),
+            )
     except Exception as e:
         module.fail_json_aws(
             e,
-            msg=("Unable to get AWS service quota " f"{service_code}/{quota_code}"),
+            msg=f"Unable to get AWS service quota {service_code}/{quota_code}",
         )
 
     pending_requests = []
@@ -194,12 +216,18 @@ def main():
         force_tags=False,
     )
     current_value = current_quota_details.get("value")
+
+    if current_value is None:
+        module.fail_json(
+            msg=(
+                f"AWS service quota {service_code}/{quota_code} did not "
+                "return a value"
+            ),
+            current_quota=current_quota_details,
+        )
+
     has_pending_request = bool(pending_requests)
-    changed = (
-        not has_pending_request
-        and current_value is not None
-        and desired_value > current_value
-    )
+    changed = not has_pending_request and desired_value > current_value
 
     requested_quota = None
     if changed:
@@ -235,18 +263,20 @@ def main():
                     ),
                 )
 
-    module.exit_json(
-        changed=changed,
-        current_quota=current_quota_details,
-        pending_requests=boto3_resource_list_to_ansible_dict(
+    result = {
+        "changed": changed,
+        "current_quota": current_quota_details,
+        "pending_requests": boto3_resource_list_to_ansible_dict(
             pending_requests, transform_tags=False, force_tags=False
         ),
-        requested_quota=boto3_resource_to_ansible_dict(
+        "quota_code": quota_code,
+        "service_code": service_code,
+    }
+    if requested_quota is not None:
+        result["requested_quota"] = boto3_resource_to_ansible_dict(
             requested_quota, transform_tags=False, force_tags=False
-        ),
-        quota_code=quota_code,
-        service_code=service_code,
-    )
+        )
+    module.exit_json(**result)
 
 
 if __name__ == "__main__":

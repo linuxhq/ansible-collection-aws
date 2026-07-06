@@ -13,7 +13,7 @@ description:
   - The Pricing API endpoint is queried in C(us-east-1). Use filters such as
     C(regionCode) or C(location) for product-specific regional pricing data.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   filters:
     description:
@@ -53,6 +53,7 @@ options:
   max_results:
     description:
       - The maximum number of results returned by each C(GetProducts) API call.
+      - This must be between C(1) and C(100).
       - The module follows pagination and returns all matching products.
     type: int
   service_code:
@@ -111,6 +112,9 @@ format_version:
 products:
   description:
     - A list of parsed AWS Price List products.
+    - C(terms) is returned as provided by the Price List API, preserving
+      case-sensitive keys such as offer term codes, rate codes, and currency
+      codes.
   returned: always
   type: list
   elements: dict
@@ -129,7 +133,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_list_to_ansible_dict,
+    boto3_resource_to_ansible_dict,
     scrub_none_parameters,
 )
 
@@ -165,12 +169,20 @@ def main():
         supports_check_mode=True,
     )
 
-    if not module.params["filters"]:
+    filters = module.params["filters"]
+    format_version = module.params["format_version"]
+    max_results = module.params["max_results"]
+    service_code = module.params["service_code"]
+
+    if max_results is not None and not 1 <= max_results <= 100:
+        module.fail_json(msg="max_results must be between 1 and 100")
+
+    if not filters:
         module.exit_json(
             changed=False,
-            format_version=module.params["format_version"],
+            format_version=format_version,
             products=[],
-            service_code=module.params["service_code"],
+            service_code=service_code,
         )
 
     client = module.client(
@@ -181,22 +193,23 @@ def main():
 
     request = scrub_none_parameters(
         {
-            "FormatVersion": module.params["format_version"],
-            "MaxResults": module.params["max_results"],
-            "ServiceCode": module.params["service_code"],
+            "FormatVersion": format_version,
+            "MaxResults": max_results,
+            "ServiceCode": service_code,
         }
     )
 
-    filters = []
-    for pricing_filter in module.params["filters"]:
-        filters.append(
+    request_filters = []
+    for pricing_filter in filters:
+        request_filters.append(
             {
                 "Field": pricing_filter["field"],
                 "Type": pricing_filter["type"],
                 "Value": pricing_filter["value"],
             }
         )
-    request["Filters"] = filters
+
+    request["Filters"] = request_filters
 
     try:
         response = paginated_query_with_retries(
@@ -210,19 +223,26 @@ def main():
     products = []
     for product in response.get("PriceList", []):
         try:
-            products.append(json.loads(product))
+            parsed = json.loads(product)
         except ValueError as e:
             module.fail_json(msg=f"Unable to parse AWS Price List product: {e}")
 
-    module.exit_json(
-        changed=False,
-        format_version=response.get("FormatVersion", module.params["format_version"]),
-        products=boto3_resource_list_to_ansible_dict(
-            products,
+        normalized = boto3_resource_to_ansible_dict(
+            parsed,
             transform_tags=False,
             force_tags=False,
-        ),
-        service_code=module.params["service_code"],
+        )
+
+        if "terms" in normalized:
+            normalized["terms"] = parsed.get("terms")
+
+        products.append(normalized)
+
+    module.exit_json(
+        changed=False,
+        format_version=format_version,
+        products=products,
+        service_code=service_code,
     )
 
 

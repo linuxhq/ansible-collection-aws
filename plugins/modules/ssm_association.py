@@ -8,8 +8,13 @@ module: ssm_association
 short_description: Manage aws systems manager associations
 description:
   - Manages AWS Systems Manager associations.
+  - Manages the schedule expression, targets, and tags of an association
+    keyed by its document name.
+  - Updates replace the association definition; fields not managed by this
+    module, such as association parameters, are removed by the AWS
+    C(UpdateAssociation) API.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   name:
     description:
@@ -25,6 +30,7 @@ options:
   schedule_expression:
     description:
       - The cron or rate expression that defines the association schedule.
+      - This must be 1 to 256 characters.
       - This is required when O(state=present).
     type: str
   state:
@@ -42,6 +48,7 @@ options:
   targets:
     description:
       - The targets for the association.
+      - This must contain at most 5 targets.
       - This is required when O(state=present).
     elements: dict
     suboptions:
@@ -101,6 +108,8 @@ state:
   type: str
 """
 
+import json
+
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
@@ -124,6 +133,28 @@ SSM_ASSOCIATION_RESOURCE_TYPE = "Association"
 TARGET_DEFAULTS = {"values": []}
 
 
+def apply_tag_deltas(association, tags_to_set, tag_keys_to_unset):
+    updated = dict(association)
+    updated_tags = boto3_tag_list_to_ansible_dict(updated.get("Tags", []))
+
+    for tag_key in tag_keys_to_unset:
+        updated_tags.pop(tag_key, None)
+    updated_tags.update(tags_to_set)
+    updated["Tags"] = ansible_dict_to_boto3_tag_list(updated_tags)
+    return updated
+
+
+def comparable_targets(targets):
+    normalized = []
+    for target in targets or []:
+        item = dict(TARGET_DEFAULTS, **target)
+
+        if item.get("values"):
+            item["values"] = sorted(item["values"])
+        normalized.append(item)
+    return sorted(normalized, key=lambda item: json.dumps(item, sort_keys=True))
+
+
 def ensure_absent(client, module, current):
     name = module.params["name"]
     changed = current is not None
@@ -135,7 +166,7 @@ def ensure_absent(client, module, current):
         except Exception as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to delete AWS Systems Manager association " f"{name}"),
+                msg=f"Unable to delete AWS Systems Manager association {name}",
             )
 
     result = {
@@ -154,7 +185,7 @@ def ensure_present(client, module, current):
     name = module.params["name"]
     schedule_expression = module.params["schedule_expression"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
+    purge_tags = module.params["purge_tags"]
     if tags is not None:
         current = association_with_tags(client, module, current)
 
@@ -172,16 +203,11 @@ def ensure_present(client, module, current):
     if normalized_current:
         current_comparable = {
             "schedule_expression": normalized_current.get("schedule_expression"),
-            "targets": [
-                dict(TARGET_DEFAULTS, **target)
-                for target in normalized_current.get("targets", [])
-            ],
+            "targets": comparable_targets(normalized_current.get("targets")),
         }
     desired_comparable = {
         "schedule_expression": schedule_expression,
-        "targets": [
-            dict(TARGET_DEFAULTS, **target) for target in module.params["targets"]
-        ],
+        "targets": comparable_targets(module.params["targets"]),
     }
     aws_targets = desired_comparable["targets"]
     association_id = (current or {}).get("AssociationId")
@@ -227,7 +253,7 @@ def ensure_present(client, module, current):
             except Exception as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to create AWS Systems Manager association " f"{name}"),
+                    msg=f"Unable to create AWS Systems Manager association {name}",
                 )
 
     else:
@@ -251,11 +277,12 @@ def ensure_present(client, module, current):
             except Exception as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to update AWS Systems Manager association " f"{name}"),
+                    msg=f"Unable to update AWS Systems Manager association {name}",
                 )
 
         elif changed and module.check_mode:
-            association = desired
+            association = dict(current)
+            association.update(desired)
         else:
             association = current
 
@@ -267,8 +294,10 @@ def ensure_present(client, module, current):
             purge_tags=purge_tags,
         )
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
+
     if changed and not module.check_mode:
         association_id = association.get("AssociationId")
+
         if association_id and tags is not None:
             if resource_changed:
                 association = association_with_tags(client, module, association)
@@ -311,17 +340,9 @@ def ensure_present(client, module, current):
                         ),
                     )
 
-            association = dict(association)
-            association_tags = boto3_tag_list_to_ansible_dict(
-                association.get("Tags", [])
-            )
-            for tag_key in tag_keys_to_unset:
-                association_tags.pop(tag_key, None)
-
-            association_tags.update(tags_to_set)
-            association["Tags"] = ansible_dict_to_boto3_tag_list(association_tags)
+            association = apply_tag_deltas(association, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode and tags is not None:
-        association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+        association = apply_tag_deltas(association, tags_to_set, tag_keys_to_unset)
 
     result = {
         "changed": changed,
@@ -336,6 +357,7 @@ def ensure_present(client, module, current):
     }
 
     association_id = association.get("AssociationId")
+
     if association_id:
         result["association_id"] = association_id
 
@@ -344,6 +366,7 @@ def ensure_present(client, module, current):
 
 def association_with_tags(client, module, association):
     association_id = (association or {}).get("AssociationId")
+
     if not association_id:
         return association
 
@@ -395,12 +418,18 @@ def main():
         ],
         supports_check_mode=True,
     )
-    client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
-
     state = module.params["state"]
     name = module.params["name"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
+
+    if state == "present":
+        if not 1 <= len(module.params["schedule_expression"]) <= 256:
+            module.fail_json(msg="schedule_expression must be 1 to 256 characters")
+
+        if len(module.params["targets"]) > 5:
+            module.fail_json(msg="targets must contain at most 5 targets")
+
+    client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
     method_names = {"list_associations"}
     if state == "present":
         method_names.update(
@@ -413,7 +442,7 @@ def main():
             method_names.add("list_tags_for_resource")
             if tags:
                 method_names.add("add_tags_to_resource")
-            if purge_tags:
+            if module.params["purge_tags"]:
                 method_names.add("remove_tags_from_resource")
     elif state == "absent":
         method_names.add("delete_association")
@@ -470,16 +499,25 @@ def main():
     except Exception as e:
         module.fail_json_aws(
             e,
-            msg=("Unable to list AWS Systems Manager associations for " f"{name}"),
+            msg=f"Unable to list AWS Systems Manager associations for {name}",
         )
 
-    current = None
-    for association in associations:
-        if association.get("Name") != name:
-            continue
+    matches = [
+        association for association in associations if association.get("Name") == name
+    ]
 
-        current = association
-        break
+    if len(matches) > 1:
+        association_ids = sorted(
+            association.get("AssociationId", "") for association in matches
+        )
+        module.fail_json(
+            msg=(
+                "Multiple AWS Systems Manager associations exist for document "
+                f"{name}: {', '.join(association_ids)}"
+            )
+        )
+
+    current = matches[0] if matches else None
 
     if state == "present":
         ensure_present(client, module, current)

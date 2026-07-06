@@ -9,7 +9,7 @@ short_description: Gather information about aws ec2 flow logs
 description:
   - Gathers information about EC2 flow logs.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   filters:
     description:
@@ -87,13 +87,15 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    request = {}
-    if module.params["flow_log_ids"]:
-        request["FlowLogIds"] = module.params["flow_log_ids"]
+    flow_log_ids = module.params["flow_log_ids"]
+    resource_ids = module.params["resource_ids"]
     filters = dict(module.params["filters"] or {})
 
-    if module.params["resource_ids"]:
-        filters["resource-id"] = module.params["resource_ids"]
+    request = {}
+    if flow_log_ids:
+        request["FlowLogIds"] = flow_log_ids
+    if resource_ids:
+        filters["resource-id"] = resource_ids
     if filters:
         request["Filter"] = ansible_dict_to_boto3_filter_list(filters)
 

@@ -9,7 +9,7 @@ short_description: Gather information about aws route53 resolver endpoints
 description:
   - Gathers information about AWS Route53 Resolver endpoints.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   filters:
     description:
@@ -36,6 +36,8 @@ RETURN = r"""
 resolver_endpoints:
   description:
     - The Route53 Resolver endpoints.
+    - Each endpoint includes C(ip_addresses) and C(tags) gathered by the
+      module.
   returned: always
   type: list
   elements: dict
@@ -43,6 +45,7 @@ resolver_endpoints:
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     get_boto3_client_method_parameters,
+    is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -107,9 +110,10 @@ def main():
                 )
             )
 
+    filters = module.params["filters"]
     request = {}
-    if module.params["filters"]:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(module.params["filters"])
+    if filters:
+        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
     try:
         resolver_endpoints = paginated_query_with_retries(
@@ -126,6 +130,8 @@ def main():
                 "list_resolver_endpoint_ip_addresses",
                 ResolverEndpointId=endpoint["Id"],
             ).get("IpAddresses", [])
+        except is_boto3_error_code("ResourceNotFoundException"):
+            continue
         except Exception as e:
             module.fail_json_aws(
                 e,
@@ -143,6 +149,8 @@ def main():
                     "list_tags_for_resource",
                     ResourceArn=endpoint["Arn"],
                 ).get("Tags", [])
+            except is_boto3_error_code("ResourceNotFoundException"):
+                continue
             except Exception as e:
                 module.fail_json_aws(
                     e,

@@ -9,11 +9,12 @@ short_description: Gather information about aws simple queue service queues
 description:
   - Gathers information about AWS Simple Queue Service queues.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   name:
     description:
       - SQS queue name used to limit the result set.
+      - A queue that does not exist results in an empty list.
       - Mutually exclusive with O(queue_name_prefix).
     type: str
   queue_name_prefix:
@@ -49,6 +50,7 @@ RETURN = r"""
 queues:
   description:
     - A list of AWS Simple Queue Service queues.
+    - Each queue includes C(name) and C(queue_url) added by the module.
   returned: always
   type: list
   elements: dict
@@ -72,6 +74,8 @@ def get_queue(client, module, queue_url):
             QueueUrl=queue_url,
             aws_retry=True,
         ).get("Attributes", {})
+    except is_boto3_error_code("AWS.SimpleQueueService.NonExistentQueue"):
+        return None
     except Exception as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS SQS queue {queue_url}")
 
@@ -95,34 +99,35 @@ def main():
     module = AnsibleAWSModule(
         argument_spec=argument_spec,
         mutually_exclusive=[["name", "queue_name_prefix"]],
-        required_by={"queue_owner_aws_account_id": "name"},
+        required_by={"queue_owner_aws_account_id": ["name"]},
         supports_check_mode=True,
     )
     client = module.client("sqs", retry_decorator=AWSRetry.jittered_backoff())
+    name = module.params["name"]
+    queue_name_prefix = module.params["queue_name_prefix"]
+    queue_owner_aws_account_id = module.params["queue_owner_aws_account_id"]
 
-    if module.params["name"]:
+    if name:
+        request = {"QueueName": name}
+        if queue_owner_aws_account_id:
+            request["QueueOwnerAWSAccountId"] = queue_owner_aws_account_id
+
         try:
-            get_url_params = {"QueueName": module.params["name"]}
-            if module.params["queue_owner_aws_account_id"] is not None:
-                get_url_params["QueueOwnerAWSAccountId"] = module.params[
-                    "queue_owner_aws_account_id"
-                ]
             queue_url = client.get_queue_url(
-                **get_url_params,
+                **request,
                 aws_retry=True,
             ).get("QueueUrl")
         except is_boto3_error_code("AWS.SimpleQueueService.NonExistentQueue"):
             queue_url = None
         except Exception as e:
-            module.fail_json_aws(
-                e, msg=f"Unable to get AWS SQS queue URL for {module.params['name']}"
-            )
+            module.fail_json_aws(e, msg=f"Unable to get AWS SQS queue URL for {name}")
 
-        queues = [get_queue(client, module, queue_url)] if queue_url else []
+        queue = get_queue(client, module, queue_url) if queue_url else None
+        queues = [queue] if queue is not None else []
     else:
         request = {}
-        if module.params["queue_name_prefix"] is not None:
-            request["QueueNamePrefix"] = module.params["queue_name_prefix"]
+        if queue_name_prefix:
+            request["QueueNamePrefix"] = queue_name_prefix
 
         try:
             queue_urls = paginated_query_with_retries(
@@ -135,7 +140,10 @@ def main():
 
         queues = []
         for queue_url in queue_urls:
-            queues.append(get_queue(client, module, queue_url))
+            queue = get_queue(client, module, queue_url)
+
+            if queue is not None:
+                queues.append(queue)
 
     module.exit_json(
         changed=False,

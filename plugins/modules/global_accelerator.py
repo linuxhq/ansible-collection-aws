@@ -23,7 +23,7 @@ description:
     removed in dependency order.
   - The Global Accelerator control plane uses the C(us-west-2) region.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   arn:
     description:
@@ -268,11 +268,13 @@ options:
   wait_delay:
     description:
       - The delay between polling attempts when O(wait=true).
+      - This must be 1 or greater.
     default: 10
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait when O(wait=true).
+      - This must be 1 or greater.
     default: 600
     type: int
 extends_documentation_fragment:
@@ -465,7 +467,7 @@ def wait_for_accelerator(client, module, accelerator_arn, waiter_name):
             AcceleratorArn=accelerator_arn,
             WaiterConfig=custom_waiter_config(
                 module.params["wait_timeout"],
-                default_pause=max(1, module.params["wait_delay"]),
+                default_pause=module.params["wait_delay"],
             ),
         )
     except Exception as e:
@@ -549,6 +551,7 @@ def desired_listeners(module):
         }
 
         identity = listener_identity(desired)
+
         if identity in identities:
             module.fail_json(
                 msg=(
@@ -678,6 +681,7 @@ def endpoint_group_requires_update(current, desired):
 
     if desired["port_overrides"] is not None:
         current_overrides = normalized_port_overrides(current.get("port_overrides"))
+
         if normalized_port_overrides(desired["port_overrides"]) != current_overrides:
             return True
 
@@ -844,6 +848,7 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups):
     regions = set()
     for endpoint_group in endpoint_groups:
         region = endpoint_group["endpoint_group_region"]
+
         if region in regions:
             module.fail_json(
                 msg=("Duplicate endpoint group region " f"{region} in endpoint_groups")
@@ -854,6 +859,7 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups):
         endpoint_ids = set()
         for configuration in endpoint_group["endpoint_configurations"] or []:
             endpoint_id = configuration["endpoint_id"]
+
             if endpoint_id in endpoint_ids:
                 module.fail_json(
                     msg=(
@@ -876,6 +882,7 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups):
         region = desired["endpoint_group_region"]
 
         current = current_by_region.pop(region, None)
+
         if current is None:
             changed = True
             if module.check_mode or listener_arn is None:
@@ -1204,6 +1211,7 @@ def ensure_present(client, module):
 
     if created and not module.check_mode:
         token = module.params["idempotency_token"]
+
         if token is None:
             token_fields = {
                 "ip_address_type": desired["ip_address_type"],
@@ -1368,6 +1376,7 @@ def ensure_present(client, module):
         "state": "present",
     }
     accelerator_arn = result_accelerator.get("accelerator_arn")
+
     if accelerator_arn is not None:
         result["accelerator_arn"] = accelerator_arn
 
@@ -1478,6 +1487,13 @@ def main():
         required_one_of=[["arn", "name"]],
         supports_check_mode=True,
     )
+
+    if module.params["wait"]:
+        if module.params["wait_delay"] < 1:
+            module.fail_json(msg="wait_delay must be 1 or greater")
+
+        if module.params["wait_timeout"] < 1:
+            module.fail_json(msg="wait_timeout must be 1 or greater")
 
     for listener in module.params["listeners"] or []:
         if not listener["port_ranges"]:

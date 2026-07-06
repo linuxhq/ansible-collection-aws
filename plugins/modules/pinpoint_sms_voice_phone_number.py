@@ -8,10 +8,12 @@ module: pinpoint_sms_voice_phone_number
 short_description: Manage aws end user messaging sms phone numbers
 description:
   - Requests and releases AWS End User Messaging SMS origination phone numbers.
+  - An existing active phone number matching the requested attributes and tags
+    is adopted; otherwise a new phone number is requested.
   - This module maps to the Pinpoint SMS Voice V2 C(RequestPhoneNumber) API,
     the API behind C(aws pinpoint-sms-voice-v2 request-phone-number).
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   client_token:
     description:
@@ -26,12 +28,15 @@ options:
   international_sending_enabled:
     description:
       - Whether international sending is enabled for the phone number.
+      - This option is only used when requesting a new phone number; it is
+        not used when matching existing phone numbers.
       - This option requires AWS SDK support for the
         C(InternationalSendingEnabled) request parameter.
     type: bool
   iso_country_code:
     description:
       - The two-character ISO 3166-1 alpha-2 country or region code.
+      - This must be exactly two uppercase letters.
       - This is required when O(state=present).
     type: str
   message_type:
@@ -50,6 +55,7 @@ options:
       - VOICE
     description:
       - The capabilities requested for the phone number.
+      - This must contain 1 to 3 capabilities.
       - This is required when O(state=present).
     elements: str
     type: list
@@ -68,14 +74,14 @@ options:
     description:
       - The OptOutList name or ARN to associate with the phone number.
     type: str
-  pool_id:
-    description:
-      - The pool ID or ARN to associate with the phone number.
-    type: str
   phone_number_id:
     description:
       - The phone number ID to release.
       - This is required when O(state=absent).
+    type: str
+  pool_id:
+    description:
+      - The pool ID or ARN to associate with the phone number.
     type: str
   registration_id:
     description:
@@ -102,11 +108,13 @@ options:
     default: 5
     description:
       - The delay between polling attempts when O(wait=true).
+      - This must be 1 or greater.
     type: int
   wait_timeout:
     default: 300
     description:
       - The maximum number of seconds to wait when O(wait=true).
+      - This must be 1 or greater.
     type: int
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -163,6 +171,7 @@ state:
   type: str
 """
 
+import re
 import time
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
@@ -186,6 +195,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 def phone_number_tags(client, module, phone_number):
     arn = phone_number.get("PhoneNumberArn")
+
     if not arn:
         return {}
 
@@ -208,12 +218,14 @@ def exit_result(module, changed, response):
     )
     result = {
         "changed": changed,
-        "phone_number": phone_number,
-        "phone_number_arn": phone_number.get("phone_number_arn"),
-        "phone_number_id": phone_number.get("phone_number_id"),
         "state": module.params["state"],
     }
-    result.update(phone_number)
+    if phone_number:
+        result["phone_number"] = phone_number
+    if phone_number.get("phone_number_arn"):
+        result["phone_number_arn"] = phone_number["phone_number_arn"]
+    if phone_number.get("phone_number_id"):
+        result["phone_number_id"] = phone_number["phone_number_id"]
     module.exit_json(**result)
 
 
@@ -239,13 +251,14 @@ def get_phone_number(client, module, phone_number_id):
 
 
 def wait_for_phone_number_active(client, module, phone_number_id):
-    wait_delay = max(1, module.params["wait_delay"])
+    wait_delay = module.params["wait_delay"]
     deadline = time.monotonic() + module.params["wait_timeout"]
     phone_number = {}
 
     while time.monotonic() < deadline:
         phone_number = get_phone_number(client, module, phone_number_id) or {}
         status = phone_number.get("Status")
+
         if status == "ACTIVE":
             if module.params["tags"] is not None and phone_number.get("PhoneNumberArn"):
                 phone_number = dict(phone_number)
@@ -253,6 +266,7 @@ def wait_for_phone_number_active(client, module, phone_number_id):
                     phone_number_tags(client, module, phone_number)
                 )
             return phone_number
+
         if status == "DELETED":
             module.fail_json(
                 msg=(
@@ -283,6 +297,10 @@ def wait_for_phone_number_active(client, module, phone_number_id):
 def ensure_absent(client, module):
     phone_number_id = module.params["phone_number_id"]
     current = get_phone_number(client, module, phone_number_id)
+
+    if current is not None and current.get("Status") == "DELETED":
+        current = None
+
     changed = current is not None
     response = current
 
@@ -303,12 +321,14 @@ def ensure_absent(client, module):
                 ),
             )
 
+        if response is not None:
+            response.pop("ResponseMetadata", None)
+
     exit_result(module, changed, response or current)
 
 
 def ensure_present(client, module):
     deletion_protection_enabled = module.params["deletion_protection_enabled"]
-    international_sending_enabled = module.params["international_sending_enabled"]
     iso_country_code = module.params["iso_country_code"]
     message_type = module.params["message_type"]
     number_capabilities = module.params["number_capabilities"]
@@ -318,12 +338,6 @@ def ensure_present(client, module):
     registration_id = module.params["registration_id"]
     tags = module.params["tags"]
     wait = module.params["wait"]
-
-    if number_type == "SIMULATOR" and message_type != "TRANSACTIONAL":
-        module.fail_json(
-            msg="message_type must be TRANSACTIONAL when number_type is SIMULATOR"
-        )
-
     filters = {
         "iso-country-code": iso_country_code,
         "message-type": message_type,
@@ -334,16 +348,12 @@ def ensure_present(client, module):
     if opt_out_list_name is not None:
         filters["opt-out-list-name"] = opt_out_list_name
 
-    request = {
-        "Filters": ansible_dict_to_boto3_filter_list(filters),
-        "Owner": "SELF",
-    }
-
     try:
         phone_numbers = paginated_query_with_retries(
             client,
             "describe_phone_numbers",
-            **request,
+            Filters=ansible_dict_to_boto3_filter_list(filters),
+            Owner="SELF",
         ).get("PhoneNumbers", [])
     except Exception as e:
         module.fail_json_aws(
@@ -354,11 +364,10 @@ def ensure_present(client, module):
         "DeletionProtectionEnabled": deletion_protection_enabled,
         "IsoCountryCode": iso_country_code,
         "MessageType": message_type,
-        "NumberCapabilities": sorted(number_capabilities or []),
+        "NumberCapabilities": sorted(set(number_capabilities or [])),
         "NumberType": number_type,
     }
     for module_value, response_key in (
-        (international_sending_enabled, "InternationalSendingEnabled"),
         (opt_out_list_name, "OptOutListName"),
         (pool_id, "PoolId"),
         (registration_id, "RegistrationId"),
@@ -368,19 +377,19 @@ def ensure_present(client, module):
 
     current = None
     for phone_number in phone_numbers:
+        if phone_number.get("Status") == "DELETED":
+            continue
+
         matched = True
         for key, value in desired.items():
             current_value = phone_number.get(key)
             if key == "NumberCapabilities":
-                current_value = sorted(current_value or [])
+                current_value = sorted(set(current_value or []))
             if current_value != value:
                 matched = False
                 break
 
         if not matched:
-            continue
-
-        if phone_number.get("Status") == "DELETED":
             continue
 
         if tags is None:
@@ -412,10 +421,12 @@ def ensure_present(client, module):
         {
             "client_token": module.params["client_token"],
             "deletion_protection_enabled": deletion_protection_enabled,
-            "international_sending_enabled": international_sending_enabled,
+            "international_sending_enabled": module.params[
+                "international_sending_enabled"
+            ],
             "iso_country_code": iso_country_code,
             "message_type": message_type,
-            "number_capabilities": number_capabilities,
+            "number_capabilities": sorted(set(number_capabilities)),
             "number_type": number_type,
             "opt_out_list_name": opt_out_list_name,
             "pool_id": pool_id,
@@ -430,7 +441,9 @@ def ensure_present(client, module):
     request = snake_dict_to_camel_dict(parameters, capitalize_first=True)
 
     if module.check_mode:
-        exit_result(module, True, request)
+        predicted = dict(request)
+        predicted.pop("ClientToken", None)
+        exit_result(module, True, predicted)
 
     try:
         response = client.request_phone_number(**request, aws_retry=True)
@@ -438,6 +451,8 @@ def ensure_present(client, module):
         module.fail_json_aws(
             e, msg="Unable to request Pinpoint SMS Voice V2 phone number"
         )
+
+    response.pop("ResponseMetadata", None)
 
     if wait and response.get("Status") != "ACTIVE" and response.get("PhoneNumberId"):
         response = wait_for_phone_number_active(
@@ -499,12 +514,36 @@ def main():
         supports_check_mode=True,
     )
 
+    state = module.params["state"]
+    tags = module.params["tags"]
+
+    if state == "present":
+        if not re.fullmatch(r"[A-Z]{2}", module.params["iso_country_code"]):
+            module.fail_json(
+                msg="iso_country_code must be exactly two uppercase letters"
+            )
+
+        if not 1 <= len(module.params["number_capabilities"]) <= 3:
+            module.fail_json(msg="number_capabilities must contain 1 to 3 capabilities")
+
+        if (
+            module.params["number_type"] == "SIMULATOR"
+            and module.params["message_type"] != "TRANSACTIONAL"
+        ):
+            module.fail_json(
+                msg="message_type must be TRANSACTIONAL when number_type is SIMULATOR"
+            )
+
+        if module.params["wait"]:
+            if module.params["wait_delay"] < 1:
+                module.fail_json(msg="wait_delay must be 1 or greater")
+
+            if module.params["wait_timeout"] < 1:
+                module.fail_json(msg="wait_timeout must be 1 or greater")
+
     client = module.client(
         "pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff()
     )
-
-    state = module.params["state"]
-    tags = module.params["tags"]
     method_names = {"describe_phone_numbers"}
     if state == "present":
         method_names.add("request_phone_number")

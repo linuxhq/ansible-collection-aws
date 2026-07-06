@@ -8,12 +8,15 @@ module: ses_sandbox
 short_description: Manage aws simple email service account details
 description:
   - Requests production access for an AWS Simple Email Service account and manages the submitted account details.
+  - Without O(use_case_description) and O(website_url) the module only
+    reports the current account details.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   additional_contact_email_addresses:
     description:
       - Additional contact email addresses to associate with the request.
+      - This must contain at most 4 email addresses.
     default: []
     elements: str
     type: list
@@ -75,7 +78,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 ACCOUNT_DETAILS_FIELDS = (
@@ -94,15 +96,29 @@ ACCOUNT_DETAILS_REQUEST_FIELDS = (
 )
 
 
+def comparable_details(details):
+    normalized = {
+        field: details[field] for field in ACCOUNT_DETAILS_FIELDS if details.get(field)
+    }
+    if normalized.get("additional_contact_email_addresses"):
+        normalized["additional_contact_email_addresses"] = sorted(
+            set(normalized["additional_contact_email_addresses"])
+        )
+    return normalized
+
+
 def get_account(client, module):
     try:
-        return boto3_resource_to_ansible_dict(
-            client.get_account(aws_retry=True), transform_tags=False, force_tags=False
-        )
+        account = client.get_account(aws_retry=True)
     except Exception as e:
         module.fail_json_aws(
             e, msg="Unable to get AWS Simple Email Service account details"
         )
+
+    account.pop("ResponseMetadata", None)
+    return boto3_resource_to_ansible_dict(
+        account, transform_tags=False, force_tags=False
+    )
 
 
 def main():
@@ -127,6 +143,12 @@ def main():
         required_together=[["use_case_description", "website_url"]],
         supports_check_mode=True,
     )
+
+    if len(module.params["additional_contact_email_addresses"]) > 4:
+        module.fail_json(
+            msg="additional_contact_email_addresses must contain at most 4 addresses"
+        )
+
     client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
 
     method_names = {"get_account", "put_account_details"}
@@ -169,16 +191,14 @@ def main():
     current_account = get_account(client, module)
     use_case_description = module.params["use_case_description"]
     website_url = module.params["website_url"]
-    desired_details = scrub_none_parameters(
+    desired_details = comparable_details(
         {
-            "additional_contact_email_addresses": (
-                module.params["additional_contact_email_addresses"] or None
-            ),
+            "additional_contact_email_addresses": module.params[
+                "additional_contact_email_addresses"
+            ],
             "contact_language": module.params["contact_language"].upper(),
             "mail_type": module.params["mail_type"].upper(),
-            "use_case_description": (
-                None if use_case_description is None else use_case_description.strip()
-            ),
+            "use_case_description": (use_case_description or "").strip(),
             "website_url": website_url,
         }
     )
@@ -191,13 +211,8 @@ def main():
         if details_field in desired_details:
             request[request_field] = desired_details[details_field]
 
-    current_details = current_account.get("details") or {}
     current = {
-        "details": {
-            field: current_details[field]
-            for field in ACCOUNT_DETAILS_FIELDS
-            if current_details.get(field) is not None
-        },
+        "details": comparable_details(current_account.get("details") or {}),
         "production_access_enabled": current_account.get(
             "production_access_enabled", False
         ),

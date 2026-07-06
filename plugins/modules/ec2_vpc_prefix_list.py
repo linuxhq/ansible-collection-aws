@@ -10,11 +10,12 @@ description:
   - Creates, updates, and deletes EC2 VPC managed prefix lists.
   - Manages prefix list entries idempotently.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   address_family:
     description:
       - The address family for the managed prefix list.
+      - Changing this value replaces the managed prefix list.
     choices:
       - IPv4
       - IPv6
@@ -25,6 +26,8 @@ options:
       - The prefix list entries to manage.
       - Each entry must include O(entries[].cidr) and may include O(entries[].description).
       - This is required when O(state=present).
+      - This list must contain at least one entry, and entry CIDR blocks must
+        be unique.
     elements: dict
     suboptions:
       cidr:
@@ -68,11 +71,13 @@ options:
   wait_delay:
     description:
       - The delay between polling attempts when O(wait=true).
+      - This must be 1 or greater.
     default: 1
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait when O(wait=true).
+      - This must be 1 or greater.
     default: 60
     type: int
 extends_documentation_fragment:
@@ -229,6 +234,7 @@ def create_prefix_list(client, module, desired_prefix_list, desired_entries):
     )
     if tags is not None:
         tag_specifications = boto3_tag_specifications(tags, types="prefix-list")
+
         if tag_specifications is not None:
             request["TagSpecifications"] = tag_specifications
 
@@ -244,6 +250,7 @@ def create_prefix_list(client, module, desired_prefix_list, desired_entries):
         )
 
     created_prefix_list_id = prefix_list.get("PrefixListId")
+
     if created_prefix_list_id and module.params["wait"]:
         wait_for_ready_state(client, module, created_prefix_list_id)
 
@@ -293,14 +300,10 @@ def ensure_absent(client, module):
 def ensure_present(client, module):
     name = module.params["name"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
+    purge_tags = module.params["purge_tags"]
     wait = module.params["wait"]
     current, current_entries = get_current(client, module)
     desired_entries = comparable_entries(module.params["entries"])
-    if not desired_entries:
-        module.fail_json(
-            msg="entries must contain at least one item when state=present"
-        )
 
     changed = current is None
 
@@ -372,6 +375,7 @@ def ensure_present(client, module):
 
             if resource_changed:
                 current_prefix_list = comparable_prefix_list(current)
+
                 if (current_prefix_list or {}) != desired_prefix_list:
                     modify_prefix_list(
                         client,
@@ -422,6 +426,7 @@ def ensure_present(client, module):
                     purge_tags=purge_tags,
                 )
                 prefix_list_id = current.get("PrefixListId")
+
                 if prefix_list_id:
                     if tag_keys_to_unset:
                         tags_to_delete = []
@@ -491,6 +496,7 @@ def ensure_present(client, module):
         "state": "present",
     }
     prefix_list_id = (current or {}).get("PrefixListId")
+
     if prefix_list_id:
         result["prefix_list_id"] = prefix_list_id
     module.exit_json(**result)
@@ -498,6 +504,7 @@ def ensure_present(client, module):
 
 def get_current(client, module):
     prefix_list = get_customer_managed_prefix_list_by_name(client, module)
+
     if prefix_list is None:
         return None, None
 
@@ -556,7 +563,7 @@ def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name):
             PrefixListIds=[prefix_list_id],
             WaiterConfig=custom_waiter_config(
                 module.params["wait_timeout"],
-                default_pause=max(1, module.params["wait_delay"]),
+                default_pause=module.params["wait_delay"],
             ),
         )
     except Exception as e:
@@ -579,13 +586,24 @@ def get_customer_managed_prefix_list_by_name(client, module):
             e, msg=f"Unable to describe EC2 VPC managed prefix list {name}"
         )
 
+    matches = []
     for prefix_list in prefix_lists:
         if prefix_list.get("OwnerId") == "AWS":
             continue
 
-        return prefix_list
+        matches.append(prefix_list)
 
-    return None
+    if len(matches) > 1:
+        prefix_list_ids = []
+        for prefix_list in matches:
+            prefix_list_ids.append(prefix_list.get("PrefixListId"))
+
+        module.fail_json(
+            msg=f"More than one EC2 VPC managed prefix list matched name {name}",
+            prefix_list_ids=prefix_list_ids,
+        )
+
+    return matches[0] if matches else None
 
 
 def comparable_prefix_list(prefix_list):
@@ -647,11 +665,35 @@ def main():
         required_if=[("state", "present", ["entries"])],
         supports_check_mode=True,
     )
-    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
+
+    if module.params["wait"]:
+        if module.params["wait_delay"] < 1:
+            module.fail_json(msg="wait_delay must be 1 or greater")
+
+        if module.params["wait_timeout"] < 1:
+            module.fail_json(msg="wait_timeout must be 1 or greater")
 
     state = module.params["state"]
+    entries = module.params["entries"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
+
+    if state == "present":
+        if not entries:
+            module.fail_json(
+                msg="entries must contain at least one item when state=present"
+            )
+
+        cidrs = set()
+        for entry in entries:
+            if entry["cidr"] in cidrs:
+                module.fail_json(
+                    msg="entries[].cidr values must be unique",
+                    cidr=entry["cidr"],
+                )
+            cidrs.add(entry["cidr"])
+
+    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
+
     method_names = {"describe_managed_prefix_lists"}
     if state == "present":
         method_names.update(
@@ -664,7 +706,7 @@ def main():
         )
         if tags is not None:
             method_names.add("create_tags")
-            if purge_tags:
+            if module.params["purge_tags"]:
                 method_names.add("delete_tags")
     elif state == "absent":
         method_names.add("delete_managed_prefix_list")

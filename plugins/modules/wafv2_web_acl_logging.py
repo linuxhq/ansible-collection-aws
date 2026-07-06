@@ -9,8 +9,11 @@ short_description: Manage aws wafv2 web acls
 description:
   - Manages AWS WAFv2 web ACL logging configuration.
   - Supports enabling, updating, and removing logging for a web ACL.
+  - Updates replace the logging configuration; fields not managed by this
+    module, such as redacted fields and logging filters, are removed by the
+    AWS C(PutLoggingConfiguration) API.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   log_destination_configs:
     description:
@@ -22,6 +25,7 @@ options:
   resource_arn:
     description:
       - The ARN of the WAFv2 web ACL to manage logging for.
+      - CloudFront web ACLs require the C(us-east-1) region.
     required: true
     type: str
   state:
@@ -193,9 +197,14 @@ def main():
         required_if=[("state", "present", ["log_destination_configs"])],
         supports_check_mode=True,
     )
-    client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
-
     state = module.params["state"]
+
+    if state == "present" and not module.params["log_destination_configs"]:
+        module.fail_json(
+            msg="log_destination_configs must contain at least 1 destination ARN"
+        )
+
+    client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
     method_names = {"get_logging_configuration"}
     if state == "present":
         method_names.add("put_logging_configuration")

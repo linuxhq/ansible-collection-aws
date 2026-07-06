@@ -9,11 +9,14 @@ short_description: Manage aws iam account alias
 description:
   - Manages the AWS IAM account alias for the current account.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   name:
     description:
       - The IAM account alias name.
+      - When O(state=present), this must be 3 to 63 characters of lowercase
+        letters, digits, and hyphens, and cannot start or end with a hyphen
+        or contain consecutive hyphens.
     required: true
     type: str
   state:
@@ -60,6 +63,8 @@ state:
   type: str
 """
 
+import re
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     get_boto3_client_method_parameters,
     paginated_query_with_retries,
@@ -89,19 +94,18 @@ def ensure_absent(client, module):
 
     changed = name in aliases
 
-    if changed and not module.check_mode:
-        try:
-            client.delete_account_alias(
-                AccountAlias=name,
-                aws_retry=True,
-            )
-        except Exception as e:
-            module.fail_json_aws(
-                e, msg=f"Unable to delete AWS IAM account alias {name}"
-            )
+    if changed:
+        if not module.check_mode:
+            try:
+                client.delete_account_alias(
+                    AccountAlias=name,
+                    aws_retry=True,
+                )
+            except Exception as e:
+                module.fail_json_aws(
+                    e, msg=f"Unable to delete AWS IAM account alias {name}"
+                )
 
-        aliases = desired_aliases
-    elif changed and module.check_mode:
         aliases = desired_aliases
 
     module.exit_json(
@@ -118,19 +122,18 @@ def ensure_present(client, module):
     desired_aliases = [name]
     changed = aliases != desired_aliases
 
-    if changed and not module.check_mode:
-        try:
-            client.create_account_alias(
-                AccountAlias=name,
-                aws_retry=True,
-            )
-        except Exception as e:
-            module.fail_json_aws(
-                e, msg=f"Unable to create AWS IAM account alias {name}"
-            )
+    if changed:
+        if not module.check_mode:
+            try:
+                client.create_account_alias(
+                    AccountAlias=name,
+                    aws_retry=True,
+                )
+            except Exception as e:
+                module.fail_json_aws(
+                    e, msg=f"Unable to create AWS IAM account alias {name}"
+                )
 
-        aliases = desired_aliases
-    elif changed and module.check_mode:
         aliases = desired_aliases
 
     module.exit_json(
@@ -153,9 +156,21 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]
+
+    if state == "present" and not re.fullmatch(
+        r"[a-z0-9]([a-z0-9]|-(?!-)){1,61}[a-z0-9]", module.params["name"]
+    ):
+        module.fail_json(
+            msg=(
+                "name must be 3 to 63 characters of lowercase letters, digits, "
+                "and hyphens, and cannot start or end with a hyphen or contain "
+                "consecutive hyphens"
+            )
+        )
+
+    client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
     method_names = {"list_account_aliases"}
     if state == "present":
         method_names.add("create_account_alias")

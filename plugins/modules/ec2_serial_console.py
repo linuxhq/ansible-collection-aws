@@ -9,7 +9,7 @@ short_description: Manage aws ec2 serial console access
 description:
   - Enables or disables EC2 serial console access for a region.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   state:
     description:
@@ -64,6 +64,16 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
+def normalized_serial_console_access(response):
+    response.pop("ResponseMetadata", None)
+
+    return boto3_resource_to_ansible_dict(
+        response,
+        transform_tags=False,
+        force_tags=False,
+    )
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -96,13 +106,9 @@ def main():
                 msg=f"Installed botocore does not support EC2 {method_name}"
             )
 
-    desired = {"serial_console_access_enabled": desired_enabled}
-
     try:
-        current = boto3_resource_to_ansible_dict(
-            client.get_serial_console_access_status(aws_retry=True),
-            transform_tags=False,
-            force_tags=False,
+        current = normalized_serial_console_access(
+            client.get_serial_console_access_status(aws_retry=True)
         )
     except Exception as e:
         module.fail_json_aws(
@@ -115,10 +121,8 @@ def main():
     if changed and not module.check_mode:
         if state == "present":
             try:
-                current = boto3_resource_to_ansible_dict(
-                    client.enable_serial_console_access(aws_retry=True),
-                    transform_tags=False,
-                    force_tags=False,
+                current = normalized_serial_console_access(
+                    client.enable_serial_console_access(aws_retry=True)
                 )
             except Exception as e:
                 module.fail_json_aws(
@@ -131,10 +135,8 @@ def main():
 
         elif state == "absent":
             try:
-                current = boto3_resource_to_ansible_dict(
-                    client.disable_serial_console_access(aws_retry=True),
-                    transform_tags=False,
-                    force_tags=False,
+                current = normalized_serial_console_access(
+                    client.disable_serial_console_access(aws_retry=True)
                 )
             except Exception as e:
                 module.fail_json_aws(
@@ -149,7 +151,7 @@ def main():
             module.fail_json(msg=f"Unsupported state: {state}")
     elif changed and module.check_mode:
         current = dict(current)
-        current.update(desired)
+        current["serial_console_access_enabled"] = desired_enabled
 
     result = {
         "changed": changed,

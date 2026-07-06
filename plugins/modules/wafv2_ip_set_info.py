@@ -10,7 +10,7 @@ description:
   - Gathers information about AWS WAFv2 IP sets.
   - Lists IP sets for the requested scope and returns each full IP set definition.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   id:
     description:
@@ -23,11 +23,13 @@ options:
       - WAFv2 IP set name used to limit the result set.
       - The module lists IP set summaries for the selected O(scope), filters by
         name, and then gathers each full IP set definition.
+      - An IP set that does not exist results in an empty list.
     type: str
   scope:
     description:
       - The scope of the IP sets to gather.
       - Use C(cloudfront) for global IP sets and C(regional) for regional IP sets.
+      - V(cloudfront) requires the C(us-east-1) region.
     choices:
       - cloudfront
       - regional
@@ -66,6 +68,9 @@ scope:
   type: str
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -113,6 +118,7 @@ def main():
             if single_target and summaries:
                 break
             marker = response.get("NextMarker")
+
             if not marker:
                 break
     except Exception as e:
@@ -129,6 +135,8 @@ def main():
                     aws_retry=True,
                 ).get("IPSet", {})
             )
+        except is_boto3_error_code("WAFNonexistentItemException"):
+            continue
         except Exception as e:
             module.fail_json_aws(
                 e,

@@ -8,12 +8,16 @@ module: ses_identity_tokens_info
 short_description: Gather aws simple email service identity tokens
 description:
   - Gathers AWS SES DKIM and verification tokens for a domain identity.
+  - Requests the tokens by initiating domain verification, so the identity
+    does not need to exist yet and DNS records can be created first.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   identity:
     description:
       - The SES domain identity.
+      - This must be a domain name; email address identities do not have
+        domain verification tokens.
     required: true
     type: str
 extends_documentation_fragment:
@@ -58,8 +62,12 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
     identity = module.params["identity"]
+
+    if "@" in identity:
+        module.fail_json(msg="identity must be a domain name, not an email address")
+
+    client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
 
     if module.check_mode:
         module.exit_json(

@@ -9,7 +9,7 @@ short_description: Gather information about aws iam oidc providers
 description:
   - Gathers information about AWS IAM OpenID Connect (OIDC) identity providers.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   arn:
     description:
@@ -19,6 +19,7 @@ options:
   url:
     description:
       - Optional IAM OIDC provider URL used to limit the result set.
+      - Matching ignores the C(https://) prefix and any trailing slash.
       - Mutually exclusive with O(arn).
     type: str
 extends_documentation_fragment:
@@ -64,6 +65,7 @@ def normalize_provider_url(url):
     if url is None:
         return None
     normalized = url.rstrip("/")
+
     if normalized.startswith("https://"):
         normalized = normalized[len("https://") :]
     return normalized
@@ -80,6 +82,7 @@ def list_provider_arns(client, module):
     arns = []
     for provider in providers:
         arn = provider.get("Arn")
+
         if arn:
             arns.append(arn)
     return arns
@@ -96,6 +99,7 @@ def get_provider_by_arn(client, module, arn):
     except Exception as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS IAM OIDC provider {arn}")
 
+    provider.pop("ResponseMetadata", None)
     provider["OpenIDConnectProviderArn"] = arn
     return provider
 
@@ -158,20 +162,23 @@ def main():
                 continue
 
             provider = get_provider_by_arn(client, module, arn)
+
             if provider and normalize_provider_url(provider.get("Url")) == desired_url:
                 providers.append(provider)
                 break
-
     else:
         providers = []
         for arn in list_provider_arns(client, module):
             provider = get_provider_by_arn(client, module, arn)
+
             if provider:
                 providers.append(provider)
 
     module.exit_json(
         changed=False,
-        open_id_connect_providers=boto3_resource_list_to_ansible_dict(providers),
+        open_id_connect_providers=boto3_resource_list_to_ansible_dict(
+            providers, transform_tags=True, force_tags=False
+        ),
     )
 
 

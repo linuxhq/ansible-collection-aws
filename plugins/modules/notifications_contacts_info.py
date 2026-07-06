@@ -9,11 +9,12 @@ short_description: Gather information about aws notifications contacts
 description:
   - Gathers information about AWS Notifications email contacts.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   arn:
     description:
       - AWS Notifications contact ARN used to limit the result set.
+      - An ARN that does not exist results in an empty list.
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -34,6 +35,7 @@ RETURN = r"""
 email_contacts:
   description:
     - The notifications contacts.
+    - C(tags) is returned as provided by the AWS Notifications API.
   returned: always
   type: list
   elements: dict
@@ -62,32 +64,35 @@ def main():
         "notificationscontacts", retry_decorator=AWSRetry.jittered_backoff()
     )
 
-    for method_name in (
-        "get_email_contact",
-        "list_email_contacts",
-        "list_tags_for_resource",
-    ):
+    arn = module.params["arn"]
+    method_names = {"list_tags_for_resource"}
+    if arn:
+        method_names.add("get_email_contact")
+    else:
+        method_names.add("list_email_contacts")
+
+    for method_name in sorted(method_names):
         try:
             get_boto3_client_method_parameters(client, method_name)
         except Exception:
             module.fail_json(
                 msg=(
-                    "Installed botocore does not support AWS Notifications Contacts "
-                    f"{method_name}"
+                    "Installed botocore does not support "
+                    f"NotificationsContacts {method_name}"
                 )
             )
 
-    if module.params["arn"]:
+    if arn:
         try:
-            contact = client.get_email_contact(
-                arn=module.params["arn"], aws_retry=True
-            ).get("emailContact")
+            contact = client.get_email_contact(arn=arn, aws_retry=True).get(
+                "emailContact"
+            )
         except is_boto3_error_code("ResourceNotFoundException"):
             contact = None
         except Exception as e:
             module.fail_json_aws(
                 e,
-                msg=f"Unable to get AWS Notifications contact {module.params['arn']}",
+                msg=f"Unable to get AWS Notifications contact {arn}",
             )
 
         email_contacts = [contact] if contact is not None else []
@@ -112,6 +117,8 @@ def main():
                 arn=contact["arn"],
                 aws_retry=True,
             ).get("tags", {})
+        except is_boto3_error_code("ResourceNotFoundException"):
+            continue
         except Exception as e:
             module.fail_json_aws(
                 e,
@@ -126,6 +133,7 @@ def main():
             email_contacts_with_tags,
             transform_tags=False,
             force_tags=False,
+            ignore_list=["tags"],
         ),
     )
 

@@ -8,12 +8,14 @@ module: notifications_hub
 short_description: Manage aws notifications hubs
 description:
   - Manages AWS Notifications hubs.
+  - The module always uses the C(us-east-1) AWS Notifications endpoint.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   region:
     description:
       - The notification hub region.
+      - This must match the AWS region name format, for example V(us-west-2).
     required: true
     type: str
   state:
@@ -54,6 +56,8 @@ state:
   type: str
 """
 
+import re
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     get_boto3_client_method_parameters,
     paginated_query_with_retries,
@@ -65,7 +69,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def ensure_absent(client, module):
+def get_notification_hub(client, module):
     region = module.params["region"]
 
     try:
@@ -75,12 +79,15 @@ def ensure_absent(client, module):
     except Exception as e:
         module.fail_json_aws(e, msg="Unable to list AWS Notifications hubs")
 
-    hub = None
-    for item in hubs:
-        if item.get("notificationHubRegion") == region:
-            hub = item
-            break
+    for hub in hubs:
+        if hub.get("notificationHubRegion") == region:
+            return hub
+    return None
 
+
+def ensure_absent(client, module):
+    region = module.params["region"]
+    hub = get_notification_hub(client, module)
     changed = hub is not None
 
     if changed and not module.check_mode:
@@ -103,26 +110,12 @@ def ensure_absent(client, module):
 
 def ensure_present(client, module):
     region = module.params["region"]
-
-    try:
-        hubs = paginated_query_with_retries(client, "list_notification_hubs").get(
-            "notificationHubs", []
-        )
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Notifications hubs")
-
-    hub = None
-    for item in hubs:
-        if item.get("notificationHubRegion") == region:
-            hub = item
-            break
-
-    desired_hub = {"notification_hub_region": region}
+    hub = get_notification_hub(client, module)
     changed = hub is None
 
     if changed and not module.check_mode:
         try:
-            client.register_notification_hub(
+            hub = client.register_notification_hub(
                 notificationHubRegion=region,
                 aws_retry=True,
             )
@@ -132,9 +125,9 @@ def ensure_present(client, module):
                 msg=f"Unable to create AWS Notifications hub {region}",
             )
 
-        hub = desired_hub
+        hub.pop("ResponseMetadata", None)
     elif changed and module.check_mode:
-        hub = desired_hub
+        hub = {"notification_hub_region": region}
 
     module.exit_json(
         changed=changed,
@@ -161,13 +154,26 @@ def main():
         },
         supports_check_mode=True,
     )
+    state = module.params["state"]
+
+    if state == "present":
+        hub_region = module.params["region"]
+
+        if not 2 <= len(hub_region) <= 25 or not re.fullmatch(
+            r"([a-z]{1,2})-([a-z]{1,15}-)+([0-9])", hub_region
+        ):
+            module.fail_json(
+                msg=(
+                    "region must match the AWS region name format, "
+                    "for example us-west-2"
+                )
+            )
+
     client = module.client(
         "notifications",
         region="us-east-1",
         retry_decorator=AWSRetry.jittered_backoff(),
     )
-
-    state = module.params["state"]
     method_names = {"list_notification_hubs"}
     if state == "present":
         method_names.add("register_notification_hub")

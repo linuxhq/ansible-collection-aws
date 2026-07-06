@@ -9,7 +9,7 @@ short_description: Gather information about aws simple email service identities
 description:
   - Gathers information about AWS SES identities.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   identity_type:
     description:
@@ -22,6 +22,7 @@ options:
   name:
     description:
       - SES identity name used to limit the result set.
+      - An identity that does not exist results in an empty list.
       - Mutually exclusive with O(identity_type).
     type: str
 extends_documentation_fragment:
@@ -47,6 +48,11 @@ RETURN = r"""
 identities:
   description:
     - The SES identities.
+    - Each identity includes C(name) added by the module.
+    - C(identity_type) uses the SES v2 format, for example V(DOMAIN) or
+      V(EMAIL_ADDRESS), which differs from the O(identity_type) option
+      values.
+    - C(policies) keys are returned as provided by the SES API.
   returned: always
   type: list
   elements: dict
@@ -74,20 +80,22 @@ def main():
     )
     ses_client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
     sesv2_client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
+    identity_type = module.params["identity_type"]
+    name = module.params["name"]
     identities = []
 
-    if module.params["name"]:
-        identity_names = [module.params["name"]]
+    if name:
+        identity_names = [name]
     else:
-        list_kwargs = {}
-        if module.params["identity_type"] is not None:
-            list_kwargs["IdentityType"] = module.params["identity_type"]
+        request = {}
+        if identity_type is not None:
+            request["IdentityType"] = identity_type
 
         try:
             identity_names = paginated_query_with_retries(
                 ses_client,
                 "list_identities",
-                **list_kwargs,
+                **request,
             ).get("Identities", [])
         except Exception as e:
             module.fail_json_aws(e, msg="Unable to list AWS SES identities")
@@ -106,8 +114,12 @@ def main():
                 msg=f"Unable to get AWS SES identity {identity_name}",
             )
 
+        details.pop("ResponseMetadata", None)
         identity = boto3_resource_to_ansible_dict(
-            details, transform_tags=False, force_tags=False
+            details,
+            transform_tags=True,
+            force_tags=False,
+            ignore_list=["Policies"],
         )
 
         identity["name"] = identity_name

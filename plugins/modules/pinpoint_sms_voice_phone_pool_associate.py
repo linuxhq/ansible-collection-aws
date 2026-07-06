@@ -13,7 +13,7 @@ description:
     C(AssociateOriginationIdentity) API, the API behind
     C(aws pinpoint-sms-voice-v2 associate-origination-identity).
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   client_token:
     description:
@@ -23,6 +23,7 @@ options:
   iso_country_code:
     description:
       - The two-character ISO 3166-1 alpha-2 country or region code.
+      - This must be exactly two uppercase letters.
     required: true
     type: str
   origination_identity:
@@ -54,15 +55,15 @@ extends_documentation_fragment:
 EXAMPLES = r"""
 - name: Ensure phone numbers are associated with a phone pool
   linuxhq.aws.pinpoint_sms_voice_phone_pool_associate:
-    pool_id: pool-0123456789abcdef0123456789abcdef
-    origination_identity: phone-0123456789abcdef0123456789abcdef
     iso_country_code: US
+    origination_identity: phone-0123456789abcdef0123456789abcdef
+    pool_id: pool-0123456789abcdef0123456789abcdef
 
 - name: Ensure a phone number is not associated with a phone pool
   linuxhq.aws.pinpoint_sms_voice_phone_pool_associate:
-    pool_id: pool-0123456789abcdef0123456789abcdef
-    origination_identity: phone-0123456789abcdef0123456789abcdef
     iso_country_code: US
+    origination_identity: phone-0123456789abcdef0123456789abcdef
+    pool_id: pool-0123456789abcdef0123456789abcdef
     state: absent
 """
 
@@ -88,6 +89,8 @@ state:
   returned: always
   type: str
 """
+
+import re
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
@@ -126,10 +129,7 @@ def current_association(module, associations):
     iso_country_code = module.params["iso_country_code"]
 
     for association in associations:
-        if (
-            iso_country_code is not None
-            and association.get("IsoCountryCode") != iso_country_code
-        ):
+        if association.get("IsoCountryCode") != iso_country_code:
             continue
 
         for identity in (
@@ -145,8 +145,8 @@ def current_association(module, associations):
     return None
 
 
-def association_request(client, module, method_name):
-    request = snake_dict_to_camel_dict(
+def association_request(module):
+    return snake_dict_to_camel_dict(
         scrub_none_parameters(
             {
                 "client_token": module.params["client_token"],
@@ -157,30 +157,6 @@ def association_request(client, module, method_name):
         ),
         capitalize_first=True,
     )
-
-    try:
-        supported_parameters = set(
-            get_boto3_client_method_parameters(client, method_name)
-        )
-    except Exception:
-        module.fail_json(
-            msg=(
-                "Installed botocore does not support Pinpoint SMS Voice V2 "
-                f"{method_name}"
-            )
-        )
-
-    unsupported_parameters = sorted(set(request) - supported_parameters)
-
-    if unsupported_parameters:
-        module.fail_json(
-            msg=(
-                "Installed botocore does not support Pinpoint SMS Voice V2 "
-                f"{method_name} parameter(s): "
-                f"{', '.join(unsupported_parameters)}"
-            )
-        )
-    return request
 
 
 def exit_result(module, changed, association):
@@ -203,7 +179,7 @@ def ensure_present(client, module):
     if changed and not module.check_mode:
         try:
             association = client.associate_origination_identity(
-                **association_request(client, module, "associate_origination_identity"),
+                **association_request(module),
                 aws_retry=True,
             )
         except Exception as e:
@@ -217,6 +193,7 @@ def ensure_present(client, module):
                 ),
             )
 
+        association.pop("ResponseMetadata", None)
     elif changed and module.check_mode:
         association = scrub_none_parameters(
             {
@@ -235,11 +212,11 @@ def ensure_absent(client, module):
     changed = association is not None
 
     if changed and not module.check_mode:
+        response = None
+
         try:
-            client.disassociate_origination_identity(
-                **association_request(
-                    client, module, "disassociate_origination_identity"
-                ),
+            response = client.disassociate_origination_identity(
+                **association_request(module),
                 aws_retry=True,
             )
         except is_boto3_error_code("ResourceNotFoundException"):
@@ -255,7 +232,9 @@ def ensure_absent(client, module):
                 ),
             )
 
-        association = None
+        if response is not None:
+            response.pop("ResponseMetadata", None)
+            association = response
 
     exit_result(module, changed, association)
 
@@ -277,12 +256,73 @@ def main():
         argument_spec=argument_spec,
         supports_check_mode=True,
     )
+    state = module.params["state"]
+
+    if not re.fullmatch(r"[A-Z]{2}", module.params["iso_country_code"]):
+        module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
+
     client = module.client(
         "pinpoint-sms-voice-v2",
         retry_decorator=AWSRetry.jittered_backoff(),
     )
 
-    state = module.params["state"]
+    method_names = {"list_pool_origination_identities"}
+    if state == "present":
+        method_names.add("associate_origination_identity")
+    elif state == "absent":
+        method_names.add("disassociate_origination_identity")
+    else:
+        module.fail_json(msg=f"Unsupported state: {state}")
+
+    method_parameters = {}
+    for method_name in sorted(method_names):
+        try:
+            method_parameters[method_name] = get_boto3_client_method_parameters(
+                client, method_name
+            )
+        except Exception:
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support Pinpoint SMS Voice V2 "
+                    f"{method_name}"
+                )
+            )
+
+    required_method_parameters = {
+        "associate_origination_identity": {
+            "IsoCountryCode",
+            "OriginationIdentity",
+            "PoolId",
+        },
+        "disassociate_origination_identity": {
+            "IsoCountryCode",
+            "OriginationIdentity",
+            "PoolId",
+        },
+        "list_pool_origination_identities": {"PoolId"},
+    }
+    if module.params["client_token"] is not None:
+        for method_name in (
+            "associate_origination_identity",
+            "disassociate_origination_identity",
+        ):
+            required_method_parameters[method_name].add("ClientToken")
+
+    for method_name, parameter_names in required_method_parameters.items():
+        if method_name not in method_parameters:
+            continue
+
+        for parameter_name in parameter_names:
+            if parameter_name in method_parameters[method_name]:
+                continue
+
+            module.fail_json(
+                msg=(
+                    "Installed botocore does not support Pinpoint SMS Voice V2 "
+                    f"{method_name} parameter {parameter_name}"
+                )
+            )
+
     if state == "present":
         ensure_present(client, module)
     elif state == "absent":

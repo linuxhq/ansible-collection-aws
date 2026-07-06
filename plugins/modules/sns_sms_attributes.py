@@ -9,8 +9,10 @@ short_description: Manage aws simple notification service sms attributes
 description:
   - Manages AWS Simple Notification Service SMS attributes.
   - This module maps to the SNS C(SetSMSAttributes) API.
+  - Without any attribute options the module only reports the current
+    attributes.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   default_sender_id:
     description:
@@ -65,6 +67,8 @@ attributes:
   description:
     - The current AWS Simple Notification Service SMS attributes after module
       execution.
+    - Attribute names are returned in snake case, for example
+      C(default_sms_type).
   returned: always
   type: dict
 """
@@ -102,6 +106,14 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
+
+    sampling_rate = module.params["delivery_status_success_sampling_rate"]
+
+    if sampling_rate is not None and not 0 <= sampling_rate <= 100:
+        module.fail_json(
+            msg="delivery_status_success_sampling_rate must be between 0 and 100"
+        )
+
     client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
 
     method_names = {"get_sms_attributes", "set_sms_attributes"}
@@ -137,15 +149,9 @@ def main():
     desired = {}
     for module_key, attribute_name in MANAGED_ATTRIBUTES.items():
         module_value = module.params[module_key]
+
         if module_value is None:
             continue
-
-        if module_key == "delivery_status_success_sampling_rate" and not (
-            0 <= module_value <= 100
-        ):
-            module.fail_json(
-                msg="delivery_status_success_sampling_rate must be between 0 and 100"
-            )
 
         desired[attribute_name] = str(module_value)
 

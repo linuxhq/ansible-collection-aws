@@ -9,7 +9,7 @@ short_description: Gather information about aws ec2 serial console access
 description:
   - Gathers EC2 serial console access status for a region.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -48,7 +48,12 @@ def main():
     try:
         serial_console_access = client.get_serial_console_access_status(aws_retry=True)
     except Exception as e:
-        module.fail_json_aws(e, msg="Unable to get EC2 serial console access")
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to get EC2 serial console access in region {module.region}",
+        )
+
+    serial_console_access.pop("ResponseMetadata", None)
 
     module.exit_json(
         changed=False,

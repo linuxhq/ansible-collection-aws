@@ -10,11 +10,12 @@ description:
   - Manages AWS IAM OpenID Connect (OIDC) identity providers.
   - Supports creating and deleting providers, and updating client IDs, thumbprints, and tags.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   client_id_list:
     description:
       - The client IDs, also known as audiences, to register with the OIDC provider.
+      - Each client ID must be 1 to 255 characters.
       - This is required when O(state=present).
     elements: str
     type: list
@@ -39,12 +40,15 @@ options:
   thumbprint_list:
     description:
       - The certificate thumbprints to register with the OIDC provider.
+      - Each thumbprint must be exactly 40 characters.
       - This is required when O(state=present).
     elements: str
     type: list
   url:
     description:
       - The OIDC provider URL.
+      - Matching against an existing provider ignores the C(https://) prefix
+        and any trailing slash.
     required: true
     type: str
 extends_documentation_fragment:
@@ -113,9 +117,21 @@ def normalize_provider_url(url):
     if url is None:
         return None
     normalized = url.rstrip("/")
+
     if normalized.startswith("https://"):
         normalized = normalized[len("https://") :]
     return normalized
+
+
+def apply_tag_deltas(provider, tags_to_set, tag_keys_to_unset):
+    updated = dict(provider)
+    updated_tags = boto3_tag_list_to_ansible_dict(updated.get("Tags", []))
+
+    for tag_key in tag_keys_to_unset:
+        updated_tags.pop(tag_key, None)
+    updated_tags.update(tags_to_set)
+    updated["Tags"] = ansible_dict_to_boto3_tag_list(updated_tags)
+    return updated
 
 
 def get_provider_by_arn(client, module, arn):
@@ -129,6 +145,7 @@ def get_provider_by_arn(client, module, arn):
     except Exception as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS IAM OIDC provider {arn}")
 
+    provider.pop("ResponseMetadata", None)
     provider["OpenIDConnectProviderArn"] = arn
     return provider
 
@@ -145,6 +162,7 @@ def get_provider_by_url(client, module):
 
     for provider_summary in providers:
         arn = provider_summary.get("Arn")
+
         if not arn:
             continue
 
@@ -152,6 +170,7 @@ def get_provider_by_url(client, module):
             continue
 
         provider = get_provider_by_arn(client, module, arn)
+
         if provider and normalize_provider_url(provider.get("Url")) == desired_url:
             return provider
     return None
@@ -183,24 +202,20 @@ def ensure_absent(client, module):
 
 
 def ensure_present(client, module):
-    client_id_list = module.params["client_id_list"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
-    thumbprint_list = module.params["thumbprint_list"]
     url = module.params["url"]
     current = get_provider_by_url(client, module)
     desired = {
-        "client_id_list": sorted(client_id_list or []),
-        "thumbprint_list": sorted(thumbprint_list or []),
+        "client_id_list": sorted(set(module.params["client_id_list"] or [])),
+        "thumbprint_list": sorted(set(module.params["thumbprint_list"] or [])),
         "url": normalize_provider_url(url),
     }
     current_comparable = None
     if current is not None:
-        normalized_current = boto3_resource_to_ansible_dict(current)
         current_comparable = {
-            "client_id_list": sorted(normalized_current.get("client_id_list") or []),
-            "thumbprint_list": sorted(normalized_current.get("thumbprint_list") or []),
-            "url": normalize_provider_url(normalized_current.get("url")),
+            "client_id_list": sorted(set(current.get("ClientIDList") or [])),
+            "thumbprint_list": sorted(set(current.get("ThumbprintList") or [])),
+            "url": normalize_provider_url(current.get("Url")),
         }
 
     tags_to_set, tag_keys_to_unset = ({}, [])
@@ -208,7 +223,7 @@ def ensure_present(client, module):
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
             boto3_tag_list_to_ansible_dict((current or {}).get("Tags", [])),
             tags,
-            purge_tags=purge_tags,
+            purge_tags=module.params["purge_tags"],
         )
     resource_changed = (current_comparable or {}) != desired
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
@@ -217,8 +232,8 @@ def ensure_present(client, module):
         if current is None:
             request = {
                 "Url": url,
-                "ClientIDList": client_id_list,
-                "ThumbprintList": thumbprint_list,
+                "ClientIDList": desired["client_id_list"],
+                "ThumbprintList": desired["thumbprint_list"],
             }
             if tags is not None:
                 request["Tags"] = ansible_dict_to_boto3_tag_list(tags)
@@ -234,6 +249,7 @@ def ensure_present(client, module):
                     msg=f"Unable to create AWS IAM OIDC provider {url}",
                 )
 
+            current = get_provider_by_arn(client, module, arn) if arn else None
         else:
             arn = current["OpenIDConnectProviderArn"]
             provider_changed = False
@@ -274,6 +290,7 @@ def ensure_present(client, module):
                         )
 
                 provider_changed = True
+
             if current_comparable["thumbprint_list"] != desired["thumbprint_list"]:
                 try:
                     client.update_open_id_connect_provider_thumbprint(
@@ -291,6 +308,7 @@ def ensure_present(client, module):
                     )
 
                 provider_changed = True
+
             if tag_keys_to_unset:
                 try:
                     client.untag_open_id_connect_provider(
@@ -319,41 +337,26 @@ def ensure_present(client, module):
             if provider_changed:
                 current = get_provider_by_arn(client, module, arn) if arn else None
             else:
-                current = dict(current)
-                current_tags = boto3_tag_list_to_ansible_dict(current.get("Tags", []))
-
-                for tag_key in tag_keys_to_unset:
-                    current_tags.pop(tag_key, None)
-                current_tags.update(tags_to_set)
-                current["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
-        if current is None:
-            current = get_provider_by_arn(client, module, arn) if arn else None
+                current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
         current = dict(current or {})
-        current["Url"] = url
-        current["ClientIDList"] = client_id_list
-        current["ThumbprintList"] = thumbprint_list
+        current["Url"] = desired["url"]
+        current["ClientIDList"] = desired["client_id_list"]
+        current["ThumbprintList"] = desired["thumbprint_list"]
 
         if tags is not None:
-            current_tags = boto3_tag_list_to_ansible_dict(current.get("Tags", []))
-            check_mode_tags_to_set, check_mode_tag_keys_to_unset = compare_aws_tags(
-                current_tags,
-                tags,
-                purge_tags=purge_tags,
-            )
-
-            for tag_key in check_mode_tag_keys_to_unset:
-                current_tags.pop(tag_key, None)
-            current_tags.update(check_mode_tags_to_set)
-            current["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
+            current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
 
     result = {
         "changed": changed,
-        "open_id_connect_provider": boto3_resource_to_ansible_dict(current or {}),
+        "open_id_connect_provider": boto3_resource_to_ansible_dict(
+            current or {}, transform_tags=True, force_tags=False
+        ),
         "state": "present",
         "url": url,
     }
     arn = (current or {}).get("OpenIDConnectProviderArn")
+
     if arn:
         result["open_id_connect_provider_arn"] = arn
     module.exit_json(**result)
@@ -378,11 +381,23 @@ def main():
         required_if=[("state", "present", ["client_id_list", "thumbprint_list"])],
         supports_check_mode=True,
     )
-    client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
-
     state = module.params["state"]
     tags = module.params["tags"]
-    purge_tags = module.params["purge_tags"] if tags is not None else False
+
+    if state == "present":
+        for client_id in module.params["client_id_list"]:
+            if not 1 <= len(client_id) <= 255:
+                module.fail_json(
+                    msg=f"client_id_list entries must be 1 to 255 characters: {client_id}"
+                )
+
+        for thumbprint in module.params["thumbprint_list"]:
+            if len(thumbprint) != 40:
+                module.fail_json(
+                    msg=f"thumbprint_list entries must be exactly 40 characters: {thumbprint}"
+                )
+
+    client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
     method_names = {
         "get_open_id_connect_provider",
         "list_open_id_connect_providers",
@@ -398,7 +413,7 @@ def main():
         )
         if tags is not None:
             method_names.add("tag_open_id_connect_provider")
-            if purge_tags:
+            if module.params["purge_tags"]:
                 method_names.add("untag_open_id_connect_provider")
     elif state == "absent":
         method_names.add("delete_open_id_connect_provider")

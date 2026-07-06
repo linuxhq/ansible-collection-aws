@@ -9,11 +9,12 @@ short_description: Manage aws route53 delegation sets
 description:
   - Manages AWS Route53 reusable delegation sets.
 author:
-  - Taylor Kimball (@tkimball83)
+  - Taylor Kimball
 options:
   name:
     description:
       - The delegation set caller reference.
+      - This must be 1 to 128 characters.
     required: true
     type: str
   state:
@@ -102,7 +103,6 @@ def ensure_absent(client, module):
 def ensure_present(client, module):
     name = module.params["name"]
     delegation_set = get_reusable_delegation_set(client, module)
-    desired_delegation_set = {"CallerReference": name}
     changed = delegation_set is None
 
     if changed and not module.check_mode:
@@ -120,7 +120,7 @@ def ensure_present(client, module):
         if delegation_set is None:
             delegation_set = get_reusable_delegation_set(client, module)
     elif changed and module.check_mode:
-        delegation_set = desired_delegation_set
+        delegation_set = {"CallerReference": name}
 
     result = {
         "changed": changed,
@@ -139,6 +139,7 @@ def ensure_present(client, module):
 
 
 def get_reusable_delegation_set(client, module):
+    name = module.params["name"]
     marker = None
 
     while True:
@@ -154,13 +155,14 @@ def get_reusable_delegation_set(client, module):
             )
 
         for delegation_set in response.get("DelegationSets", []):
-            if delegation_set.get("CallerReference") == module.params["name"]:
+            if delegation_set.get("CallerReference") == name:
                 return delegation_set
 
         if not response.get("IsTruncated"):
             return None
 
         marker = response.get("NextMarker")
+
         if not marker:
             module.fail_json(
                 msg=(
@@ -182,9 +184,12 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
-
     state = module.params["state"]
+
+    if state == "present" and not 1 <= len(module.params["name"]) <= 128:
+        module.fail_json(msg="name must be 1 to 128 characters")
+
+    client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
     method_names = {"list_reusable_delegation_sets"}
     if state == "present":
         method_names.add("create_reusable_delegation_set")
