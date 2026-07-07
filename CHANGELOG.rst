@@ -4,6 +4,20 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.1.3
+======
+
+Release Summary
+---------------
+
+Initial release of global accelerator roles and overall module optimizations
+
+Minor Changes
+-------------
+
+- global_accelerator - initial commit
+- global_accelerator_info - initial commit
+
 v2.1.2
 ======
 
