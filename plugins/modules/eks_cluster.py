@@ -10,7 +10,7 @@ description:
   - Creates, updates, and deletes AWS EKS clusters.
   - Supports modern EKS cluster settings exposed by the EKS API.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   access_config:
     default:

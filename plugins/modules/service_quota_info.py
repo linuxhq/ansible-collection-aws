@@ -11,7 +11,7 @@ description:
   - Falls back to the AWS default quota when the quota has no applied value
     and no O(context_id) is provided.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   context_id:
     description:

@@ -12,7 +12,7 @@ description:
   - Manages static transit gateway routes in the route table.
   - This module does not manage route table associations or propagations.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   name:
     description:

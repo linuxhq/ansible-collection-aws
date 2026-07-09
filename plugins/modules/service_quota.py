@@ -12,7 +12,7 @@ description:
     and there is no existing open or pending request for the same quota.
   - Falls back to the AWS default quota when the quota has no applied value.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   quota_code:
     description:

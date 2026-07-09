@@ -10,7 +10,7 @@ description:
   - Manages AWS IAM OpenID Connect (OIDC) identity providers.
   - Supports creating and deleting providers, and updating client IDs, thumbprints, and tags.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   client_id_list:
     description:

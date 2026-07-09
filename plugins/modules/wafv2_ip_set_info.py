@@ -10,7 +10,7 @@ description:
   - Gathers information about AWS WAFv2 IP sets.
   - Lists IP sets for the requested scope and returns each full IP set definition.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   id:
     description:

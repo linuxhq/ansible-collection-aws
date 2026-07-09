@@ -10,7 +10,7 @@ description:
   - Manages AWS Notifications hubs.
   - The module always uses the C(us-east-1) AWS Notifications endpoint.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   region:
     description:

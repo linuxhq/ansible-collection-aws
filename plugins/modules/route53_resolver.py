@@ -10,7 +10,7 @@ description:
   - Manages AWS Route53 Resolver endpoints.
   - Compares the desired endpoint settings against the current endpoint fetched by name.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   direction:
     description:

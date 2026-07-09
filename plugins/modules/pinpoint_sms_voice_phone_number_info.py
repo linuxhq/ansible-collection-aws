@@ -11,7 +11,7 @@ description:
   - This module maps to the Pinpoint SMS Voice V2 C(DescribePhoneNumbers) API,
     the API behind C(aws pinpoint-sms-voice-v2 describe-phone-numbers).
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   filters:
     description:

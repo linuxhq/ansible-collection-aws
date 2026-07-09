@@ -10,7 +10,7 @@ description:
   - Gathers information about AWS Simple Notification Service SMS attributes.
   - This module maps to the SNS C(GetSMSAttributes) API.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   attributes:
     description:

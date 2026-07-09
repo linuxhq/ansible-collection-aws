@@ -10,7 +10,7 @@ description:
   - Creates, updates, and deletes EC2 VPC managed prefix lists.
   - Manages prefix list entries idempotently.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   address_family:
     description:

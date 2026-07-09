@@ -9,7 +9,7 @@ short_description: Gather information about aws ec2 instance metadata defaults
 description:
   - Gathers EC2 account-level instance metadata defaults for a region.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules

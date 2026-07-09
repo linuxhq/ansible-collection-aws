@@ -9,7 +9,7 @@ short_description: Manage aws route53 delegation sets
 description:
   - Manages AWS Route53 reusable delegation sets.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   name:
     description:

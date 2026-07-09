@@ -10,7 +10,7 @@ description:
   - Gathers information about AWS Systems Manager documents.
   - Retrieves each document as JSON and parses the returned content when possible.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   document_format:
     choices:

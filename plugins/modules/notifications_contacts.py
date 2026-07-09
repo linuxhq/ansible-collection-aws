@@ -9,7 +9,7 @@ short_description: Manage aws notifications contacts
 description:
   - Manages AWS Notifications email contacts.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   email_address:
     description:

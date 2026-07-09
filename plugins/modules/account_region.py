@@ -10,7 +10,7 @@ description:
   - Enables or disables the opt-in status of an AWS account region.
   - Compares the desired state against the current region opt-in status fetched by name.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   name:
     description:

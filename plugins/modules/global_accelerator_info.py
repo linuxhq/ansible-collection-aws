@@ -11,7 +11,7 @@ description:
     optionally their listeners and endpoint groups.
   - The Global Accelerator control plane uses the C(us-west-2) region.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   arn:
     description:

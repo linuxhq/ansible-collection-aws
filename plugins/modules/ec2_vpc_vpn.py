@@ -13,7 +13,7 @@ description:
   - Idempotence is achieved by using the O(filters) option or specifying the VPN connection identifier.
 author:
   - Sloane Hertel (@s-hertel)
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   state:
     description:

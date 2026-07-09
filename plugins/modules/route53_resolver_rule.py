@@ -10,7 +10,7 @@ description:
   - Manages AWS Route53 Resolver rules.
   - Updates resolver endpoint and target IP settings for existing rules.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   domain_name:
     description:

@@ -9,7 +9,7 @@ short_description: Gather information about aws simple email service account det
 description:
   - Gathers information about AWS Simple Email Service account details.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules

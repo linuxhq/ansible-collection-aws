@@ -11,7 +11,7 @@ description:
   - The last VPC association of a private hosted zone cannot be removed;
     the Route53 API rejects the request.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   hosted_zone_id:
     description:

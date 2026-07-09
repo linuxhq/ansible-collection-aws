@@ -13,7 +13,7 @@ description:
   - The Pricing API endpoint is queried in C(us-east-1). Use filters such as
     C(regionCode) or C(location) for product-specific regional pricing data.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   filters:
     description:

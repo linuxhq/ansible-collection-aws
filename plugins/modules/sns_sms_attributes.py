@@ -12,7 +12,7 @@ description:
   - Without any attribute options the module only reports the current
     attributes.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   default_sender_id:
     description:

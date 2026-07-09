@@ -10,7 +10,7 @@ description:
   - Gathers information about AWS Relational Database Service (RDS) DB subnet
     groups.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   filters:
     description:

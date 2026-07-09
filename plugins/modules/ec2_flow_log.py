@@ -11,7 +11,7 @@ description:
     and transit gateway resources.
   - Manages tags on existing matching flow logs.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   deliver_cross_account_role:
     description:

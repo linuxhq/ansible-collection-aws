@@ -11,7 +11,7 @@ description:
   - This module maps to the EC2 C(DescribeInstanceTypes) API, the API behind
     C(aws ec2 describe-instance-types).
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   filters:
     description:
