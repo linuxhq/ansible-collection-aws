@@ -9,7 +9,7 @@ short_description: Manage aws iam account alias
 description:
   - Manages the AWS IAM account alias for the current account.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   name:
     description:

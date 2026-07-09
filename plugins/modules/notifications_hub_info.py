@@ -10,7 +10,7 @@ description:
   - Gathers information about AWS Notifications hubs.
   - The module always uses the C(us-east-1) AWS Notifications endpoint.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules

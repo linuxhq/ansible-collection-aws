@@ -13,7 +13,7 @@ description:
     C(AssociateOriginationIdentity) API, the API behind
     C(aws pinpoint-sms-voice-v2 associate-origination-identity).
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   client_token:
     description:

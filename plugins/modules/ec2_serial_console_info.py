@@ -9,7 +9,7 @@ short_description: Gather information about aws ec2 serial console access
 description:
   - Gathers EC2 serial console access status for a region.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules

@@ -10,7 +10,7 @@ description:
   - Gathers information about AWS WAFv2 web ACLs.
   - Lists web ACLs for the requested scope and returns each full web ACL definition.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   id:
     description:

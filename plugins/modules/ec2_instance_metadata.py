@@ -10,7 +10,7 @@ description:
   - Updates EC2 account-level instance metadata defaults for a region.
   - At least one metadata default option must be provided.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   http_endpoint:
     description:

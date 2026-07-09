@@ -9,7 +9,7 @@ short_description: Gather information about aws systems manager associations
 description:
   - Gathers information about AWS Systems Manager associations.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   filters:
     description:

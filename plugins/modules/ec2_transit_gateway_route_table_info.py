@@ -9,7 +9,7 @@ short_description: Gather information about EC2 transit gateway route tables
 description:
   - Gathers information about AWS EC2 transit gateway route tables.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   filters:
     description:

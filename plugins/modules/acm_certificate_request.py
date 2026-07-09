@@ -13,7 +13,7 @@ description:
     C(ISSUED), and its domain name and subject alternative names match; the
     most recently created certificate is reused when several match.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   domain_name:
     description:

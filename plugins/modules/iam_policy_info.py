@@ -9,7 +9,7 @@ short_description: Gather information about aws iam inline policies
 description:
   - Gathers information about AWS IAM inline policies for users and groups.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   group_name:
     description:

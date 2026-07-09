@@ -9,7 +9,7 @@ short_description: Gather information about aws ec2 flow logs
 description:
   - Gathers information about EC2 flow logs.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   filters:
     description:

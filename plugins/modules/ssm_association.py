@@ -14,7 +14,7 @@ description:
     module, such as association parameters, are removed by the AWS
     C(UpdateAssociation) API.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   name:
     description:

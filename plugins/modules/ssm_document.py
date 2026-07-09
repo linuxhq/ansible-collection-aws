@@ -15,7 +15,7 @@ description:
   - Converts document content input keys to AWS format for comparison and API requests.
   - O(document_type) is immutable after creation.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   content:
     description:

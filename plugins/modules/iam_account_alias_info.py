@@ -9,7 +9,7 @@ short_description: Gather information about aws iam account aliases
 description:
   - Gathers AWS IAM account aliases for the current account.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules

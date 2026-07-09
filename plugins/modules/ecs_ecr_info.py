@@ -9,7 +9,7 @@ short_description: Gather information about aws elastic container registry repos
 description:
   - Gather information about AWS Elastic Container Registry repositories.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   registry_id:
     description:

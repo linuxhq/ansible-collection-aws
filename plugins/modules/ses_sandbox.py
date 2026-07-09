@@ -11,7 +11,7 @@ description:
   - Without O(use_case_description) and O(website_url) the module only
     reports the current account details.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   additional_contact_email_addresses:
     description:

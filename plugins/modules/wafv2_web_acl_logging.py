@@ -13,7 +13,7 @@ description:
     module, such as redacted fields and logging filters, are removed by the
     AWS C(PutLoggingConfiguration) API.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   log_destination_configs:
     description:

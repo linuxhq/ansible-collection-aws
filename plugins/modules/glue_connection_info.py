@@ -9,7 +9,7 @@ short_description: Gather information about aws glue connections
 description:
   - Gathers information about AWS Glue connections.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   apply_override_for_compute_environment:
     description:

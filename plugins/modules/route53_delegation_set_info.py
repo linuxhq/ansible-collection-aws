@@ -9,7 +9,7 @@ short_description: Gather information about aws route53 delegation sets
 description:
   - Gathers information about AWS Route53 reusable delegation sets.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   id:
     description:

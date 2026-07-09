@@ -9,7 +9,7 @@ short_description: Gather information about aws notifications contacts
 description:
   - Gathers information about AWS Notifications email contacts.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   arn:
     description:

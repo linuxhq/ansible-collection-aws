@@ -9,7 +9,7 @@ short_description: Gather information about aws placement groups
 description:
   - Gathers information about EC2 placement groups.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   filters:
     description:

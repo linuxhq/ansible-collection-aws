@@ -5,7 +5,7 @@ DOCUMENTATION = r"""
 ---
 name: ses_credential
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 short_description: Generate an AWS SES SMTP password from an IAM secret access key
 description:
   - Generates an AWS Simple Email Service SMTP password from an IAM secret access key.

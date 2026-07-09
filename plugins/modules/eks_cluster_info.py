@@ -9,7 +9,7 @@ short_description: Gather information about aws eks clusters
 description:
   - Gathers information about AWS EKS clusters.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   filters:
     description:

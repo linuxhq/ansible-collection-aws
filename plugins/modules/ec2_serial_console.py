@@ -9,7 +9,7 @@ short_description: Manage aws ec2 serial console access
 description:
   - Enables or disables EC2 serial console access for a region.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   state:
     description:

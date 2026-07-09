@@ -11,7 +11,7 @@ description:
   - Requests the tokens by initiating domain verification, so the identity
     does not need to exist yet and DNS records can be created first.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   identity:
     description:

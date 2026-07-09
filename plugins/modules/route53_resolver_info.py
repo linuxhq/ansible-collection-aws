@@ -9,7 +9,7 @@ short_description: Gather information about aws route53 resolver endpoints
 description:
   - Gathers information about AWS Route53 Resolver endpoints.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   filters:
     description:

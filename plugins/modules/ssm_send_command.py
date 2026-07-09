@@ -10,7 +10,7 @@ description:
   - Sends an AWS Systems Manager Run Command request.
   - Optionally waits for command invocations to complete.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   comment:
     description:

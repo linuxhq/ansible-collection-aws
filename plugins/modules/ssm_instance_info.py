@@ -11,7 +11,7 @@ description:
   - This includes the Systems Manager ping status used to determine whether an
     instance is online for Session Manager.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   filters:
     description:

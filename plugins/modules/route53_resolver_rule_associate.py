@@ -9,7 +9,7 @@ short_description: Manage aws route53 resolver rule associations
 description:
   - Manages AWS Route53 Resolver rule associations.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   name:
     description:

@@ -9,7 +9,7 @@ short_description: Gather information about aws simple queue service queues
 description:
   - Gathers information about AWS Simple Queue Service queues.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   name:
     description:

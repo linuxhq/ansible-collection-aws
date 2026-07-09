@@ -9,7 +9,7 @@ short_description: Gather information about aws virtual private cloud prefix lis
 description:
   - Gathers information about EC2 VPC managed prefix lists.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   filters:
     description:

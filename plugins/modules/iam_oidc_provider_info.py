@@ -9,7 +9,7 @@ short_description: Gather information about aws iam oidc providers
 description:
   - Gathers information about AWS IAM OpenID Connect (OIDC) identity providers.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   arn:
     description:

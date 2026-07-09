@@ -9,7 +9,7 @@ short_description: Gather information about aws simple email service identities
 description:
   - Gathers information about AWS SES identities.
 author:
-  - Taylor Kimball
+  - Taylor Kimball (@tkimball83)
 options:
   identity_type:
     description:
