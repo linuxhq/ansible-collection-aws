@@ -1,8 +1,6 @@
 # .gitignore
 
 .ansible/
-.claude/
-.codex/
 .DS_Store
 __pycache__/
 venv/
