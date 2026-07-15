@@ -1619,7 +1619,8 @@ def main():
                 )
                 if module.params["purge_endpoint_groups"]:
                     method_names.add("delete_endpoint_group")
-    elif state == "absent":
+
+    if state == "absent":
         method_names.update(
             {
                 "delete_accelerator",
@@ -1630,8 +1631,6 @@ def main():
                 "update_accelerator",
             }
         )
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
     method_parameters = {}
     for method_name in sorted(method_names):
@@ -1728,10 +1727,9 @@ def main():
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

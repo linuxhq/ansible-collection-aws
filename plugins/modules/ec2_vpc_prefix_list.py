@@ -708,10 +708,9 @@ def main():
             method_names.add("create_tags")
             if module.params["purge_tags"]:
                 method_names.add("delete_tags")
-    elif state == "absent":
+
+    if state == "absent":
         method_names.add("delete_managed_prefix_list")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
     method_parameters = {}
     for method_name in sorted(method_names):
@@ -766,10 +765,9 @@ def main():
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

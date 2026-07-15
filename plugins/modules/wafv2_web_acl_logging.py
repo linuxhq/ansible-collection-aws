@@ -208,10 +208,9 @@ def main():
     method_names = {"get_logging_configuration"}
     if state == "present":
         method_names.add("put_logging_configuration")
-    elif state == "absent":
+
+    if state == "absent":
         method_names.add("delete_logging_configuration")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
     method_parameters = {}
     for method_name in sorted(method_names):
@@ -246,10 +245,9 @@ def main():
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

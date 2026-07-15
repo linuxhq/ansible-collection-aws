@@ -122,7 +122,7 @@ def main():
         request["MaxResults"] = max_results
     if phone_number_ids:
         request["PhoneNumberIds"] = phone_number_ids
-    elif owner is not None:
+    else:
         request["Owner"] = owner
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)

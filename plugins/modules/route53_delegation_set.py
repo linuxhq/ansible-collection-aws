@@ -193,10 +193,9 @@ def main():
     method_names = {"list_reusable_delegation_sets"}
     if state == "present":
         method_names.add("create_reusable_delegation_set")
-    elif state == "absent":
+
+    if state == "absent":
         method_names.add("delete_reusable_delegation_set")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
     method_parameters = {}
     for method_name in sorted(method_names):
@@ -231,10 +230,9 @@ def main():
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

@@ -424,12 +424,11 @@ def main():
         )
         if module.params["wait"]:
             method_names.add("get_resolver_rule_association")
-    elif state == "absent":
+
+    if state == "absent":
         method_names.add("disassociate_resolver_rule")
         if module.params["wait"]:
             method_names.add("get_resolver_rule_association")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
     method_parameters = {}
     for method_name in sorted(method_names):
@@ -468,10 +467,9 @@ def main():
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

@@ -121,7 +121,7 @@ def main():
         request["MaxResults"] = max_results
     if pool_ids:
         request["PoolIds"] = pool_ids
-    elif owner is not None:
+    else:
         request["Owner"] = owner
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)

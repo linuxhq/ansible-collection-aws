@@ -647,10 +647,9 @@ def main():
             method_names.append("create_tags")
             if module.params["purge_tags"]:
                 method_names.append("delete_tags")
-    elif state == "absent":
+
+    if state == "absent":
         method_names.append("delete_flow_logs")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
     method_parameters = {}
     for method_name in method_names:
@@ -725,10 +724,9 @@ def main():
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":
