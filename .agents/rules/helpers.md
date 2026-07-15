@@ -49,6 +49,10 @@ are service-scoped (SNS, WAFv2, DynamoDB, OpenSearch, Network Firewall).
 - `is_ansible_aws_error_code`, `is_ansible_aws_error_message` — match errors raised as
   `AnsibleAWSError` (the collection's wrapped form).
 
+### `.iterators`
+- `chunks`, `chunked_payload` — split an oversized sequence/payload into API-sized batches;
+  use before looping a bulk operation that has a per-request item or size limit.
+
 ### `.modules`
 - `AnsibleAWSModule` — the base module class; construct every module with it.
 - `aws_argument_spec` — shared base argument spec (prefer the documentation fragments in

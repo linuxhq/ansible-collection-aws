@@ -1,84 +1,42 @@
 ---
 name: ansible-test
-description: Run ansible-test sanity on module/plugin changes from the project virtualenv. Run after modifying any file under plugins/ to catch the sanity failures CI enforces on the collection.
+description: Run ansible-test sanity on module/plugin changes from the project virtualenv, including the collection checkout sanity requires. Run after modifying any file under plugins/.
 ---
 
 # ansible-test
 
-Run `ansible-test sanity` with the project's virtualenv, not a system or global install. The
-venv pins `ansible>13,<14` (see `requirements.txt`), which provides `ansible-test`; using the
-pinned version keeps results reproducible, since sanity ignores and the bundled test set
-change between `ansible-core` releases.
+Run sanity after any change under `plugins/` — it catches `DOCUMENTATION`/`RETURN`/`EXAMPLES`
+drift, argspec mismatches, and import errors (CI runs the same suite). Also run `black` and
+`ruff` on the file. Needs the `virtualenv` skill.
 
-## When to run
+## The checkout
 
-Run sanity after modifying any file under `plugins/` — a new or changed module in
-`plugins/modules/`, a lookup in `plugins/lookup/`, or their docs — before considering the
-change complete. `DOCUMENTATION`/`RETURN`/`EXAMPLES` drift, argument-spec mismatches, and
-import errors are exactly what sanity catches, and CI runs the same suite.
+Sanity only runs where the collection physically lives at `ansible_collections/<namespace>/<name>/`
+(from `galaxy.yml`) — not the primary checkout, and **not via symlink**. This repo keeps it under
+`venv/ansible_collections/<namespace>/<name>`, a git-ignored, on-demand checkout. Create it once
+(if `git worktree list` / `ls` doesn't show it) as a detached worktree — it already holds the
+committed tree, and must be detached since the branch is checked out in the primary tree:
 
-## The physical-path requirement
-
-`ansible-test` resolves the real filesystem path and only runs when the collection lives at
-`ansible_collections/linuxhq/aws/`. It will not run from the primary checkout
-(`/Users/tkimball/Git/ansible-collection-aws`), and **symlinks do not work**.
-
-This repo already has a git worktree at the required path:
-
-```
-venv/ansible_collections/linuxhq/aws
+```sh
+git worktree add --detach venv/ansible_collections/<namespace>/<name>
 ```
 
-That worktree shares the same git repository (`.git/worktrees/aws`) as the main checkout, so
-it is the place to run sanity. It is a **separate working tree** — edits made in the primary
-checkout are not visible there until you sync them across (see below).
+A plain copy works too (sanity doesn't need git), but then sync the full tree, not just `plugins/`.
 
-## How to run
+## Run
 
-1. Sync your plugin tree from the primary checkout into the worktree. The two are
-   independent working trees, so mirror the source over — always with `--delete` so files you
-   renamed or removed do not linger in the worktree and get tested as stale copies:
+Sync your edits in (always `--delete` so removed/renamed files don't linger), then run from
+inside the checkout (interpreter from `.python-version`):
 
-   ```sh
-   rsync -a --delete plugins/ venv/ansible_collections/linuxhq/aws/plugins/
-   ```
+```sh
+rsync -a --delete plugins/ venv/ansible_collections/<namespace>/<name>/plugins/
+cd venv/ansible_collections/<namespace>/<name>
+../../../bin/ansible-test sanity --python "$(cat .python-version)" plugins/modules/<file>.py
+```
 
-   Mirror the whole `plugins/` tree (not just the file you touched): a rename leaves the old
-   module behind otherwise, and sanity would validate both. Without `--delete` the worktree
-   silently accumulates deleted files and reports results that no longer match your checkout.
+- Add `--test validate-modules` for just doc/argspec checks.
+- Drop the path argument for the full suite (what CI runs).
 
-2. Run sanity from inside the worktree, using the venv's `ansible-test`. Do not hardcode the
-   Python version — read it from `.python-version` (present in the worktree) so the skill
-   tracks the project's pinned interpreter:
-
-   ```sh
-   cd venv/ansible_collections/linuxhq/aws
-   ../../../bin/ansible-test sanity --python "$(cat .python-version)" plugins/modules/<file>.py
-   ```
-
-   Or run a single test across the file (e.g. just doc/argspec validation):
-
-   ```sh
-   ../../../bin/ansible-test sanity --python "$(cat .python-version)" --test validate-modules plugins/modules/<file>.py
-   ```
-
-   To run the full collection sanity suite (what CI runs), drop the path argument:
-
-   ```sh
-   ../../../bin/ansible-test sanity --python "$(cat .python-version)"
-   ```
-
-A clean run exits `0`. Any reported failure names the test, file, and line — fix it in the
-**primary checkout**, re-sync, and re-run. Do not leave fixes only in the worktree; it is a
-scratch copy and the primary checkout is what gets committed.
-
-## Notes
-
-- If `venv/bin/ansible-test` is missing, sync the venv first: `venv/bin/pip install -r
-  requirements.txt` (or `make python`).
-- If the worktree is gone (`git worktree list` does not show
-  `venv/ansible_collections/linuxhq/aws`), recreate it:
-  `git worktree add --detach venv/ansible_collections/linuxhq/aws`. A worktree cannot check
-  out a branch already checked out in the primary tree, so keep it detached and sync files in.
-- Sanity is separate from formatting and linting. Run the `black` and `ruff` skills on the
-  same plugin file as well; sanity does not reformat and does not replace ruff's lint rules.
+Fix failures in the **primary checkout**, re-sync, re-run — the checkout is a scratch copy. A
+clean run exits `0`. Quick extras from the primary checkout: `git diff --check`, `venv/bin/python
+-m compileall -q plugins`.
