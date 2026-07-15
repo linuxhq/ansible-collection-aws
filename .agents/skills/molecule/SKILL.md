@@ -5,13 +5,19 @@ description: Run a role's molecule scenario from the project virtualenv. Scenari
 
 # molecule
 
-Test a role with its `molecule/default/` scenario, run from the role's own directory. Scenarios
-hit **real AWS**. Needs the `virtualenv` skill.
+Test a role with its `molecule/default/` scenario, run from the role's own directory.
 
 ```sh
-cd roles/<role>
-../../venv/bin/molecule test -s default       # full create / converge / verify / destroy
-../../venv/bin/molecule converge -s default   # present path only, no teardown
+cd roles/{{ role }}
+../../venv/bin/molecule test -s default
+../../venv/bin/molecule converge -s default
 ```
 
-The scenario doubles as an example playbook for the role.
+- `test` runs the full create / converge / verify / destroy cycle.
+- `converge` runs only the present path, no teardown.
+- Scenarios hit **real AWS**.
+- The scenario doubles as the role's example playbook.
+
+## Dependencies
+
+- `virtualenv` skill
