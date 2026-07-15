@@ -14,12 +14,7 @@ An Ansible collection of AWS modules and roles, published to Galaxy on tag push.
 
 ## Rules
 
-Always-on rules in `.agents/rules/`, `@` - imported per file
-
-@.agents/rules/helpers.md
-@.agents/rules/module-authoring.md
-@.agents/rules/module-docs.md
-@.agents/rules/role-authoring.md
+Always-on agent rules.  Append new rules to imports section below.
 
 | Rule                  | Covers                                     |
 | --------------------- | ------------------------------------------ |
@@ -30,8 +25,7 @@ Always-on rules in `.agents/rules/`, `@` - imported per file
 
 ## Tooling
 
-All tools run from a local `venv/`. Each task has a skill — invoke it rather than
-running commands ad hoc.
+Invoke skills rather than running commands ad hoc.
 
 | Skill              | Purpose                       |
 | ------------------ | ----------------------------- |
@@ -44,3 +38,14 @@ running commands ad hoc.
 | `molecule`         | Role tests                    |
 | `changelog`        | Changelog fragments & release |
 | `collection-build` | Build the collection tarball  |
+
+## Setup
+
+Enable the review gate once: `/codex:setup --enable-review-gate`
+
+## Imports
+
+- @.agents/rules/helpers.md
+- @.agents/rules/module-authoring.md
+- @.agents/rules/module-docs.md
+- @.agents/rules/role-authoring.md
