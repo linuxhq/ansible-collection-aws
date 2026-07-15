@@ -12,7 +12,7 @@ details that are easy to miss.
 ## Options and returns
 
 - Give list options and list return values an `elements` entry.
-- Write `EXAMPLES` using the fully-qualified collection name, `<namespace>.<name>.<plugin>`.
+- Write `EXAMPLES` using the fully-qualified collection name, `{{ namespace }}.{{ name }}.{{ plugin }}`.
 
 ## Validation rules
 
@@ -30,4 +30,4 @@ details that are easy to miss.
 
 - When an info module offers both a singular lookup and list/filter options, spell out the
   split: `O(name)` is mutually exclusive with the list filters, and any option used only by the
-  singular lookup should note that it "Requires O(name)".
+  singular lookup should note that it `Requires O(name)`.

@@ -15,9 +15,9 @@ Import from the module shown; use `amazon.aws` for generic needs, `community.aws
 service.
 
 ```python
-from ansible_collections.amazon.aws.plugins.module_utils.<module> import <name>
-from ansible_collections.community.aws.plugins.module_utils.<module> import <name>
-from ansible.module_utils.<module> import <name>
+from ansible_collections.amazon.aws.plugins.module_utils.{{ module }} import {{ name }}
+from ansible_collections.community.aws.plugins.module_utils.{{ module }} import {{ name }}
+from ansible.module_utils.{{ module }} import {{ name }}
 ```
 
 ## amazon.aws
