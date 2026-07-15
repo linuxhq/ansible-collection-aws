@@ -1,52 +1,90 @@
 # Role authoring
 
-Conventions for roles in `roles/` that `ansible-lint`/`yamllint` don't enforce. Two flavors —
-**manager** (call AWS modules) and **info** (gather facts); layout `tasks/`, `defaults/`,
-`meta/`, `README.md`, `molecule/default/`. Match the nearest role.
+Conventions for the roles in `roles/` that `ansible-lint` and `yamllint` don't enforce on their
+own. As with modules, match the nearest existing role.
+
+Roles come in two kinds:
+
+- **Manager** roles call AWS modules to create and update resources.
+- **Info** roles gather facts and publish them.
+
+Both share the same layout:
+
+- `tasks/`
+- `defaults/`
+- `meta/`
+- `README.md`
+- `molecule/default/` scenario
 
 ## Layout and variables
 
-- Prefix input variables with the role name; default resource lists to `[]`.
-- Keep `README.md`, `defaults/main.yml`, `meta/main.yml` aligned when changing variables,
-  defaults, dependencies, or published facts.
-- Every task carries the role-name tag.
+- Prefix a role's input variables with the role name.
+- Default variables by type:
+  - string: `null`
+  - list: `[]`
+  - dict: `{}`
+- Keep these in sync when you change variables, defaults, dependencies, or published facts:
+  - `README.md`
+  - `defaults/main.yml`
+  - `meta/main.yml`
+- Tag every task with the role name.
 
 ## Manager roles
 
-Most are list-driven: the caller supplies `<role>_list` and `tasks/main.yml` loops it; a few
-manage one fixed resource with scalar vars. Structure varies — match the nearest role — but for
-the list-driven form:
+Most manager roles are list-driven: the caller passes a `<role>_list`, and `tasks/main.yml`
+loops over it. (A few manage a single fixed resource with plain scalar variables instead.) The
+exact shape varies, so match the nearest role, but the list-driven pattern works like this.
 
-- **Dispatch**: loop `include_tasks` with `apply.tags` (role-name tag) into the file holding the
-  module call(s); the file name varies — a single `include.yml`, or files split by operation
-  (`present.yml`/`absent.yml`/`info.yml`).
-- **Default injection**: per-item `state` defaults to `present` — via `| d('present')`, a
-  `product`/`map('combine')` merge into `__<role>_list`, or a `when` guard.
-- **Loop var**: per-item `_<singular>` with a `label`; batched loops use `<role>_list | batch(...)`
-  with a `__<role>_list` loop var.
-- **Guard**: `when` on the item's identifier being defined (skip check mode where a registered
-  value is needed).
+### Dispatch
 
-Module call in the looped task:
+- Send each item through `include_tasks`, with `apply.tags` set to the role-name tag so tagged
+  runs still reach the child tasks.
+- The included file holds the module call, either:
+  - a single `include.yml`, or
+  - files split by operation (`present.yml`, `absent.yml`, `info.yml`).
 
-- Optional values → `| d(omit)`.
-- `purge_*` booleans pinned `| d(true)`/`| d(false)` — never `| d(omit)`.
-- Merge a `Name` tag: `tags: "{{ _x.tags | d({}) | combine({'Name': _x.name}) }}"`.
-- Register into `__<role>_result` when a later task reuses it.
-- `validate_certs: true`.
+### Default state
 
-Single-resource roles call the module once in `main.yml` with scalar vars (`<role>_name`,
-`<role>_state`) and `validate_certs: true`.
+- Default each item's `state` to `present` when unset, via one of:
+  - `| d('present')`
+  - a `product`/`combine` merge into an internal `__<role>_list`
+  - a `when` guard
+
+### Loop
+
+- Loop with a per-item `loop_var` named `_<singular>` and a `label`.
+- Batched roles loop over `<role>_list | batch(...)` with a `__<role>_list` loop var instead.
+- Guard the loop with a `when` on the item's identifier.
+
+### Module call
+
+- Default optional values with `| d(omit)`.
+- Pin `purge_*` booleans with `| d(true)` or `| d(false)` — never `| d(omit)`.
+- Merge a `Name` tag into the resource's tags:
+  - `tags: "{{ _x.tags | d({}) | combine({'Name': _x.name}) }}"`
+- Set `validate_certs: true`.
+- Register `__<role>_result` if a later task needs it.
+
+### Single-resource roles
+
+- Skip the list; call the module once in `main.yml`.
+- Use scalar variables:
+  - `<role>_name`
+  - `<role>_state`
+- Set `validate_certs: true`.
 
 ## Info roles
 
-Call the `_info` module, register `__<role>_query`, then `set_fact` publishes `_<role>_info_list`
-(and `_<role>_info_dict` when there's a stable key), defaulting with `| d([])`/`| d({})`. These
-`_`-prefixed facts are the role's outputs.
+- An info role's public output is its `_` prefixed facts.
+- Call the matching info module and register the result as `__<role>_query`.
+- Use `set_fact` to publish snake_case facts, defaulting the source with `| d([])` or `| d({})`:
+  - `_<role>_info_list`
+  - `_<role>_info_dict` (when the data has a stable key)
 
 ## Naming
 
-- `__<role>_*` — internal scratch (`set_fact` lists, `register` results): `__<role>_list`,
-  `__<role>_result`, `__<role>_query`.
-- `_<role>_*` — published facts: `_<role>_info_list`, `_<role>_info_dict`.
-- `loop_var` — `_<singular>` (e.g. `_topic`); batched loops use `__<role>_list`.
+| Prefix        | For              | Examples                                             |
+| ------------- | ---------------- | ---------------------------------------------------- |
+| `_<role>_`    | Published facts  | `_<role>_info_list`, `_<role>_info_dict`             |
+| `_<singular>` | `loop_var`       | `_topic` (batched loops reuse `__<role>_list`)       |
+| `__<role>_`   | Internal scratch | `__<role>_list`, `__<role>_result`, `__<role>_query` |
