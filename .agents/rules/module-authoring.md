@@ -8,7 +8,7 @@ Conventions for the resource and info modules in `plugins/modules/` (built on
 
 ## Structure
 
-Modules usually come as a manager/info pair — `<module>.py` and `<module>_info.py` — though not
+Modules usually come as a manager/info pair — `{{ module }}.py` and `{{ module }}_info.py` — though not
 every resource has both. Lay each file out in this order:
 
 - `DOCUMENTATION`, `EXAMPLES`, and `RETURN` docstrings.
@@ -82,7 +82,7 @@ When starting a new module, copy the structure of an existing pair.
 ### Clients and retries
 
 - Create the client with a retry decorator, and pass `aws_retry=True` on the calls that should
-  retry: `module.client("<service>", retry_decorator=AWSRetry.jittered_backoff())`.
+  retry: `module.client("{{ service }}", retry_decorator=AWSRetry.jittered_backoff())`.
 - For paginated `list`/`describe` calls, use `paginated_query_with_retries`. It retries on its
   own, so don't add `aws_retry`; only write a manual pagination loop when the API has no
   paginator.
