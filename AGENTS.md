@@ -6,11 +6,11 @@ Guidance for agents working in this repository.
 
 An Ansible collection of AWS modules and roles, published to Galaxy on tag push.
 
-| Path               | Description                                 |
-| ------------------ | ------------------------------------------- |
-| `plugins/modules/` | New Python AWS modules (resource + `_info`) |
-| `plugins/lookup/`  | Python lookup plugins                       |
-| `roles/`           | List-driven wrappers over AWS modules       |
+| Path               | Description            |
+| ------------------ | ---------------------- |
+| `plugins/modules/` | Ansible python modules |
+| `plugins/lookup/`  | Ansible lookup plugins |
+| `roles/`           | Ansible roles          |
 
 ## Rules
 
@@ -21,12 +21,12 @@ Always-on rules in `.agents/rules/`, `@` - imported per file
 @.agents/rules/module-docs.md
 @.agents/rules/role-authoring.md
 
-| Rule                  | Covers                                                     |
-| --------------------- | ---------------------------------------------------------- |
-| `helpers.md`          | `module_utils` helper reference                            |
-| `module-authoring.md` | Module structure, behavior, arguments, operations, results |
-| `module-docs.md`      | Doc / `argument_spec` alignment                            |
-| `role-authoring.md`   | Role layout, patterns, naming                              |
+| Rule                  | Covers                                     |
+| --------------------- | ------------------------------------------ |
+| `helpers.md`          | Helper reference for `module_utils`        |
+| `module-authoring.md` | Standards for writing python module code   |
+| `module-docs.md`      | Standards for writing python documentation |
+| `role-authoring.md`   | Standards for writing ansible roles        |
 
 ## Tooling
 
