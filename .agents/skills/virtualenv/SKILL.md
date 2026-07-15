@@ -6,13 +6,26 @@ description: Set up and use the project's virtualenv. Run make to bootstrap venv
 # virtualenv
 
 All tooling runs from a local `venv/` pinned by `requirements.txt`. Every other skill calls
-`venv/bin/<tool>` and assumes it exists — set it up first.
+`venv/bin/{{ tool }}`, so set this up first.
 
 ```sh
-make                       # venv + python deps + galaxy deps + pre-commit hook
-source venv/bin/activate   # optional; or call tools as venv/bin/<tool>
+make
+source venv/bin/activate
 ```
 
-Sub-targets: `make venv`, `make python` (repin Python deps), `make galaxy` (collection deps),
-`make pre-commit`, `make clean`. If a `venv/bin/<tool>` is missing or the wrong version, re-run
-`make` (or `make python`). `venv/` is git-ignored.
+Activating is optional.
+
+Sub-targets:
+
+- `make venv` — create the venv.
+- `make python` — install/repin Python deps.
+- `make galaxy` — install collection deps.
+- `make pre-commit` — install the pre-commit hook.
+- `make clean` — remove the venv.
+
+Re-run `make` (or `make python`) if a `venv/bin/{{ tool }}` is missing or the wrong version.
+`venv/` is git-ignored.
+
+## Dependencies
+
+- `pyenv` skill (provides the pinned Python)

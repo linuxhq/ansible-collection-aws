@@ -29,6 +29,7 @@ Invoke skills rather than running commands ad hoc.
 
 | Skill              | Purpose                       |
 | ------------------ | ----------------------------- |
+| `pyenv`            | Install pyenv + pinned Python |
 | `virtualenv`       | Set up the venv               |
 | `ansible-lint`     | Lint roles & playbooks        |
 | `yamllint`         | Lint YAML                     |
