@@ -92,11 +92,10 @@ def main():
     if state == "present":
         desired_enabled = True
         method_names.append("enable_serial_console_access")
-    elif state == "absent":
+
+    if state == "absent":
         desired_enabled = False
         method_names.append("disable_serial_console_access")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
     for method_name in method_names:
         try:
@@ -133,7 +132,7 @@ def main():
                     ),
                 )
 
-        elif state == "absent":
+        if state == "absent":
             try:
                 current = normalized_serial_console_access(
                     client.disable_serial_console_access(aws_retry=True)
@@ -147,8 +146,6 @@ def main():
                     ),
                 )
 
-        else:
-            module.fail_json(msg=f"Unsupported state: {state}")
     elif changed and module.check_mode:
         current = dict(current)
         current["serial_console_access_enabled"] = desired_enabled

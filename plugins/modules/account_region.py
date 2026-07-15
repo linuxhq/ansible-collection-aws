@@ -338,10 +338,9 @@ def main():
     method_names = ["get_region_opt_status"]
     if state == "present":
         method_names.append("enable_region")
-    elif state == "absent":
+
+    if state == "absent":
         method_names.append("disable_region")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
     for method_name in method_names:
         try:
@@ -353,10 +352,9 @@ def main():
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

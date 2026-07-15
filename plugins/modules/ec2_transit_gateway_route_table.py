@@ -990,10 +990,9 @@ def main():
             method_names.add("replace_transit_gateway_route")
         if has_absent_route or purge_routes:
             method_names.add("delete_transit_gateway_route")
-    elif state == "absent":
+
+    if state == "absent":
         method_names.add("delete_transit_gateway_route_table")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
     method_parameters = {}
     for method_name in sorted(method_names):
@@ -1064,10 +1063,9 @@ def main():
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":
