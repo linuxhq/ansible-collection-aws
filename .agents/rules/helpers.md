@@ -1,16 +1,18 @@
-# Helper reference
+# Helpers
 
-Prefer these existing helpers over hand-written logic. Before implementing tag
-comparison, ARN parsing, pagination, filtering, dict case-conversion, waiters, or
-parameter validation, check for a helper here first — reimplementing one is a review
-and sanity-test failure.
+Prefer these `module_utils` helpers over hand-rolled logic — reimplementing one fails review and
+sanity. They cover:
 
-These are the core `module_utils` helpers provided by the `amazon.aws` and `community.aws`
-collections (declared in `galaxy.yml`) and by `ansible-core`. They are stable public
-building blocks. Symbols are grouped under the exact module to import them from, so each
-line below is directly usable.
+- tags
+- ARNs
+- pagination
+- filters
+- case conversion
+- waiters
+- validation
 
-Import form:
+Import from the module shown; use `amazon.aws` for generic needs, `community.aws` only for its
+service.
 
 ```python
 from ansible_collections.amazon.aws.plugins.module_utils.<module> import <name>
@@ -18,138 +20,110 @@ from ansible_collections.community.aws.plugins.module_utils.<module> import <nam
 from ansible.module_utils.<module> import <name>
 ```
 
-Prefer `amazon.aws` helpers for anything generic (tags, filters, pagination, ARNs,
-waiters). Reach into `community.aws` only for the service it targets — most of its helpers
-are service-scoped (SNS, WAFv2, DynamoDB, OpenSearch, Network Firewall).
+## amazon.aws
 
-## amazon.aws — `ansible_collections.amazon.aws.plugins.module_utils`
+| Module            | Symbol                                  | Use                                      |
+| ----------------- | --------------------------------------- | ---------------------------------------- |
+| `.arn`            | `parse_aws_arn`                         | Split an ARN into parts.                 |
+| `.arn`            | `validate_aws_arn`                      | Validate an ARN's shape.                 |
+| `.botocore`       | `boto3_at_least`                        | boto3 version gate.                      |
+| `.botocore`       | `botocore_at_least`                     | botocore version gate.                   |
+| `.botocore`       | `boto3_conn`                            | Raw client (prefer `module.client`).     |
+| `.botocore`       | `get_aws_connection_info`               | Raw connection info.                     |
+| `.botocore`       | `get_aws_region`                        | Resolve the region.                      |
+| `.botocore`       | `boto_exception`                        | Exception → string.                      |
+| `.botocore`       | `check_sdk_version_supported`           | Assert SDK version.                      |
+| `.botocore`       | `gather_sdk_versions`                   | Report SDK versions.                     |
+| `.botocore`       | `get_boto3_client_method_parameters`    | Gate newer SDK APIs.                     |
+| `.botocore`       | `is_boto3_error_code`                   | Match a `ClientError` code.              |
+| `.botocore`       | `is_boto3_error_httpstatus`             | Match a `ClientError` status.            |
+| `.botocore`       | `is_boto3_error_message`                | Match a `ClientError` message.           |
+| `.botocore`       | `normalize_boto3_result`                | Normalize a raw response.                |
+| `.botocore`       | `paginated_query_with_retries`          | Paginated list/describe; no `aws_retry`. |
+| `.botocore`       | `enable_placebo`                        | Test-recording hook (not prod).          |
+| `.common`         | `get_collection_info`                   | Read collection metadata.                |
+| `.common`         | `set_collection_info`                   | Set collection metadata.                 |
+| `.exceptions`     | `is_ansible_aws_error_code`             | Match `AnsibleAWSError` code.            |
+| `.exceptions`     | `is_ansible_aws_error_message`          | Match `AnsibleAWSError` message.         |
+| `.iterators`      | `chunks`                                | Split a sequence into batches.           |
+| `.iterators`      | `chunked_payload`                       | Split a payload by size.                 |
+| `.modules`        | `AnsibleAWSModule`                      | Base class for every module.             |
+| `.modules`        | `aws_argument_spec`                     | Base arg spec (prefer fragments).        |
+| `.retries`        | `AWSRetry`                              | Retry decorator (jittered backoff).      |
+| `.tagging`        | `compare_aws_tags`                      | Diff desired vs current tags.            |
+| `.tagging`        | `ansible_dict_to_boto3_tag_list`        | Tag dict → boto3 list.                   |
+| `.tagging`        | `boto3_tag_list_to_ansible_dict`        | boto3 list → tag dict.                   |
+| `.tagging`        | `ansible_dict_to_tag_filter_dict`       | Build a tag filter.                      |
+| `.tagging`        | `boto3_tag_specifications`              | Create-time tag specs.                   |
+| `.transformation` | `scrub_none_parameters`                 | Drop unset keys before a call.           |
+| `.transformation` | `ansible_dict_to_boto3_filter_list`     | Build boto3 `Filters`.                   |
+| `.transformation` | `sanitize_filters_to_boto3_filter_list` | Sanitize + build `Filters`.              |
+| `.transformation` | `boto3_resource_to_ansible_dict`        | Resource → snake_case.                   |
+| `.transformation` | `boto3_resource_list_to_ansible_dict`   | Resource list → snake_case.              |
+| `.transformation` | `map_complex_type`                      | Coerce nested values by type.            |
+| `.waiter`         | `custom_waiter_config`                  | Waiter delay/retries config.             |
+| `.waiters`        | `get_waiter`                            | Get a waiter.                            |
+| `.waiters`        | `wait_for_resource_state`               | Wait on resource state.                  |
 
-### `.arn`
-- `parse_aws_arn` — split an ARN into its components; use before string-slicing an ARN.
-- `validate_aws_arn` — validate ARN shape and optionally its partition/service/region.
+## community.aws
 
-### `.botocore`
-- `boto3_at_least`, `botocore_at_least` — SDK version gates.
-- `boto3_conn`, `get_aws_connection_info`, `get_aws_region` — low-level connection setup
-  (prefer `AnsibleAWSModule.client`; use these only when a module needs raw connection info).
-- `boto_exception` — render a boto exception to a message string.
-- `check_sdk_version_supported`, `gather_sdk_versions` — assert/report installed SDK versions.
-- `get_boto3_client_method_parameters` — inspect a client method's accepted parameters;
-  use in `main()` to fail early when older boto3/botocore lacks an API or request field.
-- `is_boto3_error_code`, `is_boto3_error_httpstatus`, `is_boto3_error_message` — match a
-  specific `ClientError` in `except` clauses instead of inspecting the exception by hand.
-- `normalize_boto3_result` — normalize a raw boto3 response (e.g. datetimes) for return.
-- `paginated_query_with_retries` — run a paginated list/describe with built-in retries.
-  Do not pass `aws_retry=True` to it; it handles retries internally. Use this instead of
-  hand-rolled paginator loops (fall back to a manual marker/token loop only when the API
-  has no boto3 paginator).
-- `enable_placebo` — test-recording hook; not for production module code.
+| Module     | Symbol                      | Use                                      |
+| ---------- | --------------------------- | ---------------------------------------- |
+| `.base`    | `BaseResourceManager`       | Class-based manager (we use `ensure_*`). |
+| `.base`    | `Boto3Mixin`                | Class-based boto3 mixin.                 |
+| `.base`    | `BaseWaiterFactory`         | Class-based waiter factory.              |
+| `.modules` | `AnsibleCommunityAWSModule` | Only for community.aws modules.          |
 
-### `.exceptions`
-- `is_ansible_aws_error_code`, `is_ansible_aws_error_message` — match errors raised as
-  `AnsibleAWSError` (the collection's wrapped form).
+## ansible-core
 
-### `.iterators`
-- `chunks`, `chunked_payload` — split an oversized sequence/payload into API-sized batches;
-  use before looping a bulk operation that has a per-request item or size limit.
-
-### `.modules`
-- `AnsibleAWSModule` — the base module class; construct every module with it.
-- `aws_argument_spec` — shared base argument spec (prefer the documentation fragments in
-  `DOCUMENTATION`; use this only if a module builds its spec programmatically).
-
-### `.retries`
-- `AWSRetry` — retry decorator. Standard client creation:
-  `module.client("<svc>", retry_decorator=AWSRetry.jittered_backoff())`, then pass
-  `aws_retry=True` on the individual calls that should retry.
-
-### `.tagging`
-- `compare_aws_tags` — diff desired vs current tags into (to-set, to-remove) before any
-  tag API call; only honor `purge_tags` when `tags` was provided.
-- `ansible_dict_to_boto3_tag_list`, `boto3_tag_list_to_ansible_dict` — convert between the
-  Ansible tag dict and the boto3 `[{Key,Value}]` list.
-- `ansible_dict_to_tag_filter_dict`, `boto3_tag_specifications` — build tag filters and
-  create-time `TagSpecifications`.
-
-### `.transformation`
-- `scrub_none_parameters` — drop unset (`None`) keys from a request dict before calling
-  boto3; use before every mutating call that builds params conditionally.
-- `ansible_dict_to_boto3_filter_list`, `sanitize_filters_to_boto3_filter_list` — build
-  boto3 `Filters` from Ansible-style filter input.
-- `boto3_resource_to_ansible_dict`, `boto3_resource_list_to_ansible_dict` — normalize a
-  resource (or list) to snake_case Ansible output.
-- `map_complex_type` — coerce nested values by a type map when reshaping input/output.
-
-### `.waiters`
-- `get_waiter`, `wait_for_resource_state` — wait on resource state; prefer over custom
-  polling loops.
-
-### `.waiter`
-- `custom_waiter_config` — build a waiter config (delay/retries) consistent with the
-  module's wait options.
-
-### `.common`
-- `get_collection_info`, `set_collection_info` — collection metadata access; rarely needed
-  in resource modules.
-
-## community.aws — `ansible_collections.community.aws.plugins.module_utils`
-
-Only the collection-wide base/core building blocks are listed here. `community.aws` also
-ships service-specific helpers (SNS, WAFv2, DynamoDB, OpenSearch, Network Firewall, S3
-ETag); those are out of scope for this reference — read the relevant `community.aws`
-`module_utils` module directly if you genuinely need one.
-
-### `.modules`
-- `AnsibleCommunityAWSModule` — `AnsibleAWSModule` subclass; only for modules that live in
-  `community.aws` itself. New modules in this collection use `amazon.aws`'s `AnsibleAWSModule`.
-
-### `.base`
-- `BaseResourceManager`, `Boto3Mixin`, `BaseWaiterFactory` — the class-based
-  resource-manager pattern. Adopt only when extending a module already built on it; the
-  modules here use the simpler `ensure_*` function style.
-
-## ansible-core — `ansible.module_utils`
-
-### `.common.dict_transformations`
-- `camel_dict_to_snake_dict`, `snake_dict_to_camel_dict` — convert case between boto3 and
-  Ansible-facing data.
-- `dict_merge` — deep-merge dicts.
-- `recursive_diff` — structural diff of two dicts (idempotency/change detection).
-
-### `.common.validation`
-- `check_required_by`, `check_required_if`, `check_required_one_of`, `check_required_together`,
-  `check_mutually_exclusive`, `check_required_arguments`, `check_missing_parameters`,
-  `count_terms` — parameter-relationship checks. Prefer declaring these as `AnsibleAWSModule`
-  arguments (`required_by`, `required_if`, `mutually_exclusive`, …); call these functions
-  directly only for conditional logic the spec cannot express.
-- `check_type_bool`, `check_type_int`, `check_type_float`, `check_type_str`, `check_type_list`,
-  `check_type_dict`, `check_type_path`, `check_type_bytes`, `check_type_bits`,
-  `check_type_jsonarg`, `check_type_raw` — coerce/validate a single value's type.
-
-### `.common.text.converters`
-- `to_bytes`, `to_text` — encoding-safe string conversion.
-- `container_to_bytes`, `container_to_text`, `jsonify` — recursive conversion / JSON encode.
-
-### `.common.text.formatters`
-- `bytes_to_human`, `human_to_bytes` — size string ↔ integer bytes.
-- `lenient_lowercase` — lowercase items, skipping non-strings.
-
-### `.common.collections`
-- `is_iterable`, `is_sequence`, `is_string`, `count` — type/shape predicates for input
-  normalization.
-
-### `.common.parameters`
-- `env_fallback` — argument-spec default sourced from an environment variable.
-- `remove_values`, `sanitize_keys` — strip `no_log` values from output/errors.
-- `set_fallbacks` — apply fallback callables to params.
-
-### `.common.json`
-- `get_decoder`, `get_encoder`, `get_module_decoder`, `get_module_encoder` — JSON
-  encoders/decoders that understand Ansible/module types.
-
-### `.basic`
-- `missing_required_lib` — build the standard "install X" message when an optional import
-  is absent.
-- `heuristic_log_sanitize` — scrub secrets from a string before logging.
-- `get_all_subclasses`, `get_module_path`, `get_platform`, `load_platform_subclass` —
-  low-level platform/introspection helpers; rarely needed in AWS modules.
+| Module                         | Symbol                     | Use                           |
+| ------------------------------ | -------------------------- | ----------------------------- |
+| `.basic`                       | `missing_required_lib`     | "install X" message.          |
+| `.basic`                       | `heuristic_log_sanitize`   | Scrub secrets before logging. |
+| `.basic`                       | `get_all_subclasses`       | All subclasses.               |
+| `.basic`                       | `get_module_path`          | Module file path.             |
+| `.basic`                       | `get_platform`             | Platform name.                |
+| `.basic`                       | `load_platform_subclass`   | Load platform subclass.       |
+| `.common.collections`          | `is_iterable`              | Is it iterable?               |
+| `.common.collections`          | `is_sequence`              | Is it a sequence?             |
+| `.common.collections`          | `is_string`                | Is it a string?               |
+| `.common.collections`          | `count`                    | Count occurrences.            |
+| `.common.dict_transformations` | `camel_dict_to_snake_dict` | boto3 → snake_case.           |
+| `.common.dict_transformations` | `snake_dict_to_camel_dict` | snake_case → boto3.           |
+| `.common.dict_transformations` | `dict_merge`               | Deep-merge dicts.             |
+| `.common.dict_transformations` | `recursive_diff`           | Structural diff.              |
+| `.common.json`                 | `get_decoder`              | JSON decoder.                 |
+| `.common.json`                 | `get_encoder`              | JSON encoder.                 |
+| `.common.json`                 | `get_module_decoder`       | Module JSON decoder.          |
+| `.common.json`                 | `get_module_encoder`       | Module JSON encoder.          |
+| `.common.parameters`           | `env_fallback`             | Default from env var.         |
+| `.common.parameters`           | `remove_values`            | Strip `no_log` values.        |
+| `.common.parameters`           | `sanitize_keys`            | Strip `no_log` keys.          |
+| `.common.parameters`           | `set_fallbacks`            | Apply fallback callables.     |
+| `.common.text.converters`      | `to_bytes`                 | Safe str → bytes.             |
+| `.common.text.converters`      | `to_text`                  | Safe bytes → str.             |
+| `.common.text.converters`      | `container_to_bytes`       | Recursively → bytes.          |
+| `.common.text.converters`      | `container_to_text`        | Recursively → text.           |
+| `.common.text.converters`      | `jsonify`                  | JSON-encode.                  |
+| `.common.text.formatters`      | `bytes_to_human`           | Bytes → human size.           |
+| `.common.text.formatters`      | `human_to_bytes`           | Human size → bytes.           |
+| `.common.text.formatters`      | `lenient_lowercase`        | Lowercase, skip non-str.      |
+| `.common.validation`           | `check_required_by`        | Required-by check.            |
+| `.common.validation`           | `check_required_if`        | Required-if check.            |
+| `.common.validation`           | `check_required_one_of`    | Required-one-of check.        |
+| `.common.validation`           | `check_required_together`  | Required-together check.      |
+| `.common.validation`           | `check_mutually_exclusive` | Mutually-exclusive check.     |
+| `.common.validation`           | `check_required_arguments` | Required-args check.          |
+| `.common.validation`           | `check_missing_parameters` | Missing-params check.         |
+| `.common.validation`           | `count_terms`              | Count present terms.          |
+| `.common.validation`           | `check_type_bool`          | Coerce to bool.               |
+| `.common.validation`           | `check_type_int`           | Coerce to int.                |
+| `.common.validation`           | `check_type_float`         | Coerce to float.              |
+| `.common.validation`           | `check_type_str`           | Coerce to str.                |
+| `.common.validation`           | `check_type_list`          | Coerce to list.               |
+| `.common.validation`           | `check_type_dict`          | Coerce to dict.               |
+| `.common.validation`           | `check_type_path`          | Coerce to path.               |
+| `.common.validation`           | `check_type_bytes`         | Coerce to bytes.              |
+| `.common.validation`           | `check_type_bits`          | Coerce to bits.               |
+| `.common.validation`           | `check_type_jsonarg`       | Coerce to JSON arg.           |
+| `.common.validation`           | `check_type_raw`           | Pass through raw.             |
