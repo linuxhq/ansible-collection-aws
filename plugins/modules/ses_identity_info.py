@@ -60,12 +60,15 @@ identities:
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
 )
 
 
@@ -80,6 +83,20 @@ def main():
     )
     ses_client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
     sesv2_client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        ses_client,
+        "SES",
+        {"list_identities": ("IdentityType",)},
+    )
+    require_client_methods(
+        module,
+        sesv2_client,
+        "SESv2",
+        {"get_email_identity": ("EmailIdentity",)},
+    )
+
     identity_type = module.params["identity_type"]
     name = module.params["name"]
     identities = []
@@ -91,14 +108,14 @@ def main():
         if identity_type is not None:
             request["IdentityType"] = identity_type
 
-        try:
-            identity_names = paginated_query_with_retries(
-                ses_client,
-                "list_identities",
-                **request,
-            ).get("Identities", [])
-        except Exception as e:
-            module.fail_json_aws(e, msg="Unable to list AWS SES identities")
+        identity_names = query_list(
+            module,
+            ses_client,
+            "list_identities",
+            "Identities",
+            "Unable to list AWS SES identities",
+            **request,
+        )
 
     for identity_name in identity_names:
         try:

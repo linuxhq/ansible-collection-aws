@@ -94,12 +94,14 @@ import re
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
@@ -266,69 +268,23 @@ def main():
         retry_decorator=AWSRetry.jittered_backoff(),
     )
 
-    method_names = {"list_pool_origination_identities"}
-    if state == "present":
-        method_names.add("associate_origination_identity")
-    elif state == "absent":
-        method_names.add("disassociate_origination_identity")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
-
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Pinpoint SMS Voice V2 "
-                    f"{method_name}"
-                )
-            )
-
-    required_method_parameters = {
-        "associate_origination_identity": {
-            "IsoCountryCode",
-            "OriginationIdentity",
-            "PoolId",
-        },
-        "disassociate_origination_identity": {
-            "IsoCountryCode",
-            "OriginationIdentity",
-            "PoolId",
-        },
-        "list_pool_origination_identities": {"PoolId"},
-    }
+    origination_parameters = ("IsoCountryCode", "OriginationIdentity", "PoolId")
     if module.params["client_token"] is not None:
-        for method_name in (
-            "associate_origination_identity",
-            "disassociate_origination_identity",
-        ):
-            required_method_parameters[method_name].add("ClientToken")
+        origination_parameters += ("ClientToken",)
 
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
+    methods = {"list_pool_origination_identities": ("PoolId",)}
+    if state == "present":
+        methods["associate_origination_identity"] = origination_parameters
+    if state == "absent":
+        methods["disassociate_origination_identity"] = origination_parameters
 
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Pinpoint SMS Voice V2 "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "Pinpoint SMS Voice V2", methods)
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

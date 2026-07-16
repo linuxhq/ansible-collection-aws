@@ -108,11 +108,17 @@ from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    apply_tag_deltas,
+    reconcile_ssm_tags,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -123,17 +129,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 SSM_DOCUMENT_RESOURCE_TYPE = "Document"
-
-
-def apply_tag_deltas(document, tags_to_set, tag_keys_to_unset):
-    updated = dict(document)
-    updated_tags = boto3_tag_list_to_ansible_dict(updated.get("Tags", []))
-
-    for tag_key in tag_keys_to_unset:
-        updated_tags.pop(tag_key, None)
-    updated_tags.update(tags_to_set)
-    updated["Tags"] = ansible_dict_to_boto3_tag_list(updated_tags)
-    return updated
 
 
 def ensure_absent(client, module):
@@ -281,36 +276,15 @@ def ensure_present(client, module):
                 purge_tags=purge_tags,
             )
 
-            if tag_keys_to_unset:
-                try:
-                    client.remove_tags_from_resource(
-                        ResourceType=SSM_DOCUMENT_RESOURCE_TYPE,
-                        ResourceId=name,
-                        TagKeys=tag_keys_to_unset,
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=(
-                            "Unable to remove tags from AWS Systems Manager "
-                            f"document {name}"
-                        ),
-                    )
-
-            if tags_to_set:
-                try:
-                    client.add_tags_to_resource(
-                        ResourceType=SSM_DOCUMENT_RESOURCE_TYPE,
-                        ResourceId=name,
-                        Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=f"Unable to tag AWS Systems Manager document {name}",
-                    )
+            reconcile_ssm_tags(
+                module,
+                client,
+                SSM_DOCUMENT_RESOURCE_TYPE,
+                name,
+                tags_to_set,
+                tag_keys_to_unset,
+                "AWS Systems Manager document",
+            )
 
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
@@ -419,74 +393,48 @@ def main():
 
     state = module.params["state"]
     tags = module.params["tags"]
-    method_names = {"get_document"}
+    methods = {"get_document": ("DocumentFormat", "DocumentVersion", "Name")}
     if state == "present":
-        method_names.update(
-            {
-                "create_document",
-                "update_document",
-                "update_document_default_version",
-            }
+        methods["create_document"] = (
+            "Content",
+            "DocumentFormat",
+            "DocumentType",
+            "Name",
         )
+        methods["update_document"] = (
+            "Content",
+            "DocumentFormat",
+            "DocumentVersion",
+            "Name",
+        )
+        methods["update_document_default_version"] = ("DocumentVersion", "Name")
+        if tags:
+            methods["create_document"] += ("Tags",)
         if tags is not None:
-            method_names.add("list_tags_for_resource")
+            methods["list_tags_for_resource"] = ("ResourceId", "ResourceType")
             if tags:
-                method_names.add("add_tags_to_resource")
+                methods["add_tags_to_resource"] = (
+                    "ResourceId",
+                    "ResourceType",
+                    "Tags",
+                )
             if module.params["purge_tags"]:
-                method_names.add("remove_tags_from_resource")
-    elif state == "absent":
-        method_names.add("delete_document")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
-
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Systems Manager "
-                    f"{method_name}"
+                methods["remove_tags_from_resource"] = (
+                    "ResourceId",
+                    "ResourceType",
+                    "TagKeys",
                 )
-            )
 
-    required_method_parameters = {
-        "add_tags_to_resource": {"ResourceId", "ResourceType", "Tags"},
-        "create_document": {"Content", "DocumentFormat", "DocumentType", "Name"},
-        "delete_document": {"Name"},
-        "get_document": {"DocumentFormat", "DocumentVersion", "Name"},
-        "list_tags_for_resource": {"ResourceId", "ResourceType"},
-        "remove_tags_from_resource": {"ResourceId", "ResourceType", "TagKeys"},
-        "update_document": {"Content", "DocumentFormat", "DocumentVersion", "Name"},
-        "update_document_default_version": {"DocumentVersion", "Name"},
-    }
-    if tags:
-        required_method_parameters["create_document"].add("Tags")
+    if state == "absent":
+        methods["delete_document"] = ("Name",)
 
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Systems Manager "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "Systems Manager", methods)
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

@@ -49,6 +49,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def main():
@@ -59,6 +62,17 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "Route53",
+        {
+            "get_reusable_delegation_set": ("Id",),
+            "list_reusable_delegation_sets": ("Marker",),
+        },
+    )
+
     delegation_set_id = module.params["id"]
     delegation_sets = []
     if delegation_set_id:

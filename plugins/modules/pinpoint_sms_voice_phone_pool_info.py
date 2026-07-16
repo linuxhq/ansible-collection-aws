@@ -79,12 +79,15 @@ pools:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
@@ -121,42 +124,26 @@ def main():
         request["MaxResults"] = max_results
     if pool_ids:
         request["PoolIds"] = pool_ids
-    elif owner is not None:
+    else:
         request["Owner"] = owner
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
-    try:
-        supported_parameters = set(
-            get_boto3_client_method_parameters(client, "describe_pools")
-        )
-    except Exception:
-        module.fail_json(
-            msg=(
-                "Installed botocore does not support Pinpoint SMS Voice V2 "
-                "describe_pools"
-            )
-        )
+    require_client_methods(
+        module,
+        client,
+        "Pinpoint SMS Voice V2",
+        {"describe_pools": tuple(request)},
+    )
 
-    unsupported_parameters = sorted(set(request) - supported_parameters)
-
-    if unsupported_parameters:
-        module.fail_json(
-            msg=(
-                "Installed botocore does not support Pinpoint SMS Voice V2 "
-                "describe_pools parameter(s): "
-                f"{', '.join(unsupported_parameters)}"
-            )
-        )
-
-    try:
-        pools = paginated_query_with_retries(
-            client,
-            "describe_pools",
-            **request,
-        ).get("Pools", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to describe Pinpoint SMS Voice V2 pools")
+    pools = query_list(
+        module,
+        client,
+        "describe_pools",
+        "Pools",
+        "Unable to describe Pinpoint SMS Voice V2 pools",
+        **request,
+    )
 
     normalized_pools = []
     for pool in pools:

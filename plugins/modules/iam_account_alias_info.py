@@ -30,11 +30,12 @@ account_aliases:
   elements: str
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
 
 
 def main():
@@ -44,12 +45,20 @@ def main():
     )
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
 
-    try:
-        account_aliases = paginated_query_with_retries(
-            client, "list_account_aliases"
-        ).get("AccountAliases", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS IAM account aliases")
+    require_client_methods(
+        module,
+        client,
+        "IAM",
+        {"list_account_aliases": ()},
+    )
+
+    account_aliases = query_list(
+        module,
+        client,
+        "list_account_aliases",
+        "AccountAliases",
+        "Unable to list AWS IAM account aliases",
+    )
 
     module.exit_json(
         changed=False,

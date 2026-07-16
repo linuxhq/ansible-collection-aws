@@ -64,6 +64,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def main():
@@ -75,6 +78,13 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("rds", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "RDS",
+        {"describe_db_subnet_groups": ("DBSubnetGroupName", "Filters")},
+    )
 
     filters = module.params["filters"]
     name = module.params["name"]

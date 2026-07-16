@@ -344,12 +344,21 @@ from ansible.module_utils.common.dict_transformations import (
 )
 from ansible.module_utils.common.text.converters import to_bytes
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    reconcile_arn_tags,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
+    run_waiter,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -358,10 +367,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
-    BaseWaiterFactory,
-    custom_waiter_config,
 )
 
 GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
@@ -405,12 +410,6 @@ GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
 }
 
 
-class GlobalAcceleratorWaiterFactory(BaseWaiterFactory):
-    @property
-    def _waiter_model_data(self):
-        return GLOBAL_ACCELERATOR_WAITER_MODEL_DATA
-
-
 def get_accelerator_by_arn(client, module, accelerator_arn):
     try:
         return client.describe_accelerator(
@@ -431,15 +430,13 @@ def get_accelerator(client, module):
 
     name = module.params["name"]
 
-    try:
-        accelerators = paginated_query_with_retries(
-            client,
-            "list_accelerators",
-        ).get("Accelerators", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to list AWS Global Accelerator accelerators"
-        )
+    accelerators = query_list(
+        module,
+        client,
+        "list_accelerators",
+        "Accelerators",
+        "Unable to list AWS Global Accelerator accelerators",
+    )
 
     matches = []
     for accelerator in accelerators:
@@ -461,20 +458,14 @@ def get_accelerator(client, module):
 
 
 def wait_for_accelerator(client, module, accelerator_arn, waiter_name):
-    try:
-        waiter = GlobalAcceleratorWaiterFactory().get_waiter(client, waiter_name)
-        waiter.wait(
-            AcceleratorArn=accelerator_arn,
-            WaiterConfig=custom_waiter_config(
-                module.params["wait_timeout"],
-                default_pause=module.params["wait_delay"],
-            ),
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Timed out waiting for AWS Global Accelerator {accelerator_arn}",
-        )
+    run_waiter(
+        module,
+        client,
+        GLOBAL_ACCELERATOR_WAITER_MODEL_DATA,
+        waiter_name,
+        f"Timed out waiting for AWS Global Accelerator {accelerator_arn}",
+        AcceleratorArn=accelerator_arn,
+    )
 
 
 def normalized_port_ranges(port_ranges):
@@ -501,20 +492,14 @@ def listener_identity(listener):
 
 
 def get_listeners(client, module, accelerator_arn):
-    try:
-        listeners = paginated_query_with_retries(
-            client,
-            "list_listeners",
-            AcceleratorArn=accelerator_arn,
-        ).get("Listeners", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to list AWS Global Accelerator listeners for "
-                f"{accelerator_arn}"
-            ),
-        )
+    listeners = query_list(
+        module,
+        client,
+        "list_listeners",
+        "Listeners",
+        "Unable to list AWS Global Accelerator listeners for " f"{accelerator_arn}",
+        AcceleratorArn=accelerator_arn,
+    )
 
     normalized = []
     for listener in listeners:
@@ -639,20 +624,14 @@ def normalized_port_overrides(port_overrides):
 
 
 def get_endpoint_groups(client, module, listener_arn):
-    try:
-        endpoint_groups = paginated_query_with_retries(
-            client,
-            "list_endpoint_groups",
-            ListenerArn=listener_arn,
-        ).get("EndpointGroups", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to list AWS Global Accelerator endpoint groups for "
-                f"{listener_arn}"
-            ),
-        )
+    endpoint_groups = query_list(
+        module,
+        client,
+        "list_endpoint_groups",
+        "EndpointGroups",
+        "Unable to list AWS Global Accelerator endpoint groups for " f"{listener_arn}",
+        ListenerArn=listener_arn,
+    )
 
     normalized = []
     for endpoint_group in endpoint_groups:
@@ -1327,34 +1306,14 @@ def ensure_present(client, module):
     if accelerator is not None and tags is not None:
         if not created and not module.check_mode:
             accelerator_arn = accelerator["AcceleratorArn"]
-            if tag_keys_to_unset:
-                try:
-                    client.untag_resource(
-                        ResourceArn=accelerator_arn,
-                        TagKeys=tag_keys_to_unset,
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=(
-                            "Unable to remove tags from AWS Global Accelerator "
-                            f"{accelerator_arn}"
-                        ),
-                    )
-
-            if tags_to_set:
-                try:
-                    client.tag_resource(
-                        ResourceArn=accelerator_arn,
-                        Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=f"Unable to tag AWS Global Accelerator {accelerator_arn}",
-                    )
+            reconcile_arn_tags(
+                module,
+                client,
+                accelerator_arn,
+                tags_to_set,
+                tag_keys_to_unset,
+                "AWS Global Accelerator",
+            )
 
         accelerator = dict(accelerator)
 
@@ -1488,12 +1447,7 @@ def main():
         supports_check_mode=True,
     )
 
-    if module.params["wait"]:
-        if module.params["wait_delay"] < 1:
-            module.fail_json(msg="wait_delay must be 1 or greater")
-
-        if module.params["wait_timeout"] < 1:
-            module.fail_json(msg="wait_timeout must be 1 or greater")
+    require_positive_wait_bounds(module)
 
     for listener in module.params["listeners"] or []:
         if not listener["port_ranges"]:
@@ -1619,7 +1573,8 @@ def main():
                 )
                 if module.params["purge_endpoint_groups"]:
                     method_names.add("delete_endpoint_group")
-    elif state == "absent":
+
+    if state == "absent":
         method_names.update(
             {
                 "delete_accelerator",
@@ -1630,22 +1585,6 @@ def main():
                 "update_accelerator",
             }
         )
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
-
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Global Accelerator "
-                    f"{method_name}"
-                )
-            )
 
     required_method_parameters = {
         "create_accelerator": {
@@ -1711,27 +1650,18 @@ def main():
             "Protocol",
         },
     }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Global Accelerator "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(
+        module,
+        client,
+        "Global Accelerator",
+        {name: required_method_parameters.get(name, ()) for name in method_names},
+    )
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":
