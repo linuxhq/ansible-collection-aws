@@ -145,8 +145,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
-    build_waiter_factory,
     require_positive_wait_bounds,
+    run_waiter,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
@@ -159,9 +159,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
-    custom_waiter_config,
 )
 
 EC2_WAITER_MODEL_DATA = {
@@ -556,22 +553,14 @@ def wait_for_ready_state(client, module, prefix_list_id):
 
 
 def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name):
-    try:
-        waiter = build_waiter_factory(EC2_WAITER_MODEL_DATA).get_waiter(
-            client, waiter_name
-        )
-        waiter.wait(
-            PrefixListIds=[prefix_list_id],
-            WaiterConfig=custom_waiter_config(
-                module.params["wait_timeout"],
-                default_pause=module.params["wait_delay"],
-            ),
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Timed out waiting for EC2 VPC managed prefix list {prefix_list_id}",
-        )
+    run_waiter(
+        module,
+        client,
+        EC2_WAITER_MODEL_DATA,
+        waiter_name,
+        f"Timed out waiting for EC2 VPC managed prefix list {prefix_list_id}",
+        PrefixListIds=[prefix_list_id],
+    )
 
 
 def get_customer_managed_prefix_list_by_name(client, module):

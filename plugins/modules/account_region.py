@@ -82,11 +82,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
-    build_waiter_factory,
     require_positive_wait_bounds,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
-    custom_waiter_config,
+    run_waiter,
 )
 
 PRESENT_STATUSES = {"ENABLED", "ENABLING", "ENABLED_BY_DEFAULT"}
@@ -191,25 +188,17 @@ def get_region_opt_status(client, module):
 def wait_for_status(client, module, waiter_name, statuses):
     region_name = module.params["name"]
 
-    try:
-        waiter = build_waiter_factory(ACCOUNT_REGION_WAITER_MODEL_DATA).get_waiter(
-            client, waiter_name
-        )
-        waiter.wait(
-            RegionName=region_name,
-            WaiterConfig=custom_waiter_config(
-                module.params["wait_timeout"],
-                default_pause=module.params["wait_delay"],
-            ),
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                f"Timed out waiting for AWS account region {region_name} "
-                f"to reach one of {sorted(statuses)}"
-            ),
-        )
+    run_waiter(
+        module,
+        client,
+        ACCOUNT_REGION_WAITER_MODEL_DATA,
+        waiter_name,
+        (
+            f"Timed out waiting for AWS account region {region_name} "
+            f"to reach one of {sorted(statuses)}"
+        ),
+        RegionName=region_name,
+    )
 
     return get_region_opt_status(client, module)
 
