@@ -31,8 +31,8 @@ account:
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
+from ansible_collections.linuxhq.aws.plugins.module_utils.ses import (
+    get_account,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
@@ -50,21 +50,9 @@ def main():
         {"get_account": ()},
     )
 
-    try:
-        account = client.get_account(aws_retry=True)
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to get AWS Simple Email Service account details"
-        )
-
-    account.pop("ResponseMetadata", None)
     module.exit_json(
         changed=False,
-        account=boto3_resource_to_ansible_dict(
-            account,
-            transform_tags=False,
-            force_tags=False,
-        ),
+        account=get_account(client, module),
     )
 
 
