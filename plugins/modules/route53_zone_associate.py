@@ -83,8 +83,6 @@ vpcs:
   elements: dict
 """
 
-import re
-
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
@@ -222,13 +220,6 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
-
-    if not re.fullmatch(
-        r"([a-z]{1,2})-([a-z]{1,15}-)+([0-9])", module.params["vpc_region"]
-    ):
-        module.fail_json(
-            msg="vpc_region must match the AWS region name format, for example us-west-2"
-        )
 
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
     hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]
