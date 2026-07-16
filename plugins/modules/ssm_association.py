@@ -123,6 +123,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
+    reconcile_ssm_tags,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
@@ -300,39 +301,15 @@ def ensure_present(client, module, current):
                 tags,
                 purge_tags=purge_tags,
             )
-            if tag_keys_to_unset:
-                try:
-                    client.remove_tags_from_resource(
-                        ResourceType=SSM_ASSOCIATION_RESOURCE_TYPE,
-                        ResourceId=association_id,
-                        TagKeys=tag_keys_to_unset,
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=(
-                            "Unable to remove tags from AWS Systems Manager "
-                            f"association {association_id}"
-                        ),
-                    )
-
-            if tags_to_set:
-                try:
-                    client.add_tags_to_resource(
-                        ResourceType=SSM_ASSOCIATION_RESOURCE_TYPE,
-                        ResourceId=association_id,
-                        Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=(
-                            "Unable to tag AWS Systems Manager association "
-                            f"{association_id}"
-                        ),
-                    )
+            reconcile_ssm_tags(
+                module,
+                client,
+                SSM_ASSOCIATION_RESOURCE_TYPE,
+                association_id,
+                tags_to_set,
+                tag_keys_to_unset,
+                "AWS Systems Manager association",
+            )
 
             association = apply_tag_deltas(association, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode and tags is not None:

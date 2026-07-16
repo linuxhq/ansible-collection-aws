@@ -117,6 +117,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
+    reconcile_ssm_tags,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
@@ -275,36 +276,15 @@ def ensure_present(client, module):
                 purge_tags=purge_tags,
             )
 
-            if tag_keys_to_unset:
-                try:
-                    client.remove_tags_from_resource(
-                        ResourceType=SSM_DOCUMENT_RESOURCE_TYPE,
-                        ResourceId=name,
-                        TagKeys=tag_keys_to_unset,
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=(
-                            "Unable to remove tags from AWS Systems Manager "
-                            f"document {name}"
-                        ),
-                    )
-
-            if tags_to_set:
-                try:
-                    client.add_tags_to_resource(
-                        ResourceType=SSM_DOCUMENT_RESOURCE_TYPE,
-                        ResourceId=name,
-                        Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=f"Unable to tag AWS Systems Manager document {name}",
-                    )
+            reconcile_ssm_tags(
+                module,
+                client,
+                SSM_DOCUMENT_RESOURCE_TYPE,
+                name,
+                tags_to_set,
+                tag_keys_to_unset,
+                "AWS Systems Manager document",
+            )
 
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
