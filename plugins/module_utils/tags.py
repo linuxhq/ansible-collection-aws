@@ -17,3 +17,29 @@ def apply_tag_deltas(resource, tags_to_set, tag_keys_to_unset):
     tags.update(tags_to_set)
     updated["Tags"] = ansible_dict_to_boto3_tag_list(tags)
     return updated
+
+
+def reconcile_arn_tags(
+    module, client, resource_arn, tags_to_set, tag_keys_to_unset, description
+):
+    if tag_keys_to_unset:
+        try:
+            client.untag_resource(
+                ResourceArn=resource_arn,
+                TagKeys=tag_keys_to_unset,
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e, msg=f"Unable to remove tags from {description} {resource_arn}"
+            )
+
+    if tags_to_set:
+        try:
+            client.tag_resource(
+                ResourceArn=resource_arn,
+                Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(e, msg=f"Unable to tag {description} {resource_arn}")

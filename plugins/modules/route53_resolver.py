@@ -177,6 +177,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
+    reconcile_arn_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
@@ -475,37 +476,14 @@ def ensure_present(client, module):
             resource_arn = endpoint.get("Arn")
 
             if resource_arn:
-                if tag_keys_to_unset:
-                    try:
-                        client.untag_resource(
-                            ResourceArn=resource_arn,
-                            TagKeys=tag_keys_to_unset,
-                            aws_retry=True,
-                        )
-                    except Exception as e:
-                        module.fail_json_aws(
-                            e,
-                            msg=(
-                                "Unable to remove tags from AWS Route53 Resolver "
-                                f"endpoint {resource_arn}"
-                            ),
-                        )
-
-                if tags_to_set:
-                    try:
-                        client.tag_resource(
-                            ResourceArn=resource_arn,
-                            Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                            aws_retry=True,
-                        )
-                    except Exception as e:
-                        module.fail_json_aws(
-                            e,
-                            msg=(
-                                "Unable to tag AWS Route53 Resolver endpoint "
-                                f"{resource_arn}"
-                            ),
-                        )
+                reconcile_arn_tags(
+                    module,
+                    client,
+                    resource_arn,
+                    tags_to_set,
+                    tag_keys_to_unset,
+                    "AWS Route53 Resolver endpoint",
+                )
 
             endpoint = apply_tag_deltas(endpoint, tags_to_set, tag_keys_to_unset)
 
