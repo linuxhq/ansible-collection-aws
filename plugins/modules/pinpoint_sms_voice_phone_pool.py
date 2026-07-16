@@ -159,6 +159,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
+    reconcile_arn_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
@@ -460,33 +461,14 @@ def ensure_present(client, module):
             if (tags_to_set or tag_keys_to_unset) and not arn:
                 module.fail_json(msg="Unable to tag Pinpoint SMS Voice V2 pool")
 
-            if tag_keys_to_unset:
-                try:
-                    client.untag_resource(
-                        ResourceArn=arn,
-                        TagKeys=tag_keys_to_unset,
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=(
-                            "Unable to remove tags from Pinpoint SMS Voice V2 "
-                            f"pool {arn}"
-                        ),
-                    )
-
-            if tags_to_set:
-                try:
-                    client.tag_resource(
-                        ResourceArn=arn,
-                        Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e, msg=f"Unable to tag Pinpoint SMS Voice V2 pool {arn}"
-                    )
+            reconcile_arn_tags(
+                module,
+                client,
+                arn,
+                tags_to_set,
+                tag_keys_to_unset,
+                "Pinpoint SMS Voice V2 pool",
+            )
 
             if not update_request:
                 current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)

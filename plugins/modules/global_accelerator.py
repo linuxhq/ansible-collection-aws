@@ -352,6 +352,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    reconcile_arn_tags,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     run_waiter,
@@ -1317,34 +1320,14 @@ def ensure_present(client, module):
     if accelerator is not None and tags is not None:
         if not created and not module.check_mode:
             accelerator_arn = accelerator["AcceleratorArn"]
-            if tag_keys_to_unset:
-                try:
-                    client.untag_resource(
-                        ResourceArn=accelerator_arn,
-                        TagKeys=tag_keys_to_unset,
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=(
-                            "Unable to remove tags from AWS Global Accelerator "
-                            f"{accelerator_arn}"
-                        ),
-                    )
-
-            if tags_to_set:
-                try:
-                    client.tag_resource(
-                        ResourceArn=accelerator_arn,
-                        Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=f"Unable to tag AWS Global Accelerator {accelerator_arn}",
-                    )
+            reconcile_arn_tags(
+                module,
+                client,
+                accelerator_arn,
+                tags_to_set,
+                tag_keys_to_unset,
+                "AWS Global Accelerator",
+            )
 
         accelerator = dict(accelerator)
 
