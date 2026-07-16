@@ -348,10 +348,7 @@ def ensure_present(client, module):
         {field: desired[field] for field in comparable_fields}
     )
     desired.update(desired_comparable)
-    if current is None:
-        changed = True
-    else:
-        changed = current != desired_comparable
+    changed = current != desired_comparable
     resource_changed = changed
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:
