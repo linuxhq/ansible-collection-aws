@@ -1,3 +1,0 @@
----
-minor_changes:
-  - s3_bucket - support a per-bucket region override in the role.

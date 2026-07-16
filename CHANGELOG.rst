@@ -4,6 +4,22 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.1.4
+======
+
+Release Summary
+---------------
+
+Shared module_utils helpers, botocore support gating across all modules, and a region override for the s3_bucket role.
+
+Minor Changes
+-------------
+
+- ec2_flow_log_info, ec2_instance_type_info, ec2_placement_group_info, ec2_pricing_info, ec2_serial_console_info, ec2_transit_gateway_route_table_info, ec2_vpc_prefix_list_info, ecs_ecr_info, eks_cluster_info, glue_connection_info, iam_account_alias_info, iam_policy_info, rds_subnet_group_info, route53_delegation_set_info, route53_resolver_rule_info, ses_identity_info, ses_identity_tokens_info, ses_sandbox_info, sns_sms_attributes_info, sqs_queue_info, ssm_association_info, ssm_document_info, ssm_instance_info, wafv2_ip_set_info, wafv2_web_acl_info - verify the required botocore client methods and parameters are available and fail with a clear message when the installed botocore is too old.
+- modules - refactor shared logic into module_utils helpers for SDK gating, paginated queries, waiters, and tag reconciliation.
+- notifications_hub, route53_zone_associate - rely on AWS to validate region names instead of a client-side pattern.
+- s3_bucket - support a per-bucket region override in the role.
+
 v2.1.3
 ======
 
