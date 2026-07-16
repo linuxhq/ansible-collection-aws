@@ -345,11 +345,11 @@ from ansible.module_utils.common.dict_transformations import (
 from ansible.module_utils.common.text.converters import to_bytes
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
@@ -430,15 +430,13 @@ def get_accelerator(client, module):
 
     name = module.params["name"]
 
-    try:
-        accelerators = paginated_query_with_retries(
-            client,
-            "list_accelerators",
-        ).get("Accelerators", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to list AWS Global Accelerator accelerators"
-        )
+    accelerators = query_list(
+        module,
+        client,
+        "list_accelerators",
+        "Accelerators",
+        "Unable to list AWS Global Accelerator accelerators",
+    )
 
     matches = []
     for accelerator in accelerators:
@@ -494,20 +492,14 @@ def listener_identity(listener):
 
 
 def get_listeners(client, module, accelerator_arn):
-    try:
-        listeners = paginated_query_with_retries(
-            client,
-            "list_listeners",
-            AcceleratorArn=accelerator_arn,
-        ).get("Listeners", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to list AWS Global Accelerator listeners for "
-                f"{accelerator_arn}"
-            ),
-        )
+    listeners = query_list(
+        module,
+        client,
+        "list_listeners",
+        "Listeners",
+        "Unable to list AWS Global Accelerator listeners for " f"{accelerator_arn}",
+        AcceleratorArn=accelerator_arn,
+    )
 
     normalized = []
     for listener in listeners:
@@ -632,20 +624,14 @@ def normalized_port_overrides(port_overrides):
 
 
 def get_endpoint_groups(client, module, listener_arn):
-    try:
-        endpoint_groups = paginated_query_with_retries(
-            client,
-            "list_endpoint_groups",
-            ListenerArn=listener_arn,
-        ).get("EndpointGroups", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to list AWS Global Accelerator endpoint groups for "
-                f"{listener_arn}"
-            ),
-        )
+    endpoint_groups = query_list(
+        module,
+        client,
+        "list_endpoint_groups",
+        "EndpointGroups",
+        "Unable to list AWS Global Accelerator endpoint groups for " f"{listener_arn}",
+        ListenerArn=listener_arn,
+    )
 
     normalized = []
     for endpoint_group in endpoint_groups:

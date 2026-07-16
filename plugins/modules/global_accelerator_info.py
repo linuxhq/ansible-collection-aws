@@ -76,6 +76,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -117,16 +118,13 @@ def main():
     accelerators = []
 
     if arn is None:
-        try:
-            accelerators = paginated_query_with_retries(
-                client,
-                "list_accelerators",
-            ).get("Accelerators", [])
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS Global Accelerator accelerators",
-            )
+        accelerators = query_list(
+            module,
+            client,
+            "list_accelerators",
+            "Accelerators",
+            "Unable to list AWS Global Accelerator accelerators",
+        )
     else:
         try:
             accelerator = client.describe_accelerator(

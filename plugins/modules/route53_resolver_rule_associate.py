@@ -99,11 +99,11 @@ state:
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
@@ -349,25 +349,20 @@ def get_resolver_rule_association_by_rule_and_vpc(client, module):
     resolver_rule_id = module.params["resolver_rule_id"]
     vpc_id = module.params["vpc_id"]
 
-    try:
-        associations = paginated_query_with_retries(
-            client,
-            "list_resolver_rule_associations",
-            Filters=ansible_dict_to_boto3_filter_list(
-                {
-                    "ResolverRuleId": resolver_rule_id,
-                    "VPCId": vpc_id,
-                }
-            ),
-        ).get("ResolverRuleAssociations", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to list AWS Route53 Resolver rule associations for "
-                f"{resolver_rule_id}/{vpc_id}"
-            ),
-        )
+    associations = query_list(
+        module,
+        client,
+        "list_resolver_rule_associations",
+        "ResolverRuleAssociations",
+        "Unable to list AWS Route53 Resolver rule associations for "
+        f"{resolver_rule_id}/{vpc_id}",
+        Filters=ansible_dict_to_boto3_filter_list(
+            {
+                "ResolverRuleId": resolver_rule_id,
+                "VPCId": vpc_id,
+            }
+        ),
+    )
 
     return associations[0] if associations else None
 

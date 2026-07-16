@@ -159,11 +159,11 @@ from ansible.module_utils.common.dict_transformations import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
@@ -523,14 +523,14 @@ def get_resolver_rule(client, module, resolver_rule_id):
 def get_resolver_rule_by_name(client, module):
     name = module.params["name"]
 
-    try:
-        rules = paginated_query_with_retries(
-            client,
-            "list_resolver_rules",
-            Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
-        ).get("ResolverRules", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver rules")
+    rules = query_list(
+        module,
+        client,
+        "list_resolver_rules",
+        "ResolverRules",
+        "Unable to list AWS Route53 Resolver rules",
+        Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
+    )
 
     if len(rules) > 1:
         rule_ids = sorted(rule.get("Id", "") for rule in rules)
@@ -549,17 +549,14 @@ def resolver_rule_with_tags(client, module, rule):
         return rule
     rule = dict(rule)
 
-    try:
-        rule["Tags"] = paginated_query_with_retries(
-            client,
-            "list_tags_for_resource",
-            ResourceArn=rule["Arn"],
-        ).get("Tags", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list tags for AWS Route53 Resolver rule {rule['Arn']}",
-        )
+    rule["Tags"] = query_list(
+        module,
+        client,
+        "list_tags_for_resource",
+        "Tags",
+        f"Unable to list tags for AWS Route53 Resolver rule {rule['Arn']}",
+        ResourceArn=rule["Arn"],
+    )
 
     return rule
 

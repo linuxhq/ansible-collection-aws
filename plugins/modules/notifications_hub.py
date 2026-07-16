@@ -56,12 +56,10 @@ state:
   type: str
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -72,12 +70,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 def get_notification_hub(client, module):
     region = module.params["region"]
 
-    try:
-        hubs = paginated_query_with_retries(client, "list_notification_hubs").get(
-            "notificationHubs", []
-        )
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Notifications hubs")
+    hubs = query_list(
+        module,
+        client,
+        "list_notification_hubs",
+        "notificationHubs",
+        "Unable to list AWS Notifications hubs",
+    )
 
     for hub in hubs:
         if hub.get("notificationHubRegion") == region:

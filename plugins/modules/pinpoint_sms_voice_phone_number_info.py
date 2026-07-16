@@ -81,11 +81,11 @@ phone_numbers:
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -136,16 +136,14 @@ def main():
         {"describe_phone_numbers": tuple(request)},
     )
 
-    try:
-        phone_numbers = paginated_query_with_retries(
-            client,
-            "describe_phone_numbers",
-            **request,
-        ).get("PhoneNumbers", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to describe Pinpoint SMS Voice V2 phone numbers"
-        )
+    phone_numbers = query_list(
+        module,
+        client,
+        "describe_phone_numbers",
+        "PhoneNumbers",
+        "Unable to describe Pinpoint SMS Voice V2 phone numbers",
+        **request,
+    )
 
     normalized_phone_numbers = []
     for phone_number in phone_numbers:

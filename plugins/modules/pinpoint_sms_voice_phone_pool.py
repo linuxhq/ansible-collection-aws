@@ -155,6 +155,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
@@ -194,20 +195,15 @@ def pool_with_origination_identities(client, module, pool):
     pool_id = pool.get("PoolId")
 
     if pool_id:
-        try:
-            pool["OriginationIdentities"] = paginated_query_with_retries(
-                client,
-                "list_pool_origination_identities",
-                PoolId=pool_id,
-            ).get("OriginationIdentities", [])
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg=(
-                    "Unable to list origination identities for Pinpoint SMS Voice "
-                    f"V2 pool {pool_id}"
-                ),
-            )
+        pool["OriginationIdentities"] = query_list(
+            module,
+            client,
+            "list_pool_origination_identities",
+            "OriginationIdentities",
+            "Unable to list origination identities for Pinpoint SMS Voice "
+            f"V2 pool {pool_id}",
+            PoolId=pool_id,
+        )
 
     else:
         pool["OriginationIdentities"] = []

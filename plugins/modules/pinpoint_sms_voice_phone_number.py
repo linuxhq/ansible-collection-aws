@@ -182,6 +182,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
@@ -353,17 +354,15 @@ def ensure_present(client, module):
     if opt_out_list_name is not None:
         filters["opt-out-list-name"] = opt_out_list_name
 
-    try:
-        phone_numbers = paginated_query_with_retries(
-            client,
-            "describe_phone_numbers",
-            Filters=ansible_dict_to_boto3_filter_list(filters),
-            Owner="SELF",
-        ).get("PhoneNumbers", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to describe Pinpoint SMS Voice V2 phone numbers"
-        )
+    phone_numbers = query_list(
+        module,
+        client,
+        "describe_phone_numbers",
+        "PhoneNumbers",
+        "Unable to describe Pinpoint SMS Voice V2 phone numbers",
+        Filters=ansible_dict_to_boto3_filter_list(filters),
+        Owner="SELF",
+    )
 
     desired = {
         "DeletionProtectionEnabled": deletion_protection_enabled,

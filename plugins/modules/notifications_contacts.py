@@ -82,11 +82,11 @@ import re
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import compare_aws_tags
@@ -109,12 +109,13 @@ def apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset):
 def get_contact_by_address(client, module):
     email_address = module.params["email_address"]
 
-    try:
-        contacts = paginated_query_with_retries(client, "list_email_contacts").get(
-            "emailContacts", []
-        )
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Notifications contacts")
+    contacts = query_list(
+        module,
+        client,
+        "list_email_contacts",
+        "emailContacts",
+        "Unable to list AWS Notifications contacts",
+    )
 
     for contact in contacts:
         if contact.get("address") == email_address:
