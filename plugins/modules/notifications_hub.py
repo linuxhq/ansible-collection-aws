@@ -56,8 +56,6 @@ state:
   type: str
 """
 
-import re
-
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     paginated_query_with_retries,
 )
@@ -157,19 +155,6 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
-
-    if state == "present":
-        hub_region = module.params["region"]
-
-        if not 2 <= len(hub_region) <= 25 or not re.fullmatch(
-            r"([a-z]{1,2})-([a-z]{1,15}-)+([0-9])", hub_region
-        ):
-            module.fail_json(
-                msg=(
-                    "region must match the AWS region name format, "
-                    "for example us-west-2"
-                )
-            )
 
     client = module.client(
         "notifications",
