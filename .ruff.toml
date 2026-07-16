@@ -1,0 +1,5 @@
+target-version = "py312"
+
+[lint.per-file-ignores]
+"plugins/lookup/*.py" = ["E402"]
+"plugins/modules/*.py" = ["E402"]

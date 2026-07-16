@@ -136,12 +136,16 @@ import json
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
+    run_waiter,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -153,10 +157,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
-    BaseWaiterFactory,
-    custom_waiter_config,
 )
 
 EC2_WAITER_MODEL_DATA = {
@@ -216,12 +216,6 @@ EC2_WAITER_MODEL_DATA = {
         ],
     },
 }
-
-
-class EC2WaiterFactory(BaseWaiterFactory):
-    @property
-    def _waiter_model_data(self):
-        return EC2_WAITER_MODEL_DATA
 
 
 def create_prefix_list(client, module, desired_prefix_list, desired_entries):
@@ -510,17 +504,14 @@ def get_current(client, module):
 
     prefix_list_id = prefix_list.get("PrefixListId")
 
-    try:
-        entries = paginated_query_with_retries(
-            client,
-            "get_managed_prefix_list_entries",
-            PrefixListId=prefix_list_id,
-        ).get("Entries", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get EC2 VPC managed prefix list entries for {prefix_list_id}",
-        )
+    entries = query_list(
+        module,
+        client,
+        "get_managed_prefix_list_entries",
+        "Entries",
+        f"Unable to get EC2 VPC managed prefix list entries for {prefix_list_id}",
+        PrefixListId=prefix_list_id,
+    )
 
     return prefix_list, entries
 
@@ -557,34 +548,28 @@ def wait_for_ready_state(client, module, prefix_list_id):
 
 
 def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name):
-    try:
-        waiter = EC2WaiterFactory().get_waiter(client, waiter_name)
-        waiter.wait(
-            PrefixListIds=[prefix_list_id],
-            WaiterConfig=custom_waiter_config(
-                module.params["wait_timeout"],
-                default_pause=module.params["wait_delay"],
-            ),
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Timed out waiting for EC2 VPC managed prefix list {prefix_list_id}",
-        )
+    run_waiter(
+        module,
+        client,
+        EC2_WAITER_MODEL_DATA,
+        waiter_name,
+        f"Timed out waiting for EC2 VPC managed prefix list {prefix_list_id}",
+        PrefixListIds=[prefix_list_id],
+    )
 
 
 def get_customer_managed_prefix_list_by_name(client, module):
     name = module.params["name"]
     filters = ansible_dict_to_boto3_filter_list({"prefix-list-name": name})
 
-    try:
-        prefix_lists = paginated_query_with_retries(
-            client, "describe_managed_prefix_lists", Filters=filters
-        ).get("PrefixLists", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg=f"Unable to describe EC2 VPC managed prefix list {name}"
-        )
+    prefix_lists = query_list(
+        module,
+        client,
+        "describe_managed_prefix_lists",
+        "PrefixLists",
+        f"Unable to describe EC2 VPC managed prefix list {name}",
+        Filters=filters,
+    )
 
     matches = []
     for prefix_list in prefix_lists:
@@ -666,12 +651,7 @@ def main():
         supports_check_mode=True,
     )
 
-    if module.params["wait"]:
-        if module.params["wait_delay"] < 1:
-            module.fail_json(msg="wait_delay must be 1 or greater")
-
-        if module.params["wait_timeout"] < 1:
-            module.fail_json(msg="wait_timeout must be 1 or greater")
+    require_positive_wait_bounds(module)
 
     state = module.params["state"]
     entries = module.params["entries"]
@@ -694,82 +674,37 @@ def main():
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    method_names = {"describe_managed_prefix_lists"}
+    create_parameters = ("AddressFamily", "Entries", "MaxEntries", "PrefixListName")
+    if state == "present" and tags is not None:
+        create_parameters += ("TagSpecifications",)
+
+    methods = {"describe_managed_prefix_lists": ("Filters",)}
     if state == "present":
-        method_names.update(
-            {
-                "create_managed_prefix_list",
-                "delete_managed_prefix_list",
-                "get_managed_prefix_list_entries",
-                "modify_managed_prefix_list",
-            }
-        )
-        if tags is not None:
-            method_names.add("create_tags")
-            if module.params["purge_tags"]:
-                method_names.add("delete_tags")
-    elif state == "absent":
-        method_names.add("delete_managed_prefix_list")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
-
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support EC2 {method_name}"
-            )
-
-    required_method_parameters = {
-        "create_managed_prefix_list": (
-            "AddressFamily",
-            "Entries",
-            "MaxEntries",
-            "PrefixListName",
-        ),
-        "create_tags": ("Resources", "Tags"),
-        "delete_managed_prefix_list": ("PrefixListId",),
-        "delete_tags": ("Resources", "Tags"),
-        "describe_managed_prefix_lists": ("Filters",),
-        "get_managed_prefix_list_entries": ("PrefixListId",),
-        "modify_managed_prefix_list": (
+        methods["create_managed_prefix_list"] = create_parameters
+        methods["delete_managed_prefix_list"] = ("PrefixListId",)
+        methods["get_managed_prefix_list_entries"] = ("PrefixListId",)
+        methods["modify_managed_prefix_list"] = (
             "AddEntries",
             "CurrentVersion",
             "MaxEntries",
             "PrefixListId",
             "RemoveEntries",
-        ),
-    }
-    if state == "present" and tags is not None:
-        required_method_parameters["create_managed_prefix_list"] += (
-            "TagSpecifications",
         )
+        if tags is not None:
+            methods["create_tags"] = ("Resources", "Tags")
+            if module.params["purge_tags"]:
+                methods["delete_tags"] = ("Resources", "Tags")
 
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
+    if state == "absent":
+        methods["delete_managed_prefix_list"] = ("PrefixListId",)
 
-        for parameter_name in set(parameter_names):
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support EC2 "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "EC2", methods)
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

@@ -55,14 +55,15 @@ transit_gateway_route_tables:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
 )
 
 
@@ -86,6 +87,23 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {
+            "describe_transit_gateway_route_tables": (
+                "Filters",
+                "TransitGatewayRouteTableIds",
+            ),
+            "search_transit_gateway_routes": (
+                "Filters",
+                "MaxResults",
+                "TransitGatewayRouteTableId",
+            ),
+        },
+    )
+
     filters = module.params["filters"]
     transit_gateway_route_table_ids = module.params["transit_gateway_route_table_ids"]
 
@@ -95,16 +113,14 @@ def main():
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
-    try:
-        route_tables = paginated_query_with_retries(
-            client,
-            "describe_transit_gateway_route_tables",
-            **request,
-        ).get("TransitGatewayRouteTables", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to describe EC2 transit gateway route tables"
-        )
+    route_tables = query_list(
+        module,
+        client,
+        "describe_transit_gateway_route_tables",
+        "TransitGatewayRouteTables",
+        "Unable to describe EC2 transit gateway route tables",
+        **request,
+    )
 
     route_tables_with_routes = []
     for route_table in route_tables:

@@ -72,11 +72,13 @@ state:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
@@ -205,51 +207,19 @@ def main():
         )
 
     client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
-    method_names = {"get_logging_configuration"}
+    methods = {"get_logging_configuration": ("ResourceArn",)}
     if state == "present":
-        method_names.add("put_logging_configuration")
-    elif state == "absent":
-        method_names.add("delete_logging_configuration")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
+        methods["put_logging_configuration"] = ("LoggingConfiguration",)
+    if state == "absent":
+        methods["delete_logging_configuration"] = ("ResourceArn",)
 
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support WAFv2 {method_name}"
-            )
-
-    required_method_parameters = {
-        "delete_logging_configuration": {"ResourceArn"},
-        "get_logging_configuration": {"ResourceArn"},
-        "put_logging_configuration": {"LoggingConfiguration"},
-    }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support WAFv2 "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "WAFv2", methods)
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

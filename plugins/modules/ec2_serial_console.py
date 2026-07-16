@@ -54,11 +54,11 @@ state:
   type: str
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
@@ -88,23 +88,16 @@ def main():
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]
-    method_names = ["get_serial_console_access_status"]
+    methods = {"get_serial_console_access_status": ()}
     if state == "present":
         desired_enabled = True
-        method_names.append("enable_serial_console_access")
-    elif state == "absent":
-        desired_enabled = False
-        method_names.append("disable_serial_console_access")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
+        methods["enable_serial_console_access"] = ()
 
-    for method_name in method_names:
-        try:
-            get_boto3_client_method_parameters(client, method_name)
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support EC2 {method_name}"
-            )
+    if state == "absent":
+        desired_enabled = False
+        methods["disable_serial_console_access"] = ()
+
+    require_client_methods(module, client, "EC2", methods)
 
     try:
         current = normalized_serial_console_access(
@@ -133,7 +126,7 @@ def main():
                     ),
                 )
 
-        elif state == "absent":
+        if state == "absent":
             try:
                 current = normalized_serial_console_access(
                     client.disable_serial_console_access(aws_retry=True)
@@ -147,8 +140,6 @@ def main():
                     ),
                 )
 
-        else:
-            module.fail_json(msg=f"Unsupported state: {state}")
     elif changed and module.check_mode:
         current = dict(current)
         current["serial_console_access_enabled"] = desired_enabled

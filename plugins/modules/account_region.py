@@ -76,14 +76,14 @@ region_opt_status:
   type: str
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
-    BaseWaiterFactory,
-    custom_waiter_config,
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
+    run_waiter,
 )
 
 PRESENT_STATUSES = {"ENABLED", "ENABLING", "ENABLED_BY_DEFAULT"}
@@ -170,12 +170,6 @@ ACCOUNT_REGION_WAITER_MODEL_DATA = {
 }
 
 
-class AccountRegionWaiterFactory(BaseWaiterFactory):
-    @property
-    def _waiter_model_data(self):
-        return ACCOUNT_REGION_WAITER_MODEL_DATA
-
-
 def get_region_opt_status(client, module):
     region_name = module.params["name"]
 
@@ -194,23 +188,17 @@ def get_region_opt_status(client, module):
 def wait_for_status(client, module, waiter_name, statuses):
     region_name = module.params["name"]
 
-    try:
-        waiter = AccountRegionWaiterFactory().get_waiter(client, waiter_name)
-        waiter.wait(
-            RegionName=region_name,
-            WaiterConfig=custom_waiter_config(
-                module.params["wait_timeout"],
-                default_pause=module.params["wait_delay"],
-            ),
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                f"Timed out waiting for AWS account region {region_name} "
-                f"to reach one of {sorted(statuses)}"
-            ),
-        )
+    run_waiter(
+        module,
+        client,
+        ACCOUNT_REGION_WAITER_MODEL_DATA,
+        waiter_name,
+        (
+            f"Timed out waiting for AWS account region {region_name} "
+            f"to reach one of {sorted(statuses)}"
+        ),
+        RegionName=region_name,
+    )
 
     return get_region_opt_status(client, module)
 
@@ -325,38 +313,25 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
 
-    if module.params["wait"]:
-        if module.params["wait_delay"] < 1:
-            module.fail_json(msg="wait_delay must be 1 or greater")
-
-        if module.params["wait_timeout"] < 1:
-            module.fail_json(msg="wait_timeout must be 1 or greater")
+    require_positive_wait_bounds(module)
 
     client = module.client("account", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]
-    method_names = ["get_region_opt_status"]
+    methods = {"get_region_opt_status": ()}
     if state == "present":
-        method_names.append("enable_region")
-    elif state == "absent":
-        method_names.append("disable_region")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
+        methods["enable_region"] = ()
 
-    for method_name in method_names:
-        try:
-            get_boto3_client_method_parameters(client, method_name)
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support AWS Account {method_name}"
-            )
+    if state == "absent":
+        methods["disable_region"] = ()
+
+    require_client_methods(module, client, "AWS Account", methods)
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

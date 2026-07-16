@@ -55,6 +55,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def main():
@@ -65,6 +68,13 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("ecr", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "ECR",
+        {"describe_repositories": ("registryId", "repositoryNames")},
+    )
 
     registry_id = module.params["registry_id"]
     repository_names = module.params["repository_names"]

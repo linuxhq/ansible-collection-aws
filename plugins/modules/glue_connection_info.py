@@ -73,12 +73,15 @@ connections:
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
 )
 
 
@@ -98,6 +101,21 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("glue", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "AWS Glue",
+        {
+            "get_connection": (
+                "ApplyOverrideForComputeEnvironment",
+                "CatalogId",
+                "HidePassword",
+                "Name",
+            ),
+            "get_connections": ("CatalogId", "Filter", "HidePassword"),
+        },
+    )
 
     apply_override = module.params["apply_override_for_compute_environment"]
     catalog_id = module.params["catalog_id"]
@@ -127,14 +145,14 @@ def main():
         if filters:
             request["Filter"] = snake_dict_to_camel_dict(filters, capitalize_first=True)
 
-        try:
-            connections = paginated_query_with_retries(
-                client,
-                "get_connections",
-                **request,
-            ).get("ConnectionList", [])
-        except Exception as e:
-            module.fail_json_aws(e, msg="Unable to list AWS Glue connections")
+        connections = query_list(
+            module,
+            client,
+            "get_connections",
+            "ConnectionList",
+            "Unable to list AWS Glue connections",
+            **request,
+        )
 
     module.exit_json(
         changed=False,

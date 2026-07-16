@@ -113,12 +113,16 @@ import json
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    apply_tag_deltas,
+    reconcile_ssm_tags,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -131,17 +135,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 SSM_ASSOCIATION_RESOURCE_TYPE = "Association"
 TARGET_DEFAULTS = {"values": []}
-
-
-def apply_tag_deltas(association, tags_to_set, tag_keys_to_unset):
-    updated = dict(association)
-    updated_tags = boto3_tag_list_to_ansible_dict(updated.get("Tags", []))
-
-    for tag_key in tag_keys_to_unset:
-        updated_tags.pop(tag_key, None)
-    updated_tags.update(tags_to_set)
-    updated["Tags"] = ansible_dict_to_boto3_tag_list(updated_tags)
-    return updated
 
 
 def comparable_targets(targets):
@@ -306,39 +299,15 @@ def ensure_present(client, module, current):
                 tags,
                 purge_tags=purge_tags,
             )
-            if tag_keys_to_unset:
-                try:
-                    client.remove_tags_from_resource(
-                        ResourceType=SSM_ASSOCIATION_RESOURCE_TYPE,
-                        ResourceId=association_id,
-                        TagKeys=tag_keys_to_unset,
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=(
-                            "Unable to remove tags from AWS Systems Manager "
-                            f"association {association_id}"
-                        ),
-                    )
-
-            if tags_to_set:
-                try:
-                    client.add_tags_to_resource(
-                        ResourceType=SSM_ASSOCIATION_RESOURCE_TYPE,
-                        ResourceId=association_id,
-                        Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                        aws_retry=True,
-                    )
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=(
-                            "Unable to tag AWS Systems Manager association "
-                            f"{association_id}"
-                        ),
-                    )
+            reconcile_ssm_tags(
+                module,
+                client,
+                SSM_ASSOCIATION_RESOURCE_TYPE,
+                association_id,
+                tags_to_set,
+                tag_keys_to_unset,
+                "AWS Systems Manager association",
+            )
 
             association = apply_tag_deltas(association, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode and tags is not None:
@@ -430,77 +399,46 @@ def main():
             module.fail_json(msg="targets must contain at most 5 targets")
 
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
-    method_names = {"list_associations"}
-    if state == "present":
-        method_names.update(
-            {
-                "create_association",
-                "update_association",
-            }
-        )
-        if tags is not None:
-            method_names.add("list_tags_for_resource")
-            if tags:
-                method_names.add("add_tags_to_resource")
-            if module.params["purge_tags"]:
-                method_names.add("remove_tags_from_resource")
-    elif state == "absent":
-        method_names.add("delete_association")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
-
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Systems Manager "
-                    f"{method_name}"
-                )
-            )
-
-    required_method_parameters = {
-        "add_tags_to_resource": {"ResourceId", "ResourceType", "Tags"},
-        "create_association": {"Name", "ScheduleExpression", "Targets"},
-        "delete_association": {"AssociationId"},
-        "list_associations": {"AssociationFilterList", "MaxResults", "NextToken"},
-        "list_tags_for_resource": {"ResourceId", "ResourceType"},
-        "remove_tags_from_resource": {"ResourceId", "ResourceType", "TagKeys"},
-        "update_association": {"AssociationId", "ScheduleExpression", "Targets"},
+    methods = {
+        "list_associations": ("AssociationFilterList", "MaxResults", "NextToken"),
     }
-    if tags:
-        required_method_parameters["create_association"].add("Tags")
-
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Systems Manager "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
-
-    try:
-        associations = paginated_query_with_retries(
-            client,
-            "list_associations",
-            AssociationFilterList=[{"key": "Name", "value": name}],
-        ).get("Associations", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list AWS Systems Manager associations for {name}",
+    if state == "present":
+        methods["create_association"] = ("Name", "ScheduleExpression", "Targets")
+        methods["update_association"] = (
+            "AssociationId",
+            "ScheduleExpression",
+            "Targets",
         )
+        if tags:
+            methods["create_association"] += ("Tags",)
+        if tags is not None:
+            methods["list_tags_for_resource"] = ("ResourceId", "ResourceType")
+            if tags:
+                methods["add_tags_to_resource"] = (
+                    "ResourceId",
+                    "ResourceType",
+                    "Tags",
+                )
+            if module.params["purge_tags"]:
+                methods["remove_tags_from_resource"] = (
+                    "ResourceId",
+                    "ResourceType",
+                    "TagKeys",
+                )
+
+    if state == "absent":
+        methods["delete_association"] = ("AssociationId",)
+
+    require_client_methods(module, client, "Systems Manager", methods)
+
+    associations = query_list(
+        module,
+        client,
+        "list_associations",
+        "Associations",
+        f"Unable to list AWS Systems Manager associations for {name}",
+        AssociationFilterList=[{"key": "Name", "value": name}],
+    )
 
     matches = [
         association for association in associations if association.get("Name") == name
@@ -521,10 +459,9 @@ def main():
 
     if state == "present":
         ensure_present(client, module, current)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module, current)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

@@ -73,6 +73,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
 
 
 def main():
@@ -86,6 +90,16 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {
+            "describe_managed_prefix_lists": ("Filters", "PrefixListIds"),
+            "get_managed_prefix_list_entries": ("PrefixListId", "TargetVersion"),
+        },
+    )
+
     filters = module.params["filters"]
     prefix_list_ids = module.params["prefix_list_ids"]
     target_version = module.params["target_version"]
@@ -96,12 +110,14 @@ def main():
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
-    try:
-        prefix_lists = paginated_query_with_retries(
-            client, "describe_managed_prefix_lists", **request
-        ).get("PrefixLists", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to describe EC2 VPC managed prefix lists")
+    prefix_lists = query_list(
+        module,
+        client,
+        "describe_managed_prefix_lists",
+        "PrefixLists",
+        "Unable to describe EC2 VPC managed prefix lists",
+        **request,
+    )
 
     result_prefix_lists = []
     for prefix_list in prefix_lists:
