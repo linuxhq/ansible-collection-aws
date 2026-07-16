@@ -3,7 +3,17 @@
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     get_boto3_client_method_parameters,
+    paginated_query_with_retries,
 )
+
+
+def query_list(module, client, method_name, result_key, error_msg, **kwargs):
+    try:
+        return paginated_query_with_retries(client, method_name, **kwargs).get(
+            result_key, []
+        )
+    except Exception as e:
+        module.fail_json_aws(e, msg=error_msg)
 
 
 def require_client_methods(module, client, service, methods):

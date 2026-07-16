@@ -71,12 +71,10 @@ import json
 import re
 
 from ansible.module_utils.common.text.converters import to_bytes
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
@@ -134,16 +132,14 @@ def main():
     for name in subject_alternative_names or []:
         desired_names.add(name.lower())
 
-    try:
-        summaries = paginated_query_with_retries(
-            client,
-            "list_certificates",
-            CertificateStatuses=["PENDING_VALIDATION", "ISSUED"],
-        ).get("CertificateSummaryList", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to list AWS Certificate Manager certificates"
-        )
+    summaries = query_list(
+        module,
+        client,
+        "list_certificates",
+        "CertificateSummaryList",
+        "Unable to list AWS Certificate Manager certificates",
+        CertificateStatuses=["PENDING_VALIDATION", "ISSUED"],
+    )
 
     matched = None
     for summary in summaries:

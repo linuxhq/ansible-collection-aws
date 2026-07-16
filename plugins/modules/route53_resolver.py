@@ -168,11 +168,11 @@ from ansible.module_utils.common.dict_transformations import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
@@ -664,14 +664,14 @@ def get_resolver_endpoint(client, module, resolver_endpoint_id):
 def get_resolver_endpoint_by_name(client, module):
     name = module.params["name"]
 
-    try:
-        endpoints = paginated_query_with_retries(
-            client,
-            "list_resolver_endpoints",
-            Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
-        ).get("ResolverEndpoints", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver endpoints")
+    endpoints = query_list(
+        module,
+        client,
+        "list_resolver_endpoints",
+        "ResolverEndpoints",
+        "Unable to list AWS Route53 Resolver endpoints",
+        Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
+    )
 
     if len(endpoints) > 1:
         endpoint_ids = sorted(endpoint.get("Id", "") for endpoint in endpoints)
@@ -690,17 +690,14 @@ def resolver_endpoint_with_ip_addresses(client, module, endpoint):
         return endpoint
     endpoint = dict(endpoint)
 
-    try:
-        endpoint["IpAddresses"] = paginated_query_with_retries(
-            client,
-            "list_resolver_endpoint_ip_addresses",
-            ResolverEndpointId=endpoint["Id"],
-        ).get("IpAddresses", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list AWS Route53 Resolver endpoint IP addresses for {endpoint['Id']}",
-        )
+    endpoint["IpAddresses"] = query_list(
+        module,
+        client,
+        "list_resolver_endpoint_ip_addresses",
+        "IpAddresses",
+        f"Unable to list AWS Route53 Resolver endpoint IP addresses for {endpoint['Id']}",
+        ResolverEndpointId=endpoint["Id"],
+    )
 
     return endpoint
 
@@ -710,17 +707,14 @@ def resolver_endpoint_with_tags(client, module, endpoint):
         return endpoint
     endpoint = dict(endpoint)
 
-    try:
-        endpoint["Tags"] = paginated_query_with_retries(
-            client,
-            "list_tags_for_resource",
-            ResourceArn=endpoint["Arn"],
-        ).get("Tags", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list tags for AWS Route53 Resolver endpoint {endpoint['Arn']}",
-        )
+    endpoint["Tags"] = query_list(
+        module,
+        client,
+        "list_tags_for_resource",
+        "Tags",
+        f"Unable to list tags for AWS Route53 Resolver endpoint {endpoint['Arn']}",
+        ResourceArn=endpoint["Arn"],
+    )
 
     return endpoint
 

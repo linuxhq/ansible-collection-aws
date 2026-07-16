@@ -85,6 +85,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -135,14 +136,14 @@ def main():
         {"describe_pools": tuple(request)},
     )
 
-    try:
-        pools = paginated_query_with_retries(
-            client,
-            "describe_pools",
-            **request,
-        ).get("Pools", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to describe Pinpoint SMS Voice V2 pools")
+    pools = query_list(
+        module,
+        client,
+        "describe_pools",
+        "Pools",
+        "Unable to describe Pinpoint SMS Voice V2 pools",
+        **request,
+    )
 
     normalized_pools = []
     for pool in pools:

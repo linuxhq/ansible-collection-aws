@@ -45,7 +45,6 @@ associations:
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -53,6 +52,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 
@@ -88,12 +88,14 @@ def main():
                     {"key": key, "value": str(item)}
                 )
 
-    try:
-        associations = paginated_query_with_retries(
-            client, "list_associations", **request
-        ).get("Associations", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Systems Manager associations")
+    associations = query_list(
+        module,
+        client,
+        "list_associations",
+        "Associations",
+        "Unable to list AWS Systems Manager associations",
+        **request,
+    )
 
     normalized_associations = []
     for association in associations:

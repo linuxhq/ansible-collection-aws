@@ -31,15 +31,13 @@ notification_hubs:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 
@@ -62,12 +60,13 @@ def main():
         {"list_notification_hubs": ()},
     )
 
-    try:
-        notification_hubs = paginated_query_with_retries(
-            client, "list_notification_hubs"
-        ).get("notificationHubs", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Notifications hubs")
+    notification_hubs = query_list(
+        module,
+        client,
+        "list_notification_hubs",
+        "notificationHubs",
+        "Unable to list AWS Notifications hubs",
+    )
 
     module.exit_json(
         changed=False,

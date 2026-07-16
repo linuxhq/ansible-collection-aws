@@ -113,12 +113,10 @@ import json
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
@@ -433,17 +431,14 @@ def main():
 
     require_client_methods(module, client, "Systems Manager", methods)
 
-    try:
-        associations = paginated_query_with_retries(
-            client,
-            "list_associations",
-            AssociationFilterList=[{"key": "Name", "value": name}],
-        ).get("Associations", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list AWS Systems Manager associations for {name}",
-        )
+    associations = query_list(
+        module,
+        client,
+        "list_associations",
+        "Associations",
+        f"Unable to list AWS Systems Manager associations for {name}",
+        AssociationFilterList=[{"key": "Name", "value": name}],
+    )
 
     matches = [
         association for association in associations if association.get("Name") == name

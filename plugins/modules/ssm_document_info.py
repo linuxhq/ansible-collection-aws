@@ -89,7 +89,6 @@ import json
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -98,6 +97,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 
@@ -174,14 +174,14 @@ def main():
                     }
                 )
 
-        try:
-            document_identifiers = paginated_query_with_retries(
-                client,
-                "list_documents",
-                **request,
-            ).get("DocumentIdentifiers", [])
-        except Exception as e:
-            module.fail_json_aws(e, msg="Unable to list AWS Systems Manager documents")
+        document_identifiers = query_list(
+            module,
+            client,
+            "list_documents",
+            "DocumentIdentifiers",
+            "Unable to list AWS Systems Manager documents",
+            **request,
+        )
 
         document_names = []
         for document in document_identifiers:

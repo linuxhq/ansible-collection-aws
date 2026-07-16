@@ -136,12 +136,10 @@ import json
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
@@ -506,17 +504,14 @@ def get_current(client, module):
 
     prefix_list_id = prefix_list.get("PrefixListId")
 
-    try:
-        entries = paginated_query_with_retries(
-            client,
-            "get_managed_prefix_list_entries",
-            PrefixListId=prefix_list_id,
-        ).get("Entries", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get EC2 VPC managed prefix list entries for {prefix_list_id}",
-        )
+    entries = query_list(
+        module,
+        client,
+        "get_managed_prefix_list_entries",
+        "Entries",
+        f"Unable to get EC2 VPC managed prefix list entries for {prefix_list_id}",
+        PrefixListId=prefix_list_id,
+    )
 
     return prefix_list, entries
 
@@ -567,14 +562,14 @@ def get_customer_managed_prefix_list_by_name(client, module):
     name = module.params["name"]
     filters = ansible_dict_to_boto3_filter_list({"prefix-list-name": name})
 
-    try:
-        prefix_lists = paginated_query_with_retries(
-            client, "describe_managed_prefix_lists", Filters=filters
-        ).get("PrefixLists", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg=f"Unable to describe EC2 VPC managed prefix list {name}"
-        )
+    prefix_lists = query_list(
+        module,
+        client,
+        "describe_managed_prefix_lists",
+        "PrefixLists",
+        f"Unable to describe EC2 VPC managed prefix list {name}",
+        Filters=filters,
+    )
 
     matches = []
     for prefix_list in prefix_lists:
