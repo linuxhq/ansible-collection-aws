@@ -25,6 +25,22 @@ provisioner:
     group_vars:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
+        ec2_security_group_list:
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            security_groups:
+              - name: mariadb106
+                rules:
+                  - cidr_ip: 0.0.0.0/0
+                    ports:
+                      - 3306
+                    proto: tcp
+              - name: mariadb118
+                rules:
+                  - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
+                    ports:
+                      - 3306
+                    proto: tcp
+
         ec2_vpc_igw_list:
           - name: molecule
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
@@ -68,7 +84,8 @@ provisioner:
             master_username: mnkes9JwUdsq
             publicly_accessible: true
             skip_final_snapshot: true
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].vpc_id }}"
+            vpc_security_group_ids:
+              - "{{ _ec2_security_group_info_dict['mariadb106'].group_id }}"
 
           - allocated_storage: 20
             auto_minor_version_upgrade: false
@@ -94,15 +111,11 @@ provisioner:
             multi_az: true
             option_group_name: mariadb118
             publicly_accessible: false
-            rules:
-              - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
-                ports:
-                  - 3306
-                proto: tcp
             storage_encrypted: true
             storage_type: gp3
             skip_final_snapshot: true
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].vpc_id }}"
+            vpc_security_group_ids:
+              - "{{ _ec2_security_group_info_dict['mariadb118'].group_id }}"
 
         rds_instance_param_group_list:
           - name: mariadb118
