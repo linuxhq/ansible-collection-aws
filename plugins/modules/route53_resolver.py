@@ -179,8 +179,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
-    build_waiter_factory,
     require_positive_wait_bounds,
+    run_waiter,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
@@ -191,9 +191,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
-    custom_waiter_config,
 )
 
 ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA = {
@@ -619,28 +616,17 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired):
 def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, statuses):
     deleted = "deleted" in statuses
 
-    try:
-        waiter = build_waiter_factory(
-            ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA
-        ).get_waiter(
-            client,
-            "resolver_endpoint_deleted" if deleted else "resolver_endpoint_operational",
-        )
-        waiter.wait(
-            ResolverEndpointId=resolver_endpoint_id,
-            WaiterConfig=custom_waiter_config(
-                module.params["wait_timeout"],
-                default_pause=module.params["wait_delay"],
-            ),
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Timed out waiting for AWS Route53 Resolver endpoint "
-                f"{module.params['name']}"
-            ),
-        )
+    run_waiter(
+        module,
+        client,
+        ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA,
+        "resolver_endpoint_deleted" if deleted else "resolver_endpoint_operational",
+        (
+            "Timed out waiting for AWS Route53 Resolver endpoint "
+            f"{module.params['name']}"
+        ),
+        ResolverEndpointId=resolver_endpoint_id,
+    )
 
     if deleted:
         return None

@@ -353,8 +353,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
-    build_waiter_factory,
     require_positive_wait_bounds,
+    run_waiter,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
@@ -364,9 +364,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
-    custom_waiter_config,
 )
 
 GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
@@ -460,22 +457,14 @@ def get_accelerator(client, module):
 
 
 def wait_for_accelerator(client, module, accelerator_arn, waiter_name):
-    try:
-        waiter = build_waiter_factory(GLOBAL_ACCELERATOR_WAITER_MODEL_DATA).get_waiter(
-            client, waiter_name
-        )
-        waiter.wait(
-            AcceleratorArn=accelerator_arn,
-            WaiterConfig=custom_waiter_config(
-                module.params["wait_timeout"],
-                default_pause=module.params["wait_delay"],
-            ),
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Timed out waiting for AWS Global Accelerator {accelerator_arn}",
-        )
+    run_waiter(
+        module,
+        client,
+        GLOBAL_ACCELERATOR_WAITER_MODEL_DATA,
+        waiter_name,
+        f"Timed out waiting for AWS Global Accelerator {accelerator_arn}",
+        AcceleratorArn=accelerator_arn,
+    )
 
 
 def normalized_port_ranges(port_ranges):
