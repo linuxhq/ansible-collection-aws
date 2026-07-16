@@ -43,11 +43,29 @@
           "{{ rds_subnet_group_list |
               map('combine', {'state': 'absent'}) }}"
 
+    - name: Ensure aws rds instances are deleted
+      ansible.builtin.include_role:
+        name: rds_instance
+
+    - name: Ensure aws rds option groups are released
+      amazon.aws.rds_option_group:
+        option_group_name: "{{ _og.option_group_name }}"
+        state: absent
+        validate_certs: true
+      register: __rds_option_group_release
+      loop: "{{ rds_option_group_list }}"
+      loop_control:
+        label: "{{ _og.option_group_name | d(none) }}"
+        loop_var: _og
+      delay: 30
+      retries: 20
+      until:
+        - __rds_option_group_release is success
+
     - name: Ensure roles are included
       ansible.builtin.include_role:
         name: "{{ _verify }}"
       loop:
-        - rds_instance
         - rds_subnet_group
         - rds_option_group
         - rds_instance_param_group
