@@ -1,3 +1,8 @@
 ---
+rds_instance_async: 3600
+rds_instance_batch: 10
+rds_instance_delay: 3
 rds_instance_list: []
+rds_instance_poll: 0
+rds_instance_retries: 1200
 ...
