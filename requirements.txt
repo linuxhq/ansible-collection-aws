@@ -1,4 +1,4 @@
-ansible>13,<14
+ansible>=14.2.0,<15
 ansible-lint==26.2.0
 antsibull-changelog==0.35.1
 awscli==1.37.10
