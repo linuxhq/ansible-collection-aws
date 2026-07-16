@@ -20,6 +20,14 @@ every resource has both. Lay each file out in this order:
 
 When starting a new module, copy the structure of an existing pair.
 
+### Spacing
+
+- Separate a function into steps with single blank lines: read inputs, build
+  the request, call AWS, shape the result, exit.
+- Put a blank line between a computation and the branch or loop that consumes
+  it, and after a multi-line block before whatever follows it.
+- One blank line at most inside a function; don't pad short helpers.
+
 ## Behavior
 
 ### State
