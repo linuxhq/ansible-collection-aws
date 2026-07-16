@@ -12,21 +12,28 @@
     - name: Ensure aws security group relationships are confirmed
       vars:
         __cluster: "{{ _ec2_security_group_info_dict['molecule-cluster'] }}"
-        __cluster_group_ids:
+        __cluster_self:
           "{{ __cluster.ip_permissions |
-              map(attribute='user_id_group_pairs') |
-              flatten |
-              map(attribute='group_id') }}"
+              selectattr('ip_protocol', 'eq', '-1') |
+              list }}"
+        __cluster_ssh:
+          "{{ __cluster.ip_permissions |
+              selectattr('ip_protocol', 'eq', 'tcp') |
+              selectattr('from_port', 'defined') |
+              selectattr('from_port', 'eq', 22) |
+              selectattr('to_port', 'eq', 22) |
+              list }}"
       ansible.builtin.assert:
         that:
-          - __cluster.group_id in __cluster_group_ids
-          - _ec2_security_group_info_dict['molecule-ssh'].group_id in
-            (__cluster.ip_permissions |
-             selectattr('from_port', 'defined') |
-             selectattr('from_port', 'eq', 22) |
-             map(attribute='user_id_group_pairs') |
-             flatten |
-             map(attribute='group_id'))
+          - __cluster.ip_permissions | length == 2
+          - __cluster_self | length == 1
+          - __cluster_self.0.user_id_group_pairs | map(attribute='group_id') |
+            list == [__cluster.group_id]
+          - __cluster_self.0.ip_ranges | d([]) | length == 0
+          - __cluster_ssh | length == 1
+          - __cluster_ssh.0.user_id_group_pairs | map(attribute='group_id') |
+            list == [_ec2_security_group_info_dict['molecule-ssh'].group_id]
+          - __cluster_ssh.0.ip_ranges | d([]) | length == 0
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
