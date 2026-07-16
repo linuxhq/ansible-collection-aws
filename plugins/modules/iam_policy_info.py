@@ -86,6 +86,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def build_entity_policies(client, module, entity_type, names):
@@ -202,6 +205,21 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "IAM",
+        {
+            "list_groups": ("PathPrefix",),
+            "list_users": ("PathPrefix",),
+            "list_group_policies": ("GroupName",),
+            "list_user_policies": ("UserName",),
+            "get_group_policy": ("GroupName", "PolicyName"),
+            "get_user_policy": ("UserName", "PolicyName"),
+        },
+    )
+
     group_names = entity_names(client, module, "Group")
     user_names = entity_names(client, module, "User")
 

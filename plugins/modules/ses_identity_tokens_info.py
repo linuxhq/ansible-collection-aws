@@ -53,6 +53,9 @@ verification_token:
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def main():
@@ -68,6 +71,16 @@ def main():
         module.fail_json(msg="identity must be a domain name, not an email address")
 
     client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "SES",
+        {
+            "verify_domain_dkim": ("Domain",),
+            "verify_domain_identity": ("Domain",),
+        },
+    )
 
     if module.check_mode:
         module.exit_json(

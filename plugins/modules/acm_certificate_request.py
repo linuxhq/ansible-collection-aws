@@ -72,11 +72,13 @@ import re
 
 from ansible.module_utils.common.text.converters import to_bytes
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -114,27 +116,18 @@ def main():
 
     client = module.client("acm", retry_decorator=AWSRetry.jittered_backoff())
 
-    method_names = [
-        "describe_certificate",
-        "list_certificates",
-        "request_certificate",
-    ]
+    methods = {
+        "describe_certificate": (),
+        "list_certificates": (),
+        "request_certificate": (),
+    }
     if tags is not None:
-        method_names.append("add_tags_to_certificate")
-        method_names.append("list_tags_for_certificate")
+        methods["add_tags_to_certificate"] = ()
+        methods["list_tags_for_certificate"] = ()
         if purge_tags:
-            method_names.append("remove_tags_from_certificate")
+            methods["remove_tags_from_certificate"] = ()
 
-    for method_name in method_names:
-        try:
-            get_boto3_client_method_parameters(client, method_name)
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support AWS Certificate "
-                    f"Manager {method_name}"
-                )
-            )
+    require_client_methods(module, client, "AWS Certificate Manager", methods)
 
     normalized_domain_name = domain_name.lower()
     desired_names = {normalized_domain_name}

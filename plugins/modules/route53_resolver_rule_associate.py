@@ -98,18 +98,23 @@ state:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    build_waiter_factory,
+    require_positive_wait_bounds,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
-    BaseWaiterFactory,
     custom_waiter_config,
 )
 
@@ -170,12 +175,6 @@ ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA = {
         ],
     },
 }
-
-
-class ResolverRuleAssociationWaiterFactory(BaseWaiterFactory):
-    @property
-    def _waiter_model_data(self):
-        return ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA
 
 
 def ensure_absent(client, module):
@@ -314,7 +313,9 @@ def wait_for_resolver_rule_association_status(
     deleted = "deleted" in statuses
 
     try:
-        waiter = ResolverRuleAssociationWaiterFactory().get_waiter(
+        waiter = build_waiter_factory(
+            ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA
+        ).get_waiter(
             client,
             (
                 "resolver_rule_association_deleted"
@@ -404,66 +405,26 @@ def main():
     )
     state = module.params["state"]
 
-    if module.params["wait"]:
-        if module.params["wait_delay"] < 1:
-            module.fail_json(msg="wait_delay must be 1 or greater")
-
-        if module.params["wait_timeout"] < 1:
-            module.fail_json(msg="wait_timeout must be 1 or greater")
+    require_positive_wait_bounds(module)
 
     client = module.client(
         "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
     )
-    method_names = {"list_resolver_rule_associations"}
+    methods = {
+        "list_resolver_rule_associations": ("Filters", "MaxResults", "NextToken"),
+    }
     if state == "present":
-        method_names.update(
-            {
-                "associate_resolver_rule",
-                "disassociate_resolver_rule",
-            }
-        )
+        methods["associate_resolver_rule"] = ("Name", "ResolverRuleId", "VPCId")
+        methods["disassociate_resolver_rule"] = ("ResolverRuleId", "VPCId")
         if module.params["wait"]:
-            method_names.add("get_resolver_rule_association")
+            methods["get_resolver_rule_association"] = ("ResolverRuleAssociationId",)
 
     if state == "absent":
-        method_names.add("disassociate_resolver_rule")
+        methods["disassociate_resolver_rule"] = ("ResolverRuleId", "VPCId")
         if module.params["wait"]:
-            method_names.add("get_resolver_rule_association")
+            methods["get_resolver_rule_association"] = ("ResolverRuleAssociationId",)
 
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Route53 Resolver "
-                    f"{method_name}"
-                )
-            )
-
-    required_method_parameters = {
-        "associate_resolver_rule": {"Name", "ResolverRuleId", "VPCId"},
-        "disassociate_resolver_rule": {"ResolverRuleId", "VPCId"},
-        "get_resolver_rule_association": {"ResolverRuleAssociationId"},
-        "list_resolver_rule_associations": {"Filters", "MaxResults", "NextToken"},
-    }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Route53 Resolver "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "Route53 Resolver", methods)
 
     if state == "present":
         ensure_present(client, module)

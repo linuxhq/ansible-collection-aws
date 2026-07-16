@@ -344,12 +344,18 @@ from ansible.module_utils.common.dict_transformations import (
 )
 from ansible.module_utils.common.text.converters import to_bytes
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    build_waiter_factory,
+    require_positive_wait_bounds,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -360,7 +366,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
-    BaseWaiterFactory,
     custom_waiter_config,
 )
 
@@ -403,12 +408,6 @@ GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
         ],
     },
 }
-
-
-class GlobalAcceleratorWaiterFactory(BaseWaiterFactory):
-    @property
-    def _waiter_model_data(self):
-        return GLOBAL_ACCELERATOR_WAITER_MODEL_DATA
 
 
 def get_accelerator_by_arn(client, module, accelerator_arn):
@@ -462,7 +461,9 @@ def get_accelerator(client, module):
 
 def wait_for_accelerator(client, module, accelerator_arn, waiter_name):
     try:
-        waiter = GlobalAcceleratorWaiterFactory().get_waiter(client, waiter_name)
+        waiter = build_waiter_factory(GLOBAL_ACCELERATOR_WAITER_MODEL_DATA).get_waiter(
+            client, waiter_name
+        )
         waiter.wait(
             AcceleratorArn=accelerator_arn,
             WaiterConfig=custom_waiter_config(
@@ -1488,12 +1489,7 @@ def main():
         supports_check_mode=True,
     )
 
-    if module.params["wait"]:
-        if module.params["wait_delay"] < 1:
-            module.fail_json(msg="wait_delay must be 1 or greater")
-
-        if module.params["wait_timeout"] < 1:
-            module.fail_json(msg="wait_timeout must be 1 or greater")
+    require_positive_wait_bounds(module)
 
     for listener in module.params["listeners"] or []:
         if not listener["port_ranges"]:
@@ -1632,20 +1628,6 @@ def main():
             }
         )
 
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Global Accelerator "
-                    f"{method_name}"
-                )
-            )
-
     required_method_parameters = {
         "create_accelerator": {
             "Enabled",
@@ -1710,20 +1692,12 @@ def main():
             "Protocol",
         },
     }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Global Accelerator "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(
+        module,
+        client,
+        "Global Accelerator",
+        {name: required_method_parameters.get(name, ()) for name in method_names},
+    )
 
     if state == "present":
         ensure_present(client, module)

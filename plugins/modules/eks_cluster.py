@@ -323,11 +323,16 @@ from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import compare_aws_tags
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
@@ -906,49 +911,13 @@ def main():
         supports_check_mode=True,
     )
 
-    if module.params["wait"]:
-        if module.params["wait_delay"] < 1:
-            module.fail_json(msg="wait_delay must be 1 or greater")
-
-        if module.params["wait_timeout"] < 1:
-            module.fail_json(msg="wait_timeout must be 1 or greater")
+    require_positive_wait_bounds(module)
 
     client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]
     tags = module.params["tags"]
     desired = desired_cluster(module)
-    method_names = {"describe_cluster"}
-
-    if state == "present":
-        method_names.update(
-            {
-                "create_cluster",
-                "describe_update",
-                "update_cluster_config",
-            }
-        )
-        if module.params["version"] is not None:
-            method_names.add("update_cluster_version")
-        if tags is not None:
-            method_names.add("tag_resource")
-            if module.params["purge_tags"]:
-                method_names.add("untag_resource")
-
-    if state == "absent":
-        method_names.add("delete_cluster")
-
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support EKS {method_name}"
-            )
-
     create_cluster_parameters = {"name"}
     for field in CREATE_FIELDS:
         if desired.get(field) is None:
@@ -969,31 +938,22 @@ def main():
             snake_dict_to_camel_dict({field: None}, capitalize_first=False)
         )
 
-    required_method_parameters = {
-        "create_cluster": create_cluster_parameters,
-        "delete_cluster": {"name"},
-        "describe_cluster": {"name"},
-        "describe_update": {"name", "updateId"},
-        "tag_resource": {"resourceArn", "tags"},
-        "untag_resource": {"resourceArn", "tagKeys"},
-        "update_cluster_config": update_cluster_config_parameters,
-        "update_cluster_version": {"name", "version"},
-    }
+    methods = {"describe_cluster": ("name",)}
+    if state == "present":
+        methods["create_cluster"] = tuple(create_cluster_parameters)
+        methods["describe_update"] = ("name", "updateId")
+        methods["update_cluster_config"] = tuple(update_cluster_config_parameters)
+        if module.params["version"] is not None:
+            methods["update_cluster_version"] = ("name", "version")
+        if tags is not None:
+            methods["tag_resource"] = ("resourceArn", "tags")
+            if module.params["purge_tags"]:
+                methods["untag_resource"] = ("resourceArn", "tagKeys")
 
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
+    if state == "absent":
+        methods["delete_cluster"] = ("name",)
 
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support EKS "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "EKS", methods)
 
     if state == "present":
         ensure_present(client, module)

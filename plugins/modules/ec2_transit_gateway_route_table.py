@@ -169,12 +169,17 @@ transit_gateway_route_table_id:
 import time
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -929,12 +934,7 @@ def main():
         supports_check_mode=True,
     )
 
-    if module.params["wait"]:
-        if module.params["wait_delay"] < 1:
-            module.fail_json(msg="wait_delay must be 1 or greater")
-
-        if module.params["wait_timeout"] < 1:
-            module.fail_json(msg="wait_timeout must be 1 or greater")
+    require_positive_wait_bounds(module)
 
     state = module.params["state"]
     purge_routes = module.params["purge_routes"]
@@ -973,93 +973,47 @@ def main():
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    method_names = {
-        "describe_transit_gateway_route_tables",
-    }
-    if state == "present":
-        if not module.params["transit_gateway_route_table_id"]:
-            method_names.add("create_transit_gateway_route_table")
-        if desired_tags(module):
-            method_names.add("create_tags")
-        if module.params["tags"] is not None and module.params["purge_tags"]:
-            method_names.add("delete_tags")
-        if routes or purge_routes:
-            method_names.add("search_transit_gateway_routes")
-        if has_present_route:
-            method_names.add("create_transit_gateway_route")
-            method_names.add("replace_transit_gateway_route")
-        if has_absent_route or purge_routes:
-            method_names.add("delete_transit_gateway_route")
+    route_parameters = ("DestinationCidrBlock", "TransitGatewayRouteTableId")
+    if has_blackhole_route:
+        route_parameters += ("Blackhole",)
+    if has_attachment_route:
+        route_parameters += ("TransitGatewayAttachmentId",)
 
-    if state == "absent":
-        method_names.add("delete_transit_gateway_route_table")
-
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support EC2 {method_name}"
-            )
-
-    required_method_parameters = {
-        "create_tags": ("Resources", "Tags"),
-        "create_transit_gateway_route": (
-            "DestinationCidrBlock",
-            "TransitGatewayRouteTableId",
-        ),
-        "create_transit_gateway_route_table": (
-            "TransitGatewayId",
-            "TagSpecifications",
-        ),
-        "delete_tags": ("Resources", "Tags"),
-        "delete_transit_gateway_route": (
-            "DestinationCidrBlock",
-            "TransitGatewayRouteTableId",
-        ),
-        "delete_transit_gateway_route_table": ("TransitGatewayRouteTableId",),
+    methods = {
         "describe_transit_gateway_route_tables": (
             "Filters",
             "TransitGatewayRouteTableIds",
         ),
-        "replace_transit_gateway_route": (
-            "DestinationCidrBlock",
-            "TransitGatewayRouteTableId",
-        ),
-        "search_transit_gateway_routes": (
-            "Filters",
-            "MaxResults",
-            "TransitGatewayRouteTableId",
-        ),
     }
-    if has_blackhole_route:
-        required_method_parameters["create_transit_gateway_route"] += ("Blackhole",)
-        required_method_parameters["replace_transit_gateway_route"] += ("Blackhole",)
-    if has_attachment_route:
-        required_method_parameters["create_transit_gateway_route"] += (
-            "TransitGatewayAttachmentId",
-        )
-        required_method_parameters["replace_transit_gateway_route"] += (
-            "TransitGatewayAttachmentId",
-        )
-
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in set(parameter_names):
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support EC2 "
-                    f"{method_name} parameter {parameter_name}"
-                )
+    if state == "present":
+        if not module.params["transit_gateway_route_table_id"]:
+            methods["create_transit_gateway_route_table"] = (
+                "TagSpecifications",
+                "TransitGatewayId",
             )
+        if desired_tags(module):
+            methods["create_tags"] = ("Resources", "Tags")
+        if module.params["tags"] is not None and module.params["purge_tags"]:
+            methods["delete_tags"] = ("Resources", "Tags")
+        if routes or purge_routes:
+            methods["search_transit_gateway_routes"] = (
+                "Filters",
+                "MaxResults",
+                "TransitGatewayRouteTableId",
+            )
+        if has_present_route:
+            methods["create_transit_gateway_route"] = route_parameters
+            methods["replace_transit_gateway_route"] = route_parameters
+        if has_absent_route or purge_routes:
+            methods["delete_transit_gateway_route"] = (
+                "DestinationCidrBlock",
+                "TransitGatewayRouteTableId",
+            )
+
+    if state == "absent":
+        methods["delete_transit_gateway_route_table"] = ("TransitGatewayRouteTableId",)
+
+    require_client_methods(module, client, "EC2", methods)
 
     if state == "present":
         ensure_present(client, module)

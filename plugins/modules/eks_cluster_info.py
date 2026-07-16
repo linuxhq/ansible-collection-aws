@@ -82,6 +82,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def value_matches(current, desired):
@@ -103,6 +106,16 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "EKS",
+        {
+            "list_clusters": ("include",),
+            "describe_cluster": ("name",),
+        },
+    )
 
     filters = module.params["filters"]
     include = module.params["include"]

@@ -80,6 +80,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def main():
@@ -98,6 +101,21 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("glue", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "AWS Glue",
+        {
+            "get_connection": (
+                "ApplyOverrideForComputeEnvironment",
+                "CatalogId",
+                "HidePassword",
+                "Name",
+            ),
+            "get_connections": ("CatalogId", "Filter", "HidePassword"),
+        },
+    )
 
     apply_override = module.params["apply_override_for_compute_environment"]
     catalog_id = module.params["catalog_id"]
