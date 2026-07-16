@@ -185,12 +185,10 @@ state:
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
@@ -304,18 +302,14 @@ def get_flow_logs(client, module):
         "Filter": ansible_dict_to_boto3_filter_list({"resource-id": resource_ids})
     }
 
-    try:
-        return paginated_query_with_retries(
-            client, "describe_flow_logs", **request
-        ).get("FlowLogs", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to describe EC2 flow logs for resources "
-                f"{', '.join(resource_ids)}"
-            ),
-        )
+    return query_list(
+        module,
+        client,
+        "describe_flow_logs",
+        "FlowLogs",
+        "Unable to describe EC2 flow logs for resources " f"{', '.join(resource_ids)}",
+        **request,
+    )
 
 
 def ensure_absent(client, module):
@@ -458,20 +452,15 @@ def ensure_present(client, module):
             created_flow_log_ids = response.get("FlowLogIds", [])
 
             if created_flow_log_ids:
-                try:
-                    created_flow_logs = paginated_query_with_retries(
-                        client,
-                        "describe_flow_logs",
-                        FlowLogIds=created_flow_log_ids,
-                    ).get("FlowLogs", [])
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=(
-                            "Unable to describe EC2 flow logs "
-                            f"{', '.join(created_flow_log_ids)}"
-                        ),
-                    )
+                created_flow_logs = query_list(
+                    module,
+                    client,
+                    "describe_flow_logs",
+                    "FlowLogs",
+                    "Unable to describe EC2 flow logs "
+                    f"{', '.join(created_flow_log_ids)}",
+                    FlowLogIds=created_flow_log_ids,
+                )
 
                 current = current + created_flow_logs
         elif missing_resource_ids and module.check_mode:

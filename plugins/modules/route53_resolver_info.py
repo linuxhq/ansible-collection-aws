@@ -50,6 +50,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -89,12 +90,14 @@ def main():
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
-    try:
-        resolver_endpoints = paginated_query_with_retries(
-            client, "list_resolver_endpoints", **request
-        ).get("ResolverEndpoints", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver endpoints")
+    resolver_endpoints = query_list(
+        module,
+        client,
+        "list_resolver_endpoints",
+        "ResolverEndpoints",
+        "Unable to list AWS Route53 Resolver endpoints",
+        **request,
+    )
 
     normalized_endpoints = []
     for endpoint in resolver_endpoints:

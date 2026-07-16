@@ -58,7 +58,6 @@ queues:
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -66,6 +65,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 
@@ -144,14 +144,14 @@ def main():
         if queue_name_prefix:
             request["QueueNamePrefix"] = queue_name_prefix
 
-        try:
-            queue_urls = paginated_query_with_retries(
-                client,
-                "list_queues",
-                **request,
-            ).get("QueueUrls", [])
-        except Exception as e:
-            module.fail_json_aws(e, msg="Unable to list AWS SQS queues")
+        queue_urls = query_list(
+            module,
+            client,
+            "list_queues",
+            "QueueUrls",
+            "Unable to list AWS SQS queues",
+            **request,
+        )
 
         queues = []
         for queue_url in queue_urls:

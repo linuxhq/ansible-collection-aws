@@ -175,6 +175,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
@@ -282,16 +283,14 @@ def find_route_table(client, module):
     if name:
         filters["tag:Name"] = name
 
-    try:
-        route_tables = paginated_query_with_retries(
-            client,
-            "describe_transit_gateway_route_tables",
-            Filters=ansible_dict_to_boto3_filter_list(filters),
-        ).get("TransitGatewayRouteTables", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to describe EC2 transit gateway route tables"
-        )
+    route_tables = query_list(
+        module,
+        client,
+        "describe_transit_gateway_route_tables",
+        "TransitGatewayRouteTables",
+        "Unable to describe EC2 transit gateway route tables",
+        Filters=ansible_dict_to_boto3_filter_list(filters),
+    )
 
     if len(route_tables) > 1:
         transit_gateway_route_table_ids = []

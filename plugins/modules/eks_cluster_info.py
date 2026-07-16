@@ -75,7 +75,6 @@ from fnmatch import fnmatchcase
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -83,6 +82,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 
@@ -128,14 +128,14 @@ def main():
         if include:
             request["include"] = include
 
-        try:
-            cluster_names = paginated_query_with_retries(
-                client,
-                "list_clusters",
-                **request,
-            ).get("clusters", [])
-        except Exception as e:
-            module.fail_json_aws(e, msg="Unable to list AWS EKS clusters")
+        cluster_names = query_list(
+            module,
+            client,
+            "list_clusters",
+            "clusters",
+            "Unable to list AWS EKS clusters",
+            **request,
+        )
 
     clusters = []
     for name in cluster_names:
