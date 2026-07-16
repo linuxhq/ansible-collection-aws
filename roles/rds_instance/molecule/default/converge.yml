@@ -28,6 +28,11 @@
         - molecule-idempotence-notest
       check_mode: false
 
+    - role: ec2_security_group
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
     - role: rds_instance_param_group
       tags:
         - molecule-idempotence-notest

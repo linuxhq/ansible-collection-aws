@@ -1,8 +1,6 @@
 ---
 dependencies:
-  - role: ec2_vpc_net_info
-    tags: rds_instance
-  - role: ec2_vpc_subnet_info
+  - role: ec2_security_group_info
     tags: rds_instance
 galaxy_info:
   role_name: rds_instance
