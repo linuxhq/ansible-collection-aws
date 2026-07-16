@@ -1,0 +1,7 @@
+---
+minor_changes:
+  - ec2_security_group - create all groups before populating rules so rules
+    can reference any group managed in the same run, including groups in
+    later batches.
+  - ec2_security_group - strip rules from groups being removed before
+    deleting them so cross-referenced groups delete cleanly.

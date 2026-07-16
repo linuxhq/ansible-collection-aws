@@ -142,6 +142,17 @@ provisioner:
                 rules_egress:
                   - cidr_ip: 0.0.0.0/0
                     proto: -1
+              - name: molecule-cluster
+                rules:
+                  - group_name: molecule-cluster
+                    proto: -1
+                  - group_name: molecule-ssh
+                    ports:
+                      - 22
+                    proto: tcp
+                rules_egress:
+                  - cidr_ip: "{{ ec2_vpc_net_list.0.cidr_block }}"
+                    proto: -1
 
 scenario:
   test_sequence:
