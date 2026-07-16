@@ -43,3 +43,37 @@ def reconcile_arn_tags(
             )
         except Exception as e:
             module.fail_json_aws(e, msg=f"Unable to tag {description} {resource_arn}")
+
+
+def reconcile_ssm_tags(
+    module,
+    client,
+    resource_type,
+    resource_id,
+    tags_to_set,
+    tag_keys_to_unset,
+    description,
+):
+    if tag_keys_to_unset:
+        try:
+            client.remove_tags_from_resource(
+                ResourceType=resource_type,
+                ResourceId=resource_id,
+                TagKeys=tag_keys_to_unset,
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(
+                e, msg=f"Unable to remove tags from {description} {resource_id}"
+            )
+
+    if tags_to_set:
+        try:
+            client.add_tags_to_resource(
+                ResourceType=resource_type,
+                ResourceId=resource_id,
+                Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
+                aws_retry=True,
+            )
+        except Exception as e:
+            module.fail_json_aws(e, msg=f"Unable to tag {description} {resource_id}")
