@@ -37,8 +37,8 @@ region:
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
+from ansible_collections.linuxhq.aws.plugins.module_utils.ec2_metadata import (
+    get_instance_metadata_defaults,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
@@ -56,26 +56,9 @@ def main():
         {"get_instance_metadata_defaults": ()},
     )
 
-    try:
-        account_level = client.get_instance_metadata_defaults(aws_retry=True).get(
-            "AccountLevel", {}
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to get EC2 instance metadata defaults in region "
-                f"{module.region}"
-            ),
-        )
-
     module.exit_json(
         changed=False,
-        account_level=boto3_resource_to_ansible_dict(
-            account_level,
-            transform_tags=False,
-            force_tags=False,
-        ),
+        account_level=get_instance_metadata_defaults(client, module),
         region=module.region,
     )
 

@@ -87,11 +87,11 @@ from ansible.module_utils.common.dict_transformations import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.ec2_metadata import (
+    get_instance_metadata_defaults,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
 )
 
 NO_PREFERENCE_BY_OPTION = {
@@ -100,22 +100,6 @@ NO_PREFERENCE_BY_OPTION = {
     "http_tokens": "no-preference",
     "instance_metadata_tags": "no-preference",
 }
-
-
-def get_instance_metadata_defaults(client, module):
-    try:
-        return boto3_resource_to_ansible_dict(
-            client.get_instance_metadata_defaults(aws_retry=True).get(
-                "AccountLevel", {}
-            ),
-            transform_tags=False,
-            force_tags=False,
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get EC2 instance metadata defaults in region {module.region}",
-        )
 
 
 def main():
