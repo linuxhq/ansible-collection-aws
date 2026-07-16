@@ -20,6 +20,7 @@
     policy: "{{ _bucket.policy | to_json if _bucket.policy is defined else omit }}"
     public_access: "{{ _bucket.public_access | d(omit) }}"
     purge_tags: "{{ _bucket.purge_tags | d(true) }}"
+    region: "{{ _bucket.region | d(omit) }}"
     requester_pays: "{{ _bucket.requester_pays | d(omit) }}"
     state: "{{ _bucket.state | d('present') }}"
     tags: "{{ _bucket.tags | d({}) | combine({'Name': _bucket.name}) }}"
