@@ -1,12 +1,30 @@
 ---
-- name: Ensure aws security groups are batched
+- name: Ensure aws security groups are created in batches
   tags:
     - ec2_security_group
   ansible.builtin.include_tasks:
     apply:
       tags:
         - ec2_security_group
-    file: include.yml
+    file: create.yml
+  loop:
+    "{{ q('ansible.builtin.subelements',
+          ec2_security_group_list,
+          'security_groups',
+          {'skip_missing': true}) |
+        batch(ec2_security_group_batch) }}"
+  loop_control:
+    label: "{{ __ec2_security_group_list | length }}"
+    loop_var: __ec2_security_group_list
+
+- name: Ensure aws security groups are populated in batches
+  tags:
+    - ec2_security_group
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - ec2_security_group
+    file: populate.yml
   loop:
     "{{ q('ansible.builtin.subelements',
           ec2_security_group_list,
