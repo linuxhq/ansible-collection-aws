@@ -73,6 +73,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def main():
@@ -85,6 +88,16 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {
+            "describe_managed_prefix_lists": ("Filters", "PrefixListIds"),
+            "get_managed_prefix_list_entries": ("PrefixListId", "TargetVersion"),
+        },
+    )
 
     filters = module.params["filters"]
     prefix_list_ids = module.params["prefix_list_ids"]

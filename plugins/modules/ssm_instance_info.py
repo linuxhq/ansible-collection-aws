@@ -88,6 +88,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def main():
@@ -111,6 +114,13 @@ def main():
         module.fail_json(msg="instance_ids must contain at most 100 instance IDs")
 
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "Systems Manager",
+        {"describe_instance_information": ("Filters",)},
+    )
 
     request = {}
     filters = dict(module.params["filters"] or {})

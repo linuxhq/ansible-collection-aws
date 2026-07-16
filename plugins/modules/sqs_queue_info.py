@@ -65,6 +65,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def get_queue(client, module, queue_url):
@@ -103,6 +106,18 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("sqs", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "SQS",
+        {
+            "get_queue_url": ("QueueName", "QueueOwnerAWSAccountId"),
+            "get_queue_attributes": ("AttributeNames", "QueueUrl"),
+            "list_queues": ("QueueNamePrefix",),
+        },
+    )
+
     name = module.params["name"]
     queue_name_prefix = module.params["queue_name_prefix"]
     queue_owner_aws_account_id = module.params["queue_owner_aws_account_id"]

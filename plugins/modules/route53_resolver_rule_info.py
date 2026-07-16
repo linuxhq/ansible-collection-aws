@@ -54,6 +54,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def main():
@@ -66,6 +69,18 @@ def main():
     client = module.client(
         "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
     )
+
+    require_client_methods(
+        module,
+        client,
+        "Route53 Resolver",
+        {
+            "list_resolver_rules": ("Filters",),
+            "list_resolver_rule_associations": ("Filters",),
+            "list_tags_for_resource": ("ResourceArn",),
+        },
+    )
+
     filters = module.params["filters"]
     request = {}
     if filters:

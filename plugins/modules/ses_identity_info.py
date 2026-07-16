@@ -67,6 +67,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def main():
@@ -80,6 +83,20 @@ def main():
     )
     ses_client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
     sesv2_client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        ses_client,
+        "SES",
+        {"list_identities": ("IdentityType",)},
+    )
+    require_client_methods(
+        module,
+        sesv2_client,
+        "SESv2",
+        {"get_email_identity": ("EmailIdentity",)},
+    )
+
     identity_type = module.params["identity_type"]
     name = module.params["name"]
     identities = []

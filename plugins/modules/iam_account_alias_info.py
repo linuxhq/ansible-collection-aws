@@ -35,6 +35,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def main():
@@ -43,6 +46,13 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "IAM",
+        {"list_account_aliases": ()},
+    )
 
     try:
         account_aliases = paginated_query_with_retries(

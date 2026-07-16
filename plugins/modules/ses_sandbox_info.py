@@ -34,11 +34,21 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
     client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "SESv2",
+        {"get_account": ()},
+    )
 
     try:
         account = client.get_account(aws_retry=True)

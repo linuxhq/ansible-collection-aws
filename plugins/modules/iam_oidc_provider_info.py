@@ -50,25 +50,18 @@ open_id_connect_providers:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
-    is_boto3_error_code,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
+    get_provider_by_arn,
+    normalize_provider_url,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
-
-
-def normalize_provider_url(url):
-    if url is None:
-        return None
-    normalized = url.rstrip("/")
-
-    if normalized.startswith("https://"):
-        normalized = normalized[len("https://") :]
-    return normalized
 
 
 def list_provider_arns(client, module):
@@ -88,22 +81,6 @@ def list_provider_arns(client, module):
     return arns
 
 
-def get_provider_by_arn(client, module, arn):
-    try:
-        provider = client.get_open_id_connect_provider(
-            OpenIDConnectProviderArn=arn,
-            aws_retry=True,
-        )
-    except is_boto3_error_code("NoSuchEntity"):
-        return None
-    except Exception as e:
-        module.fail_json_aws(e, msg=f"Unable to get AWS IAM OIDC provider {arn}")
-
-    provider.pop("ResponseMetadata", None)
-    provider["OpenIDConnectProviderArn"] = arn
-    return provider
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -117,38 +94,11 @@ def main():
 
     arn = module.params["arn"]
     url = module.params["url"]
-    method_names = {"get_open_id_connect_provider"}
+    methods = {"get_open_id_connect_provider": ("OpenIDConnectProviderArn",)}
     if not arn:
-        method_names.add("list_open_id_connect_providers")
+        methods["list_open_id_connect_providers"] = ()
 
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support IAM {method_name}"
-            )
-
-    required_method_parameters = {
-        "get_open_id_connect_provider": {"OpenIDConnectProviderArn"},
-    }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support IAM "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "IAM", methods)
 
     if arn:
         provider = get_provider_by_arn(client, module, arn)

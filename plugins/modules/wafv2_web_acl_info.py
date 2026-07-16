@@ -79,6 +79,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def main():
@@ -94,6 +97,16 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "WAFv2",
+        {
+            "list_web_acls": ("Limit", "NextMarker", "Scope"),
+            "get_web_acl": ("Id", "Name", "Scope"),
+        },
+    )
 
     scope = module.params["scope"].upper()
     target_id = module.params["id"]

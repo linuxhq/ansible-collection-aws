@@ -73,11 +73,13 @@ service_code:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
@@ -98,42 +100,13 @@ def main():
     quota_code = module.params["quota_code"]
     service_code = module.params["service_code"]
 
-    method_names = {"get_service_quota"}
-    if not context_id:
-        method_names.add("get_aws_default_service_quota")
-
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support Service Quotas {method_name}"
-            )
-
-    required_method_parameters = {
-        "get_aws_default_service_quota": {"QuotaCode", "ServiceCode"},
-        "get_service_quota": {"QuotaCode", "ServiceCode"},
-    }
+    methods = {"get_service_quota": ("QuotaCode", "ServiceCode")}
     if context_id:
-        required_method_parameters["get_service_quota"].add("ContextId")
+        methods["get_service_quota"] += ("ContextId",)
+    else:
+        methods["get_aws_default_service_quota"] = ("QuotaCode", "ServiceCode")
 
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Service Quotas "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "Service Quotas", methods)
 
     request = {
         "QuotaCode": quota_code,

@@ -76,13 +76,16 @@ region_opt_status:
   type: str
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    build_waiter_factory,
+    require_positive_wait_bounds,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
-    BaseWaiterFactory,
     custom_waiter_config,
 )
 
@@ -170,12 +173,6 @@ ACCOUNT_REGION_WAITER_MODEL_DATA = {
 }
 
 
-class AccountRegionWaiterFactory(BaseWaiterFactory):
-    @property
-    def _waiter_model_data(self):
-        return ACCOUNT_REGION_WAITER_MODEL_DATA
-
-
 def get_region_opt_status(client, module):
     region_name = module.params["name"]
 
@@ -195,7 +192,9 @@ def wait_for_status(client, module, waiter_name, statuses):
     region_name = module.params["name"]
 
     try:
-        waiter = AccountRegionWaiterFactory().get_waiter(client, waiter_name)
+        waiter = build_waiter_factory(ACCOUNT_REGION_WAITER_MODEL_DATA).get_waiter(
+            client, waiter_name
+        )
         waiter.wait(
             RegionName=region_name,
             WaiterConfig=custom_waiter_config(
@@ -325,30 +324,19 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
 
-    if module.params["wait"]:
-        if module.params["wait_delay"] < 1:
-            module.fail_json(msg="wait_delay must be 1 or greater")
-
-        if module.params["wait_timeout"] < 1:
-            module.fail_json(msg="wait_timeout must be 1 or greater")
+    require_positive_wait_bounds(module)
 
     client = module.client("account", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]
-    method_names = ["get_region_opt_status"]
+    methods = {"get_region_opt_status": ()}
     if state == "present":
-        method_names.append("enable_region")
+        methods["enable_region"] = ()
 
     if state == "absent":
-        method_names.append("disable_region")
+        methods["disable_region"] = ()
 
-    for method_name in method_names:
-        try:
-            get_boto3_client_method_parameters(client, method_name)
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support AWS Account {method_name}"
-            )
+    require_client_methods(module, client, "AWS Account", methods)
 
     if state == "present":
         ensure_present(client, module)

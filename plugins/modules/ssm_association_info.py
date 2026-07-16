@@ -52,6 +52,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 SSM_ASSOCIATION_RESOURCE_TYPE = "Association"
 
@@ -62,6 +65,17 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "Systems Manager",
+        {
+            "list_associations": ("AssociationFilterList",),
+            "list_tags_for_resource": ("ResourceId", "ResourceType"),
+        },
+    )
+
     filters = module.params["filters"]
     request = {}
     if filters:
