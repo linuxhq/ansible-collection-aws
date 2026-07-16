@@ -46,7 +46,7 @@ None
               db_instance_identifier: mariadb106
               db_subnet_group_name: molecule
               engine: mariadb
-              engine_version: 10.6.20
+              engine_version: 10.6.27
               master_user_password: sTxmp3nXHCiMf34e9eWcH39v
               master_username: mnkes9JwUdsq
               publicly_accessible: true
