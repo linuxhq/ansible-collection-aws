@@ -54,6 +54,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
 
 
 def main():
@@ -66,17 +70,31 @@ def main():
     client = module.client(
         "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
     )
+
+    require_client_methods(
+        module,
+        client,
+        "Route53 Resolver",
+        {
+            "list_resolver_rules": ("Filters",),
+            "list_resolver_rule_associations": ("Filters",),
+            "list_tags_for_resource": ("ResourceArn",),
+        },
+    )
+
     filters = module.params["filters"]
     request = {}
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
-    try:
-        resolver_rules = paginated_query_with_retries(
-            client, "list_resolver_rules", **request
-        ).get("ResolverRules", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver rules")
+    resolver_rules = query_list(
+        module,
+        client,
+        "list_resolver_rules",
+        "ResolverRules",
+        "Unable to list AWS Route53 Resolver rules",
+        **request,
+    )
 
     if filters and not resolver_rules:
         associations = []
@@ -87,16 +105,14 @@ def main():
                 {"ResolverRuleId": [rule["Id"] for rule in resolver_rules]}
             )
 
-        try:
-            associations = paginated_query_with_retries(
-                client,
-                "list_resolver_rule_associations",
-                **association_request,
-            ).get("ResolverRuleAssociations", [])
-        except Exception as e:
-            module.fail_json_aws(
-                e, msg="Unable to list AWS Route53 Resolver rule associations"
-            )
+        associations = query_list(
+            module,
+            client,
+            "list_resolver_rule_associations",
+            "ResolverRuleAssociations",
+            "Unable to list AWS Route53 Resolver rule associations",
+            **association_request,
+        )
 
     associations_by_rule_id = {}
     for association in associations:

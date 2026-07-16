@@ -65,14 +65,15 @@ instance_types:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
 )
 
 
@@ -88,6 +89,13 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"describe_instance_types": ("Filters", "InstanceTypes")},
+    )
+
     filters = module.params["filters"]
     instance_types = module.params["instance_types"]
 
@@ -97,14 +105,14 @@ def main():
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
-    try:
-        instance_types = paginated_query_with_retries(
-            client,
-            "describe_instance_types",
-            **request,
-        ).get("InstanceTypes", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to describe EC2 instance types")
+    instance_types = query_list(
+        module,
+        client,
+        "describe_instance_types",
+        "InstanceTypes",
+        "Unable to describe EC2 instance types",
+        **request
+    )
 
     module.exit_json(
         changed=False,

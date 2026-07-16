@@ -11,6 +11,14 @@ repos:
         files: \.(yaml|yml)$
         verbose: true
 
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.21
+    hooks:
+      - id: ruff-check
+        exclude: ^venv/
+        files: \.(py)$
+        verbose: true
+
   - repo: https://github.com/psf/black-pre-commit-mirror
     rev: 26.3.1
     hooks:
@@ -26,4 +34,12 @@ repos:
         files: \.(yaml|yml)$
         types: [file, yaml]
         entry: yamllint --strict
+
+  - repo: https://github.com/ansible-community/antsibull-changelog
+    rev: 0.34.0
+    hooks:
+      - id: antsibull-changelog-lint
+        verbose: true
+      - id: antsibull-changelog-lint-changelog-yaml
+        verbose: true
 ...

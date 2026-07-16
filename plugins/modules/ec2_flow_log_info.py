@@ -63,14 +63,15 @@ flow_logs:
   elements: dict
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
 )
 
 
@@ -87,6 +88,13 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"describe_flow_logs": ("Filter", "FlowLogIds")},
+    )
+
     flow_log_ids = module.params["flow_log_ids"]
     resource_ids = module.params["resource_ids"]
     filters = dict(module.params["filters"] or {})
@@ -99,14 +107,14 @@ def main():
     if filters:
         request["Filter"] = ansible_dict_to_boto3_filter_list(filters)
 
-    try:
-        flow_logs = paginated_query_with_retries(
-            client,
-            "describe_flow_logs",
-            **request,
-        ).get("FlowLogs", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to describe EC2 flow logs")
+    flow_logs = query_list(
+        module,
+        client,
+        "describe_flow_logs",
+        "FlowLogs",
+        "Unable to describe EC2 flow logs",
+        **request
+    )
 
     module.exit_json(
         changed=False,

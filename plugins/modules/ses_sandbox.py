@@ -71,13 +71,15 @@ account:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.ses import (
+    get_account,
 )
 
 ACCOUNT_DETAILS_FIELDS = (
@@ -105,20 +107,6 @@ def comparable_details(details):
             set(normalized["additional_contact_email_addresses"])
         )
     return normalized
-
-
-def get_account(client, module):
-    try:
-        account = client.get_account(aws_retry=True)
-    except Exception as e:
-        module.fail_json_aws(
-            e, msg="Unable to get AWS Simple Email Service account details"
-        )
-
-    account.pop("ResponseMetadata", None)
-    return boto3_resource_to_ansible_dict(
-        account, transform_tags=False, force_tags=False
-    )
 
 
 def main():
@@ -151,42 +139,22 @@ def main():
 
     client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
 
-    method_names = {"get_account", "put_account_details"}
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support SESv2 {method_name}"
-            )
-
-    required_method_parameters = {
-        "put_account_details": {
-            "AdditionalContactEmailAddresses",
-            "ContactLanguage",
-            "MailType",
-            "ProductionAccessEnabled",
-            "UseCaseDescription",
-            "WebsiteURL",
+    require_client_methods(
+        module,
+        client,
+        "SESv2",
+        {
+            "get_account": (),
+            "put_account_details": (
+                "AdditionalContactEmailAddresses",
+                "ContactLanguage",
+                "MailType",
+                "ProductionAccessEnabled",
+                "UseCaseDescription",
+                "WebsiteURL",
+            ),
         },
-    }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support SESv2 "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    )
 
     current_account = get_account(client, module)
     use_case_description = module.params["use_case_description"]

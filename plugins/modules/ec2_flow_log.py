@@ -185,12 +185,12 @@ state:
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -302,18 +302,14 @@ def get_flow_logs(client, module):
         "Filter": ansible_dict_to_boto3_filter_list({"resource-id": resource_ids})
     }
 
-    try:
-        return paginated_query_with_retries(
-            client, "describe_flow_logs", **request
-        ).get("FlowLogs", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Unable to describe EC2 flow logs for resources "
-                f"{', '.join(resource_ids)}"
-            ),
-        )
+    return query_list(
+        module,
+        client,
+        "describe_flow_logs",
+        "FlowLogs",
+        "Unable to describe EC2 flow logs for resources " f"{', '.join(resource_ids)}",
+        **request,
+    )
 
 
 def ensure_absent(client, module):
@@ -456,20 +452,15 @@ def ensure_present(client, module):
             created_flow_log_ids = response.get("FlowLogIds", [])
 
             if created_flow_log_ids:
-                try:
-                    created_flow_logs = paginated_query_with_retries(
-                        client,
-                        "describe_flow_logs",
-                        FlowLogIds=created_flow_log_ids,
-                    ).get("FlowLogs", [])
-                except Exception as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=(
-                            "Unable to describe EC2 flow logs "
-                            f"{', '.join(created_flow_log_ids)}"
-                        ),
-                    )
+                created_flow_logs = query_list(
+                    module,
+                    client,
+                    "describe_flow_logs",
+                    "FlowLogs",
+                    "Unable to describe EC2 flow logs "
+                    f"{', '.join(created_flow_log_ids)}",
+                    FlowLogIds=created_flow_log_ids,
+                )
 
                 current = current + created_flow_logs
         elif missing_resource_ids and module.check_mode:
@@ -640,31 +631,8 @@ def main():
             )
         )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
-    method_names = ["describe_flow_logs"]
+    methods = {"describe_flow_logs": ()}
     if state == "present":
-        method_names.append("create_flow_logs")
-        if tags is not None:
-            method_names.append("create_tags")
-            if module.params["purge_tags"]:
-                method_names.append("delete_tags")
-    elif state == "absent":
-        method_names.append("delete_flow_logs")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
-
-    method_parameters = {}
-    for method_name in method_names:
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support EC2 {method_name}"
-            )
-
-    if state == "present":
-        create_flow_logs_parameters = method_parameters["create_flow_logs"]
         required_create_parameters = [
             "LogDestinationType",
             "ResourceIds",
@@ -687,48 +655,47 @@ def main():
         if destination_options:
             required_create_parameters.append("DestinationOptions")
 
-        for parameter_name in required_create_parameters:
-            if parameter_name in create_flow_logs_parameters:
+        methods["create_flow_logs"] = tuple(required_create_parameters)
+        if tags is not None:
+            methods["create_tags"] = ()
+            if module.params["purge_tags"]:
+                methods["delete_tags"] = ()
+
+    if state == "absent":
+        methods["delete_flow_logs"] = ()
+
+    require_client_methods(module, client, "EC2", methods)
+
+    if state == "present" and destination_options:
+        destination_option_parameters = (
+            client.meta.service_model.operation_model("CreateFlowLogs")
+            .input_shape.members["DestinationOptions"]
+            .members
+        )
+
+        for (
+            option_name,
+            parameter_name,
+        ) in DESTINATION_OPTION_PARAMETER_BY_OPTION.items():
+            if option_name not in destination_options:
+                continue
+
+            if parameter_name in destination_option_parameters:
                 continue
 
             module.fail_json(
                 msg=(
                     "Installed botocore does not support EC2 "
-                    f"create_flow_logs parameter {parameter_name}"
+                    "create_flow_logs DestinationOptions parameter "
+                    f"{parameter_name}"
                 )
             )
-
-        if destination_options and "DestinationOptions" in create_flow_logs_parameters:
-            destination_option_parameters = (
-                client.meta.service_model.operation_model("CreateFlowLogs")
-                .input_shape.members["DestinationOptions"]
-                .members
-            )
-
-            for (
-                option_name,
-                parameter_name,
-            ) in DESTINATION_OPTION_PARAMETER_BY_OPTION.items():
-                if option_name not in destination_options:
-                    continue
-
-                if parameter_name in destination_option_parameters:
-                    continue
-
-                module.fail_json(
-                    msg=(
-                        "Installed botocore does not support EC2 "
-                        "create_flow_logs DestinationOptions parameter "
-                        f"{parameter_name}"
-                    )
-                )
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

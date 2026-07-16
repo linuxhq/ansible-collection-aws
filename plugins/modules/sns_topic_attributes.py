@@ -55,11 +55,13 @@ from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
@@ -76,36 +78,15 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
 
-    method_names = {"get_topic_attributes", "set_topic_attributes"}
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support SNS {method_name}"
-            )
-
-    required_method_parameters = {
-        "get_topic_attributes": {"TopicArn"},
-        "set_topic_attributes": {"AttributeName", "AttributeValue", "TopicArn"},
-    }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support SNS "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(
+        module,
+        client,
+        "SNS",
+        {
+            "get_topic_attributes": ("TopicArn",),
+            "set_topic_attributes": ("AttributeName", "AttributeValue", "TopicArn"),
+        },
+    )
 
     topic_arn = module.params["topic_arn"]
 

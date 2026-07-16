@@ -56,14 +56,12 @@ state:
   type: str
 """
 
-import re
-
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
@@ -72,12 +70,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 def get_notification_hub(client, module):
     region = module.params["region"]
 
-    try:
-        hubs = paginated_query_with_retries(client, "list_notification_hubs").get(
-            "notificationHubs", []
-        )
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Notifications hubs")
+    hubs = query_list(
+        module,
+        client,
+        "list_notification_hubs",
+        "notificationHubs",
+        "Unable to list AWS Notifications hubs",
+    )
 
     for hub in hubs:
         if hub.get("notificationHubRegion") == region:
@@ -156,69 +155,24 @@ def main():
     )
     state = module.params["state"]
 
-    if state == "present":
-        hub_region = module.params["region"]
-
-        if not 2 <= len(hub_region) <= 25 or not re.fullmatch(
-            r"([a-z]{1,2})-([a-z]{1,15}-)+([0-9])", hub_region
-        ):
-            module.fail_json(
-                msg=(
-                    "region must match the AWS region name format, "
-                    "for example us-west-2"
-                )
-            )
-
     client = module.client(
         "notifications",
         region="us-east-1",
         retry_decorator=AWSRetry.jittered_backoff(),
     )
-    method_names = {"list_notification_hubs"}
+    methods = {"list_notification_hubs": ("maxResults", "nextToken")}
     if state == "present":
-        method_names.add("register_notification_hub")
-    elif state == "absent":
-        method_names.add("deregister_notification_hub")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
+        methods["register_notification_hub"] = ("notificationHubRegion",)
+    if state == "absent":
+        methods["deregister_notification_hub"] = ("notificationHubRegion",)
 
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support Notifications {method_name}"
-            )
-
-    required_method_parameters = {
-        "deregister_notification_hub": {"notificationHubRegion"},
-        "list_notification_hubs": {"maxResults", "nextToken"},
-        "register_notification_hub": {"notificationHubRegion"},
-    }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Notifications "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "Notifications", methods)
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

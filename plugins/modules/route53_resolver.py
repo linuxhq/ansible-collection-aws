@@ -167,12 +167,22 @@ from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    apply_tag_deltas,
+    reconcile_arn_tags,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
+    run_waiter,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -182,10 +192,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
-    BaseWaiterFactory,
-    custom_waiter_config,
 )
 
 ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA = {
@@ -259,23 +265,6 @@ PROTOCOLS = {
     "doh": "DoH",
     "doh-fips": "DoH-FIPS",
 }
-
-
-class ResolverEndpointWaiterFactory(BaseWaiterFactory):
-    @property
-    def _waiter_model_data(self):
-        return ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA
-
-
-def apply_tag_deltas(resource, tags_to_set, tag_keys_to_unset):
-    updated = dict(resource)
-    updated_tags = boto3_tag_list_to_ansible_dict(updated.get("Tags", []))
-
-    for tag_key in tag_keys_to_unset:
-        updated_tags.pop(tag_key, None)
-    updated_tags.update(tags_to_set)
-    updated["Tags"] = ansible_dict_to_boto3_tag_list(updated_tags)
-    return updated
 
 
 def create_resolver_endpoint(client, module, desired):
@@ -390,10 +379,7 @@ def ensure_present(client, module):
         {field: desired[field] for field in comparable_fields}
     )
     desired.update(desired_comparable)
-    if current is None:
-        changed = True
-    else:
-        changed = current != desired_comparable
+    changed = current != desired_comparable
     resource_changed = changed
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:
@@ -490,37 +476,14 @@ def ensure_present(client, module):
             resource_arn = endpoint.get("Arn")
 
             if resource_arn:
-                if tag_keys_to_unset:
-                    try:
-                        client.untag_resource(
-                            ResourceArn=resource_arn,
-                            TagKeys=tag_keys_to_unset,
-                            aws_retry=True,
-                        )
-                    except Exception as e:
-                        module.fail_json_aws(
-                            e,
-                            msg=(
-                                "Unable to remove tags from AWS Route53 Resolver "
-                                f"endpoint {resource_arn}"
-                            ),
-                        )
-
-                if tags_to_set:
-                    try:
-                        client.tag_resource(
-                            ResourceArn=resource_arn,
-                            Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                            aws_retry=True,
-                        )
-                    except Exception as e:
-                        module.fail_json_aws(
-                            e,
-                            msg=(
-                                "Unable to tag AWS Route53 Resolver endpoint "
-                                f"{resource_arn}"
-                            ),
-                        )
+                reconcile_arn_tags(
+                    module,
+                    client,
+                    resource_arn,
+                    tags_to_set,
+                    tag_keys_to_unset,
+                    "AWS Route53 Resolver endpoint",
+                )
 
             endpoint = apply_tag_deltas(endpoint, tags_to_set, tag_keys_to_unset)
 
@@ -631,26 +594,17 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired):
 def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, statuses):
     deleted = "deleted" in statuses
 
-    try:
-        waiter = ResolverEndpointWaiterFactory().get_waiter(
-            client,
-            "resolver_endpoint_deleted" if deleted else "resolver_endpoint_operational",
-        )
-        waiter.wait(
-            ResolverEndpointId=resolver_endpoint_id,
-            WaiterConfig=custom_waiter_config(
-                module.params["wait_timeout"],
-                default_pause=module.params["wait_delay"],
-            ),
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Timed out waiting for AWS Route53 Resolver endpoint "
-                f"{module.params['name']}"
-            ),
-        )
+    run_waiter(
+        module,
+        client,
+        ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA,
+        "resolver_endpoint_deleted" if deleted else "resolver_endpoint_operational",
+        (
+            "Timed out waiting for AWS Route53 Resolver endpoint "
+            f"{module.params['name']}"
+        ),
+        ResolverEndpointId=resolver_endpoint_id,
+    )
 
     if deleted:
         return None
@@ -710,14 +664,14 @@ def get_resolver_endpoint(client, module, resolver_endpoint_id):
 def get_resolver_endpoint_by_name(client, module):
     name = module.params["name"]
 
-    try:
-        endpoints = paginated_query_with_retries(
-            client,
-            "list_resolver_endpoints",
-            Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
-        ).get("ResolverEndpoints", [])
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Route53 Resolver endpoints")
+    endpoints = query_list(
+        module,
+        client,
+        "list_resolver_endpoints",
+        "ResolverEndpoints",
+        "Unable to list AWS Route53 Resolver endpoints",
+        Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
+    )
 
     if len(endpoints) > 1:
         endpoint_ids = sorted(endpoint.get("Id", "") for endpoint in endpoints)
@@ -736,17 +690,14 @@ def resolver_endpoint_with_ip_addresses(client, module, endpoint):
         return endpoint
     endpoint = dict(endpoint)
 
-    try:
-        endpoint["IpAddresses"] = paginated_query_with_retries(
-            client,
-            "list_resolver_endpoint_ip_addresses",
-            ResolverEndpointId=endpoint["Id"],
-        ).get("IpAddresses", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list AWS Route53 Resolver endpoint IP addresses for {endpoint['Id']}",
-        )
+    endpoint["IpAddresses"] = query_list(
+        module,
+        client,
+        "list_resolver_endpoint_ip_addresses",
+        "IpAddresses",
+        f"Unable to list AWS Route53 Resolver endpoint IP addresses for {endpoint['Id']}",
+        ResolverEndpointId=endpoint["Id"],
+    )
 
     return endpoint
 
@@ -756,17 +707,14 @@ def resolver_endpoint_with_tags(client, module, endpoint):
         return endpoint
     endpoint = dict(endpoint)
 
-    try:
-        endpoint["Tags"] = paginated_query_with_retries(
-            client,
-            "list_tags_for_resource",
-            ResourceArn=endpoint["Arn"],
-        ).get("Tags", [])
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to list tags for AWS Route53 Resolver endpoint {endpoint['Arn']}",
-        )
+    endpoint["Tags"] = query_list(
+        module,
+        client,
+        "list_tags_for_resource",
+        "Tags",
+        f"Unable to list tags for AWS Route53 Resolver endpoint {endpoint['Arn']}",
+        ResourceArn=endpoint["Arn"],
+    )
 
     return endpoint
 
@@ -823,12 +771,7 @@ def main():
     state = module.params["state"]
     tags = module.params["tags"]
 
-    if module.params["wait"]:
-        if module.params["wait_delay"] < 1:
-            module.fail_json(msg="wait_delay must be 1 or greater")
-
-        if module.params["wait_timeout"] < 1:
-            module.fail_json(msg="wait_timeout must be 1 or greater")
+    require_positive_wait_bounds(module)
 
     client = module.client(
         "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
@@ -851,26 +794,11 @@ def main():
             method_names.add("tag_resource")
             if module.params["purge_tags"]:
                 method_names.add("untag_resource")
-    elif state == "absent":
+
+    if state == "absent":
         method_names.add("delete_resolver_endpoint")
         if module.params["wait"]:
             method_names.add("get_resolver_endpoint")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
-
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Route53 Resolver "
-                    f"{method_name}"
-                )
-            )
 
     required_method_parameters = {
         "associate_resolver_endpoint_ip_address": {
@@ -908,27 +836,18 @@ def main():
             "ResolverEndpointType",
         },
     }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Route53 Resolver "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(
+        module,
+        client,
+        "Route53 Resolver",
+        {name: required_method_parameters.get(name, ()) for name in method_names},
+    )
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

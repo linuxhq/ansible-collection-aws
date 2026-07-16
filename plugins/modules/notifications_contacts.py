@@ -81,12 +81,14 @@ state:
 import re
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
-    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import compare_aws_tags
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
@@ -107,12 +109,13 @@ def apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset):
 def get_contact_by_address(client, module):
     email_address = module.params["email_address"]
 
-    try:
-        contacts = paginated_query_with_retries(client, "list_email_contacts").get(
-            "emailContacts", []
-        )
-    except Exception as e:
-        module.fail_json_aws(e, msg="Unable to list AWS Notifications contacts")
+    contacts = query_list(
+        module,
+        client,
+        "list_email_contacts",
+        "emailContacts",
+        "Unable to list AWS Notifications contacts",
+    )
 
     for contact in contacts:
         if contact.get("address") == email_address:
@@ -330,67 +333,28 @@ def main():
     client = module.client(
         "notificationscontacts", retry_decorator=AWSRetry.jittered_backoff()
     )
-    method_names = {"list_email_contacts"}
+    methods = {"list_email_contacts": ("maxResults", "nextToken")}
     if state == "present":
-        method_names.update(
-            {"create_email_contact", "delete_email_contact", "get_email_contact"}
-        )
+        methods["create_email_contact"] = ("emailAddress", "name")
+        methods["delete_email_contact"] = ("arn",)
+        methods["get_email_contact"] = ("arn",)
         if tags is not None:
-            method_names.update({"list_tags_for_resource", "tag_resource"})
+            methods["create_email_contact"] += ("tags",)
+            methods["list_tags_for_resource"] = ("arn",)
+            methods["tag_resource"] = ("arn", "tags")
             if module.params["purge_tags"]:
-                method_names.add("untag_resource")
-    elif state == "absent":
-        method_names.add("delete_email_contact")
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
+                methods["untag_resource"] = ("arn", "tagKeys")
 
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support "
-                    f"NotificationsContacts {method_name}"
-                )
-            )
+    if state == "absent":
+        methods["delete_email_contact"] = ("arn",)
 
-    required_method_parameters = {
-        "create_email_contact": {"emailAddress", "name"},
-        "delete_email_contact": {"arn"},
-        "get_email_contact": {"arn"},
-        "list_email_contacts": {"maxResults", "nextToken"},
-        "list_tags_for_resource": {"arn"},
-        "tag_resource": {"arn", "tags"},
-        "untag_resource": {"arn", "tagKeys"},
-    }
-    if state == "present" and tags is not None:
-        required_method_parameters["create_email_contact"].add("tags")
-
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support NotificationsContacts "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "NotificationsContacts", methods)
 
     if state == "present":
         ensure_present(client, module)
-    elif state == "absent":
+
+    if state == "absent":
         ensure_absent(client, module)
-    else:
-        module.fail_json(msg=f"Unsupported state: {state}")
 
 
 if __name__ == "__main__":

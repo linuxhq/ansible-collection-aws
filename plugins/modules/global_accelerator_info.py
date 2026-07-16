@@ -70,12 +70,15 @@ accelerators:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
@@ -100,65 +103,28 @@ def main():
     include_endpoint_groups = module.params["include_endpoint_groups"]
     include_listeners = module.params["include_listeners"] or include_endpoint_groups
 
-    method_names = {"list_tags_for_resource"}
+    methods = {"list_tags_for_resource": ("ResourceArn",)}
     if arn is None:
-        method_names.add("list_accelerators")
+        methods["list_accelerators"] = ("MaxResults", "NextToken")
     else:
-        method_names.add("describe_accelerator")
+        methods["describe_accelerator"] = ("AcceleratorArn",)
     if include_listeners:
-        method_names.add("list_listeners")
+        methods["list_listeners"] = ("AcceleratorArn", "MaxResults", "NextToken")
     if include_endpoint_groups:
-        method_names.add("list_endpoint_groups")
+        methods["list_endpoint_groups"] = ("ListenerArn", "MaxResults", "NextToken")
 
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Global Accelerator "
-                    f"{method_name}"
-                )
-            )
-
-    required_method_parameters = {
-        "describe_accelerator": {"AcceleratorArn"},
-        "list_accelerators": {"MaxResults", "NextToken"},
-        "list_endpoint_groups": {"ListenerArn", "MaxResults", "NextToken"},
-        "list_listeners": {"AcceleratorArn", "MaxResults", "NextToken"},
-        "list_tags_for_resource": {"ResourceArn"},
-    }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Global Accelerator "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "Global Accelerator", methods)
 
     accelerators = []
 
     if arn is None:
-        try:
-            accelerators = paginated_query_with_retries(
-                client,
-                "list_accelerators",
-            ).get("Accelerators", [])
-        except Exception as e:
-            module.fail_json_aws(
-                e,
-                msg="Unable to list AWS Global Accelerator accelerators",
-            )
+        accelerators = query_list(
+            module,
+            client,
+            "list_accelerators",
+            "Accelerators",
+            "Unable to list AWS Global Accelerator accelerators",
+        )
     else:
         try:
             accelerator = client.describe_accelerator(
