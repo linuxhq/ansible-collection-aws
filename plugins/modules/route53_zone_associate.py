@@ -86,11 +86,13 @@ vpcs:
 import re
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
@@ -230,43 +232,13 @@ def main():
 
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
     hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]
-    method_names = {"get_hosted_zone"}
+    methods = {"get_hosted_zone": ("Id",)}
     if state == "present":
-        method_names.add("associate_vpc_with_hosted_zone")
-
+        methods["associate_vpc_with_hosted_zone"] = ("HostedZoneId", "VPC")
     if state == "absent":
-        method_names.add("disassociate_vpc_from_hosted_zone")
+        methods["disassociate_vpc_from_hosted_zone"] = ("HostedZoneId", "VPC")
 
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support Route53 {method_name}"
-            )
-
-    required_method_parameters = {
-        "associate_vpc_with_hosted_zone": {"HostedZoneId", "VPC"},
-        "disassociate_vpc_from_hosted_zone": {"HostedZoneId", "VPC"},
-        "get_hosted_zone": {"Id"},
-    }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Route53 "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "Route53", methods)
 
     if state == "present":
         ensure_present(client, module, hosted_zone_id)

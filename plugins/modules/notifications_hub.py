@@ -59,11 +59,13 @@ state:
 import re
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
@@ -174,43 +176,13 @@ def main():
         region="us-east-1",
         retry_decorator=AWSRetry.jittered_backoff(),
     )
-    method_names = {"list_notification_hubs"}
+    methods = {"list_notification_hubs": ("maxResults", "nextToken")}
     if state == "present":
-        method_names.add("register_notification_hub")
-
+        methods["register_notification_hub"] = ("notificationHubRegion",)
     if state == "absent":
-        method_names.add("deregister_notification_hub")
+        methods["deregister_notification_hub"] = ("notificationHubRegion",)
 
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support Notifications {method_name}"
-            )
-
-    required_method_parameters = {
-        "deregister_notification_hub": {"notificationHubRegion"},
-        "list_notification_hubs": {"maxResults", "nextToken"},
-        "register_notification_hub": {"notificationHubRegion"},
-    }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Notifications "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "Notifications", methods)
 
     if state == "present":
         ensure_present(client, module)

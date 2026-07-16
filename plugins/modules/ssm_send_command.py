@@ -134,11 +134,16 @@ import time
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
@@ -197,12 +202,7 @@ def main():
         supports_check_mode=True,
     )
 
-    if module.params["wait"]:
-        if module.params["wait_delay"] < 1:
-            module.fail_json(msg="wait_delay must be 1 or greater")
-
-        if module.params["wait_timeout"] < 1:
-            module.fail_json(msg="wait_timeout must be 1 or greater")
+    require_positive_wait_bounds(module)
 
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
     document_name = module.params["document_name"]
@@ -224,43 +224,12 @@ def main():
     )
     send_command_args["Parameters"] = parameters
 
-    method_names = {"send_command"}
+    methods = {"send_command": tuple(send_command_args)}
     if wait:
-        method_names.update({"list_commands", "list_command_invocations"})
+        methods["list_commands"] = ("CommandId",)
+        methods["list_command_invocations"] = ("CommandId", "Details")
 
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Systems Manager "
-                    f"{method_name}"
-                )
-            )
-
-    required_method_parameters = {
-        "send_command": set(send_command_args),
-        "list_commands": {"CommandId"},
-        "list_command_invocations": {"CommandId", "Details"},
-    }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Systems Manager "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "Systems Manager", methods)
 
     if module.check_mode:
         module.exit_json(changed=True)

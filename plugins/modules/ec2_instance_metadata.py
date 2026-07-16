@@ -85,11 +85,11 @@ region:
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
@@ -176,33 +176,15 @@ def main():
 
     desired_update = snake_dict_to_camel_dict(desired, capitalize_first=True)
 
-    method_names = (
-        "get_instance_metadata_defaults",
-        "modify_instance_metadata_defaults",
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {
+            "get_instance_metadata_defaults": (),
+            "modify_instance_metadata_defaults": tuple(desired_update),
+        },
     )
-    method_parameters = {}
-    for method_name in method_names:
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support EC2 {method_name}"
-            )
-
-    modify_parameters = method_parameters["modify_instance_metadata_defaults"]
-
-    for parameter_name in desired_update:
-        if parameter_name in modify_parameters:
-            continue
-
-        module.fail_json(
-            msg=(
-                "Installed botocore does not support EC2 "
-                f"modify_instance_metadata_defaults parameter {parameter_name}"
-            )
-        )
 
     current_account_level = get_instance_metadata_defaults(client, module)
 

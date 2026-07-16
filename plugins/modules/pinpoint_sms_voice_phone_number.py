@@ -176,12 +176,17 @@ import time
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -534,85 +539,45 @@ def main():
                 msg="message_type must be TRANSACTIONAL when number_type is SIMULATOR"
             )
 
-        if module.params["wait"]:
-            if module.params["wait_delay"] < 1:
-                module.fail_json(msg="wait_delay must be 1 or greater")
-
-            if module.params["wait_timeout"] < 1:
-                module.fail_json(msg="wait_timeout must be 1 or greater")
+        require_positive_wait_bounds(module)
 
     client = module.client(
         "pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff()
     )
-    method_names = {"describe_phone_numbers"}
-    if state == "present":
-        method_names.add("request_phone_number")
-        if tags is not None:
-            method_names.add("list_tags_for_resource")
+    request_phone_number_parameters = (
+        "ClientToken",
+        "DeletionProtectionEnabled",
+        "IsoCountryCode",
+        "MessageType",
+        "NumberCapabilities",
+        "NumberType",
+        "OptOutListName",
+        "PoolId",
+        "RegistrationId",
+    )
+    if module.params["international_sending_enabled"] is not None:
+        request_phone_number_parameters += ("InternationalSendingEnabled",)
+    if tags is not None:
+        request_phone_number_parameters += ("Tags",)
 
-    if state == "absent":
-        method_names.add("release_phone_number")
-
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Pinpoint SMS Voice V2 "
-                    f"{method_name}"
-                )
-            )
-
-    required_method_parameters = {
-        "describe_phone_numbers": {
+    methods = {
+        "describe_phone_numbers": (
             "Filters",
             "MaxResults",
             "NextToken",
             "Owner",
             "PhoneNumberIds",
-        },
-        "list_tags_for_resource": {"ResourceArn"},
-        "release_phone_number": {"PhoneNumberId"},
-        "request_phone_number": {
-            "ClientToken",
-            "DeletionProtectionEnabled",
-            "IsoCountryCode",
-            "MessageType",
-            "NumberCapabilities",
-            "NumberType",
-            "OptOutListName",
-            "PoolId",
-            "RegistrationId",
-        },
+        ),
     }
-    if (
-        state == "present"
-        and module.params["international_sending_enabled"] is not None
-    ):
-        required_method_parameters["request_phone_number"].add(
-            "InternationalSendingEnabled"
-        )
-    if state == "present" and tags is not None:
-        required_method_parameters["request_phone_number"].add("Tags")
+    if state == "present":
+        methods["request_phone_number"] = request_phone_number_parameters
+        if tags is not None:
+            methods["list_tags_for_resource"] = ("ResourceArn",)
 
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
+    if state == "absent":
+        methods["release_phone_number"] = ("PhoneNumberId",)
 
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Pinpoint SMS Voice V2 "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "Pinpoint SMS Voice V2", methods)
 
     if state == "present":
         ensure_present(client, module)

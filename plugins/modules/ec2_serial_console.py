@@ -54,11 +54,11 @@ state:
   type: str
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
@@ -88,22 +88,16 @@ def main():
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]
-    method_names = ["get_serial_console_access_status"]
+    methods = {"get_serial_console_access_status": ()}
     if state == "present":
         desired_enabled = True
-        method_names.append("enable_serial_console_access")
+        methods["enable_serial_console_access"] = ()
 
     if state == "absent":
         desired_enabled = False
-        method_names.append("disable_serial_console_access")
+        methods["disable_serial_console_access"] = ()
 
-    for method_name in method_names:
-        try:
-            get_boto3_client_method_parameters(client, method_name)
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support EC2 {method_name}"
-            )
+    require_client_methods(module, client, "EC2", methods)
 
     try:
         current = normalized_serial_console_access(

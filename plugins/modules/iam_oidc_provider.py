@@ -97,12 +97,18 @@ url:
   type: str
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
-    is_boto3_error_code,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
+    get_provider_by_arn,
+    normalize_provider_url,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    apply_tag_deltas,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -111,43 +117,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
-
-
-def normalize_provider_url(url):
-    if url is None:
-        return None
-    normalized = url.rstrip("/")
-
-    if normalized.startswith("https://"):
-        normalized = normalized[len("https://") :]
-    return normalized
-
-
-def apply_tag_deltas(provider, tags_to_set, tag_keys_to_unset):
-    updated = dict(provider)
-    updated_tags = boto3_tag_list_to_ansible_dict(updated.get("Tags", []))
-
-    for tag_key in tag_keys_to_unset:
-        updated_tags.pop(tag_key, None)
-    updated_tags.update(tags_to_set)
-    updated["Tags"] = ansible_dict_to_boto3_tag_list(updated_tags)
-    return updated
-
-
-def get_provider_by_arn(client, module, arn):
-    try:
-        provider = client.get_open_id_connect_provider(
-            OpenIDConnectProviderArn=arn,
-            aws_retry=True,
-        )
-    except is_boto3_error_code("NoSuchEntity"):
-        return None
-    except Exception as e:
-        module.fail_json_aws(e, msg=f"Unable to get AWS IAM OIDC provider {arn}")
-
-    provider.pop("ResponseMetadata", None)
-    provider["OpenIDConnectProviderArn"] = arn
-    return provider
 
 
 def get_provider_by_url(client, module):
@@ -398,78 +367,44 @@ def main():
                 )
 
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
-    method_names = {
-        "get_open_id_connect_provider",
-        "list_open_id_connect_providers",
+    methods = {
+        "get_open_id_connect_provider": ("OpenIDConnectProviderArn",),
+        "list_open_id_connect_providers": (),
     }
     if state == "present":
-        method_names.update(
-            {
-                "add_client_id_to_open_id_connect_provider",
-                "create_open_id_connect_provider",
-                "remove_client_id_from_open_id_connect_provider",
-                "update_open_id_connect_provider_thumbprint",
-            }
-        )
-        if tags is not None:
-            method_names.add("tag_open_id_connect_provider")
-            if module.params["purge_tags"]:
-                method_names.add("untag_open_id_connect_provider")
-
-    if state == "absent":
-        method_names.add("delete_open_id_connect_provider")
-
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=f"Installed botocore does not support IAM {method_name}"
-            )
-
-    required_method_parameters = {
-        "add_client_id_to_open_id_connect_provider": {
+        methods["add_client_id_to_open_id_connect_provider"] = (
             "ClientID",
             "OpenIDConnectProviderArn",
-        },
-        "create_open_id_connect_provider": {
+        )
+        methods["create_open_id_connect_provider"] = (
             "ClientIDList",
             "ThumbprintList",
             "Url",
-        },
-        "delete_open_id_connect_provider": {"OpenIDConnectProviderArn"},
-        "get_open_id_connect_provider": {"OpenIDConnectProviderArn"},
-        "remove_client_id_from_open_id_connect_provider": {
+        )
+        methods["remove_client_id_from_open_id_connect_provider"] = (
             "ClientID",
             "OpenIDConnectProviderArn",
-        },
-        "tag_open_id_connect_provider": {"OpenIDConnectProviderArn", "Tags"},
-        "untag_open_id_connect_provider": {"OpenIDConnectProviderArn", "TagKeys"},
-        "update_open_id_connect_provider_thumbprint": {
+        )
+        methods["update_open_id_connect_provider_thumbprint"] = (
             "OpenIDConnectProviderArn",
             "ThumbprintList",
-        },
-    }
-    if state == "present" and tags is not None:
-        required_method_parameters["create_open_id_connect_provider"].add("Tags")
-
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support IAM "
-                    f"{method_name} parameter {parameter_name}"
-                )
+        )
+        if tags is not None:
+            methods["create_open_id_connect_provider"] += ("Tags",)
+            methods["tag_open_id_connect_provider"] = (
+                "OpenIDConnectProviderArn",
+                "Tags",
             )
+            if module.params["purge_tags"]:
+                methods["untag_open_id_connect_provider"] = (
+                    "OpenIDConnectProviderArn",
+                    "TagKeys",
+                )
+
+    if state == "absent":
+        methods["delete_open_id_connect_provider"] = ("OpenIDConnectProviderArn",)
+
+    require_client_methods(module, client, "IAM", methods)
 
     if state == "present":
         ensure_present(client, module)

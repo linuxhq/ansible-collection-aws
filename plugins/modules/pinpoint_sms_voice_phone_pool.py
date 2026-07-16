@@ -149,12 +149,20 @@ import time
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    apply_tag_deltas,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -165,17 +173,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
 )
-
-
-def apply_tag_deltas(pool, tags_to_set, tag_keys_to_unset):
-    updated = dict(pool)
-    updated_tags = boto3_tag_list_to_ansible_dict(updated.get("Tags", []))
-
-    for tag_key in tag_keys_to_unset:
-        updated_tags.pop(tag_key, None)
-    updated_tags.update(tags_to_set)
-    updated["Tags"] = ansible_dict_to_boto3_tag_list(updated_tags)
-    return updated
 
 
 def describe_pools(client, module, **request):
@@ -566,78 +563,32 @@ def main():
                 msg="iso_country_code must be exactly two uppercase letters"
             )
 
-        if module.params["wait"]:
-            if module.params["wait_delay"] < 1:
-                module.fail_json(msg="wait_delay must be 1 or greater")
-
-            if module.params["wait_timeout"] < 1:
-                module.fail_json(msg="wait_timeout must be 1 or greater")
+        require_positive_wait_bounds(module)
 
     client = module.client(
         "pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff()
     )
-    method_names = {"describe_pools"}
+    methods = {"describe_pools": ("Filters", "Owner", "PoolIds")}
     if state == "present":
-        method_names.update(
-            {
-                "create_pool",
-                "list_pool_origination_identities",
-                "list_tags_for_resource",
-                "tag_resource",
-                "update_pool",
-            }
-        )
-        if module.params["tags"] is not None and module.params["purge_tags"]:
-            method_names.add("untag_resource")
-
-    if state == "absent":
-        method_names.add("delete_pool")
-
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Pinpoint SMS Voice V2 "
-                    f"{method_name}"
-                )
-            )
-
-    required_method_parameters = {
-        "create_pool": {
+        methods["create_pool"] = (
             "ClientToken",
             "DeletionProtectionEnabled",
             "IsoCountryCode",
             "MessageType",
             "OriginationIdentity",
             "Tags",
-        },
-        "delete_pool": {"PoolId"},
-        "describe_pools": {"Filters", "Owner", "PoolIds"},
-        "list_pool_origination_identities": {"PoolId"},
-        "list_tags_for_resource": {"ResourceArn"},
-        "tag_resource": {"ResourceArn", "Tags"},
-        "untag_resource": {"ResourceArn", "TagKeys"},
-        "update_pool": {"DeletionProtectionEnabled", "PoolId"},
-    }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
+        )
+        methods["list_pool_origination_identities"] = ("PoolId",)
+        methods["list_tags_for_resource"] = ("ResourceArn",)
+        methods["tag_resource"] = ("ResourceArn", "Tags")
+        methods["update_pool"] = ("DeletionProtectionEnabled", "PoolId")
+        if module.params["tags"] is not None and module.params["purge_tags"]:
+            methods["untag_resource"] = ("ResourceArn", "TagKeys")
 
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
+    if state == "absent":
+        methods["delete_pool"] = ("PoolId",)
 
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Pinpoint SMS Voice V2 "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "Pinpoint SMS Voice V2", methods)
 
     if state == "present":
         ensure_present(client, module)

@@ -42,12 +42,14 @@ email_contacts:
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
@@ -65,22 +67,13 @@ def main():
     )
 
     arn = module.params["arn"]
-    method_names = {"list_tags_for_resource"}
+    methods = {"list_tags_for_resource": ()}
     if arn:
-        method_names.add("get_email_contact")
+        methods["get_email_contact"] = ()
     else:
-        method_names.add("list_email_contacts")
+        methods["list_email_contacts"] = ()
 
-    for method_name in sorted(method_names):
-        try:
-            get_boto3_client_method_parameters(client, method_name)
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support "
-                    f"NotificationsContacts {method_name}"
-                )
-            )
+    require_client_methods(module, client, "NotificationsContacts", methods)
 
     if arn:
         try:

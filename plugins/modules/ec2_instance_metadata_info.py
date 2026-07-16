@@ -35,13 +35,13 @@ region:
   type: str
 """
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
 )
 
 
@@ -49,15 +49,12 @@ def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    try:
-        get_boto3_client_method_parameters(client, "get_instance_metadata_defaults")
-    except Exception:
-        module.fail_json(
-            msg=(
-                "Installed botocore does not support EC2 "
-                "get_instance_metadata_defaults"
-            )
-        )
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"get_instance_metadata_defaults": ()},
+    )
 
     try:
         account_level = client.get_instance_metadata_defaults(aws_retry=True).get(

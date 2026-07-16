@@ -167,12 +167,21 @@ from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    apply_tag_deltas,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    build_waiter_factory,
+    require_positive_wait_bounds,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -184,7 +193,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
-    BaseWaiterFactory,
     custom_waiter_config,
 )
 
@@ -259,23 +267,6 @@ PROTOCOLS = {
     "doh": "DoH",
     "doh-fips": "DoH-FIPS",
 }
-
-
-class ResolverEndpointWaiterFactory(BaseWaiterFactory):
-    @property
-    def _waiter_model_data(self):
-        return ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA
-
-
-def apply_tag_deltas(resource, tags_to_set, tag_keys_to_unset):
-    updated = dict(resource)
-    updated_tags = boto3_tag_list_to_ansible_dict(updated.get("Tags", []))
-
-    for tag_key in tag_keys_to_unset:
-        updated_tags.pop(tag_key, None)
-    updated_tags.update(tags_to_set)
-    updated["Tags"] = ansible_dict_to_boto3_tag_list(updated_tags)
-    return updated
 
 
 def create_resolver_endpoint(client, module, desired):
@@ -632,7 +623,9 @@ def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, stat
     deleted = "deleted" in statuses
 
     try:
-        waiter = ResolverEndpointWaiterFactory().get_waiter(
+        waiter = build_waiter_factory(
+            ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA
+        ).get_waiter(
             client,
             "resolver_endpoint_deleted" if deleted else "resolver_endpoint_operational",
         )
@@ -823,12 +816,7 @@ def main():
     state = module.params["state"]
     tags = module.params["tags"]
 
-    if module.params["wait"]:
-        if module.params["wait_delay"] < 1:
-            module.fail_json(msg="wait_delay must be 1 or greater")
-
-        if module.params["wait_timeout"] < 1:
-            module.fail_json(msg="wait_timeout must be 1 or greater")
+    require_positive_wait_bounds(module)
 
     client = module.client(
         "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
@@ -856,20 +844,6 @@ def main():
         method_names.add("delete_resolver_endpoint")
         if module.params["wait"]:
             method_names.add("get_resolver_endpoint")
-
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Route53 Resolver "
-                    f"{method_name}"
-                )
-            )
 
     required_method_parameters = {
         "associate_resolver_endpoint_ip_address": {
@@ -907,20 +881,12 @@ def main():
             "ResolverEndpointType",
         },
     }
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Route53 Resolver "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(
+        module,
+        client,
+        "Route53 Resolver",
+        {name: required_method_parameters.get(name, ()) for name in method_names},
+    )
 
     if state == "present":
         ensure_present(client, module)

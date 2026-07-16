@@ -39,11 +39,21 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"get_serial_console_access_status": ()},
+    )
 
     try:
         serial_console_access = client.get_serial_console_access_status(aws_retry=True)

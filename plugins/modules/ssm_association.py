@@ -114,11 +114,16 @@ from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    get_boto3_client_method_parameters,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    apply_tag_deltas,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -131,17 +136,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 SSM_ASSOCIATION_RESOURCE_TYPE = "Association"
 TARGET_DEFAULTS = {"values": []}
-
-
-def apply_tag_deltas(association, tags_to_set, tag_keys_to_unset):
-    updated = dict(association)
-    updated_tags = boto3_tag_list_to_ansible_dict(updated.get("Tags", []))
-
-    for tag_key in tag_keys_to_unset:
-        updated_tags.pop(tag_key, None)
-    updated_tags.update(tags_to_set)
-    updated["Tags"] = ansible_dict_to_boto3_tag_list(updated_tags)
-    return updated
 
 
 def comparable_targets(targets):
@@ -430,64 +424,37 @@ def main():
             module.fail_json(msg="targets must contain at most 5 targets")
 
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
-    method_names = {"list_associations"}
+    methods = {
+        "list_associations": ("AssociationFilterList", "MaxResults", "NextToken"),
+    }
     if state == "present":
-        method_names.update(
-            {
-                "create_association",
-                "update_association",
-            }
+        methods["create_association"] = ("Name", "ScheduleExpression", "Targets")
+        methods["update_association"] = (
+            "AssociationId",
+            "ScheduleExpression",
+            "Targets",
         )
+        if tags:
+            methods["create_association"] += ("Tags",)
         if tags is not None:
-            method_names.add("list_tags_for_resource")
+            methods["list_tags_for_resource"] = ("ResourceId", "ResourceType")
             if tags:
-                method_names.add("add_tags_to_resource")
+                methods["add_tags_to_resource"] = (
+                    "ResourceId",
+                    "ResourceType",
+                    "Tags",
+                )
             if module.params["purge_tags"]:
-                method_names.add("remove_tags_from_resource")
+                methods["remove_tags_from_resource"] = (
+                    "ResourceId",
+                    "ResourceType",
+                    "TagKeys",
+                )
 
     if state == "absent":
-        method_names.add("delete_association")
+        methods["delete_association"] = ("AssociationId",)
 
-    method_parameters = {}
-    for method_name in sorted(method_names):
-        try:
-            method_parameters[method_name] = get_boto3_client_method_parameters(
-                client, method_name
-            )
-        except Exception:
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Systems Manager "
-                    f"{method_name}"
-                )
-            )
-
-    required_method_parameters = {
-        "add_tags_to_resource": {"ResourceId", "ResourceType", "Tags"},
-        "create_association": {"Name", "ScheduleExpression", "Targets"},
-        "delete_association": {"AssociationId"},
-        "list_associations": {"AssociationFilterList", "MaxResults", "NextToken"},
-        "list_tags_for_resource": {"ResourceId", "ResourceType"},
-        "remove_tags_from_resource": {"ResourceId", "ResourceType", "TagKeys"},
-        "update_association": {"AssociationId", "ScheduleExpression", "Targets"},
-    }
-    if tags:
-        required_method_parameters["create_association"].add("Tags")
-
-    for method_name, parameter_names in required_method_parameters.items():
-        if method_name not in method_parameters:
-            continue
-
-        for parameter_name in parameter_names:
-            if parameter_name in method_parameters[method_name]:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support Systems Manager "
-                    f"{method_name} parameter {parameter_name}"
-                )
-            )
+    require_client_methods(module, client, "Systems Manager", methods)
 
     try:
         associations = paginated_query_with_retries(

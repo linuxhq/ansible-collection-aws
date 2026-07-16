@@ -64,6 +64,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
 
 
 def route_sort_key(route):
@@ -85,6 +88,23 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {
+            "describe_transit_gateway_route_tables": (
+                "Filters",
+                "TransitGatewayRouteTableIds",
+            ),
+            "search_transit_gateway_routes": (
+                "Filters",
+                "MaxResults",
+                "TransitGatewayRouteTableId",
+            ),
+        },
+    )
 
     filters = module.params["filters"]
     transit_gateway_route_table_ids = module.params["transit_gateway_route_table_ids"]
