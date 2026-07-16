@@ -107,15 +107,12 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
-    build_waiter_factory,
     require_positive_wait_bounds,
+    run_waiter,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
-    custom_waiter_config,
 )
 
 ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA = {
@@ -312,32 +309,21 @@ def wait_for_resolver_rule_association_status(
 ):
     deleted = "deleted" in statuses
 
-    try:
-        waiter = build_waiter_factory(
-            ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA
-        ).get_waiter(
-            client,
-            (
-                "resolver_rule_association_deleted"
-                if deleted
-                else "resolver_rule_association_complete"
-            ),
-        )
-        waiter.wait(
-            ResolverRuleAssociationId=resolver_rule_association_id,
-            WaiterConfig=custom_waiter_config(
-                module.params["wait_timeout"],
-                default_pause=module.params["wait_delay"],
-            ),
-        )
-    except Exception as e:
-        module.fail_json_aws(
-            e,
-            msg=(
-                "Timed out waiting for AWS Route53 Resolver rule association "
-                f"{module.params['name']}"
-            ),
-        )
+    run_waiter(
+        module,
+        client,
+        ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA,
+        (
+            "resolver_rule_association_deleted"
+            if deleted
+            else "resolver_rule_association_complete"
+        ),
+        (
+            "Timed out waiting for AWS Route53 Resolver rule association "
+            f"{module.params['name']}"
+        ),
+        ResolverRuleAssociationId=resolver_rule_association_id,
+    )
 
     if deleted:
         return None
