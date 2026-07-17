@@ -1,4 +1,4 @@
-target-version = "py312"
+target-version = "py310"
 
 [lint.per-file-ignores]
 "plugins/lookup/*.py" = ["E402"]
