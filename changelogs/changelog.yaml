@@ -133,3 +133,28 @@ releases:
     - release-summary.yml
     - s3-bucket-region-override.yml
     release_date: '2026-07-16'
+  2.1.5:
+    changes:
+      breaking_changes:
+      - rds_instance - the role no longer creates security groups; the per-item C(vpc_id),
+        C(rules), and C(rules_egress) keys are removed. Manage groups with the ec2_security_group
+        role and pass C(vpc_security_group_ids) instead.
+      minor_changes:
+      - ec2_security_group - create all groups before populating rules so rules can
+        reference any group managed in the same run, including groups in later batches.
+      - ec2_security_group - strip rules from groups being removed before deleting
+        them so cross-referenced groups delete cleanly.
+      - rds_instance - add a role dependency on ec2_security_group_info.
+      - rds_instance - manage instances asynchronously in batches like the other manager
+        roles.
+      release_summary: This release reworks the rds_instance role to manage instances
+        asynchronously in batches and drops its built-in security group management
+        in favor of the ec2_security_group role, which now creates all groups before
+        populating rules so rules can cross-reference any group managed in the same
+        run. It also prunes unused Python dependencies and picks up the latest AWS
+        SDK and toolchain updates.
+    fragments:
+    - ec2-security-group-two-phase.yml
+    - rds-instance-security-groups.yml
+    - release-summary.yml
+    release_date: '2026-07-16'

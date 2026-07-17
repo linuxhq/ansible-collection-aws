@@ -4,6 +4,27 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.1.5
+======
+
+Release Summary
+---------------
+
+This release reworks the rds_instance role to manage instances asynchronously in batches and drops its built-in security group management in favor of the ec2_security_group role, which now creates all groups before populating rules so rules can cross-reference any group managed in the same run. It also prunes unused Python dependencies and picks up the latest AWS SDK and toolchain updates.
+
+Minor Changes
+-------------
+
+- ec2_security_group - create all groups before populating rules so rules can reference any group managed in the same run, including groups in later batches.
+- ec2_security_group - strip rules from groups being removed before deleting them so cross-referenced groups delete cleanly.
+- rds_instance - add a role dependency on ec2_security_group_info.
+- rds_instance - manage instances asynchronously in batches like the other manager roles.
+
+Breaking Changes / Porting Guide
+--------------------------------
+
+- rds_instance - the role no longer creates security groups; the per-item C(vpc_id), C(rules), and C(rules_egress) keys are removed. Manage groups with the ec2_security_group role and pass C(vpc_security_group_ids) instead.
+
 v2.1.4
 ======
 
