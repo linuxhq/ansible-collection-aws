@@ -3,7 +3,7 @@ ansible-lint==26.6.0
 antsibull-changelog==0.35.1
 awscli==1.45.51
 black==26.5.1
-boto3==1.43.50
+boto3==1.43.51
 botocore==1.43.51
 jmespath==1.1.0
 json2yaml==1.2.0
