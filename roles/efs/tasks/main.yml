@@ -1,23 +1,5 @@
 ---
-- name: Ensure aws elastic filesystem defaults are generated
-  tags:
-    - efs
-  ansible.builtin.set_fact:
-    __efs_list:
-      "{{ [{'state': 'present'}] |
-          product(efs_list) |
-          map('combine') |
-          list }}"
-    __efs_rules:
-      - cidr_ip: 0.0.0.0/0
-        ports:
-          - 2049
-        proto: tcp
-    __efs_rules_egress:
-      - cidr_ip: 0.0.0.0/0
-        proto: -1
-
-- name: Ensure aws elastic filesystem tasks are included
+- name: Ensure aws elastic filesystems are batched
   tags:
     - efs
   ansible.builtin.include_tasks:
@@ -25,13 +7,10 @@
       tags:
         - efs
     file: include.yml
-  loop: "{{ __efs_list }}"
+  loop:
+    "{{ efs_list |
+        batch(efs_batch) }}"
   loop_control:
-    label: "{{ _efs.name | d(none) }}"
-    loop_var: _efs
-  when:
-    - _efs.name is defined
-    - _efs.targets is defined
-    - _efs.targets | length > 0
-    - _efs.vpc_id is defined
+    label: "{{ __efs_list | length }}"
+    loop_var: __efs_list
 ...

@@ -1,3 +1,8 @@
 ---
+efs_async: 600
+efs_batch: 10
+efs_delay: 3
 efs_list: []
+efs_poll: 0
+efs_retries: 200
 ...

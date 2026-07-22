@@ -1,35 +1,51 @@
 ---
-- name: Ensure aws elastic filesystem present tasks are included
+- name: Ensure aws elastic filesystems are managed
   tags:
     - efs
-  ansible.builtin.include_tasks:
-    apply:
-      tags:
-        - efs
-    file: "{{ _order }}"
-  loop:
-    - security_group.yml
-    - efs.yml
+  community.aws.efs:
+    encrypt: "{{ _efs.encrypt | d(false) }}"
+    kms_key_id: "{{ _efs.kms_key_id | d(omit) }}"
+    name: "{{ _efs.name }}"
+    performance_mode: "{{ _efs.performance_mode | d('general_purpose') }}"
+    provisioned_throughput_in_mibps: "{{ _efs.provisioned_throughput_in_mibps | d(omit) }}"
+    purge_tags: "{{ _efs.purge_tags | d(true) }}"
+    state: "{{ _efs.state | d('present') }}"
+    tags: "{{ _efs.tags | d({}) | combine({'Name': _efs.name}) }}"
+    targets: "{{ _efs.targets | d([]) }}"
+    throughput_mode: "{{ _efs.throughput_mode | d(omit) }}"
+    transition_to_ia: "{{ _efs.transition_to_ia | d(omit) }}"
+    validate_certs: true
+    wait: "{{ _efs.wait | d(false) }}"
+    wait_timeout: "{{ _efs.wait_timeout | d(0) }}"
+  register: __efs_result
+  loop: "{{ __efs_list }}"
   loop_control:
-    label: "{{ _order | d(none) }}"
-    loop_var: _order
+    label: "{{ _efs.name | d(none) }}"
+    loop_var: _efs
+  async: "{{ ansible_check_mode | ternary(0, efs_async) }}"
+  poll: "{{ efs_poll }}"
   when:
-    - _efs.state == 'present'
+    - _efs.name is defined
+    - _efs.targets is defined
+    - _efs.targets | length > 0
+  changed_when:
+    - ansible_check_mode | bool
+    - __efs_result.changed | bool
 
-- name: Ensure aws elastic filesystem absent tasks are included
+- name: Ensure managed aws elastic filesystem jobs are complete
   tags:
     - efs
-  ansible.builtin.include_tasks:
-    apply:
-      tags:
-        - efs
-    file: "{{ _order }}"
-  loop:
-    - efs.yml
-    - security_group.yml
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __efs_status
+  loop: "{{ __efs_result.results }}"
   loop_control:
-    label: "{{ _order | d(none) }}"
-    loop_var: _order
+    label: "{{ _jid._efs.name | d(none) }}"
+    loop_var: _jid
+  delay: "{{ efs_delay }}"
+  retries: "{{ efs_retries }}"
   when:
-    - _efs.state == 'absent'
+    - _jid.ansible_job_id is defined
+  until:
+    - __efs_status.finished | bool
 ...
