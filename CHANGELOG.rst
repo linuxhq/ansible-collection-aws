@@ -4,6 +4,26 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.1.6
+======
+
+Minor Changes
+-------------
+
+- efs - add a role dependency on ec2_security_group_info.
+- efs - manage filesystems asynchronously in batches like the other manager roles.
+- elb_application_lb - add a role dependency on ec2_security_group_info.
+- elb_application_lb - manage load balancers asynchronously in batches like the other manager roles.
+- elb_application_lb - the per-item C(wait) key now defaults to V(true) so deletions complete before dependent resources are removed.
+- rds_instance - support the per-item C(iam_roles) and C(purge_iam_roles) keys for associating IAM roles with an instance.
+
+Breaking Changes / Porting Guide
+--------------------------------
+
+- efs - the role no longer creates security groups; the per-item C(vpc_id), C(rules), and C(rules_egress) keys are removed. Manage groups with the ec2_security_group role and set C(security_groups) on each target instead.
+- elb_application_lb - items always require C(name), C(listeners), and C(subnets), including when C(state=absent); append C(state) to the existing item instead of listing only the name.
+- elb_application_lb - the role no longer creates security groups; the per-item C(vpc_id), C(rules), and C(rules_egress) keys are removed. Manage groups with the ec2_security_group role and pass C(security_groups) instead.
+
 v2.1.5
 ======
 
