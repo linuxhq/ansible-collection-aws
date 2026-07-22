@@ -1,21 +1,5 @@
 ---
-- name: Ensure aws application load balancer security group is present
-  tags:
-    - elb_application_lb
-  amazon.aws.ec2_security_group:
-    description: "{{ _loadbalancer.description | d(_loadbalancer.name) }}"
-    name: "{{ _loadbalancer.name }}"
-    purge_rules: true
-    purge_rules_egress: true
-    purge_tags: true
-    rules: "{{ _loadbalancer.rules | d(__elb_application_lb_rules) }}"
-    rules_egress: "{{ _loadbalancer.rules_egress | d(__elb_application_lb_rules_egress) }}"
-    state: "{{ _loadbalancer.state }}"
-    tags: "{{ _loadbalancer.tags | d({}) | combine({'Name': _loadbalancer.name}) }}"
-    validate_certs: true
-    vpc_id: "{{ _loadbalancer.vpc_id }}"
-
-- name: Ensure aws application load balancer is present
+- name: Ensure aws application load balancers are managed
   tags:
     - elb_application_lb
   amazon.aws.elb_application_lb:
@@ -36,12 +20,45 @@
     purge_rules: "{{ _loadbalancer.purge_rules | d(true) }}"
     purge_tags: "{{ _loadbalancer.purge_tags | d(true) }}"
     scheme: "{{ _loadbalancer.scheme | d(omit) }}"
-    security_groups: "{{ _loadbalancer.name if not ansible_check_mode else 'default' }}"
-    state: "{{ _loadbalancer.state }}"
+    security_groups: "{{ _loadbalancer.security_groups | d(omit) }}"
+    state: "{{ _loadbalancer.state | d('present') }}"
     subnets: "{{ _loadbalancer.subnets }}"
     tags: "{{ _loadbalancer.tags | d({}) | combine({'Name': _loadbalancer.name}) }}"
     validate_certs: true
     waf_fail_open: "{{ _loadbalancer.waf_fail_open | d(false) }}"
-    wait: "{{ _loadbalancer.wait | d(false) }}"
+    wait: "{{ _loadbalancer.wait | d(true) }}"
     wait_timeout: "{{ _loadbalancer.wait_timeout | d(omit) }}"
+  register: __elb_application_lb_result
+  loop: "{{ __elb_application_lb_list }}"
+  loop_control:
+    label: "{{ _loadbalancer.name | d(none) }}"
+    loop_var: _loadbalancer
+  async: "{{ ansible_check_mode | ternary(0, elb_application_lb_async) }}"
+  poll: "{{ elb_application_lb_poll }}"
+  when:
+    - _loadbalancer.name is defined
+    - _loadbalancer.listeners is defined
+    - _loadbalancer.listeners | length > 0
+    - _loadbalancer.subnets is defined
+    - _loadbalancer.subnets | length > 0
+  changed_when:
+    - ansible_check_mode | bool
+    - __elb_application_lb_result.changed | bool
+
+- name: Ensure managed aws application load balancer jobs are complete
+  tags:
+    - elb_application_lb
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __elb_application_lb_status
+  loop: "{{ __elb_application_lb_result.results }}"
+  loop_control:
+    label: "{{ _jid._loadbalancer.name | d(none) }}"
+    loop_var: _jid
+  delay: "{{ elb_application_lb_delay }}"
+  retries: "{{ elb_application_lb_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __elb_application_lb_status.finished | bool
 ...

@@ -1,3 +1,8 @@
 ---
+elb_application_lb_async: 600
+elb_application_lb_batch: 10
+elb_application_lb_delay: 3
 elb_application_lb_list: []
+elb_application_lb_poll: 0
+elb_application_lb_retries: 200
 ...

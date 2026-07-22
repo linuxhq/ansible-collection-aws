@@ -2,7 +2,7 @@
 dependencies:
   - role: acm_certificate_info
     tags: elb_application_lb
-  - role: elb_target_group_info
+  - role: ec2_security_group_info
     tags: elb_application_lb
   - role: ec2_vpc_nat_gateway_info
     tags: elb_application_lb
@@ -11,6 +11,8 @@ dependencies:
   - role: ec2_vpc_prefix_list_info
     tags: elb_application_lb
   - role: ec2_vpc_subnet_info
+    tags: elb_application_lb
+  - role: elb_target_group_info
     tags: elb_application_lb
 galaxy_info:
   role_name: elb_application_lb
