@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - rds_instance - support the per-item C(iam_roles) and C(purge_iam_roles)
+    keys for associating IAM roles with an instance.
