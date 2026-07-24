@@ -2,6 +2,7 @@
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
+    from botocore.model import OperationNotFoundError
 except ImportError:
     pass
 
@@ -26,7 +27,7 @@ def require_client_methods(module, client, service, methods):
             available_parameters = get_boto3_client_method_parameters(
                 client, method_name
             )
-        except Exception:
+        except (AttributeError, OperationNotFoundError):
             module.fail_json(
                 msg=f"Installed botocore does not support {service} {method_name}"
             )
