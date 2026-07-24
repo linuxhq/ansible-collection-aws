@@ -3,7 +3,7 @@
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
-    pass  # Handled by AnsibleAWSModule
+    pass
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     get_boto3_client_method_parameters,
@@ -26,7 +26,7 @@ def require_client_methods(module, client, service, methods):
             available_parameters = get_boto3_client_method_parameters(
                 client, method_name
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             module.fail_json(
                 msg=f"Installed botocore does not support {service} {method_name}"
             )

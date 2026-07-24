@@ -3,7 +3,7 @@
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
-    pass  # Handled by AnsibleAWSModule
+    pass
 
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,

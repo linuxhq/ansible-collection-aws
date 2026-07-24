@@ -64,7 +64,7 @@ prefix_lists:
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
-    pass  # Handled by AnsibleAWSModule
+    pass
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,

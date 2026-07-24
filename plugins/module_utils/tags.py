@@ -3,7 +3,7 @@
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
-    pass  # Handled by AnsibleAWSModule
+    pass
 
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,

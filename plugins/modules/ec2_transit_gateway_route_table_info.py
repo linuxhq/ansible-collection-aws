@@ -57,7 +57,7 @@ transit_gateway_route_tables:
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
-    pass  # Handled by AnsibleAWSModule
+    pass
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry

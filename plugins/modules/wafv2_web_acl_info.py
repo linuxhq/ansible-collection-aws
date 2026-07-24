@@ -72,7 +72,7 @@ import json
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
-    pass  # Handled by AnsibleAWSModule
+    pass
 
 from ansible.module_utils.common.text.converters import to_text
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
