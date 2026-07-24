@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -70,6 +69,11 @@ connections:
   elements: dict
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
+
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
@@ -137,7 +141,7 @@ def main():
             )
         except is_boto3_error_code("EntityNotFoundException"):
             connection = None
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to get AWS Glue connection {name}")
 
         connections = [connection] if connection else []

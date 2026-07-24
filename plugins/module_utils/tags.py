@@ -1,5 +1,9 @@
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
 
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
@@ -29,7 +33,7 @@ def reconcile_arn_tags(
                 TagKeys=tag_keys_to_unset,
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e, msg=f"Unable to remove tags from {description} {resource_arn}"
             )
@@ -41,7 +45,7 @@ def reconcile_arn_tags(
                 Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to tag {description} {resource_arn}")
 
 
@@ -62,7 +66,7 @@ def reconcile_ssm_tags(
                 TagKeys=tag_keys_to_unset,
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e, msg=f"Unable to remove tags from {description} {resource_id}"
             )
@@ -75,5 +79,5 @@ def reconcile_ssm_tags(
                 Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to tag {description} {resource_id}")

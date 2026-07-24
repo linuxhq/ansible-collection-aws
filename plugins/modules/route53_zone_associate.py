@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -83,17 +82,22 @@ vpcs:
   elements: dict
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    require_client_methods,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
 )
 
 
@@ -109,7 +113,7 @@ def ensure_absent(client, module, hosted_zone_id):
                 VPC=requested_vpc,
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -146,7 +150,7 @@ def ensure_present(client, module, hosted_zone_id):
                 VPC=requested_vpc,
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -179,7 +183,7 @@ def get_vpc_associations(client, module, hosted_zone_id):
         ).get("VPCs", [])
     except is_boto3_error_code("NoSuchHostedZone"):
         return []
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to get AWS Route53 hosted zone {hosted_zone_id}",

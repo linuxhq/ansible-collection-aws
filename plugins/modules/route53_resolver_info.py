@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -43,19 +42,24 @@ resolver_endpoints:
   elements: dict
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    query_list,
-    require_client_methods,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
 )
 
 
@@ -109,7 +113,7 @@ def main():
             ).get("IpAddresses", [])
         except is_boto3_error_code("ResourceNotFoundException"):
             continue
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -128,7 +132,7 @@ def main():
                 ).get("Tags", [])
             except is_boto3_error_code("ResourceNotFoundException"):
                 continue
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=(

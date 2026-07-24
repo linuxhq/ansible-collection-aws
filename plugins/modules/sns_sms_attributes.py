@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -73,13 +72,18 @@ attributes:
   type: dict
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
+
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    require_client_methods,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
 )
 
 MANAGED_ATTRIBUTES = {
@@ -139,7 +143,7 @@ def main():
         current_attributes = client.get_sms_attributes(aws_retry=True).get(
             "attributes", {}
         )
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e, msg="Unable to get AWS Simple Notification Service SMS attributes"
         )
@@ -154,7 +158,7 @@ def main():
         if not module.check_mode:
             try:
                 client.set_sms_attributes(attributes=desired, aws_retry=True)
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg="Unable to manage AWS Simple Notification Service SMS attributes",

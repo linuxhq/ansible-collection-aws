@@ -1,5 +1,9 @@
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     get_boto3_client_method_parameters,
@@ -12,7 +16,7 @@ def query_list(module, client, method_name, result_key, error_msg, **kwargs):
         return paginated_query_with_retries(client, method_name, **kwargs).get(
             result_key, []
         )
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=error_msg)
 
 
@@ -22,7 +26,7 @@ def require_client_methods(module, client, service, methods):
             available_parameters = get_boto3_client_method_parameters(
                 client, method_name
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             module.fail_json(
                 msg=f"Installed botocore does not support {service} {method_name}"
             )

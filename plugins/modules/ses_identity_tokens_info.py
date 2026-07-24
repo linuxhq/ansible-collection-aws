@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -51,6 +50,11 @@ verification_token:
   type: str
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
+
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
@@ -97,7 +101,7 @@ def main():
         verification_token = client.verify_domain_identity(
             Domain=identity, aws_retry=True
         ).get("VerificationToken")
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS SES tokens for {identity}")
 
     module.exit_json(

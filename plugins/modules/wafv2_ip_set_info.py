@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -68,6 +67,11 @@ scope:
   type: str
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
@@ -134,7 +138,7 @@ def main():
 
             if not marker:
                 break
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to list AWS WAFv2 IP sets for {scope}")
 
     ip_sets = []
@@ -150,7 +154,7 @@ def main():
             )
         except is_boto3_error_code("WAFNonexistentItemException"):
             continue
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(

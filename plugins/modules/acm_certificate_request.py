@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -70,13 +69,14 @@ import hashlib
 import json
 import re
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
+
 from ansible.module_utils.common.text.converters import to_bytes
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    query_list,
-    require_client_methods,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -84,6 +84,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
 )
 
 
@@ -153,7 +157,7 @@ def main():
                 CertificateArn=certificate_arn,
                 aws_retry=True,
             ).get("Certificate", {})
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -213,7 +217,7 @@ def main():
             certificate_arn = client.request_certificate(**request, aws_retry=True).get(
                 "CertificateArn"
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -234,7 +238,7 @@ def main():
                     aws_retry=True,
                 ).get("Tags", [])
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -258,7 +262,7 @@ def main():
                     Tags=[{"Key": key} for key in tag_keys_to_unset],
                     aws_retry=True,
                 )
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=(
@@ -274,7 +278,7 @@ def main():
                     Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
                     aws_retry=True,
                 )
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=(

@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -80,6 +79,11 @@ user_policies:
   elements: dict
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
     paginated_query_with_retries,
@@ -112,7 +116,7 @@ def build_entity_policies(client, module, entity_type, names):
             ).get("PolicyNames", [])
         except is_boto3_error_code("NoSuchEntity"):
             continue
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to list AWS IAM {entity_type.lower()} policies for {name}",
@@ -135,7 +139,7 @@ def build_entity_policies(client, module, entity_type, names):
                 ).get("PolicyDocument")
             except is_boto3_error_code("NoSuchEntity"):
                 continue
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=(

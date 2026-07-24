@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -54,13 +53,18 @@ state:
   type: str
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
+
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    require_client_methods,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
 )
 
 
@@ -103,7 +107,7 @@ def main():
         current = normalized_serial_console_access(
             client.get_serial_console_access_status(aws_retry=True)
         )
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to get EC2 serial console access in region {module.region}",
@@ -117,7 +121,7 @@ def main():
                 current = normalized_serial_console_access(
                     client.enable_serial_console_access(aws_retry=True)
                 )
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=(
@@ -131,7 +135,7 @@ def main():
                 current = normalized_serial_console_access(
                     client.disable_serial_console_access(aws_retry=True)
                 )
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=(

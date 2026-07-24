@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -168,19 +167,17 @@ transit_gateway_route_table_id:
 
 import time
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    query_list,
-    require_client_methods,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
-    require_positive_wait_bounds,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -191,6 +188,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
 )
 
 ROUTE_TABLE_TERMINAL_STATES = {"deleted"}
@@ -257,7 +261,7 @@ def get_route_table_by_id(client, module, transit_gateway_route_table_id):
         return None
     except is_boto3_error_code("InvalidRouteTableID.NotFound"):
         return None
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=(
@@ -349,7 +353,7 @@ def search_routes(client, module, transit_gateway_route_table_id, filters):
             MaxResults=1000,
             aws_retry=True,
         )
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=(
@@ -526,7 +530,7 @@ def ensure_route_absent(
             TransitGatewayRouteTableId=transit_gateway_route_table_id,
             aws_retry=True,
         )
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to delete EC2 transit gateway route {destination_cidr_block}",
@@ -578,7 +582,7 @@ def ensure_present(client, module):
                 route_table = client.create_transit_gateway_route_table(
                     **request, aws_retry=True
                 ).get("TransitGatewayRouteTable")
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e, msg="Unable to create EC2 transit gateway route table"
                 )
@@ -633,7 +637,7 @@ def ensure_present(client, module):
                             Tags=[{"Key": key} for key in tag_keys_to_unset],
                             aws_retry=True,
                         )
-                    except Exception as e:
+                    except (BotoCoreError, ClientError) as e:
                         module.fail_json_aws(
                             e,
                             msg=(
@@ -649,7 +653,7 @@ def ensure_present(client, module):
                             Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
                             aws_retry=True,
                         )
-                    except Exception as e:
+                    except (BotoCoreError, ClientError) as e:
                         module.fail_json_aws(
                             e,
                             msg=(
@@ -755,7 +759,7 @@ def ensure_present(client, module):
                                     **request,
                                     aws_retry=True,
                                 ).get("Route")
-                            except Exception as e:
+                            except (BotoCoreError, ClientError) as e:
                                 module.fail_json_aws(
                                     e,
                                     msg=(
@@ -770,7 +774,7 @@ def ensure_present(client, module):
                                     **request,
                                     aws_retry=True,
                                 ).get("Route")
-                            except Exception as e:
+                            except (BotoCoreError, ClientError) as e:
                                 module.fail_json_aws(
                                     e,
                                     msg=(
@@ -857,7 +861,7 @@ def ensure_absent(client, module):
             TransitGatewayRouteTableId=transit_gateway_route_table_id,
             aws_retry=True,
         ).get("TransitGatewayRouteTable")
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=(

@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -50,17 +49,22 @@ open_id_connect_providers:
   elements: dict
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
+
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
+from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
     get_provider_by_arn,
     normalize_provider_url,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_list_to_ansible_dict,
 )
 
 
@@ -69,7 +73,7 @@ def list_provider_arns(client, module):
         providers = client.list_open_id_connect_providers(
             aws_retry=True,
         ).get("OpenIDConnectProviderList", [])
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg="Unable to list AWS IAM OIDC providers")
 
     arns = []

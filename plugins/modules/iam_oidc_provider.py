@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -97,18 +96,13 @@ url:
   type: str
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
+
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
-from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
-    get_provider_by_arn,
-    normalize_provider_url,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    require_client_methods,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
-    apply_tag_deltas,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -116,6 +110,16 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
+    get_provider_by_arn,
+    normalize_provider_url,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    apply_tag_deltas,
 )
 
 
@@ -126,7 +130,7 @@ def get_provider_by_url(client, module):
         providers = client.list_open_id_connect_providers(
             aws_retry=True,
         ).get("OpenIDConnectProviderList", [])
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg="Unable to list AWS IAM OIDC providers")
 
     for provider_summary in providers:
@@ -157,7 +161,7 @@ def ensure_absent(client, module):
                 OpenIDConnectProviderArn=arn,
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to delete AWS IAM OIDC provider {url}")
 
     result = {
@@ -212,7 +216,7 @@ def ensure_present(client, module):
                     **request,
                     aws_retry=True,
                 ).get("OpenIDConnectProviderArn")
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to create AWS IAM OIDC provider {url}",
@@ -233,7 +237,7 @@ def ensure_present(client, module):
                             ClientID=client_id,
                             aws_retry=True,
                         )
-                    except Exception as e:
+                    except (BotoCoreError, ClientError) as e:
                         module.fail_json_aws(
                             e,
                             msg=(
@@ -249,7 +253,7 @@ def ensure_present(client, module):
                             ClientID=client_id,
                             aws_retry=True,
                         )
-                    except Exception as e:
+                    except (BotoCoreError, ClientError) as e:
                         module.fail_json_aws(
                             e,
                             msg=(
@@ -267,7 +271,7 @@ def ensure_present(client, module):
                         ThumbprintList=desired["thumbprint_list"],
                         aws_retry=True,
                     )
-                except Exception as e:
+                except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
                         msg=(
@@ -285,7 +289,7 @@ def ensure_present(client, module):
                         TagKeys=tag_keys_to_unset,
                         aws_retry=True,
                     )
-                except Exception as e:
+                except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
                         msg=f"Unable to remove tags from AWS IAM OIDC provider {url}",
@@ -298,7 +302,7 @@ def ensure_present(client, module):
                         Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
                         aws_retry=True,
                     )
-                except Exception as e:
+                except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e, msg=f"Unable to tag AWS IAM OIDC provider {url}"
                     )

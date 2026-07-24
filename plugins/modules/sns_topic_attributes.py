@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -51,6 +50,11 @@ topic_arn:
   type: str
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass  # Handled by AnsibleAWSModule
+
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
@@ -59,11 +63,11 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    require_client_methods,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
 )
 
 MANAGED_ATTRIBUTES = ["kms_master_key_id"]
@@ -114,7 +118,7 @@ def main():
             )
 
         current_attributes = {}
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=(
@@ -145,7 +149,7 @@ def main():
                         TopicArn=topic_arn,
                         aws_retry=True,
                     )
-                except Exception as e:
+                except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
                         msg=(

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -44,8 +43,7 @@ import hashlib
 import hmac
 
 from ansible.errors import AnsibleLookupError
-from ansible.module_utils.common.text.converters import to_bytes
-from ansible.module_utils.common.text.converters import to_text
+from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.plugins.lookup import LookupBase
 
 DATE = "11111111"
