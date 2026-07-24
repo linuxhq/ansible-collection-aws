@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -80,18 +79,23 @@ state:
 
 import re
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    query_list,
-    require_client_methods,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import compare_aws_tags
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
 )
 
 
@@ -133,7 +137,7 @@ def ensure_absent(client, module):
                 arn=contact["arn"],
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -173,7 +177,7 @@ def ensure_present(client, module):
                 arn=contact["arn"],
                 aws_retry=True,
             ).get("tags", {})
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -198,7 +202,7 @@ def ensure_present(client, module):
                         arn=contact["arn"],
                         aws_retry=True,
                     )
-                except Exception as e:
+                except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
                         msg=(
@@ -218,7 +222,7 @@ def ensure_present(client, module):
                 contact_arn = client.create_email_contact(
                     **request, aws_retry=True
                 ).get("arn")
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to create AWS Notifications contact {email_address}",
@@ -233,7 +237,7 @@ def ensure_present(client, module):
                     ).get("emailContact")
                 except is_boto3_error_code("ResourceNotFoundException"):
                     contact = None
-                except Exception as e:
+                except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
                         msg=f"Unable to get AWS Notifications contact {contact_arn}",
@@ -252,7 +256,7 @@ def ensure_present(client, module):
                         tagKeys=tag_keys_to_unset,
                         aws_retry=True,
                     )
-                except Exception as e:
+                except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
                         msg=(
@@ -268,7 +272,7 @@ def ensure_present(client, module):
                         tags=tags_to_set,
                         aws_retry=True,
                     )
-                except Exception as e:
+                except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e, msg=f"Unable to tag AWS Notifications contact {contact_arn}"
                     )

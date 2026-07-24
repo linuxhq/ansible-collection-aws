@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -54,6 +53,11 @@ transit_gateway_route_tables:
   type: list
   elements: dict
 """
+
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -139,7 +143,7 @@ def main():
                     MaxResults=1000,
                     aws_retry=True,
                 )
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=(

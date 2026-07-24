@@ -1,5 +1,9 @@
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
 
 from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
     BaseWaiterFactory,
@@ -34,5 +38,5 @@ def run_waiter(module, client, model_data, waiter_name, error_msg, **wait_kwargs
                 default_pause=module.params["wait_delay"],
             ),
         )
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=error_msg)

@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -56,6 +55,11 @@ queues:
   elements: dict
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
@@ -79,7 +83,7 @@ def get_queue(client, module, queue_url):
         ).get("Attributes", {})
     except is_boto3_error_code("AWS.SimpleQueueService.NonExistentQueue"):
         return None
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS SQS queue {queue_url}")
 
     queue = boto3_resource_to_ansible_dict(
@@ -134,7 +138,7 @@ def main():
             ).get("QueueUrl")
         except is_boto3_error_code("AWS.SimpleQueueService.NonExistentQueue"):
             queue_url = None
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to get AWS SQS queue URL for {name}")
 
         queue = get_queue(client, module, queue_url) if queue_url else None

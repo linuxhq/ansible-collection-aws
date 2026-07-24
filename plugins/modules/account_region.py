@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -75,6 +74,11 @@ region_opt_status:
   returned: always
   type: str
 """
+
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -178,7 +182,7 @@ def get_region_opt_status(client, module):
             RegionName=region_name,
             aws_retry=True,
         ).get("RegionOptStatus")
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to get AWS account region opt-in status for {region_name}",
@@ -224,7 +228,7 @@ def ensure_present(client, module):
                 RegionName=region_name,
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to enable AWS account region {region_name}",
@@ -271,7 +275,7 @@ def ensure_absent(client, module):
                 RegionName=region_name,
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to disable AWS account region {region_name}",

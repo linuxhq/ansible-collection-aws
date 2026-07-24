@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -163,6 +162,11 @@ state:
 
 import json
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
+
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
@@ -171,6 +175,16 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
+    ansible_dict_to_boto3_tag_list,
+    boto3_tag_list_to_ansible_dict,
+    compare_aws_tags,
+)
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    ansible_dict_to_boto3_filter_list,
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -182,16 +196,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     run_waiter,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
-    ansible_dict_to_boto3_tag_list,
-    boto3_tag_list_to_ansible_dict,
-    compare_aws_tags,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    ansible_dict_to_boto3_filter_list,
-    boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA = {
@@ -291,7 +295,7 @@ def create_resolver_endpoint(client, module, desired):
             ),
             aws_retry=True,
         ).get("ResolverEndpoint")
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to create AWS Route53 Resolver endpoint {desired['name']}",
@@ -316,7 +320,7 @@ def delete_resolver_endpoint(client, module, endpoint):
             ResolverEndpointId=resolver_endpoint_id,
             aws_retry=True,
         )
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=(
@@ -422,7 +426,7 @@ def ensure_present(client, module):
                         ),
                         aws_retry=True,
                     ).get("ResolverEndpoint")
-                except Exception as e:
+                except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
                         msg=(
@@ -532,7 +536,7 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired):
                 ResolverEndpointId=resolver_endpoint_id,
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -567,7 +571,7 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired):
                 ResolverEndpointId=resolver_endpoint_id,
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -652,7 +656,7 @@ def get_resolver_endpoint(client, module, resolver_endpoint_id):
         ).get("ResolverEndpoint")
     except is_boto3_error_code("ResourceNotFoundException"):
         return None
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to get AWS Route53 Resolver endpoint {resolver_endpoint_id}",

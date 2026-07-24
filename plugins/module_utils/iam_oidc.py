@@ -1,5 +1,9 @@
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
@@ -11,8 +15,7 @@ def normalize_provider_url(url):
         return None
     normalized = url.rstrip("/")
 
-    if normalized.startswith("https://"):
-        normalized = normalized[len("https://") :]
+    normalized = normalized.removeprefix("https://")
     return normalized
 
 
@@ -24,7 +27,7 @@ def get_provider_by_arn(client, module, arn):
         )
     except is_boto3_error_code("NoSuchEntity"):
         return None
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS IAM OIDC provider {arn}")
 
     provider.pop("ResponseMetadata", None)

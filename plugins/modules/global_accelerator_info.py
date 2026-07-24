@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -69,18 +68,23 @@ accelerators:
   elements: dict
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_list_to_ansible_dict,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_list_to_ansible_dict,
 )
 
 
@@ -133,7 +137,7 @@ def main():
             ).get("Accelerator")
         except is_boto3_error_code("AcceleratorNotFoundException"):
             accelerator = None
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to describe AWS Global Accelerator {arn}",
@@ -156,7 +160,7 @@ def main():
             ).get("Tags", [])
         except is_boto3_error_code("AcceleratorNotFoundException"):
             accelerator["Tags"] = []
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -176,7 +180,7 @@ def main():
             ).get("Listeners", [])
         except is_boto3_error_code("AcceleratorNotFoundException"):
             listeners = []
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -201,7 +205,7 @@ def main():
                 ).get("EndpointGroups", [])
             except is_boto3_error_code("ListenerNotFoundException"):
                 listener["EndpointGroups"] = []
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=(

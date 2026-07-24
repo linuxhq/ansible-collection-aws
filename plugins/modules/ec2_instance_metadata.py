@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -81,6 +80,11 @@ region:
   returned: always
   type: str
 """
+
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
 
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
@@ -181,7 +185,7 @@ def main():
     if changed and not module.check_mode:
         try:
             client.modify_instance_metadata_defaults(**desired_update, aws_retry=True)
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(

@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -339,6 +338,11 @@ state:
 import hashlib
 import json
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
+
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
@@ -348,6 +352,15 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
+    ansible_dict_to_boto3_tag_list,
+    boto3_tag_list_to_ansible_dict,
+    compare_aws_tags,
+)
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
+    boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -358,15 +371,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     run_waiter,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
-    ansible_dict_to_boto3_tag_list,
-    boto3_tag_list_to_ansible_dict,
-    compare_aws_tags,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
@@ -418,7 +422,7 @@ def get_accelerator_by_arn(client, module, accelerator_arn):
         ).get("Accelerator")
     except is_boto3_error_code("AcceleratorNotFoundException"):
         return None
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e, msg=f"Unable to describe AWS Global Accelerator {accelerator_arn}"
         )
@@ -795,7 +799,7 @@ def delete_endpoint_group(client, module, endpoint_group_arn):
         )
     except is_boto3_error_code("EndpointGroupNotFoundException"):
         return
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=(
@@ -816,7 +820,7 @@ def delete_listener(client, module, listener_arn):
         )
     except is_boto3_error_code("ListenerNotFoundException"):
         return
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to delete AWS Global Accelerator listener {listener_arn}",
@@ -891,7 +895,7 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups):
                     **request,
                     aws_retry=True,
                 ).get("EndpointGroup")
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=(
@@ -922,7 +926,7 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups):
                     **request,
                     aws_retry=True,
                 ).get("EndpointGroup")
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=(
@@ -991,7 +995,7 @@ def ensure_listeners(client, module, accelerator_arn):
                 **request,
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -1035,7 +1039,7 @@ def ensure_listeners(client, module, accelerator_arn):
                 **request,
                 aws_retry=True,
             ).get("Listener")
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -1086,7 +1090,7 @@ def ensure_absent(client, module):
                     Enabled=False,
                     aws_retry=True,
                 )
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=(
@@ -1107,7 +1111,7 @@ def ensure_absent(client, module):
                 AcceleratorArn=accelerator_arn,
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e, msg=f"Unable to delete AWS Global Accelerator {accelerator_arn}"
             )
@@ -1152,7 +1156,7 @@ def ensure_present(client, module):
                     aws_retry=True,
                 ).get("Tags", [])
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -1228,7 +1232,7 @@ def ensure_present(client, module):
                 **request,
                 aws_retry=True,
             ).get("Accelerator")
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to create AWS Global Accelerator {desired['name']}",
@@ -1261,7 +1265,7 @@ def ensure_present(client, module):
                 **request,
                 aws_retry=True,
             ).get("Accelerator")
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(

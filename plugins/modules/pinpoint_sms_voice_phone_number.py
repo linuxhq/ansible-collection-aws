@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -174,6 +173,11 @@ state:
 import re
 import time
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
+
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
@@ -181,13 +185,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    query_list,
-    require_client_methods,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
-    require_positive_wait_bounds,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -196,6 +193,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
 )
 
 
@@ -212,7 +216,7 @@ def phone_number_tags(client, module, phone_number):
                 aws_retry=True,
             ).get("Tags", [])
         )
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e, msg=f"Unable to list tags for Pinpoint SMS Voice V2 phone number {arn}"
         )
@@ -244,7 +248,7 @@ def get_phone_number(client, module, phone_number_id):
         ).get("PhoneNumbers", [])
     except is_boto3_error_code("ResourceNotFoundException"):
         return None
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=(
@@ -318,7 +322,7 @@ def ensure_absent(client, module):
             )
         except is_boto3_error_code("ResourceNotFoundException"):
             response = None
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -451,7 +455,7 @@ def ensure_present(client, module):
 
     try:
         response = client.request_phone_number(**request, aws_retry=True)
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e, msg="Unable to request Pinpoint SMS Voice V2 phone number"
         )

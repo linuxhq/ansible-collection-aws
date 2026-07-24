@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -70,6 +69,11 @@ web_acls:
 
 import json
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
+
 from ansible.module_utils.common.text.converters import to_text
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
@@ -137,7 +141,7 @@ def main():
 
             if not marker:
                 break
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to list AWS WAFv2 web ACLs for {scope}")
 
     web_acls = []
@@ -170,7 +174,7 @@ def main():
             )
         except is_boto3_error_code("WAFNonexistentItemException"):
             continue
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(

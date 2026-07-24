@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -40,6 +39,11 @@ delegation_sets:
   type: list
   elements: dict
 """
+
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
@@ -83,7 +87,7 @@ def main():
             ).get("DelegationSet", {})
         except is_boto3_error_code("NoSuchDelegationSet"):
             delegation_set = {}
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -105,7 +109,7 @@ def main():
                 response = client.list_reusable_delegation_sets(
                     **request, aws_retry=True
                 )
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e, msg="Unable to list AWS Route53 reusable delegation sets"
                 )

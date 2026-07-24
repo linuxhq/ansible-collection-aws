@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -133,19 +132,16 @@ state:
 
 import json
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
+
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    query_list,
-    require_client_methods,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
-    require_positive_wait_bounds,
-    run_waiter,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -157,6 +153,14 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
+    run_waiter,
 )
 
 EC2_WAITER_MODEL_DATA = {
@@ -237,7 +241,7 @@ def create_prefix_list(client, module, desired_prefix_list, desired_entries):
             **request,
             aws_retry=True,
         ).get("PrefixList", {})
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to create EC2 VPC managed prefix list {module.params['name']}",
@@ -257,7 +261,7 @@ def delete_prefix_list(client, module, prefix_list_id):
             PrefixListId=prefix_list_id,
             aws_retry=True,
         )
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to delete EC2 VPC managed prefix list {module.params['name']}",
@@ -433,7 +437,7 @@ def ensure_present(client, module):
                                 Tags=tags_to_delete,
                                 aws_retry=True,
                             )
-                        except Exception as e:
+                        except (BotoCoreError, ClientError) as e:
                             module.fail_json_aws(
                                 e,
                                 msg=(
@@ -449,7 +453,7 @@ def ensure_present(client, module):
                                 Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
                                 aws_retry=True,
                             )
-                        except Exception as e:
+                        except (BotoCoreError, ClientError) as e:
                             module.fail_json_aws(
                                 e,
                                 msg=(
@@ -531,7 +535,7 @@ def modify_prefix_list(client, module, current, **kwargs):
             ),
             aws_retry=True,
         )
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to modify EC2 VPC managed prefix list {module.params['name']}",

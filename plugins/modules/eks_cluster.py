@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -319,6 +318,11 @@ state:
 
 import time
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
+
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
@@ -327,18 +331,18 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    require_client_methods,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
-    require_positive_wait_bounds,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import compare_aws_tags
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.waiters import get_waiter
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
+)
 
 CREATE_FIELDS = [
     "access_config",
@@ -447,7 +451,7 @@ def describe_cluster(client, module):
         ).get("cluster")
     except is_boto3_error_code("ResourceNotFoundException"):
         return None
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to describe AWS EKS cluster {name}")
 
 
@@ -461,7 +465,7 @@ def wait_for_cluster(client, module, waiter_name):
             name=name,
             WaiterConfig={"MaxAttempts": attempts},
         )
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Timed out waiting for AWS EKS cluster {name}")
 
 
@@ -477,7 +481,7 @@ def wait_for_update(client, module, update_id):
                 updateId=update_id,
                 aws_retry=True,
             ).get("update", {})
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
@@ -580,7 +584,7 @@ def ensure_present(client, module):
             cluster = client.create_cluster(**create_request, aws_retry=True).get(
                 "cluster"
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to create EKS cluster {name}")
 
         if wait:
@@ -692,7 +696,7 @@ def ensure_present(client, module):
                     **update_request,
                     aws_retry=True,
                 ).get("update", {})
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(e, msg=f"Unable to update EKS cluster {name}")
 
             update_id = update.get("id")
@@ -709,7 +713,7 @@ def ensure_present(client, module):
                 version=version,
                 aws_retry=True,
             ).get("update", {})
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to update EKS cluster {name} version")
 
         update_id = update.get("id")
@@ -731,7 +735,7 @@ def ensure_present(client, module):
                     tagKeys=tag_keys_to_unset,
                     aws_retry=True,
                 )
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e, msg=f"Unable to remove tags from EKS cluster {name}"
                 )
@@ -743,7 +747,7 @@ def ensure_present(client, module):
                     tags=tags_to_set,
                     aws_retry=True,
                 )
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(e, msg=f"Unable to tag EKS cluster {name}")
 
     if cluster_changed:
@@ -772,7 +776,7 @@ def ensure_absent(client, module):
 
     try:
         client.delete_cluster(name=name, aws_retry=True)
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to delete EKS cluster {name}")
 
     if module.params["wait"]:

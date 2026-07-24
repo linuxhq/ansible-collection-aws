@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -65,6 +64,11 @@ state:
 
 import re
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     paginated_query_with_retries,
 )
@@ -82,7 +86,7 @@ def list_account_aliases(client, module):
                 "AccountAliases", []
             )
         )
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg="Unable to list AWS IAM account aliases")
 
 
@@ -103,7 +107,7 @@ def ensure_absent(client, module):
                     AccountAlias=name,
                     aws_retry=True,
                 )
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e, msg=f"Unable to delete AWS IAM account alias {name}"
                 )
@@ -131,7 +135,7 @@ def ensure_present(client, module):
                     AccountAlias=name,
                     aws_retry=True,
                 )
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e, msg=f"Unable to create AWS IAM account alias {name}"
                 )

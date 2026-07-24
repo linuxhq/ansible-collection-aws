@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -104,6 +103,11 @@ state:
 
 import json
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
+
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
@@ -112,13 +116,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    require_client_methods,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
-    apply_tag_deltas,
-    reconcile_ssm_tags,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
@@ -126,6 +123,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    apply_tag_deltas,
+    reconcile_ssm_tags,
 )
 
 SSM_DOCUMENT_RESOURCE_TYPE = "Document"
@@ -142,7 +146,7 @@ def ensure_absent(client, module):
                 Name=name,
                 aws_retry=True,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to delete AWS Systems Manager document {name}",
@@ -227,7 +231,7 @@ def ensure_present(client, module):
                     request["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
                 client.create_document(**request, aws_retry=True)
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to create AWS Systems Manager document {name}",
@@ -242,7 +246,7 @@ def ensure_present(client, module):
                     Name=desired["name"],
                     aws_retry=True,
                 ).get("DocumentDescription", {})
-            except Exception as e:
+            except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to update AWS Systems Manager document {name}",
@@ -257,7 +261,7 @@ def ensure_present(client, module):
                         Name=desired["name"],
                         aws_retry=True,
                     )
-                except Exception as e:
+                except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
                         msg=(
@@ -330,7 +334,7 @@ def get_document(client, module, include_tags=False):
         )
     except is_boto3_error_code(("InvalidDocument", "InvalidDocumentOperation")):
         return None
-    except Exception as e:
+    except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to get AWS Systems Manager document {name}",
@@ -345,7 +349,7 @@ def get_document(client, module, include_tags=False):
                 ResourceId=name,
                 aws_retry=True,
             ).get("TagList", [])
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=(
