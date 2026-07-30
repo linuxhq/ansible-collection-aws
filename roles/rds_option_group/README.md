@@ -21,7 +21,7 @@ None
 
 ## Dependencies
 
-None
+* [ec2\_security\_group\_info](../ec2_security_group_info)
 
 ## Example Playbook
 

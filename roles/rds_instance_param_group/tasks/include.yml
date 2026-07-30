@@ -7,7 +7,7 @@
     engine: "{{ _pg.engine }}"
     immediate: "{{ _pg.immediate | d(omit) }}"
     name: "{{ _pg.name }}"
-    params: "{{ _pg.params }}"
+    params: "{{ _pg.params | d(omit) }}"
     purge_tags: "{{ _pg.purge_tags | d(true) }}"
     state: "{{ _pg.state | d('present') }}"
     tags: "{{ _pg.tags | d({}) | combine({'Name': _pg.name}) }}"
@@ -22,8 +22,6 @@
   when:
     - _pg.engine is defined
     - _pg.name is defined
-    - _pg.params is defined
-    - _pg.params | length > 0
   changed_when:
     - ansible_check_mode | bool
     - __rds_instance_param_group_result.changed | bool
