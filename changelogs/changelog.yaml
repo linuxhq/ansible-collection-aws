@@ -217,3 +217,21 @@ releases:
     - modules-narrow-exception-handling.yml
     - release-summary.yml
     release_date: '2026-07-24'
+  2.1.8:
+    changes:
+      bugfixes:
+      - wafv2_resources - Retry web ACL associations during AWS WAF propagation.
+      minor_changes:
+      - Update amazon.aws to 11.4.0 and community.aws to 11.1.0.
+      - rds_instance_param_group - Allow creating parameter groups without params.
+      - rds_option_group - Add ec2_security_group_info as a role dependency.
+      release_summary: This release updates the amazon.aws and community.aws dependencies,
+        improves RDS role flexibility and dependency discovery, and makes WAFv2 resource
+        associations resilient to AWS propagation delays.
+    fragments:
+    - aws-collection-dependencies.yml
+    - rds-instance-param-group-empty-params.yml
+    - rds-option-group-security-group-info.yml
+    - release-summary.yml
+    - wafv2-resources-association-retries.yml
+    release_date: '2026-07-30'

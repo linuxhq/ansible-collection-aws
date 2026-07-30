@@ -21,18 +21,26 @@
   when:
     - _resource.state | d('present') == 'present'
 
-- name: Ensure aws wafv2 resources are batched
+- name: Ensure aws wafv2 resources are managed
   tags:
     - wafv2_resources
-  ansible.builtin.include_tasks:
-    apply:
-      tags:
-        - wafv2_resources
-    file: include.yml
-  loop:
-    "{{ wafv2_resources_list |
-        batch(wafv2_resources_batch) }}"
+  community.aws.wafv2_resources:
+    arn: "{{ _resource.arn }}"
+    name: "{{ _resource.name }}"
+    scope: "{{ _resource.scope | upper }}"
+    state: "{{ _resource.state | d('present') }}"
+    validate_certs: true
+  register: __wafv2_resources_result
+  loop: "{{ wafv2_resources_list }}"
   loop_control:
-    label: "{{ __wafv2_resources_list | length }}"
-    loop_var: __wafv2_resources_list
+    label: "{{ _resource.name | d(none) }}"
+    loop_var: _resource
+  delay: "{{ wafv2_resources_delay }}"
+  retries: "{{ wafv2_resources_retries }}"
+  when:
+    - _resource.arn is defined
+    - _resource.name is defined
+    - _resource.scope is defined
+  until:
+    - __wafv2_resources_result is succeeded
 ...

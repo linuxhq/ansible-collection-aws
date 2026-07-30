@@ -4,6 +4,26 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.1.8
+======
+
+Release Summary
+---------------
+
+This release updates the amazon.aws and community.aws dependencies, improves RDS role flexibility and dependency discovery, and makes WAFv2 resource associations resilient to AWS propagation delays.
+
+Minor Changes
+-------------
+
+- Update amazon.aws to 11.4.0 and community.aws to 11.1.0.
+- rds_instance_param_group - Allow creating parameter groups without params.
+- rds_option_group - Add ec2_security_group_info as a role dependency.
+
+Bugfixes
+--------
+
+- wafv2_resources - Retry web ACL associations during AWS WAF propagation.
+
 v2.1.7
 ======
 

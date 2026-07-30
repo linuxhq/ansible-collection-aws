@@ -1,5 +1,7 @@
 ---
-dependencies: []
+dependencies:
+  - role: ec2_security_group_info
+    tags: rds_option_group
 galaxy_info:
   role_name: rds_option_group
   author: Taylor Kimball

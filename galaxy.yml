@@ -41,8 +41,8 @@ build_ignore:
   - '*.tgz'
 description: A collection of aws roles
 dependencies:
-  amazon.aws: 9.5.2
-  community.aws: 9.3.0
+  amazon.aws: 11.4.0
+  community.aws: 11.1.0
 documentation: https://github.com/linuxhq/ansible-collection-aws/blob/main/README.md
 homepage: https://www.linuxhq.org
 issues: https://github.com/linuxhq/ansible-collection-aws/issues
@@ -57,5 +57,5 @@ tags:
   - aws
   - cloud
   - infrastructure
-version: 2.1.7
+version: 2.1.8
 ...
