@@ -7,6 +7,7 @@ conventions in `module-authoring.md`.
 
 - Manage tags with the tagging helpers, see `helpers-sdk.md`.
 - Compare desired against current tags with `compare_aws_tags` before any change.
+- Apply `purge_tags` only when the caller passed `tags`.
 
 ## Clients and retries
 

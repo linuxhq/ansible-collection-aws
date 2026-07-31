@@ -38,7 +38,6 @@ a function with single blank lines; one blank line at most.
 ### Tags and waiters
 
 - Compare desired against current tags before any change.
-- Apply `purge_tags` only when the caller passed `tags`.
 - For long-running operations, expose the same wait controls as nearby modules.
 - Use the collection's waiter helpers instead of writing your own polling loop.
 
