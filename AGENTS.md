@@ -38,3 +38,4 @@ Rules live under `.agents/rules/`; do not add nested `AGENTS.md` files.
 - @.agents/rules/module-authoring.md
 - @.agents/rules/module-authoring-sdk.md
 - @.agents/rules/role-authoring.md
+- @.agents/rules/role-authoring-sdk.md
