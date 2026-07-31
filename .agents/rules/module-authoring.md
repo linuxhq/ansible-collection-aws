@@ -35,12 +35,6 @@ a function with single blank lines; one blank line at most.
 - Still return the correct `changed` value and result shape without making the change.
 - Info modules always report `changed=False`.
 
-### Tags and waiters
-
-- Compare desired against current tags before any change.
-- For long-running operations, expose the same wait controls as nearby modules.
-- Use the collection's waiter helpers instead of writing your own polling loop.
-
 ## Arguments
 
 - Accept parameters and return data in snake_case; convert to API shapes with the collection's

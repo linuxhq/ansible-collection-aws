@@ -9,6 +9,11 @@ conventions in `module-authoring.md`.
 - Compare desired against current tags with `compare_aws_tags` before any change.
 - Apply `purge_tags` only when the caller passed `tags`.
 
+## Waiters
+
+- For long-running operations, expose the same wait controls as nearby modules.
+- Use the collection's waiter helpers instead of writing your own polling loop.
+
 ## Clients and retries
 
 - Create the client with a retry decorator, and pass `aws_retry=True` on the calls that should
