@@ -11,6 +11,9 @@ author:
   - Taylor Kimball (@tkimball83)
 options:
   region:
+    aliases:
+      - aws_region
+      - ec2_region
     description:
       - The notification hub region.
       - This must match the AWS region name format, for example V(us-west-2).
