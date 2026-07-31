@@ -1,19 +1,19 @@
 ---
 name: virtualenv
-description: Set up and use the project's virtualenv. Run make to bootstrap venv/ from pinned requirements; every other skill's tooling lives here.
+description: Set up the project virtualenv.
 ---
 
 # virtualenv
 
-All tooling runs from a local `venv/` pinned by `requirements.txt`. Every other skill calls
-`venv/bin/{{ tool }}`, so set this up first.
+All tooling runs from a local `venv/` pinned by `requirements.txt`. Set it up and activate it before
+using another repository skill:
 
 ```sh
 make
 source venv/bin/activate
 ```
 
-Activating is optional.
+Keep it activated — some tools spawn sibling executables that must be on `PATH`.
 
 Sub-targets:
 
@@ -23,7 +23,7 @@ Sub-targets:
 - `make pre-commit` — install the pre-commit hook.
 - `make clean` — remove the venv.
 
-Re-run `make` (or `make python`) if a `venv/bin/{{ tool }}` is missing or the wrong version.
+Re-run `make` (or `make python`) if a required tool is missing or the wrong version.
 `venv/` is git-ignored.
 
 ## Dependencies
