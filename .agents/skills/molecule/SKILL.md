@@ -5,8 +5,8 @@ description: Run a role's Molecule scenario. Requires explicit authorization.
 
 # molecule
 
-Confirm the intended profile, account, and region before creating resources, then run from the
-role's directory:
+Confirm the intended credentials and target environment with the user before creating resources,
+then run from the role's directory:
 
 ```sh
 source venv/bin/activate

@@ -53,10 +53,6 @@ loops over it. Match the nearest role; the list-driven pattern works like this.
 ### Module call
 
 - Default optional values with `| d(omit)`.
-- Pin `purge_*` booleans with `| d(true)` or `| d(false)` — never `| d(omit)`.
-- Merge a `Name` tag into the resource's tags:
-  - `tags: "{{ _x.tags | d({}) | combine({'Name': _x.name}) }}"`
-- Set `validate_certs: true`.
 - Register `__{{ role }}_result` if a later task needs it.
 - Preserve the module's native `changed` result. Add `changed_when` only when the module cannot
   report the intended behavior itself; remove async-era overrides when converting a task to a
@@ -75,7 +71,6 @@ loops over it. Match the nearest role; the list-driven pattern works like this.
 - Use scalar variables:
   - `{{ role }}_name`
   - `{{ role }}_state`
-- Set `validate_certs: true`.
 
 ## Info roles
 
