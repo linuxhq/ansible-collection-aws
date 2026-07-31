@@ -235,3 +235,13 @@ releases:
     - release-summary.yml
     - wafv2-resources-association-retries.yml
     release_date: '2026-07-30'
+  2.1.9:
+    changes:
+      minor_changes:
+      - ec2_security_group - Add ec2_vpc_nat_gateway_info as a role dependency.
+      release_summary: This release adds NAT gateway discovery to the ec2_security_group
+        role for inventory-driven traffic hairpinning rules.
+    fragments:
+    - ec2-security-group-nat-gateway-info.yml
+    - release-summary.yml
+    release_date: '2026-07-30'

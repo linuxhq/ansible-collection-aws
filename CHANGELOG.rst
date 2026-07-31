@@ -4,6 +4,19 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.1.9
+======
+
+Release Summary
+---------------
+
+This release adds NAT gateway discovery to the ec2_security_group role for inventory-driven traffic hairpinning rules.
+
+Minor Changes
+-------------
+
+- ec2_security_group - Add ec2_vpc_nat_gateway_info as a role dependency.
+
 v2.1.8
 ======
 
