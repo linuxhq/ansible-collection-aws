@@ -1,11 +1,11 @@
 # SDK module patterns
 
-SDK-specific patterns for modules built on `AnsibleAWSModule` (in `main()`). These supplement
-the generic conventions in `module-authoring.md`.
+SDK-specific patterns for modules built on `AnsibleAWSModule`. These supplement the generic
+conventions in `module-authoring.md`.
 
 ## Tags
 
-- Manage tags with the tagging helpers (see `helpers-sdk.md`).
+- Manage tags with the tagging helpers, see `helpers-sdk.md`.
 - Compare desired against current tags with `compare_aws_tags` before any change.
 
 ## Clients and retries
