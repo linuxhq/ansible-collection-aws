@@ -1,21 +1,21 @@
 ---
 name: ansible-test
-description: Run ansible-test sanity on module/plugin changes from the project virtualenv. Run after modifying any file under plugins/.
+description: Run ansible-test sanity on modules and plugins.
 ---
 
 # ansible-test
 
-Run sanity after any change under `plugins/`. It catches `DOCUMENTATION`/`RETURN`/`EXAMPLES`
-drift, argspec mismatches, and import errors — the same suite CI runs. Also run `black` and
-`ruff`.
+Catches `DOCUMENTATION`/`RETURN`/`EXAMPLES` drift, argspec mismatches, and import errors. It is a
+required local check; the current GitHub Actions workflow does not run it.
 
 ## Pre-checks
 
-Cheap checks from the primary checkout, before running sanity:
+Quick checks from the primary checkout, before running sanity:
 
 ```sh
+source venv/bin/activate
 git diff --check
-venv/bin/python -m compileall -q plugins
+python -m compileall -q plugins
 ```
 
 ## The checkout
@@ -34,8 +34,6 @@ be detached since the branch is checked out in the primary tree:
 git worktree add --detach venv/ansible_collections/{{ namespace }}/{{ name }}
 ```
 
-A plain copy works too (sanity doesn't need git), but then sync the full tree, not just `plugins/`.
-
 ## Run
 
 Sync your edits in (always `--delete`, so removed/renamed files don't linger), then run from
@@ -44,11 +42,11 @@ inside the checkout:
 ```sh
 rsync -a --delete plugins/ venv/ansible_collections/{{ namespace }}/{{ name }}/plugins/
 cd venv/ansible_collections/{{ namespace }}/{{ name }}
-../../../bin/ansible-test sanity --python "$(cat .python-version)" plugins/modules/{{ file }}.py
+ansible-test sanity --python "$(cat .python-version)" plugins/modules/{{ file }}.py
 ```
 
 - Add `--test validate-modules` for just doc/argspec checks.
-- Drop the path argument for the full suite (what CI runs).
+- Drop the path argument for the full local suite.
 - A clean run exits `0`.
 - Fix failures in the **primary checkout**, then re-sync and re-run — the checkout is a scratch
   copy.
