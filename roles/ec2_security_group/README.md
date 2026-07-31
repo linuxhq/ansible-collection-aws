@@ -21,6 +21,7 @@ None
 
 ## Dependencies
 
+* [ec2\_vpc\_nat\_gateway\_info](../ec2_vpc_nat_gateway_info)
 * [ec2\_vpc\_net\_info](../ec2_vpc_net_info)
 * [ec2\_vpc\_prefix\_list\_info](../ec2_vpc_prefix_list_info)
 
