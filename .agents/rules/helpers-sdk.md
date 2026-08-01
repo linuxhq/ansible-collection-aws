@@ -27,7 +27,7 @@ from ansible_collections.community.aws.plugins.module_utils.{{ module }} import 
 | `.botocore`       | `is_boto3_error_code`                   | Match a `ClientError` code.              |
 | `.botocore`       | `is_boto3_error_httpstatus`             | Match a `ClientError` status.            |
 | `.botocore`       | `is_boto3_error_message`                | Match a `ClientError` message.           |
-| `.botocore`       | `normalize_boto3_result`                | Normalize a raw response.               |
+| `.botocore`       | `normalize_boto3_result`                | Normalize a raw response.                |
 | `.botocore`       | `paginated_query_with_retries`          | Paginated list/describe; no `aws_retry`. |
 | `.common`         | `get_collection_info`                   | Read collection metadata.                |
 | `.common`         | `set_collection_info`                   | Set collection metadata.                 |
