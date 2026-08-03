@@ -23,6 +23,12 @@ updates:
       - dependency-name: molecule-plugins
         versions:
           - '>=25.0.0'
+    groups:
+      aws:
+        patterns:
+          - awscli
+          - boto3
+          - botocore
 
   - package-ecosystem: pre-commit
     directory: /
