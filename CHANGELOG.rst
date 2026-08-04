@@ -4,6 +4,20 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.2.0
+======
+
+Release Summary
+---------------
+
+Add Lambda target group and resource policy management.
+
+Minor Changes
+-------------
+
+- elb_target_group - Add support for Lambda target groups and target registration.
+- lambda_policy - Add a role for managing Lambda resource policy statements.
+
 v2.1.9
 ======
 

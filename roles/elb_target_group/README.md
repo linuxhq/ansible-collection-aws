@@ -31,6 +31,10 @@ None
       roles:
         - role: linuxhq.aws.elb_target_group
           elb_target_group_list:
+            - name: molecule-lambda
+              modify_targets: false
+              target_type: lambda
+
             - name: molecule-http-8080
               health_check_interval: 10
               health_check_path: /healthcheck

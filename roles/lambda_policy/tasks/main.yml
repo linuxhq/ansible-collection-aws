@@ -1,0 +1,16 @@
+---
+- name: Ensure aws lambda policies are batched
+  tags:
+    - lambda_policy
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - lambda_policy
+    file: include.yml
+  loop:
+    "{{ lambda_policy_list |
+        batch(lambda_policy_batch) }}"
+  loop_control:
+    label: "{{ __lambda_policy_list | length }}"
+    loop_var: __lambda_policy_list
+...

@@ -1,0 +1,50 @@
+---
+- name: Ensure aws lambda policies are managed
+  tags:
+    - lambda_policy
+  amazon.aws.lambda_policy:
+    action: "{{ _policy.action }}"
+    alias: "{{ _policy.alias | d(omit) }}"
+    event_source_token: "{{ _policy.event_source_token | d(omit) }}"
+    function_name: "{{ _policy.function_name }}"
+    principal: "{{ _policy.principal }}"
+    region: "{{ _policy.region | d(omit) }}"
+    source_account: "{{ _policy.source_account | d(omit) }}"
+    source_arn: "{{ _policy.source_arn | d(omit) }}"
+    state: "{{ _policy.state | d('present') }}"
+    statement_id: "{{ _policy.statement_id }}"
+    validate_certs: true
+    version: "{{ _policy.version | d(omit) }}"
+  register: __lambda_policy_result
+  loop: "{{ __lambda_policy_list }}"
+  loop_control:
+    label: "{{ _policy.statement_id | d(none) }}"
+    loop_var: _policy
+  async: "{{ ansible_check_mode | ternary(0, lambda_policy_async) }}"
+  poll: "{{ lambda_policy_poll }}"
+  when:
+    - _policy.action is defined
+    - _policy.function_name is defined
+    - _policy.principal is defined
+    - _policy.statement_id is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __lambda_policy_result.changed | bool
+
+- name: Ensure managed aws lambda policy jobs are complete
+  tags:
+    - lambda_policy
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __lambda_policy_status
+  loop: "{{ __lambda_policy_result.results }}"
+  loop_control:
+    label: "{{ _jid._policy.statement_id | d(none) }}"
+    loop_var: _jid
+  delay: "{{ lambda_policy_delay }}"
+  retries: "{{ lambda_policy_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __lambda_policy_status.finished | bool
+...
