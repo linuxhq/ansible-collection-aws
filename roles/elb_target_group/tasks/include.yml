@@ -11,12 +11,12 @@
     health_check_protocol: "{{ _tg.health_check_protocol | d(omit) }}"
     health_check_timeout: "{{ _tg.health_check_timeout | d(omit) }}"
     healthy_threshold_count: "{{ _tg.healthy_threshold_count | d(omit) }}"
-    load_balancing_algorithm_type: "{{ _tg.load_balancing_algorithm_type | d('round_robin') }}"
+    load_balancing_algorithm_type: "{{ _tg.load_balancing_algorithm_type | d(omit) }}"
     modify_targets: "{{ _tg.modify_targets | d(true) }}"
     name: "{{ _tg.name }}"
-    port: "{{ _tg.port }}"
+    port: "{{ _tg.port | d(omit) }}"
     preserve_client_ip_enabled: "{{ _tg.preserve_client_ip_enabled | d(omit) }}"
-    protocol: "{{ _tg.protocol }}"
+    protocol: "{{ _tg.protocol | d(omit) }}"
     protocol_version: "{{ _tg.protocol_version | d(omit) }}"
     proxy_protocol_v2_enabled: "{{ _tg.proxy_protocol_v2_enabled | d(omit) }}"
     purge_tags: "{{ _tg.purge_tags | d(true) }}"
@@ -29,6 +29,7 @@
     successful_response_codes: "{{ _tg.successful_response_codes | d(omit) }}"
     tags: "{{ _tg.tags | d({}) | combine({'Name': _tg.name}) }}"
     target_type: "{{ _tg.target_type | d('instance') }}"
+    targets: "{{ _tg.targets | d(omit) }}"
     unhealthy_threshold_count: "{{ _tg.unhealthy_threshold_count | d(omit) }}"
     validate_certs: true
     vpc_id: "{{ _tg.vpc_id | d(omit) }}"
@@ -43,8 +44,6 @@
   poll: "{{ elb_target_group_poll }}"
   when:
     - _tg.name is defined
-    - _tg.port is defined
-    - _tg.protocol is defined
   changed_when:
     - ansible_check_mode | bool
     - __elb_target_group_result.changed | bool

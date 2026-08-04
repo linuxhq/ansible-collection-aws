@@ -1,0 +1,8 @@
+---
+lambda_policy_async: 300
+lambda_policy_batch: 10
+lambda_policy_delay: 3
+lambda_policy_list: []
+lambda_policy_poll: 0
+lambda_policy_retries: 100
+...

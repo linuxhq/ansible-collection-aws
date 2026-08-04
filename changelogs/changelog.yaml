@@ -245,3 +245,12 @@ releases:
     - ec2-security-group-nat-gateway-info.yml
     - release-summary.yml
     release_date: '2026-07-30'
+  2.2.0:
+    changes:
+      minor_changes:
+      - elb_target_group - Add support for Lambda target groups and target registration.
+      - lambda_policy - Add a role for managing Lambda resource policy statements.
+      release_summary: Add Lambda target group and resource policy management.
+    fragments:
+    - lambda-target-groups.yml
+    release_date: '2026-08-04'
