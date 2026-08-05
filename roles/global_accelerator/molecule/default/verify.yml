@@ -5,6 +5,7 @@
     PATH: '/opt/awscli/bin'
 
   roles:
+    - ec2_security_group_info
     - ec2_vpc_net_info
     - ec2_vpc_subnet_info
     - elb_application_lb_info
@@ -12,6 +13,11 @@
   post_tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
+        ec2_security_group_list:
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            security_groups:
+              "{{ ec2_security_group_list.0.security_groups |
+                  map('combine', {'state': 'absent'}) }}"
         ec2_vpc_igw_list:
           "{{ ec2_vpc_igw_list |
               map('combine', {'state': 'absent'}) }}"
@@ -57,6 +63,7 @@
       ansible.builtin.include_role:
         name: "{{ _verify }}"
       loop:
+        - ec2_security_group
         - ec2_vpc_subnet
         - ec2_vpc_igw
         - ec2_vpc_net

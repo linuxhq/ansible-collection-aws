@@ -388,26 +388,20 @@ RESOURCES_VPC_CONFIG_NETWORK_FIELDS = [
 
 def normalized(value):
     if isinstance(value, dict):
-        result = {}
-        for key in sorted(value):
-            result[key] = normalized(value[key])
-        return result
+        return {key: normalized(value[key]) for key in sorted(value)}
     if isinstance(value, list):
-        result = []
-        for item in value:
-            result.append(normalized(item))
-        return sorted(result, key=repr)
+        return sorted(map(normalized, value), key=repr)
     return value
 
 
 def comparable_subset(current, desired):
-    if isinstance(desired, dict):
-        current = current or {}
-        result = {}
-        for key, value in desired.items():
-            result[key] = comparable_subset(current.get(key), value)
-        return result
-    return current
+    if not isinstance(desired, dict):
+        return current
+    current = current or {}
+    return {
+        key: comparable_subset(current.get(key), value)
+        for key, value in desired.items()
+    }
 
 
 def changed(current, desired):
@@ -429,15 +423,12 @@ def changed_request(current, desired):
 
 
 def enabled_log_types(logging_config):
-    enabled_types = set()
-    for entry in (logging_config or {}).get("clusterLogging") or []:
-        if not entry.get("enabled"):
-            continue
-
-        for log_type in entry.get("types") or []:
-            enabled_types.add(log_type)
-
-    return enabled_types
+    return {
+        log_type
+        for entry in (logging_config or {}).get("clusterLogging") or []
+        if entry.get("enabled")
+        for log_type in entry.get("types") or []
+    }
 
 
 def describe_cluster(client, module):
@@ -513,11 +504,9 @@ def wait_for_update(client, module, update_id):
 
 
 def desired_cluster(module):
-    desired = {}
-    for field in CREATE_FIELDS:
-        desired[field] = module.params[field]
-
-    desired = scrub_none_parameters(desired)
+    desired = scrub_none_parameters(
+        {field: module.params[field] for field in CREATE_FIELDS}
+    )
 
     if desired.get("encryption_config") == []:
         del desired["encryption_config"]
