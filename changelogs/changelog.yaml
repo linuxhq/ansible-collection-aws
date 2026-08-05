@@ -254,3 +254,10 @@ releases:
     fragments:
     - lambda-target-groups.yml
     release_date: '2026-08-04'
+  2.2.1:
+    changes:
+      release_summary: Simplify EKS and Global Accelerator internals and align Global
+        Accelerator validation with external security group management.
+    fragments:
+    - maintenance.yml
+    release_date: '2026-08-05'

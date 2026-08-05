@@ -26,6 +26,16 @@ provisioner:
       all:
         ansible_python_interpreter: /opt/awscli/bin/python
 
+        ec2_security_group_list:
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            security_groups:
+              - name: molecule-http-80
+                rules:
+                  - cidr_ip: 0.0.0.0/0
+                    ports:
+                      - 80
+                    proto: tcp
+
         ec2_vpc_igw_list:
           - name: molecule
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
@@ -46,6 +56,8 @@ provisioner:
 
         elb_application_lb_list:
           - name: molecule-http-80
+            security_groups:
+              - "{{ _ec2_security_group_info_dict['molecule-http-80'].group_id }}"
             subnets:
               - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
               - "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"

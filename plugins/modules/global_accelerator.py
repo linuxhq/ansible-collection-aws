@@ -472,16 +472,13 @@ def wait_for_accelerator(client, module, accelerator_arn, waiter_name):
 
 
 def normalized_port_ranges(port_ranges):
-    normalized = []
-    for port_range in port_ranges or []:
-        normalized.append(
-            {
-                "from_port": port_range.get("from_port"),
-                "to_port": port_range.get("to_port"),
-            }
-        )
-
-    return sorted(normalized, key=lambda item: (item["from_port"], item["to_port"]))
+    return sorted(
+        (
+            {"from_port": item.get("from_port"), "to_port": item.get("to_port")}
+            for item in port_ranges or []
+        ),
+        key=lambda item: (item["from_port"], item["to_port"]),
+    )
 
 
 def listener_identity(listener):
@@ -612,17 +609,15 @@ def listener_request(desired):
 
 
 def normalized_port_overrides(port_overrides):
-    normalized = []
-    for port_override in port_overrides or []:
-        normalized.append(
-            {
-                "endpoint_port": port_override.get("endpoint_port"),
-                "listener_port": port_override.get("listener_port"),
-            }
-        )
-
     return sorted(
-        normalized, key=lambda item: (item["listener_port"], item["endpoint_port"])
+        (
+            {
+                "endpoint_port": item.get("endpoint_port"),
+                "listener_port": item.get("listener_port"),
+            }
+            for item in port_overrides or []
+        ),
+        key=lambda item: (item["listener_port"], item["endpoint_port"]),
     )
 
 
@@ -668,13 +663,14 @@ def endpoint_group_requires_update(current, desired):
             return True
 
     if desired["endpoint_configurations"] is not None:
-        current_endpoints = {}
-        for endpoint in current.get("endpoint_descriptions", []):
-            current_endpoints[endpoint.get("endpoint_id")] = endpoint
-
-        desired_ids = set()
-        for configuration in desired["endpoint_configurations"]:
-            desired_ids.add(configuration["endpoint_id"])
+        current_endpoints = {
+            endpoint.get("endpoint_id"): endpoint
+            for endpoint in current.get("endpoint_descriptions", [])
+        }
+        desired_ids = {
+            configuration["endpoint_id"]
+            for configuration in desired["endpoint_configurations"]
+        }
 
         if desired_ids != set(current_endpoints):
             return True
@@ -731,16 +727,13 @@ def endpoint_group_request(desired):
         request["HealthCheckProtocol"] = desired["health_check_protocol"]
 
     if desired["port_overrides"] is not None:
-        port_overrides = []
-        for port_override in desired["port_overrides"]:
-            port_overrides.append(
-                {
-                    "EndpointPort": port_override["endpoint_port"],
-                    "ListenerPort": port_override["listener_port"],
-                }
-            )
-
-        request["PortOverrides"] = port_overrides
+        request["PortOverrides"] = [
+            {
+                "EndpointPort": item["endpoint_port"],
+                "ListenerPort": item["listener_port"],
+            }
+            for item in desired["port_overrides"]
+        ]
 
     if desired["threshold_count"] is not None:
         request["ThresholdCount"] = desired["threshold_count"]

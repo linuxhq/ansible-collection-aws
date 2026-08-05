@@ -20,6 +20,11 @@
         - molecule-idempotence-notest
       check_mode: false
 
+    - role: ec2_security_group
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
     - role: elb_target_group
       tags:
         - molecule-idempotence-notest

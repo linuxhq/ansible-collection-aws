@@ -4,6 +4,14 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.2.1
+======
+
+Release Summary
+---------------
+
+Simplify EKS and Global Accelerator internals and align Global Accelerator validation with external security group management.
+
 v2.2.0
 ======
 
