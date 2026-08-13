@@ -9,8 +9,8 @@ Matches CI's pre-commit hook.
 
 ```sh
 tox run -e black -- plugins/modules/{{ file }}.py
-tox run -e black
-tox run -e black-lint
+tox run -m format
+tox run -m lint
 ```
 
 - Re-read a file if black rewrote it.

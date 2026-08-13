@@ -10,7 +10,7 @@ Matches CI's pre-commit hook.
 ```sh
 tox run -e ansible-lint -- roles/{{ role }}
 tox run -e ansible-lint -- --fix roles/{{ role }}
-tox run -e ansible-lint
+tox run -m lint
 ```
 
 - Fix findings by hand, or with `--fix` where a rule offers it; re-read rewritten files.

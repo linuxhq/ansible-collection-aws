@@ -7,8 +7,9 @@ description: Lint Python code with ruff.
 
 ```sh
 tox run -e ruff-lint -- plugins/modules/{{ file }}.py
-tox run -e ruff-lint
 tox run -e ruff -- plugins/modules/{{ file }}.py
+tox run -m lint
+tox run -m format
 ```
 
 - Clean run: `All checks passed!`.

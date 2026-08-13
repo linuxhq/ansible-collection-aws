@@ -31,21 +31,18 @@ Run the default lint suite:
 tox
 ```
 
-Run or fix individual checks:
+Run grouped checks:
 
 ```sh
-tox run -e ansible-lint
-tox run -e yamllint
-tox run -e black-lint
-tox run -e ruff-lint
-tox run -e black
-tox run -e ruff
+tox run -m format
+tox run -m lint
+tox run -m unit
 ```
 
 Run Ansible sanity tests for a module:
 
 ```sh
-tox run -e ansible-test -- sanity --python 3.13 plugins/modules/account_region.py
+tox run -e ansible-test -- sanity --python "$(cat .python-version)" plugins/modules/account_region.py
 ```
 
 ### Molecule

@@ -9,7 +9,7 @@ Matches CI's `--strict` mode.
 
 ```sh
 tox run -e yamllint -- roles/{{ role }}/tasks/main.yml
-tox run -e yamllint
+tox run -m lint
 ```
 
 - Clean run prints nothing; fix each line by hand.

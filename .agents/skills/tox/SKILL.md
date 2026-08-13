@@ -11,6 +11,14 @@ Use the externally installed Tox launcher to install the pre-commit hook:
 tox run -e pre-commit
 ```
 
+Run grouped environments by label:
+
+```sh
+tox run -m format
+tox run -m lint
+tox run -m unit
+```
+
 Do not activate a shared virtualenv. Each repository skill invokes its named, disposable
 `.tox/<environment>` directly. Use `tox recreate -e <environment>` to rebuild one.
 

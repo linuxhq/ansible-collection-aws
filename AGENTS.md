@@ -40,6 +40,7 @@ Invoke skills rather than running commands ad hoc.
 | `pyenv`            | Install pyenv + pinned Python |
 | `ruff`             | Lint Python                   |
 | `tox`              | Set up isolated environments  |
+| `unit`             | Run unit tests                |
 | `yamllint`         | Lint YAML                     |
 
 ## Setup
