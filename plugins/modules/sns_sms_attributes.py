@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -119,14 +121,14 @@ def main():
 
     client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
 
+    methods = {"get_sms_attributes": ()}
+    if any(module.params[key] is not None for key in MANAGED_ATTRIBUTES):
+        methods["set_sms_attributes"] = ("attributes",)
     require_client_methods(
         module,
         client,
         "SNS",
-        {
-            "get_sms_attributes": (),
-            "set_sms_attributes": ("attributes",),
-        },
+        methods,
     )
 
     desired = {}

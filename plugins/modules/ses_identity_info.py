@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -20,6 +22,7 @@ options:
   name:
     description:
       - SES identity name used to limit the result set.
+      - This must not be empty when provided.
       - An identity that does not exist results in an empty list.
       - Mutually exclusive with O(identity_type).
     type: str
@@ -84,15 +87,23 @@ def main():
         mutually_exclusive=[["identity_type", "name"]],
         supports_check_mode=True,
     )
-    ses_client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
-    sesv2_client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
+    identity_type = module.params["identity_type"]
+    name = module.params["name"]
 
-    require_client_methods(
-        module,
-        ses_client,
-        "SES",
-        {"list_identities": ("IdentityType",)},
-    )
+    if name == "":
+        module.fail_json(msg="name must not be empty")
+
+    ses_client = None
+    if name is None:
+        ses_client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
+        require_client_methods(
+            module,
+            ses_client,
+            "SES",
+            {"list_identities": ("IdentityType", "MaxItems", "NextToken")},
+        )
+
+    sesv2_client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
     require_client_methods(
         module,
         sesv2_client,
@@ -100,11 +111,9 @@ def main():
         {"get_email_identity": ("EmailIdentity",)},
     )
 
-    identity_type = module.params["identity_type"]
-    name = module.params["name"]
     identities = []
 
-    if name:
+    if name is not None:
         identity_names = [name]
     else:
         request = {}

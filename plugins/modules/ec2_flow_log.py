@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -24,6 +26,7 @@ options:
       - Destination options for flow logs delivered to Amazon S3.
       - Requires O(log_destination_type).
       - O(log_destination_type) must be C(s3) when O(state=present).
+      - Requires botocore 1.21.61 or later.
     suboptions:
       file_format:
         description:
@@ -68,6 +71,9 @@ options:
   max_aggregation_interval:
     description:
       - The maximum interval, in seconds, during which packets are captured and aggregated.
+    choices:
+      - 60
+      - 600
     type: int
   purge_tags:
     description:
@@ -106,6 +112,7 @@ options:
   tags:
     description:
       - Tags to apply to the flow logs.
+      - This must contain at most 50 entries; keys must contain 1 to 127 characters and values at most 256 characters.
     type: dict
   traffic_type:
     description:
@@ -204,6 +211,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    apply_tag_deltas,
+    require_valid_tags,
 )
 
 ABSENT_MATCH_FIELDS = (
@@ -329,16 +340,19 @@ def ensure_absent(client, module):
 
     current = matching_flow_logs(module, get_flow_logs(client, module), desired)
 
-    flow_log_ids = []
-    for flow_log in current:
-        if not flow_log.get("FlowLogId"):
-            continue
-
-        flow_log_ids.append(flow_log["FlowLogId"])
+    flow_log_ids = [
+        flow_log["FlowLogId"] for flow_log in current if flow_log.get("FlowLogId")
+    ]
 
     changed = bool(flow_log_ids)
 
     if changed and not module.check_mode:
+        require_client_methods(
+            module,
+            client,
+            "EC2",
+            {"delete_flow_logs": ("FlowLogIds",)},
+        )
         try:
             response = client.delete_flow_logs(
                 FlowLogIds=flow_log_ids,
@@ -349,7 +363,11 @@ def ensure_absent(client, module):
                 e, msg=f"Unable to delete EC2 flow logs {', '.join(flow_log_ids)}"
             )
 
-        unsuccessful = response.get("Unsuccessful", [])
+        unsuccessful = [
+            failure
+            for failure in response.get("Unsuccessful", [])
+            if (failure.get("Error") or {}).get("Code") != "InvalidFlowLogId.NotFound"
+        ]
 
         if unsuccessful:
             module.fail_json(
@@ -389,16 +407,12 @@ def ensure_present(client, module):
 
     current = matching_flow_logs(module, get_flow_logs(client, module), desired)
 
-    matched_resource_ids = set()
-    for flow_log in current:
-        matched_resource_ids.add(flow_log.get("ResourceId"))
-
-    missing_resource_ids = []
-    for resource_id in resource_ids:
-        if resource_id in matched_resource_ids:
-            continue
-
-        missing_resource_ids.append(resource_id)
+    matched_resource_ids = {flow_log.get("ResourceId") for flow_log in current}
+    missing_resource_ids = [
+        resource_id
+        for resource_id in resource_ids
+        if resource_id not in matched_resource_ids
+    ]
 
     tags_changed = []
     if tags is not None:
@@ -416,6 +430,52 @@ def ensure_present(client, module):
 
     if changed:
         if missing_resource_ids and not module.check_mode:
+            required_create_parameters = [
+                "LogDestinationType",
+                "ResourceIds",
+                "ResourceType",
+            ]
+            if resource_type in TRAFFIC_TYPE_RESOURCE_TYPES:
+                required_create_parameters.append("TrafficType")
+            if tags:
+                required_create_parameters.append("TagSpecifications")
+            for (
+                option_name,
+                parameter_name,
+            ) in OPTIONAL_CREATE_FLOW_LOG_PARAMETER_BY_OPTION.items():
+                if module.params[option_name] is not None:
+                    required_create_parameters.append(parameter_name)
+            if destination_options:
+                required_create_parameters.append("DestinationOptions")
+            require_client_methods(
+                module,
+                client,
+                "EC2",
+                {"create_flow_logs": tuple(required_create_parameters)},
+            )
+
+            if destination_options:
+                destination_option_parameters = (
+                    client.meta.service_model.operation_model("CreateFlowLogs")
+                    .input_shape.members["DestinationOptions"]
+                    .members
+                )
+                for (
+                    option_name,
+                    parameter_name,
+                ) in DESTINATION_OPTION_PARAMETER_BY_OPTION.items():
+                    if (
+                        option_name in destination_options
+                        and parameter_name not in destination_option_parameters
+                    ):
+                        module.fail_json(
+                            msg=(
+                                "Installed botocore does not support EC2 "
+                                "create_flow_logs DestinationOptions parameter "
+                                f"{parameter_name}"
+                            )
+                        )
+
             request = dict(
                 desired,
                 resource_ids=missing_resource_ids,
@@ -454,18 +514,34 @@ def ensure_present(client, module):
 
             created_flow_log_ids = response.get("FlowLogIds", [])
 
-            if created_flow_log_ids:
-                created_flow_logs = query_list(
-                    module,
-                    client,
-                    "describe_flow_logs",
-                    "FlowLogs",
-                    "Unable to describe EC2 flow logs "
-                    f"{', '.join(created_flow_log_ids)}",
-                    FlowLogIds=created_flow_log_ids,
+            if not created_flow_log_ids:
+                module.fail_json(
+                    msg=(
+                        "AWS did not return the created EC2 flow logs for resources "
+                        f"{', '.join(missing_resource_ids)}"
+                    )
                 )
 
-                current = current + created_flow_logs
+            created_flow_logs = query_list(
+                module,
+                client,
+                "describe_flow_logs",
+                "FlowLogs",
+                "Unable to describe EC2 flow logs "
+                f"{', '.join(created_flow_log_ids)}",
+                FlowLogIds=created_flow_log_ids,
+            )
+
+            described_ids = {
+                flow_log.get("FlowLogId") for flow_log in created_flow_logs
+            }
+            created_flow_logs.extend(
+                {"FlowLogId": flow_log_id}
+                for flow_log_id in created_flow_log_ids
+                if flow_log_id not in described_ids
+            )
+
+            current = current + created_flow_logs
         elif missing_resource_ids and module.check_mode:
             for resource_id in missing_resource_ids:
                 flow_log = dict(
@@ -493,6 +569,13 @@ def ensure_present(client, module):
                     group = tuple(sorted(tags_to_set.items()))
                     create_groups.setdefault(group, []).append(flow_log["FlowLogId"])
 
+            if delete_groups:
+                require_client_methods(
+                    module,
+                    client,
+                    "EC2",
+                    {"delete_tags": ("Resources", "Tags")},
+                )
             for tag_keys_to_unset, delete_resources in delete_groups.items():
                 try:
                     client.delete_tags(
@@ -509,6 +592,13 @@ def ensure_present(client, module):
                         ),
                     )
 
+            if create_groups:
+                require_client_methods(
+                    module,
+                    client,
+                    "EC2",
+                    {"create_tags": ("Resources", "Tags")},
+                )
             for tags_to_set, create_resources in create_groups.items():
                 try:
                     client.create_tags(
@@ -526,20 +616,11 @@ def ensure_present(client, module):
                     )
 
         for flow_log, tags_to_set, tag_keys_to_unset in tags_changed:
-            current_tags = boto3_tag_list_to_ansible_dict(flow_log.get("Tags", []))
+            flow_log.update(apply_tag_deltas(flow_log, tags_to_set, tag_keys_to_unset))
 
-            for tag_key in tag_keys_to_unset:
-                current_tags.pop(tag_key, None)
-
-            current_tags.update(tags_to_set)
-            flow_log["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
-
-    flow_log_ids = []
-    for flow_log in current:
-        if not flow_log.get("FlowLogId"):
-            continue
-
-        flow_log_ids.append(flow_log["FlowLogId"])
+    flow_log_ids = [
+        flow_log["FlowLogId"] for flow_log in current if flow_log.get("FlowLogId")
+    ]
 
     module.exit_json(
         changed=changed,
@@ -574,7 +655,7 @@ def main():
         },
         "log_format": {"type": "str"},
         "log_group_name": {"type": "str"},
-        "max_aggregation_interval": {"type": "int"},
+        "max_aggregation_interval": {"choices": [60, 600], "type": "int"},
         "purge_tags": {"default": True, "type": "bool"},
         "resource_ids": {"elements": "str", "required": True, "type": "list"},
         "resource_type": {
@@ -606,7 +687,6 @@ def main():
     state = module.params["state"]
     resource_ids = normalized_resource_ids(module)
     resource_type = module.params["resource_type"]
-    tags = module.params["tags"]
     destination_options = comparable_destination_options(module)
 
     if not resource_ids:
@@ -633,66 +713,19 @@ def main():
                 "when state is present"
             )
         )
+    require_valid_tags(
+        module, module.params["tags"] if state == "present" else None, 50, key_max=127
+    )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
-    methods = {"describe_flow_logs": ()}
+    describe_parameters = ["Filter", "MaxResults", "NextToken"]
     if state == "present":
-        required_create_parameters = [
-            "LogDestinationType",
-            "ResourceIds",
-            "ResourceType",
-        ]
-        if resource_type in TRAFFIC_TYPE_RESOURCE_TYPES:
-            required_create_parameters.append("TrafficType")
-        if tags is not None:
-            required_create_parameters.append("TagSpecifications")
-
-        for (
-            option_name,
-            parameter_name,
-        ) in OPTIONAL_CREATE_FLOW_LOG_PARAMETER_BY_OPTION.items():
-            if module.params[option_name] is None:
-                continue
-
-            required_create_parameters.append(parameter_name)
-
-        if destination_options:
-            required_create_parameters.append("DestinationOptions")
-
-        methods["create_flow_logs"] = tuple(required_create_parameters)
-        if tags is not None:
-            methods["create_tags"] = ()
-            if module.params["purge_tags"]:
-                methods["delete_tags"] = ()
-
-    if state == "absent":
-        methods["delete_flow_logs"] = ()
-
-    require_client_methods(module, client, "EC2", methods)
-
-    if state == "present" and destination_options:
-        destination_option_parameters = (
-            client.meta.service_model.operation_model("CreateFlowLogs")
-            .input_shape.members["DestinationOptions"]
-            .members
-        )
-
-        for (
-            option_name,
-            parameter_name,
-        ) in DESTINATION_OPTION_PARAMETER_BY_OPTION.items():
-            if option_name not in destination_options:
-                continue
-
-            if parameter_name in destination_option_parameters:
-                continue
-
-            module.fail_json(
-                msg=(
-                    "Installed botocore does not support EC2 "
-                    "create_flow_logs DestinationOptions parameter "
-                    f"{parameter_name}"
-                )
-            )
+        describe_parameters.append("FlowLogIds")
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"describe_flow_logs": tuple(describe_parameters)},
+    )
 
     if state == "present":
         ensure_present(client, module)

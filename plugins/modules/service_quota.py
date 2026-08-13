@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -240,6 +242,13 @@ def main():
                         "Unable to request AWS service quota increase for "
                         f"{quota_code} for service {service_code}"
                     ),
+                )
+            if not requested_quota:
+                module.fail_json(
+                    msg=(
+                        "AWS Service Quotas did not return the requested quota for "
+                        f"{quota_code} for service {service_code}"
+                    )
                 )
 
     result = {

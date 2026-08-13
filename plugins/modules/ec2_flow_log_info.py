@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -86,15 +88,8 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    require_client_methods(
-        module,
-        client,
-        "EC2",
-        {"describe_flow_logs": ("Filter", "FlowLogIds")},
-    )
-
-    flow_log_ids = module.params["flow_log_ids"]
-    resource_ids = module.params["resource_ids"]
+    flow_log_ids = list(dict.fromkeys(module.params["flow_log_ids"] or []))
+    resource_ids = list(dict.fromkeys(module.params["resource_ids"] or []))
     filters = dict(module.params["filters"] or {})
 
     request = {}
@@ -105,13 +100,20 @@ def main():
     if filters:
         request["Filter"] = ansible_dict_to_boto3_filter_list(filters)
 
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"describe_flow_logs": tuple(request) + ("MaxResults", "NextToken")},
+    )
+
     flow_logs = query_list(
         module,
         client,
         "describe_flow_logs",
         "FlowLogs",
         "Unable to describe EC2 flow logs",
-        **request
+        **request,
     )
 
     module.exit_json(

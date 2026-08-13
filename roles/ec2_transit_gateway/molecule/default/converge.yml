@@ -1,9 +1,6 @@
 ---
 - name: Converge
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
-
   roles:
     - role: ec2_transit_gateway
       ec2_transit_gateway_list: []

@@ -1,8 +1,6 @@
 ---
 - name: Verify
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
   tasks:
     - name: Ensure iam password policy information is gathered
       ansible.builtin.command:

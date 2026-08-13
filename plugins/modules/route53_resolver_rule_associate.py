@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -12,9 +14,11 @@ options:
   name:
     description:
       - The resolver rule association name.
+      - This must be a nonnumeric name of at most 64 letters, numbers, spaces,
+        apostrophes, hyphens, or underscores.
       - Changing the name of an existing association disassociates and
         reassociates the resolver rule.
-    required: true
+      - This is required when O(state=present).
     type: str
   resolver_rule_id:
     description:
@@ -66,7 +70,6 @@ EXAMPLES = r"""
 
 - name: Ensure a Route53 Resolver rule association is absent
   linuxhq.aws.route53_resolver_rule_associate:
-    name: molecule-1
     resolver_rule_id: rslvr-rr-0123456789abcdef0
     state: absent
     vpc_id: vpc-0123456789abcdef0
@@ -76,7 +79,7 @@ RETURN = r"""
 name:
   description:
     - The requested resolver rule association name.
-  returned: always
+  returned: when provided
   type: str
 resolver_rule_association:
   description:
@@ -94,6 +97,8 @@ state:
   returned: always
   type: str
 """
+
+import re
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -132,13 +137,13 @@ ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA = {
             },
             {
                 "argument": "ResolverRuleAssociation.Status",
-                "expected": "CREATING",
+                "expected": "OVERRIDDEN",
                 "matcher": "path",
-                "state": "retry",
+                "state": "success",
             },
             {
                 "argument": "ResolverRuleAssociation.Status",
-                "expected": "UPDATING",
+                "expected": "CREATING",
                 "matcher": "path",
                 "state": "retry",
             },
@@ -178,23 +183,33 @@ ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA = {
 
 
 def ensure_absent(client, module):
-    name = module.params["name"]
+    name = module.params.get("name")
     association = get_resolver_rule_association_by_rule_and_vpc(client, module)
-    changed = association is not None
+    deleting = (association or {}).get("Status") == "DELETING"
+    changed = association is not None and not deleting
     resolver_rule_association_id = (association or {}).get("Id")
 
-    if changed and not module.check_mode:
-        try:
-            client.disassociate_resolver_rule(
-                ResolverRuleId=module.params["resolver_rule_id"],
-                VPCId=module.params["vpc_id"],
-                aws_retry=True,
-            )
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to delete AWS Route53 Resolver rule association {name}",
-            )
+    if association is not None and not module.check_mode:
+        if changed:
+            try:
+                client.disassociate_resolver_rule(
+                    ResolverRuleId=module.params["resolver_rule_id"],
+                    VPCId=module.params["vpc_id"],
+                    aws_retry=True,
+                )
+            except is_boto3_error_code("ResourceNotFoundException"):
+                pass
+            except (BotoCoreError, ClientError) as e:
+                identifier = (
+                    f"{module.params['resolver_rule_id']}/{module.params['vpc_id']}"
+                )
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        "Unable to delete AWS Route53 Resolver rule association "
+                        f"{identifier}"
+                    ),
+                )
 
         if module.params["wait"]:
             wait_for_resolver_rule_association_status(
@@ -204,11 +219,10 @@ def ensure_absent(client, module):
                 {"deleted"},
             )
 
-    module.exit_json(
-        changed=changed,
-        name=name,
-        state="absent",
-    )
+    result = {"changed": changed, "state": "absent"}
+    if name is not None:
+        result["name"] = name
+    module.exit_json(**result)
 
 
 def ensure_present(client, module):
@@ -216,6 +230,14 @@ def ensure_present(client, module):
     resolver_rule_id = module.params["resolver_rule_id"]
     vpc_id = module.params["vpc_id"]
     association = get_resolver_rule_association_by_rule_and_vpc(client, module)
+    if association is not None and association.get("Status") == "DELETING":
+        if module.check_mode:
+            association = None
+        else:
+            wait_for_resolver_rule_association_status(
+                client, module, association.get("Id"), {"deleted"}
+            )
+            return ensure_present(client, module)
     current_association = (
         {
             "name": association.get("Name"),
@@ -232,6 +254,18 @@ def ensure_present(client, module):
     }
     changed = (current_association or {}) != desired_association
 
+    if (
+        changed
+        and not module.check_mode
+        and association is not None
+        and association.get("Status")
+        and association.get("Status") not in ("COMPLETE", "OVERRIDDEN")
+    ):
+        wait_for_resolver_rule_association_status(
+            client, module, association.get("Id"), {"complete"}
+        )
+        return ensure_present(client, module)
+
     if changed and not module.check_mode:
         if association is not None:
             resolver_rule_association_id = association.get("Id")
@@ -242,6 +276,8 @@ def ensure_present(client, module):
                     VPCId=vpc_id,
                     aws_retry=True,
                 )
+            except is_boto3_error_code("ResourceNotFoundException"):
+                pass
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
@@ -251,13 +287,12 @@ def ensure_present(client, module):
                     ),
                 )
 
-            if module.params["wait"]:
-                wait_for_resolver_rule_association_status(
-                    client,
-                    module,
-                    resolver_rule_association_id,
-                    {"deleted"},
-                )
+            wait_for_resolver_rule_association_status(
+                client,
+                module,
+                resolver_rule_association_id,
+                {"deleted"},
+            )
 
         try:
             association = client.associate_resolver_rule(
@@ -272,7 +307,15 @@ def ensure_present(client, module):
                 msg=f"Unable to create AWS Route53 Resolver rule association {name}",
             )
 
-        if association is not None and module.params["wait"]:
+        if not (association or {}).get("Id"):
+            module.fail_json(
+                msg=(
+                    "AWS Route53 Resolver did not return the created rule "
+                    f"association {name}"
+                )
+            )
+
+        if module.params["wait"]:
             resolver_rule_association_id = association.get("Id")
             association = wait_for_resolver_rule_association_status(
                 client,
@@ -311,6 +354,9 @@ def wait_for_resolver_rule_association_status(
     client, module, resolver_rule_association_id, statuses
 ):
     deleted = "deleted" in statuses
+    identifier = module.params.get("name") or (
+        f"{module.params['resolver_rule_id']}/{module.params['vpc_id']}"
+    )
 
     run_waiter(
         module,
@@ -323,7 +369,7 @@ def wait_for_resolver_rule_association_status(
         ),
         (
             "Timed out waiting for AWS Route53 Resolver rule association "
-            f"{module.params['name']}"
+            f"{identifier}"
         ),
         ResolverRuleAssociationId=resolver_rule_association_id,
     )
@@ -373,7 +419,7 @@ def get_resolver_rule_association_by_rule_and_vpc(client, module):
 def main():
     module = AnsibleAWSModule(
         argument_spec={
-            "name": {"required": True, "type": "str"},
+            "name": {"type": "str"},
             "resolver_rule_id": {"required": True, "type": "str"},
             "state": {
                 "choices": ["absent", "present"],
@@ -385,11 +431,23 @@ def main():
             "wait_delay": {"default": 5, "type": "int"},
             "wait_timeout": {"default": 300, "type": "int"},
         },
+        required_if=[("state", "present", ["name"])],
         supports_check_mode=True,
     )
     state = module.params["state"]
 
-    require_positive_wait_bounds(module)
+    if state == "present":
+        name = module.params["name"]
+        if (
+            len(name) > 64
+            or name.isdigit()
+            or re.fullmatch(r"[a-zA-Z0-9\-_ ']+", name) is None
+        ):
+            module.fail_json(
+                msg="name must be a valid resolver rule association name of at most 64 characters"
+            )
+
+    require_positive_wait_bounds(module, always=state == "present")
 
     client = module.client(
         "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
@@ -400,8 +458,7 @@ def main():
     if state == "present":
         methods["associate_resolver_rule"] = ("Name", "ResolverRuleId", "VPCId")
         methods["disassociate_resolver_rule"] = ("ResolverRuleId", "VPCId")
-        if module.params["wait"]:
-            methods["get_resolver_rule_association"] = ("ResolverRuleAssociationId",)
+        methods["get_resolver_rule_association"] = ("ResolverRuleAssociationId",)
 
     if state == "absent":
         methods["disassociate_resolver_rule"] = ("ResolverRuleId", "VPCId")

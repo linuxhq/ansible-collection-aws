@@ -1,9 +1,6 @@
 ---
 - name: Converge
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
-
   roles:
     - role: aws_region_info
       check_mode: false

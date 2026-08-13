@@ -202,6 +202,7 @@
     state: "{{ splunk_addon_state }}"
     tags: "{{ splunk_addon_tags }}"
     validate_certs: true
+  register: __splunk_addon_sns_topic_result
   ignore_errors: "{{ ansible_check_mode }}"
 
 - name: Ensure splunk addon simple notification service topic encryption is managed
@@ -214,6 +215,7 @@
     validate_certs: true
   when:
     - splunk_addon_state == 'present'
+    - __splunk_addon_sns_topic_result.sns_arn is defined
 
 - name: Ensure splunk addon cloudtrail is managed
   tags:

@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -81,6 +83,8 @@ vpcs:
   elements: dict
 """
 
+import re
+
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -112,6 +116,8 @@ def ensure_absent(client, module, hosted_zone_id):
                 VPC=requested_vpc,
                 aws_retry=True,
             )
+        except is_boto3_error_code("VPCAssociationNotFound"):
+            pass
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
@@ -197,14 +203,13 @@ def route53_vpc(module):
 
 
 def route53_vpc_list(vpcs):
-    normalized = []
-    for vpc in vpcs or []:
-        normalized.append(
-            {
-                "VPCId": vpc["VPCId"],
-                "VPCRegion": vpc["VPCRegion"],
-            }
-        )
+    normalized = [
+        {
+            "VPCId": vpc["VPCId"],
+            "VPCRegion": vpc["VPCRegion"],
+        }
+        for vpc in vpcs or []
+    ]
     return sorted(normalized, key=lambda vpc: (vpc["VPCId"], vpc["VPCRegion"]))
 
 
@@ -223,6 +228,12 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
+    vpc_region = module.params["vpc_region"]
+
+    if not 2 <= len(vpc_region) <= 25 or not re.fullmatch(
+        r"[a-z]{1,2}(?:-[a-z]{1,15})+-[0-9]", vpc_region
+    ):
+        module.fail_json(msg="vpc_region must be a valid AWS region name")
 
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
     hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]

@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -54,11 +56,6 @@ placement_groups:
   elements: dict
 """
 
-try:
-    from botocore.exceptions import BotoCoreError, ClientError
-except ImportError:
-    pass
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -66,6 +63,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 
@@ -80,16 +78,9 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    require_client_methods(
-        module,
-        client,
-        "EC2",
-        {"describe_placement_groups": ("Filters", "GroupIds", "GroupNames")},
-    )
-
     filters = module.params["filters"]
-    group_ids = module.params["group_ids"]
-    group_names = module.params["group_names"]
+    group_ids = list(dict.fromkeys(module.params["group_ids"] or []))
+    group_names = list(dict.fromkeys(module.params["group_names"] or []))
 
     request = {}
     if group_ids:
@@ -99,13 +90,21 @@ def main():
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
-    try:
-        placement_groups = client.describe_placement_groups(
-            **request,
-            aws_retry=True,
-        ).get("PlacementGroups", [])
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg="Unable to describe EC2 placement groups")
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"describe_placement_groups": tuple(request)},
+    )
+
+    placement_groups = query_list(
+        module,
+        client,
+        "describe_placement_groups",
+        "PlacementGroups",
+        "Unable to describe EC2 placement groups",
+        **request,
+    )
 
     module.exit_json(
         changed=False,

@@ -1,9 +1,6 @@
 ---
 - name: Converge
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
-
   roles:
     - role: route53_delegation_set
       route53_delegation_set_list: []

@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -81,15 +83,14 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
 
-    require_client_methods(
-        module,
-        client,
-        "SNS",
-        {
-            "get_topic_attributes": ("TopicArn",),
-            "set_topic_attributes": ("AttributeName", "AttributeValue", "TopicArn"),
-        },
-    )
+    methods = {"get_topic_attributes": ("TopicArn",)}
+    if any(module.params[attribute] is not None for attribute in MANAGED_ATTRIBUTES):
+        methods["set_topic_attributes"] = (
+            "AttributeName",
+            "AttributeValue",
+            "TopicArn",
+        )
+    require_client_methods(module, client, "SNS", methods)
 
     topic_arn = module.params["topic_arn"]
 
@@ -108,15 +109,9 @@ def main():
             aws_retry=True,
         ).get("Attributes", {})
     except is_boto3_error_code("NotFound"):
-        if not module.check_mode:
-            module.fail_json(
-                msg=(
-                    "AWS Simple Notification Service topic does not exist "
-                    f"{topic_arn}"
-                )
-            )
-
-        current_attributes = {}
+        module.fail_json(
+            msg=("AWS Simple Notification Service topic does not exist " f"{topic_arn}")
+        )
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,

@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -57,6 +59,7 @@ options:
   tags:
     description:
       - Tags to apply to the Systems Manager document.
+      - This must contain at most 1000 entries; keys must contain 1 to 128 characters and values at most 256 characters.
     type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -129,9 +132,21 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_ssm_tags,
+    require_valid_tags,
 )
 
 SSM_DOCUMENT_RESOURCE_TYPE = "Document"
+
+
+def comparable_document(document):
+    if document is None:
+        return None
+    return {
+        "content": snake_dict_to_camel_dict(
+            document_content(document), capitalize_first=False
+        ),
+        "document_type": document.get("DocumentType"),
+    }
 
 
 def ensure_absent(client, module):
@@ -145,6 +160,8 @@ def ensure_absent(client, module):
                 Name=name,
                 aws_retry=True,
             )
+        except is_boto3_error_code("InvalidDocument"):
+            pass
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
@@ -168,16 +185,7 @@ def ensure_present(client, module):
         "document_type": module.params["document_type"],
         "name": name,
     }
-    current_comparable = (
-        {
-            "content": snake_dict_to_camel_dict(
-                document_content(current), capitalize_first=False
-            ),
-            "document_type": current.get("DocumentType"),
-        }
-        if current is not None
-        else None
-    )
+    current_comparable = comparable_document(current)
     desired_comparable = {
         "content": snake_dict_to_camel_dict(desired["content"], capitalize_first=False),
         "document_type": desired["document_type"],
@@ -198,6 +206,24 @@ def ensure_present(client, module):
 
         changed = current_comparable != desired_comparable
         resource_changed = changed
+
+    default_version_to_promote = None
+    if (
+        resource_changed
+        and current is not None
+        and module.params["document_version"] == "$DEFAULT"
+    ):
+        latest = get_document(client, module, document_version="$LATEST")
+        if comparable_document(latest) == desired_comparable:
+            default_version_to_promote = (latest or {}).get("DocumentVersion")
+            if not default_version_to_promote:
+                module.fail_json(
+                    msg=(
+                        "Unable to promote the latest AWS Systems Manager "
+                        f"document {name}: AWS returned no document version"
+                    )
+                )
+            resource_changed = False
 
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:
@@ -229,48 +255,76 @@ def ensure_present(client, module):
                 if tags:
                     request["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
-                client.create_document(**request, aws_retry=True)
+                current = client.create_document(**request, aws_retry=True).get(
+                    "DocumentDescription", {}
+                )
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to create AWS Systems Manager document {name}",
                 )
-
-        elif resource_changed:
-            try:
-                updated = client.update_document(
-                    Content=desired_content,
-                    DocumentFormat="JSON",
-                    DocumentVersion=module.params["document_version"],
-                    Name=desired["name"],
-                    aws_retry=True,
-                ).get("DocumentDescription", {})
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to update AWS Systems Manager document {name}",
+            if not current.get("DocumentVersion"):
+                module.fail_json(
+                    msg=(
+                        "AWS Systems Manager did not return the created document "
+                        f"{name}"
+                    )
                 )
+            current["Content"] = desired_content
+            if tags:
+                current["Tags"] = request["Tags"]
 
-            new_version = updated.get("DocumentVersion")
-
-            if new_version:
+        elif resource_changed or default_version_to_promote:
+            new_version = default_version_to_promote
+            if default_version_to_promote:
+                current = latest
+            if resource_changed:
                 try:
-                    client.update_document_default_version(
-                        DocumentVersion=new_version,
+                    updated = client.update_document(
+                        Content=desired_content,
+                        DocumentFormat="JSON",
+                        DocumentVersion=(
+                            "$LATEST"
+                            if module.params["document_version"] == "$DEFAULT"
+                            else module.params["document_version"]
+                        ),
                         Name=desired["name"],
                         aws_retry=True,
-                    )
+                    ).get("DocumentDescription", {})
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=(
-                            "Unable to set the default version of AWS Systems "
-                            f"Manager document {name}"
-                        ),
+                        msg=f"Unable to update AWS Systems Manager document {name}",
                     )
+                new_version = updated.get("DocumentVersion")
+                if not new_version:
+                    module.fail_json(
+                        msg=(
+                            "Unable to promote updated AWS Systems Manager "
+                            f"document {name}: AWS returned no document version"
+                        )
+                    )
+                current = dict(current or {}, **updated, Content=desired_content)
 
-        if resource_changed:
-            current = get_document(client, module, include_tags=tags is not None)
+            try:
+                client.update_document_default_version(
+                    DocumentVersion=new_version,
+                    Name=desired["name"],
+                    aws_retry=True,
+                )
+            except (BotoCoreError, ClientError) as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        "Unable to set the default version of AWS Systems "
+                        f"Manager document {name}"
+                    ),
+                )
+
+        if resource_changed or default_version_to_promote:
+            refreshed = get_document(client, module, include_tags=tags is not None)
+            if refreshed and comparable_document(refreshed) == desired_comparable:
+                current = refreshed
 
         if current is not None and tags is not None:
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
@@ -321,17 +375,17 @@ def ensure_present(client, module):
     module.exit_json(**result)
 
 
-def get_document(client, module, include_tags=False):
+def get_document(client, module, include_tags=False, document_version=None):
     name = module.params["name"]
 
     try:
         document = client.get_document(
             DocumentFormat="JSON",
-            DocumentVersion=module.params["document_version"],
+            DocumentVersion=document_version or module.params["document_version"],
             Name=name,
             aws_retry=True,
         )
-    except is_boto3_error_code(("InvalidDocument", "InvalidDocumentOperation")):
+    except is_boto3_error_code("InvalidDocument"):
         return None
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
@@ -392,10 +446,16 @@ def main():
         required_if=[("state", "present", ["content", "document_type"])],
         supports_check_mode=True,
     )
-    client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
-
     state = module.params["state"]
     tags = module.params["tags"]
+    require_valid_tags(module, tags if state == "present" else None, 1000)
+    client = module.client(
+        "ssm",
+        retry_decorator=AWSRetry.jittered_backoff(
+            catch_extra_error_codes=["TooManyUpdates"]
+        ),
+    )
+
     methods = {"get_document": ("DocumentFormat", "DocumentVersion", "Name")}
     if state == "present":
         methods["create_document"] = (

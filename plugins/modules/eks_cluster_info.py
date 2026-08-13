@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -110,23 +112,23 @@ def main():
     )
     client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())
 
-    require_client_methods(
-        module,
-        client,
-        "EKS",
-        {
-            "list_clusters": ("include",),
-            "describe_cluster": ("name",),
-        },
-    )
-
     filters = module.params["filters"]
-    include = module.params["include"]
+    include = list(dict.fromkeys(module.params["include"] or []))
     name = module.params["name"]
 
     if name:
         cluster_names = [name]
     else:
+        require_client_methods(
+            module,
+            client,
+            "EKS",
+            {
+                "list_clusters": (
+                    (("include",) if include else ()) + ("maxResults", "nextToken")
+                )
+            },
+        )
         request = {}
         if include:
             request["include"] = include
@@ -138,6 +140,14 @@ def main():
             "clusters",
             "Unable to list AWS EKS clusters",
             **request,
+        )
+
+    if cluster_names:
+        require_client_methods(
+            module,
+            client,
+            "EKS",
+            {"describe_cluster": ("name",)},
         )
 
     clusters = []
@@ -154,9 +164,13 @@ def main():
 
         clusters.append(cluster)
 
+    cluster_tags = [cluster.get("tags") for cluster in clusters]
     clusters = boto3_resource_list_to_ansible_dict(
         clusters, transform_tags=False, force_tags=False
     )
+    for cluster, tags in zip(clusters, cluster_tags):
+        if tags is not None:
+            cluster["tags"] = tags
 
     if filters:
         filtered_clusters = []

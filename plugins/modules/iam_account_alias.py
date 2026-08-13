@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -69,6 +71,7 @@ except ImportError:
     pass
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -89,27 +92,34 @@ def list_account_aliases(client, module):
         module.fail_json_aws(e, msg="Unable to list AWS IAM account aliases")
 
 
+def delete_account_alias(client, module, name):
+    require_client_methods(
+        module,
+        client,
+        "IAM",
+        {"delete_account_alias": ("AccountAlias",)},
+    )
+    try:
+        client.delete_account_alias(
+            AccountAlias=name,
+            aws_retry=True,
+        )
+    except is_boto3_error_code("NoSuchEntity"):
+        return
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to delete AWS IAM account alias {name}")
+
+
 def ensure_absent(client, module):
     name = module.params["name"]
     aliases = list_account_aliases(client, module)
-    desired_aliases = []
-    for alias in aliases:
-        if alias != name:
-            desired_aliases.append(alias)
+    desired_aliases = [alias for alias in aliases if alias != name]
 
     changed = name in aliases
 
     if changed:
         if not module.check_mode:
-            try:
-                client.delete_account_alias(
-                    AccountAlias=name,
-                    aws_retry=True,
-                )
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e, msg=f"Unable to delete AWS IAM account alias {name}"
-                )
+            delete_account_alias(client, module, name)
 
         aliases = desired_aliases
 
@@ -129,6 +139,15 @@ def ensure_present(client, module):
 
     if changed:
         if not module.check_mode:
+            for alias in aliases:
+                delete_account_alias(client, module, alias)
+
+            require_client_methods(
+                module,
+                client,
+                "IAM",
+                {"create_account_alias": ("AccountAlias",)},
+            )
             try:
                 client.create_account_alias(
                     AccountAlias=name,
@@ -175,14 +194,18 @@ def main():
             )
         )
 
-    client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
-    methods = {"list_account_aliases": ()}
-    if state == "present":
-        methods["create_account_alias"] = ("AccountAlias",)
-    if state == "absent":
-        methods["delete_account_alias"] = ("AccountAlias",)
-
-    require_client_methods(module, client, "IAM", methods)
+    client = module.client(
+        "iam",
+        retry_decorator=AWSRetry.jittered_backoff(
+            catch_extra_error_codes=["ConcurrentModificationException"]
+        ),
+    )
+    require_client_methods(
+        module,
+        client,
+        "IAM",
+        {"list_account_aliases": ("Marker", "MaxItems")},
+    )
 
     if state == "present":
         ensure_present(client, module)

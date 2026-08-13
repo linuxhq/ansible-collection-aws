@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -13,6 +15,7 @@ options:
     description:
       - Whether EC2 serial console access should be enabled.
       - Use C(present) to enable access and C(absent) to disable access.
+      - Requires botocore 1.20.41 or later.
     choices:
       - absent
       - present
@@ -91,16 +94,14 @@ def main():
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]
-    methods = {"get_serial_console_access_status": ()}
-    if state == "present":
-        desired_enabled = True
-        methods["enable_serial_console_access"] = ()
+    desired_enabled = state == "present"
 
-    if state == "absent":
-        desired_enabled = False
-        methods["disable_serial_console_access"] = ()
-
-    require_client_methods(module, client, "EC2", methods)
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"get_serial_console_access_status": ()},
+    )
 
     try:
         current = normalized_serial_console_access(
@@ -116,6 +117,12 @@ def main():
 
     if changed and not module.check_mode:
         if state == "present":
+            require_client_methods(
+                module,
+                client,
+                "EC2",
+                {"enable_serial_console_access": ()},
+            )
             try:
                 current = normalized_serial_console_access(
                     client.enable_serial_console_access(aws_retry=True)
@@ -128,8 +135,13 @@ def main():
                         f"{module.region}"
                     ),
                 )
-
-        if state == "absent":
+        else:
+            require_client_methods(
+                module,
+                client,
+                "EC2",
+                {"disable_serial_console_access": ()},
+            )
             try:
                 current = normalized_serial_console_access(
                     client.disable_serial_console_access(aws_retry=True)

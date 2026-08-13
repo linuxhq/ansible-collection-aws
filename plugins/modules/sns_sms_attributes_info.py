@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -68,17 +70,17 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
 
+    attributes = list(dict.fromkeys(module.params["attributes"] or []))
+    request = {}
+    if attributes:
+        request["attributes"] = attributes
+
     require_client_methods(
         module,
         client,
         "SNS",
-        {"get_sms_attributes": ("attributes",)},
+        {"get_sms_attributes": tuple(request)},
     )
-
-    attributes = module.params["attributes"]
-    request = {}
-    if attributes:
-        request["attributes"] = attributes
 
     try:
         response = client.get_sms_attributes(**request, aws_retry=True)

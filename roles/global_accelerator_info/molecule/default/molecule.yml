@@ -5,13 +5,15 @@ dependency:
     requirements-file: ../../requirements.yml
 
 driver:
-  name: vagrant
+  name: default
+  options:
+    managed: false
+    ansible_connection_options:
+      ansible_connection: local
+      ansible_python_interpreter: "{{ ansible_playbook_python }}"
 
 platforms:
-  - name: almalinux9
-    box: bento/almalinux-9.6
-    cpus: 4
-    memory: 4096
+  - name: localhost
 
 provisioner:
   name: ansible
@@ -24,7 +26,16 @@ provisioner:
   inventory:
     group_vars:
       all:
-        ansible_python_interpreter: /opt/awscli/bin/python
+
+        ec2_security_group_list:
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            security_groups:
+              - name: molecule-http-80
+                rules:
+                  - cidr_ip: 0.0.0.0/0
+                    ports:
+                      - 80
+                    proto: tcp
 
         ec2_vpc_igw_list:
           - name: molecule
@@ -38,14 +49,16 @@ provisioner:
           - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             subnets:
               - name: molecule-a
-                az: us-west-2a
+                az: us-east-1a
                 cidr: 192.168.0.0/25
               - name: molecule-b
-                az: us-west-2b
+                az: us-east-1b
                 cidr: 192.168.0.128/25
 
         elb_application_lb_list:
           - name: molecule-http-80
+            security_groups:
+              - "{{ _ec2_security_group_info_dict['molecule-http-80'].group_id }}"
             subnets:
               - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
               - "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
@@ -87,7 +100,7 @@ provisioner:
                   - from_port: 443
                     to_port: 443
                 endpoint_groups:
-                  - endpoint_group_region: us-west-2
+                  - endpoint_group_region: us-east-1
                     traffic_dial_percentage: 100
                     endpoint_configurations:
                       - endpoint_id:
@@ -120,7 +133,7 @@ provisioner:
                   - from_port: 444
                     to_port: 444
                 endpoint_groups:
-                  - endpoint_group_region: us-west-2
+                  - endpoint_group_region: us-east-1
                     traffic_dial_percentage: 50
                     endpoint_configurations:
                       - endpoint_id:

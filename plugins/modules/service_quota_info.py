@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -127,6 +129,8 @@ def main():
                 quota = client.get_aws_default_service_quota(
                     **request, aws_retry=True
                 ).get("Quota", {})
+            except is_boto3_error_code("NoSuchResourceException"):
+                pass
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,

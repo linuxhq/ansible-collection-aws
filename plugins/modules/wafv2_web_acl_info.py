@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -13,12 +15,14 @@ options:
   id:
     description:
       - WAFv2 web ACL ID used to limit the result set.
+      - This must not be empty when specified.
       - The module lists web ACL summaries for the selected O(scope), filters
         by ID, and then gathers each full web ACL definition.
     type: str
   name:
     description:
       - WAFv2 web ACL name used to limit the result set.
+      - This must not be empty when specified.
       - The module lists web ACL summaries for the selected O(scope), filters
         by name, and then gathers each full web ACL definition.
       - A web ACL that does not exist results in an empty list.
@@ -83,6 +87,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 
@@ -99,8 +104,14 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
+    target_id = module.params["id"]
+    target_name = module.params["name"]
+    if target_id == "":
+        module.fail_json(msg="id must not be empty")
+    if target_name == "":
+        module.fail_json(msg="name must not be empty")
 
+    client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
     require_client_methods(
         module,
         client,
@@ -112,36 +123,23 @@ def main():
     )
 
     scope = module.params["scope"].upper()
-    target_id = module.params["id"]
-    target_name = module.params["name"]
-    single_target = bool(target_id or target_name)
     summaries = []
-    marker = None
-
-    try:
-        while True:
-            request = {"Scope": scope, "Limit": 100}
-            if marker:
-                request["NextMarker"] = marker
-            response = client.list_web_acls(**request, aws_retry=True)
-
-            for summary in response.get("WebACLs", []):
-                if target_id and summary.get("Id") != target_id:
-                    continue
-                if target_name and summary.get("Name") != target_name:
-                    continue
-                summaries.append(summary)
-                if single_target:
-                    break
-
-            if single_target and summaries:
-                break
-            marker = response.get("NextMarker")
-
-            if not marker:
-                break
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to list AWS WAFv2 web ACLs for {scope}")
+    for summary in query_list(
+        module,
+        client,
+        "list_web_acls",
+        "WebACLs",
+        f"Unable to list AWS WAFv2 web ACLs for {scope}",
+        Scope=scope,
+        Limit=100,
+    ):
+        if target_id and summary.get("Id") != target_id:
+            continue
+        if target_name and summary.get("Name") != target_name:
+            continue
+        summaries.append(summary)
+        if target_id or target_name:
+            break
 
     web_acls = []
     for summary in summaries:

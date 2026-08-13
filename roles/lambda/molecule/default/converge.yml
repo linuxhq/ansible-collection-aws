@@ -1,9 +1,6 @@
 ---
 - name: Converge
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
-
   roles:
     - aws_caller_info
 
@@ -18,6 +15,12 @@
         - molecule-idempotence-notest
 
   post_tasks:
+    - name: Ensure iam role is propagated to lambda
+      ansible.builtin.pause:
+        seconds: 30
+      when:
+        - not ansible_check_mode
+
     - name: Ensure roles are delegated
       ansible.builtin.import_role:
         name: lambda

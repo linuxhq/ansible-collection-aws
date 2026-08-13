@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -99,12 +101,20 @@ def build_entity_policies(client, module, entity_type, names):
     desired_policy_name = module.params["policy_name"]
     if entity_type == "Group":
         list_operation = "list_group_policies"
-        get_policy = client.get_group_policy
+        get_operation = "get_group_policy"
     else:
         list_operation = "list_user_policies"
-        get_policy = client.get_user_policy
+        get_operation = "get_user_policy"
 
     results = []
+    if names:
+        require_client_methods(
+            module,
+            client,
+            "IAM",
+            {list_operation: (f"{entity_type}Name", "Marker", "MaxItems")},
+        )
+    get_policy = None
 
     for name in names:
         try:
@@ -130,6 +140,14 @@ def build_entity_policies(client, module, entity_type, names):
             ]
 
         policies = []
+        if policy_names and get_policy is None:
+            require_client_methods(
+                module,
+                client,
+                "IAM",
+                {get_operation: (f"{entity_type}Name", "PolicyName")},
+            )
+            get_policy = getattr(client, get_operation)
         for policy_name in policy_names:
             try:
                 policy_document = get_policy(
@@ -177,6 +195,13 @@ def entity_names(client, module, entity_type):
     if path_prefix:
         request["PathPrefix"] = path_prefix
 
+    require_client_methods(
+        module,
+        client,
+        "IAM",
+        {f"list_{entity_type.lower()}s": tuple(request) + ("Marker", "MaxItems")},
+    )
+
     entities = query_list(
         module,
         client,
@@ -209,20 +234,6 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
-
-    require_client_methods(
-        module,
-        client,
-        "IAM",
-        {
-            "list_groups": ("PathPrefix",),
-            "list_users": ("PathPrefix",),
-            "list_group_policies": ("GroupName",),
-            "list_user_policies": ("UserName",),
-            "get_group_policy": ("GroupName", "PolicyName"),
-            "get_user_policy": ("UserName", "PolicyName"),
-        },
-    )
 
     group_names = entity_names(client, module, "Group")
     user_names = entity_names(client, module, "User")

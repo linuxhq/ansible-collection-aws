@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -69,16 +71,6 @@ def main():
     )
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
 
-    require_client_methods(
-        module,
-        client,
-        "Systems Manager",
-        {
-            "list_associations": ("AssociationFilterList",),
-            "list_tags_for_resource": ("ResourceId", "ResourceType"),
-        },
-    )
-
     filters = module.params["filters"]
     request = {}
     if filters:
@@ -90,6 +82,16 @@ def main():
                 request["AssociationFilterList"].append(
                     {"key": key, "value": str(item)}
                 )
+
+    require_client_methods(
+        module,
+        client,
+        "Systems Manager",
+        {
+            "list_associations": tuple(request),
+            "list_tags_for_resource": ("ResourceId", "ResourceType"),
+        },
+    )
 
     associations = query_list(
         module,

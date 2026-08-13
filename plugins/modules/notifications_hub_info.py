@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -55,7 +57,7 @@ def main():
         module,
         client,
         "Notifications",
-        {"list_notification_hubs": ()},
+        {"list_notification_hubs": ("maxResults", "nextToken")},
     )
 
     notification_hubs = query_list(

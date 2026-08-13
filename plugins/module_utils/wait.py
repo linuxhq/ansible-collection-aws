@@ -1,3 +1,4 @@
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 try:
@@ -11,8 +12,8 @@ from ansible_collections.amazon.aws.plugins.module_utils.waiter import (
 )
 
 
-def require_positive_wait_bounds(module):
-    if not module.params.get("wait"):
+def require_positive_wait_bounds(module, always=False):
+    if not always and not module.params.get("wait"):
         return
 
     for name in ("wait_delay", "wait_timeout"):

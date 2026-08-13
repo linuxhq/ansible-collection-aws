@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -26,6 +28,7 @@ options:
       - This is required when O(state=present).
       - This list must contain at least one entry, and entry CIDR blocks must
         be unique.
+      - This list must contain at most 100 entries.
     elements: dict
     suboptions:
       cidr:
@@ -60,6 +63,7 @@ options:
   tags:
     description:
       - Tags to apply to the managed prefix list.
+      - This must contain at most 50 entries; keys must contain 1 to 127 characters and values at most 256 characters.
     type: dict
   wait:
     description:
@@ -129,6 +133,7 @@ state:
   type: str
 """
 
+import ipaddress
 import json
 
 try:
@@ -138,6 +143,9 @@ except ImportError:
 
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
+)
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -156,6 +164,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    apply_tag_deltas,
+    require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
@@ -235,6 +247,12 @@ def create_prefix_list(client, module, desired_prefix_list, desired_entries):
         if tag_specifications is not None:
             request["TagSpecifications"] = tag_specifications
 
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"create_managed_prefix_list": tuple(request)},
+    )
     try:
         prefix_list = client.create_managed_prefix_list(
             **request,
@@ -248,25 +266,42 @@ def create_prefix_list(client, module, desired_prefix_list, desired_entries):
 
     created_prefix_list_id = prefix_list.get("PrefixListId")
 
-    if created_prefix_list_id and module.params["wait"]:
+    if not created_prefix_list_id:
+        module.fail_json(
+            msg=(
+                "AWS did not return the created EC2 VPC managed prefix list "
+                f"{module.params['name']}"
+            )
+        )
+
+    if module.params["wait"]:
         wait_for_ready_state(client, module, created_prefix_list_id)
+        return get_current(client, module)
 
-    return get_current(client, module)
+    return prefix_list, desired_entries
 
 
-def delete_prefix_list(client, module, prefix_list_id):
+def delete_prefix_list(client, module, prefix_list_id, always=False):
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"delete_managed_prefix_list": ("PrefixListId",)},
+    )
     try:
         client.delete_managed_prefix_list(
             PrefixListId=prefix_list_id,
             aws_retry=True,
         )
+    except is_boto3_error_code("InvalidPrefixListID.NotFound"):
+        return
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to delete EC2 VPC managed prefix list {module.params['name']}",
         )
 
-    if prefix_list_id and module.params["wait"]:
+    if prefix_list_id and (module.params["wait"] or always):
         wait_for_prefix_list_state(
             client,
             module,
@@ -278,10 +313,25 @@ def delete_prefix_list(client, module, prefix_list_id):
 def ensure_absent(client, module):
     current = get_customer_managed_prefix_list_by_name(client, module)
 
-    changed = current is not None
+    state = (current or {}).get("State")
+    changed = current is not None and state != "delete-in-progress"
     prefix_list_id = (current or {}).get("PrefixListId")
 
-    if changed and not module.check_mode:
+    if (
+        state == "delete-in-progress"
+        and module.params["wait"]
+        and not module.check_mode
+    ):
+        wait_for_prefix_list_state(
+            client, module, prefix_list_id, "managed_prefix_list_deleted"
+        )
+    elif changed and not module.check_mode:
+        if state in {
+            "create-in-progress",
+            "modify-in-progress",
+            "restore-in-progress",
+        }:
+            wait_for_ready_state(client, module, prefix_list_id)
         delete_prefix_list(client, module, prefix_list_id)
 
     result = {
@@ -300,6 +350,17 @@ def ensure_present(client, module):
     purge_tags = module.params["purge_tags"]
     wait = module.params["wait"]
     current, current_entries = get_current(client, module)
+    if (current or {}).get("State") == "delete-in-progress":
+        if module.check_mode:
+            current = None
+        else:
+            wait_for_prefix_list_state(
+                client,
+                module,
+                current.get("PrefixListId"),
+                "managed_prefix_list_deleted",
+            )
+            return ensure_present(client, module)
     desired_entries = comparable_entries(module.params["entries"])
 
     changed = current is None
@@ -328,17 +389,18 @@ def ensure_present(client, module):
     else:
         current_prefix_list = comparable_prefix_list(current)
         current_entries = comparable_entries(current_entries)
-        remove_entries = []
-        for entry in current_entries:
-            if entry not in desired_entries:
-                remove_entries.append(entry)
-
-        add_entries = []
-        for entry in desired_entries:
-            if entry not in current_entries:
-                add_entries.append(entry)
+        remove_entries = [
+            entry for entry in current_entries if entry not in desired_entries
+        ]
+        add_entries = [
+            entry for entry in desired_entries if entry not in current_entries
+        ]
 
         resource_changed = current_prefix_list != desired_prefix_list
+        address_family_changed = (
+            current_prefix_list["address_family"]
+            != desired_prefix_list["address_family"]
+        )
         changed = bool(remove_entries or add_entries or resource_changed)
         tags_to_set, tag_keys_to_unset = ({}, [])
         if tags is not None:
@@ -350,10 +412,17 @@ def ensure_present(client, module):
         changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
         if changed and not module.check_mode:
-            if remove_entries:
-                remove_entry_requests = []
-                for entry in remove_entries:
-                    remove_entry_requests.append({"cidr": entry["cidr"]})
+            if current.get("State") in {
+                "create-in-progress",
+                "modify-in-progress",
+                "restore-in-progress",
+            }:
+                wait_for_ready_state(client, module, current.get("PrefixListId"))
+                return ensure_present(client, module)
+            if remove_entries and not address_family_changed:
+                remove_entry_requests = [
+                    {"cidr": entry["cidr"]} for entry in remove_entries
+                ]
 
                 modify_prefix_list(
                     client,
@@ -361,38 +430,47 @@ def ensure_present(client, module):
                     current,
                     remove_entries=remove_entry_requests,
                 )
-                if wait:
-                    wait_for_ready_state(
-                        client,
-                        module,
-                        current.get("PrefixListId"),
-                    )
+                wait_for_ready_state(
+                    client,
+                    module,
+                    current.get("PrefixListId"),
+                )
 
                 current, current_entries = get_current(client, module)
 
             if resource_changed:
                 current_prefix_list = comparable_prefix_list(current)
 
-                if (current_prefix_list or {}) != desired_prefix_list:
+                if address_family_changed:
+                    prefix_list_id = current.get("PrefixListId")
+                    delete_prefix_list(client, module, prefix_list_id, always=True)
+                    current, current_entries = create_prefix_list(
+                        client,
+                        module,
+                        desired_prefix_list,
+                        desired_entries,
+                    )
+                    current_prefix_list = desired_prefix_list
+                    add_entries = []
+                elif (current_prefix_list or {}) != desired_prefix_list:
                     modify_prefix_list(
                         client,
                         module,
                         current,
                         max_entries=len(desired_entries),
                     )
-                    if wait:
-                        wait_for_ready_state(
-                            client,
-                            module,
-                            current.get("PrefixListId"),
-                        )
+                    wait_for_ready_state(
+                        client,
+                        module,
+                        current.get("PrefixListId"),
+                    )
 
                     current, current_entries = get_current(client, module)
                     current_prefix_list = comparable_prefix_list(current)
 
                 if (current_prefix_list or {}) != desired_prefix_list:
                     prefix_list_id = current.get("PrefixListId")
-                    delete_prefix_list(client, module, prefix_list_id)
+                    delete_prefix_list(client, module, prefix_list_id, always=True)
                     current, current_entries = create_prefix_list(
                         client,
                         module,
@@ -414,8 +492,9 @@ def ensure_present(client, module):
                         module,
                         current.get("PrefixListId"),
                     )
-
-                current, current_entries = get_current(client, module)
+                    current, current_entries = get_current(client, module)
+                else:
+                    current_entries = desired_entries
             if current is not None and tags is not None:
                 tags_to_set, tag_keys_to_unset = compare_aws_tags(
                     boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
@@ -426,14 +505,16 @@ def ensure_present(client, module):
 
                 if prefix_list_id:
                     if tag_keys_to_unset:
-                        tags_to_delete = []
-                        for tag_key in tag_keys_to_unset:
-                            tags_to_delete.append({"Key": tag_key})
-
+                        require_client_methods(
+                            module,
+                            client,
+                            "EC2",
+                            {"delete_tags": ("Resources", "Tags")},
+                        )
                         try:
                             client.delete_tags(
                                 Resources=[prefix_list_id],
-                                Tags=tags_to_delete,
+                                Tags=[{"Key": key} for key in tag_keys_to_unset],
                                 aws_retry=True,
                             )
                         except (BotoCoreError, ClientError) as e:
@@ -446,6 +527,12 @@ def ensure_present(client, module):
                             )
 
                     if tags_to_set:
+                        require_client_methods(
+                            module,
+                            client,
+                            "EC2",
+                            {"create_tags": ("Resources", "Tags")},
+                        )
                         try:
                             client.create_tags(
                                 Resources=[prefix_list_id],
@@ -461,21 +548,14 @@ def ensure_present(client, module):
                                 ),
                             )
 
-                    current = dict(current)
-                    current_tags = boto3_tag_list_to_ansible_dict(
-                        current.get("Tags", [])
-                    )
-                    for tag_key in tag_keys_to_unset:
-                        current_tags.pop(tag_key, None)
-                    current_tags.update(tags_to_set)
-                    current["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
+                    current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
         elif changed and module.check_mode:
             current = dict(current)
             current.update(
                 snake_dict_to_camel_dict(desired_prefix_list, capitalize_first=True)
             )
             if tags is not None:
-                current["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+                current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
             current_entries = desired_entries
 
     prefix_list = boto3_resource_to_ansible_dict(
@@ -505,8 +585,23 @@ def get_current(client, module):
     if prefix_list is None:
         return None, None
 
+    if prefix_list.get("State") == "delete-in-progress":
+        return prefix_list, None
+
     prefix_list_id = prefix_list.get("PrefixListId")
 
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {
+            "get_managed_prefix_list_entries": (
+                "MaxResults",
+                "NextToken",
+                "PrefixListId",
+            )
+        },
+    )
     entries = query_list(
         module,
         client,
@@ -526,12 +621,19 @@ def modify_prefix_list(client, module, current, **kwargs):
     if "add_entries" in kwargs or "remove_entries" in kwargs:
         request["current_version"] = current.get("Version")
     request.update(kwargs)
+    request = scrub_none_parameters(
+        snake_dict_to_camel_dict(request, capitalize_first=True)
+    )
 
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"modify_managed_prefix_list": tuple(request)},
+    )
     try:
         client.modify_managed_prefix_list(
-            **scrub_none_parameters(
-                snake_dict_to_camel_dict(request, capitalize_first=True)
-            ),
+            **request,
             aws_retry=True,
         )
     except (BotoCoreError, ClientError) as e:
@@ -551,6 +653,12 @@ def wait_for_ready_state(client, module, prefix_list_id):
 
 
 def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name):
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"describe_managed_prefix_lists": ("PrefixListIds",)},
+    )
     run_waiter(
         module,
         client,
@@ -576,15 +684,16 @@ def get_customer_managed_prefix_list_by_name(client, module):
 
     matches = []
     for prefix_list in prefix_lists:
-        if prefix_list.get("OwnerId") == "AWS":
+        if (
+            prefix_list.get("OwnerId") == "AWS"
+            or prefix_list.get("State") == "delete-complete"
+        ):
             continue
 
         matches.append(prefix_list)
 
     if len(matches) > 1:
-        prefix_list_ids = []
-        for prefix_list in matches:
-            prefix_list_ids.append(prefix_list.get("PrefixListId"))
+        prefix_list_ids = [prefix_list.get("PrefixListId") for prefix_list in matches]
 
         module.fail_json(
             msg=f"More than one EC2 VPC managed prefix list matched name {name}",
@@ -654,9 +763,9 @@ def main():
         supports_check_mode=True,
     )
 
-    require_positive_wait_bounds(module)
-
     state = module.params["state"]
+    require_positive_wait_bounds(module, always=True)
+
     entries = module.params["entries"]
     tags = module.params["tags"]
 
@@ -665,9 +774,29 @@ def main():
             module.fail_json(
                 msg="entries must contain at least one item when state=present"
             )
+        if len(entries) > 100:
+            module.fail_json(msg="entries must contain at most 100 items")
 
         cidrs = set()
         for entry in entries:
+            if len(entry.get("description") or "") > 255:
+                module.fail_json(
+                    msg="entries[].description must contain at most 255 characters"
+                )
+            try:
+                cidr = ipaddress.ip_network(entry["cidr"])
+            except ValueError:
+                module.fail_json(
+                    msg=f"entries[].cidr must be a valid CIDR: {entry['cidr']}"
+                )
+            if cidr.version != int(module.params["address_family"][-1]):
+                module.fail_json(
+                    msg=(
+                        f"entries[].cidr must match address_family "
+                        f"{module.params['address_family']}: {entry['cidr']}"
+                    )
+                )
+            entry["cidr"] = str(cidr)
             if entry["cidr"] in cidrs:
                 module.fail_json(
                     msg="entries[].cidr values must be unique",
@@ -675,33 +804,15 @@ def main():
                 )
             cidrs.add(entry["cidr"])
 
+    require_valid_tags(module, tags if state == "present" else None, 50, key_max=127)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    create_parameters = ("AddressFamily", "Entries", "MaxEntries", "PrefixListName")
-    if state == "present" and tags is not None:
-        create_parameters += ("TagSpecifications",)
-
-    methods = {"describe_managed_prefix_lists": ("Filters",)}
-    if state == "present":
-        methods["create_managed_prefix_list"] = create_parameters
-        methods["delete_managed_prefix_list"] = ("PrefixListId",)
-        methods["get_managed_prefix_list_entries"] = ("PrefixListId",)
-        methods["modify_managed_prefix_list"] = (
-            "AddEntries",
-            "CurrentVersion",
-            "MaxEntries",
-            "PrefixListId",
-            "RemoveEntries",
-        )
-        if tags is not None:
-            methods["create_tags"] = ("Resources", "Tags")
-            if module.params["purge_tags"]:
-                methods["delete_tags"] = ("Resources", "Tags")
-
-    if state == "absent":
-        methods["delete_managed_prefix_list"] = ("PrefixListId",)
-
-    require_client_methods(module, client, "EC2", methods)
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"describe_managed_prefix_lists": ("Filters", "MaxResults", "NextToken")},
+    )
 
     if state == "present":
         ensure_present(client, module)

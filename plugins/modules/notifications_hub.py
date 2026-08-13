@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -57,11 +59,16 @@ state:
   type: str
 """
 
+import re
+
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
     pass
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -93,14 +100,23 @@ def get_notification_hub(client, module):
 def ensure_absent(client, module):
     region = module.params["region"]
     hub = get_notification_hub(client, module)
-    changed = hub is not None
+    status = ((hub or {}).get("statusSummary") or {}).get("status")
+    changed = hub is not None and status not in ("DEREGISTERING", "INACTIVE")
 
     if changed and not module.check_mode:
+        require_client_methods(
+            module,
+            client,
+            "Notifications",
+            {"deregister_notification_hub": ("notificationHubRegion",)},
+        )
         try:
             client.deregister_notification_hub(
                 notificationHubRegion=region,
                 aws_retry=True,
             )
+        except is_boto3_error_code("ResourceNotFoundException"):
+            pass
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
@@ -116,9 +132,16 @@ def ensure_absent(client, module):
 def ensure_present(client, module):
     region = module.params["region"]
     hub = get_notification_hub(client, module)
-    changed = hub is None
+    status = ((hub or {}).get("statusSummary") or {}).get("status")
+    changed = hub is None or status in ("DEREGISTERING", "INACTIVE")
 
     if changed and not module.check_mode:
+        require_client_methods(
+            module,
+            client,
+            "Notifications",
+            {"register_notification_hub": ("notificationHubRegion",)},
+        )
         try:
             hub = client.register_notification_hub(
                 notificationHubRegion=region,
@@ -131,6 +154,10 @@ def ensure_present(client, module):
             )
 
         hub.pop("ResponseMetadata", None)
+        if not hub.get("notificationHubRegion"):
+            module.fail_json(
+                msg=f"AWS Notifications did not return the created hub {region}"
+            )
     elif changed and module.check_mode:
         hub = {"notification_hub_region": region}
 
@@ -160,19 +187,26 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
+    region = module.params["region"]
+
+    if not 2 <= len(region) <= 25 or not re.fullmatch(
+        r"[a-z]{1,2}(?:-[a-z]{1,15})+-[0-9]", region
+    ):
+        module.fail_json(msg="region must be a valid AWS region name")
 
     client = module.client(
         "notifications",
         region="us-east-1",
-        retry_decorator=AWSRetry.jittered_backoff(),
+        retry_decorator=AWSRetry.jittered_backoff(
+            catch_extra_error_codes=["ConflictException"]
+        ),
     )
-    methods = {"list_notification_hubs": ("maxResults", "nextToken")}
-    if state == "present":
-        methods["register_notification_hub"] = ("notificationHubRegion",)
-    if state == "absent":
-        methods["deregister_notification_hub"] = ("notificationHubRegion",)
-
-    require_client_methods(module, client, "Notifications", methods)
+    require_client_methods(
+        module,
+        client,
+        "Notifications",
+        {"list_notification_hubs": ("maxResults", "nextToken")},
+    )
 
     if state == "present":
         ensure_present(client, module)

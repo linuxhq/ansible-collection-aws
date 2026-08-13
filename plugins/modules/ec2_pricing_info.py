@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -17,6 +19,7 @@ options:
     description:
       - Filters to apply when gathering products.
       - Filter entries are passed to the AWS Pricing C(GetProducts) API.
+      - This must contain at most 50 entries.
       - When omitted or empty, no API call is made and an empty product list
         is returned.
     elements: dict
@@ -36,6 +39,7 @@ options:
         default: TERM_MATCH
         description:
           - The pricing filter type.
+          - Values other than C(TERM_MATCH) require botocore 1.39.5 or later.
         type: str
       value:
         description:
@@ -182,6 +186,8 @@ def main():
 
     if max_results is not None and not 1 <= max_results <= 100:
         module.fail_json(msg="max_results must be between 1 and 100")
+    if len(filters or []) > 50:
+        module.fail_json(msg="filters must contain at most 50 entries")
 
     if not filters:
         module.exit_json(
@@ -197,12 +203,8 @@ def main():
         region="us-east-1",
     )
 
-    require_client_methods(
-        module,
-        client,
-        "AWS Pricing",
-        {"get_products": ("Filters", "FormatVersion", "MaxResults", "ServiceCode")},
-    )
+    if any(pricing_filter["type"] != "TERM_MATCH" for pricing_filter in filters):
+        module.require_botocore_at_least("1.39.5")
 
     request = scrub_none_parameters(
         {
@@ -212,17 +214,23 @@ def main():
         }
     )
 
-    request_filters = []
-    for pricing_filter in filters:
-        request_filters.append(
-            {
-                "Field": pricing_filter["field"],
-                "Type": pricing_filter["type"],
-                "Value": pricing_filter["value"],
-            }
-        )
+    request_filters = [
+        {
+            "Field": pricing_filter["field"],
+            "Type": pricing_filter["type"],
+            "Value": pricing_filter["value"],
+        }
+        for pricing_filter in filters
+    ]
 
     request["Filters"] = request_filters
+
+    require_client_methods(
+        module,
+        client,
+        "AWS Pricing",
+        {"get_products": tuple(request) + ("NextToken",)},
+    )
 
     try:
         response = paginated_query_with_retries(

@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -57,8 +59,7 @@ options:
       - This is required when O(state=absent).
       - When set with O(state=present), this pool is managed directly instead
         of searching by O(origination_identity).
-      - When set with O(state=present) and the pool does not exist, a new
-        pool with a new ID is created.
+      - When set with O(state=present), the pool must already exist.
     type: str
   purge_tags:
     default: true
@@ -77,6 +78,7 @@ options:
   tags:
     description:
       - Tags to apply to the pool.
+      - This must contain at most 200 entries; keys must contain 1 to 128 characters and values at most 256 characters.
     type: dict
   wait:
     default: true
@@ -174,6 +176,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_arn_tags,
+    require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
@@ -260,6 +263,8 @@ def wait_for_pool_active(client, module, pool_id):
             return pool
 
         if status == "DELETING":
+            if module.params.get("state") == "absent":
+                return pool
             module.fail_json(
                 msg=(
                     "AWS End User Messaging SMS phone pool "
@@ -271,7 +276,12 @@ def wait_for_pool_active(client, module, pool_id):
                 pool_id=pool_id,
                 status=status,
             )
-        time.sleep(module.params["wait_delay"])
+        time.sleep(
+            min(
+                module.params["wait_delay"],
+                max(0, deadline - time.monotonic()),
+            )
+        )
 
     module.fail_json(
         msg=(
@@ -294,6 +304,7 @@ def find_pool(client, module):
         {"message-type": module.params["message_type"]}
     )
     iso_country_code = module.params["iso_country_code"]
+    matches = []
 
     for pool in describe_pools(client, module, Filters=filters, Owner="SELF"):
         if pool.get("Status") == "DELETING":
@@ -314,9 +325,23 @@ def find_pool(client, module):
             ):
                 continue
 
-            return pool_with_tags(client, module, pool)
+            pool = pool_with_tags(client, module, pool)
+            if (
+                boto3_tag_list_to_ansible_dict(pool.get("Tags", [])).get("Name")
+                == module.params["name"]
+            ):
+                matches.append(pool)
+                break
 
-    return None
+    if len(matches) > 1:
+        module.fail_json(
+            msg=(
+                f"Multiple Pinpoint SMS Voice V2 pools matched name "
+                f"{module.params['name']}: "
+                + ", ".join(sorted(pool.get("PoolId", "") for pool in matches))
+            )
+        )
+    return matches[0] if matches else None
 
 
 def exit_result(module, changed, pool):
@@ -348,6 +373,36 @@ def ensure_absent(client, module):
     response = current
 
     if changed and not module.check_mode:
+        if current.get("Status") != "ACTIVE":
+            current = wait_for_pool_active(client, module, pool_id)
+            if current.get("Status") == "DELETING":
+                exit_result(module, True, current)
+
+        if current.get("DeletionProtectionEnabled"):
+            try:
+                current = client.update_pool(
+                    PoolId=pool_id,
+                    DeletionProtectionEnabled=False,
+                    aws_retry=True,
+                )
+            except is_boto3_error_code("ResourceNotFoundException"):
+                exit_result(module, True, None)
+            except (BotoCoreError, ClientError) as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        "Unable to disable deletion protection for Pinpoint "
+                        f"SMS Voice V2 pool {pool_id}"
+                    ),
+                )
+
+        if current.get("Status") != "ACTIVE" or current.get(
+            "DeletionProtectionEnabled"
+        ):
+            current = wait_for_pool_active(client, module, pool_id)
+            if current.get("Status") == "DELETING":
+                exit_result(module, True, current)
+
         try:
             response = client.delete_pool(
                 PoolId=pool_id,
@@ -371,6 +426,13 @@ def ensure_present(client, module):
     message_type = module.params["message_type"]
     wait = module.params["wait"]
     current = find_pool(client, module)
+    if current is None and module.params.get("pool_id") is not None:
+        module.fail_json(
+            msg=(
+                "Pinpoint SMS Voice V2 pool "
+                f"{module.params['pool_id']} does not exist"
+            )
+        )
 
     if current is not None and current.get("MessageType") != message_type:
         module.fail_json(
@@ -410,6 +472,27 @@ def ensure_present(client, module):
         update_request or tags_to_set or tag_keys_to_unset
     )
 
+    if (
+        changed
+        and not module.check_mode
+        and current is not None
+        and current.get("Status") != "ACTIVE"
+        and current.get("PoolId")
+    ):
+        wait_for_pool_active(client, module, current["PoolId"])
+        current = get_pool_by_id(client, module, current["PoolId"]) or current
+        update_request = {}
+        if current.get("DeletionProtectionEnabled") != deletion_protection_enabled:
+            update_request["DeletionProtectionEnabled"] = deletion_protection_enabled
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(
+            boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
+            tags,
+            purge_tags=(
+                module.params["purge_tags"] if user_tags is not None else False
+            ),
+        )
+        changed = bool(update_request or tags_to_set or tag_keys_to_unset)
+
     if changed and not module.check_mode:
         pool_changed = current is None or bool(update_request)
         if current is None:
@@ -436,8 +519,23 @@ def ensure_present(client, module):
                 )
 
             current.pop("ResponseMetadata", None)
+            if not current.get("PoolId"):
+                module.fail_json(
+                    msg="AWS did not return the created Pinpoint SMS Voice V2 pool"
+                )
+            current["OriginationIdentities"] = [
+                scrub_none_parameters(
+                    {
+                        "OriginationIdentity": module.params["origination_identity"],
+                        "IsoCountryCode": module.params["iso_country_code"],
+                    }
+                )
+            ]
+            current["Tags"] = request["Tags"]
+            tags_to_set, tag_keys_to_unset = ({}, [])
         else:
             if update_request:
+                previous = current
                 try:
                     current = client.update_pool(
                         PoolId=current["PoolId"],
@@ -454,6 +552,22 @@ def ensure_present(client, module):
                     )
 
                 current.pop("ResponseMetadata", None)
+                if not current.get("PoolId"):
+                    module.fail_json(
+                        msg="AWS did not return the updated Pinpoint SMS Voice V2 pool"
+                    )
+                current["OriginationIdentities"] = previous.get(
+                    "OriginationIdentities", []
+                )
+                current["Tags"] = previous.get("Tags", [])
+
+                if (tags_to_set or tag_keys_to_unset) and current.get(
+                    "Status"
+                ) != "ACTIVE":
+                    active = wait_for_pool_active(client, module, current["PoolId"])
+                    active["OriginationIdentities"] = current["OriginationIdentities"]
+                    active["Tags"] = current["Tags"]
+                    current = active
 
             arn = current.get("PoolArn")
 
@@ -469,16 +583,15 @@ def ensure_present(client, module):
                 "Pinpoint SMS Voice V2 pool",
             )
 
-            if not update_request:
-                current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
+            current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
 
-        if wait and current.get("Status") != "ACTIVE" and current.get("PoolId"):
-            wait_for_pool_active(client, module, current["PoolId"])
-            pool_changed = True
+        if wait and pool_changed and current.get("PoolId"):
+            if current.get("Status") != "ACTIVE":
+                wait_for_pool_active(client, module, current["PoolId"])
 
-        if pool_changed and current.get("PoolId"):
             current = get_pool_by_id(client, module, current["PoolId"]) or current
     elif changed and module.check_mode:
+        new_pool = current is None
         current = dict(current or {})
         current.update(
             {
@@ -487,14 +600,15 @@ def ensure_present(client, module):
                 "Status": current.get("Status") or "ACTIVE",
             }
         )
-        current["OriginationIdentities"] = current.get("OriginationIdentities") or [
-            scrub_none_parameters(
-                {
-                    "OriginationIdentity": module.params["origination_identity"],
-                    "IsoCountryCode": module.params["iso_country_code"],
-                }
-            )
-        ]
+        if new_pool:
+            current["OriginationIdentities"] = [
+                scrub_none_parameters(
+                    {
+                        "OriginationIdentity": module.params["origination_identity"],
+                        "IsoCountryCode": module.params["iso_country_code"],
+                    }
+                )
+            ]
         current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
 
     exit_result(module, changed, current)
@@ -544,30 +658,51 @@ def main():
                 msg="iso_country_code must be exactly two uppercase letters"
             )
 
-        require_positive_wait_bounds(module)
+    require_valid_tags(
+        module, module.params["tags"] if state == "present" else None, 200
+    )
+    if state == "present":
+        tags = dict(module.params["tags"] or {})
+        tags["Name"] = module.params["name"]
+        require_valid_tags(module, tags, 200)
+    require_positive_wait_bounds(module, always=True)
 
     client = module.client(
         "pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff()
     )
-    methods = {"describe_pools": ("Filters", "Owner", "PoolIds")}
+    describe_parameters = (
+        ("PoolIds",)
+        if state == "absent" or module.params["pool_id"] is not None
+        else ("Filters", "Owner")
+    ) + ("MaxResults", "NextToken")
+    methods = {"describe_pools": describe_parameters}
     if state == "present":
-        methods["create_pool"] = (
-            "ClientToken",
+        create_parameters = (
             "DeletionProtectionEnabled",
-            "IsoCountryCode",
             "MessageType",
             "OriginationIdentity",
             "Tags",
         )
-        methods["list_pool_origination_identities"] = ("PoolId",)
+        if module.params["client_token"] is not None:
+            create_parameters += ("ClientToken",)
+        if module.params["iso_country_code"] is not None:
+            create_parameters += ("IsoCountryCode",)
+        methods["create_pool"] = create_parameters
+        methods["list_pool_origination_identities"] = (
+            "PoolId",
+            "MaxResults",
+            "NextToken",
+        )
         methods["list_tags_for_resource"] = ("ResourceArn",)
-        methods["tag_resource"] = ("ResourceArn", "Tags")
+        if module.params["pool_id"] is not None or module.params["tags"] is not None:
+            methods["tag_resource"] = ("ResourceArn", "Tags")
         methods["update_pool"] = ("DeletionProtectionEnabled", "PoolId")
         if module.params["tags"] is not None and module.params["purge_tags"]:
             methods["untag_resource"] = ("ResourceArn", "TagKeys")
 
     if state == "absent":
         methods["delete_pool"] = ("PoolId",)
+        methods["update_pool"] = ("DeletionProtectionEnabled", "PoolId")
 
     require_client_methods(module, client, "Pinpoint SMS Voice V2", methods)
 

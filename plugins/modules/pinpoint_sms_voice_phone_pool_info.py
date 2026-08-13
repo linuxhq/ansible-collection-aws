@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -16,6 +18,7 @@ options:
       - A dict of filters to apply when describing phone pools.
       - Filter names and values are passed to the Pinpoint SMS Voice V2
         C(DescribePools) API.
+      - This must contain at most 20 filters.
     type: dict
   max_results:
     description:
@@ -27,14 +30,15 @@ options:
     choices:
       - SELF
       - SHARED
-    default: SELF
     description:
       - The phone pool owner to query.
+      - Defaults to C(SELF) when O(pool_ids) is omitted.
       - Mutually exclusive with O(pool_ids).
     type: str
   pool_ids:
     description:
       - Phone pool IDs used to limit the result set.
+      - This must contain at most 5 entries.
       - Mutually exclusive with O(owner).
     elements: str
     type: list
@@ -101,7 +105,7 @@ def main():
     argument_spec = {
         "filters": {"type": "dict"},
         "max_results": {"type": "int"},
-        "owner": {"choices": ["SELF", "SHARED"], "default": "SELF", "type": "str"},
+        "owner": {"choices": ["SELF", "SHARED"], "type": "str"},
         "pool_ids": {"elements": "str", "type": "list"},
     }
 
@@ -112,11 +116,15 @@ def main():
     )
     filters = module.params["filters"]
     max_results = module.params["max_results"]
-    owner = module.params["owner"]
-    pool_ids = module.params["pool_ids"]
+    owner = module.params["owner"] or "SELF"
+    pool_ids = list(dict.fromkeys(module.params["pool_ids"] or []))
 
     if max_results is not None and not 1 <= max_results <= 100:
         module.fail_json(msg="max_results must be between 1 and 100")
+    if len(filters or {}) > 20:
+        module.fail_json(msg="filters must contain at most 20 entries")
+    if len(pool_ids) > 5:
+        module.fail_json(msg="pool_ids must contain at most 5 entries")
 
     client = module.client(
         "pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff()
@@ -136,7 +144,17 @@ def main():
         module,
         client,
         "Pinpoint SMS Voice V2",
-        {"describe_pools": tuple(request)},
+        {
+            "describe_pools": tuple(
+                dict.fromkeys((*request, "MaxResults", "NextToken"))
+            ),
+            "list_pool_origination_identities": (
+                "PoolId",
+                "MaxResults",
+                "NextToken",
+            ),
+            "list_tags_for_resource": ("ResourceArn",),
+        },
     )
 
     pools = query_list(

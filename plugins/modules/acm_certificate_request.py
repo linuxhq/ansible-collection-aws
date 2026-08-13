@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -34,11 +36,13 @@ options:
   subject_alternative_names:
     description:
       - Subject alternative names for the certificate.
+      - This must contain at most 99 additional entries after normalization because ACM allows 100 domain names including O(domain_name).
     elements: str
     type: list
   tags:
     description:
       - Tags to apply to the certificate.
+      - This must contain at most 50 entries; keys must contain 1 to 128 characters and values at most 256 characters.
     type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -74,6 +78,9 @@ except ImportError:
     pass
 
 from ansible.module_utils.common.text.converters import to_bytes
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
@@ -88,6 +95,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tags
 
 
 def main():
@@ -103,9 +111,16 @@ def main():
     )
 
     domain_name = module.params["domain_name"]
+    normalized_domain_name = domain_name.lower()
     idempotency_token = module.params["idempotency_token"]
     purge_tags = module.params["purge_tags"]
-    subject_alternative_names = module.params["subject_alternative_names"]
+    subject_alternative_names = list(
+        dict.fromkeys(
+            name.lower()
+            for name in module.params["subject_alternative_names"] or []
+            if name.lower() != normalized_domain_name
+        )
+    )
     tags = module.params["tags"]
 
     if idempotency_token is not None and not re.fullmatch(
@@ -114,26 +129,35 @@ def main():
         module.fail_json(
             msg="ACM certificate request idempotency_token must be 1 to 32 ASCII word characters"
         )
+    if len(subject_alternative_names) > 99:
+        module.fail_json(
+            msg="subject_alternative_names must contain at most 99 additional entries"
+        )
+    require_valid_tags(module, tags, 50)
 
     client = module.client("acm", retry_decorator=AWSRetry.jittered_backoff())
 
-    methods = {
-        "describe_certificate": (),
-        "list_certificates": (),
-        "request_certificate": (),
-    }
-    if tags is not None:
-        methods["add_tags_to_certificate"] = ()
-        methods["list_tags_for_certificate"] = ()
-        if purge_tags:
-            methods["remove_tags_from_certificate"] = ()
+    request_parameters = ["DomainName", "IdempotencyToken", "ValidationMethod"]
+    if subject_alternative_names:
+        request_parameters.append("SubjectAlternativeNames")
+    if tags:
+        request_parameters.append("Tags")
 
-    require_client_methods(module, client, "AWS Certificate Manager", methods)
+    require_client_methods(
+        module,
+        client,
+        "AWS Certificate Manager",
+        {
+            "list_certificates": (
+                "CertificateStatuses",
+                "MaxItems",
+                "NextToken",
+            )
+        },
+    )
 
-    normalized_domain_name = domain_name.lower()
     desired_names = {normalized_domain_name}
-    for name in subject_alternative_names or []:
-        desired_names.add(name.lower())
+    desired_names.update(subject_alternative_names)
 
     summaries = query_list(
         module,
@@ -143,6 +167,17 @@ def main():
         "Unable to list AWS Certificate Manager certificates",
         CertificateStatuses=["PENDING_VALIDATION", "ISSUED"],
     )
+
+    if any(
+        summary.get("DomainName", "").lower() == normalized_domain_name
+        for summary in summaries
+    ):
+        require_client_methods(
+            module,
+            client,
+            "AWS Certificate Manager",
+            {"describe_certificate": ("CertificateArn",)},
+        )
 
     matched = None
     for summary in summaries:
@@ -156,6 +191,8 @@ def main():
                 CertificateArn=certificate_arn,
                 aws_retry=True,
             ).get("Certificate", {})
+        except is_boto3_error_code("ResourceNotFoundException"):
+            continue
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
@@ -164,7 +201,6 @@ def main():
                     f"{certificate_arn}"
                 ),
             )
-
         if certificate.get("Type") != "AMAZON_ISSUED":
             continue
 
@@ -191,12 +227,17 @@ def main():
         if module.check_mode:
             module.exit_json(changed=True)
 
+        require_client_methods(
+            module,
+            client,
+            "AWS Certificate Manager",
+            {"request_certificate": tuple(request_parameters)},
+        )
+
         if idempotency_token is None:
             token_data = {
                 "domain_name": normalized_domain_name,
-                "subject_alternative_names": sorted(
-                    name.lower() for name in subject_alternative_names or []
-                ),
+                "subject_alternative_names": sorted(subject_alternative_names),
             }
             idempotency_token = hashlib.sha256(
                 to_bytes(json.dumps(token_data, separators=(",", ":"), sort_keys=True))
@@ -224,12 +265,25 @@ def main():
                     f"{domain_name}"
                 ),
             )
+        if not certificate_arn:
+            module.fail_json(
+                msg=(
+                    "AWS Certificate Manager did not return an ARN for "
+                    f"certificate {domain_name}"
+                )
+            )
     else:
         certificate_arn = matched["CertificateArn"]
 
     changed = created
 
     if not created and tags is not None:
+        require_client_methods(
+            module,
+            client,
+            "AWS Certificate Manager",
+            {"list_tags_for_certificate": ("CertificateArn",)},
+        )
         try:
             current_tags = boto3_tag_list_to_ansible_dict(
                 client.list_tags_for_certificate(
@@ -253,6 +307,19 @@ def main():
         )
 
         changed = bool(tags_to_set or tag_keys_to_unset)
+
+        tag_methods = {}
+        if tag_keys_to_unset and not module.check_mode:
+            tag_methods["remove_tags_from_certificate"] = ("CertificateArn", "Tags")
+        if tags_to_set and not module.check_mode:
+            tag_methods["add_tags_to_certificate"] = ("CertificateArn", "Tags")
+        if tag_methods:
+            require_client_methods(
+                module,
+                client,
+                "AWS Certificate Manager",
+                tag_methods,
+            )
 
         if tag_keys_to_unset and not module.check_mode:
             try:

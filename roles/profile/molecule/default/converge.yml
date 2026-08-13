@@ -5,6 +5,11 @@
     PATH: '/opt/awscli/bin'
 
   roles:
+    - role: awscli
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
     - role: profile
       tags:
         - molecule-idempotence-notest

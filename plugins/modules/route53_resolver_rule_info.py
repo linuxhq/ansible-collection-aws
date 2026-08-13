@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -79,9 +81,13 @@ def main():
         client,
         "Route53 Resolver",
         {
-            "list_resolver_rules": ("Filters",),
-            "list_resolver_rule_associations": ("Filters",),
-            "list_tags_for_resource": ("ResourceArn",),
+            "list_resolver_rules": ("Filters", "MaxResults", "NextToken"),
+            "list_resolver_rule_associations": (
+                "Filters",
+                "MaxResults",
+                "NextToken",
+            ),
+            "list_tags_for_resource": ("MaxResults", "NextToken", "ResourceArn"),
         },
     )
 

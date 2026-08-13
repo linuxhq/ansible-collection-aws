@@ -1,9 +1,6 @@
 ---
 - name: Verify
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
-
   tasks:
     - name: Ensure role is included without name
       ansible.builtin.include_role:

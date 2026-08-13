@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -102,6 +104,9 @@ def main():
         ).get("VerificationToken")
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS SES tokens for {identity}")
+
+    if not dkim_tokens or not verification_token:
+        module.fail_json(msg=f"AWS SES did not return domain tokens for {identity}")
 
     module.exit_json(
         changed=False,

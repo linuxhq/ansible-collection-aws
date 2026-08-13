@@ -1,9 +1,6 @@
 ---
 - name: Verify
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
-
   roles:
     - aws_az_info
     - aws_caller_info
@@ -13,15 +10,15 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _sns_topic_info_dict['molecule-bounce'].display_name is defined
-          - _sns_topic_info_dict['molecule-bounce'].subscriptions | length == 1
-          - _sns_topic_info_dict['molecule-bounce'].topic_arn is defined
-          - _sns_topic_info_dict['molecule-complaint'].display_name is defined
-          - _sns_topic_info_dict['molecule-complaint'].subscriptions | length == 1
-          - _sns_topic_info_dict['molecule-complaint'].topic_arn is defined
-          - _sns_topic_info_dict['molecule-delivery'].display_name is defined
-          - _sns_topic_info_dict['molecule-delivery'].subscriptions | length == 1
-          - _sns_topic_info_dict['molecule-delivery'].topic_arn is defined
+          - _sns_topic_info_dict['molecule-info-bounce'].display_name is defined
+          - _sns_topic_info_dict['molecule-info-bounce'].subscriptions | length == 1
+          - _sns_topic_info_dict['molecule-info-bounce'].topic_arn is defined
+          - _sns_topic_info_dict['molecule-info-complaint'].display_name is defined
+          - _sns_topic_info_dict['molecule-info-complaint'].subscriptions | length == 1
+          - _sns_topic_info_dict['molecule-info-complaint'].topic_arn is defined
+          - _sns_topic_info_dict['molecule-info-delivery'].display_name is defined
+          - _sns_topic_info_dict['molecule-info-delivery'].subscriptions | length == 1
+          - _sns_topic_info_dict['molecule-info-delivery'].topic_arn is defined
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

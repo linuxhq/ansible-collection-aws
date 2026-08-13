@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -105,25 +107,30 @@ def main():
     )
     client = module.client("glue", retry_decorator=AWSRetry.jittered_backoff())
 
-    require_client_methods(
-        module,
-        client,
-        "AWS Glue",
-        {
-            "get_connection": (
-                "ApplyOverrideForComputeEnvironment",
-                "CatalogId",
-                "HidePassword",
-                "Name",
-            ),
-            "get_connections": ("CatalogId", "Filter", "HidePassword"),
-        },
-    )
-
     apply_override = module.params["apply_override_for_compute_environment"]
     catalog_id = module.params["catalog_id"]
     filters = module.params["filters"]
     name = module.params["name"]
+
+    required_parameters = []
+    if name and apply_override is not None:
+        required_parameters.append("ApplyOverrideForComputeEnvironment")
+    if catalog_id:
+        required_parameters.append("CatalogId")
+    if not name and filters:
+        required_parameters.append("Filter")
+    required_parameters.append("HidePassword")
+    if name:
+        required_parameters.append("Name")
+    else:
+        required_parameters.extend(("MaxResults", "NextToken"))
+
+    require_client_methods(
+        module,
+        client,
+        "AWS Glue",
+        {"get_connection" if name else "get_connections": tuple(required_parameters)},
+    )
 
     request = {"HidePassword": module.params["hide_password"]}
     if catalog_id:

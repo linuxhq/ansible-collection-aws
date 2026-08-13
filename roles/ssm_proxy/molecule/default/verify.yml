@@ -1,27 +1,21 @@
 ---
 - name: Verify
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin:/usr/bin:/usr/local/bin'
 
   pre_tasks:
-    - name: Ensure aws session manager proxy dependencies are present
-      become: true
-      ansible.builtin.pip:
-        name: psutil
-        virtualenv: /opt/awscli
-
     - name: Ensure aws session manager proxy process is identified
-      community.general.pids:
-        pattern: session-manager-plugin
+      ansible.builtin.command:
+        cmd: pgrep -f session-manager-plugin
       register: __ssm_proxy_pid
+      changed_when: false
+      failed_when: false
 
     - name: Ensure aws session manager proxy process is terminated
       ansible.builtin.command:
         cmd: >
-          kill -SIGTERM "{{ __ssm_proxy_pid.pids.0 }}"
+          kill -SIGTERM "{{ __ssm_proxy_pid.stdout_lines.0 }}"
       when:
-        - __ssm_proxy_pid.pids.0 is defined
+        - __ssm_proxy_pid.stdout_lines.0 is defined
 
   roles:
     - aws_az_info

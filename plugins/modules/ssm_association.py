@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -8,9 +10,8 @@ description:
   - Manages AWS Systems Manager associations.
   - Manages the schedule expression, targets, and tags of an association
     keyed by its document name.
-  - Updates replace the association definition; fields not managed by this
-    module, such as association parameters, are removed by the AWS
-    C(UpdateAssociation) API.
+  - Updates preserve association fields not managed by this module, such as
+    association parameters.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -42,6 +43,7 @@ options:
   tags:
     description:
       - Tags to apply to the association.
+      - This must contain at most 1000 entries; keys must contain 1 to 128 characters and values at most 256 characters.
     type: dict
   targets:
     description:
@@ -53,11 +55,13 @@ options:
       key:
         description:
           - The target key.
+          - This must be 1 to 163 characters.
         required: true
         type: str
       values:
         description:
           - The target values.
+          - This must contain at most 50 entries.
         elements: str
         required: true
         type: list
@@ -116,6 +120,10 @@ except ImportError:
 from ansible.module_utils.common.dict_transformations import (
     snake_dict_to_camel_dict,
 )
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    get_boto3_client_method_parameters,
+    is_boto3_error_code,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
@@ -134,6 +142,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_ssm_tags,
+    require_valid_tags,
 )
 
 SSM_ASSOCIATION_RESOURCE_TYPE = "Association"
@@ -146,9 +155,25 @@ def comparable_targets(targets):
         item = dict(TARGET_DEFAULTS, **target)
 
         if item.get("values"):
-            item["values"] = sorted(item["values"])
+            item["values"] = sorted(set(item["values"]))
         normalized.append(item)
-    return sorted(normalized, key=lambda item: json.dumps(item, sort_keys=True))
+    unique = {json.dumps(item, sort_keys=True): item for item in normalized}
+    return [unique[key] for key in sorted(unique)]
+
+
+def describe_association(client, module, association_id):
+    try:
+        return client.describe_association(
+            AssociationId=association_id,
+            aws_retry=True,
+        ).get("AssociationDescription")
+    except is_boto3_error_code("AssociationDoesNotExist"):
+        return None
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to describe AWS Systems Manager association {association_id}",
+        )
 
 
 def ensure_absent(client, module, current):
@@ -159,6 +184,8 @@ def ensure_absent(client, module, current):
     if changed and not module.check_mode:
         try:
             client.delete_association(AssociationId=association_id, aws_retry=True)
+        except is_boto3_error_code("AssociationDoesNotExist"):
+            pass
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
@@ -251,29 +278,49 @@ def ensure_present(client, module, current):
                     e,
                     msg=f"Unable to create AWS Systems Manager association {name}",
                 )
+            if not association.get("AssociationId"):
+                module.fail_json(
+                    msg=(
+                        "AWS Systems Manager did not return the created association "
+                        f"{name}"
+                    )
+                )
+            if tags is not None:
+                association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
     else:
         changed = (current_comparable or {}) != desired_comparable
         resource_changed = changed
         if changed and not module.check_mode:
+            update_request = {
+                parameter: current.get(parameter)
+                for parameter in get_boto3_client_method_parameters(
+                    client, "update_association"
+                )
+            }
+            update_request.update(
+                {
+                    "AssociationId": association_id,
+                    "ScheduleExpression": schedule_expression,
+                    "Targets": desired["Targets"],
+                }
+            )
             try:
                 association = client.update_association(
-                    **scrub_none_parameters(
-                        snake_dict_to_camel_dict(
-                            {
-                                "association_id": association_id,
-                                "schedule_expression": schedule_expression,
-                                "targets": aws_targets,
-                            },
-                            capitalize_first=True,
-                        )
-                    ),
+                    **scrub_none_parameters(update_request),
                     aws_retry=True,
                 ).get("AssociationDescription", {})
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to update AWS Systems Manager association {name}",
+                )
+            if not association.get("AssociationId"):
+                module.fail_json(
+                    msg=(
+                        "AWS Systems Manager did not return the updated association "
+                        f"{name}"
+                    )
                 )
 
         elif changed and module.check_mode:
@@ -295,7 +342,7 @@ def ensure_present(client, module, current):
         association_id = association.get("AssociationId")
 
         if association_id and tags is not None:
-            if resource_changed:
+            if resource_changed and current is not None:
                 association = association_with_tags(client, module, association)
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
                 boto3_tag_list_to_ansible_dict(association.get("Tags", [])),
@@ -398,14 +445,28 @@ def main():
         if not 1 <= len(module.params["schedule_expression"]) <= 256:
             module.fail_json(msg="schedule_expression must be 1 to 256 characters")
 
-        if len(module.params["targets"]) > 5:
+        if len(comparable_targets(module.params["targets"])) > 5:
             module.fail_json(msg="targets must contain at most 5 targets")
+        for target in module.params["targets"]:
+            if not 1 <= len(target["key"]) <= 163:
+                module.fail_json(msg="targets[].key must be 1 to 163 characters")
+            if not target["values"]:
+                module.fail_json(msg="targets[].values must contain at least one entry")
+            if len(set(target["values"])) > 50:
+                module.fail_json(msg="targets[].values must contain at most 50 entries")
+        require_valid_tags(module, tags, 1000)
 
-    client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
+    client = module.client(
+        "ssm",
+        retry_decorator=AWSRetry.jittered_backoff(
+            catch_extra_error_codes=["TooManyUpdates"]
+        ),
+    )
     methods = {
         "list_associations": ("AssociationFilterList", "MaxResults", "NextToken"),
     }
     if state == "present":
+        methods["describe_association"] = ("AssociationId",)
         methods["create_association"] = ("Name", "ScheduleExpression", "Targets")
         methods["update_association"] = (
             "AssociationId",
@@ -459,6 +520,9 @@ def main():
         )
 
     current = matches[0] if matches else None
+
+    if state == "present" and current is not None:
+        current = describe_association(client, module, current["AssociationId"])
 
     if state == "present":
         ensure_present(client, module, current)

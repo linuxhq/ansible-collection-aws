@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -135,33 +137,41 @@ def main():
         supports_check_mode=True,
     )
 
-    if len(module.params["additional_contact_email_addresses"]) > 4:
+    if len(set(module.params["additional_contact_email_addresses"])) > 4:
         module.fail_json(
             msg="additional_contact_email_addresses must contain at most 4 addresses"
         )
 
+    use_case_description = module.params["use_case_description"]
+    website_url = module.params["website_url"]
+    if use_case_description is not None and (
+        not use_case_description.strip() or not website_url.strip()
+    ):
+        module.fail_json(
+            msg="use_case_description and website_url must be non-empty strings"
+        )
+    ready = use_case_description is not None and website_url is not None
+
     client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
 
+    methods = {"get_account": ()}
+    if ready:
+        methods["put_account_details"] = (
+            "AdditionalContactEmailAddresses",
+            "ContactLanguage",
+            "MailType",
+            "ProductionAccessEnabled",
+            "UseCaseDescription",
+            "WebsiteURL",
+        )
     require_client_methods(
         module,
         client,
         "SESv2",
-        {
-            "get_account": (),
-            "put_account_details": (
-                "AdditionalContactEmailAddresses",
-                "ContactLanguage",
-                "MailType",
-                "ProductionAccessEnabled",
-                "UseCaseDescription",
-                "WebsiteURL",
-            ),
-        },
+        methods,
     )
 
     current_account = get_account(client, module)
-    use_case_description = module.params["use_case_description"]
-    website_url = module.params["website_url"]
     desired_details = comparable_details(
         {
             "additional_contact_email_addresses": module.params[
@@ -189,7 +199,6 @@ def main():
         ),
     }
 
-    ready = use_case_description is not None and website_url is not None
     changed = ready and current != desired
 
     if changed and not module.check_mode:
@@ -205,7 +214,9 @@ def main():
                 e, msg="Unable to manage AWS Simple Email Service account details"
             )
 
-        current_account = get_account(client, module)
+        if changed:
+            current_account = dict(current_account)
+            current_account.update(desired)
     elif changed and module.check_mode:
         current_account = dict(current_account)
         current_account.update(desired)

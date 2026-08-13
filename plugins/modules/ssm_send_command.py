@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -22,6 +24,8 @@ options:
   instance_ids:
     description:
       - A list of instance IDs to target directly.
+      - Entries must not be empty.
+      - This must contain at most 50 entries.
       - At least one of O(instance_ids) or O(targets) is required.
       - Mutually exclusive with O(targets).
     elements: str
@@ -42,6 +46,7 @@ options:
   targets:
     description:
       - The command targets.
+      - This must contain at most 5 entries.
       - Target keys may be provided in snake_case or AWS native PascalCase.
       - Each target requires a target key and values.
       - At least one of O(instance_ids) or O(targets) is required.
@@ -51,11 +56,13 @@ options:
       key:
         description:
           - The target key.
+          - This must be 1 to 163 characters.
         required: true
         type: str
       values:
         description:
           - The target values.
+          - This must contain at most 50 entries.
         elements: str
         required: true
         type: list
@@ -205,19 +212,46 @@ def main():
         supports_check_mode=True,
     )
 
+    timeout_seconds = module.params["timeout_seconds"]
+    instance_ids = list(dict.fromkeys(module.params["instance_ids"] or []))
+    targets = [
+        {"key": key, "values": list(values)}
+        for key, values in dict.fromkeys(
+            (target.get("key"), tuple(dict.fromkeys(target["values"])))
+            for target in module.params["targets"] or []
+        )
+    ]
+    if timeout_seconds is not None and not 30 <= timeout_seconds <= 2592000:
+        module.fail_json(msg="timeout_seconds must be between 30 and 2592000")
+    if not instance_ids and not targets:
+        module.fail_json(msg="instance_ids or targets must contain at least one entry")
+    if len(instance_ids) > 50:
+        module.fail_json(msg="instance_ids must contain at most 50 entries")
+    if any(not instance_id for instance_id in instance_ids):
+        module.fail_json(msg="instance_ids must not contain empty entries")
+    if len(targets) > 5:
+        module.fail_json(msg="targets must contain at most 5 entries")
+    for target in targets:
+        if not target["key"] or not 1 <= len(target["key"]) <= 163:
+            module.fail_json(msg="targets[].key must be 1 to 163 characters")
+        if not target["values"]:
+            module.fail_json(msg="targets[].values must contain at least one entry")
+        if len(target["values"]) > 50:
+            module.fail_json(msg="targets[].values must contain at most 50 entries")
+
     require_positive_wait_bounds(module)
 
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
     document_name = module.params["document_name"]
     parameters = module.params["parameters"]
-    targets = module.params["targets"]
     wait = module.params["wait"]
     send_command_request = {
         option: module.params[option] for option in SEND_COMMAND_OPTIONS
     }
     send_command_request["document_name"] = document_name
+    send_command_request["instance_ids"] = instance_ids or None
     send_command_request["parameters"] = parameters
-    if targets is not None:
+    if targets:
         send_command_request["targets"] = [
             snake_dict_to_camel_dict(target, capitalize_first=True)
             for target in targets
@@ -247,6 +281,14 @@ def main():
             msg=(
                 "Unable to send AWS Systems Manager command using " f"{document_name}"
             ),
+        )
+
+    if not command.get("CommandId"):
+        module.fail_json(
+            msg=(
+                "AWS Systems Manager did not return an ID for the command using "
+                f"{document_name}"
+            )
         )
 
     result = {
@@ -289,31 +331,31 @@ def main():
                 )
 
             command = commands[0]
-            statuses = {
-                invocation.get("Status")
-                for invocation in invocations
-                if invocation.get("Status")
-            }
+            statuses = {invocation.get("Status") for invocation in invocations}
             command_status = command.get("Status")
 
             if command_status in TERMINAL_STATUSES and not invocations:
-                if command_status in SUCCESS_STATUSES:
+                if (
+                    command_status in SUCCESS_STATUSES
+                    and command.get("TargetCount") == 0
+                ):
                     module.warn(
                         f"AWS Systems Manager command {command_id} completed "
                         "without invocations; no targets matched"
                     )
                     break
 
-                module.fail_json(
-                    msg=(
-                        f"AWS Systems Manager command {command_id} did not complete "
-                        "successfully"
-                    ),
-                    command=normalize_command(command),
-                    command_id=command_id,
-                    command_invocations=[],
-                    status=command_status,
-                )
+                if command_status not in SUCCESS_STATUSES:
+                    module.fail_json(
+                        msg=(
+                            f"AWS Systems Manager command {command_id} did not "
+                            "complete successfully"
+                        ),
+                        command=normalize_command(command),
+                        command_id=command_id,
+                        command_invocations=[],
+                        status=command_status,
+                    )
 
             if (
                 command_status in TERMINAL_STATUSES
@@ -321,7 +363,9 @@ def main():
                 and statuses
                 and statuses.issubset(TERMINAL_STATUSES)
             ):
-                if statuses.issubset(SUCCESS_STATUSES):
+                if command_status in SUCCESS_STATUSES and statuses.issubset(
+                    SUCCESS_STATUSES
+                ):
                     break
 
                 module.fail_json(
@@ -337,7 +381,7 @@ def main():
                     status=command_status,
                 )
 
-            time.sleep(wait_delay)
+            time.sleep(min(wait_delay, max(0, deadline - time.monotonic())))
         else:
             module.fail_json(
                 msg=f"Timed out waiting for AWS Systems Manager command {command_id}",

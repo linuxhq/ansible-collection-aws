@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -53,11 +55,6 @@ transit_gateway_route_tables:
   elements: dict
 """
 
-try:
-    from botocore.exceptions import BotoCoreError, ClientError
-except ImportError:
-    pass
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -90,31 +87,26 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    require_client_methods(
-        module,
-        client,
-        "EC2",
-        {
-            "describe_transit_gateway_route_tables": (
-                "Filters",
-                "TransitGatewayRouteTableIds",
-            ),
-            "search_transit_gateway_routes": (
-                "Filters",
-                "MaxResults",
-                "TransitGatewayRouteTableId",
-            ),
-        },
-    )
-
     filters = module.params["filters"]
-    transit_gateway_route_table_ids = module.params["transit_gateway_route_table_ids"]
+    transit_gateway_route_table_ids = list(
+        dict.fromkeys(module.params["transit_gateway_route_table_ids"] or [])
+    )
 
     request = {}
     if transit_gateway_route_table_ids:
         request["TransitGatewayRouteTableIds"] = transit_gateway_route_table_ids
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
+
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {
+            "describe_transit_gateway_route_tables": tuple(request)
+            + ("MaxResults", "NextToken"),
+        },
+    )
 
     route_tables = query_list(
         module,
@@ -125,6 +117,21 @@ def main():
         **request,
     )
 
+    if any(route_table.get("State") == "available" for route_table in route_tables):
+        require_client_methods(
+            module,
+            client,
+            "EC2",
+            {
+                "search_transit_gateway_routes": (
+                    "Filters",
+                    "MaxResults",
+                    "NextToken",
+                    "TransitGatewayRouteTableId",
+                ),
+            },
+        )
+
     route_tables_with_routes = []
     for route_table in route_tables:
         route_table = dict(route_table)
@@ -133,35 +140,21 @@ def main():
         if route_table.get("State") == "available":
             transit_gateway_route_table_id = route_table["TransitGatewayRouteTableId"]
 
-            try:
-                response = client.search_transit_gateway_routes(
+            route_table["Routes"] = sorted(
+                query_list(
+                    module,
+                    client,
+                    "search_transit_gateway_routes",
+                    "Routes",
+                    "Unable to search EC2 transit gateway routes in route table "
+                    f"{transit_gateway_route_table_id}",
                     TransitGatewayRouteTableId=transit_gateway_route_table_id,
                     Filters=ansible_dict_to_boto3_filter_list(
                         {"type": ["static", "propagated"]}
                     ),
                     MaxResults=1000,
-                    aws_retry=True,
-                )
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=(
-                        "Unable to search EC2 transit gateway routes in route table "
-                        f"{transit_gateway_route_table_id}"
-                    ),
-                )
-
-            if response.get("AdditionalRoutesAvailable"):
-                module.fail_json(
-                    msg=(
-                        "Unable to gather all EC2 transit gateway routes because the "
-                        "search returned more than 1000 matching routes"
-                    ),
-                    transit_gateway_route_table_id=transit_gateway_route_table_id,
-                )
-
-            route_table["Routes"] = sorted(
-                response.get("Routes", []), key=route_sort_key
+                ),
+                key=route_sort_key,
             )
 
         route_tables_with_routes.append(route_table)

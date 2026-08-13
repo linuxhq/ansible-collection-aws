@@ -24,7 +24,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-        ansible_python_interpreter: /opt/awscli/bin/python
 
 scenario:
   test_sequence:
