@@ -121,6 +121,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
     get_provider_by_arn,
     normalize_provider_url,

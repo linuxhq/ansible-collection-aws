@@ -80,12 +80,11 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.ses import (
-    get_account,
-)
+from ansible_collections.linuxhq.aws.plugins.module_utils.ses import get_account
 
 ACCOUNT_DETAILS_FIELDS = (
     "additional_contact_email_addresses",

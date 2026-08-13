@@ -3,6 +3,7 @@
 from unittest import TestCase
 
 from ansible.errors import AnsibleLookupError
+
 from ansible_collections.linuxhq.aws.plugins.lookup.ses_credential import LookupModule
 
 

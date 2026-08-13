@@ -35,6 +35,7 @@ Invoke skills rather than running commands ad hoc.
 | `black`            | Format Python                 |
 | `changelog`        | Changelog fragments & release |
 | `collection-build` | Build the collection tarball  |
+| `isort`            | Sort Python imports           |
 | `molecule`         | Role tests                    |
 | `plugins-audit`    | Exhaustive plugins audit      |
 | `pyenv`            | Install pyenv + pinned Python |

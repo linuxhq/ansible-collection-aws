@@ -3,12 +3,13 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+from botocore.exceptions import ClientError
+
 from ansible_collections.linuxhq.aws.plugins.module_utils import wait
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleFail,
 )
-from botocore.exceptions import ClientError
 
 
 class WaitTests(TestCase):

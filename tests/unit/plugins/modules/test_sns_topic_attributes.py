@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+from botocore.exceptions import ClientError
+
 from ansible_collections.linuxhq.aws.plugins.modules import (
     sns_topic_attributes as plugin,
 )
@@ -10,7 +12,6 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleFail,
     assert_module_contract,
 )
-from botocore.exceptions import ClientError
 
 
 class SnsTopicAttributesTests(TestCase):

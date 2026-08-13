@@ -37,6 +37,7 @@ region:
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.ec2_metadata import (
     get_instance_metadata_defaults,
 )

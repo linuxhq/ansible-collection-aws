@@ -7,6 +7,7 @@ except ImportError:
     pass
 
 from ansible.module_utils.common.text.converters import to_native
+
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,

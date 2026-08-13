@@ -110,9 +110,8 @@ try:
 except ImportError:
     pass
 
-from ansible.module_utils.common.dict_transformations import (
-    snake_dict_to_camel_dict,
-)
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
@@ -126,6 +125,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )

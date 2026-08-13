@@ -25,7 +25,7 @@ Tox manages isolated environments under `.tox/`; no environment activation is re
 
 ### Checks
 
-Run the default lint suite:
+Run the default checks:
 
 ```sh
 tox

@@ -501,40 +501,26 @@ try:
 except ImportError:
     pass  # Handled by AnsibleAWSModule
 
-from typing import Any
-from typing import Dict
-from typing import List
-from typing import NoReturn
-from typing import Optional
-from typing import Tuple
-from typing import Union
+from typing import Any, Dict, List, NoReturn, Optional, Tuple, Union
 
 from ansible.module_utils._text import to_text
 from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
 
-from ansible_collections.amazon.aws.plugins.module_utils.ec2 import AnsibleEC2Error
 from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
+    AnsibleEC2Error,
     create_vpn_connection,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
     create_vpn_connection_route,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
     delete_vpn_connection,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
     delete_vpn_connection_route,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
     describe_vpn_connections,
+    ensure_ec2_tags,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.ec2 import ensure_ec2_tags
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     boto3_tag_list_to_ansible_dict,
+    compare_aws_tags,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.tagging import compare_aws_tags
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
