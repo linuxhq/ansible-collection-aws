@@ -26,7 +26,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-
         ec2_security_group_list:
           - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             security_groups:

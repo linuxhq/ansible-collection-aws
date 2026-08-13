@@ -26,7 +26,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-
         ec2_vpc_net_list:
           - name: molecule
             cidr_block: 10.0.0.0/16

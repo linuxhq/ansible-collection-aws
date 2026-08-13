@@ -24,7 +24,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-
 scenario:
   test_sequence:
     - dependency

@@ -26,7 +26,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-
         cloudwatchlogs_log_group_list_create:
           - name: molecule-00
             retention: 1

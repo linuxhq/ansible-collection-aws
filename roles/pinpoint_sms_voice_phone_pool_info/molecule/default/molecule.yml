@@ -26,7 +26,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-
         pinpoint_sms_voice_phone_number_list:
           - name: molecule-pinpoint-simulator
             iso_country_code: US

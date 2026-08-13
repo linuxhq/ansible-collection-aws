@@ -26,7 +26,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-
         iam_role_list:
           - name: MoleculeEksClusterRole
             assume_role_policy_document:

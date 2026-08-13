@@ -26,7 +26,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-
         ec2_flow_log_bucket_name:
           "molecule-flow-log-{{ _aws_caller_info_account }}"
         ec2_flow_log_bucket_resource:
