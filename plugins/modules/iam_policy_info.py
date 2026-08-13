@@ -134,11 +134,7 @@ def build_entity_policies(client, module, entity_type, names):
 
         policy_names = all_policy_names
         if desired_policy_name:
-            policy_names = [
-                policy_name
-                for policy_name in all_policy_names
-                if policy_name == desired_policy_name
-            ]
+            policy_names = [policy_name for policy_name in all_policy_names if policy_name == desired_policy_name]
 
         policies = []
         if policy_names and get_policy is None:
@@ -160,10 +156,7 @@ def build_entity_policies(client, module, entity_type, names):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        f"Unable to get AWS IAM {entity_type.lower()} policy "
-                        f"{policy_name} for {name}"
-                    ),
+                    msg=(f"Unable to get AWS IAM {entity_type.lower()} policy " f"{policy_name} for {name}"),
                 )
 
             policies.append(

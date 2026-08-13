@@ -30,9 +30,7 @@ class IamOidcProviderTests(TestCase):
 
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
-        assert options["required_if"] == [
-            ("state", "present", ["client_id_list", "thumbprint_list"])
-        ]
+        assert options["required_if"] == [("state", "present", ["client_id_list", "thumbprint_list"])]
 
     def test_main_only_requires_provider_listing_before_reconciliation(self):
         module = Mock(
@@ -94,10 +92,7 @@ class IamOidcProviderTests(TestCase):
                 "thumbprint_list": ["z" * 40],
                 "url": "https://example.com/id",
             },
-            (
-                "thumbprint_list entries must be exactly 40 hexadecimal "
-                f"characters: {'z' * 40}"
-            ),
+            ("thumbprint_list entries must be exactly 40 hexadecimal " f"characters: {'z' * 40}"),
         )
 
     def test_present_rejects_non_https_url(self):
@@ -218,9 +213,7 @@ class IamOidcProviderTests(TestCase):
 
     def test_new_provider_request_deduplicates_ids_and_includes_tags(self):
         client = Mock()
-        client.create_open_id_connect_provider.return_value = {
-            "OpenIDConnectProviderArn": "arn:provider"
-        }
+        client.create_open_id_connect_provider.return_value = {"OpenIDConnectProviderArn": "arn:provider"}
         module = FakeModule(
             {
                 "client_id_list": ["client-b", "client-a", "client-a"],

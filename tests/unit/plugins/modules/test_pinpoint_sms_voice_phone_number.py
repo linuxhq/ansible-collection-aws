@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    pinpoint_sms_voice_phone_number as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_phone_number as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -289,9 +287,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
             "PhoneNumberId": "phone-1",
             "Status": "DELETED",
         }
-        module = FakeModule(
-            {"phone_number_id": "phone-1", "state": "absent", "tags": None}
-        )
+        module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
 
         with (
             patch.object(
@@ -304,9 +300,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
                     "Status": "ACTIVE",
                 },
             ),
-            patch.object(
-                plugin, "wait_for_phone_number_active"
-            ) as wait_for_phone_number_active,
+            patch.object(plugin, "wait_for_phone_number_active") as wait_for_phone_number_active,
             patch.object(plugin, "require_client_methods"),
             self.assertRaises(ModuleExit) as raised,
         ):
@@ -323,9 +317,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
             aws_retry=True,
         )
         wait_for_phone_number_active.assert_called_once_with(client, module, "phone-1")
-        client.release_phone_number.assert_called_once_with(
-            PhoneNumberId="phone-1", aws_retry=True
-        )
+        client.release_phone_number.assert_called_once_with(PhoneNumberId="phone-1", aws_retry=True)
         self.assertTrue(raised.exception.values["changed"])
 
     def test_absent_tolerates_disappearing_prerequisites(self):

@@ -6,7 +6,7 @@ description: Run ansible-test sanity on modules and plugins.
 # ansible-test
 
 Catches `DOCUMENTATION`/`RETURN`/`EXAMPLES` drift, argspec mismatches, and import errors. It is a
-required local check; the current GitHub Actions workflow does not run it.
+required local and CI check.
 
 ## Pre-checks
 

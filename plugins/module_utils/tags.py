@@ -24,15 +24,8 @@ def require_valid_tags(module, tags, max_tags, key_max=128):
     tags.update(normalized)
     if len(tags) > max_tags:
         module.fail_json(msg=f"tags must contain at most {max_tags} entries")
-    if any(
-        not 1 <= len(key) <= key_max or len(value) > 256 for key, value in tags.items()
-    ):
-        module.fail_json(
-            msg=(
-                f"tag keys must contain 1 to {key_max} characters and values "
-                "at most 256 characters"
-            )
-        )
+    if any(not 1 <= len(key) <= key_max or len(value) > 256 for key, value in tags.items()):
+        module.fail_json(msg=(f"tag keys must contain 1 to {key_max} characters and values " "at most 256 characters"))
 
 
 def apply_tag_deltas(resource, tags_to_set, tag_keys_to_unset):
@@ -47,9 +40,7 @@ def apply_tag_deltas(resource, tags_to_set, tag_keys_to_unset):
     return updated
 
 
-def reconcile_arn_tags(
-    module, client, resource_arn, tags_to_set, tag_keys_to_unset, description
-):
+def reconcile_arn_tags(module, client, resource_arn, tags_to_set, tag_keys_to_unset, description):
     if tag_keys_to_unset:
         try:
             client.untag_resource(
@@ -58,9 +49,7 @@ def reconcile_arn_tags(
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e, msg=f"Unable to remove tags from {description} {resource_arn}"
-            )
+            module.fail_json_aws(e, msg=f"Unable to remove tags from {description} {resource_arn}")
 
     if tags_to_set:
         try:
@@ -91,9 +80,7 @@ def reconcile_ssm_tags(
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e, msg=f"Unable to remove tags from {description} {resource_id}"
-            )
+            module.fail_json_aws(e, msg=f"Unable to remove tags from {description} {resource_id}")
 
     if tags_to_set:
         try:

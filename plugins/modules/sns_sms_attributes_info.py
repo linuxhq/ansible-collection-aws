@@ -86,9 +86,7 @@ def main():
     try:
         response = client.get_sms_attributes(**request, aws_retry=True)
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e, msg="Unable to get AWS Simple Notification Service SMS attributes"
-        )
+        module.fail_json_aws(e, msg="Unable to get AWS Simple Notification Service SMS attributes")
 
     module.exit_json(
         attributes=boto3_resource_to_ansible_dict(

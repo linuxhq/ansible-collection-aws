@@ -267,9 +267,7 @@ def create_resolver_rule(client, module, desired):
             **scrub_none_parameters(
                 snake_dict_to_camel_dict(
                     {
-                        "creator_request_id": hashlib.sha256(
-                            json.dumps(desired, sort_keys=True).encode()
-                        ).hexdigest(),
+                        "creator_request_id": hashlib.sha256(json.dumps(desired, sort_keys=True).encode()).hexdigest(),
                         "domain_name": desired["domain_name"],
                         "name": desired["name"],
                         "resolver_endpoint_id": desired["resolver_endpoint_id"],
@@ -287,17 +285,10 @@ def create_resolver_rule(client, module, desired):
             aws_retry=True,
         ).get("ResolverRule")
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e, msg=f"Unable to create AWS Route53 Resolver rule {desired['name']}"
-        )
+        module.fail_json_aws(e, msg=f"Unable to create AWS Route53 Resolver rule {desired['name']}")
 
     if not (rule or {}).get("Id"):
-        module.fail_json(
-            msg=(
-                "AWS Route53 Resolver did not return the created rule "
-                f"{desired['name']}"
-            )
-        )
+        module.fail_json(msg=("AWS Route53 Resolver did not return the created rule " f"{desired['name']}"))
 
     if module.params["wait"]:
         resolver_rule_id = rule.get("Id")
@@ -381,9 +372,7 @@ def ensure_present(client, module):
     )
     current = comparable_rule(rule)
     created = current is None
-    desired_comparable = comparable_rule(
-        {field: desired[field] for field in comparable_fields}
-    )
+    desired_comparable = comparable_rule({field: desired[field] for field in comparable_fields})
     desired.update(desired_comparable)
     changed = current != desired_comparable
     resource_changed = changed
@@ -418,8 +407,7 @@ def ensure_present(client, module):
     elif changed:
         if resource_changed:
             if (
-                current["resolver_endpoint_id"]
-                != desired_comparable["resolver_endpoint_id"]
+                current["resolver_endpoint_id"] != desired_comparable["resolver_endpoint_id"]
                 or current["target_ips"] != desired_comparable["target_ips"]
             ):
                 config = scrub_none_parameters(
@@ -442,19 +430,11 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=(
-                            "Unable to update AWS Route53 Resolver rule "
-                            f"{desired['name']}"
-                        ),
+                        msg=("Unable to update AWS Route53 Resolver rule " f"{desired['name']}"),
                     )
 
                 if not (rule or {}).get("Id"):
-                    module.fail_json(
-                        msg=(
-                            "AWS Route53 Resolver did not return the updated rule "
-                            f"{desired['name']}"
-                        )
-                    )
+                    module.fail_json(msg=("AWS Route53 Resolver did not return the updated rule " f"{desired['name']}"))
 
                 if module.params["wait"]:
                     resolver_rule_id = rule.get("Id")
@@ -494,9 +474,7 @@ def ensure_present(client, module):
 
             rule = apply_tag_deltas(rule, tags_to_set, tag_keys_to_unset)
 
-    result_rule = boto3_resource_to_ansible_dict(
-        rule, transform_tags=True, force_tags=False
-    )
+    result_rule = boto3_resource_to_ansible_dict(rule, transform_tags=True, force_tags=False)
     result = {
         "changed": changed,
         "name": desired["name"],
@@ -531,9 +509,7 @@ def wait_for_resolver_rule_status(client, module, resolver_rule_id, statuses):
 def comparable_rule(rule):
     if not rule:
         return None
-    normalized = boto3_resource_to_ansible_dict(
-        rule, transform_tags=False, force_tags=False
-    )
+    normalized = boto3_resource_to_ansible_dict(rule, transform_tags=False, force_tags=False)
     result = {
         "domain_name": normalized.get("domain_name"),
         "resolver_endpoint_id": normalized.get("resolver_endpoint_id"),
@@ -549,16 +525,8 @@ def comparable_target_ips(target_ips):
     normalized = []
     for target_ip in target_ips or []:
         item = dict(TARGET_IP_DEFAULTS)
-        item.update(
-            {key: value for key, value in target_ip.items() if value is not None}
-        )
-        normalized.append(
-            {
-                field: item.get(field)
-                for field in TARGET_IP_FIELDS
-                if item.get(field) is not None
-            }
-        )
+        item.update({key: value for key, value in target_ip.items() if value is not None})
+        normalized.append({field: item.get(field) for field in TARGET_IP_FIELDS if item.get(field) is not None})
     unique = {json.dumps(item, sort_keys=True): item for item in normalized}
     return [unique[key] for key in sorted(unique)]
 
@@ -594,12 +562,7 @@ def get_resolver_rule_by_name(client, module):
 
     if len(rules) > 1:
         rule_ids = sorted(rule.get("Id", "") for rule in rules)
-        module.fail_json(
-            msg=(
-                f"Multiple AWS Route53 Resolver rules are named {name}: "
-                f"{', '.join(rule_ids)}"
-            )
-        )
+        module.fail_json(msg=(f"Multiple AWS Route53 Resolver rules are named {name}: " f"{', '.join(rule_ids)}"))
 
     if not rules:
         return None
@@ -672,14 +635,8 @@ def main():
     tags = module.params["tags"]
     name = module.params["name"]
 
-    if (
-        len(name) > 64
-        or name.isdigit()
-        or re.fullmatch(r"[a-zA-Z0-9\-_ ']+", name) is None
-    ):
-        module.fail_json(
-            msg="name must be a valid resolver rule name of at most 64 characters"
-        )
+    if len(name) > 64 or name.isdigit() or re.fullmatch(r"[a-zA-Z0-9\-_ ']+", name) is None:
+        module.fail_json(msg="name must be a valid resolver rule name of at most 64 characters")
 
     if state == "present":
         if not 1 <= len(module.params["domain_name"]) <= 256:
@@ -702,19 +659,13 @@ def main():
             except ValueError:
                 valid = False
             if not valid:
-                module.fail_json(
-                    msg=f"target_ips[].{field} must be a valid IPv{version} address"
-                )
+                module.fail_json(msg=f"target_ips[].{field} must be a valid IPv{version} address")
         if len(target_ip.get("server_name_indication") or "") > 255:
-            module.fail_json(
-                msg="target_ips[].server_name_indication must contain at most 255 characters"
-            )
+            module.fail_json(msg="target_ips[].server_name_indication must contain at most 255 characters")
 
     require_positive_wait_bounds(module, always=state == "present")
 
-    client = module.client(
-        "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
-    )
+    client = module.client("route53resolver", retry_decorator=AWSRetry.jittered_backoff())
     methods = {"list_resolver_rules": ("Filters", "MaxResults", "NextToken")}
     if state == "present":
         create_parameters = (

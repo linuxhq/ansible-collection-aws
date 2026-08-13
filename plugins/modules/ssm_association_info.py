@@ -80,9 +80,7 @@ def main():
             values = value if isinstance(value, list) else [value]
 
             for item in values:
-                request["AssociationFilterList"].append(
-                    {"key": key, "value": str(item)}
-                )
+                request["AssociationFilterList"].append({"key": key, "value": str(item)})
 
     require_client_methods(
         module,
@@ -121,10 +119,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to list tags for AWS Systems Manager association "
-                        f"{association_id}"
-                    ),
+                    msg=("Unable to list tags for AWS Systems Manager association " f"{association_id}"),
                 )
 
         normalized_associations.append(

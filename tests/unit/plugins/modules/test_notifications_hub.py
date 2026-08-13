@@ -56,11 +56,7 @@ class NotificationsHubTests(TestCase):
         self.assertEqual(result, {"notificationHubRegion": "us-east-1"})
 
     def test_inactive_hub_is_registered_again(self):
-        client = Mock(
-            register_notification_hub=Mock(
-                return_value={"notificationHubRegion": "us-east-1"}
-            )
-        )
+        client = Mock(register_notification_hub=Mock(return_value={"notificationHubRegion": "us-east-1"}))
         module = FakeModule({"region": "us-east-1"})
         inactive = {
             "notificationHubRegion": "us-east-1",
@@ -74,9 +70,7 @@ class NotificationsHubTests(TestCase):
             plugin.ensure_present(client, module)
 
         self.assertTrue(raised.exception.values["changed"])
-        client.register_notification_hub.assert_called_once_with(
-            notificationHubRegion="us-east-1", aws_retry=True
-        )
+        client.register_notification_hub.assert_called_once_with(notificationHubRegion="us-east-1", aws_retry=True)
         require.assert_called_once_with(
             module,
             client,

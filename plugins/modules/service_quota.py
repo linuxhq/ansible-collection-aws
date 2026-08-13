@@ -114,9 +114,7 @@ def main():
     if not 0 <= module.params["value"] <= 10000000000:
         module.fail_json(msg="value must be between 0 and 10000000000")
 
-    client = module.client(
-        "service-quotas", retry_decorator=AWSRetry.jittered_backoff()
-    )
+    client = module.client("service-quotas", retry_decorator=AWSRetry.jittered_backoff())
 
     require_client_methods(
         module,
@@ -149,21 +147,14 @@ def main():
     }
 
     try:
-        current_quota = client.get_service_quota(**quota_request, aws_retry=True).get(
-            "Quota", {}
-        )
+        current_quota = client.get_service_quota(**quota_request, aws_retry=True).get("Quota", {})
     except is_boto3_error_code("NoSuchResourceException"):
         try:
-            current_quota = client.get_aws_default_service_quota(
-                **quota_request, aws_retry=True
-            ).get("Quota", {})
+            current_quota = client.get_aws_default_service_quota(**quota_request, aws_retry=True).get("Quota", {})
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to get AWS default service quota "
-                    f"{service_code}/{quota_code}"
-                ),
+                msg=("Unable to get AWS default service quota " f"{service_code}/{quota_code}"),
             )
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
@@ -185,10 +176,7 @@ def main():
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=(
-                "Unable to list AWS service quota change history for "
-                f"{service_code}/{quota_code}"
-            ),
+            msg=("Unable to list AWS service quota change history for " f"{service_code}/{quota_code}"),
         )
 
     current_quota_details = boto3_resource_to_ansible_dict(
@@ -200,10 +188,7 @@ def main():
 
     if current_value is None:
         module.fail_json(
-            msg=(
-                f"AWS service quota {service_code}/{quota_code} did not "
-                "return a value"
-            ),
+            msg=(f"AWS service quota {service_code}/{quota_code} did not " "return a value"),
             current_quota=current_quota_details,
         )
 
@@ -239,8 +224,7 @@ def main():
                 module.fail_json_aws(
                     e,
                     msg=(
-                        "Unable to request AWS service quota increase for "
-                        f"{quota_code} for service {service_code}"
+                        "Unable to request AWS service quota increase for " f"{quota_code} for service {service_code}"
                     ),
                 )
             if not requested_quota:

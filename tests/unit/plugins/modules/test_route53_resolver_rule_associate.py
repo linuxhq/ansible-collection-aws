@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    route53_resolver_rule_associate as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver_rule_associate as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -76,18 +74,14 @@ class Route53ResolverRuleAssociateTests(TestCase):
                 "get_resolver_rule_association_by_rule_and_vpc",
                 return_value={"Id": "rslvr-rrassoc-1", "Status": "DELETING"},
             ),
-            patch.object(
-                plugin, "wait_for_resolver_rule_association_status"
-            ) as wait_for_status,
+            patch.object(plugin, "wait_for_resolver_rule_association_status") as wait_for_status,
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
 
         self.assertFalse(raised.exception.values["changed"])
         client.disassociate_resolver_rule.assert_not_called()
-        wait_for_status.assert_called_once_with(
-            client, module, "rslvr-rrassoc-1", {"deleted"}
-        )
+        wait_for_status.assert_called_once_with(client, module, "rslvr-rrassoc-1", {"deleted"})
 
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
@@ -119,15 +113,11 @@ class Route53ResolverRuleAssociateTests(TestCase):
         ):
             plugin.ensure_present(Mock(), module)
         self.assertTrue(raised.exception.values["changed"])
-        self.assertEqual(
-            raised.exception.values["resolver_rule_association"]["vpc_id"], "vpc-1"
-        )
+        self.assertEqual(raised.exception.values["resolver_rule_association"]["vpc_id"], "vpc-1")
 
     def test_replacement_waits_for_deletion_when_final_wait_is_disabled(self):
         client = Mock()
-        client.associate_resolver_rule.return_value = {
-            "ResolverRuleAssociation": {"Id": "new-association"}
-        }
+        client.associate_resolver_rule.return_value = {"ResolverRuleAssociation": {"Id": "new-association"}}
         module = FakeModule(
             {
                 "name": "new-name",
@@ -149,22 +139,16 @@ class Route53ResolverRuleAssociateTests(TestCase):
                 "get_resolver_rule_association_by_rule_and_vpc",
                 return_value=current,
             ),
-            patch.object(
-                plugin, "wait_for_resolver_rule_association_status"
-            ) as wait_for_status,
+            patch.object(plugin, "wait_for_resolver_rule_association_status") as wait_for_status,
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_present(client, module)
 
-        wait_for_status.assert_called_once_with(
-            client, module, "old-association", {"deleted"}
-        )
+        wait_for_status.assert_called_once_with(client, module, "old-association", {"deleted"})
 
     def test_deleting_association_waits_before_recreation(self):
         client = Mock()
-        client.associate_resolver_rule.return_value = {
-            "ResolverRuleAssociation": {"Id": "new-association"}
-        }
+        client.associate_resolver_rule.return_value = {"ResolverRuleAssociation": {"Id": "new-association"}}
         module = FakeModule(
             {
                 "name": "main",
@@ -180,16 +164,12 @@ class Route53ResolverRuleAssociateTests(TestCase):
                 "get_resolver_rule_association_by_rule_and_vpc",
                 side_effect=[deleting, None],
             ),
-            patch.object(
-                plugin, "wait_for_resolver_rule_association_status"
-            ) as wait_for_status,
+            patch.object(plugin, "wait_for_resolver_rule_association_status") as wait_for_status,
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_present(client, module)
 
-        wait_for_status.assert_called_once_with(
-            client, module, "old-association", {"deleted"}
-        )
+        wait_for_status.assert_called_once_with(client, module, "old-association", {"deleted"})
         client.associate_resolver_rule.assert_called_once()
 
     def test_present_validates_bounds_for_internal_replacement_wait(self):
@@ -228,6 +208,4 @@ class Route53ResolverRuleAssociateTests(TestCase):
         ):
             plugin.main()
 
-        self.assertIn(
-            "valid resolver rule association name", raised.exception.values["msg"]
-        )
+        self.assertIn("valid resolver rule association name", raised.exception.values["msg"])

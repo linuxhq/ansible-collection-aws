@@ -20,9 +20,7 @@ class EksClusterInfoTests(TestCase):
 
     def test_named_lookup_only_requires_describe(self):
         client = Mock(describe_cluster=Mock(return_value={"cluster": {"name": "one"}}))
-        module = FakeModule(
-            {"filters": None, "include": None, "name": "one"}, client=client
-        )
+        module = FakeModule({"filters": None, "include": None, "name": "one"}, client=client)
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods") as require_methods,
@@ -30,15 +28,11 @@ class EksClusterInfoTests(TestCase):
         ):
             plugin.main()
 
-        require_methods.assert_called_once_with(
-            module, client, "EKS", {"describe_cluster": ("name",)}
-        )
+        require_methods.assert_called_once_with(module, client, "EKS", {"describe_cluster": ("name",)})
 
     def test_empty_name_requires_list_clusters(self):
         client = Mock()
-        module = FakeModule(
-            {"filters": None, "include": None, "name": ""}, client=client
-        )
+        module = FakeModule({"filters": None, "include": None, "name": ""}, client=client)
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods") as require_methods,

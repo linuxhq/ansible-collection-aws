@@ -21,9 +21,7 @@ class SdkTests(TestCase):
             "paginated_query_with_retries",
             return_value={"Items": [1, 2]},
         ) as query:
-            result = sdk.query_list(
-                Mock(), client, "list_items", "Items", "failed", Limit=2
-            )
+            result = sdk.query_list(Mock(), client, "list_items", "Items", "failed", Limit=2)
 
         self.assertEqual(result, [1, 2])
         query.assert_called_once_with(client, "list_items", Limit=2)
@@ -38,9 +36,7 @@ class SdkTests(TestCase):
             ("nextMarker", "nextMarker"),
             ("nextToken", "nextToken"),
         ):
-            with self.subTest(
-                marker_name=marker_name, response_marker_name=response_marker_name
-            ):
+            with self.subTest(marker_name=marker_name, response_marker_name=response_marker_name):
                 client = Mock()
                 client.can_paginate.return_value = False
                 client.list_items.side_effect = [
@@ -52,15 +48,11 @@ class SdkTests(TestCase):
                     "get_boto3_client_method_parameters",
                     return_value=[marker_name],
                 ):
-                    result = sdk.query_list(
-                        Mock(), client, "list_items", "Items", "failed", Limit=2
-                    )
+                    result = sdk.query_list(Mock(), client, "list_items", "Items", "failed", Limit=2)
 
                 self.assertEqual(result, [1, 2])
                 client.list_items.assert_any_call(Limit=2, aws_retry=True)
-                client.list_items.assert_any_call(
-                    **{"Limit": 2, marker_name: "next", "aws_retry": True}
-                )
+                client.list_items.assert_any_call(**{"Limit": 2, marker_name: "next", "aws_retry": True})
 
     def test_query_list_rejects_repeated_manual_pagination_markers(self):
         client = Mock()
@@ -103,9 +95,7 @@ class SdkTests(TestCase):
                     ),
                     self.assertRaises(ModuleFail) as raised,
                 ):
-                    sdk.query_list(
-                        module, client, "list_items", "Items", "unable to list"
-                    )
+                    sdk.query_list(module, client, "list_items", "Items", "unable to list")
 
                 self.assertEqual(
                     raised.exception.values["msg"],
@@ -130,9 +120,7 @@ class SdkTests(TestCase):
             "get_boto3_client_method_parameters",
             return_value=["Name"],
         ):
-            sdk.require_client_methods(
-                module, Mock(), "Example", {"get_item": ("Name",)}
-            )
+            sdk.require_client_methods(module, Mock(), "Example", {"get_item": ("Name",)})
 
         with (
             patch.object(
@@ -142,9 +130,7 @@ class SdkTests(TestCase):
             ),
             self.assertRaises(ModuleFail) as raised,
         ):
-            sdk.require_client_methods(
-                module, Mock(), "Example", {"get_item": ("Unsupported",)}
-            )
+            sdk.require_client_methods(module, Mock(), "Example", {"get_item": ("Unsupported",)})
 
         self.assertIn("parameter Unsupported", raised.exception.values["msg"])
 

@@ -129,9 +129,7 @@ def main():
         for key, value in filters.items():
             values = value if isinstance(value, list) else [value]
 
-            request["Filters"].append(
-                {"Key": key, "Values": [str(item) for item in values]}
-            )
+            request["Filters"].append({"Key": key, "Values": [str(item) for item in values]})
 
     require_client_methods(
         module,
@@ -149,9 +147,7 @@ def main():
         **request
     )
 
-    instances = boto3_resource_list_to_ansible_dict(
-        instances, transform_tags=False, force_tags=False
-    )
+    instances = boto3_resource_list_to_ansible_dict(instances, transform_tags=False, force_tags=False)
 
     matching_instance_ids = []
     for instance in instances:

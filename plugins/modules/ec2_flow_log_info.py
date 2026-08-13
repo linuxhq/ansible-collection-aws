@@ -119,9 +119,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        flow_logs=boto3_resource_list_to_ansible_dict(
-            flow_logs, transform_tags=True, force_tags=False
-        ),
+        flow_logs=boto3_resource_list_to_ansible_dict(flow_logs, transform_tags=True, force_tags=False),
     )
 
 

@@ -55,9 +55,7 @@ class TagsTests(TestCase):
 
     def test_reconcile_arn_tags_only_calls_nonempty_operations(self):
         client = Mock()
-        reconcile_arn_tags(
-            Mock(), client, "arn:resource", {"new": "value"}, [], "resource"
-        )
+        reconcile_arn_tags(Mock(), client, "arn:resource", {"new": "value"}, [], "resource")
 
         client.untag_resource.assert_not_called()
         client.tag_resource.assert_called_once_with(

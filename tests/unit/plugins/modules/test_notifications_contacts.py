@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    notifications_contacts as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import notifications_contacts as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -46,9 +44,7 @@ class NotificationsContactsTests(TestCase):
 
     def test_tag_only_update_does_not_recreate_the_contact(self):
         client = Mock()
-        client.list_tags_for_resource.return_value = {
-            "tags": {"keep": "old", "remove": "yes"}
-        }
+        client.list_tags_for_resource.return_value = {"tags": {"keep": "old", "remove": "yes"}}
         module = FakeModule(
             {
                 "email_address": "ops@example.com",
@@ -69,12 +65,8 @@ class NotificationsContactsTests(TestCase):
         ):
             plugin.ensure_present(client, module)
         self.assertTrue(raised.exception.values["changed"])
-        client.untag_resource.assert_called_once_with(
-            arn="arn:contact", tagKeys=["remove"], aws_retry=True
-        )
-        client.tag_resource.assert_called_once_with(
-            arn="arn:contact", tags={"keep": "new"}, aws_retry=True
-        )
+        client.untag_resource.assert_called_once_with(arn="arn:contact", tagKeys=["remove"], aws_retry=True)
+        client.tag_resource.assert_called_once_with(arn="arn:contact", tags={"keep": "new"}, aws_retry=True)
         client.create_email_contact.assert_not_called()
 
     def test_contact_address_and_name_are_validated_before_api_calls(self):
@@ -131,9 +123,7 @@ class NotificationsContactsTests(TestCase):
         ):
             plugin.ensure_present(client, module)
         self.assertTrue(raised.exception.values["changed"])
-        client.delete_email_contact.assert_called_once_with(
-            arn="arn:old", aws_retry=True
-        )
+        client.delete_email_contact.assert_called_once_with(arn="arn:old", aws_retry=True)
         client.create_email_contact.assert_called_once_with(
             emailAddress="ops@example.com", name="New Name", aws_retry=True
         )

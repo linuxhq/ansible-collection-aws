@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    iam_oidc_provider_info as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import iam_oidc_provider_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -50,9 +48,7 @@ class IamOidcProviderInfoTests(TestCase):
         )
 
     def test_url_filter_normalizes_scheme_and_ignores_other_arns(self):
-        module = FakeModule(
-            {"arn": None, "url": "https://example.com/id"}, client=Mock()
-        )
+        module = FakeModule({"arn": None, "url": "https://example.com/id"}, client=Mock())
         provider = {
             "OpenIDConnectProviderArn": "arn:aws:iam::1:oidc-provider/example.com/id",
             "Url": "example.com/id",

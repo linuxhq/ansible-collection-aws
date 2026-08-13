@@ -60,17 +60,11 @@ class LookupModule(LookupBase):
         secret_access_key = kwargs.get("aws_secret_access_key")
 
         if not isinstance(region, str) or not region.strip():
-            raise AnsibleLookupError(
-                "ses_credential lookup requires a non-empty region="
-            )
+            raise AnsibleLookupError("ses_credential lookup requires a non-empty region=")
         if not isinstance(secret_access_key, str) or not secret_access_key.strip():
-            raise AnsibleLookupError(
-                "ses_credential lookup requires a non-empty aws_secret_access_key="
-            )
+            raise AnsibleLookupError("ses_credential lookup requires a non-empty aws_secret_access_key=")
         if terms:
-            raise AnsibleLookupError(
-                "ses_credential lookup does not accept positional terms"
-            )
+            raise AnsibleLookupError("ses_credential lookup does not accept positional terms")
 
         region = region.strip()
         signature = to_bytes("AWS4" + secret_access_key)

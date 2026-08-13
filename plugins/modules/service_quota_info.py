@@ -99,9 +99,7 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    client = module.client(
-        "service-quotas", retry_decorator=AWSRetry.jittered_backoff()
-    )
+    client = module.client("service-quotas", retry_decorator=AWSRetry.jittered_backoff())
     context_id = module.params["context_id"]
     quota_code = module.params["quota_code"]
     service_code = module.params["service_code"]
@@ -127,18 +125,13 @@ def main():
         quota = {}
         if not context_id:
             try:
-                quota = client.get_aws_default_service_quota(
-                    **request, aws_retry=True
-                ).get("Quota", {})
+                quota = client.get_aws_default_service_quota(**request, aws_retry=True).get("Quota", {})
             except is_boto3_error_code("NoSuchResourceException"):
                 pass
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to get AWS default service quota "
-                        f"{service_code}/{quota_code}"
-                    ),
+                    msg=("Unable to get AWS default service quota " f"{service_code}/{quota_code}"),
                 )
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
@@ -148,9 +141,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        quota=boto3_resource_to_ansible_dict(
-            quota, transform_tags=False, force_tags=False
-        ),
+        quota=boto3_resource_to_ansible_dict(quota, transform_tags=False, force_tags=False),
         quota_code=quota_code,
         service_code=service_code,
     )

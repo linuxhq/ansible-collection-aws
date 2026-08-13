@@ -62,9 +62,7 @@ class AccountRegionTests(TestCase):
         ):
             plugin.ensure_absent(Mock(), module)
 
-        self.assertIn(
-            "default Regions cannot be disabled", raised.exception.values["msg"]
-        )
+        self.assertIn("default Regions cannot be disabled", raised.exception.values["msg"])
 
     def test_enable_waits_for_disabling_region_even_without_final_wait(self):
         module = FakeModule({"name": "af-south-1", "wait": False})
@@ -80,12 +78,8 @@ class AccountRegionTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_present(client, module)
-        wait_for_status.assert_called_once_with(
-            client, module, "region_disabled", plugin.ABSENT_STEADY_STATUSES
-        )
-        client.enable_region.assert_called_once_with(
-            RegionName="af-south-1", aws_retry=True
-        )
+        wait_for_status.assert_called_once_with(client, module, "region_disabled", plugin.ABSENT_STEADY_STATUSES)
+        client.enable_region.assert_called_once_with(RegionName="af-south-1", aws_retry=True)
         self.assertEqual(require.call_args.args[3], {"enable_region": ("RegionName",)})
 
     def test_disable_waits_for_enabling_region_even_without_final_wait(self):
@@ -102,10 +96,6 @@ class AccountRegionTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_absent(client, module)
-        wait_for_status.assert_called_once_with(
-            client, module, "region_enabled", plugin.PRESENT_STEADY_STATUSES
-        )
-        client.disable_region.assert_called_once_with(
-            RegionName="af-south-1", aws_retry=True
-        )
+        wait_for_status.assert_called_once_with(client, module, "region_enabled", plugin.PRESENT_STEADY_STATUSES)
+        client.disable_region.assert_called_once_with(RegionName="af-south-1", aws_retry=True)
         self.assertEqual(require.call_args.args[3], {"disable_region": ("RegionName",)})

@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    ec2_vpc_prefix_list as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import ec2_vpc_prefix_list as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -114,11 +112,7 @@ class Ec2VpcPrefixListTests(TestCase):
         )
 
     def test_create_without_wait_returns_the_create_response(self):
-        client = Mock(
-            create_managed_prefix_list=Mock(
-                return_value={"PrefixList": {"PrefixListId": "pl-new"}}
-            )
-        )
+        client = Mock(create_managed_prefix_list=Mock(return_value={"PrefixList": {"PrefixListId": "pl-new"}}))
         module = FakeModule({"name": "main", "tags": None, "wait": False})
         entries = [{"cidr": "192.0.2.0/24"}]
         with (

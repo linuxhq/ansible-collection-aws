@@ -2,9 +2,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    route53_zone_associate as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import route53_zone_associate as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -34,10 +32,7 @@ class Route53ZoneAssociateTests(TestCase):
 
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
-        assert all(
-            options["argument_spec"][key]["required"]
-            for key in ("hosted_zone_id", "vpc_id", "vpc_region")
-        )
+        assert all(options["argument_spec"][key]["required"] for key in ("hosted_zone_id", "vpc_id", "vpc_region"))
 
     def test_invalid_vpc_region_is_rejected(self):
         assert_module_rejects(
@@ -70,9 +65,7 @@ class Route53ZoneAssociateTests(TestCase):
 
     def test_check_mode_projects_the_new_association(self):
         client = Mock()
-        module = FakeModule(
-            {"vpc_id": "vpc-2", "vpc_region": "us-west-2"}, check_mode=True
-        )
+        module = FakeModule({"vpc_id": "vpc-2", "vpc_region": "us-west-2"}, check_mode=True)
         with (
             patch.object(
                 plugin,

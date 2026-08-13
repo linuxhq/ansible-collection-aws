@@ -16,9 +16,7 @@ class SsmDocumentInfoTests(TestCase):
         assert len(options["mutually_exclusive"]) == 2
 
     def test_content_transform_handles_json_text_and_empty_values(self):
-        assert plugin.content_transform('{"schemaVersion":"2.2"}') == {
-            "schema_version": "2.2"
-        }
+        assert plugin.content_transform('{"schemaVersion":"2.2"}') == {"schema_version": "2.2"}
         assert plugin.content_transform("not-json") == "not-json"
         assert plugin.content_transform(None) == {}
 
@@ -42,9 +40,7 @@ class SsmDocumentInfoTests(TestCase):
             "Content": '{"schemaVersion":"2.2"}',
             "Name": "example",
         }
-        client.list_tags_for_resource.return_value = {
-            "TagList": [{"Key": "Name", "Value": "example"}]
-        }
+        client.list_tags_for_resource.return_value = {"TagList": [{"Key": "Name", "Value": "example"}]}
         module = FakeModule(
             {
                 "document_format": "JSON",
@@ -71,9 +67,7 @@ class SsmDocumentInfoTests(TestCase):
             },
         )
         self.assertNotIn("DocumentVersion", client.get_document.call_args.kwargs)
-        self.assertEqual(
-            client.get_document.call_args.kwargs["VersionName"], "production"
-        )
+        self.assertEqual(client.get_document.call_args.kwargs["VersionName"], "production")
         document = raised.exception.values["document"]
         self.assertEqual(document["content"]["schema_version"], "2.2")
         self.assertEqual(document["tags"], {"Name": "example"})

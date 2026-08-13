@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    ec2_instance_metadata as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import ec2_instance_metadata as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -59,21 +57,15 @@ class Ec2InstanceMetadataTests(TestCase):
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods") as require,
-            patch.object(
-                plugin, "get_instance_metadata_defaults", return_value=current
-            ),
+            patch.object(plugin, "get_instance_metadata_defaults", return_value=current),
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
         self.assertTrue(raised.exception.values["changed"])
-        self.assertEqual(
-            raised.exception.values["account_level"], {"http_tokens": "required"}
-        )
+        self.assertEqual(raised.exception.values["account_level"], {"http_tokens": "required"})
         client.modify_instance_metadata_defaults.assert_not_called()
         self.assertEqual(require.call_count, 1)
-        self.assertEqual(
-            require.call_args.args[3], {"get_instance_metadata_defaults": ()}
-        )
+        self.assertEqual(require.call_args.args[3], {"get_instance_metadata_defaults": ()})
 
     def test_update_projects_new_defaults_without_a_stale_refresh(self):
         client = Mock()
@@ -98,9 +90,7 @@ class Ec2InstanceMetadataTests(TestCase):
         ):
             plugin.main()
 
-        self.assertEqual(
-            raised.exception.values["account_level"]["http_tokens"], "required"
-        )
+        self.assertEqual(raised.exception.values["account_level"]["http_tokens"], "required")
         self.assertEqual(get_defaults.call_count, 1)
         self.assertEqual(require.call_count, 2)
         self.assertEqual(

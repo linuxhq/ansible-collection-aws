@@ -14,9 +14,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 def get_instance_metadata_defaults(client, module):
     try:
         return boto3_resource_to_ansible_dict(
-            client.get_instance_metadata_defaults(aws_retry=True).get(
-                "AccountLevel", {}
-            ),
+            client.get_instance_metadata_defaults(aws_retry=True).get("AccountLevel", {}),
             transform_tags=False,
             force_tags=False,
         )

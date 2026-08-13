@@ -209,24 +209,14 @@ def ensure_present(client, module):
     current = get_provider_by_url(client, module)
     desired = {
         "client_id_list": sorted(set(module.params["client_id_list"] or [])),
-        "thumbprint_list": sorted(
-            {
-                thumbprint.lower()
-                for thumbprint in module.params["thumbprint_list"] or []
-            }
-        ),
+        "thumbprint_list": sorted({thumbprint.lower() for thumbprint in module.params["thumbprint_list"] or []}),
         "url": normalize_provider_url(url),
     }
     current_comparable = None
     if current is not None:
         current_comparable = {
             "client_id_list": sorted(set(current.get("ClientIDList") or [])),
-            "thumbprint_list": sorted(
-                {
-                    thumbprint.lower()
-                    for thumbprint in current.get("ThumbprintList") or []
-                }
-            ),
+            "thumbprint_list": sorted({thumbprint.lower() for thumbprint in current.get("ThumbprintList") or []}),
             "url": normalize_provider_url(current.get("Url")),
         }
 
@@ -268,9 +258,7 @@ def ensure_present(client, module):
                 )
 
             if not arn:
-                module.fail_json(
-                    msg=f"AWS IAM did not return an ARN for OIDC provider {url}"
-                )
+                module.fail_json(msg=f"AWS IAM did not return an ARN for OIDC provider {url}")
 
             require_client_methods(
                 module,
@@ -313,10 +301,7 @@ def ensure_present(client, module):
                     except (BotoCoreError, ClientError) as e:
                         module.fail_json_aws(
                             e,
-                            msg=(
-                                "Unable to remove client ID from AWS IAM OIDC "
-                                f"provider {url}"
-                            ),
+                            msg=("Unable to remove client ID from AWS IAM OIDC " f"provider {url}"),
                         )
 
                 for client_id in added_client_ids:
@@ -329,10 +314,7 @@ def ensure_present(client, module):
                     except (BotoCoreError, ClientError) as e:
                         module.fail_json_aws(
                             e,
-                            msg=(
-                                "Unable to add client ID to AWS IAM OIDC "
-                                f"provider {url}"
-                            ),
+                            msg=("Unable to add client ID to AWS IAM OIDC " f"provider {url}"),
                         )
 
                 provider_changed = True
@@ -358,10 +340,7 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=(
-                            "Unable to update thumbprints for AWS IAM OIDC "
-                            f"provider {url}"
-                        ),
+                        msg=("Unable to update thumbprints for AWS IAM OIDC " f"provider {url}"),
                     )
 
                 provider_changed = True
@@ -409,9 +388,7 @@ def ensure_present(client, module):
                         aws_retry=True,
                     )
                 except (BotoCoreError, ClientError) as e:
-                    module.fail_json_aws(
-                        e, msg=f"Unable to tag AWS IAM OIDC provider {url}"
-                    )
+                    module.fail_json_aws(e, msg=f"Unable to tag AWS IAM OIDC provider {url}")
 
             if provider_changed:
                 current = dict(
@@ -469,13 +446,9 @@ def main():
         if not module.params["url"].lower().startswith("https://"):
             module.fail_json(msg="url must begin with https://")
         if len(set(module.params["client_id_list"])) > 100:
-            module.fail_json(
-                msg="client_id_list must contain at most 100 unique entries"
-            )
+            module.fail_json(msg="client_id_list must contain at most 100 unique entries")
         if len({item.lower() for item in module.params["thumbprint_list"]}) > 5:
-            module.fail_json(
-                msg="thumbprint_list must contain at most 5 unique entries"
-            )
+            module.fail_json(msg="thumbprint_list must contain at most 5 unique entries")
         if not module.params["client_id_list"]:
             module.fail_json(msg="client_id_list must contain at least 1 entry")
         if not module.params["thumbprint_list"]:
@@ -483,27 +456,18 @@ def main():
 
         for client_id in module.params["client_id_list"]:
             if not 1 <= len(client_id) <= 255:
-                module.fail_json(
-                    msg=f"client_id_list entries must be 1 to 255 characters: {client_id}"
-                )
+                module.fail_json(msg=f"client_id_list entries must be 1 to 255 characters: {client_id}")
 
         for thumbprint in module.params["thumbprint_list"]:
             if not re.fullmatch(r"[0-9a-fA-F]{40}", thumbprint):
                 module.fail_json(
-                    msg=(
-                        "thumbprint_list entries must be exactly 40 hexadecimal "
-                        f"characters: {thumbprint}"
-                    )
+                    msg=("thumbprint_list entries must be exactly 40 hexadecimal " f"characters: {thumbprint}")
                 )
 
-    require_valid_tags(
-        module, module.params["tags"] if state == "present" else None, 50
-    )
+    require_valid_tags(module, module.params["tags"] if state == "present" else None, 50)
     client = module.client(
         "iam",
-        retry_decorator=AWSRetry.jittered_backoff(
-            catch_extra_error_codes=["ConcurrentModificationException"]
-        ),
+        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConcurrentModificationException"]),
     )
     require_client_methods(
         module,

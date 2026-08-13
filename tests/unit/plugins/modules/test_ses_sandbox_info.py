@@ -19,9 +19,7 @@ class SesSandboxInfoTests(TestCase):
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods"),
-            patch.object(
-                plugin, "get_account", return_value={"production_access_enabled": True}
-            ),
+            patch.object(plugin, "get_account", return_value={"production_access_enabled": True}),
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()

@@ -1,5 +1,4 @@
 ---
-name: release
 'on':
   push:
     tags:
@@ -7,14 +6,13 @@ name: release
 
 jobs:
   release:
-    name: release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
-      - run: pip install -r requirements.txt
+      - run: pip install --constraint requirements.txt ansible
       - run: ansible-galaxy collection build
       - run: ansible-galaxy collection publish --api-key ${{ secrets.GALAXY_API_KEY }} linuxhq-aws-*.tar.gz
 ...

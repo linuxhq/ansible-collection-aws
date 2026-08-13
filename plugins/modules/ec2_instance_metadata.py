@@ -145,10 +145,7 @@ def main():
 
     if hop_limit is not None and hop_limit != -1 and not 1 <= hop_limit <= 64:
         module.fail_json(
-            msg=(
-                "http_put_response_hop_limit must be between 1 and 64, "
-                "or -1 to clear the account-level default"
-            )
+            msg=("http_put_response_hop_limit must be between 1 and 64, " "or -1 to clear the account-level default")
         )
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
@@ -193,16 +190,11 @@ def main():
                 {"modify_instance_metadata_defaults": tuple(desired_update)},
             )
             try:
-                client.modify_instance_metadata_defaults(
-                    **desired_update, aws_retry=True
-                )
+                client.modify_instance_metadata_defaults(**desired_update, aws_retry=True)
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to modify EC2 instance metadata defaults in region "
-                        f"{module.region}"
-                    ),
+                    msg=("Unable to modify EC2 instance metadata defaults in region " f"{module.region}"),
                 )
 
         current_account_level = dict(current_account_level)

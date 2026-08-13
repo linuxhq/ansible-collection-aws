@@ -16,9 +16,7 @@ class IamPolicyInfoTests(TestCase):
         assert options["argument_spec"]["path_prefix"]["type"] == "str"
 
     def test_explicit_entity_name_skips_listing(self):
-        module = SimpleNamespace(
-            params={"group_name": "admins", "path_prefix": "/", "user_name": None}
-        )
+        module = SimpleNamespace(params={"group_name": "admins", "path_prefix": "/", "user_name": None})
         assert plugin.entity_names(None, module, "Group") == ["admins"]
 
     def test_explicit_names_do_not_require_entity_list_operations(self):
@@ -71,11 +69,7 @@ class IamPolicyInfoTests(TestCase):
         )
 
     def test_policy_name_filters_documents_after_preserving_all_names(self):
-        client = Mock(
-            get_user_policy=Mock(
-                return_value={"PolicyDocument": {"Statement": ["selected"]}}
-            )
-        )
+        client = Mock(get_user_policy=Mock(return_value={"PolicyDocument": {"Statement": ["selected"]}}))
         module = SimpleNamespace(params={"policy_name": "selected"})
         with (
             patch.object(plugin, "require_client_methods"),
@@ -89,9 +83,7 @@ class IamPolicyInfoTests(TestCase):
 
         self.assertEqual(result[0]["all_policy_names"], ["ignored", "selected"])
         self.assertEqual(result[0]["policy_names"], ["selected"])
-        client.get_user_policy.assert_called_once_with(
-            UserName="alice", PolicyName="selected", aws_retry=True
-        )
+        client.get_user_policy.assert_called_once_with(UserName="alice", PolicyName="selected", aws_retry=True)
 
     def test_empty_entity_names_require_no_policy_operations(self):
         module = SimpleNamespace(params={"policy_name": None})

@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    glue_connection_info as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import glue_connection_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -14,14 +12,10 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 class GlueConnectionInfoTests(TestCase):
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
-        assert options["required_by"] == {
-            "apply_override_for_compute_environment": ["name"]
-        }
+        assert options["required_by"] == {"apply_override_for_compute_environment": ["name"]}
 
     def test_named_connection_only_gates_used_parameters(self):
-        client = Mock(
-            get_connection=Mock(return_value={"Connection": {"Name": "main"}})
-        )
+        client = Mock(get_connection=Mock(return_value={"Connection": {"Name": "main"}}))
         module = FakeModule(
             {
                 "apply_override_for_compute_environment": None,

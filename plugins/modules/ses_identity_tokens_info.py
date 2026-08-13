@@ -97,12 +97,8 @@ def main():
         )
 
     try:
-        dkim_tokens = client.verify_domain_dkim(Domain=identity, aws_retry=True).get(
-            "DkimTokens", []
-        )
-        verification_token = client.verify_domain_identity(
-            Domain=identity, aws_retry=True
-        ).get("VerificationToken")
+        dkim_tokens = client.verify_domain_dkim(Domain=identity, aws_retry=True).get("DkimTokens", [])
+        verification_token = client.verify_domain_identity(Domain=identity, aws_retry=True).get("VerificationToken")
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS SES tokens for {identity}")
 

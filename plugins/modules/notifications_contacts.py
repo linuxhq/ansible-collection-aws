@@ -152,10 +152,7 @@ def ensure_absent(client, module):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to delete AWS Notifications contact "
-                    f"{module.params['email_address']}"
-                ),
+                msg=("Unable to delete AWS Notifications contact " f"{module.params['email_address']}"),
             )
 
     module.exit_json(
@@ -169,11 +166,7 @@ def ensure_present(client, module):
     name = module.params["name"]
     tags = module.params["tags"]
     contact = get_contact_by_address(client, module)
-    current_contact = (
-        {"address": contact.get("address"), "name": contact.get("name")}
-        if contact
-        else None
-    )
+    current_contact = {"address": contact.get("address"), "name": contact.get("name")} if contact else None
     desired_contact = {
         "address": email_address,
         "name": name,
@@ -198,10 +191,7 @@ def ensure_present(client, module):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to list tags for AWS Notifications contact "
-                    f"{contact['arn']}"
-                ),
+                msg=("Unable to list tags for AWS Notifications contact " f"{contact['arn']}"),
             )
 
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
@@ -231,10 +221,7 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=(
-                            "Unable to delete AWS Notifications contact "
-                            f"{email_address}"
-                        ),
+                        msg=("Unable to delete AWS Notifications contact " f"{email_address}"),
                     )
 
             request = {
@@ -251,9 +238,7 @@ def ensure_present(client, module):
                 {"create_email_contact": tuple(request)},
             )
             try:
-                contact_arn = client.create_email_contact(
-                    **request, aws_retry=True
-                ).get("arn")
+                contact_arn = client.create_email_contact(**request, aws_retry=True).get("arn")
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
@@ -261,12 +246,7 @@ def ensure_present(client, module):
                 )
 
             if not contact_arn:
-                module.fail_json(
-                    msg=(
-                        "AWS Notifications did not return an ARN for contact "
-                        f"{email_address}"
-                    )
-                )
+                module.fail_json(msg=("AWS Notifications did not return an ARN for contact " f"{email_address}"))
 
             contact = None
             require_client_methods(
@@ -310,10 +290,7 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=(
-                            "Unable to remove tags from AWS Notifications contact "
-                            f"{contact_arn}"
-                        ),
+                        msg=("Unable to remove tags from AWS Notifications contact " f"{contact_arn}"),
                     )
 
             if tags_to_set:
@@ -330,9 +307,7 @@ def ensure_present(client, module):
                         aws_retry=True,
                     )
                 except (BotoCoreError, ClientError) as e:
-                    module.fail_json_aws(
-                        e, msg=f"Unable to tag AWS Notifications contact {contact_arn}"
-                    )
+                    module.fail_json_aws(e, msg=f"Unable to tag AWS Notifications contact {contact_arn}")
 
             contact = apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
@@ -373,12 +348,8 @@ def main():
     if state == "present":
         email_address = module.params["email_address"]
 
-        if not 6 <= len(email_address) <= 254 or not re.fullmatch(
-            r"[^@\s]+@[^@\s]+", email_address
-        ):
-            module.fail_json(
-                msg="email_address must be a valid email address of 6 to 254 characters"
-            )
+        if not 6 <= len(email_address) <= 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+", email_address):
+            module.fail_json(msg="email_address must be a valid email address of 6 to 254 characters")
 
         name = module.params["name"]
 
@@ -390,14 +361,10 @@ def main():
                 )
             )
 
-    require_valid_tags(
-        module, module.params["tags"] if state == "present" else None, 200
-    )
+    require_valid_tags(module, module.params["tags"] if state == "present" else None, 200)
     client = module.client(
         "notificationscontacts",
-        retry_decorator=AWSRetry.jittered_backoff(
-            catch_extra_error_codes=["ConflictException"]
-        ),
+        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConflictException"]),
     )
     require_client_methods(
         module,

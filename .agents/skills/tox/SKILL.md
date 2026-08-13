@@ -20,7 +20,8 @@ tox run -m unit
 ```
 
 Do not activate a shared virtualenv. Each repository skill invokes its named, disposable
-`.tox/<environment>` directly. Use `tox recreate -e <environment>` to rebuild one.
+`.tox/<environment>` directly. Tool versions are pinned in `requirements.txt`; use
+`tox recreate -e <environment>` to rebuild one.
 
 ## Dependencies
 

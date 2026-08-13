@@ -110,8 +110,7 @@ def main():
         client,
         "EC2",
         {
-            "describe_managed_prefix_lists": tuple(request)
-            + ("MaxResults", "NextToken"),
+            "describe_managed_prefix_lists": tuple(request) + ("MaxResults", "NextToken"),
         },
     )
 
@@ -156,17 +155,12 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to get EC2 VPC managed prefix list entries for "
-                    f"{prefix_list['PrefixListId']}"
-                ),
+                msg=("Unable to get EC2 VPC managed prefix list entries for " f"{prefix_list['PrefixListId']}"),
             )
 
         result_prefix_lists.append(
             dict(
-                boto3_resource_to_ansible_dict(
-                    prefix_list, transform_tags=True, force_tags=False
-                ),
+                boto3_resource_to_ansible_dict(prefix_list, transform_tags=True, force_tags=False),
                 entries=boto3_resource_list_to_ansible_dict(
                     entries,
                     transform_tags=False,

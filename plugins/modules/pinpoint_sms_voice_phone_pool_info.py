@@ -127,9 +127,7 @@ def main():
     if len(pool_ids) > 5:
         module.fail_json(msg="pool_ids must contain at most 5 entries")
 
-    client = module.client(
-        "pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff()
-    )
+    client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())
 
     request = {}
     if max_results is not None:
@@ -146,9 +144,7 @@ def main():
         client,
         "Pinpoint SMS Voice V2",
         {
-            "describe_pools": tuple(
-                dict.fromkeys((*request, "MaxResults", "NextToken"))
-            ),
+            "describe_pools": tuple(dict.fromkeys((*request, "MaxResults", "NextToken"))),
             "list_pool_origination_identities": (
                 "PoolId",
                 "MaxResults",
@@ -184,10 +180,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to list origination identities for Pinpoint SMS Voice "
-                        f"V2 pool {pool_id}"
-                    ),
+                    msg=("Unable to list origination identities for Pinpoint SMS Voice " f"V2 pool {pool_id}"),
                 )
 
         arn = pool.get("PoolArn")

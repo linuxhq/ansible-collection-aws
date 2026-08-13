@@ -20,9 +20,7 @@ class Wafv2WebAclInfoTests(TestCase):
 
     def test_regional_scope_is_uppercase_for_aws(self):
         client = Mock()
-        module = FakeModule(
-            {"id": None, "name": None, "scope": "regional"}, client=client
-        )
+        module = FakeModule({"id": None, "name": None, "scope": "regional"}, client=client)
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods"),
@@ -41,9 +39,7 @@ class Wafv2WebAclInfoTests(TestCase):
                 "Name": "main",
             }
         }
-        module = FakeModule(
-            {"id": "acl-1", "name": None, "scope": "regional"}, client=client
-        )
+        module = FakeModule({"id": "acl-1", "name": None, "scope": "regional"}, client=client)
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods"),
@@ -56,9 +52,7 @@ class Wafv2WebAclInfoTests(TestCase):
         ):
             plugin.main()
         self.assertEqual(
-            raised.exception.values["web_acls"][0]["custom_response_bodies"]["body"][
-                "content"
-            ],
+            raised.exception.values["web_acls"][0]["custom_response_bodies"]["body"]["content"],
             "hello",
         )
 
@@ -68,12 +62,8 @@ class Wafv2WebAclInfoTests(TestCase):
             params[option] = ""
             with (
                 self.subTest(option=option),
-                patch.object(
-                    plugin, "AnsibleAWSModule", return_value=FakeModule(params)
-                ),
+                patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params)),
                 self.assertRaises(ModuleFail) as raised,
             ):
                 plugin.main()
-            self.assertEqual(
-                raised.exception.values["msg"], f"{option} must not be empty"
-            )
+            self.assertEqual(raised.exception.values["msg"], f"{option} must not be empty")

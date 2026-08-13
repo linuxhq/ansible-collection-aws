@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    route53_resolver_rule as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver_rule as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -34,9 +32,7 @@ class Route53ResolverRuleTests(TestCase):
         client = Mock()
         module = FakeModule({"name": "rule", "wait": False})
         with patch.object(plugin, "wait_for_resolver_rule_status") as wait:
-            plugin.delete_resolver_rule(
-                client, module, {"Id": "rslvr-rr-1"}, always=True
-            )
+            plugin.delete_resolver_rule(client, module, {"Id": "rslvr-rr-1"}, always=True)
         wait.assert_called_once_with(client, module, "rslvr-rr-1", {"deleted"})
 
     def test_delete_tolerates_rule_disappearing(self):
@@ -53,9 +49,7 @@ class Route53ResolverRuleTests(TestCase):
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
         assert options["argument_spec"]["rule_type"]["choices"] == ["forward"]
-        assert options["argument_spec"]["target_ips"]["required_one_of"] == [
-            ["ip", "ipv6"]
-        ]
+        assert options["argument_spec"]["target_ips"]["required_one_of"] == [["ip", "ipv6"]]
 
     def test_empty_tags_do_not_gate_tag_resource(self):
         client = Mock()
@@ -154,9 +148,7 @@ class Route53ResolverRuleTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
-        self.assertEqual(
-            raised.exception.values["msg"], "wait_delay must be 1 or greater"
-        )
+        self.assertEqual(raised.exception.values["msg"], "wait_delay must be 1 or greater")
 
     def test_replacement_sensitive_limits_are_rejected(self):
         base = {
@@ -279,14 +271,9 @@ class Route53ResolverRuleTests(TestCase):
             "target_ips": [{"ip": "192.0.2.1"}],
         }
         created = plugin.create_resolver_rule(client, module, desired)
-        plugin.create_resolver_rule(
-            client, module, dict(desired, domain_name="changed.example.com")
-        )
+        plugin.create_resolver_rule(client, module, dict(desired, domain_name="changed.example.com"))
 
-        tokens = [
-            call.kwargs["CreatorRequestId"]
-            for call in client.create_resolver_rule.call_args_list
-        ]
+        tokens = [call.kwargs["CreatorRequestId"] for call in client.create_resolver_rule.call_args_list]
         self.assertNotEqual(tokens[0], tokens[1])
         self.assertEqual(created["Tags"], [{"Key": "Env", "Value": "test"}])
 
@@ -325,9 +312,7 @@ class Route53ResolverRuleTests(TestCase):
         with (
             patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
             patch.object(plugin, "delete_resolver_rule") as delete,
-            patch.object(
-                plugin, "create_resolver_rule", return_value=replacement
-            ) as create,
+            patch.object(plugin, "create_resolver_rule", return_value=replacement) as create,
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
@@ -359,18 +344,12 @@ class Route53ResolverRuleTests(TestCase):
             "TargetIps": [{"Ip": "192.0.2.1"}],
         }
         with (
-            patch.object(
-                plugin, "get_resolver_rule_by_name", side_effect=[deleting, None]
-            ),
+            patch.object(plugin, "get_resolver_rule_by_name", side_effect=[deleting, None]),
             patch.object(plugin, "wait_for_resolver_rule_status") as wait_for_status,
-            patch.object(
-                plugin, "create_resolver_rule", return_value=replacement
-            ) as create,
+            patch.object(plugin, "create_resolver_rule", return_value=replacement) as create,
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_present(client, module)
 
-        wait_for_status.assert_called_once_with(
-            client, module, "rslvr-rr-old", {"deleted"}
-        )
+        wait_for_status.assert_called_once_with(client, module, "rslvr-rr-old", {"deleted"})
         create.assert_called_once()

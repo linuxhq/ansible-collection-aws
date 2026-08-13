@@ -125,16 +125,10 @@ def main():
     )
     tags = module.params["tags"]
 
-    if idempotency_token is not None and not re.fullmatch(
-        r"\w{1,32}", idempotency_token, flags=re.ASCII
-    ):
-        module.fail_json(
-            msg="ACM certificate request idempotency_token must be 1 to 32 ASCII word characters"
-        )
+    if idempotency_token is not None and not re.fullmatch(r"\w{1,32}", idempotency_token, flags=re.ASCII):
+        module.fail_json(msg="ACM certificate request idempotency_token must be 1 to 32 ASCII word characters")
     if len(subject_alternative_names) > 99:
-        module.fail_json(
-            msg="subject_alternative_names must contain at most 99 additional entries"
-        )
+        module.fail_json(msg="subject_alternative_names must contain at most 99 additional entries")
     require_valid_tags(module, tags, 50)
 
     client = module.client("acm", retry_decorator=AWSRetry.jittered_backoff())
@@ -170,10 +164,7 @@ def main():
         CertificateStatuses=["PENDING_VALIDATION", "ISSUED"],
     )
 
-    if any(
-        summary.get("DomainName", "").lower() == normalized_domain_name
-        for summary in summaries
-    ):
+    if any(summary.get("DomainName", "").lower() == normalized_domain_name for summary in summaries):
         require_client_methods(
             module,
             client,
@@ -198,10 +189,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to describe AWS Certificate Manager certificate "
-                    f"{certificate_arn}"
-                ),
+                msg=("Unable to describe AWS Certificate Manager certificate " f"{certificate_arn}"),
             )
         if certificate.get("Type") != "AMAZON_ISSUED":
             continue
@@ -256,24 +244,14 @@ def main():
         )
 
         try:
-            certificate_arn = client.request_certificate(**request, aws_retry=True).get(
-                "CertificateArn"
-            )
+            certificate_arn = client.request_certificate(**request, aws_retry=True).get("CertificateArn")
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to request AWS Certificate Manager certificate "
-                    f"{domain_name}"
-                ),
+                msg=("Unable to request AWS Certificate Manager certificate " f"{domain_name}"),
             )
         if not certificate_arn:
-            module.fail_json(
-                msg=(
-                    "AWS Certificate Manager did not return an ARN for "
-                    f"certificate {domain_name}"
-                )
-            )
+            module.fail_json(msg=("AWS Certificate Manager did not return an ARN for " f"certificate {domain_name}"))
     else:
         certificate_arn = matched["CertificateArn"]
 
@@ -296,10 +274,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to list tags for AWS Certificate Manager "
-                    f"certificate {certificate_arn}"
-                ),
+                msg=("Unable to list tags for AWS Certificate Manager " f"certificate {certificate_arn}"),
             )
 
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
@@ -333,10 +308,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to remove tags from AWS Certificate Manager "
-                        f"certificate {certificate_arn}"
-                    ),
+                    msg=("Unable to remove tags from AWS Certificate Manager " f"certificate {certificate_arn}"),
                 )
 
         if tags_to_set and not module.check_mode:
@@ -349,10 +321,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to tag AWS Certificate Manager certificate "
-                        f"{certificate_arn}"
-                    ),
+                    msg=("Unable to tag AWS Certificate Manager certificate " f"{certificate_arn}"),
                 )
 
     module.exit_json(

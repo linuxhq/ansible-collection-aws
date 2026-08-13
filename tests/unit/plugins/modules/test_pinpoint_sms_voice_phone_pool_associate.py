@@ -2,9 +2,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    pinpoint_sms_voice_phone_pool_associate as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_phone_pool_associate as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -43,9 +41,7 @@ class PinpointSmsVoicePhonePoolAssociateTests(TestCase):
         )
 
     def test_association_matches_id_or_arn(self):
-        module = SimpleNamespace(
-            params={"iso_country_code": "US", "origination_identity": "arn:phone"}
-        )
+        module = SimpleNamespace(params={"iso_country_code": "US", "origination_identity": "arn:phone"})
         associations = [
             {
                 "IsoCountryCode": "US",

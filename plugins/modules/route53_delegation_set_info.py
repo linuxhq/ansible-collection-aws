@@ -94,10 +94,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to get AWS Route53 reusable delegation set "
-                    f"{delegation_set_id}"
-                ),
+                msg=("Unable to get AWS Route53 reusable delegation set " f"{delegation_set_id}"),
             )
 
         if delegation_set:
@@ -113,9 +110,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        delegation_sets=boto3_resource_list_to_ansible_dict(
-            delegation_sets, transform_tags=False, force_tags=False
-        ),
+        delegation_sets=boto3_resource_list_to_ansible_dict(delegation_sets, transform_tags=False, force_tags=False),
     )
 
 

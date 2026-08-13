@@ -72,11 +72,7 @@ def assert_module_rejects(test, plugin, params, message):
 
     patches = [patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module)]
     if hasattr(plugin, "require_positive_wait_bounds"):
-        patches.append(
-            patch.object(
-                plugin, "require_positive_wait_bounds", lambda module, **kwargs: None
-            )
-        )
+        patches.append(patch.object(plugin, "require_positive_wait_bounds", lambda module, **kwargs: None))
 
     for item in patches:
         item.start()

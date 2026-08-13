@@ -267,12 +267,7 @@ def create_prefix_list(client, module, desired_prefix_list, desired_entries):
     created_prefix_list_id = prefix_list.get("PrefixListId")
 
     if not created_prefix_list_id:
-        module.fail_json(
-            msg=(
-                "AWS did not return the created EC2 VPC managed prefix list "
-                f"{module.params['name']}"
-            )
-        )
+        module.fail_json(msg=("AWS did not return the created EC2 VPC managed prefix list " f"{module.params['name']}"))
 
     if module.params["wait"]:
         wait_for_ready_state(client, module, created_prefix_list_id)
@@ -317,14 +312,8 @@ def ensure_absent(client, module):
     changed = current is not None and state != "delete-in-progress"
     prefix_list_id = (current or {}).get("PrefixListId")
 
-    if (
-        state == "delete-in-progress"
-        and module.params["wait"]
-        and not module.check_mode
-    ):
-        wait_for_prefix_list_state(
-            client, module, prefix_list_id, "managed_prefix_list_deleted"
-        )
+    if state == "delete-in-progress" and module.params["wait"] and not module.check_mode:
+        wait_for_prefix_list_state(client, module, prefix_list_id, "managed_prefix_list_deleted")
     elif changed and not module.check_mode:
         if state in {
             "create-in-progress",
@@ -380,27 +369,18 @@ def ensure_present(client, module):
                 desired_entries,
             )
         else:
-            current = snake_dict_to_camel_dict(
-                desired_prefix_list, capitalize_first=True
-            )
+            current = snake_dict_to_camel_dict(desired_prefix_list, capitalize_first=True)
             if tags is not None:
                 current["Tags"] = ansible_dict_to_boto3_tag_list(tags)
             current_entries = desired_entries
     else:
         current_prefix_list = comparable_prefix_list(current)
         current_entries = comparable_entries(current_entries)
-        remove_entries = [
-            entry for entry in current_entries if entry not in desired_entries
-        ]
-        add_entries = [
-            entry for entry in desired_entries if entry not in current_entries
-        ]
+        remove_entries = [entry for entry in current_entries if entry not in desired_entries]
+        add_entries = [entry for entry in desired_entries if entry not in current_entries]
 
         resource_changed = current_prefix_list != desired_prefix_list
-        address_family_changed = (
-            current_prefix_list["address_family"]
-            != desired_prefix_list["address_family"]
-        )
+        address_family_changed = current_prefix_list["address_family"] != desired_prefix_list["address_family"]
         changed = bool(remove_entries or add_entries or resource_changed)
         tags_to_set, tag_keys_to_unset = ({}, [])
         if tags is not None:
@@ -420,9 +400,7 @@ def ensure_present(client, module):
                 wait_for_ready_state(client, module, current.get("PrefixListId"))
                 return ensure_present(client, module)
             if remove_entries and not address_family_changed:
-                remove_entry_requests = [
-                    {"cidr": entry["cidr"]} for entry in remove_entries
-                ]
+                remove_entry_requests = [{"cidr": entry["cidr"]} for entry in remove_entries]
 
                 modify_prefix_list(
                     client,
@@ -520,10 +498,7 @@ def ensure_present(client, module):
                         except (BotoCoreError, ClientError) as e:
                             module.fail_json_aws(
                                 e,
-                                msg=(
-                                    "Unable to remove tags from EC2 VPC managed "
-                                    f"prefix list {prefix_list_id}"
-                                ),
+                                msg=("Unable to remove tags from EC2 VPC managed " f"prefix list {prefix_list_id}"),
                             )
 
                     if tags_to_set:
@@ -542,25 +517,18 @@ def ensure_present(client, module):
                         except (BotoCoreError, ClientError) as e:
                             module.fail_json_aws(
                                 e,
-                                msg=(
-                                    "Unable to tag EC2 VPC managed prefix list "
-                                    f"{prefix_list_id}"
-                                ),
+                                msg=("Unable to tag EC2 VPC managed prefix list " f"{prefix_list_id}"),
                             )
 
                     current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
         elif changed and module.check_mode:
             current = dict(current)
-            current.update(
-                snake_dict_to_camel_dict(desired_prefix_list, capitalize_first=True)
-            )
+            current.update(snake_dict_to_camel_dict(desired_prefix_list, capitalize_first=True))
             if tags is not None:
                 current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
             current_entries = desired_entries
 
-    prefix_list = boto3_resource_to_ansible_dict(
-        current or {}, transform_tags=True, force_tags=False
-    )
+    prefix_list = boto3_resource_to_ansible_dict(current or {}, transform_tags=True, force_tags=False)
     if current_entries is not None:
         prefix_list["entries"] = boto3_resource_list_to_ansible_dict(
             current_entries, transform_tags=False, force_tags=False
@@ -621,9 +589,7 @@ def modify_prefix_list(client, module, current, **kwargs):
     if "add_entries" in kwargs or "remove_entries" in kwargs:
         request["current_version"] = current.get("Version")
     request.update(kwargs)
-    request = scrub_none_parameters(
-        snake_dict_to_camel_dict(request, capitalize_first=True)
-    )
+    request = scrub_none_parameters(snake_dict_to_camel_dict(request, capitalize_first=True))
 
     require_client_methods(
         module,
@@ -684,10 +650,7 @@ def get_customer_managed_prefix_list_by_name(client, module):
 
     matches = []
     for prefix_list in prefix_lists:
-        if (
-            prefix_list.get("OwnerId") == "AWS"
-            or prefix_list.get("State") == "delete-complete"
-        ):
+        if prefix_list.get("OwnerId") == "AWS" or prefix_list.get("State") == "delete-complete":
             continue
 
         matches.append(prefix_list)
@@ -704,9 +667,7 @@ def get_customer_managed_prefix_list_by_name(client, module):
 
 
 def comparable_prefix_list(prefix_list):
-    normalized = boto3_resource_to_ansible_dict(
-        prefix_list, transform_tags=False, force_tags=False
-    )
+    normalized = boto3_resource_to_ansible_dict(prefix_list, transform_tags=False, force_tags=False)
     return {
         "address_family": normalized.get("address_family"),
         "max_entries": normalized.get("max_entries"),
@@ -715,9 +676,7 @@ def comparable_prefix_list(prefix_list):
 
 
 def comparable_entries(entries):
-    normalized_entries = boto3_resource_list_to_ansible_dict(
-        entries, transform_tags=False, force_tags=False
-    )
+    normalized_entries = boto3_resource_list_to_ansible_dict(entries, transform_tags=False, force_tags=False)
     result = []
     for entry in normalized_entries or []:
         normalized_entry = {}
@@ -771,24 +730,18 @@ def main():
 
     if state == "present":
         if not entries:
-            module.fail_json(
-                msg="entries must contain at least one item when state=present"
-            )
+            module.fail_json(msg="entries must contain at least one item when state=present")
         if len(entries) > 100:
             module.fail_json(msg="entries must contain at most 100 items")
 
         cidrs = set()
         for entry in entries:
             if len(entry.get("description") or "") > 255:
-                module.fail_json(
-                    msg="entries[].description must contain at most 255 characters"
-                )
+                module.fail_json(msg="entries[].description must contain at most 255 characters")
             try:
                 cidr = ipaddress.ip_network(entry["cidr"])
             except ValueError:
-                module.fail_json(
-                    msg=f"entries[].cidr must be a valid CIDR: {entry['cidr']}"
-                )
+                module.fail_json(msg=f"entries[].cidr must be a valid CIDR: {entry['cidr']}")
             if cidr.version != int(module.params["address_family"][-1]):
                 module.fail_json(
                     msg=(

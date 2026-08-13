@@ -33,12 +33,8 @@ class IamAccountAliasTests(TestCase):
         ):
             plugin.ensure_present(client, module)
 
-        client.delete_account_alias.assert_called_once_with(
-            AccountAlias="old-alias", aws_retry=True
-        )
-        client.create_account_alias.assert_called_once_with(
-            AccountAlias="new-alias", aws_retry=True
-        )
+        client.delete_account_alias.assert_called_once_with(AccountAlias="old-alias", aws_retry=True)
+        client.create_account_alias.assert_called_once_with(AccountAlias="new-alias", aws_retry=True)
 
     def test_present_state_only_requires_list_before_reconciliation(self):
         module = Mock(

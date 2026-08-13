@@ -228,15 +228,11 @@ def phone_number_tags(client, module, phone_number):
             ).get("Tags", [])
         )
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e, msg=f"Unable to list tags for Pinpoint SMS Voice V2 phone number {arn}"
-        )
+        module.fail_json_aws(e, msg=f"Unable to list tags for Pinpoint SMS Voice V2 phone number {arn}")
 
 
 def exit_result(module, changed, response):
-    phone_number = boto3_resource_to_ansible_dict(
-        response or {}, transform_tags=True, force_tags=False
-    )
+    phone_number = boto3_resource_to_ansible_dict(response or {}, transform_tags=True, force_tags=False)
     result = {
         "changed": changed,
         "state": module.params["state"],
@@ -262,10 +258,7 @@ def get_phone_number(client, module, phone_number_id):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=(
-                "Unable to describe Pinpoint SMS Voice V2 phone number "
-                f"{phone_number_id}"
-            ),
+            msg=("Unable to describe Pinpoint SMS Voice V2 phone number " f"{phone_number_id}"),
         )
 
     return phone_numbers[0] if phone_numbers else None
@@ -287,9 +280,7 @@ def wait_for_phone_number_active(client, module, phone_number_id):
                 and phone_number.get("PhoneNumberArn")
             ):
                 phone_number = dict(phone_number)
-                phone_number["Tags"] = ansible_dict_to_boto3_tag_list(
-                    phone_number_tags(client, module, phone_number)
-                )
+                phone_number["Tags"] = ansible_dict_to_boto3_tag_list(phone_number_tags(client, module, phone_number))
             return phone_number
 
         if status == "DELETED":
@@ -297,25 +288,17 @@ def wait_for_phone_number_active(client, module, phone_number_id):
                 return phone_number
             module.fail_json(
                 msg=(
-                    "AWS End User Messaging SMS phone number "
-                    f"{phone_number_id} was deleted before becoming active"
+                    "AWS End User Messaging SMS phone number " f"{phone_number_id} was deleted before becoming active"
                 ),
-                phone_number=boto3_resource_to_ansible_dict(
-                    phone_number, transform_tags=False, force_tags=False
-                ),
+                phone_number=boto3_resource_to_ansible_dict(phone_number, transform_tags=False, force_tags=False),
                 phone_number_id=phone_number_id,
                 status=status,
             )
         time.sleep(min(wait_delay, max(0, deadline - time.monotonic())))
 
     module.fail_json(
-        msg=(
-            "Timed out waiting for AWS End User Messaging SMS phone number "
-            f"{phone_number_id} to become active"
-        ),
-        phone_number=boto3_resource_to_ansible_dict(
-            phone_number, transform_tags=False, force_tags=False
-        ),
+        msg=("Timed out waiting for AWS End User Messaging SMS phone number " f"{phone_number_id} to become active"),
+        phone_number=boto3_resource_to_ansible_dict(phone_number, transform_tags=False, force_tags=False),
         phone_number_id=phone_number_id,
         status=phone_number.get("Status"),
     )
@@ -411,10 +394,7 @@ def ensure_absent(client, module):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to release Pinpoint SMS Voice V2 phone number "
-                    f"{phone_number_id}"
-                ),
+                msg=("Unable to release Pinpoint SMS Voice V2 phone number " f"{phone_number_id}"),
             )
 
         if response is not None:
@@ -507,18 +487,14 @@ def ensure_present(client, module):
 
     if current is not None:
         if wait and current.get("Status") != "ACTIVE":
-            current = wait_for_phone_number_active(
-                client, module, current["PhoneNumberId"]
-            )
+            current = wait_for_phone_number_active(client, module, current["PhoneNumberId"])
         exit_result(module, False, current)
 
     parameters = scrub_none_parameters(
         {
             "client_token": module.params["client_token"],
             "deletion_protection_enabled": deletion_protection_enabled,
-            "international_sending_enabled": module.params[
-                "international_sending_enabled"
-            ],
+            "international_sending_enabled": module.params["international_sending_enabled"],
             "iso_country_code": iso_country_code,
             "message_type": message_type,
             "number_capabilities": sorted(set(number_capabilities)),
@@ -527,9 +503,7 @@ def ensure_present(client, module):
             "pool_id": pool_id,
             "registration_id": registration_id,
             "tags": (
-                sorted(ansible_dict_to_boto3_tag_list(tags), key=lambda tag: tag["Key"])
-                if tags is not None
-                else None
+                sorted(ansible_dict_to_boto3_tag_list(tags), key=lambda tag: tag["Key"]) if tags is not None else None
             ),
         }
     )
@@ -549,21 +523,15 @@ def ensure_present(client, module):
     try:
         response = client.request_phone_number(**request, aws_retry=True)
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e, msg="Unable to request Pinpoint SMS Voice V2 phone number"
-        )
+        module.fail_json_aws(e, msg="Unable to request Pinpoint SMS Voice V2 phone number")
 
     response.pop("ResponseMetadata", None)
 
     if not response.get("PhoneNumberId"):
-        module.fail_json(
-            msg="AWS did not return the requested Pinpoint SMS Voice V2 phone number"
-        )
+        module.fail_json(msg="AWS did not return the requested Pinpoint SMS Voice V2 phone number")
 
     if wait and response.get("Status") != "ACTIVE":
-        response = wait_for_phone_number_active(
-            client, module, response["PhoneNumberId"]
-        )
+        response = wait_for_phone_number_active(client, module, response["PhoneNumberId"])
 
     exit_result(module, True, response)
 
@@ -625,27 +593,18 @@ def main():
 
     if state == "present":
         if not re.fullmatch(r"[A-Z]{2}", module.params["iso_country_code"]):
-            module.fail_json(
-                msg="iso_country_code must be exactly two uppercase letters"
-            )
+            module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
 
         if not 1 <= len(set(module.params["number_capabilities"])) <= 4:
             module.fail_json(msg="number_capabilities must contain 1 to 4 capabilities")
 
-        if (
-            module.params["number_type"] == "SIMULATOR"
-            and module.params["message_type"] != "TRANSACTIONAL"
-        ):
-            module.fail_json(
-                msg="message_type must be TRANSACTIONAL when number_type is SIMULATOR"
-            )
+        if module.params["number_type"] == "SIMULATOR" and module.params["message_type"] != "TRANSACTIONAL":
+            module.fail_json(msg="message_type must be TRANSACTIONAL when number_type is SIMULATOR")
 
     require_valid_tags(module, tags if state == "present" else None, 200)
     require_positive_wait_bounds(module, always=state == "absent")
 
-    client = module.client(
-        "pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff()
-    )
+    client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())
     describe_parameters = ("MaxResults", "NextToken")
     if state == "present":
         describe_parameters += ("Filters", "Owner")

@@ -37,9 +37,7 @@ class SesCredentialTests(TestCase):
             ),
         )
         for kwargs, message in cases:
-            with self.subTest(message=message), self.assertRaisesRegex(
-                AnsibleLookupError, message
-            ):
+            with self.subTest(message=message), self.assertRaisesRegex(AnsibleLookupError, message):
                 LookupModule().run([], **kwargs)
 
         with self.assertRaisesRegex(AnsibleLookupError, "positional terms"):

@@ -142,9 +142,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        open_id_connect_providers=boto3_resource_list_to_ansible_dict(
-            providers, transform_tags=True, force_tags=False
-        ),
+        open_id_connect_providers=boto3_resource_list_to_ansible_dict(providers, transform_tags=True, force_tags=False),
     )
 
 

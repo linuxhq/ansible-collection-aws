@@ -13,9 +13,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 
 class SsmSendCommandTests(TestCase):
     def test_equivalent_targets_are_sent_once(self):
-        client = Mock(
-            send_command=Mock(return_value={"Command": {"CommandId": "command-1"}})
-        )
+        client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
         module = FakeModule(
             {
                 "comment": None,
@@ -105,10 +103,7 @@ class SsmSendCommandTests(TestCase):
                 {
                     "timeout_seconds": None,
                     "instance_ids": [],
-                    "targets": [
-                        {"key": f"tag:Role{index}", "values": [f"i-{index}"]}
-                        for index in range(6)
-                    ],
+                    "targets": [{"key": f"tag:Role{index}", "values": [f"i-{index}"]} for index in range(6)],
                 },
                 "targets must contain at most 5 entries",
             ),
@@ -139,9 +134,7 @@ class SsmSendCommandTests(TestCase):
 
     def test_wait_returns_terminal_command_and_invocations(self):
         client = Mock()
-        client.send_command.return_value = {
-            "Command": {"CommandId": "command-1", "Status": "Pending"}
-        }
+        client.send_command.return_value = {"Command": {"CommandId": "command-1", "Status": "Pending"}}
         module = FakeModule(
             {
                 "comment": None,
@@ -168,11 +161,7 @@ class SsmSendCommandTests(TestCase):
                 "paginated_query_with_retries",
                 side_effect=[
                     {"Commands": [{"CommandId": "command-1", "Status": "Success"}]},
-                    {
-                        "CommandInvocations": [
-                            {"InstanceId": "i-1", "Status": "Success"}
-                        ]
-                    },
+                    {"CommandInvocations": [{"InstanceId": "i-1", "Status": "Success"}]},
                 ],
             ),
             self.assertRaises(ModuleExit) as raised,
@@ -187,9 +176,7 @@ class SsmSendCommandTests(TestCase):
         self.assertNotIn("Targets", client.send_command.call_args.kwargs)
 
     def test_wait_retries_empty_invocations_when_targets_exist(self):
-        client = Mock(
-            send_command=Mock(return_value={"Command": {"CommandId": "command-1"}})
-        )
+        client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
         module = FakeModule(
             {
                 "comment": None,
@@ -224,11 +211,7 @@ class SsmSendCommandTests(TestCase):
                     {"Commands": [command]},
                     {"CommandInvocations": []},
                     {"Commands": [command]},
-                    {
-                        "CommandInvocations": [
-                            {"InstanceId": "i-1", "Status": "Success"}
-                        ]
-                    },
+                    {"CommandInvocations": [{"InstanceId": "i-1", "Status": "Success"}]},
                 ],
             ),
             self.assertRaises(ModuleExit) as raised,
@@ -241,9 +224,7 @@ class SsmSendCommandTests(TestCase):
         )
 
     def test_wait_retries_when_an_invocation_has_no_status(self):
-        client = Mock(
-            send_command=Mock(return_value={"Command": {"CommandId": "command-1"}})
-        )
+        client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
         module = FakeModule(
             {
                 "comment": None,
@@ -294,9 +275,7 @@ class SsmSendCommandTests(TestCase):
         self.assertEqual(len(raised.exception.values["command_invocations"]), 2)
 
     def test_wait_retries_until_terminal_target_count_is_known(self):
-        client = Mock(
-            send_command=Mock(return_value={"Command": {"CommandId": "command-1"}})
-        )
+        client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
         module = FakeModule(
             {
                 "comment": None,
@@ -346,9 +325,7 @@ class SsmSendCommandTests(TestCase):
         module.warn.assert_called_once()
 
     def test_failed_command_is_not_hidden_by_successful_invocations(self):
-        client = Mock(
-            send_command=Mock(return_value={"Command": {"CommandId": "command-1"}})
-        )
+        client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
         module = FakeModule(
             {
                 "comment": None,

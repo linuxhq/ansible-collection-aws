@@ -219,8 +219,7 @@ def main():
     targets = [
         {"key": key, "values": list(values)}
         for key, values in dict.fromkeys(
-            (target.get("key"), tuple(dict.fromkeys(target["values"])))
-            for target in module.params["targets"] or []
+            (target.get("key"), tuple(dict.fromkeys(target["values"]))) for target in module.params["targets"] or []
         )
     ]
     if timeout_seconds is not None and not 30 <= timeout_seconds <= 2592000:
@@ -247,20 +246,15 @@ def main():
     document_name = module.params["document_name"]
     parameters = module.params["parameters"]
     wait = module.params["wait"]
-    send_command_request = {
-        option: module.params[option] for option in SEND_COMMAND_OPTIONS
-    }
+    send_command_request = {option: module.params[option] for option in SEND_COMMAND_OPTIONS}
     send_command_request["document_name"] = document_name
     send_command_request["instance_ids"] = instance_ids or None
     send_command_request["parameters"] = parameters
     if targets:
         send_command_request["targets"] = [
-            snake_dict_to_camel_dict(target, capitalize_first=True)
-            for target in targets
+            snake_dict_to_camel_dict(target, capitalize_first=True) for target in targets
         ]
-    send_command_args = scrub_none_parameters(
-        snake_dict_to_camel_dict(send_command_request, capitalize_first=True)
-    )
+    send_command_args = scrub_none_parameters(snake_dict_to_camel_dict(send_command_request, capitalize_first=True))
     send_command_args["Parameters"] = parameters
 
     methods = {"send_command": tuple(send_command_args)}
@@ -274,24 +268,15 @@ def main():
         module.exit_json(changed=True)
 
     try:
-        command = client.send_command(**send_command_args, aws_retry=True).get(
-            "Command", {}
-        )
+        command = client.send_command(**send_command_args, aws_retry=True).get("Command", {})
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=(
-                "Unable to send AWS Systems Manager command using " f"{document_name}"
-            ),
+            msg=("Unable to send AWS Systems Manager command using " f"{document_name}"),
         )
 
     if not command.get("CommandId"):
-        module.fail_json(
-            msg=(
-                "AWS Systems Manager did not return an ID for the command using "
-                f"{document_name}"
-            )
-        )
+        module.fail_json(msg=("AWS Systems Manager did not return an ID for the command using " f"{document_name}"))
 
     result = {
         "changed": True,
@@ -326,10 +311,7 @@ def main():
 
             if not commands:
                 module.fail_json(
-                    msg=(
-                        f"AWS Systems Manager command {command_id} was not returned "
-                        "by list_commands"
-                    ),
+                    msg=(f"AWS Systems Manager command {command_id} was not returned " "by list_commands"),
                 )
 
             command = commands[0]
@@ -337,22 +319,15 @@ def main():
             command_status = command.get("Status")
 
             if command_status in TERMINAL_STATUSES and not invocations:
-                if (
-                    command_status in SUCCESS_STATUSES
-                    and command.get("TargetCount") == 0
-                ):
+                if command_status in SUCCESS_STATUSES and command.get("TargetCount") == 0:
                     module.warn(
-                        f"AWS Systems Manager command {command_id} completed "
-                        "without invocations; no targets matched"
+                        f"AWS Systems Manager command {command_id} completed " "without invocations; no targets matched"
                     )
                     break
 
                 if command_status not in SUCCESS_STATUSES:
                     module.fail_json(
-                        msg=(
-                            f"AWS Systems Manager command {command_id} did not "
-                            "complete successfully"
-                        ),
+                        msg=(f"AWS Systems Manager command {command_id} did not " "complete successfully"),
                         command=normalize_command(command),
                         command_id=command_id,
                         command_invocations=[],
@@ -365,16 +340,11 @@ def main():
                 and statuses
                 and statuses.issubset(TERMINAL_STATUSES)
             ):
-                if command_status in SUCCESS_STATUSES and statuses.issubset(
-                    SUCCESS_STATUSES
-                ):
+                if command_status in SUCCESS_STATUSES and statuses.issubset(SUCCESS_STATUSES):
                     break
 
                 module.fail_json(
-                    msg=(
-                        f"AWS Systems Manager command {command_id} did not complete "
-                        "successfully"
-                    ),
+                    msg=(f"AWS Systems Manager command {command_id} did not complete " "successfully"),
                     command=normalize_command(command),
                     command_id=command_id,
                     command_invocations=boto3_resource_list_to_ansible_dict(

@@ -22,11 +22,7 @@ class IamOidcTests(TestCase):
                 self.assertEqual(normalize_provider_url(value), expected)
 
     def test_provider_includes_arn_without_response_metadata(self):
-        client = Mock(
-            get_open_id_connect_provider=Mock(
-                return_value={"Url": "example.com/id", "ResponseMetadata": {}}
-            )
-        )
+        client = Mock(get_open_id_connect_provider=Mock(return_value={"Url": "example.com/id", "ResponseMetadata": {}}))
 
         self.assertEqual(
             get_provider_by_arn(client, Mock(), "arn:provider"),

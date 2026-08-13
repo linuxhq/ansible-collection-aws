@@ -17,11 +17,7 @@ class SqsQueueInfoTests(TestCase):
 
     def test_queue_name_is_derived_from_arn(self):
         client = Mock(
-            get_queue_attributes=Mock(
-                return_value={
-                    "Attributes": {"QueueArn": "arn:aws:sqs:us-east-1:1:main"}
-                }
-            )
+            get_queue_attributes=Mock(return_value={"Attributes": {"QueueArn": "arn:aws:sqs:us-east-1:1:main"}})
         )
         queue = plugin.get_queue(client, Mock(), "https://sqs.example/other")
         self.assertEqual(queue["name"], "main")
@@ -47,9 +43,7 @@ class SqsQueueInfoTests(TestCase):
                     {"Error": {"Code": code, "Message": "missing"}},
                     "GetQueueAttributes",
                 )
-                self.assertIsNone(
-                    plugin.get_queue(client, FakeModule({}), "https://sqs/queue")
-                )
+                self.assertIsNone(plugin.get_queue(client, FakeModule({}), "https://sqs/queue"))
 
     def test_get_queue_url_accepts_modeled_not_found_error(self):
         client = Mock()

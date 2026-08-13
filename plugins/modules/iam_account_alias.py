@@ -84,11 +84,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 
 def list_account_aliases(client, module):
     try:
-        return sorted(
-            paginated_query_with_retries(client, "list_account_aliases").get(
-                "AccountAliases", []
-            )
-        )
+        return sorted(paginated_query_with_retries(client, "list_account_aliases").get("AccountAliases", []))
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg="Unable to list AWS IAM account aliases")
 
@@ -155,9 +151,7 @@ def ensure_present(client, module):
                     aws_retry=True,
                 )
             except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e, msg=f"Unable to create AWS IAM account alias {name}"
-                )
+                module.fail_json_aws(e, msg=f"Unable to create AWS IAM account alias {name}")
 
         aliases = desired_aliases
 
@@ -184,9 +178,7 @@ def main():
 
     state = module.params["state"]
 
-    if state == "present" and not re.fullmatch(
-        r"[a-z0-9]([a-z0-9]|-(?!-)){1,61}[a-z0-9]", module.params["name"]
-    ):
+    if state == "present" and not re.fullmatch(r"[a-z0-9]([a-z0-9]|-(?!-)){1,61}[a-z0-9]", module.params["name"]):
         module.fail_json(
             msg=(
                 "name must be 3 to 63 characters of lowercase letters, digits, "
@@ -197,9 +189,7 @@ def main():
 
     client = module.client(
         "iam",
-        retry_decorator=AWSRetry.jittered_backoff(
-            catch_extra_error_codes=["ConcurrentModificationException"]
-        ),
+        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConcurrentModificationException"]),
     )
     require_client_methods(
         module,

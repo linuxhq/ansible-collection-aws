@@ -156,17 +156,13 @@ def ensure_present(client, module):
 
         hub.pop("ResponseMetadata", None)
         if not hub.get("notificationHubRegion"):
-            module.fail_json(
-                msg=f"AWS Notifications did not return the created hub {region}"
-            )
+            module.fail_json(msg=f"AWS Notifications did not return the created hub {region}")
     elif changed and module.check_mode:
         hub = {"notification_hub_region": region}
 
     module.exit_json(
         changed=changed,
-        notification_hub=boto3_resource_to_ansible_dict(
-            hub, transform_tags=False, force_tags=False
-        ),
+        notification_hub=boto3_resource_to_ansible_dict(hub, transform_tags=False, force_tags=False),
         state="present",
     )
 
@@ -190,17 +186,13 @@ def main():
     state = module.params["state"]
     region = module.params["region"]
 
-    if not 2 <= len(region) <= 25 or not re.fullmatch(
-        r"[a-z]{1,2}(?:-[a-z]{1,15})+-[0-9]", region
-    ):
+    if not 2 <= len(region) <= 25 or not re.fullmatch(r"[a-z]{1,2}(?:-[a-z]{1,15})+-[0-9]", region):
         module.fail_json(msg="region must be a valid AWS region name")
 
     client = module.client(
         "notifications",
         region="us-east-1",
-        retry_decorator=AWSRetry.jittered_backoff(
-            catch_extra_error_codes=["ConflictException"]
-        ),
+        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConflictException"]),
     )
     require_client_methods(
         module,

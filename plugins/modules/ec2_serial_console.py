@@ -105,9 +105,7 @@ def main():
     )
 
     try:
-        current = normalized_serial_console_access(
-            client.get_serial_console_access_status(aws_retry=True)
-        )
+        current = normalized_serial_console_access(client.get_serial_console_access_status(aws_retry=True))
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
@@ -125,16 +123,11 @@ def main():
                 {"enable_serial_console_access": ()},
             )
             try:
-                current = normalized_serial_console_access(
-                    client.enable_serial_console_access(aws_retry=True)
-                )
+                current = normalized_serial_console_access(client.enable_serial_console_access(aws_retry=True))
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to enable EC2 serial console access in region "
-                        f"{module.region}"
-                    ),
+                    msg=("Unable to enable EC2 serial console access in region " f"{module.region}"),
                 )
         else:
             require_client_methods(
@@ -144,16 +137,11 @@ def main():
                 {"disable_serial_console_access": ()},
             )
             try:
-                current = normalized_serial_console_access(
-                    client.disable_serial_console_access(aws_retry=True)
-                )
+                current = normalized_serial_console_access(client.disable_serial_console_access(aws_retry=True))
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to disable EC2 serial console access in region "
-                        f"{module.region}"
-                    ),
+                    msg=("Unable to disable EC2 serial console access in region " f"{module.region}"),
                 )
 
     elif changed and module.check_mode:

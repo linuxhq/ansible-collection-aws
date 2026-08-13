@@ -142,9 +142,7 @@ class GlobalAcceleratorTests(TestCase):
         }
         shape = Mock()
         shape.input_shape.members = {
-            "EndpointConfigurations": Mock(
-                member=Mock(members={"EndpointId": Mock(), "Weight": Mock()})
-            )
+            "EndpointConfigurations": Mock(member=Mock(members={"EndpointId": Mock(), "Weight": Mock()}))
         }
         client = Mock()
         client.meta.service_model.operation_model.return_value = shape
@@ -240,16 +238,12 @@ class GlobalAcceleratorTests(TestCase):
         }
         deployed = dict(transitioning, Enabled=True, Status="DEPLOYED")
         with (
-            patch.object(
-                plugin, "get_accelerator", side_effect=[transitioning, deployed]
-            ),
+            patch.object(plugin, "get_accelerator", side_effect=[transitioning, deployed]),
             patch.object(plugin, "wait_for_accelerator") as wait_for_accelerator,
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
-        wait_for_accelerator.assert_called_once_with(
-            client, module, "arn:accelerator", "accelerator_deployed"
-        )
+        wait_for_accelerator.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed")
         self.assertFalse(raised.exception.values["changed"])
         client.update_accelerator.assert_not_called()
 
@@ -331,9 +325,7 @@ class GlobalAcceleratorTests(TestCase):
         }
         self.assertTrue(plugin.endpoint_group_requires_update(current, desired))
         self.assertEqual(
-            plugin.predicted_endpoint_group(current, desired)["endpoint_descriptions"][
-                0
-            ]["attachment_arn"],
+            plugin.predicted_endpoint_group(current, desired)["endpoint_descriptions"][0]["attachment_arn"],
             "arn:new",
         )
 
@@ -364,9 +356,7 @@ class GlobalAcceleratorTests(TestCase):
 
         self.assertEqual(matched, [])
         self.assertEqual(updates[0][0], current[0])
-        self.assertEqual(
-            updates[0][1]["port_ranges"], [{"from_port": 443, "to_port": 443}]
-        )
+        self.assertEqual(updates[0][1]["port_ranges"], [{"from_port": 443, "to_port": 443}])
         self.assertEqual(creates, [])
         self.assertEqual(deletes, [])
 
@@ -423,12 +413,8 @@ class GlobalAcceleratorTests(TestCase):
                     "ip_addresses": None,
                     "listeners": [
                         {
-                            "endpoint_groups": [
-                                {"endpoint_group_region": f"region-{index}"}
-                            ],
-                            "port_ranges": [
-                                {"from_port": index + 1, "to_port": index + 1}
-                            ],
+                            "endpoint_groups": [{"endpoint_group_region": f"region-{index}"}],
+                            "port_ranges": [{"from_port": index + 1, "to_port": index + 1}],
                         }
                         for index in range(43)
                     ],
@@ -568,9 +554,7 @@ class GlobalAcceleratorTests(TestCase):
             (
                 dict(
                     base,
-                    endpoint_configurations=[
-                        {"endpoint_id": "endpoint-1", "weight": 256}
-                    ],
+                    endpoint_configurations=[{"endpoint_id": "endpoint-1", "weight": 256}],
                 ),
                 "Endpoint group us-east-1 endpoint_configurations weight must be between 0 and 255",
             ),
@@ -655,9 +639,7 @@ class GlobalAcceleratorTests(TestCase):
             patch.object(plugin, "require_client_methods") as require,
             patch.object(plugin, "require_endpoint_configuration_parameters"),
         ):
-            changed, groups = plugin.ensure_endpoint_groups(
-                client, module, "arn:listener", [desired]
-            )
+            changed, groups = plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired])
         require.assert_called_once_with(
             module,
             client,
@@ -704,18 +686,14 @@ class GlobalAcceleratorTests(TestCase):
         ):
             plugin.ensure_absent(client, module)
 
-        delete_listener.assert_called_once_with(
-            client, module, "arn:accelerator", "arn:listener"
-        )
+        delete_listener.assert_called_once_with(client, module, "arn:accelerator", "arn:listener")
         self.assertEqual(wait_for_accelerator.call_count, 2)
         for call in wait_for_accelerator.call_args_list:
             self.assertEqual(
                 call.args,
                 (client, module, "arn:accelerator", "accelerator_deployed"),
             )
-        client.delete_accelerator.assert_called_once_with(
-            AcceleratorArn="arn:accelerator", aws_retry=True
-        )
+        client.delete_accelerator.assert_called_once_with(AcceleratorArn="arn:accelerator", aws_retry=True)
 
     def test_listener_deletion_waits_for_endpoint_group_deletion(self):
         client = Mock()
@@ -733,12 +711,8 @@ class GlobalAcceleratorTests(TestCase):
             plugin.delete_listener(client, module, "arn:accelerator", "arn:listener")
 
         delete_endpoint_group.assert_called_once_with(client, module, "arn:group")
-        wait_for_accelerator.assert_called_once_with(
-            client, module, "arn:accelerator", "accelerator_deployed"
-        )
-        client.delete_listener.assert_called_once_with(
-            ListenerArn="arn:listener", aws_retry=True
-        )
+        wait_for_accelerator.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed")
+        client.delete_listener.assert_called_once_with(ListenerArn="arn:listener", aws_retry=True)
         require.assert_called_once_with(
             module,
             client,
@@ -748,9 +722,7 @@ class GlobalAcceleratorTests(TestCase):
 
     def test_listener_creation_waits_before_endpoint_groups(self):
         client = Mock()
-        client.create_listener.return_value = {
-            "Listener": {"ListenerArn": "arn:listener"}
-        }
+        client.create_listener.return_value = {"Listener": {"ListenerArn": "arn:listener"}}
         desired = {
             "client_affinity": "NONE",
             "endpoint_groups": [{"endpoint_group_region": "us-east-1"}],
@@ -771,9 +743,7 @@ class GlobalAcceleratorTests(TestCase):
         ):
             plugin.ensure_listeners(client, module, "arn:accelerator")
 
-        wait_for_accelerator.assert_called_once_with(
-            client, module, "arn:accelerator", "accelerator_deployed"
-        )
+        wait_for_accelerator.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed")
 
     def test_listener_replacement_retries_after_freeing_quota(self):
         client = Mock()
@@ -803,19 +773,13 @@ class GlobalAcceleratorTests(TestCase):
             patch.object(plugin, "wait_for_accelerator") as wait_for_accelerator,
             patch.object(plugin, "require_client_methods"),
         ):
-            changed, listeners = plugin.ensure_listeners(
-                client, module, "arn:accelerator"
-            )
+            changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
 
         self.assertTrue(changed)
         self.assertEqual(listeners[0]["listener_arn"], "arn:new")
         self.assertEqual(client.create_listener.call_count, 2)
-        delete_listener.assert_called_once_with(
-            client, module, "arn:accelerator", "arn:old"
-        )
-        wait_for_accelerator.assert_called_once_with(
-            client, module, "arn:accelerator", "accelerator_deployed"
-        )
+        delete_listener.assert_called_once_with(client, module, "arn:accelerator", "arn:old")
+        wait_for_accelerator.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed")
 
     def test_accelerator_creation_waits_before_listeners(self):
         client = Mock()
@@ -847,9 +811,7 @@ class GlobalAcceleratorTests(TestCase):
         ):
             plugin.ensure_present(client, module)
 
-        wait_for_accelerator.assert_called_once_with(
-            client, module, "arn:accelerator", "accelerator_deployed"
-        )
+        wait_for_accelerator.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed")
         self.assertEqual(
             require.call_args.args[3],
             {

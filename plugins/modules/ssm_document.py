@@ -142,9 +142,7 @@ def comparable_document(document):
     if document is None:
         return None
     return {
-        "content": snake_dict_to_camel_dict(
-            document_content(document), capitalize_first=False
-        ),
+        "content": snake_dict_to_camel_dict(document_content(document), capitalize_first=False),
         "document_type": document.get("DocumentType"),
     }
 
@@ -197,22 +195,13 @@ def ensure_present(client, module):
         resource_changed = True
     else:
         if current_comparable["document_type"] != desired_comparable["document_type"]:
-            module.fail_json(
-                msg=(
-                    "Unable to update AWS Systems Manager document "
-                    f"{name}: immutable fields differ"
-                )
-            )
+            module.fail_json(msg=("Unable to update AWS Systems Manager document " f"{name}: immutable fields differ"))
 
         changed = current_comparable != desired_comparable
         resource_changed = changed
 
     default_version_to_promote = None
-    if (
-        resource_changed
-        and current is not None
-        and module.params["document_version"] == "$DEFAULT"
-    ):
+    if resource_changed and current is not None and module.params["document_version"] == "$DEFAULT":
         latest = get_document(client, module, document_version="$LATEST")
         if comparable_document(latest) == desired_comparable:
             default_version_to_promote = (latest or {}).get("DocumentVersion")
@@ -255,21 +244,14 @@ def ensure_present(client, module):
                 if tags:
                     request["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
-                current = client.create_document(**request, aws_retry=True).get(
-                    "DocumentDescription", {}
-                )
+                current = client.create_document(**request, aws_retry=True).get("DocumentDescription", {})
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to create AWS Systems Manager document {name}",
                 )
             if not current.get("DocumentVersion"):
-                module.fail_json(
-                    msg=(
-                        "AWS Systems Manager did not return the created document "
-                        f"{name}"
-                    )
-                )
+                module.fail_json(msg=("AWS Systems Manager did not return the created document " f"{name}"))
             current["Content"] = desired_content
             if tags:
                 current["Tags"] = request["Tags"]
@@ -315,10 +297,7 @@ def ensure_present(client, module):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to set the default version of AWS Systems "
-                        f"Manager document {name}"
-                    ),
+                    msg=("Unable to set the default version of AWS Systems " f"Manager document {name}"),
                 )
 
         if resource_changed or default_version_to_promote:
@@ -405,10 +384,7 @@ def get_document(client, module, include_tags=False, document_version=None):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to list tags for AWS Systems Manager "
-                    f"{SSM_DOCUMENT_RESOURCE_TYPE} {name}"
-                ),
+                msg=("Unable to list tags for AWS Systems Manager " f"{SSM_DOCUMENT_RESOURCE_TYPE} {name}"),
             )
 
     return document
@@ -451,9 +427,7 @@ def main():
     require_valid_tags(module, tags if state == "present" else None, 1000)
     client = module.client(
         "ssm",
-        retry_decorator=AWSRetry.jittered_backoff(
-            catch_extra_error_codes=["TooManyUpdates"]
-        ),
+        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["TooManyUpdates"]),
     )
 
     methods = {"get_document": ("DocumentFormat", "DocumentVersion", "Name")}

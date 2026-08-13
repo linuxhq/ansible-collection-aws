@@ -132,20 +132,13 @@ def ensure_present(client, module):
         if delegation_set is None:
             delegation_set = get_reusable_delegation_set(client, module)
         if not (delegation_set or {}).get("Id"):
-            module.fail_json(
-                msg=(
-                    "AWS Route53 did not return the created reusable delegation set "
-                    f"{name}"
-                )
-            )
+            module.fail_json(msg=("AWS Route53 did not return the created reusable delegation set " f"{name}"))
     elif changed and module.check_mode:
         delegation_set = {"CallerReference": name}
 
     result = {
         "changed": changed,
-        "delegation_set": boto3_resource_to_ansible_dict(
-            delegation_set, transform_tags=False, force_tags=False
-        ),
+        "delegation_set": boto3_resource_to_ansible_dict(delegation_set, transform_tags=False, force_tags=False),
         "name": name,
         "state": "present",
     }
@@ -167,11 +160,7 @@ def get_reusable_delegation_set(client, module):
         "Unable to list AWS Route53 reusable delegation sets",
     )
     return next(
-        (
-            delegation_set
-            for delegation_set in delegation_sets
-            if delegation_set.get("CallerReference") == name
-        ),
+        (delegation_set for delegation_set in delegation_sets if delegation_set.get("CallerReference") == name),
         None,
     )
 

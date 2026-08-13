@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    pinpoint_sms_voice_phone_number_info as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_phone_number_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -73,9 +71,7 @@ class PinpointSmsVoicePhoneNumberInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
-        self.assertEqual(
-            raised.exception.values["msg"], "max_results must be between 1 and 100"
-        )
+        self.assertEqual(raised.exception.values["msg"], "max_results must be between 1 and 100")
 
     def test_rejects_provider_list_limits(self):
         cases = [
@@ -110,9 +106,7 @@ class PinpointSmsVoicePhoneNumberInfoTests(TestCase):
 
     def test_phone_numbers_are_enriched_with_tags(self):
         client = Mock()
-        client.list_tags_for_resource.return_value = {
-            "Tags": [{"Key": "Name", "Value": "primary"}]
-        }
+        client.list_tags_for_resource.return_value = {"Tags": [{"Key": "Name", "Value": "primary"}]}
         module = FakeModule(
             {
                 "filters": None,
@@ -128,9 +122,7 @@ class PinpointSmsVoicePhoneNumberInfoTests(TestCase):
             patch.object(
                 plugin,
                 "query_list",
-                return_value=[
-                    {"PhoneNumberArn": "arn:phone", "PhoneNumberId": "phone-1"}
-                ],
+                return_value=[{"PhoneNumberArn": "arn:phone", "PhoneNumberId": "phone-1"}],
             ),
             self.assertRaises(ModuleExit) as raised,
         ):

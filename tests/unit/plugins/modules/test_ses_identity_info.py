@@ -16,11 +16,7 @@ class SesIdentityInfoTests(TestCase):
         assert options["mutually_exclusive"] == [["identity_type", "name"]]
 
     def test_named_identity_skips_listing(self):
-        sesv2 = Mock(
-            get_email_identity=Mock(
-                return_value={"VerifiedForSendingStatus": True, "ResponseMetadata": {}}
-            )
-        )
+        sesv2 = Mock(get_email_identity=Mock(return_value={"VerifiedForSendingStatus": True, "ResponseMetadata": {}}))
         module = FakeModule({"identity_type": None, "name": "example.com"})
         module.client = Mock(return_value=sesv2)
         with (
@@ -37,9 +33,7 @@ class SesIdentityInfoTests(TestCase):
             "SESv2",
             {"get_email_identity": ("EmailIdentity",)},
         )
-        self.assertEqual(
-            raised.exception.values["identities"][0]["name"], "example.com"
-        )
+        self.assertEqual(raised.exception.values["identities"][0]["name"], "example.com")
 
     def test_empty_name_is_rejected(self):
         assert_module_rejects(

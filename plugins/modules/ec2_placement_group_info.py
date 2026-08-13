@@ -109,9 +109,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        placement_groups=boto3_resource_list_to_ansible_dict(
-            placement_groups, transform_tags=True, force_tags=False
-        ),
+        placement_groups=boto3_resource_list_to_ansible_dict(placement_groups, transform_tags=True, force_tags=False),
     )
 
 

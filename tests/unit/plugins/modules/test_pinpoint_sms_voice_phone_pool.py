@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    pinpoint_sms_voice_phone_pool as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_phone_pool as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -86,9 +84,7 @@ class PinpointSmsVoicePhonePoolTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
-        self.assertEqual(
-            raised.exception.values["msg"], "tags must contain at most 200 entries"
-        )
+        self.assertEqual(raised.exception.values["msg"], "tags must contain at most 200 entries")
 
     def test_existing_pool_rejects_message_type_change(self):
         module = FakeModule(

@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    route53_delegation_set as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import route53_delegation_set as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -43,9 +41,7 @@ class Route53DelegationSetTests(TestCase):
         ):
             plugin.main()
 
-        self.assertEqual(
-            raised.exception.values["msg"], "name must be 1 to 128 characters"
-        )
+        self.assertEqual(raised.exception.values["msg"], "name must be 1 to 128 characters")
 
     def test_check_mode_predicts_delegation_set(self):
         module = FakeModule({"name": "example"}, check_mode=True)

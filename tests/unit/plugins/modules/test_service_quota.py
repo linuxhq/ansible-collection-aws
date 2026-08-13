@@ -44,9 +44,7 @@ class ServiceQuotaTests(TestCase):
         ):
             plugin.main()
         self.assertTrue(raised.exception.values["changed"])
-        self.assertEqual(
-            raised.exception.values["requested_quota"]["desired_value"], 10.0
-        )
+        self.assertEqual(raised.exception.values["requested_quota"]["desired_value"], 10.0)
         client.request_service_quota_increase.assert_not_called()
 
     def test_pending_request_prevents_a_duplicate_request(self):

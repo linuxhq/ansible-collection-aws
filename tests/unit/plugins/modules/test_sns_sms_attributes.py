@@ -44,12 +44,8 @@ class SnsSmsAttributesTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
-        client.set_sms_attributes.assert_called_once_with(
-            attributes={"DefaultSenderID": "new"}, aws_retry=True
-        )
-        self.assertEqual(
-            raised.exception.values["attributes"]["monthly_spend_limit"], "100"
-        )
+        client.set_sms_attributes.assert_called_once_with(attributes={"DefaultSenderID": "new"}, aws_retry=True)
+        self.assertEqual(raised.exception.values["attributes"]["monthly_spend_limit"], "100")
 
     def test_report_only_mode_does_not_require_set_method(self):
         client = Mock()
@@ -62,7 +58,5 @@ class SnsSmsAttributesTests(TestCase):
         ):
             plugin.main()
 
-        require_methods.assert_called_once_with(
-            module, client, "SNS", {"get_sms_attributes": ()}
-        )
+        require_methods.assert_called_once_with(module, client, "SNS", {"get_sms_attributes": ()})
         client.set_sms_attributes.assert_not_called()

@@ -55,18 +55,12 @@ class SesSandboxTests(TestCase):
         ):
             plugin.main()
         self.assertFalse(raised.exception.values["changed"])
-        require_methods.assert_called_once_with(
-            module, client, "SESv2", {"get_account": ()}
-        )
+        require_methods.assert_called_once_with(module, client, "SESv2", {"get_account": ()})
         client.put_account_details.assert_not_called()
 
     def test_rejects_more_than_four_contact_addresses(self):
         module = FakeModule(
-            {
-                "additional_contact_email_addresses": [
-                    f"contact-{index}@example.com" for index in range(5)
-                ]
-            }
+            {"additional_contact_email_addresses": [f"contact-{index}@example.com" for index in range(5)]}
         )
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),

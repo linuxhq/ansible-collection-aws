@@ -89,9 +89,7 @@ def main():
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     filters = module.params["filters"]
-    transit_gateway_route_table_ids = list(
-        dict.fromkeys(module.params["transit_gateway_route_table_ids"] or [])
-    )
+    transit_gateway_route_table_ids = list(dict.fromkeys(module.params["transit_gateway_route_table_ids"] or []))
 
     request = {}
     if transit_gateway_route_table_ids:
@@ -104,8 +102,7 @@ def main():
         client,
         "EC2",
         {
-            "describe_transit_gateway_route_tables": tuple(request)
-            + ("MaxResults", "NextToken"),
+            "describe_transit_gateway_route_tables": tuple(request) + ("MaxResults", "NextToken"),
         },
     )
 
@@ -147,12 +144,9 @@ def main():
                     client,
                     "search_transit_gateway_routes",
                     "Routes",
-                    "Unable to search EC2 transit gateway routes in route table "
-                    f"{transit_gateway_route_table_id}",
+                    "Unable to search EC2 transit gateway routes in route table " f"{transit_gateway_route_table_id}",
                     TransitGatewayRouteTableId=transit_gateway_route_table_id,
-                    Filters=ansible_dict_to_boto3_filter_list(
-                        {"type": ["static", "propagated"]}
-                    ),
+                    Filters=ansible_dict_to_boto3_filter_list({"type": ["static", "propagated"]}),
                     MaxResults=1000,
                 ),
                 key=route_sort_key,

@@ -17,7 +17,5 @@ class SesTests(TestCase):
             )
         )
 
-        self.assertEqual(
-            get_account(client, Mock()), {"production_access_enabled": True}
-        )
+        self.assertEqual(get_account(client, Mock()), {"production_access_enabled": True})
         client.get_account.assert_called_once_with(aws_retry=True)

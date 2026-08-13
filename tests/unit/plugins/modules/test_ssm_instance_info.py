@@ -35,9 +35,7 @@ class SsmInstanceInfoTests(TestCase):
         self.assertIn("at most 100", raised.exception.values["msg"])
 
     def test_rejects_empty_instance_id(self):
-        module = FakeModule(
-            {"filters": None, "instance_ids": [""], "ping_status": None}
-        )
+        module = FakeModule({"filters": None, "instance_ids": [""], "ping_status": None})
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             self.assertRaises(ModuleFail) as raised,
@@ -61,9 +59,7 @@ class SsmInstanceInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
-        self.assertEqual(
-            require.call_args.args[3], {"describe_instance_information": ("Filters",)}
-        )
+        self.assertEqual(require.call_args.args[3], {"describe_instance_information": ("Filters",)})
         self.assertEqual(
             query.call_args.kwargs["Filters"],
             [

@@ -27,23 +27,17 @@ class SsmDocumentTests(TestCase):
 
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
-        assert options["required_if"] == [
-            ("state", "present", ["content", "document_type"])
-        ]
+        assert options["required_if"] == [("state", "present", ["content", "document_type"])]
 
     def test_document_content_accepts_json_or_mapping(self):
-        assert plugin.document_content({"Content": '{"schemaVersion":"2.2"}'}) == {
-            "schemaVersion": "2.2"
-        }
+        assert plugin.document_content({"Content": '{"schemaVersion":"2.2"}'}) == {"schemaVersion": "2.2"}
         content = {"schemaVersion": "2.2"}
         assert plugin.document_content({"Content": content}) is content
         assert plugin.document_content(None) == {}
 
     def test_content_update_promotes_the_new_default_version(self):
         client = Mock()
-        client.update_document.return_value = {
-            "DocumentDescription": {"DocumentVersion": "2"}
-        }
+        client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2"}}
         module = FakeModule(
             {
                 "content": {"schema_version": "2.2"},
@@ -76,9 +70,7 @@ class SsmDocumentTests(TestCase):
 
     def test_default_version_updates_latest_instead_of_the_older_default(self):
         client = Mock()
-        client.update_document.return_value = {
-            "DocumentDescription": {"DocumentVersion": "3"}
-        }
+        client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "3"}}
         module = FakeModule(
             {
                 "content": {"schema_version": "2.2"},
@@ -98,16 +90,12 @@ class SsmDocumentTests(TestCase):
         latest = dict(current, DocumentVersion="2")
         updated = dict(current, Content='{"schemaVersion":"2.2"}', DocumentVersion="3")
         with (
-            patch.object(
-                plugin, "get_document", side_effect=[current, latest, updated]
-            ),
+            patch.object(plugin, "get_document", side_effect=[current, latest, updated]),
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_present(client, module)
 
-        self.assertEqual(
-            client.update_document.call_args.kwargs["DocumentVersion"], "$LATEST"
-        )
+        self.assertEqual(client.update_document.call_args.kwargs["DocumentVersion"], "$LATEST")
         client.update_document_default_version.assert_called_once_with(
             DocumentVersion="3", Name="example", aws_retry=True
         )
@@ -148,9 +136,7 @@ class SsmDocumentTests(TestCase):
 
     def test_update_result_ignores_stale_default_version_refresh(self):
         client = Mock()
-        client.update_document.return_value = {
-            "DocumentDescription": {"DocumentVersion": "2", "Name": "example"}
-        }
+        client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2", "Name": "example"}}
         module = FakeModule(
             {
                 "content": {"schema_version": "2.2"},
@@ -168,9 +154,7 @@ class SsmDocumentTests(TestCase):
             "Name": "example",
         }
         with (
-            patch.object(
-                plugin, "get_document", side_effect=[current, current, current]
-            ),
+            patch.object(plugin, "get_document", side_effect=[current, current, current]),
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)

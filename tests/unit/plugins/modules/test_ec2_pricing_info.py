@@ -35,31 +35,21 @@ class Ec2PricingInfoTests(TestCase):
         client = Mock()
         module = FakeModule(
             {
-                "filters": [
-                    {"field": "instanceType", "type": "TERM_MATCH", "value": "t3"}
-                ],
+                "filters": [{"field": "instanceType", "type": "TERM_MATCH", "value": "t3"}],
                 "format_version": "aws_v1",
                 "max_results": None,
                 "service_code": "AmazonEC2",
             },
             client=client,
         )
-        terms = {
-            "OnDemand": {
-                "SKU.OFFER": {
-                    "priceDimensions": {"SKU.RATE": {"pricePerUnit": {"USD": "1"}}}
-                }
-            }
-        }
+        terms = {"OnDemand": {"SKU.OFFER": {"priceDimensions": {"SKU.RATE": {"pricePerUnit": {"USD": "1"}}}}}}
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods") as require,
             patch.object(
                 plugin,
                 "paginated_query_with_retries",
-                return_value={
-                    "PriceList": [plugin.json.dumps({"sku": "SKU", "terms": terms})]
-                },
+                return_value={"PriceList": [plugin.json.dumps({"sku": "SKU", "terms": terms})]},
             ) as query,
             self.assertRaises(ModuleExit) as raised,
         ):
@@ -106,9 +96,7 @@ class Ec2PricingInfoTests(TestCase):
     def test_max_results_is_validated_when_requested(self):
         module = FakeModule(
             {
-                "filters": [
-                    {"field": "instanceType", "type": "TERM_MATCH", "value": "t3"}
-                ],
+                "filters": [{"field": "instanceType", "type": "TERM_MATCH", "value": "t3"}],
                 "format_version": "aws_v1",
                 "max_results": 10,
                 "service_code": "AmazonEC2",
@@ -144,10 +132,7 @@ class Ec2PricingInfoTests(TestCase):
     def test_rejects_more_than_50_filters(self):
         module = FakeModule(
             {
-                "filters": [
-                    {"field": str(index), "type": "TERM_MATCH", "value": "x"}
-                    for index in range(51)
-                ],
+                "filters": [{"field": str(index), "type": "TERM_MATCH", "value": "x"} for index in range(51)],
                 "format_version": "aws_v1",
                 "max_results": None,
                 "service_code": "AmazonEC2",
@@ -158,6 +143,4 @@ class Ec2PricingInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
-        self.assertEqual(
-            raised.exception.values["msg"], "filters must contain at most 50 entries"
-        )
+        self.assertEqual(raised.exception.values["msg"], "filters must contain at most 50 entries")

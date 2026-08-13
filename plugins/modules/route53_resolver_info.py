@@ -72,9 +72,7 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client(
-        "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
-    )
+    client = module.client("route53resolver", retry_decorator=AWSRetry.jittered_backoff())
 
     require_client_methods(
         module,
@@ -118,10 +116,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to list AWS Route53 Resolver endpoint IP addresses "
-                    f"for {endpoint['Id']}"
-                ),
+                msg=("Unable to list AWS Route53 Resolver endpoint IP addresses " f"for {endpoint['Id']}"),
             )
 
         tags = []
@@ -137,10 +132,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to list tags for AWS Route53 Resolver endpoint "
-                        f"{endpoint['Arn']}"
-                    ),
+                    msg=("Unable to list tags for AWS Route53 Resolver endpoint " f"{endpoint['Arn']}"),
                 )
 
         normalized_endpoints.append(

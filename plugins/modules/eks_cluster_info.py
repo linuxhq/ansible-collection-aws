@@ -124,11 +124,7 @@ def main():
             module,
             client,
             "EKS",
-            {
-                "list_clusters": (
-                    (("include",) if include else ()) + ("maxResults", "nextToken")
-                )
-            },
+            {"list_clusters": ((("include",) if include else ()) + ("maxResults", "nextToken"))},
         )
         request = {}
         if include:
@@ -166,9 +162,7 @@ def main():
         clusters.append(cluster)
 
     cluster_tags = [cluster.get("tags") for cluster in clusters]
-    clusters = boto3_resource_list_to_ansible_dict(
-        clusters, transform_tags=False, force_tags=False
-    )
+    clusters = boto3_resource_list_to_ansible_dict(clusters, transform_tags=False, force_tags=False)
     for cluster, tags in zip(clusters, cluster_tags):
         if tags is not None:
             cluster["tags"] = tags
@@ -194,9 +188,7 @@ def main():
 
                         current = current.get(part)
 
-                if not any(
-                    value_matches(current, expected) for expected in expected_values
-                ):
+                if not any(value_matches(current, expected) for expected in expected_values):
                     matches = False
                     break
 

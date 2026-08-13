@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    route53_delegation_set_info as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import route53_delegation_set_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -17,11 +15,7 @@ class Route53DelegationSetInfoTests(TestCase):
         assert options["argument_spec"]["id"]["type"] == "str"
 
     def test_id_uses_get_reusable_delegation_set(self):
-        client = Mock(
-            get_reusable_delegation_set=Mock(
-                return_value={"DelegationSet": {"Id": "delegation-1"}}
-            )
-        )
+        client = Mock(get_reusable_delegation_set=Mock(return_value={"DelegationSet": {"Id": "delegation-1"}}))
         module = FakeModule({"id": "delegation-1"}, client=client)
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
@@ -35,9 +29,7 @@ class Route53DelegationSetInfoTests(TestCase):
             "Route53",
             {"get_reusable_delegation_set": ("Id",)},
         )
-        client.get_reusable_delegation_set.assert_called_once_with(
-            Id="delegation-1", aws_retry=True
-        )
+        client.get_reusable_delegation_set.assert_called_once_with(Id="delegation-1", aws_retry=True)
 
     def test_listing_uses_shared_pagination(self):
         client = Mock()
@@ -53,9 +45,7 @@ class Route53DelegationSetInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
-        self.assertEqual(
-            raised.exception.values["delegation_sets"], [{"id": "delegation-1"}]
-        )
+        self.assertEqual(raised.exception.values["delegation_sets"], [{"id": "delegation-1"}])
         query.assert_called_once()
 
     def test_listing_requires_pagination_parameters(self):

@@ -208,8 +208,7 @@ def pool_with_origination_identities(client, module, pool):
             client,
             "list_pool_origination_identities",
             "OriginationIdentities",
-            "Unable to list origination identities for Pinpoint SMS Voice "
-            f"V2 pool {pool_id}",
+            "Unable to list origination identities for Pinpoint SMS Voice " f"V2 pool {pool_id}",
             PoolId=pool_id,
         )
 
@@ -233,9 +232,7 @@ def pool_with_tags(client, module, pool):
                 ).get("Tags", [])
             )
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e, msg=f"Unable to list tags for Pinpoint SMS Voice V2 pool {arn}"
-            )
+            module.fail_json_aws(e, msg=f"Unable to list tags for Pinpoint SMS Voice V2 pool {arn}")
 
     pool["Tags"] = ansible_dict_to_boto3_tag_list(tags)
     return pool
@@ -268,13 +265,8 @@ def wait_for_pool_active(client, module, pool_id):
             if module.params.get("state") == "absent":
                 return pool
             module.fail_json(
-                msg=(
-                    "AWS End User Messaging SMS phone pool "
-                    f"{pool_id} was deleted before becoming active"
-                ),
-                pool=boto3_resource_to_ansible_dict(
-                    pool, transform_tags=False, force_tags=False
-                ),
+                msg=("AWS End User Messaging SMS phone pool " f"{pool_id} was deleted before becoming active"),
+                pool=boto3_resource_to_ansible_dict(pool, transform_tags=False, force_tags=False),
                 pool_id=pool_id,
                 status=status,
             )
@@ -286,13 +278,8 @@ def wait_for_pool_active(client, module, pool_id):
         )
 
     module.fail_json(
-        msg=(
-            "Timed out waiting for AWS End User Messaging SMS phone pool "
-            f"{pool_id} to become active"
-        ),
-        pool=boto3_resource_to_ansible_dict(
-            pool, transform_tags=False, force_tags=False
-        ),
+        msg=("Timed out waiting for AWS End User Messaging SMS phone pool " f"{pool_id} to become active"),
+        pool=boto3_resource_to_ansible_dict(pool, transform_tags=False, force_tags=False),
         pool_id=pool_id,
         status=pool.get("Status"),
     )
@@ -302,9 +289,7 @@ def find_pool(client, module):
     if module.params["pool_id"] is not None:
         return get_pool_by_id(client, module, module.params["pool_id"])
 
-    filters = ansible_dict_to_boto3_filter_list(
-        {"message-type": module.params["message_type"]}
-    )
+    filters = ansible_dict_to_boto3_filter_list({"message-type": module.params["message_type"]})
     iso_country_code = module.params["iso_country_code"]
     matches = []
 
@@ -321,17 +306,11 @@ def find_pool(client, module):
             ):
                 continue
 
-            if (
-                iso_country_code is not None
-                and origination.get("IsoCountryCode") != iso_country_code
-            ):
+            if iso_country_code is not None and origination.get("IsoCountryCode") != iso_country_code:
                 continue
 
             pool = pool_with_tags(client, module, pool)
-            if (
-                boto3_tag_list_to_ansible_dict(pool.get("Tags", [])).get("Name")
-                == module.params["name"]
-            ):
+            if boto3_tag_list_to_ansible_dict(pool.get("Tags", [])).get("Name") == module.params["name"]:
                 matches.append(pool)
                 break
 
@@ -339,17 +318,14 @@ def find_pool(client, module):
         module.fail_json(
             msg=(
                 f"Multiple Pinpoint SMS Voice V2 pools matched name "
-                f"{module.params['name']}: "
-                + ", ".join(sorted(pool.get("PoolId", "") for pool in matches))
+                f"{module.params['name']}: " + ", ".join(sorted(pool.get("PoolId", "") for pool in matches))
             )
         )
     return matches[0] if matches else None
 
 
 def exit_result(module, changed, pool):
-    normalized_pool = boto3_resource_to_ansible_dict(
-        pool or {}, transform_tags=True, force_tags=False
-    )
+    normalized_pool = boto3_resource_to_ansible_dict(pool or {}, transform_tags=True, force_tags=False)
     result = {
         "changed": changed,
         "state": module.params["state"],
@@ -392,15 +368,10 @@ def ensure_absent(client, module):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to disable deletion protection for Pinpoint "
-                        f"SMS Voice V2 pool {pool_id}"
-                    ),
+                    msg=("Unable to disable deletion protection for Pinpoint " f"SMS Voice V2 pool {pool_id}"),
                 )
 
-        if current.get("Status") != "ACTIVE" or current.get(
-            "DeletionProtectionEnabled"
-        ):
+        if current.get("Status") != "ACTIVE" or current.get("DeletionProtectionEnabled"):
             current = wait_for_pool_active(client, module, pool_id)
             if current.get("Status") == "DELETING":
                 exit_result(module, True, current)
@@ -413,9 +384,7 @@ def ensure_absent(client, module):
         except is_boto3_error_code("ResourceNotFoundException"):
             response = None
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e, msg=f"Unable to delete Pinpoint SMS Voice V2 pool {pool_id}"
-            )
+            module.fail_json_aws(e, msg=f"Unable to delete Pinpoint SMS Voice V2 pool {pool_id}")
 
         if response is not None:
             response.pop("ResponseMetadata", None)
@@ -429,35 +398,19 @@ def ensure_present(client, module):
     wait = module.params["wait"]
     current = find_pool(client, module)
     if current is None and module.params.get("pool_id") is not None:
-        module.fail_json(
-            msg=(
-                "Pinpoint SMS Voice V2 pool "
-                f"{module.params['pool_id']} does not exist"
-            )
-        )
+        module.fail_json(msg=("Pinpoint SMS Voice V2 pool " f"{module.params['pool_id']} does not exist"))
 
     if current is not None and current.get("MessageType") != message_type:
         module.fail_json(
-            msg=(
-                "Cannot modify message_type for existing Pinpoint SMS Voice V2 "
-                f"pool {current.get('PoolId')}"
-            )
+            msg=("Cannot modify message_type for existing Pinpoint SMS Voice V2 " f"pool {current.get('PoolId')}")
         )
 
-    if (
-        wait
-        and current is not None
-        and current.get("Status") != "ACTIVE"
-        and current.get("PoolId")
-    ):
+    if wait and current is not None and current.get("Status") != "ACTIVE" and current.get("PoolId"):
         wait_for_pool_active(client, module, current["PoolId"])
         current = get_pool_by_id(client, module, current["PoolId"]) or current
 
     update_request = {}
-    if (
-        current is not None
-        and current.get("DeletionProtectionEnabled") != deletion_protection_enabled
-    ):
+    if current is not None and current.get("DeletionProtectionEnabled") != deletion_protection_enabled:
         update_request["DeletionProtectionEnabled"] = deletion_protection_enabled
 
     user_tags = module.params["tags"]
@@ -470,9 +423,7 @@ def ensure_present(client, module):
         purge_tags=module.params["purge_tags"] if user_tags is not None else False,
     )
 
-    changed = current is None or bool(
-        update_request or tags_to_set or tag_keys_to_unset
-    )
+    changed = current is None or bool(update_request or tags_to_set or tag_keys_to_unset)
 
     if (
         changed
@@ -489,9 +440,7 @@ def ensure_present(client, module):
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
             boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
             tags,
-            purge_tags=(
-                module.params["purge_tags"] if user_tags is not None else False
-            ),
+            purge_tags=(module.params["purge_tags"] if user_tags is not None else False),
         )
         changed = bool(update_request or tags_to_set or tag_keys_to_unset)
 
@@ -516,15 +465,11 @@ def ensure_present(client, module):
             try:
                 current = client.create_pool(**request, aws_retry=True)
             except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e, msg="Unable to create Pinpoint SMS Voice V2 pool"
-                )
+                module.fail_json_aws(e, msg="Unable to create Pinpoint SMS Voice V2 pool")
 
             current.pop("ResponseMetadata", None)
             if not current.get("PoolId"):
-                module.fail_json(
-                    msg="AWS did not return the created Pinpoint SMS Voice V2 pool"
-                )
+                module.fail_json(msg="AWS did not return the created Pinpoint SMS Voice V2 pool")
             current["OriginationIdentities"] = [
                 scrub_none_parameters(
                     {
@@ -547,25 +492,16 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=(
-                            "Unable to update Pinpoint SMS Voice V2 pool "
-                            f"{current['PoolId']}"
-                        ),
+                        msg=("Unable to update Pinpoint SMS Voice V2 pool " f"{current['PoolId']}"),
                     )
 
                 current.pop("ResponseMetadata", None)
                 if not current.get("PoolId"):
-                    module.fail_json(
-                        msg="AWS did not return the updated Pinpoint SMS Voice V2 pool"
-                    )
-                current["OriginationIdentities"] = previous.get(
-                    "OriginationIdentities", []
-                )
+                    module.fail_json(msg="AWS did not return the updated Pinpoint SMS Voice V2 pool")
+                current["OriginationIdentities"] = previous.get("OriginationIdentities", [])
                 current["Tags"] = previous.get("Tags", [])
 
-                if (tags_to_set or tag_keys_to_unset) and current.get(
-                    "Status"
-                ) != "ACTIVE":
+                if (tags_to_set or tag_keys_to_unset) and current.get("Status") != "ACTIVE":
                     active = wait_for_pool_active(client, module, current["PoolId"])
                     active["OriginationIdentities"] = current["OriginationIdentities"]
                     active["Tags"] = current["Tags"]
@@ -653,29 +589,19 @@ def main():
     if state == "present":
         iso_country_code = module.params["iso_country_code"]
 
-        if iso_country_code is not None and not re.fullmatch(
-            r"[A-Z]{2}", iso_country_code
-        ):
-            module.fail_json(
-                msg="iso_country_code must be exactly two uppercase letters"
-            )
+        if iso_country_code is not None and not re.fullmatch(r"[A-Z]{2}", iso_country_code):
+            module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
 
-    require_valid_tags(
-        module, module.params["tags"] if state == "present" else None, 200
-    )
+    require_valid_tags(module, module.params["tags"] if state == "present" else None, 200)
     if state == "present":
         tags = dict(module.params["tags"] or {})
         tags["Name"] = module.params["name"]
         require_valid_tags(module, tags, 200)
     require_positive_wait_bounds(module, always=True)
 
-    client = module.client(
-        "pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff()
-    )
+    client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())
     describe_parameters = (
-        ("PoolIds",)
-        if state == "absent" or module.params["pool_id"] is not None
-        else ("Filters", "Owner")
+        ("PoolIds",) if state == "absent" or module.params["pool_id"] is not None else ("Filters", "Owner")
     ) + ("MaxResults", "NextToken")
     methods = {"describe_pools": describe_parameters}
     if state == "present":

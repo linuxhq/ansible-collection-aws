@@ -162,11 +162,7 @@ def main():
                                 errors="surrogate_or_strict",
                             )
                             if isinstance(value, (bytes, bytearray))
-                            else (
-                                value.isoformat()
-                                if hasattr(value, "isoformat")
-                                else str(value)
-                            )
+                            else (value.isoformat() if hasattr(value, "isoformat") else str(value))
                         ),
                     )
                 )
@@ -176,18 +172,13 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to get AWS WAFv2 web ACL "
-                    f"{summary['Name']}/{summary['Id']}"
-                ),
+                msg=("Unable to get AWS WAFv2 web ACL " f"{summary['Name']}/{summary['Id']}"),
             )
 
     module.exit_json(
         changed=False,
         scope=scope.lower(),
-        web_acls=boto3_resource_list_to_ansible_dict(
-            web_acls, transform_tags=False, force_tags=False
-        ),
+        web_acls=boto3_resource_list_to_ansible_dict(web_acls, transform_tags=False, force_tags=False),
     )
 
 

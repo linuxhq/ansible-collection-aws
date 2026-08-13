@@ -26,9 +26,7 @@ class WaitTests(TestCase):
             params = {"wait": True, "wait_delay": 1, "wait_timeout": 1, name: 0}
             with self.subTest(name=name), self.assertRaises(ModuleFail) as raised:
                 wait.require_positive_wait_bounds(FakeModule(params))
-            self.assertEqual(
-                raised.exception.values["msg"], f"{name} must be 1 or greater"
-            )
+            self.assertEqual(raised.exception.values["msg"], f"{name} must be 1 or greater")
 
     def test_run_waiter_uses_module_delay_and_timeout(self):
         waiter = Mock()
@@ -38,13 +36,9 @@ class WaitTests(TestCase):
 
         with (
             patch.object(wait, "build_waiter_factory", return_value=factory),
-            patch.object(
-                wait, "custom_waiter_config", return_value={"Delay": 3}
-            ) as config,
+            patch.object(wait, "custom_waiter_config", return_value={"Delay": 3}) as config,
         ):
-            wait.run_waiter(
-                module, "client", {"model": True}, "ready", "failed", Id="id"
-            )
+            wait.run_waiter(module, "client", {"model": True}, "ready", "failed", Id="id")
 
         factory.get_waiter.assert_called_once_with("client", "ready")
         config.assert_called_once_with(30, default_pause=3)

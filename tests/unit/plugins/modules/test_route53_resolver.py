@@ -16,9 +16,7 @@ class Route53ResolverTests(TestCase):
         module = FakeModule({"name": "endpoint", "wait": True})
         endpoint = {"Id": "rslvr-endpt-1", "Status": "DELETING"}
         with (
-            patch.object(
-                plugin, "get_resolver_endpoint_by_name", return_value=endpoint
-            ),
+            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint),
             patch.object(plugin, "delete_resolver_endpoint") as delete,
             patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
             self.assertRaises(ModuleExit) as raised,
@@ -33,9 +31,7 @@ class Route53ResolverTests(TestCase):
         client = Mock()
         module = FakeModule({"name": "endpoint", "wait": False})
         with patch.object(plugin, "wait_for_resolver_endpoint_status") as wait:
-            plugin.delete_resolver_endpoint(
-                client, module, {"Id": "rslvr-endpt-1"}, always=True
-            )
+            plugin.delete_resolver_endpoint(client, module, {"Id": "rslvr-endpt-1"}, always=True)
         wait.assert_called_once_with(client, module, "rslvr-endpt-1", {"deleted"})
 
     def test_delete_tolerates_endpoint_disappearing(self):
@@ -233,9 +229,7 @@ class Route53ResolverTests(TestCase):
                 "resolver_endpoint_with_ip_addresses",
                 side_effect=lambda *args: args[2],
             ),
-            patch.object(
-                plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]
-            ),
+            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
@@ -280,9 +274,7 @@ class Route53ResolverTests(TestCase):
                 "resolver_endpoint_with_ip_addresses",
                 side_effect=lambda *args: args[2],
             ),
-            patch.object(
-                plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]
-            ),
+            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(Mock(), module)
@@ -315,14 +307,9 @@ class Route53ResolverTests(TestCase):
             "security_group_ids": ["sg-1"],
         }
         created = plugin.create_resolver_endpoint(client, module, desired)
-        plugin.create_resolver_endpoint(
-            client, module, dict(desired, direction="INBOUND")
-        )
+        plugin.create_resolver_endpoint(client, module, dict(desired, direction="INBOUND"))
 
-        tokens = [
-            call.kwargs["CreatorRequestId"]
-            for call in client.create_resolver_endpoint.call_args_list
-        ]
+        tokens = [call.kwargs["CreatorRequestId"] for call in client.create_resolver_endpoint.call_args_list]
         self.assertNotEqual(tokens[0], tokens[1])
         self.assertEqual(created["IpAddresses"], [{"SubnetId": "subnet-1"}])
 
@@ -343,9 +330,7 @@ class Route53ResolverTests(TestCase):
                 "wait_for_resolver_endpoint_status",
             ) as wait_for_resolver_endpoint_status,
         ):
-            result = plugin.reconcile_resolver_endpoint_ip_addresses(
-                client, module, endpoint, desired
-            )
+            result = plugin.reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired)
 
         client.associate_resolver_endpoint_ip_address.assert_called_once_with(
             IpAddress={"SubnetId": "subnet-new"},
@@ -357,23 +342,16 @@ class Route53ResolverTests(TestCase):
             ResolverEndpointId="rslvr-1",
             aws_retry=True,
         )
-        wait_for_resolver_endpoint_status.assert_called_once_with(
-            client, module, "rslvr-1", {"operational"}
-        )
+        wait_for_resolver_endpoint_status.assert_called_once_with(client, module, "rslvr-1", {"operational"})
         self.assertEqual(result["Id"], "rslvr-1")
         self.assertEqual(result["IpAddresses"], [{"SubnetId": "subnet-new"}])
 
     def test_ip_replacements_stay_within_provider_count_bounds(self):
         for count, first_operation in ((2, "associate"), (20, "disassociate")):
-            current = [
-                {"IpId": f"rni-{index}", "SubnetId": f"subnet-{index}"}
-                for index in range(count)
-            ]
+            current = [{"IpId": f"rni-{index}", "SubnetId": f"subnet-{index}"} for index in range(count)]
             desired = {
                 "name": "main",
-                "ip_addresses": [
-                    {"subnet_id": f"subnet-{index}"} for index in range(1, count)
-                ]
+                "ip_addresses": [{"subnet_id": f"subnet-{index}"} for index in range(1, count)]
                 + [{"subnet_id": "subnet-new"}],
             }
             client = Mock()
@@ -429,18 +407,14 @@ class Route53ResolverTests(TestCase):
                 "resolver_endpoint_with_ip_addresses",
                 side_effect=lambda *args: args[2],
             ),
-            patch.object(
-                plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]
-            ),
+            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
             patch.object(
                 plugin,
                 "reconcile_resolver_endpoint_ip_addresses",
                 return_value=current,
             ),
             patch.object(plugin, "delete_resolver_endpoint") as delete,
-            patch.object(
-                plugin, "create_resolver_endpoint", return_value=replacement
-            ) as create,
+            patch.object(plugin, "create_resolver_endpoint", return_value=replacement) as create,
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
@@ -491,19 +465,13 @@ class Route53ResolverTests(TestCase):
                 "resolver_endpoint_with_ip_addresses",
                 side_effect=lambda *args: args[2],
             ),
-            patch.object(
-                plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]
-            ),
-            patch.object(
-                plugin, "wait_for_resolver_endpoint_status"
-            ) as wait_for_status,
+            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+            patch.object(plugin, "wait_for_resolver_endpoint_status") as wait_for_status,
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
 
-        wait_for_status.assert_called_once_with(
-            client, module, "rslvr-1", {"operational"}
-        )
+        wait_for_status.assert_called_once_with(client, module, "rslvr-1", {"operational"})
         client.update_resolver_endpoint.assert_not_called()
         self.assertFalse(raised.exception.values["changed"])
 
@@ -541,12 +509,8 @@ class Route53ResolverTests(TestCase):
         client.update_resolver_endpoint.return_value = {"ResolverEndpoint": updated}
         with (
             patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
-            patch.object(
-                plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]
-            ),
-            patch.object(
-                plugin, "wait_for_resolver_endpoint_status", return_value=waited
-            ),
+            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+            patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=waited),
             patch.object(
                 plugin,
                 "resolver_endpoint_with_ip_addresses",

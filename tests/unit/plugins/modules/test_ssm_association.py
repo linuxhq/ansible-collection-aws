@@ -24,9 +24,7 @@ class SsmAssociationTests(TestCase):
 
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
-        assert options["required_if"] == [
-            ("state", "present", ["schedule_expression", "targets"])
-        ]
+        assert options["required_if"] == [("state", "present", ["schedule_expression", "targets"])]
 
     def test_targets_apply_defaults_and_ignore_order(self):
         left = [
@@ -158,10 +156,7 @@ class SsmAssociationTests(TestCase):
                 dict(
                     base,
                     schedule_expression="rate(1 hour)",
-                    targets=[
-                        {"key": f"tag:Role{index}", "values": ["web"]}
-                        for index in range(6)
-                    ],
+                    targets=[{"key": f"tag:Role{index}", "values": ["web"]} for index in range(6)],
                 ),
                 "targets must contain at most 5 targets",
             ),

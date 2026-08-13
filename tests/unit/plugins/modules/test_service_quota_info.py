@@ -46,6 +46,4 @@ class ServiceQuotaInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
-        self.assertEqual(
-            client.get_service_quota.call_args.kwargs["ContextId"], "arn:context"
-        )
+        self.assertEqual(client.get_service_quota.call_args.kwargs["ContextId"], "arn:context")

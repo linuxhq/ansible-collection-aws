@@ -116,9 +116,7 @@ def main():
     sampling_rate = module.params["delivery_status_success_sampling_rate"]
 
     if sampling_rate is not None and not 0 <= sampling_rate <= 100:
-        module.fail_json(
-            msg="delivery_status_success_sampling_rate must be between 0 and 100"
-        )
+        module.fail_json(msg="delivery_status_success_sampling_rate must be between 0 and 100")
 
     client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
 
@@ -142,13 +140,9 @@ def main():
         desired[attribute_name] = str(module_value)
 
     try:
-        current_attributes = client.get_sms_attributes(aws_retry=True).get(
-            "attributes", {}
-        )
+        current_attributes = client.get_sms_attributes(aws_retry=True).get("attributes", {})
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e, msg="Unable to get AWS Simple Notification Service SMS attributes"
-        )
+        module.fail_json_aws(e, msg="Unable to get AWS Simple Notification Service SMS attributes")
 
     current = {}
     for attribute_name in desired:
@@ -170,9 +164,7 @@ def main():
         current_attributes.update(desired)
 
     module.exit_json(
-        attributes=boto3_resource_to_ansible_dict(
-            current_attributes, transform_tags=False, force_tags=False
-        ),
+        attributes=boto3_resource_to_ansible_dict(current_attributes, transform_tags=False, force_tags=False),
         changed=changed,
     )
 

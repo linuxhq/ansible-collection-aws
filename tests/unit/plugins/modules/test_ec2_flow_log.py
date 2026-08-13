@@ -56,9 +56,7 @@ class Ec2FlowLogTests(TestCase):
     def test_absent_ignores_flow_log_disappearing_during_delete(self):
         client = Mock()
         client.delete_flow_logs.return_value = {
-            "Unsuccessful": [
-                {"Error": {"Code": "InvalidFlowLogId.NotFound"}, "ResourceId": "fl-1"}
-            ]
+            "Unsuccessful": [{"Error": {"Code": "InvalidFlowLogId.NotFound"}, "ResourceId": "fl-1"}]
         }
         params = dict.fromkeys(plugin.ABSENT_MATCH_FIELDS)
         params.update({"destination_options": None, "resource_ids": ["vpc-1"]})
@@ -87,12 +85,8 @@ class Ec2FlowLogTests(TestCase):
         assert plugin.normalized_resource_ids(module) == ["vpc-2", "vpc-1"]
 
     def test_empty_destination_options_are_ignored(self):
-        module = SimpleNamespace(
-            params={"destination_options": {"file_format": "parquet", "unused": None}}
-        )
-        assert plugin.comparable_destination_options(module) == {
-            "file_format": "parquet"
-        }
+        module = SimpleNamespace(params={"destination_options": {"file_format": "parquet", "unused": None}})
+        assert plugin.comparable_destination_options(module) == {"file_format": "parquet"}
 
     def test_flow_log_matching_uses_only_managed_destination_options(self):
         module = SimpleNamespace(params={"resource_ids": ["vpc-1"]})
@@ -208,9 +202,7 @@ class Ec2FlowLogTests(TestCase):
 
     def test_partial_create_failure_is_not_reported_as_success(self):
         client = Mock()
-        client.create_flow_logs.return_value = {
-            "Unsuccessful": [{"Error": {"Code": "LimitExceeded"}}]
-        }
+        client.create_flow_logs.return_value = {"Unsuccessful": [{"Error": {"Code": "LimitExceeded"}}]}
         params = dict.fromkeys(plugin.PRESENT_MATCH_FIELDS)
         params.update(
             {
@@ -264,6 +256,4 @@ class Ec2FlowLogTests(TestCase):
             plugin.ensure_present(client, FakeModule(params))
 
         self.assertEqual(raised.exception.values["flow_log_ids"], ["fl-created"])
-        self.assertEqual(
-            raised.exception.values["flow_logs"], [{"flow_log_id": "fl-created"}]
-        )
+        self.assertEqual(raised.exception.values["flow_logs"], [{"flow_log_id": "fl-created"}])

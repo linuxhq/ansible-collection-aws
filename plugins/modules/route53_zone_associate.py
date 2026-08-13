@@ -135,12 +135,8 @@ def ensure_absent(client, module, hosted_zone_id):
         changed=changed,
         hosted_zone_id=hosted_zone_id,
         state="absent",
-        vpc=boto3_resource_to_ansible_dict(
-            requested_vpc, transform_tags=False, force_tags=False
-        ),
-        vpcs=boto3_resource_list_to_ansible_dict(
-            vpcs, transform_tags=False, force_tags=False
-        ),
+        vpc=boto3_resource_to_ansible_dict(requested_vpc, transform_tags=False, force_tags=False),
+        vpcs=boto3_resource_list_to_ansible_dict(vpcs, transform_tags=False, force_tags=False),
     )
 
 
@@ -172,12 +168,8 @@ def ensure_present(client, module, hosted_zone_id):
         changed=changed,
         hosted_zone_id=hosted_zone_id,
         state="present",
-        vpc=boto3_resource_to_ansible_dict(
-            requested_vpc, transform_tags=False, force_tags=False
-        ),
-        vpcs=boto3_resource_list_to_ansible_dict(
-            vpcs, transform_tags=False, force_tags=False
-        ),
+        vpc=boto3_resource_to_ansible_dict(requested_vpc, transform_tags=False, force_tags=False),
+        vpcs=boto3_resource_list_to_ansible_dict(vpcs, transform_tags=False, force_tags=False),
     )
 
 
@@ -231,9 +223,7 @@ def main():
     state = module.params["state"]
     vpc_region = module.params["vpc_region"]
 
-    if not 2 <= len(vpc_region) <= 25 or not re.fullmatch(
-        r"[a-z]{1,2}(?:-[a-z]{1,15})+-[0-9]", vpc_region
-    ):
+    if not 2 <= len(vpc_region) <= 25 or not re.fullmatch(r"[a-z]{1,2}(?:-[a-z]{1,15})+-[0-9]", vpc_region):
         module.fail_json(msg="vpc_region must be a valid AWS region name")
 
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())

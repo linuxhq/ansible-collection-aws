@@ -155,17 +155,12 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to get AWS WAFv2 IP set "
-                    f"{summary['Name']}/{summary['Id']}"
-                ),
+                msg=("Unable to get AWS WAFv2 IP set " f"{summary['Name']}/{summary['Id']}"),
             )
 
     module.exit_json(
         changed=False,
-        ip_sets=boto3_resource_list_to_ansible_dict(
-            ip_sets, transform_tags=False, force_tags=False
-        ),
+        ip_sets=boto3_resource_list_to_ansible_dict(ip_sets, transform_tags=False, force_tags=False),
         scope=scope.lower(),
     )
 

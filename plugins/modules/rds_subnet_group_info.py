@@ -118,9 +118,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        subnet_groups=boto3_resource_list_to_ansible_dict(
-            subnet_groups, transform_tags=False, force_tags=False
-        ),
+        subnet_groups=boto3_resource_list_to_ansible_dict(subnet_groups, transform_tags=False, force_tags=False),
     )
 
 

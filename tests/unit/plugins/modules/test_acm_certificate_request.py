@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    acm_certificate_request as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import acm_certificate_request as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -97,9 +95,7 @@ class AcmCertificateRequestTests(TestCase):
 
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
-        assert (
-            options["argument_spec"]["subject_alternative_names"]["elements"] == "str"
-        )
+        assert options["argument_spec"]["subject_alternative_names"]["elements"] == "str"
 
     def test_rejects_invalid_idempotency_token_before_api_calls(self):
         module = FakeModule(
@@ -124,9 +120,7 @@ class AcmCertificateRequestTests(TestCase):
                 "domain_name": "example.com",
                 "idempotency_token": None,
                 "purge_tags": True,
-                "subject_alternative_names": [
-                    f"name-{index}.example.com" for index in range(100)
-                ],
+                "subject_alternative_names": [f"name-{index}.example.com" for index in range(100)],
                 "tags": None,
             }
         )

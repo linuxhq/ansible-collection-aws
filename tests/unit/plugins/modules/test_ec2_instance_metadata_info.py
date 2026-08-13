@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    ec2_instance_metadata_info as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import ec2_instance_metadata_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -30,6 +28,4 @@ class Ec2InstanceMetadataInfoTests(TestCase):
         ):
             plugin.main()
         self.assertEqual(raised.exception.values["region"], "us-west-2")
-        self.assertEqual(
-            raised.exception.values["account_level"], {"http_tokens": "required"}
-        )
+        self.assertEqual(raised.exception.values["account_level"], {"http_tokens": "required"})

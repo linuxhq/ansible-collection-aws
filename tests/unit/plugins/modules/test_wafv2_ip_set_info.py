@@ -20,9 +20,7 @@ class Wafv2IpSetInfoTests(TestCase):
 
     def test_cloudfront_scope_is_uppercase_for_aws(self):
         client = Mock()
-        module = FakeModule(
-            {"id": None, "name": None, "scope": "cloudfront"}, client=client
-        )
+        module = FakeModule({"id": None, "name": None, "scope": "cloudfront"}, client=client)
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods"),
@@ -38,12 +36,8 @@ class Wafv2IpSetInfoTests(TestCase):
             params[option] = ""
             with (
                 self.subTest(option=option),
-                patch.object(
-                    plugin, "AnsibleAWSModule", return_value=FakeModule(params)
-                ),
+                patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params)),
                 self.assertRaises(ModuleFail) as raised,
             ):
                 plugin.main()
-            self.assertEqual(
-                raised.exception.values["msg"], f"{option} must not be empty"
-            )
+            self.assertEqual(raised.exception.values["msg"], f"{option} must not be empty")

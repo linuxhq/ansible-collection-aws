@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    wafv2_web_acl_logging as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import wafv2_web_acl_logging as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -29,9 +27,7 @@ class Wafv2WebAclLoggingTests(TestCase):
 
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
-        assert options["required_if"] == [
-            ("state", "present", ["log_destination_configs"])
-        ]
+        assert options["required_if"] == [("state", "present", ["log_destination_configs"])]
 
     def test_check_mode_returns_desired_logging_configuration(self):
         module = FakeModule(
@@ -90,9 +86,7 @@ class Wafv2WebAclLoggingTests(TestCase):
         ):
             with (
                 self.subTest(message=message),
-                patch.object(
-                    plugin, "AnsibleAWSModule", return_value=FakeModule(params)
-                ),
+                patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params)),
                 self.assertRaises(ModuleFail) as raised,
             ):
                 plugin.main()

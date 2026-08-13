@@ -43,9 +43,7 @@ class EksClusterTests(TestCase):
 
     def test_sdk_validation_checks_nested_vpc_parameters(self):
         shape = Mock()
-        shape.input_shape.members = {
-            "resourcesVpcConfig": Mock(members={"subnetIds": Mock()})
-        }
+        shape.input_shape.members = {"resourcesVpcConfig": Mock(members={"subnetIds": Mock()})}
         client = Mock()
         client.meta.service_model.operation_model.return_value = shape
         module = Mock()
@@ -58,8 +56,7 @@ class EksClusterTests(TestCase):
 
         self.assertTrue(
             any(
-                "resourcesVpcConfig parameter endpointPublicAccess"
-                in call.kwargs["msg"]
+                "resourcesVpcConfig parameter endpointPublicAccess" in call.kwargs["msg"]
                 for call in module.fail_json.call_args_list
             )
         )
@@ -77,9 +74,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
-        self.assertEqual(
-            raised.exception.values["msg"], "tags must contain at most 50 entries"
-        )
+        self.assertEqual(raised.exception.values["msg"], "tags must contain at most 50 entries")
 
     def test_absent_does_not_validate_unused_create_options(self):
         params = dict.fromkeys(plugin.CREATE_FIELDS)
@@ -131,9 +126,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
-        require.assert_called_once_with(
-            module, client, "EKS", {"delete_cluster": ("name",)}
-        )
+        require.assert_called_once_with(module, client, "EKS", {"delete_cluster": ("name",)})
         self.assertTrue(raised.exception.values["changed"])
 
     def test_module_contract(self):
@@ -143,9 +136,7 @@ class EksClusterTests(TestCase):
     def test_changed_request_contains_only_differences(self):
         current = {"version": "1.32", "resources": {"public": True, "private": False}}
         desired = {"version": "1.32", "resources": {"public": False}}
-        assert plugin.changed_request(current, desired) == {
-            "resources": {"public": False}
-        }
+        assert plugin.changed_request(current, desired) == {"resources": {"public": False}}
 
     def test_changed_ignores_list_order_and_duplicates(self):
         self.assertFalse(
@@ -320,9 +311,7 @@ class EksClusterTests(TestCase):
         }
         module = FakeModule(params)
         with (
-            patch.object(
-                plugin, "describe_cluster", side_effect=[transitioning, active]
-            ),
+            patch.object(plugin, "describe_cluster", side_effect=[transitioning, active]),
             patch.object(plugin, "wait_for_cluster") as wait_for_cluster,
             self.assertRaises(ModuleExit) as raised,
         ):
@@ -333,11 +322,7 @@ class EksClusterTests(TestCase):
         self.assertFalse(raised.exception.values["changed"])
 
     def test_deleting_cluster_waits_then_recreates(self):
-        client = Mock(
-            create_cluster=Mock(
-                return_value={"cluster": {"arn": "arn:cluster", "status": "CREATING"}}
-            )
-        )
+        client = Mock(create_cluster=Mock(return_value={"cluster": {"arn": "arn:cluster", "status": "CREATING"}}))
         params = dict.fromkeys(plugin.CREATE_FIELDS)
         params.update(
             {
@@ -417,11 +402,7 @@ class EksClusterTests(TestCase):
             self.assertIn(message, raised.exception.values["msg"])
 
     def test_failed_update_stops_waiting_with_update_details(self):
-        client = Mock(
-            describe_update=Mock(
-                return_value={"update": {"id": "update-1", "status": "Failed"}}
-            )
-        )
+        client = Mock(describe_update=Mock(return_value={"update": {"id": "update-1", "status": "Failed"}}))
         module = FakeModule({"name": "example", "wait_delay": 1, "wait_timeout": 10})
         with (
             patch.object(plugin.time, "monotonic", side_effect=[0, 1]),

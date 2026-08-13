@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    global_accelerator_info as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import global_accelerator_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -14,9 +12,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 class GlobalAcceleratorInfoTests(TestCase):
     def test_accelerator_disappearing_during_tag_lookup_is_omitted(self):
         client = Mock()
-        client.describe_accelerator.return_value = {
-            "Accelerator": {"AcceleratorArn": "arn:gone"}
-        }
+        client.describe_accelerator.return_value = {"Accelerator": {"AcceleratorArn": "arn:gone"}}
         client.list_tags_for_resource.side_effect = plugin.ClientError(
             {
                 "Error": {
@@ -116,8 +112,6 @@ class GlobalAcceleratorInfoTests(TestCase):
             listener["endpoint_groups"][0]["endpoint_group_arn"],
             "arn:endpoint-group",
         )
-        required_methods = {
-            method for call in require.call_args_list for method in call.args[3]
-        }
+        required_methods = {method for call in require.call_args_list for method in call.args[3]}
         self.assertIn("list_listeners", required_methods)
         self.assertIn("list_endpoint_groups", required_methods)

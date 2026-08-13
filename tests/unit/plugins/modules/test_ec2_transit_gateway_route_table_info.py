@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    ec2_transit_gateway_route_table_info as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import ec2_transit_gateway_route_table_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -14,20 +12,14 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 class Ec2TransitGatewayRouteTableInfoTests(TestCase):
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
-        assert (
-            options["argument_spec"]["transit_gateway_route_table_ids"]["elements"]
-            == "str"
-        )
+        assert options["argument_spec"]["transit_gateway_route_table_ids"]["elements"] == "str"
 
     def test_routes_sort_by_destination_type_and_state(self):
         routes = [
             {"PrefixListId": "pl-2", "Type": "propagated", "State": "active"},
             {"DestinationCidrBlock": "10.0.0.0/8", "Type": "static", "State": "active"},
         ]
-        assert (
-            min(routes, key=plugin.route_sort_key)["DestinationCidrBlock"]
-            == "10.0.0.0/8"
-        )
+        assert min(routes, key=plugin.route_sort_key)["DestinationCidrBlock"] == "10.0.0.0/8"
 
     def test_route_search_uses_paginated_query(self):
         client = Mock()
@@ -72,9 +64,7 @@ class Ec2TransitGatewayRouteTableInfoTests(TestCase):
             len(raised.exception.values["transit_gateway_route_tables"][0]["routes"]),
             2,
         )
-        self.assertEqual(
-            query.call_args_list[1].args[2], "search_transit_gateway_routes"
-        )
+        self.assertEqual(query.call_args_list[1].args[2], "search_transit_gateway_routes")
         self.assertEqual(
             query.call_args_list[0].kwargs["TransitGatewayRouteTableIds"],
             ["tgw-rtb-1"],

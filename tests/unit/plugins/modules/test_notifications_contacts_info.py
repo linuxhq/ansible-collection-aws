@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    notifications_contacts_info as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import notifications_contacts_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -18,11 +16,7 @@ class NotificationsContactsInfoTests(TestCase):
 
     def test_arn_uses_get_and_loads_tags(self):
         client = Mock(
-            get_email_contact=Mock(
-                return_value={
-                    "emailContact": {"arn": "arn:contact", "address": "a@example.com"}
-                }
-            ),
+            get_email_contact=Mock(return_value={"emailContact": {"arn": "arn:contact", "address": "a@example.com"}}),
             list_tags_for_resource=Mock(return_value={"tags": {"Env": "test"}}),
         )
         module = FakeModule({"arn": "arn:contact"}, client=client)
@@ -32,9 +26,7 @@ class NotificationsContactsInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
-        self.assertEqual(
-            raised.exception.values["email_contacts"][0]["tags"], {"Env": "test"}
-        )
+        self.assertEqual(raised.exception.values["email_contacts"][0]["tags"], {"Env": "test"})
         self.assertEqual(
             [call.args[3] for call in require.call_args_list],
             [

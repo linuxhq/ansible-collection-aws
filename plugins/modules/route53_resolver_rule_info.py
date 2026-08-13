@@ -73,9 +73,7 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client(
-        "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
-    )
+    client = module.client("route53resolver", retry_decorator=AWSRetry.jittered_backoff())
 
     require_client_methods(
         module,

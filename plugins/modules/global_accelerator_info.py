@@ -171,10 +171,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to list tags for AWS Global Accelerator "
-                    f"{accelerator_arn}"
-                ),
+                msg=("Unable to list tags for AWS Global Accelerator " f"{accelerator_arn}"),
             )
 
         if not include_listeners:
@@ -198,10 +195,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to list AWS Global Accelerator listeners for "
-                    f"{accelerator_arn}"
-                ),
+                msg=("Unable to list AWS Global Accelerator listeners for " f"{accelerator_arn}"),
             )
 
         available_listeners = []
@@ -237,10 +231,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to list AWS Global Accelerator endpoint "
-                        f"groups for {listener_arn}"
-                    ),
+                    msg=("Unable to list AWS Global Accelerator endpoint " f"groups for {listener_arn}"),
                 )
             available_listeners.append(listener)
 
@@ -254,9 +245,7 @@ def main():
     )
 
     accelerator_arns = [
-        accelerator["accelerator_arn"]
-        for accelerator in normalized_accelerators
-        if accelerator.get("accelerator_arn")
+        accelerator["accelerator_arn"] for accelerator in normalized_accelerators if accelerator.get("accelerator_arn")
     ]
 
     module.exit_json(

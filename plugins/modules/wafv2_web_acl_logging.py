@@ -107,10 +107,7 @@ def ensure_absent(client, module):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to delete AWS WAFv2 logging configuration for "
-                    f"{resource_arn}"
-                ),
+                msg=("Unable to delete AWS WAFv2 logging configuration for " f"{resource_arn}"),
             )
     module.exit_json(
         changed=changed,
@@ -125,12 +122,9 @@ def ensure_present(client, module):
     current = get_logging_configuration(client, module)
     current_comparable = None
     if current:
-        normalized_current = boto3_resource_to_ansible_dict(
-            current, transform_tags=False, force_tags=False
-        )
+        normalized_current = boto3_resource_to_ansible_dict(current, transform_tags=False, force_tags=False)
         current_comparable = {
-            "log_destination_configs": normalized_current.get("log_destination_configs")
-            or [],
+            "log_destination_configs": normalized_current.get("log_destination_configs") or [],
             "resource_arn": normalized_current.get("resource_arn"),
         }
     desired_comparable = {
@@ -159,18 +153,10 @@ def ensure_present(client, module):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to manage AWS WAFv2 logging configuration for "
-                    f"{resource_arn}"
-                ),
+                msg=("Unable to manage AWS WAFv2 logging configuration for " f"{resource_arn}"),
             )
         if not current:
-            module.fail_json(
-                msg=(
-                    "AWS WAFv2 did not return the logging configuration for "
-                    f"{resource_arn}"
-                )
-            )
+            module.fail_json(msg=("AWS WAFv2 did not return the logging configuration for " f"{resource_arn}"))
 
     elif changed and module.check_mode:
         current = desired

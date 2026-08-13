@@ -121,9 +121,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        instance_types=boto3_resource_list_to_ansible_dict(
-            instance_types, transform_tags=False, force_tags=False
-        ),
+        instance_types=boto3_resource_list_to_ansible_dict(instance_types, transform_tags=False, force_tags=False),
     )
 
 

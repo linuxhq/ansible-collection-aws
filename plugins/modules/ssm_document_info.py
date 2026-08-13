@@ -121,9 +121,7 @@ def content_transform(content):
         return content
 
     if isinstance(content, dict):
-        return boto3_resource_to_ansible_dict(
-            content, transform_tags=False, force_tags=False
-        )
+        return boto3_resource_to_ansible_dict(content, transform_tags=False, force_tags=False)
     return content
 
 
@@ -157,8 +155,7 @@ def main():
     get_request = scrub_none_parameters(
         {
             "DocumentFormat": module.params["document_format"],
-            "DocumentVersion": module.params["document_version"]
-            or (None if version_name else "$LATEST"),
+            "DocumentVersion": module.params["document_version"] or (None if version_name else "$LATEST"),
             "VersionName": version_name,
         }
     )
@@ -199,11 +196,7 @@ def main():
             **request,
         )
 
-        document_names = [
-            document["Name"]
-            for document in document_identifiers
-            if document.get("Name")
-        ]
+        document_names = [document["Name"] for document in document_identifiers if document.get("Name")]
 
     documents = []
     for document_name in document_names:
@@ -234,10 +227,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to list tags for AWS Systems Manager document "
-                    f"{document_name}"
-                ),
+                msg=("Unable to list tags for AWS Systems Manager document " f"{document_name}"),
             )
 
         documents.append(

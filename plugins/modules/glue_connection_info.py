@@ -144,9 +144,7 @@ def main():
             request["ApplyOverrideForComputeEnvironment"] = apply_override
 
         try:
-            connection = client.get_connection(**request, aws_retry=True).get(
-                "Connection"
-            )
+            connection = client.get_connection(**request, aws_retry=True).get("Connection")
         except is_boto3_error_code("EntityNotFoundException"):
             connection = None
         except (BotoCoreError, ClientError) as e:

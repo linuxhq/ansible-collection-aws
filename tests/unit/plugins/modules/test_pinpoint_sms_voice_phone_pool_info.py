@@ -1,9 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    pinpoint_sms_voice_phone_pool_info as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_phone_pool_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -38,17 +36,13 @@ class PinpointSmsVoicePhonePoolInfoTests(TestCase):
         self.assertEqual(query.call_args.kwargs, {"PoolIds": ["pool-1"]})
 
     def test_rejects_nonpositive_max_results(self):
-        module = FakeModule(
-            {"filters": None, "max_results": 0, "owner": "SELF", "pool_ids": None}
-        )
+        module = FakeModule({"filters": None, "max_results": 0, "owner": "SELF", "pool_ids": None})
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
-        self.assertEqual(
-            raised.exception.values["msg"], "max_results must be between 1 and 100"
-        )
+        self.assertEqual(raised.exception.values["msg"], "max_results must be between 1 and 100")
 
     def test_rejects_provider_list_limits(self):
         cases = [
@@ -83,9 +77,7 @@ class PinpointSmsVoicePhonePoolInfoTests(TestCase):
 
     def test_pools_are_enriched_with_identities_and_tags(self):
         client = Mock()
-        client.list_tags_for_resource.return_value = {
-            "Tags": [{"Key": "Name", "Value": "primary"}]
-        }
+        client.list_tags_for_resource.return_value = {"Tags": [{"Key": "Name", "Value": "primary"}]}
         module = FakeModule(
             {
                 "filters": None,
@@ -106,17 +98,13 @@ class PinpointSmsVoicePhonePoolInfoTests(TestCase):
             patch.object(
                 plugin,
                 "paginated_query_with_retries",
-                return_value={
-                    "OriginationIdentities": [{"OriginationIdentity": "phone-1"}]
-                },
+                return_value={"OriginationIdentities": [{"OriginationIdentity": "phone-1"}]},
             ),
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
         pool = raised.exception.values["pools"][0]
-        self.assertEqual(
-            pool["origination_identities"][0]["origination_identity"], "phone-1"
-        )
+        self.assertEqual(pool["origination_identities"][0]["origination_identity"], "phone-1")
         self.assertEqual(pool["tags"], {"Name": "primary"})
         self.assertEqual(
             require.call_args.args[3],

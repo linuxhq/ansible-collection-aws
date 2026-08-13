@@ -128,10 +128,7 @@ def current_associations(client, module):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=(
-                "Unable to list origination identities for Pinpoint SMS Voice "
-                f"V2 pool {module.params['pool_id']}"
-            ),
+            msg=("Unable to list origination identities for Pinpoint SMS Voice " f"V2 pool {module.params['pool_id']}"),
         )
 
 
@@ -139,10 +136,7 @@ def current_association(module, associations):
     iso_country_code = module.params["iso_country_code"]
 
     for association in associations:
-        if (
-            iso_country_code is not None
-            and association.get("IsoCountryCode") != iso_country_code
-        ):
+        if iso_country_code is not None and association.get("IsoCountryCode") != iso_country_code:
             continue
 
         for identity in (
@@ -175,9 +169,7 @@ def association_request(module):
 def exit_result(module, changed, association):
     module.exit_json(
         changed=changed,
-        association=boto3_resource_to_ansible_dict(
-            association or {}, transform_tags=False, force_tags=False
-        ),
+        association=boto3_resource_to_ansible_dict(association or {}, transform_tags=False, force_tags=False),
         origination_identity=module.params["origination_identity"],
         pool_id=module.params["pool_id"],
         state=module.params["state"],
@@ -208,12 +200,7 @@ def ensure_present(client, module):
 
         association.pop("ResponseMetadata", None)
         if not association.get("OriginationIdentity"):
-            module.fail_json(
-                msg=(
-                    "AWS did not return the Pinpoint SMS Voice V2 origination "
-                    "identity association"
-                )
-            )
+            module.fail_json(msg=("AWS did not return the Pinpoint SMS Voice V2 origination " "identity association"))
     elif changed and module.check_mode:
         association = scrub_none_parameters(
             {
@@ -294,9 +281,7 @@ def main():
     if module.params["client_token"] is not None:
         origination_parameters += ("ClientToken",)
 
-    methods = {
-        "list_pool_origination_identities": ("PoolId", "MaxResults", "NextToken")
-    }
+    methods = {"list_pool_origination_identities": ("PoolId", "MaxResults", "NextToken")}
     if state == "present":
         methods["associate_origination_identity"] = origination_parameters
     if state == "absent":

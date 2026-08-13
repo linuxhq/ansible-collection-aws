@@ -261,11 +261,7 @@ def ensure_present(client, module, current):
                             {
                                 "name": name,
                                 "schedule_expression": schedule_expression,
-                                "tags": (
-                                    ansible_dict_to_boto3_tag_list(tags)
-                                    if tags
-                                    else None
-                                ),
+                                "tags": (ansible_dict_to_boto3_tag_list(tags) if tags else None),
                                 "targets": aws_targets,
                             },
                             capitalize_first=True,
@@ -279,12 +275,7 @@ def ensure_present(client, module, current):
                     msg=f"Unable to create AWS Systems Manager association {name}",
                 )
             if not association.get("AssociationId"):
-                module.fail_json(
-                    msg=(
-                        "AWS Systems Manager did not return the created association "
-                        f"{name}"
-                    )
-                )
+                module.fail_json(msg=("AWS Systems Manager did not return the created association " f"{name}"))
             if tags is not None:
                 association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
@@ -294,9 +285,7 @@ def ensure_present(client, module, current):
         if changed and not module.check_mode:
             update_request = {
                 parameter: current.get(parameter)
-                for parameter in get_boto3_client_method_parameters(
-                    client, "update_association"
-                )
+                for parameter in get_boto3_client_method_parameters(client, "update_association")
             }
             update_request.update(
                 {
@@ -316,12 +305,7 @@ def ensure_present(client, module, current):
                     msg=f"Unable to update AWS Systems Manager association {name}",
                 )
             if not association.get("AssociationId"):
-                module.fail_json(
-                    msg=(
-                        "AWS Systems Manager did not return the updated association "
-                        f"{name}"
-                    )
-                )
+                module.fail_json(msg=("AWS Systems Manager did not return the updated association " f"{name}"))
 
         elif changed and module.check_mode:
             association = dict(current)
@@ -400,10 +384,7 @@ def association_with_tags(client, module, association):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=(
-                "Unable to list tags for AWS Systems Manager "
-                f"{SSM_ASSOCIATION_RESOURCE_TYPE} {association_id}"
-            ),
+            msg=("Unable to list tags for AWS Systems Manager " f"{SSM_ASSOCIATION_RESOURCE_TYPE} {association_id}"),
         )
 
     return association
@@ -458,9 +439,7 @@ def main():
 
     client = module.client(
         "ssm",
-        retry_decorator=AWSRetry.jittered_backoff(
-            catch_extra_error_codes=["TooManyUpdates"]
-        ),
+        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["TooManyUpdates"]),
     )
     methods = {
         "list_associations": ("AssociationFilterList", "MaxResults", "NextToken"),
@@ -504,18 +483,13 @@ def main():
         AssociationFilterList=[{"key": "Name", "value": name}],
     )
 
-    matches = [
-        association for association in associations if association.get("Name") == name
-    ]
+    matches = [association for association in associations if association.get("Name") == name]
 
     if len(matches) > 1:
-        association_ids = sorted(
-            association.get("AssociationId", "") for association in matches
-        )
+        association_ids = sorted(association.get("AssociationId", "") for association in matches)
         module.fail_json(
             msg=(
-                "Multiple AWS Systems Manager associations exist for document "
-                f"{name}: {', '.join(association_ids)}"
+                "Multiple AWS Systems Manager associations exist for document " f"{name}: {', '.join(association_ids)}"
             )
         )
 

@@ -201,10 +201,7 @@ def wait_for_status(client, module, waiter_name, statuses):
         client,
         ACCOUNT_REGION_WAITER_MODEL_DATA,
         waiter_name,
-        (
-            f"Timed out waiting for AWS account region {region_name} "
-            f"to reach one of {sorted(statuses)}"
-        ),
+        (f"Timed out waiting for AWS account region {region_name} " f"to reach one of {sorted(statuses)}"),
         RegionName=region_name,
     )
 
@@ -249,9 +246,7 @@ def ensure_present(client, module):
     if changed and module.check_mode:
         current_status = "ENABLED"
     elif (
-        module.params["wait"]
-        and not module.check_mode
-        and (changed or previous_status not in PRESENT_STEADY_STATUSES)
+        module.params["wait"] and not module.check_mode and (changed or previous_status not in PRESENT_STEADY_STATUSES)
     ):
         current_status = wait_for_status(
             client,
@@ -273,10 +268,7 @@ def ensure_absent(client, module):
 
     if previous_status == "ENABLED_BY_DEFAULT":
         module.fail_json(
-            msg=(
-                f"Unable to disable AWS account region {region_name} "
-                "because default Regions cannot be disabled"
-            ),
+            msg=(f"Unable to disable AWS account region {region_name} " "because default Regions cannot be disabled"),
         )
 
     changed = previous_status not in ABSENT_STATUSES
@@ -303,11 +295,7 @@ def ensure_absent(client, module):
 
     if changed and module.check_mode:
         current_status = "DISABLED"
-    elif (
-        module.params["wait"]
-        and not module.check_mode
-        and (changed or previous_status not in ABSENT_STEADY_STATUSES)
-    ):
+    elif module.params["wait"] and not module.check_mode and (changed or previous_status not in ABSENT_STEADY_STATUSES):
         current_status = wait_for_status(
             client,
             module,

@@ -94,9 +94,7 @@ def get_queue(client, module, queue_url):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS SQS queue {queue_url}")
 
-    queue = boto3_resource_to_ansible_dict(
-        attributes, transform_tags=False, force_tags=False
-    )
+    queue = boto3_resource_to_ansible_dict(attributes, transform_tags=False, force_tags=False)
 
     queue_arn = queue.get("queue_arn")
     queue["name"] = (queue_arn or queue_url.rsplit("/", 1)[-1]).split(":")[-1]
@@ -128,9 +126,7 @@ def main():
 
     methods = {"get_queue_attributes": ("AttributeNames", "QueueUrl")}
     if name:
-        methods["get_queue_url"] = ("QueueName",) + (
-            ("QueueOwnerAWSAccountId",) if queue_owner_aws_account_id else ()
-        )
+        methods["get_queue_url"] = ("QueueName",) + (("QueueOwnerAWSAccountId",) if queue_owner_aws_account_id else ())
     else:
         methods["list_queues"] = ("QueueNamePrefix",) if queue_name_prefix else ()
 

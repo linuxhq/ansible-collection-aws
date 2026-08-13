@@ -2,9 +2,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from ansible_collections.linuxhq.aws.plugins.modules import (
-    ec2_transit_gateway_route_table as plugin,
-)
+from ansible_collections.linuxhq.aws.plugins.modules import ec2_transit_gateway_route_table as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
@@ -31,9 +29,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             patch.object(plugin, "wait_for_route_absent") as wait,
             patch.object(plugin, "require_client_methods"),
         ):
-            changed, route = plugin.ensure_route_absent(
-                client, module, "tgw-rtb-1", "10.0.0.0/8"
-            )
+            changed, route = plugin.ensure_route_absent(client, module, "tgw-rtb-1", "10.0.0.0/8")
         self.assertTrue(changed)
         self.assertIsNone(route)
         wait.assert_not_called()
@@ -62,9 +58,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
         assert len(options["required_one_of"]) == 2
-        assert (
-            "default" not in options["argument_spec"]["routes"]["options"]["blackhole"]
-        )
+        assert "default" not in options["argument_spec"]["routes"]["options"]["blackhole"]
 
     def test_name_is_merged_into_desired_tags(self):
         module = SimpleNamespace(params={"name": "main", "tags": {"Env": "prod"}})
@@ -86,9 +80,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
-        self.assertEqual(
-            raised.exception.values["msg"], "tags must contain at most 50 entries"
-        )
+        self.assertEqual(raised.exception.values["msg"], "tags must contain at most 50 entries")
 
     def test_absent_does_not_validate_unused_routes(self):
         module = FakeModule(
@@ -185,21 +177,13 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
         route = {
             "State": "active",
             "Type": "static",
-            "TransitGatewayAttachments": [
-                {"TransitGatewayAttachmentId": "tgw-attach-1"}
-            ],
+            "TransitGatewayAttachments": [{"TransitGatewayAttachmentId": "tgw-attach-1"}],
         }
-        assert plugin.desired_route_matches(
-            route, {"transit_gateway_attachment_id": "tgw-attach-1"}
-        )
-        assert not plugin.desired_route_matches(
-            route, {"transit_gateway_attachment_id": "tgw-attach-2"}
-        )
+        assert plugin.desired_route_matches(route, {"transit_gateway_attachment_id": "tgw-attach-1"})
+        assert not plugin.desired_route_matches(route, {"transit_gateway_attachment_id": "tgw-attach-2"})
 
     def test_check_mode_builds_blackhole_route(self):
-        assert plugin.check_mode_route(
-            {"blackhole": True, "destination_cidr_block": "10.0.0.0/8"}
-        ) == {
+        assert plugin.check_mode_route({"blackhole": True, "destination_cidr_block": "10.0.0.0/8"}) == {
             "DestinationCidrBlock": "10.0.0.0/8",
             "State": "blackhole",
             "TransitGatewayAttachments": [],
@@ -211,9 +195,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
         module = SimpleNamespace(params={"wait": False}, check_mode=False)
         route = {"State": "active", "Type": "propagated"}
         with patch.object(plugin, "get_route", return_value=route):
-            changed, returned = plugin.ensure_route_absent(
-                client, module, "tgw-rtb-1", "10.0.0.0/8"
-            )
+            changed, returned = plugin.ensure_route_absent(client, module, "tgw-rtb-1", "10.0.0.0/8")
 
         self.assertFalse(changed)
         self.assertIs(returned, route)
@@ -224,9 +206,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
         replacement = {
             "DestinationCidrBlock": "10.0.0.0/8",
             "State": "active",
-            "TransitGatewayAttachments": [
-                {"TransitGatewayAttachmentId": "tgw-attach-new"}
-            ],
+            "TransitGatewayAttachments": [{"TransitGatewayAttachmentId": "tgw-attach-new"}],
             "Type": "static",
         }
         client.replace_transit_gateway_route.return_value = {"Route": replacement}
@@ -254,9 +234,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
         }
         current_route = dict(
             replacement,
-            TransitGatewayAttachments=[
-                {"TransitGatewayAttachmentId": "tgw-attach-old"}
-            ],
+            TransitGatewayAttachments=[{"TransitGatewayAttachmentId": "tgw-attach-old"}],
         )
         with (
             patch.object(plugin, "find_route_table", return_value=route_table),
@@ -312,9 +290,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
         }
         with (
             patch.object(plugin, "find_route_table", return_value=None),
-            patch.object(
-                plugin, "wait_for_route_table", return_value=available
-            ) as wait,
+            patch.object(plugin, "wait_for_route_table", return_value=available) as wait,
             patch.object(plugin, "get_route", return_value=route),
             patch.object(plugin, "require_client_methods"),
             self.assertRaises(ModuleExit),
@@ -342,16 +318,12 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
         available = dict(pending, State="available")
         with (
             patch.object(plugin, "find_route_table", return_value=pending),
-            patch.object(
-                plugin, "wait_for_route_table", return_value=available
-            ) as wait_for_route_table,
+            patch.object(plugin, "wait_for_route_table", return_value=available) as wait_for_route_table,
             patch.object(plugin, "require_client_methods"),
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_absent(client, module)
-        wait_for_route_table.assert_called_once_with(
-            client, module, "tgw-rtb-1", {"available"}
-        )
+        wait_for_route_table.assert_called_once_with(client, module, "tgw-rtb-1", {"available"})
         client.delete_transit_gateway_route_table.assert_called_once_with(
             TransitGatewayRouteTableId="tgw-rtb-1", aws_retry=True
         )
@@ -517,9 +489,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
         desired_route = {
             "DestinationCidrBlock": "10.0.0.0/8",
             "State": "active",
-            "TransitGatewayAttachments": [
-                {"TransitGatewayAttachmentId": "tgw-attach-1"}
-            ],
+            "TransitGatewayAttachments": [{"TransitGatewayAttachmentId": "tgw-attach-1"}],
             "Type": "static",
         }
         stale_route = dict(desired_route, DestinationCidrBlock="192.0.2.0/24")
@@ -553,18 +523,13 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
                 "static_routes",
                 side_effect=[[desired_route, stale_route], [desired_route]],
             ),
-            patch.object(
-                plugin, "ensure_route_absent", return_value=(True, None)
-            ) as remove,
+            patch.object(plugin, "ensure_route_absent", return_value=(True, None)) as remove,
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
         self.assertTrue(raised.exception.values["changed"])
         remove.assert_called_once_with(client, module, "tgw-rtb-1", "192.0.2.0/24")
         self.assertEqual(
-            [
-                route["destination_cidr_block"]
-                for route in raised.exception.values["routes"]
-            ],
+            [route["destination_cidr_block"] for route in raised.exception.values["routes"]],
             ["10.0.0.0/8"],
         )
