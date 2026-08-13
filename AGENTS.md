@@ -8,8 +8,8 @@ An Ansible collection of AWS modules and roles, published to Galaxy on tag push.
 
 | Path               | Description            |
 | ------------------ | ---------------------- |
-| `plugins/modules/` | Ansible python modules |
 | `plugins/lookup/`  | Ansible lookup plugins |
+| `plugins/modules/` | Ansible python modules |
 | `roles/`           | Ansible roles          |
 
 ## Rules
@@ -30,17 +30,17 @@ Invoke skills rather than running commands ad hoc.
 
 | Skill              | Purpose                       |
 | ------------------ | ----------------------------- |
-| `pyenv`            | Install pyenv + pinned Python |
-| `virtualenv`       | Set up the venv               |
 | `ansible-lint`     | Lint roles & playbooks        |
-| `yamllint`         | Lint YAML                     |
-| `black`            | Format Python                 |
-| `ruff`             | Lint Python                   |
 | `ansible-test`     | Module sanity                 |
-| `plugins-audit`    | Exhaustive plugins audit      |
-| `molecule`         | Role tests                    |
+| `black`            | Format Python                 |
 | `changelog`        | Changelog fragments & release |
 | `collection-build` | Build the collection tarball  |
+| `molecule`         | Role tests                    |
+| `plugins-audit`    | Exhaustive plugins audit      |
+| `pyenv`            | Install pyenv + pinned Python |
+| `ruff`             | Lint Python                   |
+| `tox`              | Set up isolated environments  |
+| `yamllint`         | Lint YAML                     |
 
 ## Setup
 

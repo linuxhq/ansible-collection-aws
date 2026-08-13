@@ -11,12 +11,11 @@ A collection of aws roles
 
 ## Environment
 
-    make
-    source venv/bin/activate
+    tox run -e pre-commit
 
 ## Build
 
-    ansible-galaxy collection build
+    tox run -e build
 
 ## Install
 
@@ -24,13 +23,15 @@ A collection of aws roles
 
 ## Changelog
 
-    antsibull-changelog generate
+    tox run -e changelog -- generate
 
 ## Linting
 
-    ansible-lint
-    yamllint -s .
+    tox run -e ansible-lint
+    tox run -e yamllint
 
 ## Testing
 
 All roles have molecule tests which provide example playbooks
+
+    MOLECULE_ROLE=account_region tox run -e molecule -- test -s default

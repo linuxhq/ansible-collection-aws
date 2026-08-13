@@ -6,13 +6,11 @@ description: Run a role's Molecule scenario. Requires explicit authorization.
 # molecule
 
 Confirm the intended credentials and target environment with the user before creating resources,
-then run from the role's directory:
+then run from the collection root:
 
 ```sh
-source venv/bin/activate
-cd roles/{{ role }}
-molecule syntax -s default
-molecule test -s default
+MOLECULE_ROLE={{ role }} tox run -e molecule -- syntax -s default
+MOLECULE_ROLE={{ role }} tox run -e molecule -- test -s default
 ```
 
 - `test` runs the full create / converge / verify / destroy cycle.
@@ -27,4 +25,4 @@ molecule test -s default
 
 ## Dependencies
 
-- `virtualenv` skill
+- `tox` skill

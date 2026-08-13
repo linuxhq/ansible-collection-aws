@@ -11,6 +11,8 @@ build_ignore:
   - .claude/**
   - .codex
   - .codex/**
+  - .config
+  - .config/**
   - .DS_Store
   - '**/.DS_Store'
   - .github
@@ -26,13 +28,15 @@ build_ignore:
   - ansible.cfg
   - changelogs/.plugin-cache.yaml
   - CLAUDE.md
-  - Makefile
   - requirements.txt
   - requirements.yml
   - roles/*/molecule
   - roles/*/molecule/**
   - venv
   - venv/**
+  - .tox
+  - .tox/**
+  - tox.ini
   - '**/__pycache__'
   - '**/__pycache__/**'
   - '**/*.pyc'
