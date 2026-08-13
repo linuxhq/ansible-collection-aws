@@ -38,7 +38,7 @@ provisioner:
           - service_code: iam
             quotas:
               - quota_code: L-0DA4ABF3
-                region: us-east-1
+                region: us-west-1
                 value: '20.0'
 
           - service_code: vpc

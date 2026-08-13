@@ -36,7 +36,7 @@ provisioner:
               molecule: ec2_vpc_endpoint_info
             route_table_ids:
               - "{{ _ec2_vpc_route_table_info_dict['molecule'].id }}"
-            service: com.amazonaws.us-east-1.s3
+            service: com.amazonaws.us-west-1.s3
             vpc_endpoint_type: Gateway
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             wait: true
@@ -53,7 +53,7 @@ provisioner:
           - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             subnets:
               - name: molecule
-                az: us-east-1a
+                az: us-west-1a
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block }}"
 
         ec2_vpc_route_table_list:

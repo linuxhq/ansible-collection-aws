@@ -31,7 +31,7 @@ provisioner:
         ec2_flow_log_bucket_resource:
           "arn:aws:s3:::{{ ec2_flow_log_bucket_name }}"
         ec2_flow_log_source_arn:
-          "arn:aws:logs:us-east-1:{{ _aws_caller_info_account }}:*"
+          "arn:aws:logs:us-west-1:{{ _aws_caller_info_account }}:*"
 
         s3_bucket_list:
           - name: "{{ ec2_flow_log_bucket_name }}"
@@ -80,7 +80,7 @@ provisioner:
           - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             subnets:
               - name: molecule
-                az: us-east-1a
+                az: us-west-1a
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block }}"
 
         ec2_transit_gateway_info_filters:

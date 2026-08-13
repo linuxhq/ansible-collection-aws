@@ -33,11 +33,11 @@ provisioner:
         ec2_instance_metadata_regions:
           "{{ (_aws_region_info_list |
               map(attribute='region_name')) |
-              d(['us-east-1']) }}"
+              d(['us-west-1']) }}"
         ec2_instance_metadata_info_regions:
           "{{ (_aws_region_info_list |
               map(attribute='region_name')) |
-              d(['us-east-1']) }}"
+              d(['us-west-1']) }}"
 
 scenario:
   test_sequence:

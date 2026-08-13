@@ -27,7 +27,7 @@ provisioner:
     group_vars:
       all:
         ec2_serial_console_regions:
-          - us-east-1
+          - us-west-1
           - us-east-2
 
 scenario:
