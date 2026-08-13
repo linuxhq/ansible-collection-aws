@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -89,6 +91,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -99,12 +102,20 @@ def build_entity_policies(client, module, entity_type, names):
     desired_policy_name = module.params["policy_name"]
     if entity_type == "Group":
         list_operation = "list_group_policies"
-        get_policy = client.get_group_policy
+        get_operation = "get_group_policy"
     else:
         list_operation = "list_user_policies"
-        get_policy = client.get_user_policy
+        get_operation = "get_user_policy"
 
     results = []
+    if names:
+        require_client_methods(
+            module,
+            client,
+            "IAM",
+            {list_operation: (f"{entity_type}Name", "Marker", "MaxItems")},
+        )
+    get_policy = None
 
     for name in names:
         try:
@@ -123,13 +134,17 @@ def build_entity_policies(client, module, entity_type, names):
 
         policy_names = all_policy_names
         if desired_policy_name:
-            policy_names = [
-                policy_name
-                for policy_name in all_policy_names
-                if policy_name == desired_policy_name
-            ]
+            policy_names = [policy_name for policy_name in all_policy_names if policy_name == desired_policy_name]
 
         policies = []
+        if policy_names and get_policy is None:
+            require_client_methods(
+                module,
+                client,
+                "IAM",
+                {get_operation: (f"{entity_type}Name", "PolicyName")},
+            )
+            get_policy = getattr(client, get_operation)
         for policy_name in policy_names:
             try:
                 policy_document = get_policy(
@@ -141,10 +156,7 @@ def build_entity_policies(client, module, entity_type, names):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        f"Unable to get AWS IAM {entity_type.lower()} policy "
-                        f"{policy_name} for {name}"
-                    ),
+                    msg=(f"Unable to get AWS IAM {entity_type.lower()} policy " f"{policy_name} for {name}"),
                 )
 
             policies.append(
@@ -176,6 +188,13 @@ def entity_names(client, module, entity_type):
     request = {}
     if path_prefix:
         request["PathPrefix"] = path_prefix
+
+    require_client_methods(
+        module,
+        client,
+        "IAM",
+        {f"list_{entity_type.lower()}s": tuple(request) + ("Marker", "MaxItems")},
+    )
 
     entities = query_list(
         module,
@@ -209,20 +228,6 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
-
-    require_client_methods(
-        module,
-        client,
-        "IAM",
-        {
-            "list_groups": ("PathPrefix",),
-            "list_users": ("PathPrefix",),
-            "list_group_policies": ("GroupName",),
-            "list_user_policies": ("UserName",),
-            "get_group_policy": ("GroupName", "PolicyName"),
-            "get_user_policy": ("UserName", "PolicyName"),
-        },
-    )
 
     group_names = entity_names(client, module, "Group")
     user_names = entity_names(client, module, "User")

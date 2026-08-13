@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -81,6 +83,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -106,15 +109,11 @@ def main():
     include_endpoint_groups = module.params["include_endpoint_groups"]
     include_listeners = module.params["include_listeners"] or include_endpoint_groups
 
-    methods = {"list_tags_for_resource": ("ResourceArn",)}
+    methods = {}
     if arn is None:
         methods["list_accelerators"] = ("MaxResults", "NextToken")
     else:
         methods["describe_accelerator"] = ("AcceleratorArn",)
-    if include_listeners:
-        methods["list_listeners"] = ("AcceleratorArn", "MaxResults", "NextToken")
-    if include_endpoint_groups:
-        methods["list_endpoint_groups"] = ("ListenerArn", "MaxResults", "NextToken")
 
     require_client_methods(module, client, "Global Accelerator", methods)
 
@@ -145,11 +144,21 @@ def main():
         if accelerator is not None:
             accelerators.append(accelerator)
 
+    if any(accelerator.get("AcceleratorArn") for accelerator in accelerators):
+        require_client_methods(
+            module,
+            client,
+            "Global Accelerator",
+            {"list_tags_for_resource": ("ResourceArn",)},
+        )
+
+    available_accelerators = []
     for accelerator in accelerators:
         accelerator_arn = accelerator.get("AcceleratorArn")
 
         if accelerator_arn is None:
             accelerator["Tags"] = []
+            available_accelerators.append(accelerator)
             continue
 
         try:
@@ -158,19 +167,23 @@ def main():
                 aws_retry=True,
             ).get("Tags", [])
         except is_boto3_error_code("AcceleratorNotFoundException"):
-            accelerator["Tags"] = []
+            continue
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to list tags for AWS Global Accelerator "
-                    f"{accelerator_arn}"
-                ),
+                msg=("Unable to list tags for AWS Global Accelerator " f"{accelerator_arn}"),
             )
 
         if not include_listeners:
+            available_accelerators.append(accelerator)
             continue
 
+        require_client_methods(
+            module,
+            client,
+            "Global Accelerator",
+            {"list_listeners": ("AcceleratorArn", "MaxResults", "NextToken")},
+        )
         try:
             listeners = paginated_query_with_retries(
                 client,
@@ -178,24 +191,35 @@ def main():
                 AcceleratorArn=accelerator_arn,
             ).get("Listeners", [])
         except is_boto3_error_code("AcceleratorNotFoundException"):
-            listeners = []
+            continue
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to list AWS Global Accelerator listeners for "
-                    f"{accelerator_arn}"
-                ),
+                msg=("Unable to list AWS Global Accelerator listeners for " f"{accelerator_arn}"),
             )
 
+        available_listeners = []
         for listener in listeners:
             listener["AcceleratorArn"] = accelerator_arn
 
             if not include_endpoint_groups:
+                available_listeners.append(listener)
                 continue
 
             listener_arn = listener.get("ListenerArn")
 
+            require_client_methods(
+                module,
+                client,
+                "Global Accelerator",
+                {
+                    "list_endpoint_groups": (
+                        "ListenerArn",
+                        "MaxResults",
+                        "NextToken",
+                    )
+                },
+            )
             try:
                 listener["EndpointGroups"] = paginated_query_with_retries(
                     client,
@@ -203,28 +227,26 @@ def main():
                     ListenerArn=listener_arn,
                 ).get("EndpointGroups", [])
             except is_boto3_error_code("ListenerNotFoundException"):
-                listener["EndpointGroups"] = []
+                continue
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to list AWS Global Accelerator endpoint "
-                        f"groups for {listener_arn}"
-                    ),
+                    msg=("Unable to list AWS Global Accelerator endpoint " f"groups for {listener_arn}"),
                 )
+            available_listeners.append(listener)
 
-        accelerator["Listeners"] = listeners
+        accelerator["Listeners"] = available_listeners
+        available_accelerators.append(accelerator)
 
     normalized_accelerators = boto3_resource_list_to_ansible_dict(
-        accelerators,
+        available_accelerators,
         transform_tags=True,
         force_tags=False,
     )
 
-    accelerator_arns = []
-    for accelerator in normalized_accelerators:
-        if accelerator.get("accelerator_arn"):
-            accelerator_arns.append(accelerator["accelerator_arn"])
+    accelerator_arns = [
+        accelerator["accelerator_arn"] for accelerator in normalized_accelerators if accelerator.get("accelerator_arn")
+    ]
 
     module.exit_json(
         accelerator_arns=accelerator_arns,

@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -30,6 +32,7 @@ account_aliases:
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -47,7 +50,7 @@ def main():
         module,
         client,
         "IAM",
-        {"list_account_aliases": ()},
+        {"list_account_aliases": ("Marker", "MaxItems")},
     )
 
     account_aliases = query_list(

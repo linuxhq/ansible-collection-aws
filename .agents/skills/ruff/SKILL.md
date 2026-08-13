@@ -6,10 +6,10 @@ description: Lint Python code with ruff.
 # ruff
 
 ```sh
-source venv/bin/activate
-ruff check plugins/modules/{{ file }}.py
-ruff check plugins
-ruff check --fix plugins/modules/{{ file }}.py
+tox run -e ruff-lint -- plugins/modules/{{ file }}.py
+tox run -e ruff -- plugins/modules/{{ file }}.py
+tox run -m lint
+tox run -m format
 ```
 
 - Clean run: `All checks passed!`.
@@ -18,4 +18,4 @@ ruff check --fix plugins/modules/{{ file }}.py
 
 ## Dependencies
 
-- `virtualenv` skill
+- `tox` skill

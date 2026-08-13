@@ -1,3 +1,4 @@
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -58,17 +59,14 @@ class LookupModule(LookupBase):
         region = kwargs.get("region")
         secret_access_key = kwargs.get("aws_secret_access_key")
 
-        if region is None:
-            raise AnsibleLookupError("ses_credential lookup requires region=")
-        if secret_access_key is None:
-            raise AnsibleLookupError(
-                "ses_credential lookup requires aws_secret_access_key="
-            )
+        if not isinstance(region, str) or not region.strip():
+            raise AnsibleLookupError("ses_credential lookup requires a non-empty region=")
+        if not isinstance(secret_access_key, str) or not secret_access_key.strip():
+            raise AnsibleLookupError("ses_credential lookup requires a non-empty aws_secret_access_key=")
         if terms:
-            raise AnsibleLookupError(
-                "ses_credential lookup does not accept positional terms"
-            )
+            raise AnsibleLookupError("ses_credential lookup does not accept positional terms")
 
+        region = region.strip()
         signature = to_bytes("AWS4" + secret_access_key)
         for message in (DATE, region, SERVICE, TERMINAL, MESSAGE):
             signature = hmac.new(signature, to_bytes(message), hashlib.sha256).digest()

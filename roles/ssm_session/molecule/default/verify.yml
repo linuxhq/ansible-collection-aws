@@ -1,9 +1,6 @@
 ---
 - name: Verify
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
-
   pre_tasks:
     - name: Ensure roles are included
       ansible.builtin.include_role:

@@ -501,40 +501,26 @@ try:
 except ImportError:
     pass  # Handled by AnsibleAWSModule
 
-from typing import Any
-from typing import Dict
-from typing import List
-from typing import NoReturn
-from typing import Optional
-from typing import Tuple
-from typing import Union
+from typing import Any, Dict, List, NoReturn, Optional, Tuple, Union
 
 from ansible.module_utils._text import to_text
 from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
 
-from ansible_collections.amazon.aws.plugins.module_utils.ec2 import AnsibleEC2Error
 from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
+    AnsibleEC2Error,
     create_vpn_connection,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
     create_vpn_connection_route,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
     delete_vpn_connection,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
     delete_vpn_connection_route,
-)
-from ansible_collections.amazon.aws.plugins.module_utils.ec2 import (
     describe_vpn_connections,
+    ensure_ec2_tags,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.ec2 import ensure_ec2_tags
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     boto3_tag_list_to_ansible_dict,
+    compare_aws_tags,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.tagging import compare_aws_tags
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
@@ -654,9 +640,7 @@ def create_filter(module, provided_filters: Dict[str, Any]) -> List[Dict[str, An
                 if isinstance(provided_filters[param][key], list):
                     flat_filter_dict[formatted_key] = str(provided_filters[param][key])
                 else:
-                    flat_filter_dict[formatted_key] = [
-                        str(provided_filters[param][key])
-                    ]
+                    flat_filter_dict[formatted_key] = [str(provided_filters[param][key])]
         elif param == "option.static-routes-only":
             flat_filter_dict[param] = [str(provided_filters[param]).lower()]
         else:
@@ -671,16 +655,12 @@ def create_filter(module, provided_filters: Dict[str, Any]) -> List[Dict[str, An
             flat_filter_dict[param_value] = [module.params.get(param)]
 
     # change the flat dict into something boto3 will understand
-    formatted_filter = [
-        {"Name": key, "Values": value} for key, value in flat_filter_dict.items()
-    ]
+    formatted_filter = [{"Name": key, "Values": value} for key, value in flat_filter_dict.items()]
 
     return formatted_filter
 
 
-def find_connection_response(
-    module, connections: Optional[List[Dict[str, Any]]] = None
-) -> Optional[Dict[str, Any]]:
+def find_connection_response(module, connections: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
     """Determine if there is a viable unique match in the connections described. Returns the unique VPN connection if one is found,
     returns None if the connection does not exist, raise an error if multiple matches are found.
     """
@@ -783,9 +763,7 @@ def create_connection(
     return vpn
 
 
-def delete_connection(
-    client, module: AnsibleAWSModule, vpn_connection_id: str
-) -> NoReturn:
+def delete_connection(client, module: AnsibleAWSModule, vpn_connection_id: str) -> NoReturn:
     """Deletes a VPN connection"""
 
     delay = module.params.get("delay")
@@ -803,14 +781,10 @@ def delete_connection(
             msg=f"Failed to wait for VPN connection {vpn_connection_id} to be removed",
         )
     except AnsibleEC2Error as e:
-        module.fail_json_aws(
-            e, msg=f"Failed to delete the VPN connection: {vpn_connection_id}"
-        )
+        module.fail_json_aws(e, msg=f"Failed to delete the VPN connection: {vpn_connection_id}")
 
 
-def check_for_routes_update(
-    client, module: AnsibleAWSModule, vpn_connection_id: str
-) -> Dict[str, Any]:
+def check_for_routes_update(client, module: AnsibleAWSModule, vpn_connection_id: str) -> Dict[str, Any]:
     """Determines if there are any routes that need to be updated. Ensures non-modifiable attributes aren't expected to change."""
     routes = module.params.get("routes")
     purge_routes = module.params.get("purge_routes")
@@ -823,16 +797,10 @@ def check_for_routes_update(
 
     # Get changes to routes
     if "Routes" in vpn_connection:
-        current_routes = [
-            route["DestinationCidrBlock"] for route in vpn_connection["Routes"]
-        ]
+        current_routes = [route["DestinationCidrBlock"] for route in vpn_connection["Routes"]]
         if purge_routes:
-            changes["routes_to_remove"] = [
-                old_route for old_route in current_routes if old_route not in routes
-            ]
-        changes["routes_to_add"] = [
-            new_route for new_route in routes if new_route not in current_routes
-        ]
+            changes["routes_to_remove"] = [old_route for old_route in current_routes if old_route not in routes]
+        changes["routes_to_add"] = [new_route for new_route in routes if new_route not in current_routes]
 
     # Check if nonmodifiable attributes are attempted to be modified
     for attribute in current_attrs:
@@ -860,9 +828,7 @@ def check_for_routes_update(
     return changes
 
 
-def make_changes(
-    client, module: AnsibleAWSModule, vpn_connection_id: str, changes: Dict[str, Any]
-) -> bool:
+def make_changes(client, module: AnsibleAWSModule, vpn_connection_id: str, changes: Dict[str, Any]) -> bool:
     """changes is a dict with the keys 'routes_to_add', 'routes_to_remove',
     the values of which are lists (generated by check_for_routes_update()).
     """
@@ -879,14 +845,10 @@ def make_changes(
         )
 
     if changes["routes_to_add"]:
-        changed |= add_routes(
-            client, module, vpn_connection_id, changes["routes_to_add"]
-        )
+        changed |= add_routes(client, module, vpn_connection_id, changes["routes_to_add"])
 
     if changes["routes_to_remove"]:
-        changed |= remove_routes(
-            client, module, vpn_connection_id, changes["routes_to_remove"]
-        )
+        changed |= remove_routes(client, module, vpn_connection_id, changes["routes_to_remove"])
 
     return changed
 
@@ -911,9 +873,7 @@ def get_check_mode_results(
     # get combined current tags and tags to set
     if present_tags is not None and current_state and "Tags" in current_state:
         current_tags = boto3_tag_list_to_ansible_dict(current_state["Tags"])
-        tags_to_add, tags_to_remove = compare_aws_tags(
-            current_tags, present_tags, module_params.get("purge_tags")
-        )
+        tags_to_add, tags_to_remove = compare_aws_tags(current_tags, present_tags, module_params.get("purge_tags"))
         changed |= bool(tags_to_remove) or bool(tags_to_add)
         if module_params.get("purge_tags"):
             current_tags = {}
@@ -928,9 +888,7 @@ def get_check_mode_results(
     # get combined current routes and routes to add
     present_routes = list(module_params.get("routes") or [])
     if current_state and "Routes" in current_state:
-        current_routes = [
-            route["DestinationCidrBlock"] for route in current_state["Routes"]
-        ]
+        current_routes = [route["DestinationCidrBlock"] for route in current_state["Routes"]]
         current_route_set = set(current_routes)
         present_route_set = set(present_routes)
         if module_params.get("purge_routes"):
@@ -939,15 +897,10 @@ def get_check_mode_results(
         elif present_route_set != current_route_set:
             if not present_route_set < current_route_set:
                 changed = True
-            present_routes.extend(
-                [route for route in current_routes if route not in present_routes]
-            )
+            present_routes.extend([route for route in current_routes if route not in present_routes])
     elif module_params.get("routes"):
         changed = True
-    results["routes"] = [
-        {"destination_cidr_block": cidr, "state": "available"}
-        for cidr in present_routes
-    ]
+    results["routes"] = [{"destination_cidr_block": cidr, "state": "available"} for cidr in present_routes]
 
     # return the vpn_connection_id if it's known
     if vpn_connection_id:
@@ -969,9 +922,7 @@ def ensure_present(
 
     # No match but vpn_connection_id was specified.
     if not vpn_connection and module.params.get("vpn_connection_id"):
-        module.fail_json(
-            msg="There is no VPN connection available or pending with that id. Did you delete it?"
-        )
+        module.fail_json(msg="There is no VPN connection available or pending with that id. Did you delete it?")
 
     # Unique match was found. Check if attributes provided differ.
     elif vpn_connection:
@@ -980,9 +931,7 @@ def ensure_present(
         changes = check_for_routes_update(client, module, vpn_connection_id)
 
         if module.check_mode:
-            return get_check_mode_results(
-                module.params, vpn_connection_id, current_state=vpn_connection
-            )
+            return get_check_mode_results(module.params, vpn_connection_id, current_state=vpn_connection)
 
         changed |= make_changes(client, module, vpn_connection_id, changes)
 
@@ -1007,27 +956,19 @@ def ensure_present(
             delay=delay,
         )
 
-        changes = check_for_routes_update(
-            client, module, vpn_connection["VpnConnectionId"]
-        )
+        changes = check_for_routes_update(client, module, vpn_connection["VpnConnectionId"])
         make_changes(client, module, vpn_connection["VpnConnectionId"], changes)
 
     # get latest version if a change has been made and make tags output nice before returning it
     if vpn_connection:
-        vpn_connection = find_vpn_connection(
-            client, module, vpn_connection["VpnConnectionId"]
-        )
+        vpn_connection = find_vpn_connection(client, module, vpn_connection["VpnConnectionId"])
         if "Tags" in vpn_connection:
-            vpn_connection["Tags"] = boto3_tag_list_to_ansible_dict(
-                vpn_connection["Tags"]
-            )
+            vpn_connection["Tags"] = boto3_tag_list_to_ansible_dict(vpn_connection["Tags"])
 
     return (changed, vpn_connection)
 
 
-def ensure_absent(
-    client, module: AnsibleAWSModule, vpn_connection: Dict[str, Any]
-) -> bool:
+def ensure_absent(client, module: AnsibleAWSModule, vpn_connection: Dict[str, Any]) -> bool:
     """Deletes a VPN connection if it exists."""
     changed: bool = False
 

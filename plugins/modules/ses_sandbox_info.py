@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -29,12 +31,11 @@ account:
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.ses import (
-    get_account,
-)
+from ansible_collections.linuxhq.aws.plugins.module_utils.ses import get_account
 
 
 def main():

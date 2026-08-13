@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -7,9 +9,8 @@ short_description: Manage aws wafv2 web acls
 description:
   - Manages AWS WAFv2 web ACL logging configuration.
   - Supports enabling, updating, and removing logging for a web ACL.
-  - Updates replace the logging configuration; fields not managed by this
-    module, such as redacted fields and logging filters, are removed by the
-    AWS C(PutLoggingConfiguration) API.
+  - Updates preserve logging configuration fields not managed by this module,
+    such as redacted fields and logging filters.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -17,12 +18,14 @@ options:
     description:
       - The logging destination ARNs for the web ACL.
       - AWS WAF allows one destination per web ACL.
+      - Entries must not be empty.
       - This is required when O(state=present).
     elements: str
     type: list
   resource_arn:
     description:
       - The ARN of the WAFv2 web ACL to manage logging for.
+      - This must not be empty.
       - CloudFront web ACLs require the C(us-east-1) region.
     required: true
     type: str
@@ -82,6 +85,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
@@ -98,15 +102,13 @@ def ensure_absent(client, module):
                 ResourceArn=resource_arn,
                 aws_retry=True,
             )
+        except is_boto3_error_code("WAFNonexistentItemException"):
+            pass
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to delete AWS WAFv2 logging configuration for "
-                    f"{resource_arn}"
-                ),
+                msg=("Unable to delete AWS WAFv2 logging configuration for " f"{resource_arn}"),
             )
-
     module.exit_json(
         changed=changed,
         resource_arn=resource_arn,
@@ -120,13 +122,9 @@ def ensure_present(client, module):
     current = get_logging_configuration(client, module)
     current_comparable = None
     if current:
-        normalized_current = boto3_resource_to_ansible_dict(
-            current, transform_tags=False, force_tags=False
-        )
+        normalized_current = boto3_resource_to_ansible_dict(current, transform_tags=False, force_tags=False)
         current_comparable = {
-            "log_destination_configs": normalized_current.get(
-                "log_destination_configs"
-            ),
+            "log_destination_configs": normalized_current.get("log_destination_configs") or [],
             "resource_arn": normalized_current.get("resource_arn"),
         }
     desired_comparable = {
@@ -134,9 +132,16 @@ def ensure_present(client, module):
         "resource_arn": resource_arn,
     }
     desired = {
-        "LogDestinationConfigs": log_destination_configs,
-        "ResourceArn": resource_arn,
+        key: current[key]
+        for key in ("LoggingFilter", "LogScope", "LogType", "RedactedFields")
+        if current and key in current
     }
+    desired.update(
+        {
+            "LogDestinationConfigs": log_destination_configs,
+            "ResourceArn": resource_arn,
+        }
+    )
     changed = (current_comparable or {}) != desired_comparable
 
     if changed and not module.check_mode:
@@ -148,11 +153,10 @@ def ensure_present(client, module):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to manage AWS WAFv2 logging configuration for "
-                    f"{resource_arn}"
-                ),
+                msg=("Unable to manage AWS WAFv2 logging configuration for " f"{resource_arn}"),
             )
+        if not current:
+            module.fail_json(msg=("AWS WAFv2 did not return the logging configuration for " f"{resource_arn}"))
 
     elif changed and module.check_mode:
         current = desired
@@ -203,11 +207,14 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
+    resource_arn = module.params["resource_arn"]
 
-    if state == "present" and not module.params["log_destination_configs"]:
-        module.fail_json(
-            msg="log_destination_configs must contain at least 1 destination ARN"
-        )
+    if not resource_arn:
+        module.fail_json(msg="resource_arn must not be empty")
+    if state == "present" and len(module.params["log_destination_configs"] or []) != 1:
+        module.fail_json(msg="log_destination_configs must contain exactly 1 ARN")
+    if state == "present" and not module.params["log_destination_configs"][0]:
+        module.fail_json(msg="log_destination_configs must not contain empty entries")
 
     client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
     methods = {"get_logging_configuration": ("ResourceArn",)}

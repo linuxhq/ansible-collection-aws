@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -68,12 +70,17 @@ try:
 except ImportError:
     pass
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 
@@ -90,6 +97,8 @@ def ensure_absent(client, module):
                 Id=delegation_set_id,
                 aws_retry=True,
             )
+        except is_boto3_error_code("NoSuchDelegationSet"):
+            pass
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
@@ -122,14 +131,14 @@ def ensure_present(client, module):
 
         if delegation_set is None:
             delegation_set = get_reusable_delegation_set(client, module)
+        if not (delegation_set or {}).get("Id"):
+            module.fail_json(msg=("AWS Route53 did not return the created reusable delegation set " f"{name}"))
     elif changed and module.check_mode:
         delegation_set = {"CallerReference": name}
 
     result = {
         "changed": changed,
-        "delegation_set": boto3_resource_to_ansible_dict(
-            delegation_set, transform_tags=False, force_tags=False
-        ),
+        "delegation_set": boto3_resource_to_ansible_dict(delegation_set, transform_tags=False, force_tags=False),
         "name": name,
         "state": "present",
     }
@@ -143,36 +152,17 @@ def ensure_present(client, module):
 
 def get_reusable_delegation_set(client, module):
     name = module.params["name"]
-    marker = None
-
-    while True:
-        request = {}
-        if marker:
-            request["Marker"] = marker
-
-        try:
-            response = client.list_reusable_delegation_sets(**request, aws_retry=True)
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e, msg="Unable to list AWS Route53 reusable delegation sets"
-            )
-
-        for delegation_set in response.get("DelegationSets", []):
-            if delegation_set.get("CallerReference") == name:
-                return delegation_set
-
-        if not response.get("IsTruncated"):
-            return None
-
-        marker = response.get("NextMarker")
-
-        if not marker:
-            module.fail_json(
-                msg=(
-                    "AWS Route53 reusable delegation sets response was "
-                    "truncated without a NextMarker"
-                )
-            )
+    delegation_sets = query_list(
+        module,
+        client,
+        "list_reusable_delegation_sets",
+        "DelegationSets",
+        "Unable to list AWS Route53 reusable delegation sets",
+    )
+    return next(
+        (delegation_set for delegation_set in delegation_sets if delegation_set.get("CallerReference") == name),
+        None,
+    )
 
 
 def main():
@@ -189,11 +179,11 @@ def main():
     )
     state = module.params["state"]
 
-    if state == "present" and not 1 <= len(module.params["name"]) <= 128:
+    if not 1 <= len(module.params["name"]) <= 128:
         module.fail_json(msg="name must be 1 to 128 characters")
 
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
-    methods = {"list_reusable_delegation_sets": ("Marker",)}
+    methods = {"list_reusable_delegation_sets": ("Marker", "MaxItems")}
     if state == "present":
         methods["create_reusable_delegation_set"] = ("CallerReference",)
     if state == "absent":

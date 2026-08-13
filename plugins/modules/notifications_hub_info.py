@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -34,6 +36,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -55,7 +58,7 @@ def main():
         module,
         client,
         "Notifications",
-        {"list_notification_hubs": ()},
+        {"list_notification_hubs": ("maxResults", "nextToken")},
     )
 
     notification_hubs = query_list(

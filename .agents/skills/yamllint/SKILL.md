@@ -8,9 +8,8 @@ description: Lint YAML files with yamllint.
 Matches CI's `--strict` mode.
 
 ```sh
-source venv/bin/activate
-yamllint --strict roles/{{ role }}/tasks/main.yml
-yamllint --strict .
+tox run -e yamllint -- roles/{{ role }}/tasks/main.yml
+tox run -m lint
 ```
 
 - Clean run prints nothing; fix each line by hand.
@@ -18,4 +17,4 @@ yamllint --strict .
 
 ## Dependencies
 
-- `virtualenv` skill
+- `tox` skill

@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -14,6 +16,7 @@ options:
     description:
       - Whether the instance metadata service endpoint is enabled by default.
       - C(no-preference) clears the account-level default.
+      - Requires botocore 1.34.70 or later.
       - At least one of O(http_endpoint), O(http_put_response_hop_limit),
         O(http_tokens), or O(instance_metadata_tags) is required.
     choices:
@@ -26,6 +29,7 @@ options:
       - The default desired HTTP PUT response hop limit.
       - This must be between C(1) and C(64), or C(-1) to clear the
         account-level default.
+      - Requires botocore 1.34.70 or later.
       - At least one of O(http_endpoint), O(http_put_response_hop_limit),
         O(http_tokens), or O(instance_metadata_tags) is required.
     type: int
@@ -33,6 +37,7 @@ options:
     description:
       - Whether IMDSv2 tokens are required by default.
       - C(no-preference) clears the account-level default.
+      - Requires botocore 1.34.70 or later.
       - At least one of O(http_endpoint), O(http_put_response_hop_limit),
         O(http_tokens), or O(instance_metadata_tags) is required.
     choices:
@@ -44,6 +49,7 @@ options:
     description:
       - Whether access to instance tags from the instance metadata service is enabled by default.
       - C(no-preference) clears the account-level default.
+      - Requires botocore 1.34.70 or later.
       - At least one of O(http_endpoint), O(http_put_response_hop_limit),
         O(http_tokens), or O(instance_metadata_tags) is required.
     choices:
@@ -85,11 +91,11 @@ try:
 except ImportError:
     pass
 
-from ansible.module_utils.common.dict_transformations import (
-    snake_dict_to_camel_dict,
-)
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.ec2_metadata import (
     get_instance_metadata_defaults,
 )
@@ -139,10 +145,7 @@ def main():
 
     if hop_limit is not None and hop_limit != -1 and not 1 <= hop_limit <= 64:
         module.fail_json(
-            msg=(
-                "http_put_response_hop_limit must be between 1 and 64, "
-                "or -1 to clear the account-level default"
-            )
+            msg=("http_put_response_hop_limit must be between 1 and 64, " "or -1 to clear the account-level default")
         )
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
@@ -167,10 +170,7 @@ def main():
         module,
         client,
         "EC2",
-        {
-            "get_instance_metadata_defaults": (),
-            "modify_instance_metadata_defaults": tuple(desired_update),
-        },
+        {"get_instance_metadata_defaults": ()},
     )
 
     current_account_level = get_instance_metadata_defaults(client, module)
@@ -181,20 +181,22 @@ def main():
 
     changed = current != comparable_desired
 
-    if changed and not module.check_mode:
-        try:
-            client.modify_instance_metadata_defaults(**desired_update, aws_retry=True)
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=(
-                    "Unable to modify EC2 instance metadata defaults in region "
-                    f"{module.region}"
-                ),
+    if changed:
+        if not module.check_mode:
+            require_client_methods(
+                module,
+                client,
+                "EC2",
+                {"modify_instance_metadata_defaults": tuple(desired_update)},
             )
+            try:
+                client.modify_instance_metadata_defaults(**desired_update, aws_retry=True)
+            except (BotoCoreError, ClientError) as e:
+                module.fail_json_aws(
+                    e,
+                    msg=("Unable to modify EC2 instance metadata defaults in region " f"{module.region}"),
+                )
 
-        current_account_level = get_instance_metadata_defaults(client, module)
-    elif changed and module.check_mode:
         current_account_level = dict(current_account_level)
         for option_name, option_value in comparable_desired.items():
             if option_value is None:

@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -22,6 +24,7 @@ options:
     description:
       - The resolver endpoint IP address definitions.
       - This is required when O(state=present).
+      - This must contain 2 to 20 entries.
     elements: dict
     suboptions:
       ip:
@@ -37,17 +40,21 @@ options:
       subnet_id:
         description:
           - The subnet ID for the endpoint IP address.
+          - This must contain 1 to 32 characters.
         required: true
         type: str
     type: list
   name:
     description:
       - The resolver endpoint name.
+      - This must be a nonnumeric name of at most 64 letters, numbers, spaces,
+        apostrophes, hyphens, or underscores.
     required: true
     type: str
   protocols:
     description:
       - The protocols for the resolver endpoint.
+      - This must contain 1 or 2 entries.
     choices:
       - do53
       - doh
@@ -75,6 +82,7 @@ options:
     description:
       - The security group IDs for the resolver endpoint.
       - This is required when O(state=present).
+      - Entries must contain 1 to 64 characters.
     elements: str
     type: list
   state:
@@ -88,6 +96,8 @@ options:
   tags:
     description:
       - Tags to apply to the resolver endpoint.
+      - This must contain at most 200 entries; keys must contain 1 to 128
+        characters and values at most 256 characters.
     type: dict
   wait:
     description:
@@ -159,16 +169,18 @@ state:
   type: str
 """
 
+import hashlib
+import ipaddress
 import json
+import re
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
     pass
 
-from ansible.module_utils.common.dict_transformations import (
-    snake_dict_to_camel_dict,
-)
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
@@ -184,6 +196,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -191,6 +204,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_arn_tags,
+    require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
@@ -276,7 +290,7 @@ def create_resolver_endpoint(client, module, desired):
             **scrub_none_parameters(
                 snake_dict_to_camel_dict(
                     {
-                        "creator_request_id": desired["name"],
+                        "creator_request_id": hashlib.sha256(json.dumps(desired, sort_keys=True).encode()).hexdigest(),
                         "direction": desired["direction"],
                         "ip_addresses": desired["ip_addresses"],
                         "name": desired["name"],
@@ -300,7 +314,10 @@ def create_resolver_endpoint(client, module, desired):
             msg=f"Unable to create AWS Route53 Resolver endpoint {desired['name']}",
         )
 
-    if endpoint is not None and module.params["wait"]:
+    if not (endpoint or {}).get("Id"):
+        module.fail_json(msg=("AWS Route53 Resolver did not return the created endpoint " f"{desired['name']}"))
+
+    if module.params["wait"]:
         resolver_endpoint_id = endpoint.get("Id")
         endpoint = wait_for_resolver_endpoint_status(
             client,
@@ -308,10 +325,17 @@ def create_resolver_endpoint(client, module, desired):
             resolver_endpoint_id,
             {"operational"},
         )
+    elif endpoint is not None:
+        endpoint = dict(endpoint)
+        endpoint["IpAddresses"] = [
+            snake_dict_to_camel_dict(ip_address, capitalize_first=True) for ip_address in desired["ip_addresses"]
+        ]
+        if module.params["tags"] is not None:
+            endpoint["Tags"] = ansible_dict_to_boto3_tag_list(module.params["tags"])
     return endpoint
 
 
-def delete_resolver_endpoint(client, module, endpoint):
+def delete_resolver_endpoint(client, module, endpoint, always=False):
     resolver_endpoint_id = endpoint.get("Id")
 
     try:
@@ -319,16 +343,15 @@ def delete_resolver_endpoint(client, module, endpoint):
             ResolverEndpointId=resolver_endpoint_id,
             aws_retry=True,
         )
+    except is_boto3_error_code("ResourceNotFoundException"):
+        return
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=(
-                "Unable to delete AWS Route53 Resolver endpoint "
-                f"{module.params['name']}"
-            ),
+            msg=("Unable to delete AWS Route53 Resolver endpoint " f"{module.params['name']}"),
         )
 
-    if module.params["wait"]:
+    if module.params["wait"] or always:
         wait_for_resolver_endpoint_status(
             client,
             module,
@@ -339,9 +362,12 @@ def delete_resolver_endpoint(client, module, endpoint):
 
 def ensure_absent(client, module):
     endpoint = get_resolver_endpoint_by_name(client, module)
-    changed = endpoint is not None
+    deleting = (endpoint or {}).get("Status") == "DELETING"
+    changed = endpoint is not None and not deleting
 
-    if changed and not module.check_mode:
+    if deleting and module.params["wait"] and not module.check_mode:
+        wait_for_resolver_endpoint_status(client, module, endpoint.get("Id"), {"deleted"})
+    elif changed and not module.check_mode:
         delete_resolver_endpoint(client, module, endpoint)
 
     module.exit_json(
@@ -358,17 +384,22 @@ def ensure_present(client, module):
         "direction": module.params["direction"].upper(),
         "ip_addresses": module.params["ip_addresses"],
         "name": module.params["name"],
-        "protocols": [
-            PROTOCOLS[protocol.lower()] for protocol in module.params["protocols"] or []
-        ],
+        "protocols": sorted({PROTOCOLS[protocol.lower()] for protocol in module.params["protocols"] or []}),
         "resolver_endpoint_type": module.params["resolver_endpoint_type"].upper(),
-        "security_group_ids": module.params["security_group_ids"],
+        "security_group_ids": sorted(set(module.params["security_group_ids"])),
     }
     endpoint = get_resolver_endpoint_by_name(client, module)
 
     if endpoint is not None:
-        endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
-        endpoint = resolver_endpoint_with_tags(client, module, endpoint)
+        if endpoint.get("Status") == "DELETING":
+            if module.check_mode:
+                endpoint = None
+            else:
+                wait_for_resolver_endpoint_status(client, module, endpoint.get("Id"), {"deleted"})
+                return ensure_present(client, module)
+        else:
+            endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
+            endpoint = resolver_endpoint_with_tags(client, module, endpoint)
 
     comparable_fields = (
         "direction",
@@ -378,11 +409,10 @@ def ensure_present(client, module):
         "security_group_ids",
     )
     current = comparable_endpoint(endpoint)
-    desired_comparable = comparable_endpoint(
-        {field: desired[field] for field in comparable_fields}
-    )
+    created = current is None
+    desired_comparable = comparable_endpoint({field: desired[field] for field in comparable_fields})
     desired.update(desired_comparable)
-    changed = current != desired_comparable
+    changed = not comparable_endpoints_match(current, desired_comparable)
     resource_changed = changed
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:
@@ -393,24 +423,37 @@ def ensure_present(client, module):
         )
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
+    if (
+        changed
+        and not module.check_mode
+        and endpoint is not None
+        and endpoint.get("Status")
+        and endpoint.get("Status") != "OPERATIONAL"
+    ):
+        wait_for_resolver_endpoint_status(client, module, endpoint.get("Id"), {"operational"})
+        return ensure_present(client, module)
+
     if changed and module.check_mode:
+        projected_desired = desired
+        if current is not None and comparable_ip_addresses_match(
+            current["ip_addresses"], desired_comparable["ip_addresses"]
+        ):
+            projected_desired = dict(desired)
+            projected_desired.pop("ip_addresses")
         endpoint = dict(endpoint or {})
-        endpoint.update(snake_dict_to_camel_dict(desired, capitalize_first=True))
+        endpoint.update(snake_dict_to_camel_dict(projected_desired, capitalize_first=True))
         if tags is not None:
             endpoint = apply_tag_deltas(endpoint, tags_to_set, tag_keys_to_unset)
     elif current is None:
-        endpoint = resolver_endpoint_with_ip_addresses(
-            client,
-            module,
-            create_resolver_endpoint(client, module, desired),
-        )
-        endpoint = resolver_endpoint_with_tags(client, module, endpoint)
+        endpoint = create_resolver_endpoint(client, module, desired)
+        if module.params["wait"]:
+            endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
+            endpoint = resolver_endpoint_with_tags(client, module, endpoint)
     elif changed:
         if resource_changed:
             if (
                 current["protocols"] != desired_comparable["protocols"]
-                or current["resolver_endpoint_type"]
-                != desired_comparable["resolver_endpoint_type"]
+                or current["resolver_endpoint_type"] != desired_comparable["resolver_endpoint_type"]
             ):
                 update_params = {
                     "protocols": desired["protocols"],
@@ -420,23 +463,22 @@ def ensure_present(client, module):
 
                 try:
                     endpoint = client.update_resolver_endpoint(
-                        **snake_dict_to_camel_dict(
-                            update_params, capitalize_first=True
-                        ),
+                        **snake_dict_to_camel_dict(update_params, capitalize_first=True),
                         aws_retry=True,
                     ).get("ResolverEndpoint")
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=(
-                            "Unable to update AWS Route53 Resolver endpoint "
-                            f"{module.params['name']}"
-                        ),
+                        msg=("Unable to update AWS Route53 Resolver endpoint " f"{module.params['name']}"),
                     )
 
-                endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
+                if not (endpoint or {}).get("Id"):
+                    module.fail_json(
+                        msg=("AWS Route53 Resolver did not return the updated endpoint " f"{module.params['name']}")
+                    )
 
-                if endpoint is not None and module.params["wait"]:
+                ip_addresses_changed = current["ip_addresses"] != desired_comparable["ip_addresses"]
+                if endpoint is not None and (module.params["wait"] or ip_addresses_changed):
                     endpoint = wait_for_resolver_endpoint_status(
                         client,
                         module,
@@ -445,6 +487,7 @@ def ensure_present(client, module):
                     )
 
                 if endpoint is not None:
+                    endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
                     endpoint = reconcile_resolver_endpoint_ip_addresses(
                         client,
                         module,
@@ -460,16 +503,15 @@ def ensure_present(client, module):
                 )
             current = comparable_endpoint(endpoint)
 
-            if current != desired_comparable:
+            if not comparable_endpoints_match(current, desired_comparable):
                 if endpoint is not None:
-                    delete_resolver_endpoint(client, module, endpoint)
-                endpoint = resolver_endpoint_with_ip_addresses(
-                    client,
-                    module,
-                    create_resolver_endpoint(client, module, desired),
-                )
+                    delete_resolver_endpoint(client, module, endpoint, always=True)
+                endpoint = create_resolver_endpoint(client, module, desired)
+                created = True
+                if module.params["wait"]:
+                    endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
         if endpoint is not None and tags is not None:
-            if resource_changed:
+            if resource_changed and not created:
                 endpoint = resolver_endpoint_with_tags(client, module, endpoint)
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
                 boto3_tag_list_to_ansible_dict(endpoint.get("Tags", [])),
@@ -490,9 +532,7 @@ def ensure_present(client, module):
 
             endpoint = apply_tag_deltas(endpoint, tags_to_set, tag_keys_to_unset)
 
-    result_endpoint = boto3_resource_to_ansible_dict(
-        endpoint, transform_tags=True, force_tags=False
-    )
+    result_endpoint = boto3_resource_to_ansible_dict(endpoint, transform_tags=True, force_tags=False)
     result = {
         "changed": changed,
         "name": desired["name"],
@@ -512,80 +552,78 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired):
     current_ip_addresses = endpoint.get("IpAddresses") or []
     desired_ip_addresses = desired["ip_addresses"]
 
-    current_comparable = comparable_ip_addresses(current_ip_addresses)
-    desired_comparable = comparable_ip_addresses(desired_ip_addresses)
+    remaining = list(current_ip_addresses)
     ip_addresses_to_add = []
     for ip_address in desired_ip_addresses:
-        if comparable_ip_address(ip_address) in current_comparable:
-            continue
-
-        ip_addresses_to_add.append(ip_address)
-
-    ip_addresses_to_remove = []
-    for ip_address in current_ip_addresses:
-        if comparable_ip_address(ip_address) in desired_comparable:
-            continue
-
-        ip_addresses_to_remove.append(ip_address)
-
-    for ip_address in ip_addresses_to_add:
-        try:
-            client.associate_resolver_endpoint_ip_address(
-                IpAddress=snake_dict_to_camel_dict(ip_address, capitalize_first=True),
-                ResolverEndpointId=resolver_endpoint_id,
-                aws_retry=True,
-            )
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=(
-                    "Unable to reconcile AWS Route53 Resolver endpoint IP addresses "
-                    f"for {desired['name']}"
-                ),
-            )
-
-        if module.params["wait"]:
-            wait_for_resolver_endpoint_status(
-                client,
-                module,
-                resolver_endpoint_id,
-                {"operational"},
-            )
-
-    for ip_address in ip_addresses_to_remove:
-        normalized_ip_address = boto3_resource_to_ansible_dict(
-            ip_address, transform_tags=False, force_tags=False
+        desired_comparable = comparable_ip_address(ip_address)
+        match = next(
+            (
+                index
+                for index, current_ip_address in enumerate(remaining)
+                if ip_address_matches(comparable_ip_address(current_ip_address), desired_comparable)
+            ),
+            None,
         )
-        request_ip_address = {
-            field: normalized_ip_address.get(field)
-            for field in IP_ADDRESS_REQUEST_FIELDS
-            if normalized_ip_address.get(field) is not None
-        }
+        if match is None:
+            ip_addresses_to_add.append(ip_address)
+        else:
+            remaining.pop(match)
+
+    ip_addresses_to_remove = remaining
+
+    changes = []
+    address_count = len(current_ip_addresses)
+    while ip_addresses_to_add or ip_addresses_to_remove:
+        if ip_addresses_to_add and (address_count < 20 or not ip_addresses_to_remove):
+            changes.append(("add", ip_addresses_to_add.pop(0)))
+            address_count += 1
+        else:
+            changes.append(("remove", ip_addresses_to_remove.pop(0)))
+            address_count -= 1
+
+    for index, (operation, ip_address) in enumerate(changes):
+        if operation == "remove":
+            normalized_ip_address = boto3_resource_to_ansible_dict(ip_address, transform_tags=False, force_tags=False)
+            ip_address = {
+                field: normalized_ip_address.get(field)
+                for field in IP_ADDRESS_REQUEST_FIELDS
+                if normalized_ip_address.get(field) is not None
+            }
 
         try:
-            client.disassociate_resolver_endpoint_ip_address(
-                IpAddress=snake_dict_to_camel_dict(
-                    request_ip_address, capitalize_first=True
-                ),
-                ResolverEndpointId=resolver_endpoint_id,
-                aws_retry=True,
-            )
+            request_ip_address = snake_dict_to_camel_dict(ip_address, capitalize_first=True)
+            if operation == "add":
+                client.associate_resolver_endpoint_ip_address(
+                    IpAddress=request_ip_address,
+                    ResolverEndpointId=resolver_endpoint_id,
+                    aws_retry=True,
+                )
+            else:
+                client.disassociate_resolver_endpoint_ip_address(
+                    IpAddress=request_ip_address,
+                    ResolverEndpointId=resolver_endpoint_id,
+                    aws_retry=True,
+                )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to reconcile AWS Route53 Resolver endpoint IP addresses "
-                    f"for {desired['name']}"
-                ),
+                msg=("Unable to reconcile AWS Route53 Resolver endpoint IP addresses " f"for {desired['name']}"),
             )
 
-        if module.params["wait"]:
+        if module.params["wait"] or index < len(changes) - 1:
             wait_for_resolver_endpoint_status(
                 client,
                 module,
                 resolver_endpoint_id,
                 {"operational"},
             )
+
+    if changes and not module.params["wait"]:
+        endpoint = dict(endpoint)
+        endpoint["IpAddresses"] = [
+            snake_dict_to_camel_dict(ip_address, capitalize_first=True) for ip_address in desired_ip_addresses
+        ]
+        return endpoint
 
     return resolver_endpoint_with_ip_addresses(
         client,
@@ -602,10 +640,7 @@ def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, stat
         client,
         ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA,
         "resolver_endpoint_deleted" if deleted else "resolver_endpoint_operational",
-        (
-            "Timed out waiting for AWS Route53 Resolver endpoint "
-            f"{module.params['name']}"
-        ),
+        ("Timed out waiting for AWS Route53 Resolver endpoint " f"{module.params['name']}"),
         ResolverEndpointId=resolver_endpoint_id,
     )
 
@@ -617,27 +652,19 @@ def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, stat
 def comparable_endpoint(endpoint):
     if not endpoint:
         return None
-    normalized = boto3_resource_to_ansible_dict(
-        endpoint, transform_tags=False, force_tags=False
-    )
+    normalized = boto3_resource_to_ansible_dict(endpoint, transform_tags=False, force_tags=False)
     return {
         "direction": normalized.get("direction"),
         "ip_addresses": comparable_ip_addresses(normalized.get("ip_addresses")),
-        "protocols": sorted(normalized.get("protocols") or []),
+        "protocols": sorted(set(normalized.get("protocols") or [])),
         "resolver_endpoint_type": normalized.get("resolver_endpoint_type"),
-        "security_group_ids": sorted(normalized.get("security_group_ids") or []),
+        "security_group_ids": sorted(set(normalized.get("security_group_ids") or [])),
     }
 
 
 def comparable_ip_address(ip_address):
-    normalized = boto3_resource_to_ansible_dict(
-        ip_address, transform_tags=False, force_tags=False
-    )
-    return {
-        field: normalized.get(field)
-        for field in IP_ADDRESS_COMPARISON_FIELDS
-        if normalized.get(field) is not None
-    }
+    normalized = boto3_resource_to_ansible_dict(ip_address, transform_tags=False, force_tags=False)
+    return {field: normalized.get(field) for field in IP_ADDRESS_COMPARISON_FIELDS if normalized.get(field) is not None}
 
 
 def comparable_ip_addresses(ip_addresses):
@@ -645,6 +672,44 @@ def comparable_ip_addresses(ip_addresses):
         [comparable_ip_address(ip_address) for ip_address in ip_addresses or []],
         key=lambda item: json.dumps(item, sort_keys=True),
     )
+
+
+def ip_address_matches(current, desired):
+    return all(current.get(field) == value for field, value in desired.items())
+
+
+def comparable_endpoints_match(current, desired):
+    if current is None:
+        return False
+    if any(
+        current[field] != desired[field]
+        for field in (
+            "direction",
+            "protocols",
+            "resolver_endpoint_type",
+            "security_group_ids",
+        )
+    ):
+        return False
+
+    return comparable_ip_addresses_match(current["ip_addresses"], desired["ip_addresses"])
+
+
+def comparable_ip_addresses_match(current, desired):
+    remaining = list(current)
+    for desired_ip_address in desired:
+        match = next(
+            (
+                index
+                for index, current_ip_address in enumerate(remaining)
+                if ip_address_matches(current_ip_address, desired_ip_address)
+            ),
+            None,
+        )
+        if match is None:
+            return False
+        remaining.pop(match)
+    return not remaining
 
 
 def get_resolver_endpoint(client, module, resolver_endpoint_id):
@@ -679,10 +744,7 @@ def get_resolver_endpoint_by_name(client, module):
     if len(endpoints) > 1:
         endpoint_ids = sorted(endpoint.get("Id", "") for endpoint in endpoints)
         module.fail_json(
-            msg=(
-                f"Multiple AWS Route53 Resolver endpoints are named {name}: "
-                f"{', '.join(endpoint_ids)}"
-            )
+            msg=(f"Multiple AWS Route53 Resolver endpoints are named {name}: " f"{', '.join(endpoint_ids)}")
         )
 
     return endpoints[0] if endpoints else None
@@ -774,11 +836,42 @@ def main():
     state = module.params["state"]
     tags = module.params["tags"]
 
-    require_positive_wait_bounds(module)
+    name = module.params["name"]
+    if len(name) > 64 or name.isdigit() or re.fullmatch(r"[a-zA-Z0-9\-_ ']+", name) is None:
+        module.fail_json(msg="name must be a valid resolver endpoint name of at most 64 characters")
 
-    client = module.client(
-        "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
-    )
+    if state == "present":
+        if not 2 <= len(module.params["ip_addresses"] or []) <= 20:
+            module.fail_json(msg="ip_addresses must contain 2 to 20 entries")
+        comparable_ip_address_values = comparable_ip_addresses(module.params["ip_addresses"])
+        if len({json.dumps(item, sort_keys=True) for item in comparable_ip_address_values}) != len(
+            comparable_ip_address_values
+        ):
+            module.fail_json(msg="ip_addresses entries must be unique")
+        if not 1 <= len(set(module.params["protocols"])) <= 2:
+            module.fail_json(msg="protocols must contain 1 or 2 entries")
+        if not module.params["security_group_ids"]:
+            module.fail_json(msg="security_group_ids must contain at least one entry")
+        if any(not 1 <= len(group_id) <= 64 for group_id in module.params["security_group_ids"]):
+            module.fail_json(msg="security_group_ids entries must contain 1 to 64 characters")
+        for entry in module.params["ip_addresses"]:
+            if not 1 <= len(entry["subnet_id"]) <= 32:
+                module.fail_json(msg="ip_addresses[].subnet_id must contain 1 to 32 characters")
+            for field, version in (("ip", 4), ("ipv6", 6)):
+                value = entry.get(field)
+                if value is None:
+                    continue
+                try:
+                    valid = ipaddress.ip_address(value).version == version
+                except ValueError:
+                    valid = False
+                if not valid:
+                    module.fail_json(msg=f"ip_addresses[].{field} must be a valid IPv{version} address")
+        require_valid_tags(module, tags, 200)
+
+    require_positive_wait_bounds(module, always=state == "present")
+
+    client = module.client("route53resolver", retry_decorator=AWSRetry.jittered_backoff())
     method_names = {"list_resolver_endpoints"}
     if state == "present":
         method_names.update(
@@ -793,10 +886,10 @@ def main():
                 "update_resolver_endpoint",
             }
         )
-        if tags is not None:
+        if tags:
             method_names.add("tag_resource")
-            if module.params["purge_tags"]:
-                method_names.add("untag_resource")
+        if tags is not None and module.params["purge_tags"]:
+            method_names.add("untag_resource")
 
     if state == "absent":
         method_names.add("delete_resolver_endpoint")
@@ -839,6 +932,8 @@ def main():
             "ResolverEndpointType",
         },
     }
+    if tags is None:
+        required_method_parameters["create_resolver_endpoint"].discard("Tags")
     require_client_methods(
         module,
         client,

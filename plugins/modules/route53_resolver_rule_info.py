@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -57,6 +59,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -70,18 +73,20 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client(
-        "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
-    )
+    client = module.client("route53resolver", retry_decorator=AWSRetry.jittered_backoff())
 
     require_client_methods(
         module,
         client,
         "Route53 Resolver",
         {
-            "list_resolver_rules": ("Filters",),
-            "list_resolver_rule_associations": ("Filters",),
-            "list_tags_for_resource": ("ResourceArn",),
+            "list_resolver_rules": ("Filters", "MaxResults", "NextToken"),
+            "list_resolver_rule_associations": (
+                "Filters",
+                "MaxResults",
+                "NextToken",
+            ),
+            "list_tags_for_resource": ("MaxResults", "NextToken", "ResourceArn"),
         },
     )
 

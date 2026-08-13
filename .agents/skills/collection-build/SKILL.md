@@ -8,9 +8,8 @@ description: Build the collection tarball.
 Run from the collection root (where `galaxy.yml` lives).
 
 ```sh
-source venv/bin/activate
 collection_artifact_dir="$(mktemp -d)"
-ansible-galaxy collection build --force --output-path "${collection_artifact_dir}"
+tox run -e build -- --force --output-path "${collection_artifact_dir}"
 ```
 
 - Reads `galaxy.yml` (version, `build_ignore`).
@@ -23,4 +22,4 @@ ansible-galaxy collection build --force --output-path "${collection_artifact_dir
 
 ## Dependencies
 
-- `virtualenv` skill
+- `tox` skill

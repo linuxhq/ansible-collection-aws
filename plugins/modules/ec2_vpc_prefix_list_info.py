@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -76,6 +78,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -92,19 +95,8 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
-
-    require_client_methods(
-        module,
-        client,
-        "EC2",
-        {
-            "describe_managed_prefix_lists": ("Filters", "PrefixListIds"),
-            "get_managed_prefix_list_entries": ("PrefixListId", "TargetVersion"),
-        },
-    )
-
     filters = module.params["filters"]
-    prefix_list_ids = module.params["prefix_list_ids"]
+    prefix_list_ids = list(dict.fromkeys(module.params["prefix_list_ids"] or []))
     target_version = module.params["target_version"]
 
     request = {}
@@ -112,6 +104,15 @@ def main():
         request["PrefixListIds"] = prefix_list_ids
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
+
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {
+            "describe_managed_prefix_lists": tuple(request) + ("MaxResults", "NextToken"),
+        },
+    )
 
     prefix_lists = query_list(
         module,
@@ -121,6 +122,21 @@ def main():
         "Unable to describe EC2 VPC managed prefix lists",
         **request,
     )
+
+    if prefix_lists:
+        require_client_methods(
+            module,
+            client,
+            "EC2",
+            {
+                "get_managed_prefix_list_entries": (
+                    "MaxResults",
+                    "NextToken",
+                    "PrefixListId",
+                )
+                + (("TargetVersion",) if target_version is not None else ()),
+            },
+        )
 
     result_prefix_lists = []
     for prefix_list in prefix_lists:
@@ -135,21 +151,16 @@ def main():
                 **entry_request,
             ).get("Entries", [])
         except is_boto3_error_code("InvalidPrefixListID.NotFound"):
-            entries = []
+            continue
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to get EC2 VPC managed prefix list entries for "
-                    f"{prefix_list['PrefixListId']}"
-                ),
+                msg=("Unable to get EC2 VPC managed prefix list entries for " f"{prefix_list['PrefixListId']}"),
             )
 
         result_prefix_lists.append(
             dict(
-                boto3_resource_to_ansible_dict(
-                    prefix_list, transform_tags=True, force_tags=False
-                ),
+                boto3_resource_to_ansible_dict(prefix_list, transform_tags=True, force_tags=False),
                 entries=boto3_resource_list_to_ansible_dict(
                     entries,
                     transform_tags=False,

@@ -1,8 +1,6 @@
 ---
 - name: Converge
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
 
   roles:
     - iam_password_policy

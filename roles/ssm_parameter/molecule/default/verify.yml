@@ -1,9 +1,6 @@
 ---
 - name: Verify
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
-
   roles:
     - ec2_vpc_igw_info
     - ec2_vpc_nat_gateway_info

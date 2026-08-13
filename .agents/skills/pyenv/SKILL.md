@@ -21,7 +21,7 @@ pyenv version
 python --version
 ```
 
-- Run once, before the `virtualenv` skill, if the pinned Python isn't installed.
+- Run once, before the `tox` skill, if the pinned Python isn't installed.
 - Do not modify a shell profile unless the user explicitly requests a persistent setup.
 - On other platforms, use the platform's supported pyenv installation method rather than
   Homebrew.

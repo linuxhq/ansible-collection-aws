@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -56,6 +58,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -69,9 +72,7 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client(
-        "route53resolver", retry_decorator=AWSRetry.jittered_backoff()
-    )
+    client = module.client("route53resolver", retry_decorator=AWSRetry.jittered_backoff())
 
     require_client_methods(
         module,
@@ -115,10 +116,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to list AWS Route53 Resolver endpoint IP addresses "
-                    f"for {endpoint['Id']}"
-                ),
+                msg=("Unable to list AWS Route53 Resolver endpoint IP addresses " f"for {endpoint['Id']}"),
             )
 
         tags = []
@@ -134,10 +132,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to list tags for AWS Route53 Resolver endpoint "
-                        f"{endpoint['Arn']}"
-                    ),
+                    msg=("Unable to list tags for AWS Route53 Resolver endpoint " f"{endpoint['Arn']}"),
                 )
 
         normalized_endpoints.append(

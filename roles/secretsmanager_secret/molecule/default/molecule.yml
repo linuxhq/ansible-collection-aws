@@ -5,13 +5,15 @@ dependency:
     requirements-file: ../../requirements.yml
 
 driver:
-  name: vagrant
+  name: default
+  options:
+    managed: false
+    ansible_connection_options:
+      ansible_connection: local
+      ansible_python_interpreter: "{{ ansible_playbook_python }}"
 
 platforms:
-  - name: almalinux9
-    box: bento/almalinux-9.6
-    cpus: 4
-    memory: 4096
+  - name: localhost
 
 provisioner:
   name: ansible
@@ -24,15 +26,16 @@ provisioner:
   inventory:
     group_vars:
       all:
-        ansible_python_interpreter: /opt/awscli/bin/python
         secretsmanager_secret_list:
           - name: molecule-secret-1
             description: molecule-secret-1
+            recovery_window: 0
             secret:
               - key: molecule-secret-1
                 value: WnvpxzicuneCE7PM7upC7aVNFwYoz7wE
           - name: molecule-secret-2
             description: molecule-secret-2
+            recovery_window: 0
             secret:
               - key: molecule-secret-2
                 value: JUJMm9adCgL7FPtF7qiuHjyXYne7ivbX

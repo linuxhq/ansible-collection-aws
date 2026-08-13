@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -17,6 +19,7 @@ options:
     description:
       - ECR repository names used to limit the result set.
       - An empty list is returned when any listed repository does not exist.
+      - This must contain at most 100 unique entries.
     elements: str
     type: list
 extends_documentation_fragment:
@@ -58,6 +61,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
@@ -70,23 +74,26 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    client = module.client("ecr", retry_decorator=AWSRetry.jittered_backoff())
-
-    require_client_methods(
-        module,
-        client,
-        "ECR",
-        {"describe_repositories": ("registryId", "repositoryNames")},
-    )
-
     registry_id = module.params["registry_id"]
-    repository_names = module.params["repository_names"]
+    repository_names = list(dict.fromkeys(module.params["repository_names"] or []))
+
+    if len(repository_names) > 100:
+        module.fail_json(msg="repository_names must contain at most 100 unique entries")
+
+    client = module.client("ecr", retry_decorator=AWSRetry.jittered_backoff())
 
     request = {}
     if registry_id:
         request["registryId"] = registry_id
     if repository_names:
         request["repositoryNames"] = repository_names
+
+    require_client_methods(
+        module,
+        client,
+        "ECR",
+        {"describe_repositories": tuple(request) + ("maxResults", "nextToken")},
+    )
 
     try:
         repositories = paginated_query_with_retries(

@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -20,6 +22,7 @@ options:
   instance_ids:
     description:
       - EC2 instance IDs or managed instance IDs used to limit the result set.
+      - Entries must not be empty.
       - This is added as an C(InstanceIds) Systems Manager instance filter and
         takes precedence over an C(InstanceIds) key in O(filters).
       - This must contain at most 100 instance IDs.
@@ -83,6 +86,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -103,20 +107,15 @@ def main():
         argument_spec=argument_spec,
         supports_check_mode=True,
     )
-    instance_ids = module.params["instance_ids"]
+    instance_ids = list(dict.fromkeys(module.params["instance_ids"] or []))
     ping_status = module.params["ping_status"]
 
-    if instance_ids and len(instance_ids) > 100:
+    if len(instance_ids) > 100:
         module.fail_json(msg="instance_ids must contain at most 100 instance IDs")
+    if any(not instance_id for instance_id in instance_ids):
+        module.fail_json(msg="instance_ids must not contain empty entries")
 
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
-
-    require_client_methods(
-        module,
-        client,
-        "Systems Manager",
-        {"describe_instance_information": ("Filters",)},
-    )
 
     request = {}
     filters = dict(module.params["filters"] or {})
@@ -130,9 +129,14 @@ def main():
         for key, value in filters.items():
             values = value if isinstance(value, list) else [value]
 
-            request["Filters"].append(
-                {"Key": key, "Values": [str(item) for item in values]}
-            )
+            request["Filters"].append({"Key": key, "Values": [str(item) for item in values]})
+
+    require_client_methods(
+        module,
+        client,
+        "Systems Manager",
+        {"describe_instance_information": tuple(request)},
+    )
 
     instances = query_list(
         module,
@@ -143,9 +147,7 @@ def main():
         **request
     )
 
-    instances = boto3_resource_list_to_ansible_dict(
-        instances, transform_tags=False, force_tags=False
-    )
+    instances = boto3_resource_list_to_ansible_dict(instances, transform_tags=False, force_tags=False)
 
     matching_instance_ids = []
     for instance in instances:

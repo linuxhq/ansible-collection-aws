@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -78,12 +80,11 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.ses import (
-    get_account,
-)
+from ansible_collections.linuxhq.aws.plugins.module_utils.ses import get_account
 
 ACCOUNT_DETAILS_FIELDS = (
     "additional_contact_email_addresses",
@@ -102,13 +103,9 @@ ACCOUNT_DETAILS_REQUEST_FIELDS = (
 
 
 def comparable_details(details):
-    normalized = {
-        field: details[field] for field in ACCOUNT_DETAILS_FIELDS if details.get(field)
-    }
+    normalized = {field: details[field] for field in ACCOUNT_DETAILS_FIELDS if details.get(field)}
     if normalized.get("additional_contact_email_addresses"):
-        normalized["additional_contact_email_addresses"] = sorted(
-            set(normalized["additional_contact_email_addresses"])
-        )
+        normalized["additional_contact_email_addresses"] = sorted(set(normalized["additional_contact_email_addresses"]))
     return normalized
 
 
@@ -135,38 +132,38 @@ def main():
         supports_check_mode=True,
     )
 
-    if len(module.params["additional_contact_email_addresses"]) > 4:
-        module.fail_json(
-            msg="additional_contact_email_addresses must contain at most 4 addresses"
-        )
+    if len(set(module.params["additional_contact_email_addresses"])) > 4:
+        module.fail_json(msg="additional_contact_email_addresses must contain at most 4 addresses")
+
+    use_case_description = module.params["use_case_description"]
+    website_url = module.params["website_url"]
+    if use_case_description is not None and (not use_case_description.strip() or not website_url.strip()):
+        module.fail_json(msg="use_case_description and website_url must be non-empty strings")
+    ready = use_case_description is not None and website_url is not None
 
     client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
 
+    methods = {"get_account": ()}
+    if ready:
+        methods["put_account_details"] = (
+            "AdditionalContactEmailAddresses",
+            "ContactLanguage",
+            "MailType",
+            "ProductionAccessEnabled",
+            "UseCaseDescription",
+            "WebsiteURL",
+        )
     require_client_methods(
         module,
         client,
         "SESv2",
-        {
-            "get_account": (),
-            "put_account_details": (
-                "AdditionalContactEmailAddresses",
-                "ContactLanguage",
-                "MailType",
-                "ProductionAccessEnabled",
-                "UseCaseDescription",
-                "WebsiteURL",
-            ),
-        },
+        methods,
     )
 
     current_account = get_account(client, module)
-    use_case_description = module.params["use_case_description"]
-    website_url = module.params["website_url"]
     desired_details = comparable_details(
         {
-            "additional_contact_email_addresses": module.params[
-                "additional_contact_email_addresses"
-            ],
+            "additional_contact_email_addresses": module.params["additional_contact_email_addresses"],
             "contact_language": module.params["contact_language"].upper(),
             "mail_type": module.params["mail_type"].upper(),
             "use_case_description": (use_case_description or "").strip(),
@@ -184,28 +181,23 @@ def main():
 
     current = {
         "details": comparable_details(current_account.get("details") or {}),
-        "production_access_enabled": current_account.get(
-            "production_access_enabled", False
-        ),
+        "production_access_enabled": current_account.get("production_access_enabled", False),
     }
 
-    ready = use_case_description is not None and website_url is not None
     changed = ready and current != desired
 
     if changed and not module.check_mode:
         try:
             client.put_account_details(**request, aws_retry=True)
         except is_boto3_error_code("ConflictException"):
-            module.warn(
-                "AWS Simple Email Service account details request is already in progress"
-            )
+            module.warn("AWS Simple Email Service account details request is already in progress")
             changed = False
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e, msg="Unable to manage AWS Simple Email Service account details"
-            )
+            module.fail_json_aws(e, msg="Unable to manage AWS Simple Email Service account details")
 
-        current_account = get_account(client, module)
+        if changed:
+            current_account = dict(current_account)
+            current_account.update(desired)
     elif changed and module.check_mode:
         current_account = dict(current_account)
         current_account.update(desired)

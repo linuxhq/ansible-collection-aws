@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -52,7 +54,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 
@@ -65,18 +69,19 @@ def main():
         supports_check_mode=True,
     )
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
+    delegation_set_id = module.params["id"]
 
     require_client_methods(
         module,
         client,
         "Route53",
-        {
-            "get_reusable_delegation_set": ("Id",),
-            "list_reusable_delegation_sets": ("Marker",),
-        },
+        (
+            {"get_reusable_delegation_set": ("Id",)}
+            if delegation_set_id
+            else {"list_reusable_delegation_sets": ("Marker", "MaxItems")}
+        ),
     )
 
-    delegation_set_id = module.params["id"]
     delegation_sets = []
     if delegation_set_id:
         try:
@@ -89,49 +94,23 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to get AWS Route53 reusable delegation set "
-                    f"{delegation_set_id}"
-                ),
+                msg=("Unable to get AWS Route53 reusable delegation set " f"{delegation_set_id}"),
             )
 
         if delegation_set:
             delegation_sets.append(delegation_set)
     else:
-        marker = None
-        while True:
-            request = {}
-            if marker:
-                request["Marker"] = marker
-
-            try:
-                response = client.list_reusable_delegation_sets(
-                    **request, aws_retry=True
-                )
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e, msg="Unable to list AWS Route53 reusable delegation sets"
-                )
-
-            delegation_sets.extend(response.get("DelegationSets", []))
-            if not response.get("IsTruncated"):
-                break
-
-            marker = response.get("NextMarker")
-
-            if not marker:
-                module.fail_json(
-                    msg=(
-                        "AWS Route53 reusable delegation sets response was "
-                        "truncated without a NextMarker"
-                    )
-                )
+        delegation_sets = query_list(
+            module,
+            client,
+            "list_reusable_delegation_sets",
+            "DelegationSets",
+            "Unable to list AWS Route53 reusable delegation sets",
+        )
 
     module.exit_json(
         changed=False,
-        delegation_sets=boto3_resource_list_to_ansible_dict(
-            delegation_sets, transform_tags=False, force_tags=False
-        ),
+        delegation_sets=boto3_resource_list_to_ansible_dict(delegation_sets, transform_tags=False, force_tags=False),
     )
 
 

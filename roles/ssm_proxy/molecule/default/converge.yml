@@ -1,8 +1,6 @@
 ---
 - name: Converge
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin:/usr/bin:/usr/local/bin'
 
   pre_tasks:
     - name: Ensure aws session manager proxy package is present
@@ -13,6 +11,7 @@
         disable_gpg_check: true
         name: "{{ __ssm_proxy_baseurl }}/{{ __ssm_proxy_arch[ansible_facts.architecture] }}/session-manager-plugin.rpm"
         state: present
+      when: ansible_facts.system == 'Linux'
       vars:
         __ssm_proxy_baseurl: https://s3.amazonaws.com/session-manager-downloads/plugin/latest
         __ssm_proxy_arch:

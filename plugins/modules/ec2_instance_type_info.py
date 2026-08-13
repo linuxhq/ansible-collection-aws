@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -20,6 +22,7 @@ options:
   instance_types:
     description:
       - EC2 instance type names used to limit the result set.
+      - This must contain at most 100 unique entries.
     elements: str
     type: list
 extends_documentation_fragment:
@@ -69,6 +72,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -85,17 +89,13 @@ def main():
         argument_spec=argument_spec,
         supports_check_mode=True,
     )
-    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
-
-    require_client_methods(
-        module,
-        client,
-        "EC2",
-        {"describe_instance_types": ("Filters", "InstanceTypes")},
-    )
-
     filters = module.params["filters"]
-    instance_types = module.params["instance_types"]
+    instance_types = list(dict.fromkeys(module.params["instance_types"] or []))
+
+    if len(instance_types) > 100:
+        module.fail_json(msg="instance_types must contain at most 100 unique entries")
+
+    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     request = {}
     if instance_types:
@@ -103,20 +103,25 @@ def main():
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"describe_instance_types": tuple(request) + ("MaxResults", "NextToken")},
+    )
+
     instance_types = query_list(
         module,
         client,
         "describe_instance_types",
         "InstanceTypes",
         "Unable to describe EC2 instance types",
-        **request
+        **request,
     )
 
     module.exit_json(
         changed=False,
-        instance_types=boto3_resource_list_to_ansible_dict(
-            instance_types, transform_tags=False, force_tags=False
-        ),
+        instance_types=boto3_resource_list_to_ansible_dict(instance_types, transform_tags=False, force_tags=False),
     )
 
 

@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -16,6 +18,7 @@ options:
       - A dict of filters to apply when describing phone numbers.
       - Filter names and values are passed to the Pinpoint SMS Voice V2
         C(DescribePhoneNumbers) API.
+      - This must contain at most 20 filters.
     type: dict
   max_results:
     description:
@@ -27,14 +30,15 @@ options:
     choices:
       - SELF
       - SHARED
-    default: SELF
     description:
       - The phone number owner to query.
+      - Defaults to C(SELF) when O(phone_number_ids) is omitted.
       - Mutually exclusive with O(phone_number_ids).
     type: str
   phone_number_ids:
     description:
       - Phone number IDs used to limit the result set.
+      - This must contain at most 5 entries.
       - Mutually exclusive with O(owner).
     elements: str
     type: list
@@ -91,6 +95,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -101,7 +106,7 @@ def main():
     argument_spec = {
         "filters": {"type": "dict"},
         "max_results": {"type": "int"},
-        "owner": {"choices": ["SELF", "SHARED"], "default": "SELF", "type": "str"},
+        "owner": {"choices": ["SELF", "SHARED"], "type": "str"},
         "phone_number_ids": {"elements": "str", "type": "list"},
     }
 
@@ -112,15 +117,17 @@ def main():
     )
     filters = module.params["filters"]
     max_results = module.params["max_results"]
-    owner = module.params["owner"]
-    phone_number_ids = module.params["phone_number_ids"]
+    owner = module.params["owner"] or "SELF"
+    phone_number_ids = list(dict.fromkeys(module.params["phone_number_ids"] or []))
 
     if max_results is not None and not 1 <= max_results <= 100:
         module.fail_json(msg="max_results must be between 1 and 100")
+    if len(filters or {}) > 20:
+        module.fail_json(msg="filters must contain at most 20 entries")
+    if len(phone_number_ids) > 5:
+        module.fail_json(msg="phone_number_ids must contain at most 5 entries")
 
-    client = module.client(
-        "pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff()
-    )
+    client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())
 
     request = {}
     if max_results is not None:
@@ -136,7 +143,9 @@ def main():
         module,
         client,
         "Pinpoint SMS Voice V2",
-        {"describe_phone_numbers": tuple(request)},
+        {
+            "describe_phone_numbers": tuple(dict.fromkeys((*request, "MaxResults", "NextToken"))),
+        },
     )
 
     phone_numbers = query_list(
@@ -147,6 +156,14 @@ def main():
         "Unable to describe Pinpoint SMS Voice V2 phone numbers",
         **request,
     )
+
+    if any(phone_number.get("PhoneNumberArn") for phone_number in phone_numbers):
+        require_client_methods(
+            module,
+            client,
+            "Pinpoint SMS Voice V2",
+            {"list_tags_for_resource": ("ResourceArn",)},
+        )
 
     normalized_phone_numbers = []
     for phone_number in phone_numbers:
@@ -164,10 +181,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to list tags for Pinpoint SMS Voice V2 phone number "
-                        f"{arn}"
-                    ),
+                    msg=("Unable to list tags for Pinpoint SMS Voice V2 phone number " f"{arn}"),
                 )
 
         normalized_phone_numbers.append(

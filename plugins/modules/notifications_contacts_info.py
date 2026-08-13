@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -52,6 +54,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -65,24 +68,20 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client(
-        "notificationscontacts", retry_decorator=AWSRetry.jittered_backoff()
-    )
+    client = module.client("notificationscontacts", retry_decorator=AWSRetry.jittered_backoff())
 
     arn = module.params["arn"]
-    methods = {"list_tags_for_resource": ()}
+    methods = {}
     if arn:
-        methods["get_email_contact"] = ()
+        methods["get_email_contact"] = ("arn",)
     else:
-        methods["list_email_contacts"] = ()
+        methods["list_email_contacts"] = ("maxResults", "nextToken")
 
     require_client_methods(module, client, "NotificationsContacts", methods)
 
     if arn:
         try:
-            contact = client.get_email_contact(arn=arn, aws_retry=True).get(
-                "emailContact"
-            )
+            contact = client.get_email_contact(arn=arn, aws_retry=True).get("emailContact")
         except is_boto3_error_code("ResourceNotFoundException"):
             contact = None
         except (BotoCoreError, ClientError) as e:
@@ -99,6 +98,14 @@ def main():
             "list_email_contacts",
             "emailContacts",
             "Unable to list AWS Notifications contacts",
+        )
+
+    if any(contact.get("arn") for contact in email_contacts):
+        require_client_methods(
+            module,
+            client,
+            "NotificationsContacts",
+            {"list_tags_for_resource": ("arn",)},
         )
 
     email_contacts_with_tags = []

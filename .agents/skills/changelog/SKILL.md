@@ -33,10 +33,9 @@ Sections:
 ## Commands
 
 ```sh
-source venv/bin/activate
-antsibull-changelog lint
-antsibull-changelog lint-changelog-yaml --strict changelogs/changelog.yaml
-antsibull-changelog generate
+tox run -e changelog -- lint
+tox run -e changelog -- lint-changelog-yaml --strict changelogs/changelog.yaml
+tox run -e changelog -- generate
 ```
 
 - `generate` doesn't touch fragments or show pending ones.
@@ -44,10 +43,10 @@ antsibull-changelog generate
 
 ## Release fragments
 
-After bumping `version` in `galaxy.yml`, consume the fragments from the activated virtualenv:
+After bumping `version` in `galaxy.yml`, consume the fragments:
 
 ```sh
-antsibull-changelog release
+tox run -e changelog -- release
 ```
 
 With `keep_fragments: false`, `release` records the `galaxy.yml` version and deletes the consumed
@@ -56,4 +55,4 @@ before tagging.
 
 ## Dependencies
 
-- `virtualenv` skill
+- `tox` skill

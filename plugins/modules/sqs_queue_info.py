@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -12,6 +14,7 @@ options:
   name:
     description:
       - SQS queue name used to limit the result set.
+      - This must not be empty when provided.
       - A queue that does not exist results in an empty list.
       - Mutually exclusive with O(queue_name_prefix).
     type: str
@@ -67,9 +70,15 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
+)
+
+QUEUE_NOT_FOUND_CODES = (
+    "AWS.SimpleQueueService.NonExistentQueue",
+    "QueueDoesNotExist",
 )
 
 
@@ -80,14 +89,12 @@ def get_queue(client, module, queue_url):
             QueueUrl=queue_url,
             aws_retry=True,
         ).get("Attributes", {})
-    except is_boto3_error_code("AWS.SimpleQueueService.NonExistentQueue"):
+    except is_boto3_error_code(QUEUE_NOT_FOUND_CODES):
         return None
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS SQS queue {queue_url}")
 
-    queue = boto3_resource_to_ansible_dict(
-        attributes, transform_tags=False, force_tags=False
-    )
+    queue = boto3_resource_to_ansible_dict(attributes, transform_tags=False, force_tags=False)
 
     queue_arn = queue.get("queue_arn")
     queue["name"] = (queue_arn or queue_url.rsplit("/", 1)[-1]).split(":")[-1]
@@ -108,22 +115,27 @@ def main():
         required_by={"queue_owner_aws_account_id": ["name"]},
         supports_check_mode=True,
     )
+    name = module.params["name"]
+    queue_name_prefix = module.params["queue_name_prefix"]
+    queue_owner_aws_account_id = module.params["queue_owner_aws_account_id"]
+
+    if name == "":
+        module.fail_json(msg="name must not be empty")
+
     client = module.client("sqs", retry_decorator=AWSRetry.jittered_backoff())
+
+    methods = {"get_queue_attributes": ("AttributeNames", "QueueUrl")}
+    if name:
+        methods["get_queue_url"] = ("QueueName",) + (("QueueOwnerAWSAccountId",) if queue_owner_aws_account_id else ())
+    else:
+        methods["list_queues"] = ("QueueNamePrefix",) if queue_name_prefix else ()
 
     require_client_methods(
         module,
         client,
         "SQS",
-        {
-            "get_queue_url": ("QueueName", "QueueOwnerAWSAccountId"),
-            "get_queue_attributes": ("AttributeNames", "QueueUrl"),
-            "list_queues": ("QueueNamePrefix",),
-        },
+        methods,
     )
-
-    name = module.params["name"]
-    queue_name_prefix = module.params["queue_name_prefix"]
-    queue_owner_aws_account_id = module.params["queue_owner_aws_account_id"]
 
     if name:
         request = {"QueueName": name}
@@ -135,7 +147,7 @@ def main():
                 **request,
                 aws_retry=True,
             ).get("QueueUrl")
-        except is_boto3_error_code("AWS.SimpleQueueService.NonExistentQueue"):
+        except is_boto3_error_code(QUEUE_NOT_FOUND_CODES):
             queue_url = None
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to get AWS SQS queue URL for {name}")

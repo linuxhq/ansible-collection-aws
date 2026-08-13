@@ -1,9 +1,6 @@
 ---
 - name: Verify
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
-
   roles:
     - ec2_transit_gateway_info
     - ec2_transit_gateway_vpc_attachment_info

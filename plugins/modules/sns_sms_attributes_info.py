@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -55,6 +57,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
@@ -68,24 +71,22 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
 
-    require_client_methods(
-        module,
-        client,
-        "SNS",
-        {"get_sms_attributes": ("attributes",)},
-    )
-
-    attributes = module.params["attributes"]
+    attributes = list(dict.fromkeys(module.params["attributes"] or []))
     request = {}
     if attributes:
         request["attributes"] = attributes
 
+    require_client_methods(
+        module,
+        client,
+        "SNS",
+        {"get_sms_attributes": tuple(request)},
+    )
+
     try:
         response = client.get_sms_attributes(**request, aws_retry=True)
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e, msg="Unable to get AWS Simple Notification Service SMS attributes"
-        )
+        module.fail_json_aws(e, msg="Unable to get AWS Simple Notification Service SMS attributes")
 
     module.exit_json(
         attributes=boto3_resource_to_ansible_dict(

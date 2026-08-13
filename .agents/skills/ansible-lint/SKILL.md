@@ -8,14 +8,13 @@ description: Lint roles and playbooks with ansible-lint.
 Matches CI's pre-commit hook.
 
 ```sh
-source venv/bin/activate
-ansible-lint roles/{{ role }}
-ansible-lint --fix roles/{{ role }}
-ansible-lint
+tox run -e ansible-lint -- roles/{{ role }}
+tox run -e ansible-lint -- --fix roles/{{ role }}
+tox run -m lint
 ```
 
 - Fix findings by hand, or with `--fix` where a rule offers it; re-read rewritten files.
 
 ## Dependencies
 
-- `virtualenv` skill
+- `tox` skill

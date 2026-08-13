@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -54,9 +56,8 @@ try:
 except ImportError:
     pass
 
-from ansible.module_utils.common.dict_transformations import (
-    snake_dict_to_camel_dict,
-)
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
@@ -65,6 +66,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
@@ -81,15 +83,14 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
 
-    require_client_methods(
-        module,
-        client,
-        "SNS",
-        {
-            "get_topic_attributes": ("TopicArn",),
-            "set_topic_attributes": ("AttributeName", "AttributeValue", "TopicArn"),
-        },
-    )
+    methods = {"get_topic_attributes": ("TopicArn",)}
+    if any(module.params[attribute] is not None for attribute in MANAGED_ATTRIBUTES):
+        methods["set_topic_attributes"] = (
+            "AttributeName",
+            "AttributeValue",
+            "TopicArn",
+        )
+    require_client_methods(module, client, "SNS", methods)
 
     topic_arn = module.params["topic_arn"]
 
@@ -108,30 +109,15 @@ def main():
             aws_retry=True,
         ).get("Attributes", {})
     except is_boto3_error_code("NotFound"):
-        if not module.check_mode:
-            module.fail_json(
-                msg=(
-                    "AWS Simple Notification Service topic does not exist "
-                    f"{topic_arn}"
-                )
-            )
-
-        current_attributes = {}
+        module.fail_json(msg=("AWS Simple Notification Service topic does not exist " f"{topic_arn}"))
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=(
-                "Unable to get AWS Simple Notification Service topic attributes "
-                f"for {topic_arn}"
-            ),
+            msg=("Unable to get AWS Simple Notification Service topic attributes " f"for {topic_arn}"),
         )
 
-    desired_attributes = snake_dict_to_camel_dict(
-        desired_parameters, capitalize_first=True
-    )
-    current_normalized = boto3_resource_to_ansible_dict(
-        current_attributes, transform_tags=False, force_tags=False
-    )
+    desired_attributes = snake_dict_to_camel_dict(desired_parameters, capitalize_first=True)
+    current_normalized = boto3_resource_to_ansible_dict(current_attributes, transform_tags=False, force_tags=False)
     current = {}
     for attribute in desired_parameters:
         current[attribute] = current_normalized.get(attribute) or ""
@@ -151,19 +137,14 @@ def main():
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=(
-                            "Unable to manage AWS Simple Notification Service topic "
-                            f"attributes for {topic_arn}"
-                        ),
+                        msg=("Unable to manage AWS Simple Notification Service topic " f"attributes for {topic_arn}"),
                     )
 
         current_attributes = dict(current_attributes)
         current_attributes.update(desired_attributes)
 
     result = {
-        "attributes": boto3_resource_to_ansible_dict(
-            current_attributes, transform_tags=False, force_tags=False
-        ),
+        "attributes": boto3_resource_to_ansible_dict(current_attributes, transform_tags=False, force_tags=False),
         "changed": changed,
         "topic_arn": topic_arn,
     }

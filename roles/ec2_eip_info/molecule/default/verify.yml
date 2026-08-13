@@ -1,9 +1,6 @@
 ---
 - name: Verify
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
-
   roles:
     - ec2_eip_info
 

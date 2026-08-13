@@ -4,38 +4,54 @@ Guidance for agents working in this repository.
 
 ## Overview
 
-An Ansible collection of modules and roles, published to Galaxy on tag push.
+An Ansible collection of AWS modules and roles, published to Galaxy on tag push.
 
 | Path               | Description            |
 | ------------------ | ---------------------- |
-| `plugins/modules/` | Ansible python modules |
 | `plugins/lookup/`  | Ansible lookup plugins |
+| `plugins/modules/` | Ansible python modules |
 | `roles/`           | Ansible roles          |
 
-## Validation
+## Rules
 
-Invoke the repository skills instead of reconstructing commands. Set up and activate the project
-virtualenv first.
+Always-on agent rules.  Append new rules to imports section below.
 
-| Change                           | Required skills                                      |
-| -------------------------------- | ---------------------------------------------------- |
-| Any `.yml` or `.yaml` file       | `yamllint`                                           |
-| Anything under `roles/`          | `ansible-lint`                                       |
-| Anything under `plugins/`        | `black`, `ruff`, `ansible-test`                      |
-| Changelog fragments or a release | `changelog`                                          |
-| Collection metadata or packaging | `collection-build`                                   |
-| A role's behavior                | `molecule`, only when explicitly authorized          |
+| Rule                           | Covers                                  |
+| ------------------------------ | --------------------------------------- |
+| `ansible-module-utils.md`      | Reusable Ansible module utilities       |
+| `ansible-module-utils-sdk.md`  | AWS SDK module utilities                |
+| `ansible-plugins.md`           | Standards for Ansible Python plugins    |
+| `ansible-plugins-sdk.md`       | AWS SDK standards for plugins           |
+| `ansible-roles.md`             | Standards for Ansible roles             |
 
-Use the `pyenv` skill only when the interpreter in `.python-version` is unavailable. Use the
-`virtualenv` skill before all other repository tooling.
+## Tooling
+
+Invoke skills rather than running commands ad hoc.
+
+| Skill              | Purpose                       |
+| ------------------ | ----------------------------- |
+| `ansible-lint`     | Lint roles & playbooks        |
+| `ansible-test`     | Module sanity                 |
+| `black`            | Format Python                 |
+| `changelog`        | Changelog fragments & release |
+| `collection-build` | Build the collection tarball  |
+| `isort`            | Sort Python imports           |
+| `molecule`         | Role tests                    |
+| `plugins-audit`    | Exhaustive plugins audit      |
+| `pyenv`            | Install pyenv + pinned Python |
+| `ruff`             | Lint Python                   |
+| `tox`              | Set up isolated environments  |
+| `unit`             | Run unit tests                |
+| `yamllint`         | Lint YAML                     |
+
+## Setup
+
+Enable the review gate once: `/codex:setup --enable-review-gate`
 
 ## Imports
 
-Rules live under `.agents/rules/`; do not add nested `AGENTS.md` files.
-
-- @.agents/rules/helpers.md
-- @.agents/rules/helpers-sdk.md
-- @.agents/rules/module-authoring.md
-- @.agents/rules/module-authoring-sdk.md
-- @.agents/rules/role-authoring.md
-- @.agents/rules/role-authoring-sdk.md
+- @.agents/rules/ansible-module-utils.md
+- @.agents/rules/ansible-module-utils-sdk.md
+- @.agents/rules/ansible-plugins.md
+- @.agents/rules/ansible-plugins-sdk.md
+- @.agents/rules/ansible-roles.md

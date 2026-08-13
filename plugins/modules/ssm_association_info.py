@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -54,6 +56,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -69,16 +72,6 @@ def main():
     )
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
 
-    require_client_methods(
-        module,
-        client,
-        "Systems Manager",
-        {
-            "list_associations": ("AssociationFilterList",),
-            "list_tags_for_resource": ("ResourceId", "ResourceType"),
-        },
-    )
-
     filters = module.params["filters"]
     request = {}
     if filters:
@@ -87,9 +80,17 @@ def main():
             values = value if isinstance(value, list) else [value]
 
             for item in values:
-                request["AssociationFilterList"].append(
-                    {"key": key, "value": str(item)}
-                )
+                request["AssociationFilterList"].append({"key": key, "value": str(item)})
+
+    require_client_methods(
+        module,
+        client,
+        "Systems Manager",
+        {
+            "list_associations": tuple(request),
+            "list_tags_for_resource": ("ResourceId", "ResourceType"),
+        },
+    )
 
     associations = query_list(
         module,
@@ -118,10 +119,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(
-                        "Unable to list tags for AWS Systems Manager association "
-                        f"{association_id}"
-                    ),
+                    msg=("Unable to list tags for AWS Systems Manager association " f"{association_id}"),
                 )
 
         normalized_associations.append(

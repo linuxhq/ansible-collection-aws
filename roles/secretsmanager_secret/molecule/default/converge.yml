@@ -1,9 +1,6 @@
 ---
 - name: Converge
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
-
   roles:
     - role: secretsmanager_secret
       secretsmanager_secret_list: []

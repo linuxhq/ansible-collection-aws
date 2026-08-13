@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -21,8 +23,9 @@ options:
   iso_country_code:
     description:
       - The two-character ISO 3166-1 alpha-2 country or region code.
-      - This must be exactly two uppercase letters.
-    required: true
+      - When provided, this must be exactly two uppercase letters.
+      - This is optional for origination identities that are not
+        country-specific.
     type: str
   origination_identity:
     description:
@@ -96,6 +99,7 @@ except ImportError:
     pass
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
     paginated_query_with_retries,
@@ -106,6 +110,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
@@ -123,10 +128,7 @@ def current_associations(client, module):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=(
-                "Unable to list origination identities for Pinpoint SMS Voice "
-                f"V2 pool {module.params['pool_id']}"
-            ),
+            msg=("Unable to list origination identities for Pinpoint SMS Voice " f"V2 pool {module.params['pool_id']}"),
         )
 
 
@@ -134,7 +136,7 @@ def current_association(module, associations):
     iso_country_code = module.params["iso_country_code"]
 
     for association in associations:
-        if association.get("IsoCountryCode") != iso_country_code:
+        if iso_country_code is not None and association.get("IsoCountryCode") != iso_country_code:
             continue
 
         for identity in (
@@ -167,9 +169,7 @@ def association_request(module):
 def exit_result(module, changed, association):
     module.exit_json(
         changed=changed,
-        association=boto3_resource_to_ansible_dict(
-            association or {}, transform_tags=False, force_tags=False
-        ),
+        association=boto3_resource_to_ansible_dict(association or {}, transform_tags=False, force_tags=False),
         origination_identity=module.params["origination_identity"],
         pool_id=module.params["pool_id"],
         state=module.params["state"],
@@ -199,6 +199,8 @@ def ensure_present(client, module):
             )
 
         association.pop("ResponseMetadata", None)
+        if not association.get("OriginationIdentity"):
+            module.fail_json(msg=("AWS did not return the Pinpoint SMS Voice V2 origination " "identity association"))
     elif changed and module.check_mode:
         association = scrub_none_parameters(
             {
@@ -225,7 +227,7 @@ def ensure_absent(client, module):
                 aws_retry=True,
             )
         except is_boto3_error_code("ResourceNotFoundException"):
-            pass
+            association = None
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
@@ -247,7 +249,7 @@ def ensure_absent(client, module):
 def main():
     argument_spec = {
         "client_token": {"no_log": False, "type": "str"},
-        "iso_country_code": {"required": True, "type": "str"},
+        "iso_country_code": {"type": "str"},
         "origination_identity": {"required": True, "type": "str"},
         "pool_id": {"required": True, "type": "str"},
         "state": {
@@ -263,7 +265,9 @@ def main():
     )
     state = module.params["state"]
 
-    if not re.fullmatch(r"[A-Z]{2}", module.params["iso_country_code"]):
+    if module.params["iso_country_code"] is not None and not re.fullmatch(
+        r"[A-Z]{2}", module.params["iso_country_code"]
+    ):
         module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
 
     client = module.client(
@@ -271,11 +275,13 @@ def main():
         retry_decorator=AWSRetry.jittered_backoff(),
     )
 
-    origination_parameters = ("IsoCountryCode", "OriginationIdentity", "PoolId")
+    origination_parameters = ("OriginationIdentity", "PoolId")
+    if module.params["iso_country_code"] is not None:
+        origination_parameters += ("IsoCountryCode",)
     if module.params["client_token"] is not None:
         origination_parameters += ("ClientToken",)
 
-    methods = {"list_pool_origination_identities": ("PoolId",)}
+    methods = {"list_pool_origination_identities": ("PoolId", "MaxResults", "NextToken")}
     if state == "present":
         methods["associate_origination_identity"] = origination_parameters
     if state == "absent":

@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -13,12 +15,14 @@ options:
   name:
     description:
       - The AWS region name to manage.
+      - Requires botocore 1.29.70 or later.
     required: true
     type: str
   state:
     description:
       - Desired opt-in status for the region.
       - Default Regions with C(ENABLED_BY_DEFAULT) status cannot be disabled.
+      - Requires botocore 1.29.70 or later.
     choices:
       - present
       - absent
@@ -81,6 +85,7 @@ except ImportError:
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
@@ -196,10 +201,7 @@ def wait_for_status(client, module, waiter_name, statuses):
         client,
         ACCOUNT_REGION_WAITER_MODEL_DATA,
         waiter_name,
-        (
-            f"Timed out waiting for AWS account region {region_name} "
-            f"to reach one of {sorted(statuses)}"
-        ),
+        (f"Timed out waiting for AWS account region {region_name} " f"to reach one of {sorted(statuses)}"),
         RegionName=region_name,
     )
 
@@ -222,6 +224,14 @@ def ensure_present(client, module):
     changed = previous_status not in PRESENT_STATUSES
 
     if changed and not module.check_mode:
+        if previous_status == "DISABLING":
+            wait_for_status(client, module, "region_disabled", ABSENT_STEADY_STATUSES)
+        require_client_methods(
+            module,
+            client,
+            "AWS Account",
+            {"enable_region": ("RegionName",)},
+        )
         try:
             client.enable_region(
                 RegionName=region_name,
@@ -236,9 +246,7 @@ def ensure_present(client, module):
     if changed and module.check_mode:
         current_status = "ENABLED"
     elif (
-        module.params["wait"]
-        and not module.check_mode
-        and (changed or previous_status not in PRESENT_STEADY_STATUSES)
+        module.params["wait"] and not module.check_mode and (changed or previous_status not in PRESENT_STEADY_STATUSES)
     ):
         current_status = wait_for_status(
             client,
@@ -260,15 +268,20 @@ def ensure_absent(client, module):
 
     if previous_status == "ENABLED_BY_DEFAULT":
         module.fail_json(
-            msg=(
-                f"Unable to disable AWS account region {region_name} "
-                "because default Regions cannot be disabled"
-            ),
+            msg=(f"Unable to disable AWS account region {region_name} " "because default Regions cannot be disabled"),
         )
 
     changed = previous_status not in ABSENT_STATUSES
 
     if changed and not module.check_mode:
+        if previous_status == "ENABLING":
+            wait_for_status(client, module, "region_enabled", PRESENT_STEADY_STATUSES)
+        require_client_methods(
+            module,
+            client,
+            "AWS Account",
+            {"disable_region": ("RegionName",)},
+        )
         try:
             client.disable_region(
                 RegionName=region_name,
@@ -282,11 +295,7 @@ def ensure_absent(client, module):
 
     if changed and module.check_mode:
         current_status = "DISABLED"
-    elif (
-        module.params["wait"]
-        and not module.check_mode
-        and (changed or previous_status not in ABSENT_STEADY_STATUSES)
-    ):
+    elif module.params["wait"] and not module.check_mode and (changed or previous_status not in ABSENT_STEADY_STATUSES):
         current_status = wait_for_status(
             client,
             module,
@@ -316,19 +325,17 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
 
-    require_positive_wait_bounds(module)
+    require_positive_wait_bounds(module, always=True)
 
     client = module.client("account", retry_decorator=AWSRetry.jittered_backoff())
 
     state = module.params["state"]
-    methods = {"get_region_opt_status": ()}
-    if state == "present":
-        methods["enable_region"] = ()
-
-    if state == "absent":
-        methods["disable_region"] = ()
-
-    require_client_methods(module, client, "AWS Account", methods)
+    require_client_methods(
+        module,
+        client,
+        "AWS Account",
+        {"get_region_opt_status": ("RegionName",)},
+    )
 
     if state == "present":
         ensure_present(client, module)

@@ -5,32 +5,60 @@
 [![Lint](https://github.com/linuxhq/ansible-collection-aws/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/linuxhq/ansible-collection-aws/actions/workflows/pre-commit.yml)
 [![Release](https://github.com/linuxhq/ansible-collection-aws/actions/workflows/release.yml/badge.svg)](https://github.com/linuxhq/ansible-collection-aws/actions/workflows/release.yml)
 
-A collection of aws roles
+An Ansible collection of AWS modules and roles.
 
-# Collection
+## Installation
 
-## Environment
+```sh
+ansible-galaxy collection install linuxhq.aws
+```
 
-    make
-    source venv/bin/activate
+## Development
 
-## Build
+With Tox installed, install the pre-commit hook:
 
-    ansible-galaxy collection build
+```sh
+tox run -e pre-commit
+```
 
-## Install
+Tox manages isolated environments under `.tox/`; no environment activation is required.
 
-    ansible-galaxy collection install linuxhq.aws
+### Checks
 
-## Changelog
+Run the default checks:
 
-    antsibull-changelog generate
+```sh
+tox
+```
 
-## Linting
+Run grouped checks:
 
-    ansible-lint
-    yamllint -s .
+```sh
+tox run -m format
+tox run -m lint
+tox run -m unit
+```
 
-## Testing
+Run Ansible sanity tests for a module:
 
-All roles have molecule tests which provide example playbooks
+```sh
+tox run -e ansible-test -- sanity --python "$(cat .python-version)" plugins/modules/account_region.py
+```
+
+### Molecule
+
+Each role has a Molecule scenario that also serves as an example playbook. Set `MOLECULE_ROLE`
+to select a role:
+
+```sh
+MOLECULE_ROLE=account_region tox run -e molecule -- test -s default
+```
+
+Molecule scenarios may create real AWS resources and incur costs.
+
+### Changelog and build
+
+```sh
+tox run -e changelog -- generate
+tox run -e build
+```

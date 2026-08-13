@@ -5,13 +5,15 @@ dependency:
     requirements-file: ../../requirements.yml
 
 driver:
-  name: vagrant
+  name: default
+  options:
+    managed: false
+    ansible_connection_options:
+      ansible_connection: local
+      ansible_python_interpreter: "{{ ansible_playbook_python }}"
 
 platforms:
-  - name: almalinux9
-    box: bento/almalinux-9.6
-    cpus: 4
-    memory: 4096
+  - name: localhost
 
 provisioner:
   name: ansible
@@ -24,7 +26,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-        ansible_python_interpreter: /opt/awscli/bin/python
         ec2_security_group_list:
           - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             security_groups:
@@ -46,12 +47,12 @@ provisioner:
           - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             subnets:
               - name: molecule
-                az: us-east-1a
+                az: us-west-1a
                 cidr: 192.168.0.0/24
 
         glue_connection_list:
           - name: molecule
-            availability_zone: us-east-1a
+            availability_zone: us-west-1a
             connection_properties:
               KAFKA_SSL_ENABLED: 'false'
             connection_type: NETWORK

@@ -1,9 +1,6 @@
 ---
 - name: Verify
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
-
   roles:
     - aws_az_info
 
@@ -11,10 +8,8 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _aws_az_info_dict['us-east-1a'] is defined
-          - _aws_az_info_dict['us-east-1b'] is defined
-          - _aws_az_info_dict['us-east-1c'] is defined
-          - _aws_az_info_dict['us-east-1d'] is defined
-          - _aws_az_info_dict['us-east-1e'] is defined
-          - _aws_az_info_dict['us-east-1f'] is defined
+          - _aws_az_info_list | length > 0
+          - _aws_az_info_dict | length == _aws_az_info_list | length
+          - _aws_az_info_list_l | length == _aws_az_info_list | length
+          - _aws_az_info_list_s | length == _aws_az_info_list | length
 ...

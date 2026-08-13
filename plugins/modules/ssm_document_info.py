@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -37,6 +39,7 @@ options:
   name:
     description:
       - Systems Manager document name used to limit the result set.
+      - This must not be empty when provided.
       - A document that does not exist results in an empty list.
       - Mutually exclusive with O(filters).
     type: str
@@ -99,6 +102,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -117,9 +121,7 @@ def content_transform(content):
         return content
 
     if isinstance(content, dict):
-        return boto3_resource_to_ansible_dict(
-            content, transform_tags=False, force_tags=False
-        )
+        return boto3_resource_to_ansible_dict(content, transform_tags=False, force_tags=False)
     return content
 
 
@@ -142,26 +144,34 @@ def main():
         ],
         supports_check_mode=True,
     )
+    filters = module.params["filters"]
+    name = module.params["name"]
+    version_name = module.params["version_name"]
+    if name == "":
+        module.fail_json(msg="name must not be empty")
+
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
+
+    get_request = scrub_none_parameters(
+        {
+            "DocumentFormat": module.params["document_format"],
+            "DocumentVersion": module.params["document_version"] or (None if version_name else "$LATEST"),
+            "VersionName": version_name,
+        }
+    )
+    methods = {
+        "get_document": ("Name",) + tuple(get_request),
+        "list_tags_for_resource": ("ResourceId", "ResourceType"),
+    }
+    if name is None:
+        methods["list_documents"] = ("Filters",) if filters else ()
 
     require_client_methods(
         module,
         client,
         "Systems Manager",
-        {
-            "list_documents": ("Filters",),
-            "get_document": (
-                "DocumentFormat",
-                "DocumentVersion",
-                "Name",
-                "VersionName",
-            ),
-            "list_tags_for_resource": ("ResourceId", "ResourceType"),
-        },
+        methods,
     )
-
-    filters = module.params["filters"]
-    name = module.params["name"]
 
     if name:
         document_names = [name]
@@ -186,20 +196,7 @@ def main():
             **request,
         )
 
-        document_names = []
-        for document in document_identifiers:
-            if document.get("Name"):
-                document_names.append(document["Name"])
-
-    version_name = module.params["version_name"]
-    get_request = scrub_none_parameters(
-        {
-            "DocumentFormat": module.params["document_format"],
-            "DocumentVersion": module.params["document_version"]
-            or (None if version_name else "$LATEST"),
-            "VersionName": version_name,
-        }
-    )
+        document_names = [document["Name"] for document in document_identifiers if document.get("Name")]
 
     documents = []
     for document_name in document_names:
@@ -209,7 +206,7 @@ def main():
                 Name=document_name,
                 aws_retry=True,
             )
-        except is_boto3_error_code(("InvalidDocument", "InvalidDocumentOperation")):
+        except is_boto3_error_code("InvalidDocument"):
             continue
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
@@ -230,10 +227,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to list tags for AWS Systems Manager document "
-                    f"{document_name}"
-                ),
+                msg=("Unable to list tags for AWS Systems Manager document " f"{document_name}"),
             )
 
         documents.append(

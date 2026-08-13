@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -41,6 +43,7 @@ options:
   tags:
     description:
       - Tags to apply to the notifications contact.
+      - This must contain at most 200 entries; keys must contain 1 to 128 characters and values at most 256 characters.
     type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -92,10 +95,12 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import compare_
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tags
 
 
 def apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset):
@@ -131,18 +136,23 @@ def ensure_absent(client, module):
     changed = contact is not None
 
     if changed and not module.check_mode:
+        require_client_methods(
+            module,
+            client,
+            "NotificationsContacts",
+            {"delete_email_contact": ("arn",)},
+        )
         try:
             client.delete_email_contact(
                 arn=contact["arn"],
                 aws_retry=True,
             )
+        except is_boto3_error_code("ResourceNotFoundException"):
+            pass
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to delete AWS Notifications contact "
-                    f"{module.params['email_address']}"
-                ),
+                msg=("Unable to delete AWS Notifications contact " f"{module.params['email_address']}"),
             )
 
     module.exit_json(
@@ -156,11 +166,7 @@ def ensure_present(client, module):
     name = module.params["name"]
     tags = module.params["tags"]
     contact = get_contact_by_address(client, module)
-    current_contact = (
-        {"address": contact.get("address"), "name": contact.get("name")}
-        if contact
-        else None
-    )
+    current_contact = {"address": contact.get("address"), "name": contact.get("name")} if contact else None
     desired_contact = {
         "address": email_address,
         "name": name,
@@ -171,6 +177,12 @@ def ensure_present(client, module):
     if tags is not None and contact is not None and not resource_changed:
         contact = dict(contact)
 
+        require_client_methods(
+            module,
+            client,
+            "NotificationsContacts",
+            {"list_tags_for_resource": ("arn",)},
+        )
         try:
             contact["tags"] = client.list_tags_for_resource(
                 arn=contact["arn"],
@@ -179,10 +191,7 @@ def ensure_present(client, module):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=(
-                    "Unable to list tags for AWS Notifications contact "
-                    f"{contact['arn']}"
-                ),
+                msg=("Unable to list tags for AWS Notifications contact " f"{contact['arn']}"),
             )
 
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
@@ -196,51 +205,68 @@ def ensure_present(client, module):
     if changed and not module.check_mode:
         if resource_changed:
             if contact is not None:
+                require_client_methods(
+                    module,
+                    client,
+                    "NotificationsContacts",
+                    {"delete_email_contact": ("arn",)},
+                )
                 try:
                     client.delete_email_contact(
                         arn=contact["arn"],
                         aws_retry=True,
                     )
+                except is_boto3_error_code("ResourceNotFoundException"):
+                    pass
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=(
-                            "Unable to delete AWS Notifications contact "
-                            f"{email_address}"
-                        ),
+                        msg=("Unable to delete AWS Notifications contact " f"{email_address}"),
                     )
 
             request = {
                 "emailAddress": email_address,
                 "name": name,
             }
-            if tags is not None:
+            if tags:
                 request["tags"] = tags
 
+            require_client_methods(
+                module,
+                client,
+                "NotificationsContacts",
+                {"create_email_contact": tuple(request)},
+            )
             try:
-                contact_arn = client.create_email_contact(
-                    **request, aws_retry=True
-                ).get("arn")
+                contact_arn = client.create_email_contact(**request, aws_retry=True).get("arn")
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to create AWS Notifications contact {email_address}",
                 )
 
+            if not contact_arn:
+                module.fail_json(msg=("AWS Notifications did not return an ARN for contact " f"{email_address}"))
+
             contact = None
-            if contact_arn:
-                try:
-                    contact = client.get_email_contact(
-                        arn=contact_arn,
-                        aws_retry=True,
-                    ).get("emailContact")
-                except is_boto3_error_code("ResourceNotFoundException"):
-                    contact = None
-                except (BotoCoreError, ClientError) as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=f"Unable to get AWS Notifications contact {contact_arn}",
-                    )
+            require_client_methods(
+                module,
+                client,
+                "NotificationsContacts",
+                {"get_email_contact": ("arn",)},
+            )
+            try:
+                contact = client.get_email_contact(
+                    arn=contact_arn,
+                    aws_retry=True,
+                ).get("emailContact")
+            except is_boto3_error_code("ResourceNotFoundException"):
+                contact = None
+            except (BotoCoreError, ClientError) as e:
+                module.fail_json_aws(
+                    e,
+                    msg=f"Unable to get AWS Notifications contact {contact_arn}",
+                )
 
             if contact is None:
                 contact = dict(desired_contact, arn=contact_arn)
@@ -249,6 +275,12 @@ def ensure_present(client, module):
         else:
             contact_arn = contact["arn"]
             if tag_keys_to_unset:
+                require_client_methods(
+                    module,
+                    client,
+                    "NotificationsContacts",
+                    {"untag_resource": ("arn", "tagKeys")},
+                )
                 try:
                     client.untag_resource(
                         arn=contact_arn,
@@ -258,13 +290,16 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=(
-                            "Unable to remove tags from AWS Notifications contact "
-                            f"{contact_arn}"
-                        ),
+                        msg=("Unable to remove tags from AWS Notifications contact " f"{contact_arn}"),
                     )
 
             if tags_to_set:
+                require_client_methods(
+                    module,
+                    client,
+                    "NotificationsContacts",
+                    {"tag_resource": ("arn", "tags")},
+                )
                 try:
                     client.tag_resource(
                         arn=contact_arn,
@@ -272,9 +307,7 @@ def ensure_present(client, module):
                         aws_retry=True,
                     )
                 except (BotoCoreError, ClientError) as e:
-                    module.fail_json_aws(
-                        e, msg=f"Unable to tag AWS Notifications contact {contact_arn}"
-                    )
+                    module.fail_json_aws(e, msg=f"Unable to tag AWS Notifications contact {contact_arn}")
 
             contact = apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
@@ -311,17 +344,12 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
-    tags = module.params["tags"]
 
     if state == "present":
         email_address = module.params["email_address"]
 
-        if not 6 <= len(email_address) <= 254 or not re.fullmatch(
-            r".+@.+", email_address
-        ):
-            module.fail_json(
-                msg="email_address must be a valid email address of 6 to 254 characters"
-            )
+        if not 6 <= len(email_address) <= 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+", email_address):
+            module.fail_json(msg="email_address must be a valid email address of 6 to 254 characters")
 
         name = module.params["name"]
 
@@ -333,25 +361,17 @@ def main():
                 )
             )
 
+    require_valid_tags(module, module.params["tags"] if state == "present" else None, 200)
     client = module.client(
-        "notificationscontacts", retry_decorator=AWSRetry.jittered_backoff()
+        "notificationscontacts",
+        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConflictException"]),
     )
-    methods = {"list_email_contacts": ("maxResults", "nextToken")}
-    if state == "present":
-        methods["create_email_contact"] = ("emailAddress", "name")
-        methods["delete_email_contact"] = ("arn",)
-        methods["get_email_contact"] = ("arn",)
-        if tags is not None:
-            methods["create_email_contact"] += ("tags",)
-            methods["list_tags_for_resource"] = ("arn",)
-            methods["tag_resource"] = ("arn", "tags")
-            if module.params["purge_tags"]:
-                methods["untag_resource"] = ("arn", "tagKeys")
-
-    if state == "absent":
-        methods["delete_email_contact"] = ("arn",)
-
-    require_client_methods(module, client, "NotificationsContacts", methods)
+    require_client_methods(
+        module,
+        client,
+        "NotificationsContacts",
+        {"list_email_contacts": ("maxResults", "nextToken")},
+    )
 
     if state == "present":
         ensure_present(client, module)

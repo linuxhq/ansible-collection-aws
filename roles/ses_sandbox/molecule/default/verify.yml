@@ -1,8 +1,5 @@
 ---
 - name: Verify
   hosts: all
-  environment:
-    PATH: '/opt/awscli/bin'
-
   tasks: []
 ...

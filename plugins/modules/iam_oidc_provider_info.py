@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -48,32 +50,30 @@ open_id_connect_providers:
   elements: dict
 """
 
-try:
-    from botocore.exceptions import BotoCoreError, ClientError
-except ImportError:
-    pass
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
     get_provider_by_arn,
     normalize_provider_url,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 
 
 def list_provider_arns(client, module):
-    try:
-        providers = client.list_open_id_connect_providers(
-            aws_retry=True,
-        ).get("OpenIDConnectProviderList", [])
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg="Unable to list AWS IAM OIDC providers")
+    providers = query_list(
+        module,
+        client,
+        "list_open_id_connect_providers",
+        "OpenIDConnectProviderList",
+        "Unable to list AWS IAM OIDC providers",
+    )
 
     arns = []
     for provider in providers:
@@ -82,6 +82,16 @@ def list_provider_arns(client, module):
         if arn:
             arns.append(arn)
     return arns
+
+
+def get_provider(client, module, arn):
+    require_client_methods(
+        module,
+        client,
+        "IAM",
+        {"get_open_id_connect_provider": ("OpenIDConnectProviderArn",)},
+    )
+    return get_provider_by_arn(client, module, arn)
 
 
 def main():
@@ -97,24 +107,27 @@ def main():
 
     arn = module.params["arn"]
     url = module.params["url"]
-    methods = {"get_open_id_connect_provider": ("OpenIDConnectProviderArn",)}
     if not arn:
-        methods["list_open_id_connect_providers"] = ()
-
-    require_client_methods(module, client, "IAM", methods)
+        require_client_methods(
+            module,
+            client,
+            "IAM",
+            {"list_open_id_connect_providers": ()},
+        )
 
     if arn:
-        provider = get_provider_by_arn(client, module, arn)
+        provider = get_provider(client, module, arn)
         providers = [provider] if provider else []
     elif url:
         providers = []
         desired_url = normalize_provider_url(url)
 
         for arn in list_provider_arns(client, module):
-            if not arn.endswith(f":oidc-provider/{desired_url}"):
+            arn_url = arn.partition(":oidc-provider/")[2]
+            if normalize_provider_url(arn_url) != desired_url:
                 continue
 
-            provider = get_provider_by_arn(client, module, arn)
+            provider = get_provider(client, module, arn)
 
             if provider and normalize_provider_url(provider.get("Url")) == desired_url:
                 providers.append(provider)
@@ -122,16 +135,14 @@ def main():
     else:
         providers = []
         for arn in list_provider_arns(client, module):
-            provider = get_provider_by_arn(client, module, arn)
+            provider = get_provider(client, module, arn)
 
             if provider:
                 providers.append(provider)
 
     module.exit_json(
         changed=False,
-        open_id_connect_providers=boto3_resource_list_to_ansible_dict(
-            providers, transform_tags=True, force_tags=False
-        ),
+        open_id_connect_providers=boto3_resource_list_to_ansible_dict(providers, transform_tags=True, force_tags=False),
     )
 
 

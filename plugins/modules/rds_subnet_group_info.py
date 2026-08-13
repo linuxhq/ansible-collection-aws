@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 DOCUMENTATION = r"""
@@ -67,6 +69,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
 )
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
@@ -82,13 +85,6 @@ def main():
     )
     client = module.client("rds", retry_decorator=AWSRetry.jittered_backoff())
 
-    require_client_methods(
-        module,
-        client,
-        "RDS",
-        {"describe_db_subnet_groups": ("DBSubnetGroupName", "Filters")},
-    )
-
     filters = module.params["filters"]
     name = module.params["name"]
     request = {}
@@ -96,6 +92,15 @@ def main():
         request["DBSubnetGroupName"] = name
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
+
+    require_client_methods(
+        module,
+        client,
+        "RDS",
+        {
+            "describe_db_subnet_groups": tuple(request) + ("Marker", "MaxRecords"),
+        },
+    )
 
     try:
         subnet_groups = paginated_query_with_retries(
@@ -113,9 +118,7 @@ def main():
 
     module.exit_json(
         changed=False,
-        subnet_groups=boto3_resource_list_to_ansible_dict(
-            subnet_groups, transform_tags=False, force_tags=False
-        ),
+        subnet_groups=boto3_resource_list_to_ansible_dict(subnet_groups, transform_tags=False, force_tags=False),
     )
 
 
