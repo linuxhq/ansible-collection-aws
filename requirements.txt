@@ -2,8 +2,8 @@ ansible>=14.2.0,<15
 ansible-lint==26.6.0
 antsibull-changelog==0.35.1
 black==26.5.1
-boto3==1.43.61
-botocore==1.43.61
+boto3==1.43.83
+botocore==1.43.83
 isort==8.0.1
 jmespath==1.1.0
 molecule==25.1.0
