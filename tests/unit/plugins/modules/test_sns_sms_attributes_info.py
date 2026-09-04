@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import sns_sms_attributes_i
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
@@ -25,3 +26,17 @@ class SnsSmsAttributesInfoTests(TestCase):
             plugin.main()
         self.assertEqual(require.call_args.args[3], {"get_sms_attributes": ("attributes",)})
         client.get_sms_attributes.assert_called_once_with(attributes=["DefaultSMSType"], aws_retry=True)
+
+    def test_rejects_malformed_get_response(self):
+        client = Mock(get_sms_attributes=Mock(return_value={"attributes": None}))
+        module = FakeModule({"attributes": None}, client=client)
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unexpected response while getting AWS Simple Notification Service SMS attributes",
+        )
