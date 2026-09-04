@@ -20,7 +20,7 @@
           commands:
             - touch /tmp/molecule
         targets:
-          - key: instanceids
+          - key: InstanceIds
             values:
               - "{{ _ec2_instance_info_dict[ec2_instance_list.0.name].instance_id }}"
         validate_certs: true

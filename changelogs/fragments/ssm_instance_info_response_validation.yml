@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - ssm_instance_info - fail cleanly when AWS returns malformed managed instance
+    data. A null instance list or an entry that was not a dictionary previously
+    raised an unhandled traceback.
+  - ssm_instance_info - warn when a managed instance lacks a valid instance ID,
+    preserve the record in C(instances), and omit the invalid value from
+    C(instance_ids).

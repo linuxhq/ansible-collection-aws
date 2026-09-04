@@ -1,0 +1,16 @@
+---
+bugfixes:
+  - ssm_send_command - reject an empty O(document_name) locally instead of
+    sending an invalid request to AWS.
+  - ssm_send_command - fail cleanly when AWS returns malformed command or
+    command invocation data instead of raising an unhandled traceback.
+  - ssm_send_command - fail with a message naming the command ID when AWS
+    returns an invalid command or invocation status value.
+  - ssm_send_command - report C(changed=true) on failures after AWS accepts the
+    command.
+  - ssm_send_command - return an empty C(command_invocations) list instead of
+    raising an unhandled C(UnboundLocalError) when C(wait=true) and the wait
+    timeout expires before the first poll.
+  - ssm_send_command - clarify that target keys are passed to AWS unchanged and
+    correct the documented example to use the C(InstanceIds) target key, which
+    AWS rejected as C(instanceids).
