@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: iam_oidc_provider_info
-short_description: Gather information about aws iam oidc providers
+short_description: Gather information about AWS IAM OIDC providers
+version_added: "1.9.0"
 description:
   - Gathers information about AWS IAM OpenID Connect (OIDC) identity providers.
 author:
@@ -26,6 +27,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module does not modify state.
+    support: full
+  diff_mode:
+    description: This module does not modify state.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -48,6 +56,29 @@ open_id_connect_providers:
   returned: always
   type: list
   elements: dict
+  contains:
+    client_id_list:
+      description: The client IDs registered with the provider.
+      returned: always
+      type: list
+      elements: str
+    open_id_connect_provider_arn:
+      description: The provider ARN.
+      returned: always
+      type: str
+    tags:
+      description: Tags applied to the provider.
+      returned: when available
+      type: dict
+    thumbprint_list:
+      description: The certificate thumbprints registered with the provider.
+      returned: always
+      type: list
+      elements: str
+    url:
+      description: The normalized provider URL.
+      returned: always
+      type: str
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -59,6 +90,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
     get_provider_by_arn,
     normalize_provider_url,
+    validate_provider_summaries,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
@@ -67,21 +99,18 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 
 
 def list_provider_arns(client, module):
-    providers = query_list(
+    providers = validate_provider_summaries(
         module,
-        client,
-        "list_open_id_connect_providers",
-        "OpenIDConnectProviderList",
-        "Unable to list AWS IAM OIDC providers",
+        query_list(
+            module,
+            client,
+            "list_open_id_connect_providers",
+            "OpenIDConnectProviderList",
+            "Unable to list AWS IAM OIDC providers",
+        ),
     )
 
-    arns = []
-    for provider in providers:
-        arn = provider.get("Arn")
-
-        if arn:
-            arns.append(arn)
-    return arns
+    return [provider["Arn"] for provider in providers]
 
 
 def get_provider(client, module, arn):

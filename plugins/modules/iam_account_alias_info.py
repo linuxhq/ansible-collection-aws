@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: iam_account_alias_info
-short_description: Gather information about aws iam account aliases
+short_description: Gather information about AWS IAM account aliases
+version_added: "1.9.0"
 description:
   - Gathers AWS IAM account aliases for the current account.
 author:
@@ -14,6 +15,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module does not modify state.
+    support: full
+  diff_mode:
+    description: This module does not modify state.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -39,6 +47,12 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
+def validate_account_aliases(module, aliases):
+    if not isinstance(aliases, list) or any(not isinstance(alias, str) for alias in aliases):
+        module.fail_json(msg="Unable to list AWS IAM account aliases: AWS returned an invalid response")
+    return aliases
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={},
@@ -53,12 +67,15 @@ def main():
         {"list_account_aliases": ("Marker", "MaxItems")},
     )
 
-    account_aliases = query_list(
+    account_aliases = validate_account_aliases(
         module,
-        client,
-        "list_account_aliases",
-        "AccountAliases",
-        "Unable to list AWS IAM account aliases",
+        query_list(
+            module,
+            client,
+            "list_account_aliases",
+            "AccountAliases",
+            "Unable to list AWS IAM account aliases",
+        ),
     )
 
     module.exit_json(

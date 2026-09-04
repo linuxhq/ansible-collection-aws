@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: iam_account_alias
-short_description: Manage aws iam account alias
+short_description: Manage an AWS IAM account alias
+version_added: "1.9.0"
 description:
   - Manages the AWS IAM account alias for the current account.
 author:
@@ -31,6 +32,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: The module predicts account alias changes without applying them.
+    support: full
+  diff_mode:
+    description: The module does not return diff data.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -84,9 +92,16 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 
 def list_account_aliases(client, module):
     try:
-        return sorted(paginated_query_with_retries(client, "list_account_aliases").get("AccountAliases", []))
+        response = paginated_query_with_retries(client, "list_account_aliases")
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg="Unable to list AWS IAM account aliases")
+
+    if not isinstance(response, dict):
+        module.fail_json(msg="Unable to list AWS IAM account aliases: AWS returned an invalid response")
+    aliases = response.get("AccountAliases")
+    if not isinstance(aliases, list) or any(not isinstance(alias, str) for alias in aliases):
+        module.fail_json(msg="Unable to list AWS IAM account aliases: AWS returned an invalid response")
+    return sorted(aliases)
 
 
 def delete_account_alias(client, module, name):

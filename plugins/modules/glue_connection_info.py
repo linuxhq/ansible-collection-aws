@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: glue_connection_info
-short_description: Gather information about aws glue connections
+short_description: Gather information about AWS Glue connections
+version_added: "1.9.0"
 description:
   - Gathers information about AWS Glue connections.
 author:
@@ -44,6 +45,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module does not modify state.
+    support: full
+  diff_mode:
+    description: This module does not modify state.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -68,6 +76,19 @@ connections:
   returned: always
   type: list
   elements: dict
+  contains:
+    name:
+      description: The connection name.
+      returned: always
+      type: str
+    connection_properties:
+      description: Connection configuration properties returned by AWS Glue.
+      returned: when configured
+      type: dict
+    connection_type:
+      description: The connection type.
+      returned: when configured
+      type: str
 """
 
 try:
@@ -90,6 +111,12 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+
+
+def validate_connections(module, connections):
+    if not isinstance(connections, list) or any(not isinstance(connection, dict) for connection in connections):
+        module.fail_json(msg="Unable to get AWS Glue connections: AWS returned an invalid response")
+    return connections
 
 
 def main():
@@ -144,11 +171,15 @@ def main():
             request["ApplyOverrideForComputeEnvironment"] = apply_override
 
         try:
-            connection = client.get_connection(**request, aws_retry=True).get("Connection")
+            response = client.get_connection(**request, aws_retry=True)
         except is_boto3_error_code("EntityNotFoundException"):
             connection = None
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to get AWS Glue connection {name}")
+        else:
+            if not isinstance(response, dict) or not isinstance(response.get("Connection"), dict):
+                module.fail_json(msg=f"Unable to get AWS Glue connection {name}: AWS returned an invalid response")
+            connection = response["Connection"]
 
         connections = [connection] if connection else []
     else:
@@ -163,6 +194,8 @@ def main():
             "Unable to list AWS Glue connections",
             **request,
         )
+
+    connections = validate_connections(module, connections)
 
     module.exit_json(
         changed=False,

@@ -1,0 +1,3 @@
+---
+bugfixes:
+  - iam_account_alias - fail cleanly when AWS returns malformed account alias data.

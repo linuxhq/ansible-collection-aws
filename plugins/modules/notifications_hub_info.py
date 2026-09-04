@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: notifications_hub_info
-short_description: Gather information about aws notifications hubs
+short_description: Gather information about AWS Notifications hubs
 description:
   - Gathers information about AWS Notifications hubs.
   - The module always uses the C(us-east-1) AWS Notifications endpoint.
@@ -15,6 +15,10 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: The module only retrieves information from AWS.
+    support: full
 """
 
 EXAMPLES = r"""
@@ -29,6 +33,32 @@ notification_hubs:
   returned: always
   type: list
   elements: dict
+  contains:
+    creation_time:
+      description: The date and time when the hub was created.
+      returned: always
+      type: str
+    last_activation_time:
+      description: The date and time when the hub was last activated.
+      returned: when provided by AWS
+      type: str
+    notification_hub_region:
+      description: The AWS Region of the notification hub.
+      returned: always
+      type: str
+    status_summary:
+      description: The hub status and its reason.
+      returned: always
+      type: dict
+      contains:
+        reason:
+          description: The reason for the current status.
+          returned: always
+          type: str
+        status:
+          description: The current hub status.
+          returned: always
+          type: str
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -41,6 +71,28 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+
+HUB_STATUSES = ("ACTIVE", "DEREGISTERING", "INACTIVE", "REGISTERING")
+
+
+def validate_hubs(module, hubs):
+    if not isinstance(hubs, list):
+        module.fail_json(msg="Unable to list AWS Notifications hubs: AWS returned an invalid response")
+
+    for hub in hubs:
+        if not isinstance(hub, dict):
+            module.fail_json(msg="Unable to list AWS Notifications hubs: AWS returned an invalid hub")
+        status_summary = hub.get("statusSummary")
+        if (
+            not isinstance(hub.get("notificationHubRegion"), str)
+            or not hub["notificationHubRegion"]
+            or hub.get("creationTime") is None
+            or not isinstance(status_summary, dict)
+            or status_summary.get("status") not in HUB_STATUSES
+            or not isinstance(status_summary.get("reason"), str)
+        ):
+            module.fail_json(msg="Unable to list AWS Notifications hubs: AWS returned an invalid hub")
+    return hubs
 
 
 def main():
@@ -68,6 +120,7 @@ def main():
         "notificationHubs",
         "Unable to list AWS Notifications hubs",
     )
+    validate_hubs(module, notification_hubs)
 
     module.exit_json(
         changed=False,

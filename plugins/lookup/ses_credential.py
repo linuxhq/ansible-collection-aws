@@ -4,6 +4,7 @@
 DOCUMENTATION = r"""
 ---
 name: ses_credential
+version_added: "1.9.0"
 author:
   - Taylor Kimball (@tkimball83)
 short_description: Generate an AWS SES SMTP password from an IAM secret access key
@@ -16,6 +17,8 @@ options:
     required: true
     type: str
   region:
+    aliases:
+      - aws_region
     description:
       - The AWS region used when deriving the SMTP password.
     required: true
@@ -37,6 +40,9 @@ RETURN = r"""
 _raw:
   description:
     - The derived AWS SES SMTP password.
+  returned: always
+  type: list
+  elements: str
 """
 
 import base64
@@ -56,8 +62,10 @@ VERSION = 0x04
 
 class LookupModule(LookupBase):
     def run(self, terms, variables=None, **kwargs):
-        region = kwargs.get("region")
-        secret_access_key = kwargs.get("aws_secret_access_key")
+        self.set_options(var_options=variables, direct=kwargs)
+
+        region = self.get_option("region")
+        secret_access_key = self.get_option("aws_secret_access_key")
 
         if not isinstance(region, str) or not region.strip():
             raise AnsibleLookupError("ses_credential lookup requires a non-empty region=")

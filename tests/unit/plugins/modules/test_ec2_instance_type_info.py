@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import ec2_instance_type_in
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -49,3 +50,15 @@ class Ec2InstanceTypeInfoTests(TestCase):
             },
             "instance_types must contain at most 100 unique entries",
         )
+
+    def test_rejects_invalid_instance_type_response(self):
+        module = FakeModule({"filters": None, "instance_types": None}, client=Mock())
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[None]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertIn("invalid instance type information", raised.exception.values["msg"])

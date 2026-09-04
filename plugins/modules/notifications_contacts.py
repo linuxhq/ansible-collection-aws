@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: notifications_contacts
-short_description: Manage aws notifications contacts
+short_description: Manage AWS Notifications contacts
 description:
   - Manages AWS Notifications email contacts.
 author:
@@ -26,12 +26,6 @@ options:
         contact, and the new contact must be activated by email again.
       - This is required when O(state=present).
     type: str
-  purge_tags:
-    description:
-      - Whether tags not listed in O(tags) should be removed.
-      - This option is only used when O(tags) is provided.
-    default: true
-    type: bool
   state:
     description:
       - Whether the notifications contact should exist.
@@ -40,15 +34,15 @@ options:
       - present
     default: present
     type: str
-  tags:
-    description:
-      - Tags to apply to the notifications contact.
-      - This must contain at most 200 entries; keys must contain 1 to 128 characters and values at most 256 characters.
-    type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+  - amazon.aws.tags
+attributes:
+  check_mode:
+    description: Predicts contact and tag changes without modifying AWS.
+    support: full
 """
 
 EXAMPLES = r"""
@@ -69,9 +63,37 @@ RETURN = r"""
 email_contact:
   description:
     - The notifications contact.
-    - C(tags) is returned as provided by the AWS Notifications API.
   returned: when a contact exists after module execution
   type: dict
+  contains:
+    address:
+      description: The contact email address.
+      returned: always
+      type: str
+    arn:
+      description: The contact ARN.
+      returned: except when check mode predicts contact creation
+      type: str
+    creation_time:
+      description: The date and time when the contact was created.
+      returned: when provided by AWS
+      type: str
+    name:
+      description: The contact name.
+      returned: always
+      type: str
+    status:
+      description: The contact activation status.
+      returned: when provided by AWS
+      type: str
+    tags:
+      description: The contact tags.
+      returned: when O(tags) is provided
+      type: dict
+    update_time:
+      description: The date and time when the contact was last updated.
+      returned: when provided by AWS
+      type: str
 state:
   description:
     - The requested state.
@@ -114,6 +136,14 @@ def apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset):
     return updated
 
 
+def validate_contact(module, contact, operation):
+    if not isinstance(contact, dict) or not all(
+        isinstance(contact.get(key), str) and contact[key] for key in ("address", "arn", "name")
+    ):
+        module.fail_json(msg=f"{operation}: AWS returned an invalid contact")
+    return contact
+
+
 def get_contact_by_address(client, module):
     email_address = module.params["email_address"]
 
@@ -125,7 +155,11 @@ def get_contact_by_address(client, module):
         "Unable to list AWS Notifications contacts",
     )
 
+    if not isinstance(contacts, list):
+        module.fail_json(msg="Unable to list AWS Notifications contacts: AWS returned an invalid response")
+
     for contact in contacts:
+        validate_contact(module, contact, "Unable to list AWS Notifications contacts")
         if contact.get("address") == email_address:
             return contact
     return None
@@ -174,7 +208,10 @@ def ensure_present(client, module):
     resource_changed = (current_contact or {}) != desired_contact
 
     tags_to_set, tag_keys_to_unset = ({}, [])
-    if tags is not None and contact is not None and not resource_changed:
+    needs_current_tags = contact is not None and (
+        (tags is not None and not resource_changed) or (tags is None and resource_changed)
+    )
+    if needs_current_tags:
         contact = dict(contact)
 
         require_client_methods(
@@ -184,22 +221,39 @@ def ensure_present(client, module):
             {"list_tags_for_resource": ("arn",)},
         )
         try:
-            contact["tags"] = client.list_tags_for_resource(
+            tag_response = client.list_tags_for_resource(
                 arn=contact["arn"],
                 aws_retry=True,
-            ).get("tags", {})
+            )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=("Unable to list tags for AWS Notifications contact " f"{contact['arn']}"),
             )
 
-        tags_to_set, tag_keys_to_unset = compare_aws_tags(
-            contact["tags"],
-            tags,
-            purge_tags=module.params["purge_tags"],
-        )
+        if (
+            not isinstance(tag_response, dict)
+            or not isinstance(tag_response.get("tags", {}), dict)
+            or not all(
+                isinstance(tag_key, str) and isinstance(tag_value, str)
+                for tag_key, tag_value in tag_response.get("tags", {}).items()
+            )
+        ):
+            module.fail_json(
+                msg=(
+                    f"Unable to list tags for AWS Notifications contact {contact['arn']}: AWS returned an invalid response"
+                )
+            )
+        contact["tags"] = tag_response.get("tags", {})
 
+        if not resource_changed:
+            tags_to_set, tag_keys_to_unset = compare_aws_tags(
+                contact["tags"],
+                tags,
+                purge_tags=module.params["purge_tags"],
+            )
+
+    desired_tags = tags if tags is not None else contact.get("tags") if contact else None
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
@@ -228,8 +282,8 @@ def ensure_present(client, module):
                 "emailAddress": email_address,
                 "name": name,
             }
-            if tags:
-                request["tags"] = tags
+            if desired_tags:
+                request["tags"] = desired_tags
 
             require_client_methods(
                 module,
@@ -238,15 +292,24 @@ def ensure_present(client, module):
                 {"create_email_contact": tuple(request)},
             )
             try:
-                contact_arn = client.create_email_contact(**request, aws_retry=True).get("arn")
+                create_response = client.create_email_contact(**request, aws_retry=True)
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to create AWS Notifications contact {email_address}",
                 )
 
-            if not contact_arn:
-                module.fail_json(msg=("AWS Notifications did not return an ARN for contact " f"{email_address}"))
+            if (
+                not isinstance(create_response, dict)
+                or not isinstance(create_response.get("arn"), str)
+                or not create_response["arn"]
+            ):
+                module.fail_json(
+                    msg=(
+                        f"Unable to create AWS Notifications contact {email_address}: AWS returned an invalid response"
+                    )
+                )
+            contact_arn = create_response["arn"]
 
             contact = None
             require_client_methods(
@@ -256,22 +319,30 @@ def ensure_present(client, module):
                 {"get_email_contact": ("arn",)},
             )
             try:
-                contact = client.get_email_contact(
+                get_response = client.get_email_contact(
                     arn=contact_arn,
                     aws_retry=True,
-                ).get("emailContact")
+                )
             except is_boto3_error_code("ResourceNotFoundException"):
-                contact = None
+                get_response = {"emailContact": None}
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to get AWS Notifications contact {contact_arn}",
                 )
 
+            if not isinstance(get_response, dict) or "emailContact" not in get_response:
+                module.fail_json(
+                    msg=f"Unable to get AWS Notifications contact {contact_arn}: AWS returned an invalid response"
+                )
+            contact = get_response.get("emailContact")
+
             if contact is None:
                 contact = dict(desired_contact, arn=contact_arn)
-            if tags is not None:
-                contact["tags"] = tags
+            else:
+                validate_contact(module, contact, f"Unable to get AWS Notifications contact {contact_arn}")
+            if desired_tags is not None:
+                contact["tags"] = desired_tags
         else:
             contact_arn = contact["arn"]
             if tag_keys_to_unset:
@@ -313,8 +384,8 @@ def ensure_present(client, module):
     elif changed and module.check_mode:
         if resource_changed:
             contact = dict(desired_contact)
-            if tags is not None:
-                contact["tags"] = tags
+            if desired_tags is not None:
+                contact["tags"] = desired_tags
         else:
             contact = apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset)
 
@@ -338,7 +409,7 @@ def main():
                 "default": "present",
                 "type": "str",
             },
-            "tags": {"type": "dict"},
+            "tags": {"aliases": ["resource_tags"], "type": "dict"},
         },
         required_if=[("state", "present", ["name"])],
         supports_check_mode=True,

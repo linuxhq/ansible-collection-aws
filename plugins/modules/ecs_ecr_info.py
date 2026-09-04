@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: ecs_ecr_info
-short_description: Gather information about aws elastic container registry repositories
+version_added: "1.9.0"
+short_description: Gather information about AWS Elastic Container Registry repositories
 description:
   - Gather information about AWS Elastic Container Registry repositories.
 author:
@@ -26,6 +27,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module only gathers information and does not modify AWS.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -67,6 +75,22 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
+def validate_repositories(module, response):
+    repositories = response.get("repositories") if isinstance(response, dict) else None
+    if not isinstance(repositories, list):
+        module.fail_json(msg="ECR returned invalid repositories")
+    for repository in repositories:
+        if (
+            not isinstance(repository, dict)
+            or not isinstance(repository.get("repositoryArn"), str)
+            or not repository["repositoryArn"]
+            or not isinstance(repository.get("repositoryName"), str)
+            or not repository["repositoryName"]
+        ):
+            module.fail_json(msg="ECR returned invalid repositories")
+    return repositories
+
+
 def main():
     argument_spec = {
         "registry_id": {"type": "str"},
@@ -96,15 +120,17 @@ def main():
     )
 
     try:
-        repositories = paginated_query_with_retries(
+        response = paginated_query_with_retries(
             client,
             "describe_repositories",
             **request,
-        ).get("repositories", [])
+        )
     except is_boto3_error_code("RepositoryNotFoundException"):
         repositories = []
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg="Unable to describe AWS ECR repositories")
+    else:
+        repositories = validate_repositories(module, response)
 
     module.exit_json(
         changed=False,

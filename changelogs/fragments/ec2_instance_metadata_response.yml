@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ec2_instance_metadata and ec2_instance_metadata_info - fail clearly instead
+    of treating a malformed EC2 account-level metadata-default response as
+    empty defaults.

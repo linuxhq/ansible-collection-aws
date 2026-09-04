@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - >-
+    acm_certificate_request - list all ACM certificate key types so existing EC
+    and RSA 3072/4096 certificates can be reused, validate AWS responses, and
+    recheck described certificate status to avoid raw failures, duplicate
+    requests, or returning a certificate that is no longer pending validation
+    or issued.
+minor_changes:
+  - acm_certificate_request - add resource_tags as an alias for tags.

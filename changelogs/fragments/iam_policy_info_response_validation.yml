@@ -1,0 +1,3 @@
+---
+bugfixes:
+  - iam_policy_info - validate IAM entity, inline policy, and policy document responses before returning them.

@@ -79,6 +79,7 @@ class Ec2FlowLogTests(TestCase):
             60,
             600,
         ]
+        assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
 
     def test_resource_ids_are_deduplicated_in_order(self):
         module = SimpleNamespace(params={"resource_ids": ["vpc-2", "vpc-1", "vpc-2"]})
@@ -119,6 +120,26 @@ class Ec2FlowLogTests(TestCase):
             ),
             [flow_logs[0]],
         )
+
+    def test_flow_log_matching_rejects_missing_flow_log_id(self):
+        module = FakeModule({"resource_ids": ["vpc-1"]})
+
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.matching_flow_logs(
+                module,
+                [{"LogDestinationType": "cloud-watch-logs", "ResourceId": "vpc-1"}],
+                {"log_destination_type": "cloud-watch-logs"},
+            )
+
+        self.assertIn("without a flow log ID", raised.exception.values["msg"])
+
+    def test_flow_log_matching_rejects_invalid_flow_log(self):
+        module = FakeModule({"resource_ids": ["vpc-1"]})
+
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.matching_flow_logs(module, [None], {})
+
+        self.assertIn("invalid EC2 flow log", raised.exception.values["msg"])
 
     def test_identical_tag_changes_are_batched_across_flow_logs(self):
         client = Mock()
@@ -227,6 +248,58 @@ class Ec2FlowLogTests(TestCase):
             raised.exception.values["unsuccessful"][0]["error"]["code"],
             "LimitExceeded",
         )
+
+    def test_create_rejects_invalid_flow_log_ids(self):
+        client = Mock()
+        client.create_flow_logs.return_value = {"FlowLogIds": [7], "Unsuccessful": []}
+        params = dict.fromkeys(plugin.PRESENT_MATCH_FIELDS)
+        params.update(
+            {
+                "destination_options": None,
+                "log_destination_type": None,
+                "purge_tags": True,
+                "resource_ids": ["vpc-1"],
+                "resource_type": "VPC",
+                "state": "present",
+                "tags": None,
+                "traffic_type": None,
+            }
+        )
+        with (
+            patch.object(plugin, "get_flow_logs", return_value=[]),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.ensure_present(client, FakeModule(params))
+
+        self.assertIn("valid created EC2 flow log IDs", raised.exception.values["msg"])
+        client.describe_flow_logs.assert_not_called()
+
+    def test_create_rejects_invalid_described_flow_log(self):
+        client = Mock()
+        client.create_flow_logs.return_value = {"FlowLogIds": ["fl-1"], "Unsuccessful": []}
+        params = dict.fromkeys(plugin.PRESENT_MATCH_FIELDS)
+        params.update(
+            {
+                "destination_options": None,
+                "log_destination_type": None,
+                "purge_tags": True,
+                "resource_ids": ["vpc-1"],
+                "resource_type": "VPC",
+                "state": "present",
+                "tags": None,
+                "traffic_type": None,
+            }
+        )
+        with (
+            patch.object(plugin, "get_flow_logs", return_value=[]),
+            patch.object(plugin, "query_list", return_value=[None]),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.ensure_present(client, FakeModule(params))
+
+        self.assertIn("invalid created EC2 flow log", raised.exception.values["msg"])
 
     def test_create_result_keeps_ids_missing_from_eventually_consistent_describe(self):
         client = Mock()

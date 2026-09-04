@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: iam_policy_info
-short_description: Gather information about aws iam inline policies
+short_description: Gather information about AWS IAM inline policies
+version_added: "1.9.0"
 description:
   - Gathers information about AWS IAM inline policies for users and groups.
 author:
@@ -22,6 +23,7 @@ options:
       - IAM path prefix used when listing users and groups.
       - Not used for users when O(user_name) is provided, or for groups
         when O(group_name) is provided.
+      - Must begin and end with C(/) and contain at most 512 characters.
     type: str
   policy_name:
     description:
@@ -39,6 +41,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module does not modify state.
+    support: full
+  diff_mode:
+    description: This module does not modify state.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -69,6 +78,35 @@ group_policies:
   returned: always
   type: list
   elements: dict
+  contains:
+    all_policy_names:
+      description: All inline policy names attached to the group.
+      returned: always
+      type: list
+      elements: str
+    name:
+      description: The IAM group name.
+      returned: always
+      type: str
+    policies:
+      description: The selected inline policy documents.
+      returned: always
+      type: list
+      elements: dict
+      contains:
+        policy_document:
+          description: The IAM policy document.
+          returned: always
+          type: dict
+        policy_name:
+          description: The inline policy name.
+          returned: always
+          type: str
+    policy_names:
+      description: Inline policy names selected by O(policy_name).
+      returned: always
+      type: list
+      elements: str
 user_policies:
   description:
     - The IAM user inline policy information.
@@ -78,6 +116,35 @@ user_policies:
   returned: always
   type: list
   elements: dict
+  contains:
+    all_policy_names:
+      description: All inline policy names attached to the user.
+      returned: always
+      type: list
+      elements: str
+    name:
+      description: The IAM user name.
+      returned: always
+      type: str
+    policies:
+      description: The selected inline policy documents.
+      returned: always
+      type: list
+      elements: dict
+      contains:
+        policy_document:
+          description: The IAM policy document.
+          returned: always
+          type: dict
+        policy_name:
+          description: The inline policy name.
+          returned: always
+          type: str
+    policy_names:
+      description: Inline policy names selected by O(policy_name).
+      returned: always
+      type: list
+      elements: str
 """
 
 try:
@@ -96,6 +163,30 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+
+
+def validate_policy_names(module, response, entity_type, name):
+    valid = (
+        isinstance(response, dict)
+        and isinstance(response.get("PolicyNames"), list)
+        and all(isinstance(policy_name, str) for policy_name in response["PolicyNames"])
+    )
+    if not valid:
+        module.fail_json(
+            msg=(f"Unable to list AWS IAM {entity_type.lower()} policies for {name}: AWS returned an invalid response")
+        )
+    return response["PolicyNames"]
+
+
+def validate_policy_document(module, response, entity_type, name, policy_name):
+    if not isinstance(response, dict) or not isinstance(response.get("PolicyDocument"), dict):
+        module.fail_json(
+            msg=(
+                f"Unable to get AWS IAM {entity_type.lower()} policy {policy_name} "
+                f"for {name}: AWS returned an invalid response"
+            )
+        )
+    return response["PolicyDocument"]
 
 
 def build_entity_policies(client, module, entity_type, names):
@@ -119,11 +210,11 @@ def build_entity_policies(client, module, entity_type, names):
 
     for name in names:
         try:
-            all_policy_names = paginated_query_with_retries(
+            response = paginated_query_with_retries(
                 client,
                 list_operation,
                 **{f"{entity_type}Name": name},
-            ).get("PolicyNames", [])
+            )
         except is_boto3_error_code("NoSuchEntity"):
             continue
         except (BotoCoreError, ClientError) as e:
@@ -131,6 +222,7 @@ def build_entity_policies(client, module, entity_type, names):
                 e,
                 msg=f"Unable to list AWS IAM {entity_type.lower()} policies for {name}",
             )
+        all_policy_names = validate_policy_names(module, response, entity_type, name)
 
         policy_names = all_policy_names
         if desired_policy_name:
@@ -147,10 +239,10 @@ def build_entity_policies(client, module, entity_type, names):
             get_policy = getattr(client, get_operation)
         for policy_name in policy_names:
             try:
-                policy_document = get_policy(
+                response = get_policy(
                     **{f"{entity_type}Name": name, "PolicyName": policy_name},
                     aws_retry=True,
-                ).get("PolicyDocument")
+                )
             except is_boto3_error_code("NoSuchEntity"):
                 continue
             except (BotoCoreError, ClientError) as e:
@@ -158,6 +250,7 @@ def build_entity_policies(client, module, entity_type, names):
                     e,
                     msg=(f"Unable to get AWS IAM {entity_type.lower()} policy " f"{policy_name} for {name}"),
                 )
+            policy_document = validate_policy_document(module, response, entity_type, name, policy_name)
 
             policies.append(
                 {
@@ -205,14 +298,12 @@ def entity_names(client, module, entity_type):
         **request,
     )
 
-    names = []
-    for entity in entities:
-        name = entity.get(name_key)
-
-        if name:
-            names.append(name)
-
-    return names
+    valid = isinstance(entities, list) and all(
+        isinstance(entity, dict) and isinstance(entity.get(name_key), str) and entity[name_key] for entity in entities
+    )
+    if not valid:
+        module.fail_json(msg=f"Unable to list AWS IAM {entity_type.lower()}s: AWS returned an invalid response")
+    return [entity[name_key] for entity in entities]
 
 
 def main():
@@ -227,6 +318,9 @@ def main():
         argument_spec=argument_spec,
         supports_check_mode=True,
     )
+    path_prefix = module.params["path_prefix"]
+    if path_prefix and (not path_prefix.startswith("/") or not path_prefix.endswith("/") or len(path_prefix) > 512):
+        module.fail_json(msg="path_prefix must begin and end with / and contain at most 512 characters")
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
 
     group_names = entity_names(client, module, "Group")

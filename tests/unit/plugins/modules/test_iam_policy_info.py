@@ -6,6 +6,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import iam_policy_info as p
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
@@ -84,6 +85,69 @@ class IamPolicyInfoTests(TestCase):
         self.assertEqual(result[0]["all_policy_names"], ["ignored", "selected"])
         self.assertEqual(result[0]["policy_names"], ["selected"])
         client.get_user_policy.assert_called_once_with(UserName="alice", PolicyName="selected", aws_retry=True)
+
+    def test_entity_names_rejects_invalid_response(self):
+        module = FakeModule({"group_name": None, "path_prefix": None, "user_name": None})
+        with (
+            patch.object(plugin, "query_list", return_value=[{}]),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.entity_names(Mock(), module, "User")
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unable to list AWS IAM users: AWS returned an invalid response",
+        )
+
+    def test_policy_names_reject_invalid_response(self):
+        module = FakeModule({"policy_name": None})
+        with (
+            patch.object(plugin, "paginated_query_with_retries", return_value={}),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.build_entity_policies(Mock(), module, "User", ["alice"])
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unable to list AWS IAM user policies for alice: AWS returned an invalid response",
+        )
+
+    def test_policy_document_rejects_invalid_response(self):
+        client = Mock(get_user_policy=Mock(return_value={}))
+        module = FakeModule({"policy_name": None})
+        with (
+            patch.object(plugin, "paginated_query_with_retries", return_value={"PolicyNames": ["main"]}),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.build_entity_policies(client, module, "User", ["alice"])
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unable to get AWS IAM user policy main for alice: AWS returned an invalid response",
+        )
+
+    def test_invalid_path_prefix_is_rejected_before_api_calls(self):
+        module = FakeModule(
+            {
+                "group_name": None,
+                "path_prefix": "service",
+                "policy_name": None,
+                "user_name": None,
+            }
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "path_prefix must begin and end with / and contain at most 512 characters",
+        )
 
     def test_empty_entity_names_require_no_policy_operations(self):
         module = SimpleNamespace(params={"policy_name": None})

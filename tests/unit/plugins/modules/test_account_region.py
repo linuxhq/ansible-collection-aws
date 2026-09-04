@@ -38,6 +38,21 @@ class AccountRegionTests(TestCase):
         options = assert_module_contract(self, plugin)
         assert options["argument_spec"]["wait_timeout"]["default"] == 1800
 
+    def test_get_region_opt_status_rejects_missing_status(self):
+        module = FakeModule({"name": "af-south-1"})
+        client = Mock()
+        client.get_region_opt_status.return_value = {}
+
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.get_region_opt_status(client, module)
+
+        client.get_region_opt_status.assert_called_once_with(
+            RegionName="af-south-1",
+            aws_retry=True,
+        )
+        self.assertIn("af-south-1", raised.exception.values["msg"])
+        self.assertIn("unexpected status None", raised.exception.values["msg"])
+
     def test_check_mode_predicts_region_enablement(self):
         module = FakeModule({"name": "af-south-1", "wait": True}, check_mode=True)
         client = Mock()

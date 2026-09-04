@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import ec2_vpc_prefix_list 
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -112,7 +113,21 @@ class Ec2VpcPrefixListTests(TestCase):
         )
 
     def test_create_without_wait_returns_the_create_response(self):
-        client = Mock(create_managed_prefix_list=Mock(return_value={"PrefixList": {"PrefixListId": "pl-new"}}))
+        client = Mock(
+            create_managed_prefix_list=Mock(
+                return_value={
+                    "PrefixList": {
+                        "AddressFamily": "IPv4",
+                        "MaxEntries": 1,
+                        "OwnerId": "123456789012",
+                        "PrefixListId": "pl-new",
+                        "PrefixListName": "main",
+                        "State": "create-in-progress",
+                        "Version": 1,
+                    }
+                }
+            )
+        )
         module = FakeModule({"name": "main", "tags": None, "wait": False})
         entries = [{"cidr": "192.0.2.0/24"}]
         with (
@@ -143,8 +158,40 @@ class Ec2VpcPrefixListTests(TestCase):
                 )
             },
         )
-        self.assertEqual(result, ({"PrefixListId": "pl-new"}, entries))
+        self.assertEqual(
+            result,
+            (
+                {
+                    "AddressFamily": "IPv4",
+                    "MaxEntries": 1,
+                    "OwnerId": "123456789012",
+                    "PrefixListId": "pl-new",
+                    "PrefixListName": "main",
+                    "State": "create-in-progress",
+                    "Version": 1,
+                },
+                entries,
+            ),
+        )
         get_current.assert_not_called()
+
+    def test_create_rejects_malformed_response(self):
+        client = Mock(create_managed_prefix_list=Mock(return_value={"PrefixList": None}))
+        module = FakeModule({"name": "main", "tags": None, "wait": False})
+        with (
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail),
+        ):
+            plugin.create_prefix_list(
+                client,
+                module,
+                {
+                    "address_family": "IPv4",
+                    "max_entries": 1,
+                    "prefix_list_name": "main",
+                },
+                [{"cidr": "192.0.2.0/24"}],
+            )
 
     def test_additive_check_mode_preserves_unmanaged_tags(self):
         current = {
@@ -383,18 +430,26 @@ class Ec2VpcPrefixListTests(TestCase):
     def test_lookup_ignores_delete_complete_tombstones(self):
         module = FakeModule({"name": "main"})
         active = {
+            "AddressFamily": "IPv4",
+            "MaxEntries": 1,
             "OwnerId": "123456789012",
             "PrefixListId": "pl-new",
+            "PrefixListName": "main",
             "State": "create-complete",
+            "Version": 1,
         }
         with patch.object(
             plugin,
             "query_list",
             return_value=[
                 {
+                    "AddressFamily": "IPv4",
+                    "MaxEntries": 1,
                     "OwnerId": "123456789012",
                     "PrefixListId": "pl-old",
+                    "PrefixListName": "main",
                     "State": "delete-complete",
+                    "Version": 1,
                 },
                 active,
             ],
@@ -403,3 +458,25 @@ class Ec2VpcPrefixListTests(TestCase):
                 plugin.get_customer_managed_prefix_list_by_name(Mock(), module),
                 active,
             )
+
+    def test_lookup_rejects_malformed_response(self):
+        module = FakeModule({"name": "main"})
+        with (
+            patch.object(plugin, "query_list", return_value=[None]),
+            self.assertRaises(ModuleFail),
+        ):
+            plugin.get_customer_managed_prefix_list_by_name(Mock(), module)
+
+    def test_entries_reject_malformed_response(self):
+        module = FakeModule({"name": "main"})
+        with (
+            patch.object(
+                plugin,
+                "get_customer_managed_prefix_list_by_name",
+                return_value={"PrefixListId": "pl-1", "State": "create-complete"},
+            ),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[None]),
+            self.assertRaises(ModuleFail),
+        ):
+            plugin.get_current(Mock(), module)

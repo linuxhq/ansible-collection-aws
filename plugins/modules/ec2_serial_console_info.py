@@ -5,15 +5,25 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_serial_console_info
-short_description: Gather information about aws ec2 serial console access
+version_added: "1.9.0"
+short_description: Gather information about AWS EC2 serial console access
 description:
   - Gathers EC2 serial console access status for a region.
 author:
   - Taylor Kimball (@tkimball83)
+requirements:
+  - botocore >= 1.20.41
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module only retrieves information and does not modify AWS.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -32,6 +42,11 @@ serial_console_access:
     - The current EC2 serial console access status for the selected region.
   returned: always
   type: dict
+  contains:
+    serial_console_access_enabled:
+      description: Whether EC2 serial console access is enabled.
+      returned: always
+      type: bool
 """
 
 try:
@@ -41,10 +56,10 @@ except ImportError:
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
-)
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.ec2_serial_console import (
+    normalized_serial_console_access,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
@@ -69,16 +84,10 @@ def main():
             msg=f"Unable to get EC2 serial console access in region {module.region}",
         )
 
-    serial_console_access.pop("ResponseMetadata", None)
-
     module.exit_json(
         changed=False,
         region=module.region,
-        serial_console_access=boto3_resource_to_ansible_dict(
-            serial_console_access,
-            transform_tags=False,
-            force_tags=False,
-        ),
+        serial_console_access=normalized_serial_console_access(module, serial_console_access),
     )
 
 

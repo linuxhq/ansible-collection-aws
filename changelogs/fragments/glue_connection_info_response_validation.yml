@@ -1,0 +1,3 @@
+---
+bugfixes:
+  - glue_connection_info - validate AWS responses before transforming connection data.

@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - iam_oidc_provider and iam_oidc_provider_info - fail cleanly when AWS returns a malformed provider response.
+  - iam_oidc_provider - add replacement client IDs before removing obsolete IDs.
+minor_changes:
+  - iam_oidc_provider - accept ``resource_tags`` as an alias for ``tags``.

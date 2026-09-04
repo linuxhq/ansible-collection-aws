@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import iam_account_alias_in
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
@@ -29,3 +30,18 @@ class IamAccountAliasInfoTests(TestCase):
             ("Marker", "MaxItems"),
         )
         self.assertEqual(raised.exception.values["account_aliases"], ["main"])
+
+    def test_rejects_invalid_aliases(self):
+        module = FakeModule({}, client=Mock())
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[None]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unable to list AWS IAM account aliases: AWS returned an invalid response",
+        )

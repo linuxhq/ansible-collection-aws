@@ -6,6 +6,10 @@ from unittest.mock import Mock
 from ansible_collections.linuxhq.aws.plugins.module_utils.ec2_metadata import (
     get_instance_metadata_defaults,
 )
+from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
+    FakeModule,
+    ModuleFail,
+)
 
 
 class Ec2MetadataTests(TestCase):
@@ -26,3 +30,11 @@ class Ec2MetadataTests(TestCase):
             {"http_endpoint": "enabled", "http_tokens": "required"},
         )
         client.get_instance_metadata_defaults.assert_called_once_with(aws_retry=True)
+
+    def test_rejects_missing_account_level(self):
+        client = Mock(get_instance_metadata_defaults=Mock(return_value={}))
+
+        with self.assertRaises(ModuleFail) as raised:
+            get_instance_metadata_defaults(client, FakeModule({}, region="us-east-1"))
+
+        self.assertIn("invalid instance metadata defaults", raised.exception.values["msg"])

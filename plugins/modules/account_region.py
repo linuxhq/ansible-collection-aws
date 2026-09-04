@@ -5,12 +5,16 @@
 DOCUMENTATION = r"""
 ---
 module: account_region
-short_description: Manage opt-in status of aws account regions
+version_added: "1.9.0"
+short_description: Manage opt-in status of AWS account regions
 description:
   - Enables or disables the opt-in status of an AWS account region.
   - Compares the desired state against the current region opt-in status fetched by name.
+  - Before requesting a change, fails if AWS returns an unrecognized region opt-in status.
 author:
   - Taylor Kimball (@tkimball83)
+requirements:
+  - botocore >= 1.29.70
 options:
   name:
     description:
@@ -49,6 +53,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: Returns the predicted changed status without modifying the account region.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -96,6 +107,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
 
 PRESENT_STATUSES = {"ENABLED", "ENABLING", "ENABLED_BY_DEFAULT"}
 ABSENT_STATUSES = {"DISABLED", "DISABLING"}
+REGION_OPT_STATUSES = PRESENT_STATUSES | ABSENT_STATUSES
 PRESENT_STEADY_STATUSES = {"ENABLED", "ENABLED_BY_DEFAULT"}
 ABSENT_STEADY_STATUSES = {"DISABLED"}
 
@@ -182,15 +194,26 @@ def get_region_opt_status(client, module):
     region_name = module.params["name"]
 
     try:
-        return client.get_region_opt_status(
+        response = client.get_region_opt_status(
             RegionName=region_name,
             aws_retry=True,
-        ).get("RegionOptStatus")
+        )
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to get AWS account region opt-in status for {region_name}",
         )
+
+    region_status = response.get("RegionOptStatus")
+    if region_status not in REGION_OPT_STATUSES:
+        module.fail_json(
+            msg=(
+                f"Unable to get AWS account region opt-in status for {region_name}: "
+                f"unexpected status {region_status!r}"
+            ),
+        )
+
+    return region_status
 
 
 def wait_for_status(client, module, waiter_name, statuses):

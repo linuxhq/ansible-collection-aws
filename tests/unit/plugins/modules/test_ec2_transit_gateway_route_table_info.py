@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import ec2_transit_gateway_
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
@@ -44,8 +45,8 @@ class Ec2TransitGatewayRouteTableInfoTests(TestCase):
                         }
                     ],
                     [
-                        {"DestinationCidrBlock": "10.0.0.0/8"},
-                        {"DestinationCidrBlock": "192.0.2.0/24"},
+                        {"DestinationCidrBlock": "10.0.0.0/8", "State": "active", "Type": "static"},
+                        {"DestinationCidrBlock": "192.0.2.0/24", "State": "active", "Type": "static"},
                     ],
                 ],
             ) as query,
@@ -87,3 +88,36 @@ class Ec2TransitGatewayRouteTableInfoTests(TestCase):
 
         self.assertEqual(require.call_count, 1)
         self.assertNotIn("search_transit_gateway_routes", require.call_args.args[3])
+
+    def test_rejects_malformed_route_table_response(self):
+        module = FakeModule(
+            {"filters": None, "transit_gateway_route_table_ids": None},
+            client=Mock(),
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[None]),
+            self.assertRaises(ModuleFail),
+        ):
+            plugin.main()
+
+    def test_rejects_malformed_route_response(self):
+        module = FakeModule(
+            {"filters": None, "transit_gateway_route_table_ids": None},
+            client=Mock(),
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(
+                plugin,
+                "query_list",
+                side_effect=[
+                    [{"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}],
+                    [None],
+                ],
+            ),
+            self.assertRaises(ModuleFail),
+        ):
+            plugin.main()

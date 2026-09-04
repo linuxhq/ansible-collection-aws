@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_instance_type_info
-short_description: Gather information about aws instance types
+version_added: "1.9.0"
+short_description: Gather information about AWS EC2 instance types
 description:
   - Gathers information about EC2 instance types.
   - This module maps to the EC2 C(DescribeInstanceTypes) API, the API behind
@@ -29,6 +30,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module only retrieves information and does not modify AWS.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -118,6 +126,9 @@ def main():
         "Unable to describe EC2 instance types",
         **request,
     )
+
+    if any(not isinstance(instance_type, dict) for instance_type in instance_types):
+        module.fail_json(msg="EC2 returned invalid instance type information")
 
     module.exit_json(
         changed=False,

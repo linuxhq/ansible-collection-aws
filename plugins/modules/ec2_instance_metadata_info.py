@@ -5,15 +5,25 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_instance_metadata_info
-short_description: Gather information about aws ec2 instance metadata defaults
+version_added: "1.9.0"
+short_description: Gather information about AWS EC2 instance metadata defaults
 description:
   - Gathers EC2 account-level instance metadata defaults for a region.
 author:
   - Taylor Kimball (@tkimball83)
+requirements:
+  - botocore >= 1.34.70
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module only retrieves information and does not modify AWS.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""

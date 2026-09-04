@@ -17,20 +17,44 @@ class IamOidcTests(TestCase):
             ("HTTPS://example.com/id/", "example.com/id"),
             ("https://Example.COM/CaseSensitivePath/", "example.com/CaseSensitivePath"),
             ("example.com/id///", "example.com/id"),
+            ("https://", ""),
         ):
             with self.subTest(value=value):
                 self.assertEqual(normalize_provider_url(value), expected)
 
     def test_provider_includes_arn_without_response_metadata(self):
-        client = Mock(get_open_id_connect_provider=Mock(return_value={"Url": "example.com/id", "ResponseMetadata": {}}))
+        client = Mock(
+            get_open_id_connect_provider=Mock(
+                return_value={
+                    "ClientIDList": [],
+                    "ThumbprintList": [],
+                    "Url": "example.com/id",
+                    "ResponseMetadata": {},
+                }
+            )
+        )
 
         self.assertEqual(
             get_provider_by_arn(client, Mock(), "arn:provider"),
             {
                 "OpenIDConnectProviderArn": "arn:provider",
+                "ClientIDList": [],
+                "ThumbprintList": [],
                 "Url": "example.com/id",
             },
         )
         client.get_open_id_connect_provider.assert_called_once_with(
             OpenIDConnectProviderArn="arn:provider", aws_retry=True
+        )
+
+    def test_provider_rejects_invalid_response(self):
+        client = Mock(get_open_id_connect_provider=Mock(return_value={}))
+        module = Mock()
+        module.fail_json.side_effect = SystemExit
+
+        with self.assertRaises(SystemExit):
+            get_provider_by_arn(client, module, "arn:provider")
+
+        module.fail_json.assert_called_once_with(
+            msg="Unable to get AWS IAM OIDC provider arn:provider: AWS returned an invalid response"
         )

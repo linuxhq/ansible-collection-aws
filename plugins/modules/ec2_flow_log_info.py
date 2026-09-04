@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_flow_log_info
-short_description: Gather information about aws ec2 flow logs
+version_added: "1.9.0"
+short_description: Gather information about AWS EC2 flow logs
 description:
   - Gathers information about EC2 flow logs.
 author:
@@ -25,12 +26,20 @@ options:
     description:
       - Resource IDs used to limit the result set.
       - This is added as a C(resource-id) EC2 flow log filter.
+      - This overrides a C(resource-id) entry in O(filters).
     elements: str
     type: list
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module does not modify AWS resources.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -116,6 +125,8 @@ def main():
         "Unable to describe EC2 flow logs",
         **request,
     )
+    if any(not isinstance(flow_log, dict) for flow_log in flow_logs):
+        module.fail_json(msg="AWS returned an invalid EC2 flow log")
 
     module.exit_json(
         changed=False,

@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: notifications_contacts_info
-short_description: Gather information about aws notifications contacts
+short_description: Gather information about AWS Notifications contacts
 description:
   - Gathers information about AWS Notifications email contacts.
 author:
@@ -20,6 +20,10 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: The module only retrieves information from AWS.
+    support: full
 """
 
 EXAMPLES = r"""
@@ -35,10 +39,38 @@ RETURN = r"""
 email_contacts:
   description:
     - The notifications contacts.
-    - C(tags) is returned as provided by the AWS Notifications API.
   returned: always
   type: list
   elements: dict
+  contains:
+    address:
+      description: The contact email address.
+      returned: always
+      type: str
+    arn:
+      description: The contact ARN.
+      returned: always
+      type: str
+    creation_time:
+      description: The date and time when the contact was created.
+      returned: always
+      type: str
+    name:
+      description: The contact name.
+      returned: always
+      type: str
+    status:
+      description: The contact activation status.
+      returned: always
+      type: str
+    tags:
+      description: The contact tags.
+      returned: always
+      type: dict
+    update_time:
+      description: The date and time when the contact was last updated.
+      returned: always
+      type: str
 """
 
 try:
@@ -61,6 +93,18 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
+def validate_contact(module, contact, operation):
+    valid_strings = ("address", "arn", "name", "status")
+    if (
+        not isinstance(contact, dict)
+        or not all(isinstance(contact.get(key), str) and contact[key] for key in valid_strings)
+        or contact.get("creationTime") is None
+        or contact.get("updateTime") is None
+    ):
+        module.fail_json(msg=f"{operation}: AWS returned an invalid contact")
+    return contact
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -81,14 +125,20 @@ def main():
 
     if arn:
         try:
-            contact = client.get_email_contact(arn=arn, aws_retry=True).get("emailContact")
+            response = client.get_email_contact(arn=arn, aws_retry=True)
         except is_boto3_error_code("ResourceNotFoundException"):
-            contact = None
+            response = {"emailContact": None}
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to get AWS Notifications contact {arn}",
             )
+
+        if not isinstance(response, dict) or "emailContact" not in response:
+            module.fail_json(msg=f"Unable to get AWS Notifications contact {arn}: AWS returned an invalid response")
+        contact = response.get("emailContact")
+        if contact is not None:
+            validate_contact(module, contact, f"Unable to get AWS Notifications contact {arn}")
 
         email_contacts = [contact] if contact is not None else []
     else:
@@ -100,7 +150,12 @@ def main():
             "Unable to list AWS Notifications contacts",
         )
 
-    if any(contact.get("arn") for contact in email_contacts):
+    if not isinstance(email_contacts, list):
+        module.fail_json(msg="Unable to list AWS Notifications contacts: AWS returned an invalid response")
+    for contact in email_contacts:
+        validate_contact(module, contact, "Unable to list AWS Notifications contacts")
+
+    if email_contacts:
         require_client_methods(
             module,
             client,
@@ -110,17 +165,13 @@ def main():
 
     email_contacts_with_tags = []
     for contact in email_contacts:
-        if not contact.get("arn"):
-            email_contacts_with_tags.append(contact)
-            continue
-
         contact = dict(contact)
 
         try:
-            contact["tags"] = client.list_tags_for_resource(
+            tag_response = client.list_tags_for_resource(
                 arn=contact["arn"],
                 aws_retry=True,
-            ).get("tags", {})
+            )
         except is_boto3_error_code("ResourceNotFoundException"):
             continue
         except (BotoCoreError, ClientError) as e:
@@ -128,6 +179,21 @@ def main():
                 e,
                 msg=f"Unable to list tags for AWS Notifications contact {contact['arn']}",
             )
+
+        if (
+            not isinstance(tag_response, dict)
+            or not isinstance(tag_response.get("tags", {}), dict)
+            or not all(
+                isinstance(tag_key, str) and isinstance(tag_value, str)
+                for tag_key, tag_value in tag_response.get("tags", {}).items()
+            )
+        ):
+            module.fail_json(
+                msg=(
+                    f"Unable to list tags for AWS Notifications contact {contact['arn']}: AWS returned an invalid response"
+                )
+            )
+        contact["tags"] = tag_response.get("tags", {})
 
         email_contacts_with_tags.append(contact)
 

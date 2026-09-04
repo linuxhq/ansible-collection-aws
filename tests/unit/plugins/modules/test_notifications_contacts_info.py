@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import notifications_contac
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
@@ -16,7 +17,18 @@ class NotificationsContactsInfoTests(TestCase):
 
     def test_arn_uses_get_and_loads_tags(self):
         client = Mock(
-            get_email_contact=Mock(return_value={"emailContact": {"arn": "arn:contact", "address": "a@example.com"}}),
+            get_email_contact=Mock(
+                return_value={
+                    "emailContact": {
+                        "arn": "arn:contact",
+                        "address": "a@example.com",
+                        "creationTime": "2026-01-01T00:00:00Z",
+                        "name": "Operations",
+                        "status": "active",
+                        "updateTime": "2026-01-01T00:00:00Z",
+                    }
+                }
+            ),
             list_tags_for_resource=Mock(return_value={"tags": {"Env": "test"}}),
         )
         module = FakeModule({"arn": "arn:contact"}, client=client)
@@ -50,4 +62,59 @@ class NotificationsContactsInfoTests(TestCase):
             client,
             "NotificationsContacts",
             {"list_email_contacts": ("maxResults", "nextToken")},
+        )
+
+    def test_get_rejects_missing_contact_key(self):
+        client = Mock(get_email_contact=Mock(return_value={}))
+        module = FakeModule({"arn": "arn:contact"}, client=client)
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unable to get AWS Notifications contact arn:contact: AWS returned an invalid response",
+        )
+
+    def test_list_rejects_invalid_contact(self):
+        client = Mock()
+        module = FakeModule({"arn": None}, client=client)
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "query_list", return_value=[{"arn": "arn:contact"}]),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unable to list AWS Notifications contacts: AWS returned an invalid contact",
+        )
+
+    def test_list_rejects_invalid_tag_response(self):
+        client = Mock(list_tags_for_resource=Mock(return_value={"tags": []}))
+        module = FakeModule({"arn": None}, client=client)
+        contact = {
+            "address": "a@example.com",
+            "arn": "arn:contact",
+            "creationTime": "2026-01-01T00:00:00Z",
+            "name": "Operations",
+            "status": "active",
+            "updateTime": "2026-01-01T00:00:00Z",
+        }
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "query_list", return_value=[contact]),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unable to list tags for AWS Notifications contact arn:contact: AWS returned an invalid response",
         )

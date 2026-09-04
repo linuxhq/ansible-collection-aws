@@ -11,6 +11,19 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 
 
 class IamAccountAliasTests(TestCase):
+    def test_list_account_aliases_rejects_invalid_response(self):
+        module = FakeModule({})
+        with (
+            patch.object(plugin, "paginated_query_with_retries", return_value={}),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.list_account_aliases(Mock(), module)
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unable to list AWS IAM account aliases: AWS returned an invalid response",
+        )
+
     def test_delete_tolerates_alias_disappearing(self):
         client = Mock()
         client.delete_account_alias.side_effect = plugin.ClientError(

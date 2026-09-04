@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import ec2_flow_log_info as
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
@@ -35,3 +36,22 @@ class Ec2FlowLogInfoTests(TestCase):
             {"describe_flow_logs": ("FlowLogIds", "MaxResults", "NextToken")},
         )
         self.assertEqual(query.call_args.kwargs["FlowLogIds"], ["fl-1"])
+
+    def test_rejects_invalid_flow_log_response(self):
+        module = FakeModule(
+            {
+                "filters": None,
+                "flow_log_ids": None,
+                "resource_ids": None,
+            },
+            client=Mock(),
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[None]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertIn("invalid EC2 flow log", raised.exception.values["msg"])

@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: iam_oidc_provider
-short_description: Manage aws iam oidc providers
+short_description: Manage AWS IAM OIDC providers
+version_added: "1.9.0"
 description:
   - Manages AWS IAM OpenID Connect (OIDC) identity providers.
   - Supports creating and deleting providers, and updating client IDs, thumbprints, and tags.
@@ -20,12 +21,6 @@ options:
       - This is required when O(state=present).
     elements: str
     type: list
-  purge_tags:
-    description:
-      - Whether tags not listed in O(tags) should be removed.
-      - This option is only used when O(tags) is provided.
-    default: true
-    type: bool
   state:
     description:
       - Whether the IAM OIDC provider should exist.
@@ -34,11 +29,6 @@ options:
       - present
     default: present
     type: str
-  tags:
-    description:
-      - Tags to apply to the OIDC provider.
-      - This must contain at most 50 entries; keys must contain 1 to 128 characters and values at most 256 characters.
-    type: dict
   thumbprint_list:
     description:
       - The certificate thumbprints to register with the OIDC provider.
@@ -51,6 +41,7 @@ options:
     description:
       - The OIDC provider URL.
       - The URL must begin with C(https://) when O(state=present).
+      - The URL must be at most 255 characters and identify a host.
       - Matching against an existing provider ignores the C(https://) prefix
         and any trailing slash, and compares the host case-insensitively.
     required: true
@@ -59,6 +50,14 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+  - amazon.aws.tags
+attributes:
+  check_mode:
+    description: The module predicts OIDC provider changes without applying them.
+    support: full
+  diff_mode:
+    description: The module does not return diff data.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -84,6 +83,29 @@ open_id_connect_provider:
     - The current IAM OIDC provider after module execution.
   returned: when state is present
   type: dict
+  contains:
+    client_id_list:
+      description: The client IDs registered with the provider.
+      returned: always
+      type: list
+      elements: str
+    open_id_connect_provider_arn:
+      description: The provider ARN.
+      returned: always
+      type: str
+    tags:
+      description: Tags applied to the provider.
+      returned: when available
+      type: dict
+    thumbprint_list:
+      description: The certificate thumbprints registered with the provider.
+      returned: always
+      type: list
+      elements: str
+    url:
+      description: The normalized provider URL.
+      returned: always
+      type: str
 open_id_connect_provider_arn:
   description:
     - The IAM OIDC provider ARN.
@@ -125,6 +147,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
     get_provider_by_arn,
     normalize_provider_url,
+    validate_provider_summaries,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
@@ -139,19 +162,19 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 def get_provider_by_url(client, module):
     desired_url = normalize_provider_url(module.params["url"])
 
-    providers = query_list(
+    providers = validate_provider_summaries(
         module,
-        client,
-        "list_open_id_connect_providers",
-        "OpenIDConnectProviderList",
-        "Unable to list AWS IAM OIDC providers",
+        query_list(
+            module,
+            client,
+            "list_open_id_connect_providers",
+            "OpenIDConnectProviderList",
+            "Unable to list AWS IAM OIDC providers",
+        ),
     )
 
     for provider_summary in providers:
-        arn = provider_summary.get("Arn")
-
-        if not arn:
-            continue
+        arn = provider_summary["Arn"]
 
         arn_url = arn.partition(":oidc-provider/")[2]
         if normalize_provider_url(arn_url) != desired_url:
@@ -247,18 +270,23 @@ def ensure_present(client, module):
                 {"create_open_id_connect_provider": tuple(request)},
             )
             try:
-                arn = client.create_open_id_connect_provider(
+                response = client.create_open_id_connect_provider(
                     **request,
                     aws_retry=True,
-                ).get("OpenIDConnectProviderArn")
+                )
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to create AWS IAM OIDC provider {url}",
                 )
 
-            if not arn:
-                module.fail_json(msg=f"AWS IAM did not return an ARN for OIDC provider {url}")
+            if (
+                not isinstance(response, dict)
+                or not isinstance(response.get("OpenIDConnectProviderArn"), str)
+                or not response["OpenIDConnectProviderArn"]
+            ):
+                module.fail_json(msg=f"Unable to create AWS IAM OIDC provider {url}: AWS returned an invalid response")
+            arn = response["OpenIDConnectProviderArn"]
 
             require_client_methods(
                 module,
@@ -291,19 +319,6 @@ def ensure_present(client, module):
                     )
                 require_client_methods(module, client, "IAM", methods)
 
-                for client_id in removed_client_ids:
-                    try:
-                        client.remove_client_id_from_open_id_connect_provider(
-                            OpenIDConnectProviderArn=arn,
-                            ClientID=client_id,
-                            aws_retry=True,
-                        )
-                    except (BotoCoreError, ClientError) as e:
-                        module.fail_json_aws(
-                            e,
-                            msg=("Unable to remove client ID from AWS IAM OIDC " f"provider {url}"),
-                        )
-
                 for client_id in added_client_ids:
                     try:
                         client.add_client_id_to_open_id_connect_provider(
@@ -315,6 +330,19 @@ def ensure_present(client, module):
                         module.fail_json_aws(
                             e,
                             msg=("Unable to add client ID to AWS IAM OIDC " f"provider {url}"),
+                        )
+
+                for client_id in removed_client_ids:
+                    try:
+                        client.remove_client_id_from_open_id_connect_provider(
+                            OpenIDConnectProviderArn=arn,
+                            ClientID=client_id,
+                            aws_retry=True,
+                        )
+                    except (BotoCoreError, ClientError) as e:
+                        module.fail_json_aws(
+                            e,
+                            msg=("Unable to remove client ID from AWS IAM OIDC " f"provider {url}"),
                         )
 
                 provider_changed = True
@@ -430,7 +458,7 @@ def main():
             "default": "present",
             "type": "str",
         },
-        "tags": {"type": "dict"},
+        "tags": {"aliases": ["resource_tags"], "type": "dict"},
         "thumbprint_list": {"elements": "str", "type": "list"},
         "url": {"required": True, "type": "str"},
     }
@@ -445,6 +473,11 @@ def main():
     if state == "present":
         if not module.params["url"].lower().startswith("https://"):
             module.fail_json(msg="url must begin with https://")
+        normalized_url = normalize_provider_url(module.params["url"])
+        if not normalized_url or not normalized_url.partition("/")[0]:
+            module.fail_json(msg="url must identify an OIDC provider host")
+        if len(module.params["url"]) > 255:
+            module.fail_json(msg="url must contain at most 255 characters")
         if len(set(module.params["client_id_list"])) > 100:
             module.fail_json(msg="client_id_list must contain at most 100 unique entries")
         if len({item.lower() for item in module.params["thumbprint_list"]}) > 5:

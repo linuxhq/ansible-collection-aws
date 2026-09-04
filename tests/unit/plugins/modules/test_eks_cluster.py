@@ -132,6 +132,70 @@ class EksClusterTests(TestCase):
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
         assert options["argument_spec"]["wait_timeout"]["default"] == 1200
+        assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
+
+    def test_describe_rejects_malformed_response(self):
+        client = Mock(describe_cluster=Mock(return_value={"cluster": None}))
+        module = FakeModule({"name": "example"})
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.describe_cluster(client, module)
+        self.assertEqual(raised.exception.values["msg"], "EKS returned an invalid cluster")
+
+    def test_describe_rejects_malformed_cluster_configuration(self):
+        client = Mock(
+            describe_cluster=Mock(
+                return_value={
+                    "cluster": {
+                        "arn": "arn:cluster",
+                        "name": "example",
+                        "resourcesVpcConfig": "invalid",
+                        "status": "ACTIVE",
+                    }
+                }
+            )
+        )
+        module = FakeModule({"name": "example"})
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.describe_cluster(client, module)
+        self.assertEqual(raised.exception.values["msg"], "EKS returned an invalid cluster")
+
+    def test_update_validation_rejects_malformed_response(self):
+        module = FakeModule({"name": "example"})
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.validate_update(module, {"id": "update-1"})
+        self.assertEqual(raised.exception.values["msg"], "EKS returned an invalid cluster update")
+
+    def test_waited_update_rejects_disappearing_cluster(self):
+        client = Mock(update_cluster_version=Mock(return_value={"update": {"id": "update-1", "status": "InProgress"}}))
+        params = dict.fromkeys(plugin.CREATE_FIELDS)
+        params.update(
+            {
+                "name": "example",
+                "purge_tags": True,
+                "tags": None,
+                "version": "1.34",
+                "wait": True,
+            }
+        )
+        current = {
+            "arn": "arn:cluster",
+            "name": "example",
+            "status": "ACTIVE",
+            "version": "1.33",
+        }
+        module = FakeModule(params)
+        with (
+            patch.object(plugin, "describe_cluster", side_effect=[current, None]),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "wait_for_update"),
+            patch.object(plugin, "wait_for_cluster"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.ensure_present(client, module)
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "EKS cluster example disappeared after update",
+        )
 
     def test_changed_request_contains_only_differences(self):
         current = {"version": "1.32", "resources": {"public": True, "private": False}}
@@ -159,8 +223,8 @@ class EksClusterTests(TestCase):
     def test_vpc_endpoint_and_network_changes_use_separate_updates(self):
         client = Mock()
         client.update_cluster_config.side_effect = [
-            {"update": {"id": "update-1"}},
-            {"update": {"id": "update-2"}},
+            {"update": {"id": "update-1", "status": "InProgress"}},
+            {"update": {"id": "update-2", "status": "InProgress"}},
         ]
         params = dict.fromkeys(plugin.CREATE_FIELDS)
         params.update(
@@ -322,7 +386,17 @@ class EksClusterTests(TestCase):
         self.assertFalse(raised.exception.values["changed"])
 
     def test_deleting_cluster_waits_then_recreates(self):
-        client = Mock(create_cluster=Mock(return_value={"cluster": {"arn": "arn:cluster", "status": "CREATING"}}))
+        client = Mock(
+            create_cluster=Mock(
+                return_value={
+                    "cluster": {
+                        "arn": "arn:cluster",
+                        "name": "example",
+                        "status": "CREATING",
+                    }
+                }
+            )
+        )
         params = dict.fromkeys(plugin.CREATE_FIELDS)
         params.update(
             {

@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: notifications_hub
-short_description: Manage aws notifications hubs
+short_description: Manage AWS Notifications hubs
 description:
   - Manages AWS Notifications hubs.
   - The module always uses the C(us-east-1) AWS Notifications endpoint.
@@ -33,6 +33,10 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: Predicts notification hub changes without modifying AWS.
+    support: full
 """
 
 EXAMPLES = r"""
@@ -52,6 +56,32 @@ notification_hub:
     - The notification hub.
   returned: when a hub exists after module execution
   type: dict
+  contains:
+    creation_time:
+      description: The date and time when the hub was created.
+      returned: when provided by AWS
+      type: str
+    last_activation_time:
+      description: The date and time when the hub was last activated.
+      returned: when provided by AWS
+      type: str
+    notification_hub_region:
+      description: The AWS Region of the notification hub.
+      returned: always
+      type: str
+    status_summary:
+      description: The hub status and its reason.
+      returned: when provided by AWS
+      type: dict
+      contains:
+        reason:
+          description: The reason for the current status.
+          returned: always
+          type: str
+        status:
+          description: The current hub status.
+          returned: always
+          type: str
 state:
   description:
     - The requested state.
@@ -80,6 +110,26 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 
+HUB_STATUSES = ("ACTIVE", "DEREGISTERING", "INACTIVE", "REGISTERING")
+
+
+def validate_hub(module, hub, operation, require_status=True):
+    if (
+        not isinstance(hub, dict)
+        or not isinstance(hub.get("notificationHubRegion"), str)
+        or not hub["notificationHubRegion"]
+    ):
+        module.fail_json(msg=f"{operation}: AWS returned an invalid hub")
+
+    status_summary = hub.get("statusSummary")
+    if (require_status or status_summary is not None) and (
+        not isinstance(status_summary, dict)
+        or status_summary.get("status") not in HUB_STATUSES
+        or not isinstance(status_summary.get("reason"), str)
+    ):
+        module.fail_json(msg=f"{operation}: AWS returned an invalid hub")
+    return hub
+
 
 def get_notification_hub(client, module):
     region = module.params["region"]
@@ -92,7 +142,11 @@ def get_notification_hub(client, module):
         "Unable to list AWS Notifications hubs",
     )
 
+    if not isinstance(hubs, list):
+        module.fail_json(msg="Unable to list AWS Notifications hubs: AWS returned an invalid response")
+
     for hub in hubs:
+        validate_hub(module, hub, "Unable to list AWS Notifications hubs")
         if hub.get("notificationHubRegion") == region:
             return hub
     return None
@@ -154,9 +208,12 @@ def ensure_present(client, module):
                 msg=f"Unable to create AWS Notifications hub {region}",
             )
 
+        validate_hub(module, hub, f"Unable to create AWS Notifications hub {region}", require_status=False)
+        if hub["notificationHubRegion"] != region:
+            module.fail_json(
+                msg=f"Unable to create AWS Notifications hub {region}: AWS returned a hub for a different region"
+            )
         hub.pop("ResponseMetadata", None)
-        if not hub.get("notificationHubRegion"):
-            module.fail_json(msg=f"AWS Notifications did not return the created hub {region}")
     elif changed and module.check_mode:
         hub = {"notification_hub_region": region}
 

@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_pricing_info
-short_description: Gather information about aws pricing products
+version_added: "1.9.0"
+short_description: Gather information about AWS pricing products
 description:
   - Gathers AWS Price List product information.
   - This module maps to the AWS Pricing C(GetProducts) API, the API behind
@@ -67,6 +68,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module only retrieves information and does not modify AWS.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -84,7 +92,6 @@ EXAMPLES = r"""
 
 - name: Gather Oregon EC2 pricing from the default Pricing API endpoint
   linuxhq.aws.ec2_pricing_info:
-    region: us-west-2
     filters:
       - field: instanceType
         value: t3.micro
@@ -242,12 +249,18 @@ def main():
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg="Unable to get AWS Price List products")
 
+    price_list = response.get("PriceList") if isinstance(response, dict) else None
+    if not isinstance(price_list, list):
+        module.fail_json(msg="AWS Pricing returned an invalid price list")
+
     products = []
-    for product in response.get("PriceList", []):
+    for product in price_list:
         try:
             parsed = json.loads(product)
-        except ValueError as e:
+        except (TypeError, ValueError) as e:
             module.fail_json(msg=f"Unable to parse AWS Price List product: {e}")
+        if not isinstance(parsed, dict):
+            module.fail_json(msg="AWS Pricing returned a product that is not an object")
 
         normalized = boto3_resource_to_ansible_dict(
             parsed,

@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: eks_cluster_info
-short_description: Gather information about aws eks clusters
+version_added: "1.9.0"
+short_description: Gather information about AWS Elastic Kubernetes Service clusters
 description:
   - Gathers information about AWS EKS clusters.
 author:
@@ -40,6 +41,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: Queries AWS without modifying resources.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -101,6 +109,21 @@ def value_matches(current, desired):
     return current == desired
 
 
+def validate_cluster(module, cluster, expected_name):
+    tags = cluster.get("tags") if isinstance(cluster, dict) else None
+    if (
+        not isinstance(cluster, dict)
+        or cluster.get("name") != expected_name
+        or (tags is not None and not isinstance(tags, dict))
+        or (
+            isinstance(tags, dict)
+            and any(not isinstance(key, str) or not isinstance(value, str) for key, value in tags.items())
+        )
+    ):
+        module.fail_json(msg=f"EKS returned an invalid cluster for {expected_name}")
+    return cluster
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -139,6 +162,11 @@ def main():
             **request,
         )
 
+    if not isinstance(cluster_names, list) or any(
+        not isinstance(cluster_name, str) or not cluster_name for cluster_name in cluster_names
+    ):
+        module.fail_json(msg="EKS returned an invalid cluster list")
+
     if cluster_names:
         require_client_methods(
             module,
@@ -150,16 +178,22 @@ def main():
     clusters = []
     for name in cluster_names:
         try:
-            cluster = client.describe_cluster(
+            response = client.describe_cluster(
                 name=name,
                 aws_retry=True,
-            ).get("cluster")
+            )
         except is_boto3_error_code("ResourceNotFoundException"):
             continue
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to describe AWS EKS cluster {name}")
 
-        clusters.append(cluster)
+        clusters.append(
+            validate_cluster(
+                module,
+                response.get("cluster") if isinstance(response, dict) else None,
+                name,
+            )
+        )
 
     cluster_tags = [cluster.get("tags") for cluster in clusters]
     clusters = boto3_resource_list_to_ansible_dict(clusters, transform_tags=False, force_tags=False)

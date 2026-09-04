@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import glue_connection_info
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
@@ -77,4 +78,55 @@ class GlueConnectionInfoTests(TestCase):
             client,
             "AWS Glue",
             {"get_connections": ("HidePassword", "MaxResults", "NextToken")},
+        )
+
+    def test_named_connection_rejects_invalid_response(self):
+        client = Mock(get_connection=Mock(return_value={}))
+        module = FakeModule(
+            {
+                "apply_override_for_compute_environment": None,
+                "catalog_id": None,
+                "filters": None,
+                "hide_password": True,
+                "name": "main",
+            },
+            client=client,
+        )
+
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unable to get AWS Glue connection main: AWS returned an invalid response",
+        )
+
+    def test_connection_list_rejects_invalid_response(self):
+        client = Mock()
+        module = FakeModule(
+            {
+                "apply_override_for_compute_environment": None,
+                "catalog_id": None,
+                "filters": None,
+                "hide_password": True,
+                "name": None,
+            },
+            client=client,
+        )
+
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "query_list", return_value=[None]),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unable to get AWS Glue connections: AWS returned an invalid response",
         )

@@ -5,11 +5,16 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_flow_log
-short_description: Manage aws ec2 flow logs
+version_added: "1.9.0"
+short_description: Manage AWS EC2 flow logs
 description:
   - Creates and deletes EC2 flow logs for VPC, subnet, network interface,
     and transit gateway resources.
   - Manages tags on existing matching flow logs.
+  - EC2 permits at most 50 tags on a flow log; tag keys may contain at most
+    127 characters and tag values at most 256 characters.
+  - Existing flow log tags are purged only when O(tags) is provided and
+    O(purge_tags=true).
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -75,12 +80,6 @@ options:
       - 60
       - 600
     type: int
-  purge_tags:
-    description:
-      - Whether tags not listed in O(tags) should be removed.
-      - This option is only used when O(tags) is provided.
-    default: true
-    type: bool
   resource_ids:
     description:
       - The IDs of the resources for which flow logs are managed.
@@ -109,11 +108,6 @@ options:
       - present
     default: present
     type: str
-  tags:
-    description:
-      - Tags to apply to the flow logs.
-      - This must contain at most 50 entries; keys must contain 1 to 127 characters and values at most 256 characters.
-    type: dict
   traffic_type:
     description:
       - The type of traffic to log.
@@ -128,6 +122,14 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+  - amazon.aws.tags
+attributes:
+  check_mode:
+    description: Predicts flow log creation, deletion, and tag changes without modifying AWS resources.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -276,6 +278,8 @@ def matching_flow_logs(module, flow_logs, desired):
     resource_ids = set(normalized_resource_ids(module))
     matching = []
     for flow_log in flow_logs:
+        if not isinstance(flow_log, dict):
+            module.fail_json(msg="AWS returned an invalid EC2 flow log")
         if flow_log.get("ResourceId") not in resource_ids:
             continue
 
@@ -295,6 +299,9 @@ def matching_flow_logs(module, flow_logs, desired):
         if comparable != desired:
             continue
 
+        flow_log_id = flow_log.get("FlowLogId")
+        if not isinstance(flow_log_id, str) or not flow_log_id:
+            module.fail_json(msg="AWS returned an invalid matching EC2 flow log without a flow log ID")
         matching.append(flow_log)
 
     return matching
@@ -328,7 +335,7 @@ def ensure_absent(client, module):
 
     current = matching_flow_logs(module, get_flow_logs(client, module), desired)
 
-    flow_log_ids = [flow_log["FlowLogId"] for flow_log in current if flow_log.get("FlowLogId")]
+    flow_log_ids = [flow_log["FlowLogId"] for flow_log in current]
 
     changed = bool(flow_log_ids)
 
@@ -483,10 +490,14 @@ def ensure_present(client, module):
 
             created_flow_log_ids = response.get("FlowLogIds", [])
 
-            if not created_flow_log_ids:
+            if (
+                not isinstance(created_flow_log_ids, list)
+                or not created_flow_log_ids
+                or any(not isinstance(flow_log_id, str) or not flow_log_id for flow_log_id in created_flow_log_ids)
+            ):
                 module.fail_json(
                     msg=(
-                        "AWS did not return the created EC2 flow logs for resources "
+                        "AWS did not return valid created EC2 flow log IDs for resources "
                         f"{', '.join(missing_resource_ids)}"
                     )
                 )
@@ -499,6 +510,9 @@ def ensure_present(client, module):
                 "Unable to describe EC2 flow logs " f"{', '.join(created_flow_log_ids)}",
                 FlowLogIds=created_flow_log_ids,
             )
+
+            if any(not isinstance(flow_log, dict) for flow_log in created_flow_logs):
+                module.fail_json(msg="AWS returned an invalid created EC2 flow log")
 
             described_ids = {flow_log.get("FlowLogId") for flow_log in created_flow_logs}
             created_flow_logs.extend(
@@ -627,7 +641,7 @@ def main():
             "default": "present",
             "type": "str",
         },
-        "tags": {"type": "dict"},
+        "tags": {"aliases": ["resource_tags"], "type": "dict"},
         "traffic_type": {"choices": ["ACCEPT", "REJECT", "ALL"], "type": "str"},
     }
 

@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_vpc_prefix_list_info
-short_description: Gather information about aws virtual private cloud prefix lists
+version_added: "1.9.0"
+short_description: Gather information about AWS EC2 VPC prefix lists
 description:
   - Gathers information about EC2 VPC managed prefix lists.
 author:
@@ -25,11 +26,19 @@ options:
     description:
       - The version of the managed prefix list for which to return entries.
       - When omitted, the current version entries are returned.
+      - This must be 1 or greater.
     type: int
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module only gathers information and does not modify AWS.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -85,6 +94,42 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
+def validate_prefix_lists(module, prefix_lists):
+    for prefix_list in prefix_lists:
+        tags = prefix_list.get("Tags") if isinstance(prefix_list, dict) else None
+        if (
+            not isinstance(prefix_list, dict)
+            or not isinstance(prefix_list.get("PrefixListId"), str)
+            or not prefix_list["PrefixListId"]
+            or (tags is not None and not isinstance(tags, list))
+            or (
+                isinstance(tags, list)
+                and any(
+                    not isinstance(tag, dict)
+                    or not isinstance(tag.get("Key"), str)
+                    or not isinstance(tag.get("Value"), str)
+                    for tag in tags
+                )
+            )
+        ):
+            module.fail_json(msg="EC2 returned invalid managed prefix lists")
+    return prefix_lists
+
+
+def validate_entries(module, entries):
+    if not isinstance(entries, list):
+        module.fail_json(msg="EC2 returned invalid managed prefix list entries")
+    for entry in entries:
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("Cidr"), str)
+            or not entry["Cidr"]
+            or (entry.get("Description") is not None and not isinstance(entry.get("Description"), str))
+        ):
+            module.fail_json(msg="EC2 returned invalid managed prefix list entries")
+    return entries
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -94,10 +139,12 @@ def main():
         },
         supports_check_mode=True,
     )
-    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
     filters = module.params["filters"]
     prefix_list_ids = list(dict.fromkeys(module.params["prefix_list_ids"] or []))
     target_version = module.params["target_version"]
+    if target_version is not None and target_version < 1:
+        module.fail_json(msg="target_version must be 1 or greater")
+    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     request = {}
     if prefix_list_ids:
@@ -114,13 +161,16 @@ def main():
         },
     )
 
-    prefix_lists = query_list(
+    prefix_lists = validate_prefix_lists(
         module,
-        client,
-        "describe_managed_prefix_lists",
-        "PrefixLists",
-        "Unable to describe EC2 VPC managed prefix lists",
-        **request,
+        query_list(
+            module,
+            client,
+            "describe_managed_prefix_lists",
+            "PrefixLists",
+            "Unable to describe EC2 VPC managed prefix lists",
+            **request,
+        ),
     )
 
     if prefix_lists:
@@ -145,11 +195,11 @@ def main():
             entry_request["TargetVersion"] = target_version
 
         try:
-            entries = paginated_query_with_retries(
+            response = paginated_query_with_retries(
                 client,
                 "get_managed_prefix_list_entries",
                 **entry_request,
-            ).get("Entries", [])
+            )
         except is_boto3_error_code("InvalidPrefixListID.NotFound"):
             continue
         except (BotoCoreError, ClientError) as e:
@@ -157,6 +207,11 @@ def main():
                 e,
                 msg=("Unable to get EC2 VPC managed prefix list entries for " f"{prefix_list['PrefixListId']}"),
             )
+
+        entries = validate_entries(
+            module,
+            response.get("Entries") if isinstance(response, dict) else None,
+        )
 
         result_prefix_lists.append(
             dict(

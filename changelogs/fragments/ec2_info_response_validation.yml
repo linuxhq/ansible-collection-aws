@@ -1,0 +1,30 @@
+---
+bugfixes:
+  - ec2_instance_type_info - fail clearly when EC2 returns malformed instance
+    type information.
+  - ec2_placement_group_info - fail clearly when EC2 returns malformed placement
+    group information.
+  - ec2_pricing_info - fail clearly when AWS Pricing returns a malformed price
+    list or product document.
+  - ec2_transit_gateway_route_table - fail safely when EC2 returns malformed
+    transit gateway route-table or route data.
+  - ec2_transit_gateway_route_table_info - fail safely when EC2 returns malformed
+    transit gateway route-table or route data.
+  - ec2_vpc_prefix_list - fail safely when EC2 returns malformed managed
+    prefix-list or entry data.
+  - ec2_vpc_prefix_list_info - fail safely when EC2 returns malformed managed
+    prefix-list or entry data.
+  - ecs_ecr_info - fail safely when ECR returns malformed repository data.
+  - eks_cluster - fail safely when EKS returns malformed cluster or update data.
+  - eks_cluster_info - fail safely when EKS returns malformed cluster list or
+    cluster data.
+  - global_accelerator - fail safely when Global Accelerator returns malformed
+    accelerator, listener, endpoint group, or tag data.
+  - global_accelerator_info - fail safely when Global Accelerator returns
+    malformed accelerator, listener, endpoint group, or tag data.
+minor_changes:
+  - ec2_transit_gateway_route_table - add C(resource_tags) as an alias for
+    O(tags).
+  - ec2_vpc_prefix_list - add C(resource_tags) as an alias for O(tags).
+  - eks_cluster - add C(resource_tags) as an alias for O(tags).
+  - global_accelerator - add C(resource_tags) as an alias for O(tags).

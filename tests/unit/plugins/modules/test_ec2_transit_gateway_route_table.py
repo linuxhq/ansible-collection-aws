@@ -59,6 +59,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
         options = assert_module_contract(self, plugin)
         assert len(options["required_one_of"]) == 2
         assert "default" not in options["argument_spec"]["routes"]["options"]["blackhole"]
+        assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
 
     def test_name_is_merged_into_desired_tags(self):
         module = SimpleNamespace(params={"name": "main", "tags": {"Env": "prod"}})
@@ -465,7 +466,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
 
     def test_route_search_uses_all_paginated_results(self):
         client = Mock()
-        routes = [{"DestinationCidrBlock": "10.0.0.0/8"}]
+        routes = [{"DestinationCidrBlock": "10.0.0.0/8", "State": "active", "Type": "static"}]
         with (
             patch.object(
                 plugin,
@@ -483,6 +484,29 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
         self.assertEqual(result, routes)
         self.assertEqual(query.call_args.args[1], "search_transit_gateway_routes")
         client.search_transit_gateway_routes.assert_not_called()
+
+    def test_route_table_lookup_rejects_malformed_response(self):
+        with (
+            patch.object(
+                plugin,
+                "paginated_query_with_retries",
+                return_value={"TransitGatewayRouteTables": [{}]},
+            ),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.get_route_table_by_id(Mock(), FakeModule({}), "tgw-rtb-1")
+
+        self.assertIn("invalid transit gateway route table", raised.exception.values["msg"])
+
+    def test_route_search_rejects_malformed_response(self):
+        with (
+            patch.object(plugin, "paginated_query_with_retries", return_value={"Routes": [None]}),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.search_routes(Mock(), FakeModule({}), "tgw-rtb-1", {"type": ["static"]})
+
+        self.assertIn("invalid transit gateway routes", raised.exception.values["msg"])
 
     def test_purge_removes_only_undesired_static_routes(self):
         client = Mock()

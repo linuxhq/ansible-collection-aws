@@ -5,15 +5,22 @@
 DOCUMENTATION = r"""
 ---
 module: acm_certificate_request
-short_description: Manage aws certificate manager certificates
+version_added: "1.9.0"
+short_description: Manage AWS Certificate Manager certificates
 description:
   - Requests AWS Certificate Manager certificates using DNS validation.
   - An existing certificate is reused instead of requesting a new one when it
     is C(AMAZON_ISSUED), uses DNS validation, is C(PENDING_VALIDATION) or
     C(ISSUED), and its domain name and subject alternative names match; the
     most recently created certificate is reused when several match.
+  - ACM permits at most 50 tags on a certificate; tag keys must contain 1 to
+    128 characters and tag values may contain at most 256 characters.
+  - Existing certificate tags are purged only when O(tags) is provided and
+    O(purge_tags=true).
 author:
   - Taylor Kimball (@tkimball83)
+requirements:
+  - botocore >= 1.5.95
 options:
   domain_name:
     description:
@@ -27,27 +34,24 @@ options:
       - ACM requires a token of 1 to 32 ASCII word characters.
       - This option is only used when requesting a certificate.
     type: str
-  purge_tags:
-    description:
-      - Whether tags not listed in O(tags) should be removed from the certificate.
-      - This option is only applied when O(tags) is provided.
-    default: true
-    type: bool
   subject_alternative_names:
     description:
       - Subject alternative names for the certificate.
       - This must contain at most 99 additional entries after normalization because ACM allows 100 domain names including O(domain_name).
     elements: str
     type: list
-  tags:
-    description:
-      - Tags to apply to the certificate.
-      - This must contain at most 50 entries; keys must contain 1 to 128 characters and values at most 256 characters.
-    type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+  - amazon.aws.tags
+attributes:
+  check_mode:
+    description: Predicts certificate requests and tag changes without modifying AWS resources.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -99,6 +103,18 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tags
 
+# Keep this list synchronized with ACM's CertificateKeyAlgorithm model so
+# list_certificates does not omit certificates that use non-default key types.
+CERTIFICATE_KEY_TYPES = [
+    "RSA_1024",
+    "RSA_2048",
+    "RSA_3072",
+    "RSA_4096",
+    "EC_prime256v1",
+    "EC_secp384r1",
+    "EC_secp521r1",
+]
+
 
 def main():
     module = AnsibleAWSModule(
@@ -107,7 +123,7 @@ def main():
             "idempotency_token": {"no_log": False, "type": "str"},
             "purge_tags": {"default": True, "type": "bool"},
             "subject_alternative_names": {"elements": "str", "type": "list"},
-            "tags": {"type": "dict"},
+            "tags": {"aliases": ["resource_tags"], "type": "dict"},
         },
         supports_check_mode=True,
     )
@@ -146,6 +162,7 @@ def main():
         {
             "list_certificates": (
                 "CertificateStatuses",
+                "Includes",
                 "MaxItems",
                 "NextToken",
             )
@@ -162,9 +179,24 @@ def main():
         "CertificateSummaryList",
         "Unable to list AWS Certificate Manager certificates",
         CertificateStatuses=["PENDING_VALIDATION", "ISSUED"],
+        Includes={"keyTypes": CERTIFICATE_KEY_TYPES},
     )
 
-    if any(summary.get("DomainName", "").lower() == normalized_domain_name for summary in summaries):
+    candidate_summaries = []
+    for summary in summaries:
+        if not isinstance(summary, dict):
+            module.fail_json(msg="AWS Certificate Manager returned an invalid certificate summary")
+        summary_domain_name = summary.get("DomainName")
+        if not isinstance(summary_domain_name, str) or not summary_domain_name:
+            module.fail_json(msg="AWS Certificate Manager returned an invalid certificate summary")
+        if summary_domain_name.lower() != normalized_domain_name:
+            continue
+        certificate_arn = summary.get("CertificateArn")
+        if not isinstance(certificate_arn, str) or not certificate_arn:
+            module.fail_json(msg="AWS Certificate Manager returned an invalid matching certificate summary")
+        candidate_summaries.append(summary)
+
+    if candidate_summaries:
         require_client_methods(
             module,
             client,
@@ -173,17 +205,14 @@ def main():
         )
 
     matched = None
-    for summary in summaries:
-        if summary.get("DomainName", "").lower() != normalized_domain_name:
-            continue
-
+    for summary in candidate_summaries:
         certificate_arn = summary["CertificateArn"]
 
         try:
-            certificate = client.describe_certificate(
+            response = client.describe_certificate(
                 CertificateArn=certificate_arn,
                 aws_retry=True,
-            ).get("Certificate", {})
+            )
         except is_boto3_error_code("ResourceNotFoundException"):
             continue
         except (BotoCoreError, ClientError) as e:
@@ -191,6 +220,14 @@ def main():
                 e,
                 msg=("Unable to describe AWS Certificate Manager certificate " f"{certificate_arn}"),
             )
+
+        certificate = response.get("Certificate")
+        if not isinstance(certificate, dict) or not certificate.get("Status"):
+            module.fail_json(
+                msg=("AWS Certificate Manager did not return a status for " f"certificate {certificate_arn}"),
+            )
+        if certificate["Status"] not in {"PENDING_VALIDATION", "ISSUED"}:
+            continue
         if certificate.get("Type") != "AMAZON_ISSUED":
             continue
 
@@ -208,8 +245,16 @@ def main():
         if certificate_names != desired_names:
             continue
 
-        if matched is None or certificate["CreatedAt"] > matched["CreatedAt"]:
-            matched = certificate
+        created_at = certificate.get("CreatedAt")
+        if created_at is None:
+            module.fail_json(
+                msg=("AWS Certificate Manager did not return a creation time for " f"certificate {certificate_arn}"),
+            )
+        if matched is None or created_at > matched["CreatedAt"]:
+            matched = {
+                "CertificateArn": certificate_arn,
+                "CreatedAt": created_at,
+            }
 
     created = matched is None
 
@@ -244,12 +289,13 @@ def main():
         )
 
         try:
-            certificate_arn = client.request_certificate(**request, aws_retry=True).get("CertificateArn")
+            response = client.request_certificate(**request, aws_retry=True)
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=("Unable to request AWS Certificate Manager certificate " f"{domain_name}"),
             )
+        certificate_arn = response.get("CertificateArn")
         if not certificate_arn:
             module.fail_json(msg=("AWS Certificate Manager did not return an ARN for " f"certificate {domain_name}"))
     else:
@@ -265,17 +311,16 @@ def main():
             {"list_tags_for_certificate": ("CertificateArn",)},
         )
         try:
-            current_tags = boto3_tag_list_to_ansible_dict(
-                client.list_tags_for_certificate(
-                    CertificateArn=certificate_arn,
-                    aws_retry=True,
-                ).get("Tags", [])
+            response = client.list_tags_for_certificate(
+                CertificateArn=certificate_arn,
+                aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=("Unable to list tags for AWS Certificate Manager " f"certificate {certificate_arn}"),
             )
+        current_tags = boto3_tag_list_to_ansible_dict(response.get("Tags", []))
 
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
             current_tags,

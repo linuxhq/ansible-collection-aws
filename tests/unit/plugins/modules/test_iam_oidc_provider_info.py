@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import iam_oidc_provider_in
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
@@ -14,12 +15,19 @@ class IamOidcProviderInfoTests(TestCase):
         options = assert_module_contract(self, plugin)
         assert options["mutually_exclusive"] == [["arn", "url"]]
 
-    def test_provider_listing_ignores_missing_arns(self):
+    def test_provider_listing_rejects_missing_arns(self):
         client = Mock()
-        module = Mock()
-        providers = [{}, {"Arn": "arn:provider"}]
-        with patch.object(plugin, "query_list", return_value=providers) as query_list:
-            assert plugin.list_provider_arns(client, module) == ["arn:provider"]
+        module = FakeModule({})
+        providers = [{}, {"Arn": "arn:aws:iam::1:oidc-provider/example.com"}]
+        with (
+            patch.object(plugin, "query_list", return_value=providers) as query_list,
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.list_provider_arns(client, module)
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unable to list AWS IAM OIDC providers: AWS returned an invalid response",
+        )
         query_list.assert_called_once_with(
             module,
             client,

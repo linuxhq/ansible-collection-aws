@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import ec2_vpc_prefix_list_
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
@@ -96,6 +97,18 @@ class Ec2VpcPrefixListInfoTests(TestCase):
         options = assert_module_contract(self, plugin)
         assert options["argument_spec"]["target_version"]["type"] == "int"
 
+    def test_target_version_must_be_positive(self):
+        module = FakeModule(
+            {"filters": None, "prefix_list_ids": None, "target_version": 0},
+            client=Mock(),
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+        self.assertEqual(raised.exception.values["msg"], "target_version must be 1 or greater")
+
     def test_target_version_is_used_for_entries(self):
         module = FakeModule(
             {
@@ -123,3 +136,30 @@ class Ec2VpcPrefixListInfoTests(TestCase):
             plugin.main()
         self.assertEqual(query.call_args.kwargs["PrefixListIds"], ["pl-1"])
         self.assertEqual(entries.call_args.kwargs["TargetVersion"], 2)
+
+    def test_rejects_malformed_prefix_list_response(self):
+        module = FakeModule(
+            {"filters": None, "prefix_list_ids": None, "target_version": None},
+            client=Mock(),
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[None]),
+            self.assertRaises(ModuleFail),
+        ):
+            plugin.main()
+
+    def test_rejects_malformed_entry_response(self):
+        module = FakeModule(
+            {"filters": None, "prefix_list_ids": None, "target_version": None},
+            client=Mock(),
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[{"PrefixListId": "pl-1"}]),
+            patch.object(plugin, "paginated_query_with_retries", return_value={"Entries": [None]}),
+            self.assertRaises(ModuleFail),
+        ):
+            plugin.main()

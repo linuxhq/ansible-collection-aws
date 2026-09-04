@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: global_accelerator
-short_description: Manage aws global accelerators
+version_added: "1.9.0"
+short_description: Manage AWS Global Accelerator accelerators
 description:
   - Manages AWS Global Accelerator accelerators, their listeners, and their
     endpoint groups as one resource tree.
@@ -248,12 +249,6 @@ options:
       - This option is only applied when O(listeners) is provided.
     default: true
     type: bool
-  purge_tags:
-    description:
-      - Whether tags not listed in O(tags) should be removed from the accelerator.
-      - This option is only applied when O(tags) is provided.
-    default: true
-    type: bool
   state:
     description:
       - Whether the accelerator should exist.
@@ -262,11 +257,6 @@ options:
       - present
     default: present
     type: str
-  tags:
-    description:
-      - Tags to apply to the accelerator.
-      - This must contain at most 50 entries; keys must contain 1 to 128 characters and values at most 256 characters.
-    type: dict
   wait:
     description:
       - Whether to wait for the accelerator to finish deploying after changes
@@ -292,6 +282,14 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+  - amazon.aws.tags
+attributes:
+  check_mode:
+    description: Predicts accelerator, listener, endpoint group, and tag changes without modifying AWS.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -429,6 +427,97 @@ GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
 }
 
 
+def validate_accelerator(module, accelerator, expected_arn=None):
+    ip_sets = accelerator.get("IpSets") if isinstance(accelerator, dict) else None
+    if (
+        not isinstance(accelerator, dict)
+        or not isinstance(accelerator.get("AcceleratorArn"), str)
+        or not accelerator["AcceleratorArn"]
+        or (expected_arn is not None and accelerator["AcceleratorArn"] != expected_arn)
+        or not isinstance(accelerator.get("Name"), str)
+        or not isinstance(accelerator.get("Enabled"), bool)
+        or not isinstance(accelerator.get("IpAddressType"), str)
+        or ("Status" in accelerator and not isinstance(accelerator["Status"], str))
+        or (ip_sets is not None and not isinstance(ip_sets, list))
+        or (
+            isinstance(ip_sets, list)
+            and any(
+                not isinstance(ip_set, dict)
+                or not isinstance(ip_set.get("IpAddresses"), list)
+                or any(not isinstance(address, str) for address in ip_set["IpAddresses"])
+                for ip_set in ip_sets
+            )
+        )
+    ):
+        module.fail_json(msg="Global Accelerator returned an invalid accelerator")
+    return accelerator
+
+
+def validate_listener(module, listener):
+    port_ranges = listener.get("PortRanges") if isinstance(listener, dict) else None
+    if (
+        not isinstance(listener, dict)
+        or not isinstance(listener.get("ListenerArn"), str)
+        or not listener["ListenerArn"]
+        or not isinstance(listener.get("ClientAffinity"), str)
+        or not isinstance(listener.get("Protocol"), str)
+        or not isinstance(port_ranges, list)
+        or any(
+            not isinstance(port_range, dict)
+            or not isinstance(port_range.get("FromPort"), int)
+            or not isinstance(port_range.get("ToPort"), int)
+            for port_range in port_ranges or []
+        )
+    ):
+        module.fail_json(msg="Global Accelerator returned an invalid listener")
+    return listener
+
+
+def validate_endpoint_group(module, endpoint_group, expected_arn=None, expected_region=None):
+    endpoint_descriptions = endpoint_group.get("EndpointDescriptions") if isinstance(endpoint_group, dict) else None
+    port_overrides = endpoint_group.get("PortOverrides") if isinstance(endpoint_group, dict) else None
+    if (
+        not isinstance(endpoint_group, dict)
+        or not isinstance(endpoint_group.get("EndpointGroupArn"), str)
+        or not endpoint_group["EndpointGroupArn"]
+        or (expected_arn is not None and endpoint_group["EndpointGroupArn"] != expected_arn)
+        or not isinstance(endpoint_group.get("EndpointGroupRegion"), str)
+        or (expected_region is not None and endpoint_group["EndpointGroupRegion"] != expected_region)
+        or (endpoint_descriptions is not None and not isinstance(endpoint_descriptions, list))
+        or (
+            isinstance(endpoint_descriptions, list)
+            and any(
+                not isinstance(endpoint, dict) or not isinstance(endpoint.get("EndpointId"), str)
+                for endpoint in endpoint_descriptions
+            )
+        )
+        or (port_overrides is not None and not isinstance(port_overrides, list))
+        or (
+            isinstance(port_overrides, list)
+            and any(
+                not isinstance(port_override, dict)
+                or not isinstance(port_override.get("EndpointPort"), int)
+                or not isinstance(port_override.get("ListenerPort"), int)
+                for port_override in port_overrides
+            )
+        )
+    ):
+        module.fail_json(msg="Global Accelerator returned an invalid endpoint group")
+    return endpoint_group
+
+
+def validate_tag_list(module, tags):
+    if not isinstance(tags, list) or any(
+        not isinstance(tag, dict)
+        or not isinstance(tag.get("Key"), str)
+        or not tag["Key"]
+        or not isinstance(tag.get("Value"), str)
+        for tag in tags
+    ):
+        module.fail_json(msg="Global Accelerator returned invalid tags")
+    return tags
+
+
 def get_accelerator_by_arn(client, module, accelerator_arn):
     require_client_methods(
         module,
@@ -437,14 +526,20 @@ def get_accelerator_by_arn(client, module, accelerator_arn):
         {"describe_accelerator": ("AcceleratorArn",)},
     )
     try:
-        return client.describe_accelerator(
+        response = client.describe_accelerator(
             AcceleratorArn=accelerator_arn,
             aws_retry=True,
-        ).get("Accelerator")
+        )
     except is_boto3_error_code("AcceleratorNotFoundException"):
         return None
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to describe AWS Global Accelerator {accelerator_arn}")
+
+    return validate_accelerator(
+        module,
+        response.get("Accelerator") if isinstance(response, dict) else None,
+        expected_arn=accelerator_arn,
+    )
 
 
 def get_accelerator(client, module):
@@ -466,6 +561,10 @@ def get_accelerator(client, module):
         "Accelerators",
         "Unable to list AWS Global Accelerator accelerators",
     )
+
+    if not isinstance(accelerators, list):
+        module.fail_json(msg="Global Accelerator returned an invalid accelerator list")
+    accelerators = [validate_accelerator(module, accelerator) for accelerator in accelerators]
 
     matches = [accelerator for accelerator in accelerators if accelerator.get("Name") == name]
 
@@ -529,6 +628,9 @@ def get_listeners(client, module, accelerator_arn):
         "Unable to list AWS Global Accelerator listeners for " f"{accelerator_arn}",
         AcceleratorArn=accelerator_arn,
     )
+    if not isinstance(listeners, list):
+        module.fail_json(msg="Global Accelerator returned an invalid listener list")
+    listeners = [validate_listener(module, listener) for listener in listeners]
 
     normalized = []
     for listener in listeners:
@@ -650,6 +752,9 @@ def get_endpoint_groups(client, module, listener_arn):
         "Unable to list AWS Global Accelerator endpoint groups for " f"{listener_arn}",
         ListenerArn=listener_arn,
     )
+    if not isinstance(endpoint_groups, list):
+        module.fail_json(msg="Global Accelerator returned an invalid endpoint group list")
+    endpoint_groups = [validate_endpoint_group(module, endpoint_group) for endpoint_group in endpoint_groups]
 
     normalized = [
         boto3_resource_to_ansible_dict(
@@ -918,23 +1023,21 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups):
                 request,
             )
             try:
-                endpoint_group = client.create_endpoint_group(
+                response = client.create_endpoint_group(
                     **request,
                     aws_retry=True,
-                ).get("EndpointGroup")
+                )
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=("Unable to create AWS Global Accelerator endpoint " f"group {region} for {listener_arn}"),
                 )
 
-            if not (endpoint_group or {}).get("EndpointGroupArn"):
-                module.fail_json(
-                    msg=(
-                        "AWS Global Accelerator did not return the created endpoint "
-                        f"group {region} for {listener_arn}"
-                    )
-                )
+            endpoint_group = validate_endpoint_group(
+                module,
+                response.get("EndpointGroup") if isinstance(response, dict) else None,
+                expected_region=region,
+            )
 
             results.append(
                 boto3_resource_to_ansible_dict(
@@ -967,20 +1070,21 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups):
                 request,
             )
             try:
-                endpoint_group = client.update_endpoint_group(
+                response = client.update_endpoint_group(
                     **request,
                     aws_retry=True,
-                ).get("EndpointGroup")
+                )
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=("Unable to update AWS Global Accelerator endpoint " f"group {endpoint_group_arn}"),
                 )
 
-            if not (endpoint_group or {}).get("EndpointGroupArn"):
-                module.fail_json(
-                    msg=("AWS Global Accelerator did not return the updated endpoint " f"group {endpoint_group_arn}")
-                )
+            endpoint_group = validate_endpoint_group(
+                module,
+                response.get("EndpointGroup") if isinstance(response, dict) else None,
+                expected_arn=endpoint_group_arn,
+            )
 
             results.append(
                 boto3_resource_to_ansible_dict(
@@ -1090,10 +1194,14 @@ def ensure_listeners(client, module, accelerator_arn):
         )
         while True:
             try:
-                listener = client.create_listener(
+                response = client.create_listener(
                     **request,
                     aws_retry=True,
-                ).get("Listener")
+                )
+                listener = validate_listener(
+                    module,
+                    response.get("Listener") if isinstance(response, dict) else None,
+                )
                 break
             except is_boto3_error_code("LimitExceededException") as e:
                 if not deletes:
@@ -1109,11 +1217,6 @@ def ensure_listeners(client, module, accelerator_arn):
                     e,
                     msg=("Unable to create AWS Global Accelerator listener for " f"{accelerator_arn}"),
                 )
-
-        if not (listener or {}).get("ListenerArn"):
-            module.fail_json(
-                msg=("AWS Global Accelerator did not return the created listener for " f"{accelerator_arn}")
-            )
 
         result["listener_arn"] = listener["ListenerArn"]
         result_listeners.append((result, desired))
@@ -1260,17 +1363,22 @@ def ensure_present(client, module):
             {"list_tags_for_resource": ("ResourceArn",)},
         )
         try:
-            current_tags = boto3_tag_list_to_ansible_dict(
-                client.list_tags_for_resource(
-                    ResourceArn=accelerator_arn,
-                    aws_retry=True,
-                ).get("Tags", [])
+            response = client.list_tags_for_resource(
+                ResourceArn=accelerator_arn,
+                aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=("Unable to list tags for AWS Global Accelerator " f"{accelerator_arn}"),
             )
+
+        current_tags = boto3_tag_list_to_ansible_dict(
+            validate_tag_list(
+                module,
+                response.get("Tags") if isinstance(response, dict) else None,
+            )
+        )
 
     current = None
     if accelerator is not None:
@@ -1350,19 +1458,19 @@ def ensure_present(client, module):
             {"create_accelerator": tuple(request)},
         )
         try:
-            accelerator = client.create_accelerator(
+            response = client.create_accelerator(
                 **request,
                 aws_retry=True,
-            ).get("Accelerator")
+            )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to create AWS Global Accelerator {desired['name']}",
             )
-        if not (accelerator or {}).get("AcceleratorArn"):
-            module.fail_json(
-                msg=("AWS Global Accelerator did not return the created accelerator " f"{desired['name']}")
-            )
+        accelerator = validate_accelerator(
+            module,
+            response.get("Accelerator") if isinstance(response, dict) else None,
+        )
     elif created and module.check_mode:
         accelerator = {
             "Enabled": desired["enabled"],
@@ -1393,19 +1501,20 @@ def ensure_present(client, module):
             {"update_accelerator": tuple(request)},
         )
         try:
-            accelerator = client.update_accelerator(
+            response = client.update_accelerator(
                 **request,
                 aws_retry=True,
-            ).get("Accelerator")
+            )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=("Unable to update AWS Global Accelerator " f"{request['AcceleratorArn']}"),
             )
-        if not (accelerator or {}).get("AcceleratorArn"):
-            module.fail_json(
-                msg=("AWS Global Accelerator did not return the updated accelerator " f"{request['AcceleratorArn']}")
-            )
+        accelerator = validate_accelerator(
+            module,
+            response.get("Accelerator") if isinstance(response, dict) else None,
+            expected_arn=request["AcceleratorArn"],
+        )
     elif resource_changed and module.check_mode:
         accelerator = dict(accelerator)
         accelerator["Enabled"] = desired["enabled"]
@@ -1442,6 +1551,8 @@ def ensure_present(client, module):
                 "accelerator_deployed",
             )
             accelerator = get_accelerator_by_arn(client, module, accelerator_arn)
+            if accelerator is None:
+                module.fail_json(msg=f"AWS Global Accelerator {accelerator_arn} disappeared after update")
 
     if accelerator is not None and tags is not None:
         if not created and not module.check_mode:
@@ -1587,7 +1698,7 @@ def main():
                 "default": "present",
                 "type": "str",
             },
-            "tags": {"type": "dict"},
+            "tags": {"aliases": ["resource_tags"], "type": "dict"},
             "wait": {"default": True, "type": "bool"},
             "wait_delay": {"default": 10, "type": "int"},
             "wait_timeout": {"default": 600, "type": "int"},

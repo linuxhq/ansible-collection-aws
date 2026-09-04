@@ -87,7 +87,7 @@ class Ec2PricingInfoTests(TestCase):
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods"),
-            patch.object(plugin, "paginated_query_with_retries", return_value={}),
+            patch.object(plugin, "paginated_query_with_retries", return_value={"PriceList": []}),
         ):
             plugin.main()
 
@@ -106,7 +106,7 @@ class Ec2PricingInfoTests(TestCase):
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods") as require,
-            patch.object(plugin, "paginated_query_with_retries", return_value={}),
+            patch.object(plugin, "paginated_query_with_retries", return_value={"PriceList": []}),
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
@@ -144,3 +144,43 @@ class Ec2PricingInfoTests(TestCase):
         ):
             plugin.main()
         self.assertEqual(raised.exception.values["msg"], "filters must contain at most 50 entries")
+
+    def test_rejects_invalid_price_list_response(self):
+        params = {
+            "filters": [{"field": "instanceType", "type": "TERM_MATCH", "value": "t3"}],
+            "format_version": "aws_v1",
+            "max_results": None,
+            "service_code": "AmazonEC2",
+        }
+        for response in ({}, {"PriceList": None}, None):
+            module = FakeModule(params, client=Mock())
+            with (
+                self.subTest(response=response),
+                patch.object(plugin, "AnsibleAWSModule", return_value=module),
+                patch.object(plugin, "require_client_methods"),
+                patch.object(plugin, "paginated_query_with_retries", return_value=response),
+                self.assertRaises(ModuleFail) as raised,
+            ):
+                plugin.main()
+
+            self.assertIn("invalid price list", raised.exception.values["msg"])
+
+    def test_rejects_invalid_product_payloads(self):
+        params = {
+            "filters": [{"field": "instanceType", "type": "TERM_MATCH", "value": "t3"}],
+            "format_version": "aws_v1",
+            "max_results": None,
+            "service_code": "AmazonEC2",
+        }
+        for product, message in ((None, "Unable to parse"), ("not-json", "Unable to parse"), ("[]", "not an object")):
+            module = FakeModule(params, client=Mock())
+            with (
+                self.subTest(product=product),
+                patch.object(plugin, "AnsibleAWSModule", return_value=module),
+                patch.object(plugin, "require_client_methods"),
+                patch.object(plugin, "paginated_query_with_retries", return_value={"PriceList": [product]}),
+                self.assertRaises(ModuleFail) as raised,
+            ):
+                plugin.main()
+
+            self.assertIn(message, raised.exception.values["msg"])

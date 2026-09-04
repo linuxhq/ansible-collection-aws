@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: global_accelerator_info
-short_description: Gather information about aws global accelerators
+version_added: "1.9.0"
+short_description: Gather information about AWS Global Accelerator accelerators
 description:
   - Gathers information about AWS Global Accelerator accelerators, and
     optionally their listeners and endpoint groups.
@@ -36,6 +37,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: Queries AWS without modifying resources.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -90,6 +98,38 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
+def validate_accelerator(module, accelerator, expected_arn=None):
+    if (
+        not isinstance(accelerator, dict)
+        or not isinstance(accelerator.get("AcceleratorArn"), str)
+        or not accelerator["AcceleratorArn"]
+        or (expected_arn is not None and accelerator["AcceleratorArn"] != expected_arn)
+    ):
+        module.fail_json(msg="Global Accelerator returned an invalid accelerator")
+    return accelerator
+
+
+def validate_resource_list(module, resources, resource_name, arn_key):
+    if not isinstance(resources, list) or any(
+        not isinstance(resource, dict) or not isinstance(resource.get(arn_key), str) or not resource[arn_key]
+        for resource in resources
+    ):
+        module.fail_json(msg=f"Global Accelerator returned an invalid {resource_name} list")
+    return resources
+
+
+def validate_tags(module, tags):
+    if not isinstance(tags, list) or any(
+        not isinstance(tag, dict)
+        or not isinstance(tag.get("Key"), str)
+        or not tag["Key"]
+        or not isinstance(tag.get("Value"), str)
+        for tag in tags
+    ):
+        module.fail_json(msg="Global Accelerator returned invalid tags")
+    return tags
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -127,24 +167,36 @@ def main():
             "Accelerators",
             "Unable to list AWS Global Accelerator accelerators",
         )
+        validate_resource_list(
+            module,
+            accelerators,
+            "accelerator",
+            "AcceleratorArn",
+        )
     else:
         try:
-            accelerator = client.describe_accelerator(
+            response = client.describe_accelerator(
                 AcceleratorArn=arn,
                 aws_retry=True,
-            ).get("Accelerator")
+            )
         except is_boto3_error_code("AcceleratorNotFoundException"):
-            accelerator = None
+            response = None
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to describe AWS Global Accelerator {arn}",
             )
 
-        if accelerator is not None:
-            accelerators.append(accelerator)
+        if response is not None:
+            accelerators.append(
+                validate_accelerator(
+                    module,
+                    response.get("Accelerator") if isinstance(response, dict) else None,
+                    expected_arn=arn,
+                )
+            )
 
-    if any(accelerator.get("AcceleratorArn") for accelerator in accelerators):
+    if accelerators:
         require_client_methods(
             module,
             client,
@@ -154,18 +206,13 @@ def main():
 
     available_accelerators = []
     for accelerator in accelerators:
-        accelerator_arn = accelerator.get("AcceleratorArn")
-
-        if accelerator_arn is None:
-            accelerator["Tags"] = []
-            available_accelerators.append(accelerator)
-            continue
+        accelerator_arn = accelerator["AcceleratorArn"]
 
         try:
-            accelerator["Tags"] = client.list_tags_for_resource(
+            response = client.list_tags_for_resource(
                 ResourceArn=accelerator_arn,
                 aws_retry=True,
-            ).get("Tags", [])
+            )
         except is_boto3_error_code("AcceleratorNotFoundException"):
             continue
         except (BotoCoreError, ClientError) as e:
@@ -173,6 +220,10 @@ def main():
                 e,
                 msg=("Unable to list tags for AWS Global Accelerator " f"{accelerator_arn}"),
             )
+        accelerator["Tags"] = validate_tags(
+            module,
+            response.get("Tags") if isinstance(response, dict) else None,
+        )
 
         if not include_listeners:
             available_accelerators.append(accelerator)
@@ -185,11 +236,11 @@ def main():
             {"list_listeners": ("AcceleratorArn", "MaxResults", "NextToken")},
         )
         try:
-            listeners = paginated_query_with_retries(
+            response = paginated_query_with_retries(
                 client,
                 "list_listeners",
                 AcceleratorArn=accelerator_arn,
-            ).get("Listeners", [])
+            )
         except is_boto3_error_code("AcceleratorNotFoundException"):
             continue
         except (BotoCoreError, ClientError) as e:
@@ -197,6 +248,12 @@ def main():
                 e,
                 msg=("Unable to list AWS Global Accelerator listeners for " f"{accelerator_arn}"),
             )
+        listeners = validate_resource_list(
+            module,
+            response.get("Listeners") if isinstance(response, dict) else None,
+            "listener",
+            "ListenerArn",
+        )
 
         available_listeners = []
         for listener in listeners:
@@ -206,7 +263,7 @@ def main():
                 available_listeners.append(listener)
                 continue
 
-            listener_arn = listener.get("ListenerArn")
+            listener_arn = listener["ListenerArn"]
 
             require_client_methods(
                 module,
@@ -221,11 +278,11 @@ def main():
                 },
             )
             try:
-                listener["EndpointGroups"] = paginated_query_with_retries(
+                response = paginated_query_with_retries(
                     client,
                     "list_endpoint_groups",
                     ListenerArn=listener_arn,
-                ).get("EndpointGroups", [])
+                )
             except is_boto3_error_code("ListenerNotFoundException"):
                 continue
             except (BotoCoreError, ClientError) as e:
@@ -233,6 +290,12 @@ def main():
                     e,
                     msg=("Unable to list AWS Global Accelerator endpoint " f"groups for {listener_arn}"),
                 )
+            listener["EndpointGroups"] = validate_resource_list(
+                module,
+                response.get("EndpointGroups") if isinstance(response, dict) else None,
+                "endpoint group",
+                "EndpointGroupArn",
+            )
             available_listeners.append(listener)
 
         accelerator["Listeners"] = available_listeners

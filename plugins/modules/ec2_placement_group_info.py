@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_placement_group_info
-short_description: Gather information about aws placement groups
+version_added: "1.9.0"
+short_description: Gather information about AWS EC2 placement groups
 description:
   - Gathers information about EC2 placement groups.
 author:
@@ -30,6 +31,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module only retrieves information and does not modify AWS.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -106,6 +114,9 @@ def main():
         "Unable to describe EC2 placement groups",
         **request,
     )
+
+    if any(not isinstance(placement_group, dict) for placement_group in placement_groups):
+        module.fail_json(msg="EC2 returned invalid placement group information")
 
     module.exit_json(
         changed=False,

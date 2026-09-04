@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import ec2_serial_console a
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
@@ -16,7 +17,17 @@ class Ec2SerialConsoleTests(TestCase):
 
     def test_response_metadata_is_not_returned(self):
         response = {"SerialConsoleAccessEnabled": True, "ResponseMetadata": {"x": 1}}
-        assert plugin.normalized_serial_console_access(response) == {"serial_console_access_enabled": True}
+        assert plugin.normalized_serial_console_access(FakeModule({}), response) == {
+            "serial_console_access_enabled": True
+        }
+        assert response == {"SerialConsoleAccessEnabled": True, "ResponseMetadata": {"x": 1}}
+
+    def test_rejects_invalid_serial_console_status(self):
+        for response in ({}, {"SerialConsoleAccessEnabled": None}, None):
+            with self.subTest(response=response), self.assertRaises(ModuleFail) as raised:
+                plugin.normalized_serial_console_access(FakeModule({}), response)
+
+            self.assertIn("invalid serial console access status", raised.exception.values["msg"])
 
     def test_check_mode_projects_enabled_state_without_mutation(self):
         client = Mock()
