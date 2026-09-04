@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - >-
+    route53_zone_associate - validate hosted-zone and VPC-association responses
+    before transforming them.

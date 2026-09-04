@@ -6,6 +6,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import route53_zone_associa
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -62,6 +63,32 @@ class Route53ZoneAssociateTests(TestCase):
             {"VPCId": "vpc-1", "VPCRegion": "us-east-1"},
             {"VPCId": "vpc-2", "VPCRegion": "us-west-2"},
         ]
+
+    def test_get_vpc_associations_rejects_invalid_response(self):
+        client = Mock()
+        client.get_hosted_zone.return_value = {"VPCs": {}}
+        module = FakeModule({})
+
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.get_vpc_associations(client, module, "Z1")
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "AWS Route53 returned an invalid hosted zone response for Z1",
+        )
+
+    def test_get_vpc_associations_rejects_invalid_vpc(self):
+        client = Mock()
+        client.get_hosted_zone.return_value = {"VPCs": [{"VPCId": "vpc-1"}]}
+        module = FakeModule({})
+
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.get_vpc_associations(client, module, "Z1")
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "AWS Route53 returned an invalid VPC association for hosted zone Z1",
+        )
 
     def test_check_mode_projects_the_new_association(self):
         client = Mock()

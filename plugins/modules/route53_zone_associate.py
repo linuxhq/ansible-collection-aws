@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: route53_zone_associate
-short_description: Manage aws route53 zone associations
+short_description: Manage AWS Route53 zone associations
 description:
   - Manages AWS Route53 private hosted zone VPC associations.
   - The last VPC association of a private hosted zone cannot be removed;
@@ -42,6 +42,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: Determines what changes would occur without modifying AWS resources.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -75,12 +82,34 @@ vpc:
     - The requested VPC association.
   returned: always
   type: dict
+  contains:
+    vpc_id:
+      description:
+        - The VPC ID.
+      returned: always
+      type: str
+    vpc_region:
+      description:
+        - The AWS region of the VPC.
+      returned: always
+      type: str
 vpcs:
   description:
     - The current hosted zone VPC associations.
   returned: always
   type: list
   elements: dict
+  contains:
+    vpc_id:
+      description:
+        - The VPC ID.
+      returned: always
+      type: str
+    vpc_region:
+      description:
+        - The AWS region of the VPC.
+      returned: always
+      type: str
 """
 
 import re
@@ -175,10 +204,10 @@ def ensure_present(client, module, hosted_zone_id):
 
 def get_vpc_associations(client, module, hosted_zone_id):
     try:
-        return client.get_hosted_zone(
+        response = client.get_hosted_zone(
             Id=hosted_zone_id,
             aws_retry=True,
-        ).get("VPCs", [])
+        )
     except is_boto3_error_code("NoSuchHostedZone"):
         return []
     except (BotoCoreError, ClientError) as e:
@@ -186,6 +215,22 @@ def get_vpc_associations(client, module, hosted_zone_id):
             e,
             msg=f"Unable to get AWS Route53 hosted zone {hosted_zone_id}",
         )
+
+    if not isinstance(response, dict) or not isinstance(response.get("VPCs", []), list):
+        module.fail_json(msg=f"AWS Route53 returned an invalid hosted zone response for {hosted_zone_id}")
+
+    vpcs = response.get("VPCs", [])
+    for vpc in vpcs:
+        if (
+            not isinstance(vpc, dict)
+            or not isinstance(vpc.get("VPCId"), str)
+            or not vpc["VPCId"]
+            or not isinstance(vpc.get("VPCRegion"), str)
+            or not vpc["VPCRegion"]
+        ):
+            module.fail_json(msg=f"AWS Route53 returned an invalid VPC association for hosted zone {hosted_zone_id}")
+
+    return vpcs
 
 
 def route53_vpc(module):
