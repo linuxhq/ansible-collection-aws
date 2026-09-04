@@ -1,0 +1,3 @@
+---
+bugfixes:
+  - sqs_queue_info - fail cleanly when AWS returns malformed queue information.

@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import sqs_queue_info as pl
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -45,6 +46,15 @@ class SqsQueueInfoTests(TestCase):
                 )
                 self.assertIsNone(plugin.get_queue(client, FakeModule({}), "https://sqs/queue"))
 
+    def test_get_queue_rejects_malformed_attributes(self):
+        client = Mock(get_queue_attributes=Mock(return_value={"Attributes": []}))
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.get_queue(client, FakeModule({}), "https://sqs/queue")
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unexpected response while getting AWS SQS queue https://sqs/queue",
+        )
+
     def test_get_queue_url_accepts_modeled_not_found_error(self):
         client = Mock()
         client.get_queue_url.side_effect = plugin.ClientError(
@@ -74,4 +84,25 @@ class SqsQueueInfoTests(TestCase):
                 "get_queue_attributes": ("AttributeNames", "QueueUrl"),
                 "get_queue_url": ("QueueName",),
             },
+        )
+
+    def test_get_queue_url_rejects_malformed_response(self):
+        client = Mock(get_queue_url=Mock(return_value={"QueueUrl": None}))
+        module = FakeModule(
+            {
+                "name": "main",
+                "queue_name_prefix": None,
+                "queue_owner_aws_account_id": None,
+            },
+            client=client,
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unexpected response while getting AWS SQS queue URL for main",
         )

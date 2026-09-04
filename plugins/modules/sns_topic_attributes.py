@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: sns_topic_attributes
-short_description: Manage aws simple notification service topics
+short_description: Manage AWS Simple Notification Service topic attributes
 description:
   - Manages selected AWS Simple Notification Service topic attributes.
   - Supports managing the topic KMS master key attribute.
@@ -28,6 +28,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: The module reports the attributes that would result from the requested changes.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -45,6 +52,11 @@ attributes:
       C(kms_master_key_id).
   returned: always
   type: dict
+  contains:
+    kms_master_key_id:
+      description: AWS KMS key identifier used for topic encryption.
+      returned: when configured
+      type: str
 topic_arn:
   description: The ARN of the managed topic.
   returned: always
@@ -104,10 +116,10 @@ def main():
         desired_parameters[attribute] = module_value
 
     try:
-        current_attributes = client.get_topic_attributes(
+        response = client.get_topic_attributes(
             TopicArn=topic_arn,
             aws_retry=True,
-        ).get("Attributes", {})
+        )
     except is_boto3_error_code("NotFound"):
         module.fail_json(msg=("AWS Simple Notification Service topic does not exist " f"{topic_arn}"))
     except (BotoCoreError, ClientError) as e:
@@ -115,6 +127,10 @@ def main():
             e,
             msg=("Unable to get AWS Simple Notification Service topic attributes " f"for {topic_arn}"),
         )
+
+    if not isinstance(response, dict) or not isinstance(response.get("Attributes", {}), dict):
+        module.fail_json(msg=f"Unexpected response while getting topic attributes for {topic_arn}")
+    current_attributes = response.get("Attributes", {})
 
     desired_attributes = snake_dict_to_camel_dict(desired_parameters, capitalize_first=True)
     current_normalized = boto3_resource_to_ansible_dict(current_attributes, transform_tags=False, force_tags=False)

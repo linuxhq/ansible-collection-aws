@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: sqs_queue_info
-short_description: Gather information about aws simple queue service queues
+short_description: Gather information about AWS Simple Queue Service queues
 description:
   - Gathers information about AWS Simple Queue Service queues.
 author:
@@ -32,6 +32,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module only gathers information and does not modify resources.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -55,6 +62,19 @@ queues:
   returned: always
   type: list
   elements: dict
+  contains:
+    name:
+      description: Queue name.
+      returned: always
+      type: str
+    queue_arn:
+      description: Queue ARN.
+      returned: when available
+      type: str
+    queue_url:
+      description: Queue URL.
+      returned: always
+      type: str
 """
 
 try:
@@ -84,15 +104,19 @@ QUEUE_NOT_FOUND_CODES = (
 
 def get_queue(client, module, queue_url):
     try:
-        attributes = client.get_queue_attributes(
+        response = client.get_queue_attributes(
             AttributeNames=["All"],
             QueueUrl=queue_url,
             aws_retry=True,
-        ).get("Attributes", {})
+        )
     except is_boto3_error_code(QUEUE_NOT_FOUND_CODES):
         return None
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS SQS queue {queue_url}")
+
+    if not isinstance(response, dict) or not isinstance(response.get("Attributes", {}), dict):
+        module.fail_json(msg=f"Unexpected response while getting AWS SQS queue {queue_url}")
+    attributes = response.get("Attributes", {})
 
     queue = boto3_resource_to_ansible_dict(attributes, transform_tags=False, force_tags=False)
 
@@ -143,14 +167,18 @@ def main():
             request["QueueOwnerAWSAccountId"] = queue_owner_aws_account_id
 
         try:
-            queue_url = client.get_queue_url(
+            response = client.get_queue_url(
                 **request,
                 aws_retry=True,
-            ).get("QueueUrl")
+            )
         except is_boto3_error_code(QUEUE_NOT_FOUND_CODES):
             queue_url = None
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to get AWS SQS queue URL for {name}")
+        else:
+            queue_url = response.get("QueueUrl") if isinstance(response, dict) else None
+            if not isinstance(queue_url, str) or not queue_url:
+                module.fail_json(msg=f"Unexpected response while getting AWS SQS queue URL for {name}")
 
         queue = get_queue(client, module, queue_url) if queue_url else None
         queues = [queue] if queue is not None else []

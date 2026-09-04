@@ -66,3 +66,18 @@ class SnsTopicAttributesTests(TestCase):
 
         require_methods.assert_called_once_with(module, client, "SNS", {"get_topic_attributes": ("TopicArn",)})
         client.set_topic_attributes.assert_not_called()
+
+    def test_rejects_malformed_get_response(self):
+        client = Mock(get_topic_attributes=Mock(return_value={"Attributes": None}))
+        module = FakeModule({"kms_master_key_id": None, "topic_arn": "arn:topic"}, client=client)
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unexpected response while getting topic attributes for arn:topic",
+        )
