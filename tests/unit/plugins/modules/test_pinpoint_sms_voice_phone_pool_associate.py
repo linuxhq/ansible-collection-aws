@@ -85,6 +85,38 @@ class PinpointSmsVoicePhonePoolAssociateTests(TestCase):
             "PoolId": "pool-1",
         }
 
+    def test_current_associations_rejects_malformed_response(self):
+        with (
+            patch.object(plugin, "paginated_query_with_retries", return_value=[]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.current_associations(Mock(), FakeModule({"pool_id": "pool-1"}))
+
+        self.assertIn("malformed", raised.exception.values["msg"])
+
+    def test_present_rejects_wrong_association_response(self):
+        client = Mock()
+        client.associate_origination_identity.return_value = {
+            "OriginationIdentity": "sender-2",
+            "PoolId": "pool-1",
+        }
+        module = FakeModule(
+            {
+                "client_token": None,
+                "iso_country_code": None,
+                "origination_identity": "sender-1",
+                "pool_id": "pool-1",
+                "state": "present",
+            }
+        )
+        with (
+            patch.object(plugin, "current_associations", return_value=[]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertIn("wrong", raised.exception.values["msg"])
+
     def test_absent_does_not_return_association_that_disappeared(self):
         client = Mock()
         client.disassociate_origination_identity.side_effect = plugin.ClientError(

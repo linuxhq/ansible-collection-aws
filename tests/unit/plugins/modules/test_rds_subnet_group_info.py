@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import rds_subnet_group_inf
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
@@ -38,3 +39,20 @@ class RdsSubnetGroupInfoTests(TestCase):
             },
         )
         self.assertEqual(query.call_args.kwargs["DBSubnetGroupName"], "main")
+
+    def test_malformed_response_fails_cleanly(self):
+        for response in (None, {}, {"DBSubnetGroups": [None]}):
+            with self.subTest(response=response):
+                module = FakeModule({"filters": None, "name": None}, client=Mock())
+                with (
+                    patch.object(plugin, "AnsibleAWSModule", return_value=module),
+                    patch.object(plugin, "require_client_methods"),
+                    patch.object(plugin, "paginated_query_with_retries", return_value=response),
+                    self.assertRaises(ModuleFail) as raised,
+                ):
+                    plugin.main()
+
+                self.assertEqual(
+                    raised.exception.values["msg"],
+                    "Unable to describe AWS RDS DB subnet groups: AWS returned an invalid response",
+                )

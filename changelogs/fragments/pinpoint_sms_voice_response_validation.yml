@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - >-
+    pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_number_info,
+    pinpoint_sms_voice_phone_pool, pinpoint_sms_voice_phone_pool_associate,
+    and pinpoint_sms_voice_phone_pool_info - validate AWS responses, avoid waits
+    after resources disappear, prevent stale deletion results, and avoid waiting
+    for existing resources in check mode.

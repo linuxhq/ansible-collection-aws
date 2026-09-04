@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - route53_resolver - validate endpoint, IP address, tag, and mutation responses and fail clearly instead of raising raw exceptions or reporting unapplied tag changes.
+  - route53_resolver_info - validate endpoint and paginated detail responses before transforming them.

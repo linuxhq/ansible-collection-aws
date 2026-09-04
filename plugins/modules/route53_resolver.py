@@ -120,6 +120,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: Determines what changes would occur without modifying AWS resources.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -286,7 +293,7 @@ PROTOCOLS = {
 
 def create_resolver_endpoint(client, module, desired):
     try:
-        endpoint = client.create_resolver_endpoint(
+        response = client.create_resolver_endpoint(
             **scrub_none_parameters(
                 snake_dict_to_camel_dict(
                     {
@@ -307,15 +314,19 @@ def create_resolver_endpoint(client, module, desired):
                 )
             ),
             aws_retry=True,
-        ).get("ResolverEndpoint")
+        )
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to create AWS Route53 Resolver endpoint {desired['name']}",
         )
 
-    if not (endpoint or {}).get("Id"):
+    endpoint = response.get("ResolverEndpoint") if isinstance(response, dict) else None
+    if not isinstance(endpoint, dict) or not endpoint.get("Id"):
+        endpoint = get_resolver_endpoint_by_name(client, module)
+    if endpoint is None:
         module.fail_json(msg=("AWS Route53 Resolver did not return the created endpoint " f"{desired['name']}"))
+    endpoint = validate_resolver_endpoint(module, endpoint, "create_resolver_endpoint")
 
     if module.params["wait"]:
         resolver_endpoint_id = endpoint.get("Id")
@@ -462,20 +473,29 @@ def ensure_present(client, module):
                 }
 
                 try:
-                    endpoint = client.update_resolver_endpoint(
+                    response = client.update_resolver_endpoint(
                         **snake_dict_to_camel_dict(update_params, capitalize_first=True),
                         aws_retry=True,
-                    ).get("ResolverEndpoint")
+                    )
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
                         msg=("Unable to update AWS Route53 Resolver endpoint " f"{module.params['name']}"),
                     )
 
-                if not (endpoint or {}).get("Id"):
+                endpoint = response.get("ResolverEndpoint") if isinstance(response, dict) else None
+                if not isinstance(endpoint, dict) or not endpoint.get("Id"):
+                    endpoint = get_resolver_endpoint(client, module, update_params["resolver_endpoint_id"])
+                if endpoint is None:
                     module.fail_json(
                         msg=("AWS Route53 Resolver did not return the updated endpoint " f"{module.params['name']}")
                     )
+                endpoint = validate_resolver_endpoint(
+                    module,
+                    endpoint,
+                    "update_resolver_endpoint",
+                    expected_id=update_params["resolver_endpoint_id"],
+                )
 
                 ip_addresses_changed = current["ip_addresses"] != desired_comparable["ip_addresses"]
                 if endpoint is not None and (module.params["wait"] or ip_addresses_changed):
@@ -520,7 +540,14 @@ def ensure_present(client, module):
             )
             resource_arn = endpoint.get("Arn")
 
-            if resource_arn:
+            if tags_to_set or tag_keys_to_unset:
+                if not isinstance(resource_arn, str) or not resource_arn:
+                    module.fail_json(
+                        msg=(
+                            "Unable to reconcile tags for AWS Route53 Resolver endpoint "
+                            f"{module.params['name']}: AWS returned an invalid endpoint ARN"
+                        )
+                    )
                 reconcile_arn_tags(
                     module,
                     client,
@@ -714,10 +741,10 @@ def comparable_ip_addresses_match(current, desired):
 
 def get_resolver_endpoint(client, module, resolver_endpoint_id):
     try:
-        endpoint = client.get_resolver_endpoint(
+        response = client.get_resolver_endpoint(
             ResolverEndpointId=resolver_endpoint_id,
             aws_retry=True,
-        ).get("ResolverEndpoint")
+        )
     except is_boto3_error_code("ResourceNotFoundException"):
         return None
     except (BotoCoreError, ClientError) as e:
@@ -726,6 +753,13 @@ def get_resolver_endpoint(client, module, resolver_endpoint_id):
             msg=f"Unable to get AWS Route53 Resolver endpoint {resolver_endpoint_id}",
         )
 
+    endpoint = response.get("ResolverEndpoint") if isinstance(response, dict) else None
+    endpoint = validate_resolver_endpoint(
+        module,
+        endpoint,
+        "get_resolver_endpoint",
+        expected_id=resolver_endpoint_id,
+    )
     return resolver_endpoint_with_tags(client, module, endpoint)
 
 
@@ -741,8 +775,13 @@ def get_resolver_endpoint_by_name(client, module):
         Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
     )
 
+    endpoints = [
+        validate_resolver_endpoint(module, endpoint, "list_resolver_endpoints", expected_name=name)
+        for endpoint in endpoints
+    ]
+
     if len(endpoints) > 1:
-        endpoint_ids = sorted(endpoint.get("Id", "") for endpoint in endpoints)
+        endpoint_ids = sorted(endpoint["Id"] for endpoint in endpoints)
         module.fail_json(
             msg=(f"Multiple AWS Route53 Resolver endpoints are named {name}: " f"{', '.join(endpoint_ids)}")
         )
@@ -755,7 +794,7 @@ def resolver_endpoint_with_ip_addresses(client, module, endpoint):
         return endpoint
     endpoint = dict(endpoint)
 
-    endpoint["IpAddresses"] = query_list(
+    ip_addresses = query_list(
         module,
         client,
         "list_resolver_endpoint_ip_addresses",
@@ -763,6 +802,7 @@ def resolver_endpoint_with_ip_addresses(client, module, endpoint):
         f"Unable to list AWS Route53 Resolver endpoint IP addresses for {endpoint['Id']}",
         ResolverEndpointId=endpoint["Id"],
     )
+    endpoint["IpAddresses"] = validate_ip_addresses(module, ip_addresses)
 
     return endpoint
 
@@ -772,7 +812,7 @@ def resolver_endpoint_with_tags(client, module, endpoint):
         return endpoint
     endpoint = dict(endpoint)
 
-    endpoint["Tags"] = query_list(
+    tags = query_list(
         module,
         client,
         "list_tags_for_resource",
@@ -780,8 +820,47 @@ def resolver_endpoint_with_tags(client, module, endpoint):
         f"Unable to list tags for AWS Route53 Resolver endpoint {endpoint['Arn']}",
         ResourceArn=endpoint["Arn"],
     )
+    endpoint["Tags"] = validate_tags(module, tags)
 
     return endpoint
+
+
+def validate_resolver_endpoint(module, endpoint, operation, expected_id=None, expected_name=None):
+    if not isinstance(endpoint, dict):
+        module.fail_json(msg=f"{operation}: AWS returned an invalid resolver endpoint")
+
+    endpoint_id = endpoint.get("Id")
+    if not isinstance(endpoint_id, str) or not endpoint_id:
+        module.fail_json(msg=f"{operation}: AWS returned a resolver endpoint without a valid ID")
+    if expected_id is not None and endpoint_id != expected_id:
+        module.fail_json(msg=f"{operation}: AWS returned an unexpected resolver endpoint ID {endpoint_id}")
+    if expected_name is not None and endpoint.get("Name") != expected_name:
+        module.fail_json(msg=f"{operation}: AWS returned an unexpected resolver endpoint name")
+
+    for field in ("Arn", "Name", "Status"):
+        if field in endpoint and not isinstance(endpoint[field], str):
+            module.fail_json(msg=f"{operation}: AWS returned an invalid resolver endpoint {field}")
+
+    return endpoint
+
+
+def validate_ip_addresses(module, ip_addresses):
+    for ip_address in ip_addresses:
+        if not isinstance(ip_address, dict):
+            module.fail_json(msg="list_resolver_endpoint_ip_addresses: AWS returned an invalid IP address")
+        if not isinstance(ip_address.get("SubnetId"), str) or not ip_address["SubnetId"]:
+            module.fail_json(msg="list_resolver_endpoint_ip_addresses: AWS returned an IP address without a subnet ID")
+        for field in ("Ip", "IpId", "Ipv6"):
+            if field in ip_address and not isinstance(ip_address[field], str):
+                module.fail_json(msg=f"list_resolver_endpoint_ip_addresses: AWS returned an invalid {field}")
+    return ip_addresses
+
+
+def validate_tags(module, tags):
+    for tag in tags:
+        if not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str):
+            module.fail_json(msg="list_tags_for_resource: AWS returned an invalid tag")
+    return tags
 
 
 def main():

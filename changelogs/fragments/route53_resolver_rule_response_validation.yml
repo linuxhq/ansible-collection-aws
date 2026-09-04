@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - >-
+    route53_resolver_rule - validate rule, target IP, tag, and mutation
+    responses; recover lean create and update responses; reject ambiguous
+    matches; and avoid stale IDs in check-mode replacement results.
+  - >-
+    route53_resolver_rule_info - validate rule, association, and tag responses
+    before transforming them and skip association queries when no rules exist.

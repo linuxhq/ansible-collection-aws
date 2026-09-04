@@ -20,6 +20,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module does not modify AWS resources.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -105,35 +112,43 @@ def main():
 
     normalized_endpoints = []
     for endpoint in resolver_endpoints:
+        endpoint = validate_endpoint(module, endpoint)
+        endpoint_id = endpoint["Id"]
         try:
-            ip_addresses = paginated_query_with_retries(
+            response = paginated_query_with_retries(
                 client,
                 "list_resolver_endpoint_ip_addresses",
-                ResolverEndpointId=endpoint["Id"],
-            ).get("IpAddresses", [])
+                ResolverEndpointId=endpoint_id,
+            )
         except is_boto3_error_code("ResourceNotFoundException"):
             continue
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to list AWS Route53 Resolver endpoint IP addresses " f"for {endpoint['Id']}"),
+                msg=("Unable to list AWS Route53 Resolver endpoint IP addresses " f"for {endpoint_id}"),
             )
+        ip_addresses = validate_ip_addresses(
+            module,
+            response_items(module, response, "IpAddresses", "list_resolver_endpoint_ip_addresses"),
+        )
 
         tags = []
-        if endpoint.get("Arn"):
+        endpoint_arn = endpoint.get("Arn")
+        if endpoint_arn:
             try:
-                tags = paginated_query_with_retries(
+                response = paginated_query_with_retries(
                     client,
                     "list_tags_for_resource",
-                    ResourceArn=endpoint["Arn"],
-                ).get("Tags", [])
+                    ResourceArn=endpoint_arn,
+                )
             except is_boto3_error_code("ResourceNotFoundException"):
                 continue
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to list tags for AWS Route53 Resolver endpoint " f"{endpoint['Arn']}"),
+                    msg=("Unable to list tags for AWS Route53 Resolver endpoint " f"{endpoint_arn}"),
                 )
+            tags = validate_tags(module, response_items(module, response, "Tags", "list_tags_for_resource"))
 
         normalized_endpoints.append(
             boto3_resource_to_ansible_dict(
@@ -147,6 +162,42 @@ def main():
         changed=False,
         resolver_endpoints=normalized_endpoints,
     )
+
+
+def response_items(module, response, key, operation):
+    if not isinstance(response, dict):
+        module.fail_json(msg=f"{operation}: AWS returned an invalid response")
+    items = response.get(key, [])
+    if not isinstance(items, list):
+        module.fail_json(msg=f"{operation}: AWS returned an invalid {key} value")
+    return items
+
+
+def validate_endpoint(module, endpoint):
+    if not isinstance(endpoint, dict):
+        module.fail_json(msg="list_resolver_endpoints: AWS returned an invalid resolver endpoint")
+    endpoint_id = endpoint.get("Id")
+    if not isinstance(endpoint_id, str) or not endpoint_id:
+        module.fail_json(msg="list_resolver_endpoints: AWS returned a resolver endpoint without a valid ID")
+    if "Arn" in endpoint and not isinstance(endpoint["Arn"], str):
+        module.fail_json(msg="list_resolver_endpoints: AWS returned an invalid resolver endpoint ARN")
+    return endpoint
+
+
+def validate_ip_addresses(module, ip_addresses):
+    for ip_address in ip_addresses:
+        if not isinstance(ip_address, dict):
+            module.fail_json(msg="list_resolver_endpoint_ip_addresses: AWS returned an invalid IP address")
+        if not isinstance(ip_address.get("SubnetId"), str) or not ip_address["SubnetId"]:
+            module.fail_json(msg="list_resolver_endpoint_ip_addresses: AWS returned an IP address without a subnet ID")
+    return ip_addresses
+
+
+def validate_tags(module, tags):
+    for tag in tags:
+        if not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str):
+            module.fail_json(msg="list_tags_for_resource: AWS returned an invalid tag")
+    return tags
 
 
 if __name__ == "__main__":

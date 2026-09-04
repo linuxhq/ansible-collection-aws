@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - >-
+    route53_resolver_rule_associate - validate association responses, safely
+    recover lean create responses, reject ambiguous matches, and avoid stale
+    IDs in check-mode replacement results.

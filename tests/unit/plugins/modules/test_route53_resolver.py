@@ -5,12 +5,81 @@ from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver as 
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
     assert_module_rejects,
 )
 
 
 class Route53ResolverTests(TestCase):
+    def test_get_rejects_malformed_response(self):
+        client = Mock(get_resolver_endpoint=Mock(return_value=[]))
+        module = FakeModule({"name": "endpoint"})
+
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.get_resolver_endpoint(client, module, "rslvr-endpt-1")
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "get_resolver_endpoint: AWS returned an invalid resolver endpoint",
+        )
+
+    def test_get_rejects_unexpected_endpoint_id(self):
+        client = Mock(get_resolver_endpoint=Mock(return_value={"ResolverEndpoint": {"Id": "rslvr-endpt-2"}}))
+        module = FakeModule({"name": "endpoint"})
+
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.get_resolver_endpoint(client, module, "rslvr-endpt-1")
+
+        self.assertIn("unexpected resolver endpoint ID", raised.exception.values["msg"])
+
+    def test_create_rereads_endpoint_when_response_is_lean(self):
+        client = Mock(create_resolver_endpoint=Mock(return_value={}))
+        module = FakeModule({"tags": None, "wait": False})
+        desired = {
+            "direction": "OUTBOUND",
+            "ip_addresses": [{"subnet_id": "subnet-1"}],
+            "name": "main",
+            "protocols": ["Do53"],
+            "resolver_endpoint_type": "IPV4",
+            "security_group_ids": ["sg-1"],
+        }
+        endpoint = {"Id": "rslvr-endpt-1", "Name": "main"}
+
+        with patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint) as get:
+            result = plugin.create_resolver_endpoint(client, module, desired)
+
+        get.assert_called_once_with(client, module)
+        self.assertEqual(result["Id"], "rslvr-endpt-1")
+
+    def test_list_by_name_rejects_malformed_endpoint(self):
+        module = FakeModule({"name": "endpoint"})
+        with (
+            patch.object(plugin, "query_list", return_value=[{"Name": "endpoint"}]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.get_resolver_endpoint_by_name(Mock(), module)
+
+        self.assertIn("without a valid ID", raised.exception.values["msg"])
+
+    def test_ip_and_tag_enrichment_reject_malformed_entries(self):
+        module = FakeModule({"name": "endpoint"})
+        endpoint = {"Arn": "arn:aws:route53resolver:::endpoint", "Id": "rslvr-endpt-1"}
+
+        with (
+            patch.object(plugin, "query_list", return_value=[{"Ip": "192.0.2.1"}]),
+            self.assertRaises(ModuleFail) as ip_raised,
+        ):
+            plugin.resolver_endpoint_with_ip_addresses(Mock(), module, endpoint)
+        self.assertIn("without a subnet ID", ip_raised.exception.values["msg"])
+
+        with (
+            patch.object(plugin, "query_list", return_value=[{"Key": "Name"}]),
+            self.assertRaises(ModuleFail) as tag_raised,
+        ):
+            plugin.resolver_endpoint_with_tags(Mock(), module, endpoint)
+        self.assertIn("invalid tag", tag_raised.exception.values["msg"])
+
     def test_absent_waits_for_deleting_endpoint_without_deleting_again(self):
         client = Mock()
         module = FakeModule({"name": "endpoint", "wait": True})
@@ -527,3 +596,85 @@ class Route53ResolverTests(TestCase):
 
         enrich.assert_called_with(client, module, waited)
         reconcile.assert_called_once_with(client, module, updated, ANY)
+
+    def test_update_rereads_endpoint_when_response_is_lean(self):
+        client = Mock(update_resolver_endpoint=Mock(return_value={}))
+        module = FakeModule(
+            {
+                "direction": "outbound",
+                "ip_addresses": [
+                    {"subnet_id": "subnet-1"},
+                    {"subnet_id": "subnet-2"},
+                ],
+                "name": "main",
+                "protocols": ["doh"],
+                "purge_tags": True,
+                "resolver_endpoint_type": "ipv4",
+                "security_group_ids": ["sg-1"],
+                "tags": None,
+                "wait": False,
+            }
+        )
+        current = {
+            "Direction": "OUTBOUND",
+            "Id": "rslvr-1",
+            "IpAddresses": [
+                {"SubnetId": "subnet-1"},
+                {"SubnetId": "subnet-2"},
+            ],
+            "Protocols": ["Do53"],
+            "ResolverEndpointType": "IPV4",
+            "SecurityGroupIds": ["sg-1"],
+        }
+        updated = dict(current, Protocols=["DoH"])
+        with (
+            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
+            patch.object(plugin, "get_resolver_endpoint", return_value=updated) as get,
+            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+            patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args: args[2]),
+            patch.object(plugin, "reconcile_resolver_endpoint_ip_addresses", return_value=updated),
+            self.assertRaises(ModuleExit),
+        ):
+            plugin.ensure_present(client, module)
+
+        get.assert_called_once_with(client, module, "rslvr-1")
+
+    def test_tag_change_rejects_endpoint_without_arn(self):
+        client = Mock()
+        module = FakeModule(
+            {
+                "direction": "outbound",
+                "ip_addresses": [
+                    {"subnet_id": "subnet-1"},
+                    {"subnet_id": "subnet-2"},
+                ],
+                "name": "main",
+                "protocols": ["do53"],
+                "purge_tags": True,
+                "resolver_endpoint_type": "ipv4",
+                "security_group_ids": ["sg-1"],
+                "tags": {"Name": "main"},
+                "wait": False,
+            }
+        )
+        current = {
+            "Direction": "OUTBOUND",
+            "Id": "rslvr-1",
+            "IpAddresses": [
+                {"SubnetId": "subnet-1"},
+                {"SubnetId": "subnet-2"},
+            ],
+            "Protocols": ["Do53"],
+            "ResolverEndpointType": "IPV4",
+            "SecurityGroupIds": ["sg-1"],
+        }
+        with (
+            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
+            patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args: args[2]),
+            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertIn("invalid endpoint ARN", raised.exception.values["msg"])
+        client.tag_resource.assert_not_called()

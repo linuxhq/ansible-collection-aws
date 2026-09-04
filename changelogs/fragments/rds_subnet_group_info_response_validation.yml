@@ -1,0 +1,3 @@
+---
+bugfixes:
+  - rds_subnet_group_info - fail cleanly when AWS returns malformed subnet group data.

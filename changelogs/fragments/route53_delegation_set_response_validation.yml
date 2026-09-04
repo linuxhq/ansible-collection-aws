@@ -1,0 +1,3 @@
+---
+bugfixes:
+  - route53_delegation_set and route53_delegation_set_info - validate AWS responses and fail cleanly for malformed data.

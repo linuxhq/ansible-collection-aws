@@ -51,6 +51,10 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: Determines what changes would occur without modifying AWS resources.
+    support: full
 """
 
 EXAMPLES = r"""
@@ -118,11 +122,11 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 
 def current_associations(client, module):
     try:
-        return paginated_query_with_retries(
+        response = paginated_query_with_retries(
             client,
             "list_pool_origination_identities",
             PoolId=module.params["pool_id"],
-        ).get("OriginationIdentities", [])
+        )
     except is_boto3_error_code("ResourceNotFoundException"):
         return []
     except (BotoCoreError, ClientError) as e:
@@ -130,6 +134,33 @@ def current_associations(client, module):
             e,
             msg=("Unable to list origination identities for Pinpoint SMS Voice " f"V2 pool {module.params['pool_id']}"),
         )
+
+    associations = response.get("OriginationIdentities") if isinstance(response, dict) else None
+    if not isinstance(associations, list):
+        module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 origination identity data")
+    for association in associations:
+        validate_association(module, association, require_pool=False)
+    return associations
+
+
+def validate_association(module, association, require_pool=True):
+    if (
+        not isinstance(association, dict)
+        or not isinstance(association.get("OriginationIdentity"), str)
+        or ("OriginationIdentityArn" in association and not isinstance(association["OriginationIdentityArn"], str))
+        or (require_pool and not isinstance(association.get("PoolId"), str))
+    ):
+        module.fail_json(msg="AWS returned a malformed Pinpoint SMS Voice V2 origination identity association")
+
+    if require_pool:
+        expected_pool_id = module.params["pool_id"].rsplit("/", 1)[-1]
+        if association["PoolId"] != expected_pool_id or module.params["origination_identity"] not in (
+            association["OriginationIdentity"],
+            association.get("OriginationIdentityArn"),
+        ):
+            module.fail_json(msg="AWS returned the wrong Pinpoint SMS Voice V2 origination identity association")
+
+    return association
 
 
 def current_association(module, associations):
@@ -198,9 +229,8 @@ def ensure_present(client, module):
                 ),
             )
 
+        validate_association(module, association)
         association.pop("ResponseMetadata", None)
-        if not association.get("OriginationIdentity"):
-            module.fail_json(msg=("AWS did not return the Pinpoint SMS Voice V2 origination " "identity association"))
     elif changed and module.check_mode:
         association = scrub_none_parameters(
             {
@@ -240,6 +270,7 @@ def ensure_absent(client, module):
             )
 
         if response is not None:
+            validate_association(module, response)
             response.pop("ResponseMetadata", None)
             association = response
 

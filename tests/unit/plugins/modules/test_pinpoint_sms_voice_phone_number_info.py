@@ -155,3 +155,48 @@ class PinpointSmsVoicePhoneNumberInfoTests(TestCase):
                 ),
             ],
         )
+
+    def test_rejects_malformed_phone_number(self):
+        module = FakeModule(
+            {
+                "filters": None,
+                "max_results": None,
+                "owner": "SELF",
+                "phone_number_ids": None,
+            }
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[{"PhoneNumberArn": "arn:phone"}]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertIn("malformed", raised.exception.values["msg"])
+
+    def test_rejects_malformed_tags(self):
+        client = Mock()
+        client.list_tags_for_resource.return_value = {"Tags": "invalid"}
+        module = FakeModule(
+            {
+                "filters": None,
+                "max_results": None,
+                "owner": "SELF",
+                "phone_number_ids": None,
+            },
+            client=client,
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(
+                plugin,
+                "query_list",
+                return_value=[{"PhoneNumberArn": "arn:phone", "PhoneNumberId": "phone-1"}],
+            ),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertIn("malformed tags", raised.exception.values["msg"])

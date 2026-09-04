@@ -11,6 +11,105 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 
 
 class Route53ResolverRuleAssociateTests(TestCase):
+    def test_create_rereads_association_when_response_is_lean(self):
+        client = Mock(associate_resolver_rule=Mock(return_value={}))
+        module = FakeModule(
+            {
+                "name": "main",
+                "resolver_rule_id": "rslvr-rr-1",
+                "vpc_id": "vpc-1",
+                "wait": False,
+            }
+        )
+        association = {
+            "Id": "rslvr-rrassoc-1",
+            "Name": "main",
+            "ResolverRuleId": "rslvr-rr-1",
+            "VPCId": "vpc-1",
+        }
+        with (
+            patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", side_effect=[None, association]),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertEqual(raised.exception.values["resolver_rule_association_id"], "rslvr-rrassoc-1")
+
+    def test_wait_rejects_malformed_get_response(self):
+        client = Mock(get_resolver_rule_association=Mock(return_value=[]))
+        module = FakeModule(
+            {
+                "name": "main",
+                "resolver_rule_id": "rslvr-rr-1",
+                "vpc_id": "vpc-1",
+            }
+        )
+        with (
+            patch.object(plugin, "run_waiter"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.wait_for_resolver_rule_association_status(
+                client,
+                module,
+                "rslvr-rrassoc-1",
+                {"complete"},
+            )
+
+        self.assertIn("invalid resolver rule association", raised.exception.values["msg"])
+
+    def test_list_rejects_malformed_and_ambiguous_associations(self):
+        module = FakeModule(
+            {
+                "resolver_rule_id": "rslvr-rr-1",
+                "vpc_id": "vpc-1",
+            }
+        )
+        valid = {
+            "Name": "main",
+            "ResolverRuleId": "rslvr-rr-1",
+            "VPCId": "vpc-1",
+        }
+        cases = [
+            ([valid], "without a valid ID"),
+            (
+                [dict(valid, Id="rslvr-rrassoc-1"), dict(valid, Id="rslvr-rrassoc-2")],
+                "Multiple AWS Route53 Resolver rule associations",
+            ),
+            ([dict(valid, Id="rslvr-rrassoc-1", VPCId="vpc-2")], "unexpected resolver rule association VPCId"),
+        ]
+        for associations, message in cases:
+            with (
+                self.subTest(message=message),
+                patch.object(plugin, "query_list", return_value=associations),
+                self.assertRaises(ModuleFail) as raised,
+            ):
+                plugin.get_resolver_rule_association_by_rule_and_vpc(Mock(), module)
+            self.assertIn(message, raised.exception.values["msg"])
+
+    def test_check_mode_replacement_does_not_return_stale_id(self):
+        module = FakeModule(
+            {
+                "name": "new-name",
+                "resolver_rule_id": "rslvr-rr-1",
+                "vpc_id": "vpc-1",
+            },
+            check_mode=True,
+        )
+        current = {
+            "Id": "old-association",
+            "Name": "old-name",
+            "ResolverRuleId": "rslvr-rr-1",
+            "VPCId": "vpc-1",
+        }
+        with (
+            patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=current),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(Mock(), module)
+
+        self.assertTrue(raised.exception.values["changed"])
+        self.assertNotIn("resolver_rule_association_id", raised.exception.values)
+
     def test_absent_does_not_require_name(self):
         module = FakeModule(
             {

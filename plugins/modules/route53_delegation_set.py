@@ -29,6 +29,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: Determines what changes would occur without modifying AWS resources.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -119,19 +126,24 @@ def ensure_present(client, module):
 
     if changed and not module.check_mode:
         try:
-            delegation_set = client.create_reusable_delegation_set(
+            response = client.create_reusable_delegation_set(
                 CallerReference=name,
                 aws_retry=True,
-            ).get("DelegationSet")
+            )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to create AWS Route53 reusable delegation set {name}",
             )
 
-        if delegation_set is None:
+        delegation_set = response.get("DelegationSet") if isinstance(response, dict) else None
+        if (
+            not isinstance(delegation_set, dict)
+            or delegation_set.get("CallerReference") != name
+            or not isinstance(delegation_set.get("Id"), str)
+        ):
             delegation_set = get_reusable_delegation_set(client, module)
-        if not (delegation_set or {}).get("Id"):
+        if delegation_set is None:
             module.fail_json(msg=("AWS Route53 did not return the created reusable delegation set " f"{name}"))
     elif changed and module.check_mode:
         delegation_set = {"CallerReference": name}
@@ -159,10 +171,20 @@ def get_reusable_delegation_set(client, module):
         "DelegationSets",
         "Unable to list AWS Route53 reusable delegation sets",
     )
-    return next(
-        (delegation_set for delegation_set in delegation_sets if delegation_set.get("CallerReference") == name),
-        None,
-    )
+    for delegation_set in delegation_sets:
+        if not isinstance(delegation_set, dict) or not isinstance(delegation_set.get("CallerReference"), str):
+            module.fail_json(
+                msg="Unable to list AWS Route53 reusable delegation sets: AWS returned an invalid response"
+            )
+        if delegation_set["CallerReference"] != name:
+            continue
+        if not isinstance(delegation_set.get("Id"), str):
+            module.fail_json(
+                msg="Unable to list AWS Route53 reusable delegation sets: AWS returned an invalid response"
+            )
+        return delegation_set
+
+    return None
 
 
 def main():

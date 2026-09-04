@@ -12,6 +12,61 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 
 
 class Route53ResolverRuleTests(TestCase):
+    def test_get_rejects_malformed_response(self):
+        client = Mock(get_resolver_rule=Mock(return_value=[]))
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.get_resolver_rule(client, FakeModule({"name": "rule"}), "rslvr-rr-1")
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "get_resolver_rule: AWS returned an invalid resolver rule",
+        )
+
+    def test_create_rereads_rule_when_response_is_lean(self):
+        client = Mock(create_resolver_rule=Mock(return_value={}))
+        module = FakeModule({"state": "present", "tags": None, "wait": False})
+        desired = {
+            "domain_name": "example.com",
+            "name": "main",
+            "resolver_endpoint_id": "rslvr-out-1",
+            "rule_type": "FORWARD",
+            "target_ips": [{"ip": "192.0.2.1"}],
+        }
+        rule = {"Id": "rslvr-rr-1"}
+        with patch.object(plugin, "get_resolver_rule_by_name", return_value=rule) as get:
+            result = plugin.create_resolver_rule(client, module, desired)
+
+        get.assert_called_once_with(client, module)
+        self.assertEqual(result["DomainName"], "example.com")
+        self.assertEqual(result["Id"], "rslvr-rr-1")
+
+    def test_list_by_name_rejects_malformed_rule(self):
+        module = FakeModule({"name": "main", "state": "absent"})
+        with (
+            patch.object(plugin, "query_list", return_value=[{"Name": "main"}]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.get_resolver_rule_by_name(Mock(), module)
+
+        self.assertIn("without a valid ID", raised.exception.values["msg"])
+
+    def test_rule_and_tag_validation_rejects_malformed_entries(self):
+        module = FakeModule({"name": "main"})
+        rule = {
+            "DomainName": "example.com",
+            "Id": "rslvr-rr-1",
+            "ResolverEndpointId": "rslvr-out-1",
+            "RuleType": "FORWARD",
+            "TargetIps": [{"Port": 53}],
+        }
+        with self.assertRaises(ModuleFail) as target_raised:
+            plugin.validate_resolver_rule(module, rule, "get_resolver_rule", require_details=True)
+        self.assertIn("without an IP address", target_raised.exception.values["msg"])
+
+        with self.assertRaises(ModuleFail) as tag_raised:
+            plugin.validate_tags(module, [{"Key": "Name"}])
+        self.assertIn("invalid tag", tag_raised.exception.values["msg"])
+
     def test_absent_waits_for_deleting_rule_without_deleting_again(self):
         client = Mock()
         module = FakeModule({"name": "rule", "wait": True})
@@ -353,3 +408,92 @@ class Route53ResolverRuleTests(TestCase):
 
         wait_for_status.assert_called_once_with(client, module, "rslvr-rr-old", {"deleted"})
         create.assert_called_once()
+
+    def test_update_rereads_rule_when_response_is_lean(self):
+        client = Mock(update_resolver_rule=Mock(return_value={}))
+        module = FakeModule(
+            {
+                "domain_name": "example.com",
+                "name": "main",
+                "purge_tags": True,
+                "resolver_endpoint_id": "rslvr-out-2",
+                "rule_type": "forward",
+                "tags": None,
+                "target_ips": [{"ip": "192.0.2.1"}],
+                "wait": False,
+            }
+        )
+        current = {
+            "DomainName": "example.com",
+            "Id": "rslvr-rr-1",
+            "ResolverEndpointId": "rslvr-out-1",
+            "RuleType": "FORWARD",
+            "TargetIps": [{"Ip": "192.0.2.1"}],
+        }
+        updated = dict(current, ResolverEndpointId="rslvr-out-2")
+        with (
+            patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
+            patch.object(plugin, "get_resolver_rule", return_value=updated) as get,
+            self.assertRaises(ModuleExit),
+        ):
+            plugin.ensure_present(client, module)
+
+        get.assert_called_once_with(client, module, "rslvr-rr-1")
+
+    def test_check_mode_replacement_does_not_return_stale_id(self):
+        module = FakeModule(
+            {
+                "domain_name": "new.example.com",
+                "name": "main",
+                "purge_tags": True,
+                "resolver_endpoint_id": "rslvr-out-1",
+                "rule_type": "forward",
+                "tags": None,
+                "target_ips": [{"ip": "192.0.2.1"}],
+                "wait": False,
+            },
+            check_mode=True,
+        )
+        current = {
+            "DomainName": "old.example.com",
+            "Id": "rslvr-rr-old",
+            "ResolverEndpointId": "rslvr-out-1",
+            "RuleType": "FORWARD",
+            "TargetIps": [{"Ip": "192.0.2.1"}],
+        }
+        with (
+            patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(Mock(), module)
+
+        self.assertTrue(raised.exception.values["changed"])
+        self.assertNotIn("resolver_rule_id", raised.exception.values)
+
+    def test_tag_change_rejects_rule_without_arn(self):
+        module = FakeModule(
+            {
+                "domain_name": "example.com",
+                "name": "main",
+                "purge_tags": True,
+                "resolver_endpoint_id": "rslvr-out-1",
+                "rule_type": "forward",
+                "tags": {"Name": "main"},
+                "target_ips": [{"ip": "192.0.2.1"}],
+                "wait": False,
+            }
+        )
+        current = {
+            "DomainName": "example.com",
+            "Id": "rslvr-rr-1",
+            "ResolverEndpointId": "rslvr-out-1",
+            "RuleType": "FORWARD",
+            "TargetIps": [{"Ip": "192.0.2.1"}],
+        }
+        with (
+            patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.ensure_present(Mock(), module)
+
+        self.assertIn("invalid rule ARN", raised.exception.values["msg"])

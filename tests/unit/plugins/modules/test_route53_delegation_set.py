@@ -63,13 +63,45 @@ class Route53DelegationSetTests(TestCase):
             plugin,
             "query_list",
             return_value=[
-                {"CallerReference": "other"},
+                {"CallerReference": "other", "Id": "delegation-0"},
                 {"CallerReference": "example", "Id": "delegation-1"},
             ],
         ) as query:
             result = plugin.get_reusable_delegation_set(client, module)
         self.assertEqual(result["Id"], "delegation-1")
         query.assert_called_once()
+
+    def test_lookup_rejects_malformed_delegation_sets(self):
+        module = FakeModule({"name": "example"})
+        for delegation_sets in ([None], [{"CallerReference": "example"}]):
+            with (
+                self.subTest(delegation_sets=delegation_sets),
+                patch.object(plugin, "query_list", return_value=delegation_sets),
+                self.assertRaises(ModuleFail) as raised,
+            ):
+                plugin.get_reusable_delegation_set(Mock(), module)
+
+            self.assertEqual(
+                raised.exception.values["msg"],
+                "Unable to list AWS Route53 reusable delegation sets: AWS returned an invalid response",
+            )
+
+    def test_create_uses_lookup_when_response_is_malformed(self):
+        client = Mock()
+        client.create_reusable_delegation_set.return_value = None
+        module = FakeModule({"name": "example"})
+        with (
+            patch.object(
+                plugin,
+                "get_reusable_delegation_set",
+                side_effect=[None, {"CallerReference": "example", "Id": "delegation-1"}],
+            ),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertTrue(raised.exception.values["changed"])
+        self.assertEqual(raised.exception.values["delegation_set_id"], "delegation-1")
 
     def test_listing_requires_pagination_parameters(self):
         client = Mock()

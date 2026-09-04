@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import route53_delegation_s
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
@@ -63,4 +64,49 @@ class Route53DelegationSetInfoTests(TestCase):
             client,
             "Route53",
             {"list_reusable_delegation_sets": ("Marker", "MaxItems")},
+        )
+
+    def test_get_rejects_malformed_or_wrong_delegation_set(self):
+        responses = (
+            None,
+            {},
+            {"DelegationSet": None},
+            {"DelegationSet": {"Id": "delegation-2"}},
+        )
+        for response in responses:
+            with self.subTest(response=response):
+                client = Mock(get_reusable_delegation_set=Mock(return_value=response))
+                module = FakeModule({"id": "delegation-1"}, client=client)
+                with (
+                    patch.object(plugin, "AnsibleAWSModule", return_value=module),
+                    patch.object(plugin, "require_client_methods"),
+                    self.assertRaises(ModuleFail),
+                ):
+                    plugin.main()
+
+    def test_get_accepts_full_path_for_bare_response_id(self):
+        client = Mock(get_reusable_delegation_set=Mock(return_value={"DelegationSet": {"Id": "delegation-1"}}))
+        module = FakeModule({"id": "/delegationset/delegation-1"}, client=client)
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(raised.exception.values["delegation_sets"], [{"id": "delegation-1"}])
+
+    def test_listing_rejects_malformed_delegation_set(self):
+        module = FakeModule({"id": None}, client=Mock())
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[None]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unable to list AWS Route53 reusable delegation sets: AWS returned an invalid response",
         )

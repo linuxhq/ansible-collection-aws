@@ -223,6 +223,35 @@ class PinpointSmsVoicePhonePoolTests(TestCase):
 
         self.assertEqual(raised.exception.values["pool"]["origination_identities"], [])
 
+    def test_check_mode_does_not_wait_for_existing_pool(self):
+        current = {
+            "DeletionProtectionEnabled": False,
+            "MessageType": "TRANSACTIONAL",
+            "PoolId": "pool-1",
+            "Status": "UPDATING",
+            "Tags": [{"Key": "Name", "Value": "primary"}],
+        }
+        module = FakeModule(
+            {
+                "deletion_protection_enabled": False,
+                "message_type": "TRANSACTIONAL",
+                "name": "primary",
+                "purge_tags": True,
+                "state": "present",
+                "tags": None,
+                "wait": True,
+            },
+            check_mode=True,
+        )
+        with (
+            patch.object(plugin, "find_pool", return_value=current),
+            patch.object(plugin, "wait_for_pool_active") as wait_for_active,
+            self.assertRaises(ModuleExit),
+        ):
+            plugin.ensure_present(Mock(), module)
+
+        wait_for_active.assert_not_called()
+
     def test_no_wait_creation_uses_create_result_without_retagging(self):
         client = Mock()
         client.create_pool.return_value = {
@@ -320,6 +349,16 @@ class PinpointSmsVoicePhonePoolTests(TestCase):
 
         self.assertEqual(result, deleting)
 
+    def test_absent_activation_wait_accepts_disappearing_pool(self):
+        module = FakeModule({"state": "absent", "wait_delay": 1, "wait_timeout": 10})
+        with (
+            patch.object(plugin.time, "monotonic", side_effect=[0, 1]),
+            patch.object(plugin, "describe_pools", return_value=[]),
+        ):
+            result = plugin.wait_for_pool_active(Mock(), module, "pool-1")
+
+        self.assertEqual(result, {})
+
     def test_absent_stops_when_wait_observes_external_deletion(self):
         client = Mock()
         module = FakeModule({"pool_id": "pool-1", "state": "absent"})
@@ -402,3 +441,43 @@ class PinpointSmsVoicePhonePoolTests(TestCase):
         wait_for_pool_active.assert_called_once_with(client, module, "pool-1")
         client.delete_pool.assert_called_once_with(PoolId="pool-1", aws_retry=True)
         self.assertTrue(raised.exception.values["changed"])
+
+    def test_describe_pools_rejects_malformed_response(self):
+        with (
+            patch.object(plugin, "paginated_query_with_retries", return_value=[]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.describe_pools(Mock(), FakeModule({}))
+
+        self.assertIn("malformed", raised.exception.values["msg"])
+
+    def test_select_pool_by_id_rejects_wrong_pool(self):
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.select_pool_by_id(
+                FakeModule({}),
+                [{"PoolId": "pool-2", "Status": "ACTIVE"}],
+                "arn:aws:sms-voice:us-east-1:1:pool/pool-1",
+            )
+
+        self.assertIn("wrong", raised.exception.values["msg"])
+
+    def test_absent_does_not_return_stale_data_when_delete_races(self):
+        missing = plugin.ClientError(
+            {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
+            "DeletePool",
+        )
+        client = Mock()
+        client.delete_pool.side_effect = missing
+        module = FakeModule({"pool_id": "pool-1", "state": "absent"})
+        with (
+            patch.object(
+                plugin,
+                "describe_pools",
+                return_value=[{"PoolId": "pool-1", "Status": "ACTIVE"}],
+            ),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_absent(client, module)
+
+        self.assertTrue(raised.exception.values["changed"])
+        self.assertNotIn("pool", raised.exception.values)

@@ -29,6 +29,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module does not modify AWS resources.
+    support: full
+  diff_mode:
+    description: This module does not modify AWS resources.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -103,11 +110,11 @@ def main():
     )
 
     try:
-        subnet_groups = paginated_query_with_retries(
+        response = paginated_query_with_retries(
             client,
             "describe_db_subnet_groups",
             **request,
-        ).get("DBSubnetGroups", [])
+        )
     except is_boto3_error_code("DBSubnetGroupNotFoundFault"):
         subnet_groups = []
     except (BotoCoreError, ClientError) as e:
@@ -115,6 +122,10 @@ def main():
             e,
             msg="Unable to describe AWS RDS DB subnet groups",
         )
+    else:
+        subnet_groups = response.get("DBSubnetGroups") if isinstance(response, dict) else None
+        if not isinstance(subnet_groups, list) or any(not isinstance(group, dict) for group in subnet_groups):
+            module.fail_json(msg="Unable to describe AWS RDS DB subnet groups: AWS returned an invalid response")
 
     module.exit_json(
         changed=False,

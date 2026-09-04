@@ -5,11 +5,63 @@ from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver_rul
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
 
 class Route53ResolverRuleInfoTests(TestCase):
+    def test_malformed_rule_is_rejected_before_detail_queries(self):
+        module = FakeModule({"filters": None}, client=Mock())
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[{"Arn": "arn:rule"}]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertIn("without a valid ID", raised.exception.values["msg"])
+
+    def test_malformed_association_is_rejected(self):
+        module = FakeModule({"filters": None}, client=Mock())
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", side_effect=[[{"Id": "rule-1"}], [{"VPCId": "vpc-1"}]]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertIn("without a rule ID", raised.exception.values["msg"])
+
+    def test_malformed_tag_response_and_entry_are_rejected(self):
+        module = FakeModule({"filters": None}, client=Mock())
+        cases = [([], "invalid response"), ({"Tags": [{"Key": "Name"}]}, "invalid tag")]
+        for response, message in cases:
+            with (
+                self.subTest(message=message),
+                patch.object(plugin, "AnsibleAWSModule", return_value=module),
+                patch.object(plugin, "require_client_methods"),
+                patch.object(plugin, "query_list", side_effect=[[{"Arn": "arn:rule", "Id": "rule-1"}], []]),
+                patch.object(plugin, "paginated_query_with_retries", return_value=response),
+                self.assertRaises(ModuleFail) as raised,
+            ):
+                plugin.main()
+            self.assertIn(message, raised.exception.values["msg"])
+
+    def test_empty_unfiltered_rules_skip_association_query(self):
+        module = FakeModule({"filters": None}, client=Mock())
+        query = Mock(return_value=[])
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", query),
+            self.assertRaises(ModuleExit),
+        ):
+            plugin.main()
+        self.assertEqual(query.call_count, 1)
+
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
         assert options["argument_spec"]["filters"]["type"] == "dict"

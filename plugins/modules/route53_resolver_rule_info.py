@@ -20,6 +20,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module does not modify AWS resources.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -103,8 +110,9 @@ def main():
         "Unable to list AWS Route53 Resolver rules",
         **request,
     )
+    resolver_rules = [validate_resolver_rule(module, rule) for rule in resolver_rules]
 
-    if filters and not resolver_rules:
+    if not resolver_rules:
         associations = []
     else:
         association_request = {}
@@ -124,7 +132,8 @@ def main():
 
     associations_by_rule_id = {}
     for association in associations:
-        resolver_rule_id = association.get("ResolverRuleId")
+        association = validate_association(module, association)
+        resolver_rule_id = association["ResolverRuleId"]
         associations_by_rule_id.setdefault(resolver_rule_id, []).append(association)
 
     normalized_rules = []
@@ -133,11 +142,11 @@ def main():
         tags = []
         if rule.get("Arn"):
             try:
-                tags = paginated_query_with_retries(
+                response = paginated_query_with_retries(
                     client,
                     "list_tags_for_resource",
                     ResourceArn=rule["Arn"],
-                ).get("Tags", [])
+                )
             except is_boto3_error_code("InvalidRequestException"):
                 tags = []
             except is_boto3_error_code("ResourceNotFoundException"):
@@ -147,6 +156,8 @@ def main():
                     e,
                     msg=f"Unable to list tags for AWS Route53 Resolver rule {rule['Arn']}",
                 )
+            else:
+                tags = validate_tags(module, response_items(module, response, "Tags", "list_tags_for_resource"))
 
         normalized_rule = boto3_resource_to_ansible_dict(
             dict(rule, Tags=tags),
@@ -171,6 +182,44 @@ def main():
         changed=False,
         resolver_rules=normalized_rules,
     )
+
+
+def response_items(module, response, key, operation):
+    if not isinstance(response, dict):
+        module.fail_json(msg=f"{operation}: AWS returned an invalid response")
+    items = response.get(key, [])
+    if not isinstance(items, list):
+        module.fail_json(msg=f"{operation}: AWS returned an invalid {key} value")
+    return items
+
+
+def validate_resolver_rule(module, rule):
+    if not isinstance(rule, dict):
+        module.fail_json(msg="list_resolver_rules: AWS returned an invalid resolver rule")
+    rule_id = rule.get("Id")
+    if not isinstance(rule_id, str) or not rule_id:
+        module.fail_json(msg="list_resolver_rules: AWS returned a resolver rule without a valid ID")
+    if "Arn" in rule and not isinstance(rule["Arn"], str):
+        module.fail_json(msg="list_resolver_rules: AWS returned an invalid resolver rule ARN")
+    return rule
+
+
+def validate_association(module, association):
+    if not isinstance(association, dict):
+        module.fail_json(msg="list_resolver_rule_associations: AWS returned an invalid association")
+    resolver_rule_id = association.get("ResolverRuleId")
+    if not isinstance(resolver_rule_id, str) or not resolver_rule_id:
+        module.fail_json(msg="list_resolver_rule_associations: AWS returned an association without a rule ID")
+    if "VPCId" in association and not isinstance(association["VPCId"], str):
+        module.fail_json(msg="list_resolver_rule_associations: AWS returned an invalid association VPC ID")
+    return association
+
+
+def validate_tags(module, tags):
+    for tag in tags:
+        if not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str):
+            module.fail_json(msg="list_tags_for_resource: AWS returned an invalid tag")
+    return tags
 
 
 if __name__ == "__main__":

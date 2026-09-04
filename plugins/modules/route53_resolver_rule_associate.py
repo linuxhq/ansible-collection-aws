@@ -59,6 +59,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: Determines what changes would occur without modifying AWS resources.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -284,20 +291,24 @@ def ensure_present(client, module):
             )
 
         try:
-            association = client.associate_resolver_rule(
+            response = client.associate_resolver_rule(
                 Name=name,
                 ResolverRuleId=resolver_rule_id,
                 VPCId=vpc_id,
                 aws_retry=True,
-            ).get("ResolverRuleAssociation")
+            )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to create AWS Route53 Resolver rule association {name}",
             )
 
-        if not (association or {}).get("Id"):
+        association = response.get("ResolverRuleAssociation") if isinstance(response, dict) else None
+        if not isinstance(association, dict) or not association.get("Id"):
+            association = get_resolver_rule_association_by_rule_and_vpc(client, module)
+        if association is None:
             module.fail_json(msg=("AWS Route53 Resolver did not return the created rule " f"association {name}"))
+        association = validate_resolver_rule_association(module, association, "associate_resolver_rule")
 
         if module.params["wait"]:
             resolver_rule_association_id = association.get("Id")
@@ -308,14 +319,11 @@ def ensure_present(client, module):
                 {"complete"},
             )
     elif changed and module.check_mode:
-        association = dict(association or {})
-        association.update(
-            {
-                "Name": name,
-                "ResolverRuleId": resolver_rule_id,
-                "VPCId": vpc_id,
-            }
-        )
+        association = {
+            "Name": name,
+            "ResolverRuleId": resolver_rule_id,
+            "VPCId": vpc_id,
+        }
 
     result = {
         "changed": changed,
@@ -351,17 +359,30 @@ def wait_for_resolver_rule_association_status(client, module, resolver_rule_asso
         return None
 
     try:
-        return client.get_resolver_rule_association(
+        response = client.get_resolver_rule_association(
             ResolverRuleAssociationId=resolver_rule_association_id,
             aws_retry=True,
-        ).get("ResolverRuleAssociation")
+        )
     except is_boto3_error_code("ResourceNotFoundException"):
-        return None
+        module.fail_json(
+            msg=(
+                "AWS Route53 Resolver did not return rule association "
+                f"{resolver_rule_association_id} after waiting for it to become complete"
+            )
+        )
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=("Unable to get AWS Route53 Resolver rule association " f"{resolver_rule_association_id}"),
         )
+
+    association = response.get("ResolverRuleAssociation") if isinstance(response, dict) else None
+    return validate_resolver_rule_association(
+        module,
+        association,
+        "get_resolver_rule_association",
+        expected_id=resolver_rule_association_id,
+    )
 
 
 def get_resolver_rule_association_by_rule_and_vpc(client, module):
@@ -382,7 +403,59 @@ def get_resolver_rule_association_by_rule_and_vpc(client, module):
         ),
     )
 
+    associations = [
+        validate_resolver_rule_association(
+            module,
+            association,
+            "list_resolver_rule_associations",
+            expected_resolver_rule_id=resolver_rule_id,
+            expected_vpc_id=vpc_id,
+        )
+        for association in associations
+    ]
+
+    if len(associations) > 1:
+        association_ids = sorted(association["Id"] for association in associations)
+        module.fail_json(
+            msg=(
+                "Multiple AWS Route53 Resolver rule associations exist for "
+                f"{resolver_rule_id}/{vpc_id}: {', '.join(association_ids)}"
+            )
+        )
+
     return associations[0] if associations else None
+
+
+def validate_resolver_rule_association(
+    module,
+    association,
+    operation,
+    expected_id=None,
+    expected_resolver_rule_id=None,
+    expected_vpc_id=None,
+):
+    if not isinstance(association, dict):
+        module.fail_json(msg=f"{operation}: AWS returned an invalid resolver rule association")
+
+    association_id = association.get("Id")
+    if not isinstance(association_id, str) or not association_id:
+        module.fail_json(msg=f"{operation}: AWS returned a resolver rule association without a valid ID")
+    if expected_id is not None and association_id != expected_id:
+        module.fail_json(msg=f"{operation}: AWS returned an unexpected resolver rule association ID {association_id}")
+
+    expected_fields = {
+        "ResolverRuleId": expected_resolver_rule_id,
+        "VPCId": expected_vpc_id,
+    }
+    for field, expected_value in expected_fields.items():
+        if expected_value is not None and association.get(field) != expected_value:
+            module.fail_json(msg=f"{operation}: AWS returned an unexpected resolver rule association {field}")
+
+    for field in ("Name", "ResolverRuleId", "Status", "VPCId"):
+        if field in association and not isinstance(association[field], str):
+            module.fail_json(msg=f"{operation}: AWS returned an invalid resolver rule association {field}")
+
+    return association
 
 
 def main():
