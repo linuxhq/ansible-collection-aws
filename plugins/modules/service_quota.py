@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: service_quota
-short_description: Manage aws service quotas
+short_description: Manage AWS service quotas
 description:
   - Requests AWS service quota increases.
   - Only submits a quota increase request when the desired value is greater than the current applied quota
@@ -34,6 +34,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: Determines what changes would occur without modifying AWS resources.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -57,12 +64,26 @@ current_quota:
     - The current AWS service quota details.
   returned: always
   type: dict
+  contains:
+    value:
+      description: The current quota value.
+      returned: always
+      type: float
 pending_requests:
   description:
     - Existing open or pending increase requests for the quota.
   returned: always
   type: list
   elements: dict
+  contains:
+    desired_value:
+      description: The requested quota value.
+      returned: always
+      type: float
+    status:
+      description: The request status.
+      returned: always
+      type: str
 quota_code:
   description: The managed quota code.
   returned: always
@@ -72,11 +93,18 @@ requested_quota:
     - The quota increase request that was submitted or would be submitted in check mode.
   returned: when changed
   type: dict
+  contains:
+    desired_value:
+      description: The requested quota value.
+      returned: always
+      type: float
 service_code:
   description: The managed service code.
   returned: always
   type: str
 """
+
+import math
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -102,6 +130,57 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
+def response_resource(module, response, key, description):
+    if not isinstance(response, dict) or not isinstance(response.get(key), dict):
+        module.fail_json(msg=f"AWS Service Quotas returned an invalid {description} response")
+    return response[key]
+
+
+def response_resources(module, response, key, description):
+    if not isinstance(response, dict) or not isinstance(response.get(key, []), list):
+        module.fail_json(msg=f"AWS Service Quotas returned an invalid {description} response")
+
+    resources = response.get(key, [])
+    if any(not isinstance(resource, dict) for resource in resources):
+        module.fail_json(msg=f"AWS Service Quotas returned an invalid {description} entry")
+    return resources
+
+
+def validate_current_quota(module, quota, service_code, quota_code):
+    for key, expected in (("ServiceCode", service_code), ("QuotaCode", quota_code)):
+        if key in quota and quota[key] != expected:
+            module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota for {service_code}/{quota_code}")
+
+    value = quota.get("Value")
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or isinstance(value, float)
+        and not math.isfinite(value)
+    ):
+        module.fail_json(msg=f"AWS service quota {service_code}/{quota_code} did not return a valid value")
+
+
+def validate_quota_request(module, request, service_code, quota_code, desired_value=None, status=None):
+    if not request:
+        module.fail_json(msg=f"AWS Service Quotas returned an invalid request for {service_code}/{quota_code}")
+
+    expected_values = {
+        "ServiceCode": service_code,
+        "QuotaCode": quota_code,
+        "DesiredValue": desired_value,
+        "Status": status,
+    }
+    if any(
+        key in request and expected is not None and request[key] != expected
+        for key, expected in expected_values.items()
+    ):
+        module.fail_json(msg=f"AWS Service Quotas returned a mismatched request for {service_code}/{quota_code}")
+
+    if status is not None and request.get("Status") != status:
+        module.fail_json(msg=f"AWS Service Quotas returned an invalid request for {service_code}/{quota_code}")
+
+
 def main():
     argument_spec = {
         "quota_code": {"required": True, "type": "str"},
@@ -111,32 +190,29 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
 
-    if not 0 <= module.params["value"] <= 10000000000:
+    if not math.isfinite(module.params["value"]) or not 0 <= module.params["value"] <= 10000000000:
         module.fail_json(msg="value must be between 0 and 10000000000")
 
     client = module.client("service-quotas", retry_decorator=AWSRetry.jittered_backoff())
 
-    require_client_methods(
-        module,
-        client,
-        "Service Quotas",
-        {
-            "get_aws_default_service_quota": ("QuotaCode", "ServiceCode"),
-            "get_service_quota": ("QuotaCode", "ServiceCode"),
-            "list_requested_service_quota_change_history_by_quota": (
-                "MaxResults",
-                "NextToken",
-                "QuotaCode",
-                "ServiceCode",
-                "Status",
-            ),
-            "request_service_quota_increase": (
-                "DesiredValue",
-                "QuotaCode",
-                "ServiceCode",
-            ),
-        },
-    )
+    methods = {
+        "get_aws_default_service_quota": ("QuotaCode", "ServiceCode"),
+        "get_service_quota": ("QuotaCode", "ServiceCode"),
+        "list_requested_service_quota_change_history_by_quota": (
+            "MaxResults",
+            "NextToken",
+            "QuotaCode",
+            "ServiceCode",
+            "Status",
+        ),
+    }
+    if not module.check_mode:
+        methods["request_service_quota_increase"] = (
+            "DesiredValue",
+            "QuotaCode",
+            "ServiceCode",
+        )
+    require_client_methods(module, client, "Service Quotas", methods)
 
     quota_code = module.params["quota_code"]
     service_code = module.params["service_code"]
@@ -147,10 +223,12 @@ def main():
     }
 
     try:
-        current_quota = client.get_service_quota(**quota_request, aws_retry=True).get("Quota", {})
+        response = client.get_service_quota(**quota_request, aws_retry=True)
+        current_quota = response_resource(module, response, "Quota", "service quota")
     except is_boto3_error_code("NoSuchResourceException"):
         try:
-            current_quota = client.get_aws_default_service_quota(**quota_request, aws_retry=True).get("Quota", {})
+            response = client.get_aws_default_service_quota(**quota_request, aws_retry=True)
+            current_quota = response_resource(module, response, "Quota", "default service quota")
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
@@ -162,17 +240,21 @@ def main():
             msg=f"Unable to get AWS service quota {service_code}/{quota_code}",
         )
 
+    validate_current_quota(module, current_quota, service_code, quota_code)
+
     pending_requests = []
 
     try:
         for status in ("CASE_OPENED", "PENDING"):
-            pending_requests.extend(
-                paginated_query_with_retries(
-                    client,
-                    "list_requested_service_quota_change_history_by_quota",
-                    **dict(quota_request, Status=status),
-                ).get("RequestedQuotas", [])
+            response = paginated_query_with_retries(
+                client,
+                "list_requested_service_quota_change_history_by_quota",
+                **dict(quota_request, Status=status),
             )
+            requests = response_resources(module, response, "RequestedQuotas", "quota change history")
+            for request in requests:
+                validate_quota_request(module, request, service_code, quota_code, status=status)
+            pending_requests.extend(requests)
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
@@ -184,13 +266,7 @@ def main():
         transform_tags=False,
         force_tags=False,
     )
-    current_value = current_quota_details.get("value")
-
-    if current_value is None:
-        module.fail_json(
-            msg=(f"AWS service quota {service_code}/{quota_code} did not " "return a value"),
-            current_quota=current_quota_details,
-        )
+    current_value = current_quota_details["value"]
 
     has_pending_request = bool(pending_requests)
     changed = not has_pending_request and desired_value > current_value
@@ -216,23 +292,24 @@ def main():
             )
         else:
             try:
-                requested_quota = client.request_service_quota_increase(
+                response = client.request_service_quota_increase(
                     **dict(quota_request, DesiredValue=desired_value),
                     aws_retry=True,
-                ).get("RequestedQuota")
+                )
+                requested_quota = response_resource(module, response, "RequestedQuota", "quota increase")
+                validate_quota_request(
+                    module,
+                    requested_quota,
+                    service_code,
+                    quota_code,
+                    desired_value=desired_value,
+                )
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=(
                         "Unable to request AWS service quota increase for " f"{quota_code} for service {service_code}"
                     ),
-                )
-            if not requested_quota:
-                module.fail_json(
-                    msg=(
-                        "AWS Service Quotas did not return the requested quota for "
-                        f"{quota_code} for service {service_code}"
-                    )
                 )
 
     result = {

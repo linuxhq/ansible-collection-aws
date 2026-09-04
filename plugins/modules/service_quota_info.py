@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: service_quota_info
-short_description: Gather information about aws service quotas
+short_description: Gather information about AWS service quotas
 description:
   - Gathers information about an AWS service quota.
   - Falls back to the AWS default quota when the quota has no applied value
@@ -35,6 +35,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module does not modify AWS resources.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -62,6 +69,11 @@ quota:
     - The AWS service quota details.
   returned: always
   type: dict
+  contains:
+    value:
+      description: The quota value.
+      returned: when the quota exists
+      type: float
 quota_code:
   description: The gathered quota code.
   returned: always
@@ -91,6 +103,24 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
+def quota_from_response(module, response, description, service_code, quota_code, context_id=None):
+    if not isinstance(response, dict) or not isinstance(response.get("Quota"), dict) or not response["Quota"]:
+        module.fail_json(msg=f"AWS Service Quotas returned an invalid {description} response")
+
+    quota = response["Quota"]
+    for key, expected in (("ServiceCode", service_code), ("QuotaCode", quota_code)):
+        if key in quota and quota[key] != expected:
+            module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota for {service_code}/{quota_code}")
+
+    quota_context = quota.get("QuotaContext")
+    if quota_context is not None and not isinstance(quota_context, dict):
+        module.fail_json(msg=f"AWS Service Quotas returned an invalid quota context for {service_code}/{quota_code}")
+    if context_id and (quota_context is None or quota_context.get("ContextId") != context_id):
+        module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota context for {service_code}/{quota_code}")
+
+    return quota
+
+
 def main():
     argument_spec = {
         "context_id": {"type": "str"},
@@ -100,7 +130,7 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("service-quotas", retry_decorator=AWSRetry.jittered_backoff())
-    context_id = module.params["context_id"]
+    context_id = module.params["context_id"] or None
     quota_code = module.params["quota_code"]
     service_code = module.params["service_code"]
 
@@ -120,12 +150,14 @@ def main():
         request["ContextId"] = context_id
 
     try:
-        quota = client.get_service_quota(**request, aws_retry=True).get("Quota", {})
+        response = client.get_service_quota(**request, aws_retry=True)
+        quota = quota_from_response(module, response, "service quota", service_code, quota_code, context_id)
     except is_boto3_error_code("NoSuchResourceException"):
         quota = {}
         if not context_id:
             try:
-                quota = client.get_aws_default_service_quota(**request, aws_retry=True).get("Quota", {})
+                response = client.get_aws_default_service_quota(**request, aws_retry=True)
+                quota = quota_from_response(module, response, "default service quota", service_code, quota_code)
             except is_boto3_error_code("NoSuchResourceException"):
                 pass
             except (BotoCoreError, ClientError) as e:

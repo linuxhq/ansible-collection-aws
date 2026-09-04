@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - >-
+    service_quota - reject non-finite desired values and validate quota,
+    history, and increase-request responses before using them.
+  - >-
+    service_quota_info - validate quota responses and reject mismatched quota
+    and context identifiers.
