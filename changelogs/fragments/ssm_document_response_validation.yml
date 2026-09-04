@@ -1,0 +1,3 @@
+---
+bugfixes:
+  - ssm_document - fail cleanly when AWS returns malformed document data or content.

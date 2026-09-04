@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ssm_document_info
-short_description: Gather information about aws systems manager documents
+short_description: Gather information about AWS Systems Manager documents
 description:
   - Gathers information about AWS Systems Manager documents.
   - Retrieves each document as JSON and parses the returned content when possible.
@@ -53,6 +53,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module only gathers information and does not modify resources.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -77,6 +84,31 @@ document:
     - The first AWS Systems Manager document, when one document is returned.
   returned: always
   type: dict
+  contains:
+    content:
+      description: Document content.
+      returned: when a document is returned
+      type: raw
+    document_format:
+      description: Document format.
+      returned: when a document is returned
+      type: str
+    document_type:
+      description: Document type.
+      returned: when a document is returned
+      type: str
+    document_version:
+      description: Document version.
+      returned: when a document is returned
+      type: str
+    name:
+      description: Document name.
+      returned: when a document is returned
+      type: str
+    tags:
+      description: Document tags.
+      returned: when a document is returned
+      type: dict
 documents:
   description:
     - The AWS Systems Manager documents.
@@ -84,6 +116,31 @@ documents:
   returned: always
   type: list
   elements: dict
+  contains:
+    content:
+      description: Document content.
+      returned: always
+      type: raw
+    document_format:
+      description: Document format.
+      returned: always
+      type: str
+    document_type:
+      description: Document type.
+      returned: always
+      type: str
+    document_version:
+      description: Document version.
+      returned: always
+      type: str
+    name:
+      description: Document name.
+      returned: always
+      type: str
+    tags:
+      description: Document tags.
+      returned: always
+      type: dict
 """
 
 import json
@@ -117,7 +174,7 @@ def content_transform(content):
 
     try:
         content = json.loads(content)
-    except ValueError:
+    except (TypeError, ValueError):
         return content
 
     if isinstance(content, dict):
@@ -180,10 +237,11 @@ def main():
         if filters:
             request["Filters"] = []
             for key, value in filters.items():
+                values = value if isinstance(value, list) else [value]
                 request["Filters"].append(
                     {
                         "Key": key,
-                        "Values": value if isinstance(value, list) else [value],
+                        "Values": [str(item) for item in values],
                     }
                 )
 
@@ -196,7 +254,12 @@ def main():
             **request,
         )
 
-        document_names = [document["Name"] for document in document_identifiers if document.get("Name")]
+        document_names = []
+        for document in document_identifiers:
+            document_name = document.get("Name") if isinstance(document, dict) else None
+            if not isinstance(document_name, str) or not document_name:
+                module.fail_json(msg="Unexpected response while listing AWS Systems Manager documents")
+            document_names.append(document_name)
 
     documents = []
     for document_name in document_names:
@@ -214,14 +277,16 @@ def main():
                 msg=f"Unable to get AWS Systems Manager document {document_name}",
             )
 
+        if not isinstance(document, dict):
+            module.fail_json(msg=f"Unexpected response while getting AWS Systems Manager document {document_name}")
         document.pop("ResponseMetadata", None)
 
         try:
-            document["Tags"] = client.list_tags_for_resource(
+            response = client.list_tags_for_resource(
                 ResourceType=SSM_DOCUMENT_RESOURCE_TYPE,
                 ResourceId=document_name,
                 aws_retry=True,
-            ).get("TagList", [])
+            )
         except is_boto3_error_code("InvalidResourceId"):
             continue
         except (BotoCoreError, ClientError) as e:
@@ -229,6 +294,13 @@ def main():
                 e,
                 msg=("Unable to list tags for AWS Systems Manager document " f"{document_name}"),
             )
+
+        tags = response.get("TagList", []) if isinstance(response, dict) else None
+        if not isinstance(tags, list) or any(not isinstance(tag, dict) for tag in tags):
+            module.fail_json(
+                msg=f"Unexpected response while listing tags for AWS Systems Manager document {document_name}"
+            )
+        document["Tags"] = tags
 
         documents.append(
             boto3_resource_to_ansible_dict(

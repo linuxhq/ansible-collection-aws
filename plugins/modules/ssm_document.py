@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ssm_document
-short_description: Manage aws systems manager documents
+short_description: Manage AWS Systems Manager documents
 description:
   - Manages AWS Systems Manager documents.
   - Supports creating, updating, and deleting JSON documents.
@@ -65,6 +65,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: The module reports the document that would result from the requested changes.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -93,6 +100,35 @@ document:
     - The current AWS Systems Manager document after module execution.
   returned: when state is present
   type: dict
+  contains:
+    content:
+      description: Document content.
+      returned: always
+      type: dict
+    document_format:
+      description: Document format.
+      returned: when available
+      type: str
+    document_type:
+      description: Document type.
+      returned: always
+      type: str
+    document_version:
+      description: Document version.
+      returned: when available
+      type: str
+    name:
+      description: Document name.
+      returned: always
+      type: str
+    status:
+      description: Document status.
+      returned: when available
+      type: str
+    tags:
+      description: Document tags.
+      returned: when O(tags) is supplied
+      type: dict
 name:
   description: The managed Systems Manager document name.
   returned: always
@@ -136,6 +172,12 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 )
 
 SSM_DOCUMENT_RESOURCE_TYPE = "Document"
+
+
+def document_description_from_response(module, response, message):
+    if not isinstance(response, dict) or not isinstance(response.get("DocumentDescription"), dict):
+        module.fail_json(msg=message)
+    return response["DocumentDescription"]
 
 
 def comparable_document(document):
@@ -244,12 +286,17 @@ def ensure_present(client, module):
                 if tags:
                     request["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
-                current = client.create_document(**request, aws_retry=True).get("DocumentDescription", {})
+                response = client.create_document(**request, aws_retry=True)
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to create AWS Systems Manager document {name}",
                 )
+            current = document_description_from_response(
+                module,
+                response,
+                f"AWS Systems Manager did not return the created document {name}",
+            )
             if not current.get("DocumentVersion"):
                 module.fail_json(msg=("AWS Systems Manager did not return the created document " f"{name}"))
             current["Content"] = desired_content
@@ -262,7 +309,7 @@ def ensure_present(client, module):
                 current = latest
             if resource_changed:
                 try:
-                    updated = client.update_document(
+                    response = client.update_document(
                         Content=desired_content,
                         DocumentFormat="JSON",
                         DocumentVersion=(
@@ -272,12 +319,17 @@ def ensure_present(client, module):
                         ),
                         Name=desired["name"],
                         aws_retry=True,
-                    ).get("DocumentDescription", {})
+                    )
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
                         msg=f"Unable to update AWS Systems Manager document {name}",
                     )
+                updated = document_description_from_response(
+                    module,
+                    response,
+                    f"AWS Systems Manager did not return the updated document {name}",
+                )
                 new_version = updated.get("DocumentVersion")
                 if not new_version:
                     module.fail_json(
@@ -372,20 +424,36 @@ def get_document(client, module, include_tags=False, document_version=None):
             msg=f"Unable to get AWS Systems Manager document {name}",
         )
 
+    if not isinstance(document, dict):
+        module.fail_json(msg=f"Unexpected response while getting AWS Systems Manager document {name}")
+
+    content = document.get("Content")
+    try:
+        parsed_content = json.loads(content) if isinstance(content, str) else None
+    except (TypeError, ValueError):
+        parsed_content = None
+    if not isinstance(parsed_content, dict):
+        module.fail_json(msg=f"Unexpected content while getting AWS Systems Manager document {name}")
+
     document.pop("ResponseMetadata", None)
 
     if include_tags:
         try:
-            document["Tags"] = client.list_tags_for_resource(
+            response = client.list_tags_for_resource(
                 ResourceType=SSM_DOCUMENT_RESOURCE_TYPE,
                 ResourceId=name,
                 aws_retry=True,
-            ).get("TagList", [])
+            )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=("Unable to list tags for AWS Systems Manager " f"{SSM_DOCUMENT_RESOURCE_TYPE} {name}"),
             )
+
+        tags = response.get("TagList", []) if isinstance(response, dict) else None
+        if not isinstance(tags, list) or any(not isinstance(tag, dict) for tag in tags):
+            module.fail_json(msg=f"Unexpected response while listing tags for AWS Systems Manager document {name}")
+        document["Tags"] = tags
 
     return document
 

@@ -1,0 +1,3 @@
+---
+bugfixes:
+  - ssm_document_info - fail cleanly when AWS returns malformed document data.
