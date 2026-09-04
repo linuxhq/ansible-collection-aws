@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - >-
+    ses_identity_info - validate identity names, details, tags, and policies
+    returned by AWS before transforming them.
+  - >-
+    ses_identity_tokens_info - validate DKIM and verification token responses
+    while preserving token prepopulation for identities that do not yet exist.

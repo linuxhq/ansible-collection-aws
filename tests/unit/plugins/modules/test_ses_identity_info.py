@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import ses_identity_info as
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -61,3 +62,33 @@ class SesIdentityInfoTests(TestCase):
             "SES",
             {"list_identities": ("IdentityType", "MaxItems", "NextToken")},
         )
+
+    def test_validate_identity_names_rejects_invalid_entry(self):
+        module = FakeModule({})
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.validate_identity_names(module, [None])
+        self.assertEqual(raised.exception.values["msg"], "AWS SES returned an invalid identity name")
+
+    def test_validate_identity_names_rejects_invalid_container(self):
+        module = FakeModule({})
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.validate_identity_names(module, None)
+        self.assertEqual(raised.exception.values["msg"], "AWS SES returned an invalid identity name")
+
+    def test_validate_identity_details_rejects_invalid_response(self):
+        module = FakeModule({})
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.validate_identity_details(module, [], "example.com")
+        self.assertIn("invalid details", raised.exception.values["msg"])
+
+    def test_validate_identity_details_rejects_invalid_tag(self):
+        module = FakeModule({})
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.validate_identity_details(module, {"Tags": [{"Key": "missing-value"}]}, "example.com")
+        self.assertIn("invalid tags", raised.exception.values["msg"])
+
+    def test_validate_identity_details_rejects_invalid_policies(self):
+        module = FakeModule({})
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.validate_identity_details(module, {"Policies": []}, "example.com")
+        self.assertIn("invalid policies", raised.exception.values["msg"])

@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ses_identity_info
-short_description: Gather information about aws simple email service identities
+short_description: Gather information about AWS Simple Email Service identities
 description:
   - Gathers information about AWS SES identities.
 author:
@@ -30,6 +30,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module does not modify AWS resources.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -57,6 +64,11 @@ identities:
   returned: always
   type: list
   elements: dict
+  contains:
+    name:
+      description: The SES identity name.
+      returned: always
+      type: str
 """
 
 try:
@@ -77,6 +89,29 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+
+
+def validate_identity_names(module, identity_names):
+    if not isinstance(identity_names, list) or any(
+        not isinstance(identity_name, str) or not identity_name for identity_name in identity_names
+    ):
+        module.fail_json(msg="AWS SES returned an invalid identity name")
+
+
+def validate_identity_details(module, details, identity_name):
+    if not isinstance(details, dict):
+        module.fail_json(msg=f"AWS SES returned invalid details for identity {identity_name}")
+
+    tags = details.get("Tags", [])
+    if not isinstance(tags, list) or any(
+        not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str)
+        for tag in tags
+    ):
+        module.fail_json(msg=f"AWS SES returned invalid tags for identity {identity_name}")
+
+    policies = details.get("Policies", {})
+    if not isinstance(policies, dict):
+        module.fail_json(msg=f"AWS SES returned invalid policies for identity {identity_name}")
 
 
 def main():
@@ -130,6 +165,8 @@ def main():
             **request,
         )
 
+    validate_identity_names(module, identity_names)
+
     for identity_name in identity_names:
         try:
             details = sesv2_client.get_email_identity(
@@ -144,6 +181,8 @@ def main():
                 msg=f"Unable to get AWS SES identity {identity_name}",
             )
 
+        validate_identity_details(module, details, identity_name)
+        details = details.copy()
         details.pop("ResponseMetadata", None)
         identity = boto3_resource_to_ansible_dict(
             details,

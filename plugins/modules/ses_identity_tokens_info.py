@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ses_identity_tokens_info
-short_description: Gather aws simple email service identity tokens
+short_description: Gather AWS Simple Email Service identity tokens
 description:
   - Gathers AWS SES DKIM and verification tokens for a domain identity.
   - Requests the tokens by initiating domain verification, so the identity
@@ -24,6 +24,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: Does not initiate verification and returns empty token values.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -64,6 +71,24 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
+def domain_tokens_from_responses(module, dkim_response, verification_response, identity):
+    if not isinstance(dkim_response, dict) or not isinstance(verification_response, dict):
+        module.fail_json(msg=f"AWS SES returned invalid domain token responses for {identity}")
+
+    dkim_tokens = dkim_response.get("DkimTokens", [])
+    verification_token = verification_response.get("VerificationToken")
+    if (
+        not isinstance(dkim_tokens, list)
+        or not dkim_tokens
+        or any(not isinstance(token, str) or not token for token in dkim_tokens)
+        or not isinstance(verification_token, str)
+        or not verification_token
+    ):
+        module.fail_json(msg=f"AWS SES did not return domain tokens for {identity}")
+
+    return dkim_tokens, verification_token
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -73,8 +98,18 @@ def main():
     )
     identity = module.params["identity"]
 
+    if not identity:
+        module.fail_json(msg="identity must not be empty")
     if "@" in identity:
         module.fail_json(msg="identity must be a domain name, not an email address")
+
+    if module.check_mode:
+        module.exit_json(
+            changed=False,
+            dkim_tokens=[],
+            identity=identity,
+            verification_token=None,
+        )
 
     client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
 
@@ -88,22 +123,18 @@ def main():
         },
     )
 
-    if module.check_mode:
-        module.exit_json(
-            changed=False,
-            dkim_tokens=[],
-            identity=identity,
-            verification_token=None,
-        )
-
     try:
-        dkim_tokens = client.verify_domain_dkim(Domain=identity, aws_retry=True).get("DkimTokens", [])
-        verification_token = client.verify_domain_identity(Domain=identity, aws_retry=True).get("VerificationToken")
+        dkim_response = client.verify_domain_dkim(Domain=identity, aws_retry=True)
+        verification_response = client.verify_domain_identity(Domain=identity, aws_retry=True)
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS SES tokens for {identity}")
 
-    if not dkim_tokens or not verification_token:
-        module.fail_json(msg=f"AWS SES did not return domain tokens for {identity}")
+    dkim_tokens, verification_token = domain_tokens_from_responses(
+        module,
+        dkim_response,
+        verification_response,
+        identity,
+    )
 
     module.exit_json(
         changed=False,
