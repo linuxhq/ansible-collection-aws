@@ -1,0 +1,3 @@
+---
+bugfixes:
+  - ssm_association_info - fail cleanly when AWS returns malformed association data, including missing identifiers.

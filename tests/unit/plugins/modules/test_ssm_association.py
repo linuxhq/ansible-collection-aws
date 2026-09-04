@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import ssm_association as p
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -144,6 +145,100 @@ class SsmAssociationTests(TestCase):
         client.describe_association.side_effect = error
 
         self.assertIsNone(plugin.describe_association(client, FakeModule({}), "a-1"))
+
+    def test_describe_rejects_malformed_response(self):
+        client = Mock(describe_association=Mock(return_value={"AssociationDescription": None}))
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.describe_association(client, FakeModule({}), "a-1")
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unexpected response while describing AWS Systems Manager association a-1",
+        )
+
+    def test_create_rejects_malformed_response(self):
+        client = Mock(create_association=Mock(return_value={"AssociationDescription": None}))
+        module = FakeModule(
+            {
+                "name": "document",
+                "purge_tags": True,
+                "schedule_expression": "rate(1 hour)",
+                "tags": None,
+                "targets": [{"key": "InstanceIds", "values": ["i-1"]}],
+            }
+        )
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.ensure_present(client, module, None)
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "AWS Systems Manager did not return the created association document",
+        )
+
+    def test_association_tags_rejects_malformed_response(self):
+        client = Mock(list_tags_for_resource=Mock(return_value={"TagList": [None]}))
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.association_with_tags(
+                client,
+                FakeModule({}),
+                {"AssociationId": "a-1"},
+            )
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unexpected response while listing tags for AWS Systems Manager association a-1",
+        )
+
+    def test_update_rejects_malformed_response(self):
+        client = Mock(update_association=Mock(return_value={"AssociationDescription": None}))
+        module = FakeModule(
+            {
+                "name": "document",
+                "purge_tags": True,
+                "schedule_expression": "rate(2 hours)",
+                "tags": None,
+                "targets": [{"key": "InstanceIds", "values": ["i-1"]}],
+            }
+        )
+        current = {
+            "AssociationId": "a-1",
+            "Name": "document",
+            "ScheduleExpression": "rate(1 hour)",
+            "Targets": [{"Key": "InstanceIds", "Values": ["i-1"]}],
+        }
+        with (
+            patch.object(
+                plugin,
+                "get_boto3_client_method_parameters",
+                return_value=("AssociationId", "Name", "ScheduleExpression", "Targets"),
+            ),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.ensure_present(client, module, current)
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "AWS Systems Manager did not return the updated association document",
+        )
+
+    def test_main_rejects_malformed_association_summaries(self):
+        for association in (None, {"Name": "document"}):
+            with self.subTest(association=association):
+                module = FakeModule(
+                    {
+                        "name": "document",
+                        "state": "absent",
+                        "tags": None,
+                    },
+                    client=Mock(),
+                )
+                with (
+                    patch.object(plugin, "AnsibleAWSModule", return_value=module),
+                    patch.object(plugin, "require_client_methods"),
+                    patch.object(plugin, "query_list", return_value=[association]),
+                    self.assertRaises(ModuleFail) as raised,
+                ):
+                    plugin.main()
+                self.assertEqual(
+                    raised.exception.values["msg"],
+                    "Unexpected response while listing AWS Systems Manager associations for document",
+                )
 
     def test_provider_limits_are_rejected(self):
         base = {"name": "document", "state": "present", "tags": None}

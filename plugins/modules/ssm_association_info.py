@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ssm_association_info
-short_description: Gather information about aws systems manager associations
+short_description: Gather information about AWS Systems Manager associations
 description:
   - Gathers information about AWS Systems Manager associations.
 author:
@@ -21,6 +21,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module only gathers information and does not modify resources.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -41,6 +48,33 @@ associations:
   returned: always
   type: list
   elements: dict
+  contains:
+    association_id:
+      description: Association identifier.
+      returned: always
+      type: str
+    name:
+      description: SSM document name.
+      returned: always
+      type: str
+    schedule_expression:
+      description: Association schedule expression.
+      returned: when configured
+      type: str
+    tags:
+      description: Association tags.
+      returned: always
+      type: dict
+    targets:
+      description: Association targets.
+      returned: when configured
+      type: list
+      elements: dict
+      contains:
+        key:
+          description: Target key.
+          returned: always
+          type: str
 """
 
 try:
@@ -103,24 +137,32 @@ def main():
 
     normalized_associations = []
     for association in associations:
+        if not isinstance(association, dict):
+            module.fail_json(msg="Unexpected response while listing AWS Systems Manager associations")
         association_id = association.get("AssociationId")
 
-        if association_id:
-            association = dict(association)
+        if not isinstance(association_id, str) or not association_id:
+            module.fail_json(msg="Unexpected response while listing AWS Systems Manager associations")
+        association = dict(association)
 
-            try:
-                association["Tags"] = client.list_tags_for_resource(
-                    ResourceType=SSM_ASSOCIATION_RESOURCE_TYPE,
-                    ResourceId=association_id,
-                    aws_retry=True,
-                ).get("TagList", [])
-            except is_boto3_error_code("InvalidResourceId"):
-                continue
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=("Unable to list tags for AWS Systems Manager association " f"{association_id}"),
-                )
+        try:
+            response = client.list_tags_for_resource(
+                ResourceType=SSM_ASSOCIATION_RESOURCE_TYPE,
+                ResourceId=association_id,
+                aws_retry=True,
+            )
+        except is_boto3_error_code("InvalidResourceId"):
+            continue
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(
+                e,
+                msg=("Unable to list tags for AWS Systems Manager association " f"{association_id}"),
+            )
+
+        tags = response.get("TagList", []) if isinstance(response, dict) else None
+        if not isinstance(tags, list) or any(not isinstance(tag, dict) for tag in tags):
+            module.fail_json(msg=f"Unexpected response while listing tags for association {association_id}")
+        association["Tags"] = tags
 
         normalized_associations.append(
             boto3_resource_to_ansible_dict(
