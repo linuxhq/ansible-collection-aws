@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: wafv2_web_acl_logging
-short_description: Manage aws wafv2 web acls
+short_description: Manage AWS WAFv2 web ACL logging
 description:
   - Manages AWS WAFv2 web ACL logging configuration.
   - Supports enabling, updating, and removing logging for a web ACL.
@@ -41,6 +41,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: The module reports the logging configuration that would result from the requested changes.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -62,6 +69,37 @@ logging_configuration:
     - The current AWS WAFv2 logging configuration after module execution.
   returned: when state is present
   type: dict
+  contains:
+    log_destination_configs:
+      description: The logging destination ARNs.
+      returned: always
+      type: list
+      elements: str
+    log_scope:
+      description: The scope of the logging configuration.
+      returned: when available
+      type: str
+    log_type:
+      description: The type of the logging configuration.
+      returned: when available
+      type: str
+    logging_filter:
+      description: The logging filter configuration.
+      returned: when available
+      type: dict
+    managed_by_firewall_manager:
+      description: Whether AWS Firewall Manager manages the configuration.
+      returned: when available
+      type: bool
+    redacted_fields:
+      description: The request fields redacted from the logs.
+      returned: when available
+      type: list
+      elements: dict
+    resource_arn:
+      description: The ARN of the AWS WAFv2 web ACL.
+      returned: always
+      type: str
 resource_arn:
   description: The ARN of the managed WAFv2 web ACL.
   returned: always
@@ -146,17 +184,21 @@ def ensure_present(client, module):
 
     if changed and not module.check_mode:
         try:
-            current = client.put_logging_configuration(
+            response = client.put_logging_configuration(
                 LoggingConfiguration=desired,
                 aws_retry=True,
-            ).get("LoggingConfiguration")
+            )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=("Unable to manage AWS WAFv2 logging configuration for " f"{resource_arn}"),
             )
-        if not current:
-            module.fail_json(msg=("AWS WAFv2 did not return the logging configuration for " f"{resource_arn}"))
+        current = response.get("LoggingConfiguration") if isinstance(response, dict) else None
+        if not isinstance(current, dict) or not current:
+            module.fail_json(
+                changed=True,
+                msg=("AWS WAFv2 did not return the logging configuration for " f"{resource_arn}"),
+            )
 
     elif changed and module.check_mode:
         current = desired
@@ -177,10 +219,10 @@ def get_logging_configuration(client, module):
     resource_arn = module.params["resource_arn"]
 
     try:
-        return client.get_logging_configuration(
+        response = client.get_logging_configuration(
             ResourceArn=resource_arn,
             aws_retry=True,
-        ).get("LoggingConfiguration")
+        )
     except is_boto3_error_code("WAFNonexistentItemException"):
         return None
     except (BotoCoreError, ClientError) as e:
@@ -188,6 +230,13 @@ def get_logging_configuration(client, module):
             e,
             msg=f"Unable to get AWS WAFv2 logging configuration for {resource_arn}",
         )
+
+    if not isinstance(response, dict):
+        module.fail_json(msg=f"AWS WAFv2 returned an unexpected logging configuration response for {resource_arn}")
+    current = response.get("LoggingConfiguration")
+    if current is not None and not isinstance(current, dict):
+        module.fail_json(msg=f"AWS WAFv2 returned an unexpected logging configuration response for {resource_arn}")
+    return current
 
 
 def main():

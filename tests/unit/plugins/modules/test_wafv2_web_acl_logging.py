@@ -112,10 +112,15 @@ class Wafv2WebAclLoggingTests(TestCase):
 
         with (
             patch.object(plugin, "get_logging_configuration", return_value=current),
-            self.assertRaises(ModuleExit),
+            self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
 
+        self.assertTrue(raised.exception.values["changed"])
+        self.assertEqual(
+            raised.exception.values["logging_configuration"]["log_destination_configs"],
+            ["arn:new"],
+        )
         client.put_logging_configuration.assert_called_once_with(
             LoggingConfiguration={
                 "LogDestinationConfigs": ["arn:new"],
@@ -125,3 +130,33 @@ class Wafv2WebAclLoggingTests(TestCase):
             },
             aws_retry=True,
         )
+
+    def test_get_rejects_malformed_response(self):
+        for response in ([], {"LoggingConfiguration": []}):
+            client = Mock()
+            client.get_logging_configuration.return_value = response
+            module = FakeModule({"resource_arn": "arn:web-acl"})
+
+            with self.subTest(response=response), self.assertRaises(ModuleFail) as raised:
+                plugin.get_logging_configuration(client, module)
+
+            self.assertIn("unexpected logging configuration response", raised.exception.values["msg"])
+
+    def test_put_rejects_malformed_response_and_reports_change(self):
+        client = Mock()
+        client.put_logging_configuration.return_value = []
+        module = FakeModule(
+            {
+                "log_destination_configs": ["arn:new"],
+                "resource_arn": "arn:web-acl",
+            }
+        )
+
+        with (
+            patch.object(plugin, "get_logging_configuration", return_value=None),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertTrue(raised.exception.values["changed"])
+        self.assertIn("did not return the logging configuration", raised.exception.values["msg"])

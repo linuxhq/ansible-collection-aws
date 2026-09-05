@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: wafv2_ip_set_info
-short_description: Gather information about aws wafv2 ip sets
+short_description: Gather information about AWS WAFv2 IP sets
 description:
   - Gathers information about AWS WAFv2 IP sets.
   - Lists IP sets for the requested scope and returns each full IP set definition.
@@ -41,6 +41,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module only gathers information and does not modify resources.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -64,6 +71,32 @@ ip_sets:
   returned: always
   type: list
   elements: dict
+  contains:
+    addresses:
+      description: IP addresses and CIDR ranges included in the IP set.
+      returned: always
+      type: list
+      elements: str
+    arn:
+      description: ARN of the IP set.
+      returned: always
+      type: str
+    description:
+      description: Description of the IP set.
+      returned: when available
+      type: str
+    id:
+      description: ID of the IP set.
+      returned: always
+      type: str
+    ip_address_version:
+      description: IP address version used by the IP set.
+      returned: always
+      type: str
+    name:
+      description: Name of the IP set.
+      returned: always
+      type: str
 scope:
   description: The AWS WAFv2 scope that was queried.
   returned: always
@@ -121,8 +154,7 @@ def main():
     )
 
     scope = module.params["scope"].upper()
-    summaries = []
-    for summary in query_list(
+    response_summaries = query_list(
         module,
         client,
         "list_ip_sets",
@@ -130,11 +162,22 @@ def main():
         f"Unable to list AWS WAFv2 IP sets for {scope}",
         Scope=scope,
         Limit=100,
-    ):
-        if target_id and summary.get("Id") != target_id:
+    )
+    if not isinstance(response_summaries, list):
+        module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 IP sets for {scope}")
+
+    summaries = []
+    for summary in response_summaries:
+        summary_id = summary.get("Id") if isinstance(summary, dict) else None
+        summary_name = summary.get("Name") if isinstance(summary, dict) else None
+        if target_id and summary_id != target_id:
             continue
-        if target_name and summary.get("Name") != target_name:
+        if target_name and summary_name != target_name:
             continue
+        if not isinstance(summary_id, str) or not summary_id:
+            module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 IP sets for {scope}; invalid ID")
+        if not isinstance(summary_name, str) or not summary_name:
+            module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 IP sets for {scope}; invalid name")
         summaries.append(summary)
         if target_id or target_name:
             break
@@ -142,13 +185,11 @@ def main():
     ip_sets = []
     for summary in summaries:
         try:
-            ip_sets.append(
-                client.get_ip_set(
-                    Id=summary["Id"],
-                    Name=summary["Name"],
-                    Scope=scope,
-                    aws_retry=True,
-                ).get("IPSet", {})
+            response = client.get_ip_set(
+                Id=summary["Id"],
+                Name=summary["Name"],
+                Scope=scope,
+                aws_retry=True,
             )
         except is_boto3_error_code("WAFNonexistentItemException"):
             continue
@@ -157,6 +198,12 @@ def main():
                 e,
                 msg=("Unable to get AWS WAFv2 IP set " f"{summary['Name']}/{summary['Id']}"),
             )
+        ip_set = response.get("IPSet") if isinstance(response, dict) else None
+        if not isinstance(ip_set, dict):
+            module.fail_json(
+                msg=f"Unexpected response while getting AWS WAFv2 IP set {summary['Name']}/{summary['Id']}"
+            )
+        ip_sets.append(ip_set)
 
     module.exit_json(
         changed=False,

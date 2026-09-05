@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - wafv2_web_acl_info - fail cleanly when AWS returns malformed web ACL summary
+    data, and fail instead of returning an empty entry for malformed detail data.

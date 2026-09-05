@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - wafv2_web_acl_logging - validate AWS SDK response shapes and preserve changed
+    status when post-update validation fails.

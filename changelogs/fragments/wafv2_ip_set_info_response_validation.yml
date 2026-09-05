@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - wafv2_ip_set_info - fail cleanly when AWS returns malformed IP set summary
+    data, and fail instead of returning an empty entry for malformed detail data.
