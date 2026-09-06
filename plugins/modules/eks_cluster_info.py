@@ -104,8 +104,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 def value_matches(current, desired):
     if isinstance(current, (list, tuple, set)):
         return any(value_matches(item, desired) for item in current)
+
     if isinstance(desired, str) and isinstance(current, str):
         return fnmatchcase(current, desired)
+
     return current == desired
 
 
@@ -121,6 +123,7 @@ def validate_cluster(module, cluster, expected_name):
         )
     ):
         module.fail_json(msg=f"EKS returned an invalid cluster for {expected_name}")
+
     return cluster
 
 

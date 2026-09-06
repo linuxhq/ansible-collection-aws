@@ -147,6 +147,7 @@ def ensure_absent(client, module):
                 e,
                 msg=("Unable to delete AWS WAFv2 logging configuration for " f"{resource_arn}"),
             )
+
     module.exit_json(
         changed=changed,
         resource_arn=resource_arn,
@@ -165,6 +166,7 @@ def ensure_present(client, module):
             "log_destination_configs": normalized_current.get("log_destination_configs") or [],
             "resource_arn": normalized_current.get("resource_arn"),
         }
+
     desired_comparable = {
         "log_destination_configs": log_destination_configs,
         "resource_arn": resource_arn,
@@ -193,6 +195,7 @@ def ensure_present(client, module):
                 e,
                 msg=("Unable to manage AWS WAFv2 logging configuration for " f"{resource_arn}"),
             )
+
         current = response.get("LoggingConfiguration") if isinstance(response, dict) else None
         if not isinstance(current, dict) or not current:
             module.fail_json(
@@ -233,9 +236,11 @@ def get_logging_configuration(client, module):
 
     if not isinstance(response, dict):
         module.fail_json(msg=f"AWS WAFv2 returned an unexpected logging configuration response for {resource_arn}")
+
     current = response.get("LoggingConfiguration")
     if current is not None and not isinstance(current, dict):
         module.fail_json(msg=f"AWS WAFv2 returned an unexpected logging configuration response for {resource_arn}")
+
     return current
 
 
@@ -260,8 +265,10 @@ def main():
 
     if not resource_arn:
         module.fail_json(msg="resource_arn must not be empty")
+
     if state == "present" and len(module.params["log_destination_configs"] or []) != 1:
         module.fail_json(msg="log_destination_configs must contain exactly 1 ARN")
+
     if state == "present" and not module.params["log_destination_configs"][0]:
         module.fail_json(msg="log_destination_configs must not contain empty entries")
 
@@ -269,6 +276,7 @@ def main():
     methods = {"get_logging_configuration": ("ResourceArn",)}
     if state == "present":
         methods["put_logging_configuration"] = ("LoggingConfiguration",)
+
     if state == "absent":
         methods["delete_logging_configuration"] = ("ResourceArn",)
 

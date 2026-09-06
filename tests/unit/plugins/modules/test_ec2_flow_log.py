@@ -48,6 +48,7 @@ class Ec2FlowLogTests(TestCase):
             patch.object(plugin, "ensure_absent"),
         ):
             plugin.main()
+
         self.assertEqual(
             require.call_args.args[3],
             {"describe_flow_logs": ("Filter", "MaxResults", "NextToken")},
@@ -71,6 +72,7 @@ class Ec2FlowLogTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
 
     def test_module_contract(self):
@@ -176,6 +178,7 @@ class Ec2FlowLogTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         client.delete_tags.assert_called_once_with(
             Resources=["fl-1", "fl-2"],
@@ -243,6 +246,7 @@ class Ec2FlowLogTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.ensure_present(client, FakeModule(params))
+
         self.assertIn("one or more resources", raised.exception.values["msg"])
         self.assertEqual(
             raised.exception.values["unsuccessful"][0]["error"]["code"],

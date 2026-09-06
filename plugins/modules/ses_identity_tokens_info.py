@@ -100,6 +100,7 @@ def main():
 
     if not identity:
         module.fail_json(msg="identity must not be empty")
+
     if "@" in identity:
         module.fail_json(msg="identity must be a domain name, not an email address")
 

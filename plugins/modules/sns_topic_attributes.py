@@ -102,6 +102,7 @@ def main():
             "AttributeValue",
             "TopicArn",
         )
+
     require_client_methods(module, client, "SNS", methods)
 
     topic_arn = module.params["topic_arn"]
@@ -130,6 +131,7 @@ def main():
 
     if not isinstance(response, dict) or not isinstance(response.get("Attributes", {}), dict):
         module.fail_json(msg=f"Unexpected response while getting topic attributes for {topic_arn}")
+
     current_attributes = response.get("Attributes", {})
 
     desired_attributes = snake_dict_to_camel_dict(desired_parameters, capitalize_first=True)

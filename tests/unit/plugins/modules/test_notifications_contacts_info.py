@@ -38,6 +38,7 @@ class NotificationsContactsInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["email_contacts"][0]["tags"], {"Env": "test"})
         self.assertEqual(
             [call.args[3] for call in require.call_args_list],
@@ -57,6 +58,7 @@ class NotificationsContactsInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         require.assert_called_once_with(
             module,
             client,

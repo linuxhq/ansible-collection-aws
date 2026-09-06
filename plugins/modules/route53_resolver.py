@@ -324,8 +324,10 @@ def create_resolver_endpoint(client, module, desired):
     endpoint = response.get("ResolverEndpoint") if isinstance(response, dict) else None
     if not isinstance(endpoint, dict) or not endpoint.get("Id"):
         endpoint = get_resolver_endpoint_by_name(client, module)
+
     if endpoint is None:
         module.fail_json(msg=("AWS Route53 Resolver did not return the created endpoint " f"{desired['name']}"))
+
     endpoint = validate_resolver_endpoint(module, endpoint, "create_resolver_endpoint")
 
     if module.params["wait"]:
@@ -343,6 +345,7 @@ def create_resolver_endpoint(client, module, desired):
         ]
         if module.params["tags"] is not None:
             endpoint["Tags"] = ansible_dict_to_boto3_tag_list(module.params["tags"])
+
     return endpoint
 
 
@@ -432,6 +435,7 @@ def ensure_present(client, module):
             tags,
             purge_tags=purge_tags,
         )
+
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
     if (
@@ -451,6 +455,7 @@ def ensure_present(client, module):
         ):
             projected_desired = dict(desired)
             projected_desired.pop("ip_addresses")
+
         endpoint = dict(endpoint or {})
         endpoint.update(snake_dict_to_camel_dict(projected_desired, capitalize_first=True))
         if tags is not None:
@@ -486,10 +491,12 @@ def ensure_present(client, module):
                 endpoint = response.get("ResolverEndpoint") if isinstance(response, dict) else None
                 if not isinstance(endpoint, dict) or not endpoint.get("Id"):
                     endpoint = get_resolver_endpoint(client, module, update_params["resolver_endpoint_id"])
+
                 if endpoint is None:
                     module.fail_json(
                         msg=("AWS Route53 Resolver did not return the updated endpoint " f"{module.params['name']}")
                     )
+
                 endpoint = validate_resolver_endpoint(
                     module,
                     endpoint,
@@ -521,18 +528,22 @@ def ensure_present(client, module):
                     endpoint,
                     desired,
                 )
+
             current = comparable_endpoint(endpoint)
 
             if not comparable_endpoints_match(current, desired_comparable):
                 if endpoint is not None:
                     delete_resolver_endpoint(client, module, endpoint, always=True)
+
                 endpoint = create_resolver_endpoint(client, module, desired)
                 created = True
                 if module.params["wait"]:
                     endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
+
         if endpoint is not None and tags is not None:
             if resource_changed and not created:
                 endpoint = resolver_endpoint_with_tags(client, module, endpoint)
+
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
                 boto3_tag_list_to_ansible_dict(endpoint.get("Tags", [])),
                 tags,
@@ -548,6 +559,7 @@ def ensure_present(client, module):
                             f"{module.params['name']}: AWS returned an invalid endpoint ARN"
                         )
                     )
+
                 reconcile_arn_tags(
                     module,
                     client,
@@ -673,12 +685,14 @@ def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, stat
 
     if deleted:
         return None
+
     return get_resolver_endpoint(client, module, resolver_endpoint_id)
 
 
 def comparable_endpoint(endpoint):
     if not endpoint:
         return None
+
     normalized = boto3_resource_to_ansible_dict(endpoint, transform_tags=False, force_tags=False)
     return {
         "direction": normalized.get("direction"),
@@ -708,6 +722,7 @@ def ip_address_matches(current, desired):
 def comparable_endpoints_match(current, desired):
     if current is None:
         return False
+
     if any(
         current[field] != desired[field]
         for field in (
@@ -735,7 +750,9 @@ def comparable_ip_addresses_match(current, desired):
         )
         if match is None:
             return False
+
         remaining.pop(match)
+
     return not remaining
 
 
@@ -792,6 +809,7 @@ def get_resolver_endpoint_by_name(client, module):
 def resolver_endpoint_with_ip_addresses(client, module, endpoint):
     if not endpoint:
         return endpoint
+
     endpoint = dict(endpoint)
 
     ip_addresses = query_list(
@@ -810,6 +828,7 @@ def resolver_endpoint_with_ip_addresses(client, module, endpoint):
 def resolver_endpoint_with_tags(client, module, endpoint):
     if not endpoint or not endpoint.get("Arn"):
         return endpoint
+
     endpoint = dict(endpoint)
 
     tags = query_list(
@@ -832,8 +851,10 @@ def validate_resolver_endpoint(module, endpoint, operation, expected_id=None, ex
     endpoint_id = endpoint.get("Id")
     if not isinstance(endpoint_id, str) or not endpoint_id:
         module.fail_json(msg=f"{operation}: AWS returned a resolver endpoint without a valid ID")
+
     if expected_id is not None and endpoint_id != expected_id:
         module.fail_json(msg=f"{operation}: AWS returned an unexpected resolver endpoint ID {endpoint_id}")
+
     if expected_name is not None and endpoint.get("Name") != expected_name:
         module.fail_json(msg=f"{operation}: AWS returned an unexpected resolver endpoint name")
 
@@ -848,11 +869,14 @@ def validate_ip_addresses(module, ip_addresses):
     for ip_address in ip_addresses:
         if not isinstance(ip_address, dict):
             module.fail_json(msg="list_resolver_endpoint_ip_addresses: AWS returned an invalid IP address")
+
         if not isinstance(ip_address.get("SubnetId"), str) or not ip_address["SubnetId"]:
             module.fail_json(msg="list_resolver_endpoint_ip_addresses: AWS returned an IP address without a subnet ID")
+
         for field in ("Ip", "IpId", "Ipv6"):
             if field in ip_address and not isinstance(ip_address[field], str):
                 module.fail_json(msg=f"list_resolver_endpoint_ip_addresses: AWS returned an invalid {field}")
+
     return ip_addresses
 
 
@@ -860,6 +884,7 @@ def validate_tags(module, tags):
     for tag in tags:
         if not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str):
             module.fail_json(msg="list_tags_for_resource: AWS returned an invalid tag")
+
     return tags
 
 
@@ -922,30 +947,39 @@ def main():
     if state == "present":
         if not 2 <= len(module.params["ip_addresses"] or []) <= 20:
             module.fail_json(msg="ip_addresses must contain 2 to 20 entries")
+
         comparable_ip_address_values = comparable_ip_addresses(module.params["ip_addresses"])
         if len({json.dumps(item, sort_keys=True) for item in comparable_ip_address_values}) != len(
             comparable_ip_address_values
         ):
             module.fail_json(msg="ip_addresses entries must be unique")
+
         if not 1 <= len(set(module.params["protocols"])) <= 2:
             module.fail_json(msg="protocols must contain 1 or 2 entries")
+
         if not module.params["security_group_ids"]:
             module.fail_json(msg="security_group_ids must contain at least one entry")
+
         if any(not 1 <= len(group_id) <= 64 for group_id in module.params["security_group_ids"]):
             module.fail_json(msg="security_group_ids entries must contain 1 to 64 characters")
+
         for entry in module.params["ip_addresses"]:
             if not 1 <= len(entry["subnet_id"]) <= 32:
                 module.fail_json(msg="ip_addresses[].subnet_id must contain 1 to 32 characters")
+
             for field, version in (("ip", 4), ("ipv6", 6)):
                 value = entry.get(field)
                 if value is None:
                     continue
+
                 try:
                     valid = ipaddress.ip_address(value).version == version
                 except ValueError:
                     valid = False
+
                 if not valid:
                     module.fail_json(msg=f"ip_addresses[].{field} must be a valid IPv{version} address")
+
         require_valid_tags(module, tags, 200)
 
     require_positive_wait_bounds(module, always=state == "present")
@@ -967,6 +1001,7 @@ def main():
         )
         if tags:
             method_names.add("tag_resource")
+
         if tags is not None and module.params["purge_tags"]:
             method_names.add("untag_resource")
 
@@ -1013,6 +1048,7 @@ def main():
     }
     if tags is None:
         required_method_parameters["create_resolver_endpoint"].discard("Tags")
+
     require_client_methods(
         module,
         client,

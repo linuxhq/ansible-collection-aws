@@ -31,6 +31,7 @@ class Ec2SerialConsoleInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["serial_console_access"],
             {"serial_console_access_enabled": True},

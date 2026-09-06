@@ -139,6 +139,7 @@ def main():
     target_name = module.params["name"]
     if target_id == "":
         module.fail_json(msg="id must not be empty")
+
     if target_name == "":
         module.fail_json(msg="name must not be empty")
 
@@ -172,12 +173,16 @@ def main():
         summary_name = summary.get("Name") if isinstance(summary, dict) else None
         if target_id and summary_id != target_id:
             continue
+
         if target_name and summary_name != target_name:
             continue
+
         if not isinstance(summary_id, str) or not summary_id:
             module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 IP sets for {scope}; invalid ID")
+
         if not isinstance(summary_name, str) or not summary_name:
             module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 IP sets for {scope}; invalid name")
+
         summaries.append(summary)
         if target_id or target_name:
             break
@@ -198,11 +203,13 @@ def main():
                 e,
                 msg=("Unable to get AWS WAFv2 IP set " f"{summary['Name']}/{summary['Id']}"),
             )
+
         ip_set = response.get("IPSet") if isinstance(response, dict) else None
         if not isinstance(ip_set, dict):
             module.fail_json(
                 msg=f"Unexpected response while getting AWS WAFv2 IP set {summary['Name']}/{summary['Id']}"
             )
+
         ip_sets.append(ip_set)
 
     module.exit_json(

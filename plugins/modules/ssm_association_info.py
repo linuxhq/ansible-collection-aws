@@ -139,10 +139,12 @@ def main():
     for association in associations:
         if not isinstance(association, dict):
             module.fail_json(msg="Unexpected response while listing AWS Systems Manager associations")
+
         association_id = association.get("AssociationId")
 
         if not isinstance(association_id, str) or not association_id:
             module.fail_json(msg="Unexpected response while listing AWS Systems Manager associations")
+
         association = dict(association)
 
         try:
@@ -162,6 +164,7 @@ def main():
         tags = response.get("TagList", []) if isinstance(response, dict) else None
         if not isinstance(tags, list) or any(not isinstance(tag, dict) for tag in tags):
             module.fail_json(msg=f"Unexpected response while listing tags for association {association_id}")
+
         association["Tags"] = tags
 
         normalized_associations.append(

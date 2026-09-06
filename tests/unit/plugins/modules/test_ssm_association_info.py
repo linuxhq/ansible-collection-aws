@@ -24,6 +24,7 @@ class SsmAssociationInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(
             require.call_args.args[3]["list_associations"],
             ("AssociationFilterList",),
@@ -42,6 +43,7 @@ class SsmAssociationInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while listing AWS Systems Manager associations",
@@ -57,6 +59,7 @@ class SsmAssociationInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while listing tags for association a-1",

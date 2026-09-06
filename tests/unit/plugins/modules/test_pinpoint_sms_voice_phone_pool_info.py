@@ -42,6 +42,7 @@ class PinpointSmsVoicePhonePoolInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["msg"], "max_results must be between 1 and 100")
 
     def test_rejects_provider_list_limits(self):
@@ -73,6 +74,7 @@ class PinpointSmsVoicePhonePoolInfoTests(TestCase):
                     self.assertRaises(ModuleFail) as raised,
                 ):
                     plugin.main()
+
                 self.assertEqual(raised.exception.values["msg"], message)
 
     def test_pools_are_enriched_with_identities_and_tags(self):
@@ -103,6 +105,7 @@ class PinpointSmsVoicePhonePoolInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         pool = raised.exception.values["pools"][0]
         self.assertEqual(pool["origination_identities"][0]["origination_identity"], "phone-1")
         self.assertEqual(pool["tags"], {"Name": "primary"})

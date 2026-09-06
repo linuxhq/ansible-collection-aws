@@ -116,6 +116,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 def validate_connections(module, connections):
     if not isinstance(connections, list) or any(not isinstance(connection, dict) for connection in connections):
         module.fail_json(msg="Unable to get AWS Glue connections: AWS returned an invalid response")
+
     return connections
 
 
@@ -144,10 +145,13 @@ def main():
     required_parameters = []
     if name and apply_override is not None:
         required_parameters.append("ApplyOverrideForComputeEnvironment")
+
     if catalog_id:
         required_parameters.append("CatalogId")
+
     if not name and filters:
         required_parameters.append("Filter")
+
     required_parameters.append("HidePassword")
     if name:
         required_parameters.append("Name")
@@ -179,6 +183,7 @@ def main():
         else:
             if not isinstance(response, dict) or not isinstance(response.get("Connection"), dict):
                 module.fail_json(msg=f"Unable to get AWS Glue connection {name}: AWS returned an invalid response")
+
             connection = response["Connection"]
 
         connections = [connection] if connection else []

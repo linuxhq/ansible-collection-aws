@@ -29,6 +29,7 @@ class Ec2PricingInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["products"], [])
 
     def test_product_terms_preserve_case_sensitive_aws_keys(self):
@@ -54,6 +55,7 @@ class Ec2PricingInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             require.call_args.args[3],
             {
@@ -127,6 +129,7 @@ class Ec2PricingInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("between 1 and 100", raised.exception.values["msg"])
 
     def test_rejects_more_than_50_filters(self):
@@ -143,6 +146,7 @@ class Ec2PricingInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["msg"], "filters must contain at most 50 entries")
 
     def test_rejects_invalid_price_list_response(self):

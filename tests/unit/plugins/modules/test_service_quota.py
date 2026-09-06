@@ -22,6 +22,7 @@ class ServiceQuotaTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("between 0", raised.exception.values["msg"])
 
     def test_rejects_non_finite_quota_value(self):
@@ -33,12 +34,14 @@ class ServiceQuotaTests(TestCase):
                     self.assertRaises(ModuleFail) as raised,
                 ):
                     plugin.main()
+
                 self.assertIn("between 0", raised.exception.values["msg"])
 
     def test_response_resource_rejects_invalid_response(self):
         module = FakeModule({})
         with self.assertRaises(ModuleFail) as raised:
             plugin.response_resource(module, [], "Quota", "service quota")
+
         self.assertEqual(
             raised.exception.values["msg"],
             "AWS Service Quotas returned an invalid service quota response",
@@ -48,6 +51,7 @@ class ServiceQuotaTests(TestCase):
         module = FakeModule({})
         with self.assertRaises(ModuleFail) as raised:
             plugin.response_resources(module, {"RequestedQuotas": [None]}, "RequestedQuotas", "quota history")
+
         self.assertEqual(
             raised.exception.values["msg"],
             "AWS Service Quotas returned an invalid quota history entry",
@@ -62,12 +66,14 @@ class ServiceQuotaTests(TestCase):
                 "ec2",
                 "L-1",
             )
+
         self.assertIn("mismatched quota", raised.exception.values["msg"])
 
     def test_validate_current_quota_rejects_invalid_value(self):
         module = FakeModule({})
         with self.assertRaises(ModuleFail) as raised:
             plugin.validate_current_quota(module, {"Value": "5"}, "ec2", "L-1")
+
         self.assertIn("valid value", raised.exception.values["msg"])
 
     def test_validate_current_quota_accepts_large_integer_without_crashing(self):
@@ -78,12 +84,14 @@ class ServiceQuotaTests(TestCase):
         module = FakeModule({})
         with self.assertRaises(ModuleFail) as raised:
             plugin.validate_quota_request(module, {}, "ec2", "L-1")
+
         self.assertIn("invalid request", raised.exception.values["msg"])
 
     def test_validate_quota_request_rejects_wrong_status(self):
         module = FakeModule({})
         with self.assertRaises(ModuleFail) as raised:
             plugin.validate_quota_request(module, {"Status": "PENDING"}, "ec2", "L-1", status="CASE_OPENED")
+
         self.assertIn("mismatched request", raised.exception.values["msg"])
 
     def test_check_mode_reports_the_quota_request(self):
@@ -105,6 +113,7 @@ class ServiceQuotaTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(raised.exception.values["requested_quota"]["desired_value"], 10.0)
         client.request_service_quota_increase.assert_not_called()
@@ -128,5 +137,6 @@ class ServiceQuotaTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertFalse(raised.exception.values["changed"])
         client.request_service_quota_increase.assert_not_called()

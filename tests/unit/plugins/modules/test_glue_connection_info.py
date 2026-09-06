@@ -33,6 +33,7 @@ class GlueConnectionInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         require_methods.assert_called_once_with(
             module,
             client,

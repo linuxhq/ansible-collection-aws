@@ -30,6 +30,7 @@ class SnsTopicAttributesTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         client.set_topic_attributes.assert_not_called()
         self.assertTrue(raised.exception.values["changed"])
 

@@ -133,6 +133,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 def response_resource(module, response, key, description):
     if not isinstance(response, dict) or not isinstance(response.get(key), dict):
         module.fail_json(msg=f"AWS Service Quotas returned an invalid {description} response")
+
     return response[key]
 
 
@@ -143,6 +144,7 @@ def response_resources(module, response, key, description):
     resources = response.get(key, [])
     if any(not isinstance(resource, dict) for resource in resources):
         module.fail_json(msg=f"AWS Service Quotas returned an invalid {description} entry")
+
     return resources
 
 
@@ -212,6 +214,7 @@ def main():
             "QuotaCode",
             "ServiceCode",
         )
+
     require_client_methods(module, client, "Service Quotas", methods)
 
     quota_code = module.params["quota_code"]
@@ -254,6 +257,7 @@ def main():
             requests = response_resources(module, response, "RequestedQuotas", "quota change history")
             for request in requests:
                 validate_quota_request(module, request, service_code, quota_code, status=status)
+
             pending_requests.extend(requests)
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
@@ -325,6 +329,7 @@ def main():
         result["requested_quota"] = boto3_resource_to_ansible_dict(
             requested_quota, transform_tags=False, force_tags=False
         )
+
     module.exit_json(**result)
 
 

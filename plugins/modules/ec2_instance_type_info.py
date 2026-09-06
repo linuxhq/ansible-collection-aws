@@ -108,6 +108,7 @@ def main():
     request = {}
     if instance_types:
         request["InstanceTypes"] = instance_types
+
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 

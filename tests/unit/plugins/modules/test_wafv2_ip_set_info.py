@@ -28,6 +28,7 @@ class Wafv2IpSetInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(query.call_args.kwargs["Scope"], "CLOUDFRONT")
 
     def test_rejects_empty_filters(self):
@@ -40,6 +41,7 @@ class Wafv2IpSetInfoTests(TestCase):
                 self.assertRaises(ModuleFail) as raised,
             ):
                 plugin.main()
+
             self.assertEqual(raised.exception.values["msg"], f"{option} must not be empty")
 
     def test_rejects_malformed_selected_summary(self):
@@ -57,6 +59,7 @@ class Wafv2IpSetInfoTests(TestCase):
                 self.assertRaises(ModuleFail) as raised,
             ):
                 plugin.main()
+
             self.assertIn(message, raised.exception.values["msg"])
 
     def test_rejects_malformed_summary_list(self):
@@ -68,6 +71,7 @@ class Wafv2IpSetInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while listing AWS WAFv2 IP sets for REGIONAL",
@@ -99,6 +103,7 @@ class Wafv2IpSetInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["ip_sets"][0]["id"], "wanted")
 
     def test_rejects_malformed_ip_set_response(self):
@@ -111,6 +116,7 @@ class Wafv2IpSetInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while getting AWS WAFv2 IP set name-1/id-1",

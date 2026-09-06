@@ -77,4 +77,5 @@ class IamAccountAliasTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("lowercase letters", raised.exception.values["msg"])

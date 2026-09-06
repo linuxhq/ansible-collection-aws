@@ -17,13 +17,16 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
 def require_valid_tags(module, tags, max_tags, key_max=128):
     if tags is None:
         return
+
     normalized = {to_native(key): to_native(value) for key, value in tags.items()}
     if len(normalized) != len(tags):
         module.fail_json(msg="tag keys must be unique after string normalization")
+
     tags.clear()
     tags.update(normalized)
     if len(tags) > max_tags:
         module.fail_json(msg=f"tags must contain at most {max_tags} entries")
+
     if any(not 1 <= len(key) <= key_max or len(value) > 256 for key, value in tags.items()):
         module.fail_json(msg=(f"tag keys must contain 1 to {key_max} characters and values " "at most 256 characters"))
 

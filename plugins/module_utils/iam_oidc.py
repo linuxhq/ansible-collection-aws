@@ -14,9 +14,11 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 def normalize_provider_url(url):
     if url is None:
         return None
+
     normalized = url
     if normalized.lower().startswith("https://"):
         normalized = normalized[8:]
+
     normalized = normalized.rstrip("/")
     host, separator, path = normalized.partition("/")
 
@@ -33,6 +35,7 @@ def validate_provider_summaries(module, providers):
     )
     if not valid:
         module.fail_json(msg="Unable to list AWS IAM OIDC providers: AWS returned an invalid response")
+
     return providers
 
 

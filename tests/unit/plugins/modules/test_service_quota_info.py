@@ -29,6 +29,7 @@ class ServiceQuotaInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["quota"], {})
 
     def test_module_contract(self):
@@ -49,12 +50,14 @@ class ServiceQuotaInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(client.get_service_quota.call_args.kwargs["ContextId"], "arn:context")
 
     def test_quota_from_response_rejects_invalid_response(self):
         module = FakeModule({})
         with self.assertRaises(ModuleFail) as raised:
             plugin.quota_from_response(module, [], "service quota", "ec2", "L-1")
+
         self.assertEqual(
             raised.exception.values["msg"],
             "AWS Service Quotas returned an invalid service quota response",
@@ -70,6 +73,7 @@ class ServiceQuotaInfoTests(TestCase):
                 "ec2",
                 "L-1",
             )
+
         self.assertIn("mismatched quota", raised.exception.values["msg"])
 
     def test_quota_from_response_rejects_mismatched_context(self):
@@ -83,6 +87,7 @@ class ServiceQuotaInfoTests(TestCase):
                 "L-1",
                 "expected",
             )
+
         self.assertIn("mismatched quota context", raised.exception.values["msg"])
 
     def test_quota_from_response_rejects_invalid_context(self):
@@ -95,4 +100,5 @@ class ServiceQuotaInfoTests(TestCase):
                 "ec2",
                 "L-1",
             )
+
         self.assertIn("invalid quota context", raised.exception.values["msg"])

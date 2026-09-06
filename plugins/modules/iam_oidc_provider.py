@@ -190,6 +190,7 @@ def get_provider_by_url(client, module):
 
         if provider and normalize_provider_url(provider.get("Url")) == desired_url:
             return provider
+
     return None
 
 
@@ -223,6 +224,7 @@ def ensure_absent(client, module):
     }
     if arn:
         result["open_id_connect_provider_arn"] = arn
+
     module.exit_json(**result)
 
 
@@ -250,6 +252,7 @@ def ensure_present(client, module):
             tags,
             purge_tags=module.params["purge_tags"],
         )
+
     resource_changed = (current_comparable or {}) != desired
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
 
@@ -286,6 +289,7 @@ def ensure_present(client, module):
                 or not response["OpenIDConnectProviderArn"]
             ):
                 module.fail_json(msg=f"Unable to create AWS IAM OIDC provider {url}: AWS returned an invalid response")
+
             arn = response["OpenIDConnectProviderArn"]
 
             require_client_methods(
@@ -312,11 +316,13 @@ def ensure_present(client, module):
                         "ClientID",
                         "OpenIDConnectProviderArn",
                     )
+
                 if added_client_ids:
                     methods["add_client_id_to_open_id_connect_provider"] = (
                         "ClientID",
                         "OpenIDConnectProviderArn",
                     )
+
                 require_client_methods(module, client, "IAM", methods)
 
                 for client_id in added_client_ids:
@@ -424,6 +430,7 @@ def ensure_present(client, module):
                     ClientIDList=desired["client_id_list"],
                     ThumbprintList=desired["thumbprint_list"],
                 )
+
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
         current = dict(current or {})
@@ -446,6 +453,7 @@ def ensure_present(client, module):
 
     if arn:
         result["open_id_connect_provider_arn"] = arn
+
     module.exit_json(**result)
 
 
@@ -473,17 +481,23 @@ def main():
     if state == "present":
         if not module.params["url"].lower().startswith("https://"):
             module.fail_json(msg="url must begin with https://")
+
         normalized_url = normalize_provider_url(module.params["url"])
         if not normalized_url or not normalized_url.partition("/")[0]:
             module.fail_json(msg="url must identify an OIDC provider host")
+
         if len(module.params["url"]) > 255:
             module.fail_json(msg="url must contain at most 255 characters")
+
         if len(set(module.params["client_id_list"])) > 100:
             module.fail_json(msg="client_id_list must contain at most 100 unique entries")
+
         if len({item.lower() for item in module.params["thumbprint_list"]}) > 5:
             module.fail_json(msg="thumbprint_list must contain at most 5 unique entries")
+
         if not module.params["client_id_list"]:
             module.fail_json(msg="client_id_list must contain at least 1 entry")
+
         if not module.params["thumbprint_list"]:
             module.fail_json(msg="thumbprint_list must contain at least 1 entry")
 

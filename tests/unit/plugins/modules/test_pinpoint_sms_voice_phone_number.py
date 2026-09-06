@@ -108,6 +108,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("must be TRANSACTIONAL", raised.exception.values["msg"])
 
     def test_existing_number_matches_capabilities_without_order(self):
@@ -141,6 +142,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertFalse(raised.exception.values["changed"])
         self.assertEqual(raised.exception.values["phone_number_id"], "phone-1")
         client.request_phone_number.assert_not_called()
@@ -202,6 +204,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertFalse(raised.exception.values["changed"])
         client.request_phone_number.assert_not_called()
 
@@ -267,6 +270,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         phone_number = raised.exception.values["phone_number"]
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(phone_number["number_capabilities"], ["SMS", "VOICE"])
@@ -291,6 +295,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.wait_for_phone_number_active(Mock(), module, "phone-1")
+
         self.assertEqual(raised.exception.values["status"], "DELETED")
 
     def test_absent_activation_wait_does_not_fetch_tags(self):

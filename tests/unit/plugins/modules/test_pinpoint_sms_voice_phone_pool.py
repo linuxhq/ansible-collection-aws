@@ -68,6 +68,7 @@ class PinpointSmsVoicePhonePoolTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("uppercase", raised.exception.values["msg"])
 
     def test_name_tag_counts_toward_provider_limit(self):
@@ -84,6 +85,7 @@ class PinpointSmsVoicePhonePoolTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["msg"], "tags must contain at most 200 entries")
 
     def test_existing_pool_rejects_message_type_change(self):
@@ -103,6 +105,7 @@ class PinpointSmsVoicePhonePoolTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.ensure_present(Mock(), module)
+
         self.assertIn("Cannot modify message_type", raised.exception.values["msg"])
 
     def test_missing_explicit_pool_id_is_not_replaced_with_an_unselectable_pool(self):
@@ -181,6 +184,7 @@ class PinpointSmsVoicePhonePoolTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         pool = raised.exception.values["pool"]
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(
@@ -336,6 +340,7 @@ class PinpointSmsVoicePhonePoolTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.wait_for_pool_active(Mock(), module, "pool-1")
+
         self.assertEqual(raised.exception.values["status"], "DELETING")
 
     def test_absent_activation_wait_accepts_external_deletion(self):

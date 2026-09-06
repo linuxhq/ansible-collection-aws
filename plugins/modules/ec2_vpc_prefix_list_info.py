@@ -113,12 +113,14 @@ def validate_prefix_lists(module, prefix_lists):
             )
         ):
             module.fail_json(msg="EC2 returned invalid managed prefix lists")
+
     return prefix_lists
 
 
 def validate_entries(module, entries):
     if not isinstance(entries, list):
         module.fail_json(msg="EC2 returned invalid managed prefix list entries")
+
     for entry in entries:
         if (
             not isinstance(entry, dict)
@@ -127,6 +129,7 @@ def validate_entries(module, entries):
             or (entry.get("Description") is not None and not isinstance(entry.get("Description"), str))
         ):
             module.fail_json(msg="EC2 returned invalid managed prefix list entries")
+
     return entries
 
 
@@ -144,11 +147,13 @@ def main():
     target_version = module.params["target_version"]
     if target_version is not None and target_version < 1:
         module.fail_json(msg="target_version must be 1 or greater")
+
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     request = {}
     if prefix_list_ids:
         request["PrefixListIds"] = prefix_list_ids
+
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 

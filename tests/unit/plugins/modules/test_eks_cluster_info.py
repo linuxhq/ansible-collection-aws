@@ -59,6 +59,7 @@ class EksClusterInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["msg"], "EKS returned an invalid cluster list")
 
     def test_malformed_describe_response_is_rejected(self):
@@ -70,6 +71,7 @@ class EksClusterInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "EKS returned an invalid cluster for one",
@@ -111,6 +113,7 @@ class EksClusterInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             [cluster["name"] for cluster in raised.exception.values["clusters"]],
             ["prod"],

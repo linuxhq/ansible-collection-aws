@@ -102,6 +102,7 @@ def validate_contact(module, contact, operation):
         or contact.get("updateTime") is None
     ):
         module.fail_json(msg=f"{operation}: AWS returned an invalid contact")
+
     return contact
 
 
@@ -136,6 +137,7 @@ def main():
 
         if not isinstance(response, dict) or "emailContact" not in response:
             module.fail_json(msg=f"Unable to get AWS Notifications contact {arn}: AWS returned an invalid response")
+
         contact = response.get("emailContact")
         if contact is not None:
             validate_contact(module, contact, f"Unable to get AWS Notifications contact {arn}")
@@ -152,6 +154,7 @@ def main():
 
     if not isinstance(email_contacts, list):
         module.fail_json(msg="Unable to list AWS Notifications contacts: AWS returned an invalid response")
+
     for contact in email_contacts:
         validate_contact(module, contact, "Unable to list AWS Notifications contacts")
 
@@ -193,6 +196,7 @@ def main():
                     f"Unable to list tags for AWS Notifications contact {contact['arn']}: AWS returned an invalid response"
                 )
             )
+
         contact["tags"] = tag_response.get("tags", {})
 
         email_contacts_with_tags.append(contact)

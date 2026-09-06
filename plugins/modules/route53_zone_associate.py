@@ -276,6 +276,7 @@ def main():
     methods = {"get_hosted_zone": ("Id",)}
     if state == "present":
         methods["associate_vpc_with_hosted_zone"] = ("HostedZoneId", "VPC")
+
     if state == "absent":
         methods["disassociate_vpc_from_hosted_zone"] = ("HostedZoneId", "VPC")
 

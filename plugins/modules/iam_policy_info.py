@@ -175,6 +175,7 @@ def validate_policy_names(module, response, entity_type, name):
         module.fail_json(
             msg=(f"Unable to list AWS IAM {entity_type.lower()} policies for {name}: AWS returned an invalid response")
         )
+
     return response["PolicyNames"]
 
 
@@ -186,6 +187,7 @@ def validate_policy_document(module, response, entity_type, name, policy_name):
                 f"for {name}: AWS returned an invalid response"
             )
         )
+
     return response["PolicyDocument"]
 
 
@@ -206,6 +208,7 @@ def build_entity_policies(client, module, entity_type, names):
             "IAM",
             {list_operation: (f"{entity_type}Name", "Marker", "MaxItems")},
         )
+
     get_policy = None
 
     for name in names:
@@ -222,6 +225,7 @@ def build_entity_policies(client, module, entity_type, names):
                 e,
                 msg=f"Unable to list AWS IAM {entity_type.lower()} policies for {name}",
             )
+
         all_policy_names = validate_policy_names(module, response, entity_type, name)
 
         policy_names = all_policy_names
@@ -237,6 +241,7 @@ def build_entity_policies(client, module, entity_type, names):
                 {get_operation: (f"{entity_type}Name", "PolicyName")},
             )
             get_policy = getattr(client, get_operation)
+
         for policy_name in policy_names:
             try:
                 response = get_policy(
@@ -250,6 +255,7 @@ def build_entity_policies(client, module, entity_type, names):
                     e,
                     msg=(f"Unable to get AWS IAM {entity_type.lower()} policy " f"{policy_name} for {name}"),
                 )
+
             policy_document = validate_policy_document(module, response, entity_type, name, policy_name)
 
             policies.append(
@@ -258,6 +264,7 @@ def build_entity_policies(client, module, entity_type, names):
                     "policy_document": policy_document,
                 }
             )
+
         results.append(
             {
                 "name": name,
@@ -275,6 +282,7 @@ def entity_names(client, module, entity_type):
 
     if explicit_name:
         return [explicit_name]
+
     response_key = f"{entity_type}s"
     name_key = f"{entity_type}Name"
     path_prefix = module.params["path_prefix"]
@@ -303,6 +311,7 @@ def entity_names(client, module, entity_type):
     )
     if not valid:
         module.fail_json(msg=f"Unable to list AWS IAM {entity_type.lower()}s: AWS returned an invalid response")
+
     return [entity[name_key] for entity in entities]
 
 
@@ -321,6 +330,7 @@ def main():
     path_prefix = module.params["path_prefix"]
     if path_prefix and (not path_prefix.startswith("/") or not path_prefix.endswith("/") or len(path_prefix) > 512):
         module.fail_json(msg="path_prefix must begin and end with / and contain at most 512 characters")
+
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
 
     group_names = entity_names(client, module, "Group")

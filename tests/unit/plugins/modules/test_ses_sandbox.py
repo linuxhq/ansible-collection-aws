@@ -54,6 +54,7 @@ class SesSandboxTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertFalse(raised.exception.values["changed"])
         require_methods.assert_called_once_with(module, client, "SESv2", {"get_account": ()})
         client.put_account_details.assert_not_called()
@@ -67,6 +68,7 @@ class SesSandboxTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("at most 4", raised.exception.values["msg"])
 
     def test_rejects_blank_application_details_before_api_calls(self):
@@ -89,6 +91,7 @@ class SesSandboxTests(TestCase):
                 self.assertRaises(ModuleFail) as raised,
             ):
                 plugin.main()
+
             self.assertIn("non-empty strings", raised.exception.values["msg"])
 
     def test_successful_request_projects_account_details_without_a_refresh(self):

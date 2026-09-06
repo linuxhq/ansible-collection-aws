@@ -450,6 +450,7 @@ def validate_accelerator(module, accelerator, expected_arn=None):
         )
     ):
         module.fail_json(msg="Global Accelerator returned an invalid accelerator")
+
     return accelerator
 
 
@@ -470,6 +471,7 @@ def validate_listener(module, listener):
         )
     ):
         module.fail_json(msg="Global Accelerator returned an invalid listener")
+
     return listener
 
 
@@ -503,6 +505,7 @@ def validate_endpoint_group(module, endpoint_group, expected_arn=None, expected_
         )
     ):
         module.fail_json(msg="Global Accelerator returned an invalid endpoint group")
+
     return endpoint_group
 
 
@@ -515,6 +518,7 @@ def validate_tag_list(module, tags):
         for tag in tags
     ):
         module.fail_json(msg="Global Accelerator returned invalid tags")
+
     return tags
 
 
@@ -564,6 +568,7 @@ def get_accelerator(client, module):
 
     if not isinstance(accelerators, list):
         module.fail_json(msg="Global Accelerator returned an invalid accelerator list")
+
     accelerators = [validate_accelerator(module, accelerator) for accelerator in accelerators]
 
     matches = [accelerator for accelerator in accelerators if accelerator.get("Name") == name]
@@ -630,6 +635,7 @@ def get_listeners(client, module, accelerator_arn):
     )
     if not isinstance(listeners, list):
         module.fail_json(msg="Global Accelerator returned an invalid listener list")
+
     listeners = [validate_listener(module, listener) for listener in listeners]
 
     normalized = []
@@ -754,6 +760,7 @@ def get_endpoint_groups(client, module, listener_arn):
     )
     if not isinstance(endpoint_groups, list):
         module.fail_json(msg="Global Accelerator returned an invalid endpoint group list")
+
     endpoint_groups = [validate_endpoint_group(module, endpoint_group) for endpoint_group in endpoint_groups]
 
     normalized = [
@@ -826,6 +833,7 @@ def endpoint_group_request(desired):
             }
             if configuration["client_ip_preservation_enabled"] is not None:
                 entry["ClientIPPreservationEnabled"] = configuration["client_ip_preservation_enabled"]
+
             if configuration["attachment_arn"] is not None:
                 entry["AttachmentArn"] = configuration["attachment_arn"]
 
@@ -912,6 +920,7 @@ def predicted_endpoint_group(current, desired):
             }
             if configuration["client_ip_preservation_enabled"] is not None:
                 endpoint["client_ip_preservation_enabled"] = configuration["client_ip_preservation_enabled"]
+
             if configuration.get("attachment_arn") is not None:
                 endpoint["attachment_arn"] = configuration["attachment_arn"]
 
@@ -1209,6 +1218,7 @@ def ensure_listeners(client, module, accelerator_arn):
                         e,
                         msg=("Unable to create AWS Global Accelerator listener for " f"{accelerator_arn}"),
                     )
+
                 current = deletes.pop(0)
                 delete_listener(client, module, accelerator_arn, current["listener_arn"])
                 wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed")
@@ -1261,6 +1271,7 @@ def ensure_absent(client, module):
             accelerator = get_accelerator_by_arn(client, module, accelerator_arn)
             if accelerator is None:
                 module.exit_json(changed=True, state="absent")
+
         listeners = get_listeners(client, module, accelerator_arn)
 
         for listener in listeners:
@@ -1350,6 +1361,7 @@ def ensure_present(client, module):
     accelerator = get_accelerator(client, module)
     if accelerator is None and module.params.get("arn") is not None:
         module.fail_json(msg=f"AWS Global Accelerator {module.params['arn']} does not exist")
+
     created = accelerator is None
 
     current_tags = {}
@@ -1467,6 +1479,7 @@ def ensure_present(client, module):
                 e,
                 msg=f"Unable to create AWS Global Accelerator {desired['name']}",
             )
+
         accelerator = validate_accelerator(
             module,
             response.get("Accelerator") if isinstance(response, dict) else None,
@@ -1510,6 +1523,7 @@ def ensure_present(client, module):
                 e,
                 msg=("Unable to update AWS Global Accelerator " f"{request['AcceleratorArn']}"),
             )
+
         accelerator = validate_accelerator(
             module,
             response.get("Accelerator") if isinstance(response, dict) else None,
@@ -1533,6 +1547,7 @@ def ensure_present(client, module):
                 accelerator["AcceleratorArn"],
                 "accelerator_deployed",
             )
+
         listeners_changed, listeners = ensure_listeners(
             client,
             module,
@@ -1560,8 +1575,10 @@ def ensure_present(client, module):
             tag_methods = {}
             if tag_keys_to_unset:
                 tag_methods["untag_resource"] = ("ResourceArn", "TagKeys")
+
             if tags_to_set:
                 tag_methods["tag_resource"] = ("ResourceArn", "Tags")
+
             if tag_methods:
                 require_client_methods(
                     module,
@@ -1569,6 +1586,7 @@ def ensure_present(client, module):
                     "Global Accelerator",
                     tag_methods,
                 )
+
             reconcile_arn_tags(
                 module,
                 client,
@@ -1713,18 +1731,22 @@ def main():
 
     if len(module.params.get("name") or "") > 255:
         module.fail_json(msg="name must contain at most 255 characters")
+
     if state == "present" and len(module.params.get("idempotency_token") or "") > 255:
         module.fail_json(msg="idempotency_token must contain at most 255 characters")
 
     if state == "present" and len(module.params["ip_addresses"] or []) > 2:
         module.fail_json(msg="ip_addresses must contain at most 2 entries")
+
     if state == "present" and any(len(address) > 45 for address in module.params["ip_addresses"] or []):
         module.fail_json(msg="ip_addresses entries must contain at most 45 characters")
+
     for address in module.params["ip_addresses"] or [] if state == "present" else []:
         try:
             ipaddress.IPv4Address(address)
         except ipaddress.AddressValueError:
             module.fail_json(msg=f"ip_addresses entries must be valid IPv4 addresses: {address}")
+
     if state == "present" and len(set(module.params["ip_addresses"] or [])) != len(module.params["ip_addresses"] or []):
         module.fail_json(msg="ip_addresses entries must be unique")
 
@@ -1734,9 +1756,11 @@ def main():
         sum(len(listener.get("endpoint_groups") or []) for listener in module.params["listeners"] or []) > 42
     ):
         module.fail_json(msg="listeners must contain at most 42 endpoint groups in total")
+
     for listener in module.params["listeners"] or [] if state == "present" else []:
         if not listener["port_ranges"]:
             module.fail_json(msg="listeners entries require at least one port_ranges entry")
+
         if len(listener["port_ranges"]) > 10:
             module.fail_json(msg="listeners entries allow at most 10 port_ranges entries")
 
@@ -1755,6 +1779,7 @@ def main():
                 for current in protocol_port_ranges
             ):
                 module.fail_json(msg="listeners port_ranges entries must not overlap")
+
             protocol_port_ranges.append(port_range)
 
         identity = listener_identity(
@@ -1771,6 +1796,7 @@ def main():
                     "in listeners"
                 )
             )
+
         listener_identities.add(identity)
 
         regions = set()
@@ -1782,6 +1808,7 @@ def main():
 
             if region in regions:
                 module.fail_json(msg=f"Duplicate endpoint group region {region} in endpoint_groups")
+
             regions.add(region)
 
             if len(endpoint_group.get("endpoint_configurations") or []) > 10:
@@ -1823,10 +1850,12 @@ def main():
                             "ARNs must contain at most 255 characters"
                         )
                     )
+
                 if endpoint_id in endpoint_ids:
                     module.fail_json(
                         msg=(f"Duplicate endpoint {endpoint_id} in endpoint group " f"{region} endpoint_configurations")
                     )
+
                 endpoint_ids.add(endpoint_id)
 
                 if not 0 <= configuration["weight"] <= 255:
@@ -1840,10 +1869,12 @@ def main():
                     module.fail_json(
                         msg=(f"Endpoint group {region} port_overrides entries " "must be between 1 and 65535")
                     )
+
                 if port_override["listener_port"] in override_listener_ports:
                     module.fail_json(
                         msg=(f"Endpoint group {region} port_overrides listener_port " "values must be unique")
                     )
+
                 override_listener_ports.add(port_override["listener_port"])
 
     require_valid_tags(module, module.params["tags"] if state == "present" else None, 50)

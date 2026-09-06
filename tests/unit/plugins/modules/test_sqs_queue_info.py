@@ -50,6 +50,7 @@ class SqsQueueInfoTests(TestCase):
         client = Mock(get_queue_attributes=Mock(return_value={"Attributes": []}))
         with self.assertRaises(ModuleFail) as raised:
             plugin.get_queue(client, FakeModule({}), "https://sqs/queue")
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while getting AWS SQS queue https://sqs/queue",
@@ -75,6 +76,7 @@ class SqsQueueInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["queues"], [])
         require_methods.assert_called_once_with(
             module,
@@ -102,6 +104,7 @@ class SqsQueueInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while getting AWS SQS queue URL for main",

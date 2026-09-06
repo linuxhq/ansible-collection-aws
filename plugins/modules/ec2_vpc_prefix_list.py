@@ -257,6 +257,7 @@ def validate_prefix_list(module, prefix_list):
         )
     ):
         module.fail_json(msg="EC2 returned an invalid managed prefix list")
+
     return prefix_list
 
 
@@ -269,6 +270,7 @@ def validate_prefix_list_entries(module, entries):
             or (entry.get("Description") is not None and not isinstance(entry.get("Description"), str))
         ):
             module.fail_json(msg="EC2 returned invalid managed prefix list entries")
+
     return entries
 
 
@@ -361,6 +363,7 @@ def ensure_absent(client, module):
             "restore-in-progress",
         }:
             wait_for_ready_state(client, module, prefix_list_id)
+
         delete_prefix_list(client, module, prefix_list_id)
 
     result = {
@@ -370,6 +373,7 @@ def ensure_absent(client, module):
     }
     if prefix_list_id:
         result["prefix_list_id"] = prefix_list_id
+
     module.exit_json(**result)
 
 
@@ -390,6 +394,7 @@ def ensure_present(client, module):
                 "managed_prefix_list_deleted",
             )
             return ensure_present(client, module)
+
     desired_entries = comparable_entries(module.params["entries"])
 
     changed = current is None
@@ -412,6 +417,7 @@ def ensure_present(client, module):
             current = snake_dict_to_camel_dict(desired_prefix_list, capitalize_first=True)
             if tags is not None:
                 current["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+
             current_entries = desired_entries
     else:
         current_prefix_list = comparable_prefix_list(current)
@@ -429,6 +435,7 @@ def ensure_present(client, module):
                 tags,
                 purge_tags=purge_tags,
             )
+
         changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
         if changed and not module.check_mode:
@@ -439,6 +446,7 @@ def ensure_present(client, module):
             }:
                 wait_for_ready_state(client, module, current.get("PrefixListId"))
                 return ensure_present(client, module)
+
             if remove_entries and not address_family_changed:
                 remove_entry_requests = [{"cidr": entry["cidr"]} for entry in remove_entries]
 
@@ -513,6 +521,7 @@ def ensure_present(client, module):
                     current, current_entries = get_current(client, module)
                 else:
                     current_entries = desired_entries
+
             if current is not None and tags is not None:
                 tags_to_set, tag_keys_to_unset = compare_aws_tags(
                     boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
@@ -566,6 +575,7 @@ def ensure_present(client, module):
             current.update(snake_dict_to_camel_dict(desired_prefix_list, capitalize_first=True))
             if tags is not None:
                 current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
+
             current_entries = desired_entries
 
     prefix_list = boto3_resource_to_ansible_dict(current or {}, transform_tags=True, force_tags=False)
@@ -584,6 +594,7 @@ def ensure_present(client, module):
 
     if prefix_list_id:
         result["prefix_list_id"] = prefix_list_id
+
     module.exit_json(**result)
 
 
@@ -631,6 +642,7 @@ def modify_prefix_list(client, module, current, **kwargs):
     }
     if "add_entries" in kwargs or "remove_entries" in kwargs:
         request["current_version"] = current.get("Version")
+
     request.update(kwargs)
     request = scrub_none_parameters(snake_dict_to_camel_dict(request, capitalize_first=True))
 
@@ -729,6 +741,7 @@ def comparable_entries(entries):
                 normalized_entry[field] = entry.get(field)
 
         result.append(normalized_entry)
+
     return sorted(result, key=lambda entry: json.dumps(entry, sort_keys=True))
 
 
@@ -775,6 +788,7 @@ def main():
     if state == "present":
         if not entries:
             module.fail_json(msg="entries must contain at least one item when state=present")
+
         if len(entries) > 100:
             module.fail_json(msg="entries must contain at most 100 items")
 
@@ -782,10 +796,12 @@ def main():
         for entry in entries:
             if len(entry.get("description") or "") > 255:
                 module.fail_json(msg="entries[].description must contain at most 255 characters")
+
             try:
                 cidr = ipaddress.ip_network(entry["cidr"])
             except ValueError:
                 module.fail_json(msg=f"entries[].cidr must be a valid CIDR: {entry['cidr']}")
+
             if cidr.version != int(module.params["address_family"][-1]):
                 module.fail_json(
                     msg=(
@@ -793,12 +809,14 @@ def main():
                         f"{module.params['address_family']}: {entry['cidr']}"
                     )
                 )
+
             entry["cidr"] = str(cidr)
             if entry["cidr"] in cidrs:
                 module.fail_json(
                     msg="entries[].cidr values must be unique",
                     cidr=entry["cidr"],
                 )
+
             cidrs.add(entry["cidr"])
 
     require_valid_tags(module, tags if state == "present" else None, 50, key_max=127)

@@ -1,7 +1,5 @@
 target-version = "py310"
 line-length = 120
 
-extend-exclude = ["plugins/modules/ec2_vpc_vpn.py"]
-
 [lint]
 extend-ignore = ["EXE001", "I001"]

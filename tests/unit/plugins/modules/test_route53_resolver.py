@@ -71,6 +71,7 @@ class Route53ResolverTests(TestCase):
             self.assertRaises(ModuleFail) as ip_raised,
         ):
             plugin.resolver_endpoint_with_ip_addresses(Mock(), module, endpoint)
+
         self.assertIn("without a subnet ID", ip_raised.exception.values["msg"])
 
         with (
@@ -78,6 +79,7 @@ class Route53ResolverTests(TestCase):
             self.assertRaises(ModuleFail) as tag_raised,
         ):
             plugin.resolver_endpoint_with_tags(Mock(), module, endpoint)
+
         self.assertIn("invalid tag", tag_raised.exception.values["msg"])
 
     def test_absent_waits_for_deleting_endpoint_without_deleting_again(self):
@@ -101,6 +103,7 @@ class Route53ResolverTests(TestCase):
         module = FakeModule({"name": "endpoint", "wait": False})
         with patch.object(plugin, "wait_for_resolver_endpoint_status") as wait:
             plugin.delete_resolver_endpoint(client, module, {"Id": "rslvr-endpt-1"}, always=True)
+
         wait.assert_called_once_with(client, module, "rslvr-endpt-1", {"deleted"})
 
     def test_delete_tolerates_endpoint_disappearing(self):
@@ -112,6 +115,7 @@ class Route53ResolverTests(TestCase):
         module = FakeModule({"name": "endpoint", "wait": True})
         with patch.object(plugin, "wait_for_resolver_endpoint_status") as wait:
             plugin.delete_resolver_endpoint(client, module, {"Id": "rslvr-endpt-1"})
+
         wait.assert_not_called()
 
     def test_module_contract(self):
@@ -434,6 +438,7 @@ class Route53ResolverTests(TestCase):
                     {"Id": "rslvr-1", "IpAddresses": current},
                     desired,
                 )
+
             self.assertTrue(
                 client.method_calls[0][0].startswith(first_operation),
                 client.method_calls,
@@ -487,6 +492,7 @@ class Route53ResolverTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         delete.assert_called_once_with(client, module, current, always=True)
         create.assert_called_once()

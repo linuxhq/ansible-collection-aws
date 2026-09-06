@@ -280,6 +280,7 @@ def matching_flow_logs(module, flow_logs, desired):
     for flow_log in flow_logs:
         if not isinstance(flow_log, dict):
             module.fail_json(msg="AWS returned an invalid EC2 flow log")
+
         if flow_log.get("ResourceId") not in resource_ids:
             continue
 
@@ -302,6 +303,7 @@ def matching_flow_logs(module, flow_logs, desired):
         flow_log_id = flow_log.get("FlowLogId")
         if not isinstance(flow_log_id, str) or not flow_log_id:
             module.fail_json(msg="AWS returned an invalid matching EC2 flow log without a flow log ID")
+
         matching.append(flow_log)
 
     return matching
@@ -421,16 +423,20 @@ def ensure_present(client, module):
             ]
             if resource_type in TRAFFIC_TYPE_RESOURCE_TYPES:
                 required_create_parameters.append("TrafficType")
+
             if tags:
                 required_create_parameters.append("TagSpecifications")
+
             for (
                 option_name,
                 parameter_name,
             ) in OPTIONAL_CREATE_FLOW_LOG_PARAMETER_BY_OPTION.items():
                 if module.params[option_name] is not None:
                     required_create_parameters.append(parameter_name)
+
             if destination_options:
                 required_create_parameters.append("DestinationOptions")
+
             require_client_methods(
                 module,
                 client,
@@ -554,6 +560,7 @@ def ensure_present(client, module):
                     "EC2",
                     {"delete_tags": ("Resources", "Tags")},
                 )
+
             for tag_keys_to_unset, delete_resources in delete_groups.items():
                 try:
                     client.delete_tags(
@@ -574,6 +581,7 @@ def ensure_present(client, module):
                     "EC2",
                     {"create_tags": ("Resources", "Tags")},
                 )
+
             for tags_to_set, create_resources in create_groups.items():
                 try:
                     client.create_tags(
@@ -659,6 +667,7 @@ def main():
 
     if not resource_ids:
         module.fail_json(msg="resource_ids must contain at least one item")
+
     if (
         state == "present"
         and module.params["traffic_type"] is not None
@@ -667,13 +676,16 @@ def main():
         module.fail_json(
             msg=("traffic_type is not supported when resource_type is " "TransitGateway or TransitGatewayAttachment")
         )
+
     if state == "present" and destination_options and module.params["log_destination_type"] != "s3":
         module.fail_json(msg=("destination_options requires log_destination_type to be s3 " "when state is present"))
+
     require_valid_tags(module, module.params["tags"] if state == "present" else None, 50, key_max=127)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
     describe_parameters = ["Filter", "MaxResults", "NextToken"]
     if state == "present":
         describe_parameters.append("FlowLogIds")
+
     require_client_methods(
         module,
         client,

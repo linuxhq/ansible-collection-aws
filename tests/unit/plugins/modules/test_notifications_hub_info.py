@@ -34,6 +34,7 @@ class NotificationsHubInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["notification_hubs"],
             [

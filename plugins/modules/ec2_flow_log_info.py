@@ -105,8 +105,10 @@ def main():
     request = {}
     if flow_log_ids:
         request["FlowLogIds"] = flow_log_ids
+
     if resource_ids:
         filters["resource-id"] = resource_ids
+
     if filters:
         request["Filter"] = ansible_dict_to_boto3_filter_list(filters)
 

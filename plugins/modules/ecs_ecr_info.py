@@ -79,6 +79,7 @@ def validate_repositories(module, response):
     repositories = response.get("repositories") if isinstance(response, dict) else None
     if not isinstance(repositories, list):
         module.fail_json(msg="ECR returned invalid repositories")
+
     for repository in repositories:
         if (
             not isinstance(repository, dict)
@@ -88,6 +89,7 @@ def validate_repositories(module, response):
             or not repository["repositoryName"]
         ):
             module.fail_json(msg="ECR returned invalid repositories")
+
     return repositories
 
 
@@ -109,6 +111,7 @@ def main():
     request = {}
     if registry_id:
         request["registryId"] = registry_id
+
     if repository_names:
         request["repositoryNames"] = repository_names
 

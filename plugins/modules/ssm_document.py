@@ -177,12 +177,14 @@ SSM_DOCUMENT_RESOURCE_TYPE = "Document"
 def document_description_from_response(module, response, message):
     if not isinstance(response, dict) or not isinstance(response.get("DocumentDescription"), dict):
         module.fail_json(msg=message)
+
     return response["DocumentDescription"]
 
 
 def comparable_document(document):
     if document is None:
         return None
+
     return {
         "content": snake_dict_to_camel_dict(document_content(document), capitalize_first=False),
         "document_type": document.get("DocumentType"),
@@ -254,6 +256,7 @@ def ensure_present(client, module):
                         f"document {name}: AWS returned no document version"
                     )
                 )
+
             resource_changed = False
 
     tags_to_set, tag_keys_to_unset = ({}, [])
@@ -292,6 +295,7 @@ def ensure_present(client, module):
                     e,
                     msg=f"Unable to create AWS Systems Manager document {name}",
                 )
+
             current = document_description_from_response(
                 module,
                 response,
@@ -299,6 +303,7 @@ def ensure_present(client, module):
             )
             if not current.get("DocumentVersion"):
                 module.fail_json(msg=("AWS Systems Manager did not return the created document " f"{name}"))
+
             current["Content"] = desired_content
             if tags:
                 current["Tags"] = request["Tags"]
@@ -307,6 +312,7 @@ def ensure_present(client, module):
             new_version = default_version_to_promote
             if default_version_to_promote:
                 current = latest
+
             if resource_changed:
                 try:
                     response = client.update_document(
@@ -325,6 +331,7 @@ def ensure_present(client, module):
                         e,
                         msg=f"Unable to update AWS Systems Manager document {name}",
                     )
+
                 updated = document_description_from_response(
                     module,
                     response,
@@ -338,6 +345,7 @@ def ensure_present(client, module):
                             f"document {name}: AWS returned no document version"
                         )
                     )
+
                 current = dict(current or {}, **updated, Content=desired_content)
 
             try:
@@ -432,6 +440,7 @@ def get_document(client, module, include_tags=False, document_version=None):
         parsed_content = json.loads(content) if isinstance(content, str) else None
     except (TypeError, ValueError):
         parsed_content = None
+
     if not isinstance(parsed_content, dict):
         module.fail_json(msg=f"Unexpected content while getting AWS Systems Manager document {name}")
 
@@ -453,6 +462,7 @@ def get_document(client, module, include_tags=False, document_version=None):
         tags = response.get("TagList", []) if isinstance(response, dict) else None
         if not isinstance(tags, list) or any(not isinstance(tag, dict) for tag in tags):
             module.fail_json(msg=f"Unexpected response while listing tags for AWS Systems Manager document {name}")
+
         document["Tags"] = tags
 
     return document
@@ -515,6 +525,7 @@ def main():
         methods["update_document_default_version"] = ("DocumentVersion", "Name")
         if tags:
             methods["create_document"] += ("Tags",)
+
         if tags is not None:
             methods["list_tags_for_resource"] = ("ResourceId", "ResourceType")
             if tags:
@@ -523,6 +534,7 @@ def main():
                     "ResourceType",
                     "Tags",
                 )
+
             if module.params["purge_tags"]:
                 methods["remove_tags_from_resource"] = (
                     "ResourceId",

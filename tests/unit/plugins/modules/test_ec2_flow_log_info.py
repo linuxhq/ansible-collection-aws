@@ -31,6 +31,7 @@ class Ec2FlowLogInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(
             require.call_args.args[3],
             {"describe_flow_logs": ("FlowLogIds", "MaxResults", "NextToken")},

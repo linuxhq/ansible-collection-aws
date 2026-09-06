@@ -24,6 +24,7 @@ class Route53DelegationSetInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         require_methods.assert_called_once_with(
             module,
             client,
@@ -46,6 +47,7 @@ class Route53DelegationSetInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["delegation_sets"], [{"id": "delegation-1"}])
         query.assert_called_once()
 
@@ -59,6 +61,7 @@ class Route53DelegationSetInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         require_methods.assert_called_once_with(
             module,
             client,

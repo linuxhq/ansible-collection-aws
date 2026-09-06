@@ -74,6 +74,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["msg"], "tags must contain at most 50 entries")
 
     def test_absent_does_not_validate_unused_create_options(self):
@@ -104,6 +105,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "encryption_config must contain at most one entry",
@@ -126,6 +128,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         require.assert_called_once_with(module, client, "EKS", {"delete_cluster": ("name",)})
         self.assertTrue(raised.exception.values["changed"])
 
@@ -139,6 +142,7 @@ class EksClusterTests(TestCase):
         module = FakeModule({"name": "example"})
         with self.assertRaises(ModuleFail) as raised:
             plugin.describe_cluster(client, module)
+
         self.assertEqual(raised.exception.values["msg"], "EKS returned an invalid cluster")
 
     def test_describe_rejects_malformed_cluster_configuration(self):
@@ -157,12 +161,14 @@ class EksClusterTests(TestCase):
         module = FakeModule({"name": "example"})
         with self.assertRaises(ModuleFail) as raised:
             plugin.describe_cluster(client, module)
+
         self.assertEqual(raised.exception.values["msg"], "EKS returned an invalid cluster")
 
     def test_update_validation_rejects_malformed_response(self):
         module = FakeModule({"name": "example"})
         with self.assertRaises(ModuleFail) as raised:
             plugin.validate_update(module, {"id": "update-1"})
+
         self.assertEqual(raised.exception.values["msg"], "EKS returned an invalid cluster update")
 
     def test_waited_update_rejects_disappearing_cluster(self):
@@ -192,6 +198,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertEqual(
             raised.exception.values["msg"],
             "EKS cluster example disappeared after update",
@@ -257,6 +264,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(
             [call.kwargs for call in client.update_cluster_config.call_args_list],
@@ -345,6 +353,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.ensure_present(client, FakeModule(params))
+
         self.assertEqual(
             raised.exception.values["msg"],
             "The resulting cluster tags must contain at most 50 entries",
@@ -421,6 +430,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_present(client, module)
+
         wait_for_cluster.assert_called_once_with(client, module, "cluster_deleted")
         self.assertEqual(
             require.call_args.args[3],
@@ -446,6 +456,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         self.assertFalse(raised.exception.values["changed"])
         client.delete_cluster.assert_not_called()
 
@@ -473,6 +484,7 @@ class EksClusterTests(TestCase):
                 self.assertRaises(ModuleFail) as raised,
             ):
                 plugin.ensure_present(Mock(), FakeModule(params))
+
             self.assertIn(message, raised.exception.values["msg"])
 
     def test_failed_update_stops_waiting_with_update_details(self):
@@ -484,6 +496,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.wait_for_update(client, module, "update-1")
+
         require.assert_called_once_with(
             module,
             client,

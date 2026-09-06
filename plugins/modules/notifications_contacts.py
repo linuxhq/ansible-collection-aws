@@ -131,6 +131,7 @@ def apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset):
 
     for tag_key in tag_keys_to_unset:
         updated_tags.pop(tag_key, None)
+
     updated_tags.update(tags_to_set)
     updated["tags"] = updated_tags
     return updated
@@ -141,6 +142,7 @@ def validate_contact(module, contact, operation):
         isinstance(contact.get(key), str) and contact[key] for key in ("address", "arn", "name")
     ):
         module.fail_json(msg=f"{operation}: AWS returned an invalid contact")
+
     return contact
 
 
@@ -162,6 +164,7 @@ def get_contact_by_address(client, module):
         validate_contact(module, contact, "Unable to list AWS Notifications contacts")
         if contact.get("address") == email_address:
             return contact
+
     return None
 
 
@@ -244,6 +247,7 @@ def ensure_present(client, module):
                     f"Unable to list tags for AWS Notifications contact {contact['arn']}: AWS returned an invalid response"
                 )
             )
+
         contact["tags"] = tag_response.get("tags", {})
 
         if not resource_changed:
@@ -309,6 +313,7 @@ def ensure_present(client, module):
                         f"Unable to create AWS Notifications contact {email_address}: AWS returned an invalid response"
                     )
                 )
+
             contact_arn = create_response["arn"]
 
             contact = None
@@ -335,12 +340,14 @@ def ensure_present(client, module):
                 module.fail_json(
                     msg=f"Unable to get AWS Notifications contact {contact_arn}: AWS returned an invalid response"
                 )
+
             contact = get_response.get("emailContact")
 
             if contact is None:
                 contact = dict(desired_contact, arn=contact_arn)
             else:
                 validate_contact(module, contact, f"Unable to get AWS Notifications contact {contact_arn}")
+
             if desired_tags is not None:
                 contact["tags"] = desired_tags
         else:

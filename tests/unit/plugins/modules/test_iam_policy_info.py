@@ -153,6 +153,7 @@ class IamPolicyInfoTests(TestCase):
         module = SimpleNamespace(params={"policy_name": None})
         with patch.object(plugin, "require_client_methods") as require_methods:
             assert plugin.build_entity_policies(Mock(), module, "User", []) == []
+
         require_methods.assert_not_called()
 
     def test_unmatched_policy_name_does_not_require_get_operation(self):

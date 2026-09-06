@@ -28,6 +28,7 @@ class Wafv2WebAclInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(query.call_args.kwargs["Scope"], "REGIONAL")
 
     def test_byte_values_are_returned_as_json_safe_text(self):
@@ -51,6 +52,7 @@ class Wafv2WebAclInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["web_acls"][0]["custom_response_bodies"]["body"]["content"],
             "hello",
@@ -66,6 +68,7 @@ class Wafv2WebAclInfoTests(TestCase):
                 self.assertRaises(ModuleFail) as raised,
             ):
                 plugin.main()
+
             self.assertEqual(raised.exception.values["msg"], f"{option} must not be empty")
 
     def test_rejects_malformed_summary_list(self):
@@ -77,6 +80,7 @@ class Wafv2WebAclInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("Unexpected response while listing", raised.exception.values["msg"])
 
     def test_rejects_malformed_selected_summary(self):
@@ -94,6 +98,7 @@ class Wafv2WebAclInfoTests(TestCase):
                 self.assertRaises(ModuleFail) as raised,
             ):
                 plugin.main()
+
             self.assertIn(message, raised.exception.values["msg"])
 
     def test_filtered_lookup_skips_malformed_unmatched_summary(self):
@@ -122,6 +127,7 @@ class Wafv2WebAclInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["web_acls"][0]["id"], "wanted")
 
     def test_rejects_malformed_web_acl_response(self):
@@ -134,6 +140,7 @@ class Wafv2WebAclInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while getting AWS WAFv2 web ACL main/acl-1",

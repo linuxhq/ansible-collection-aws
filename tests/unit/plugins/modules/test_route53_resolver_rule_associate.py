@@ -84,6 +84,7 @@ class Route53ResolverRuleAssociateTests(TestCase):
                 self.assertRaises(ModuleFail) as raised,
             ):
                 plugin.get_resolver_rule_association_by_rule_and_vpc(Mock(), module)
+
             self.assertIn(message, raised.exception.values["msg"])
 
     def test_check_mode_replacement_does_not_return_stale_id(self):
@@ -155,6 +156,7 @@ class Route53ResolverRuleAssociateTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
 
     def test_absent_waits_for_deleting_association_without_disassociating(self):
@@ -211,6 +213,7 @@ class Route53ResolverRuleAssociateTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(Mock(), module)
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(raised.exception.values["resolver_rule_association"]["vpc_id"], "vpc-1")
 

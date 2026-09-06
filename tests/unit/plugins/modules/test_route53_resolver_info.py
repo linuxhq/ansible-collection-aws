@@ -64,6 +64,7 @@ class Route53ResolverInfoTests(TestCase):
                 self.assertRaises(ModuleFail) as raised,
             ):
                 plugin.main()
+
             self.assertIn(message, raised.exception.values["msg"])
 
     def test_module_contract(self):
@@ -81,6 +82,7 @@ class Route53ResolverInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         details.assert_not_called()
         self.assertEqual(raised.exception.values["resolver_endpoints"], [])
 
@@ -105,6 +107,7 @@ class Route53ResolverInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         endpoint = raised.exception.values["resolver_endpoints"][0]
         self.assertEqual(endpoint["ip_addresses"][0]["ip"], "192.0.2.1")
         self.assertEqual(endpoint["tags"], {"Name": "main"})

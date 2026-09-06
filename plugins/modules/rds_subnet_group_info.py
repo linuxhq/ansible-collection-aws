@@ -97,6 +97,7 @@ def main():
     request = {}
     if name:
         request["DBSubnetGroupName"] = name
+
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 

@@ -29,6 +29,7 @@ class NotificationsContactsTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
 
     def test_module_contract(self):
@@ -80,6 +81,7 @@ class NotificationsContactsTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         client.untag_resource.assert_called_once_with(arn="arn:contact", tagKeys=["remove"], aws_retry=True)
         client.tag_resource.assert_called_once_with(arn="arn:contact", tags={"keep": "new"}, aws_retry=True)
@@ -210,6 +212,7 @@ class NotificationsContactsTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         client.delete_email_contact.assert_called_once_with(arn="arn:old", aws_retry=True)
         client.create_email_contact.assert_called_once_with(
@@ -293,6 +296,7 @@ class NotificationsContactsTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_present(client, module)
+
         client.create_email_contact.assert_called_once_with(
             emailAddress="ops@example.com", name="Operations", aws_retry=True
         )

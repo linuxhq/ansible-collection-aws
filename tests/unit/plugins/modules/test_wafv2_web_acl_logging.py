@@ -23,6 +23,7 @@ class Wafv2WebAclLoggingTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
 
     def test_module_contract(self):
@@ -42,6 +43,7 @@ class Wafv2WebAclLoggingTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(Mock(), module)
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(
             raised.exception.values["logging_configuration"]["log_destination_configs"],
@@ -63,6 +65,7 @@ class Wafv2WebAclLoggingTests(TestCase):
                     self.assertRaises(ModuleFail) as raised,
                 ):
                     plugin.main()
+
                 self.assertIn("exactly 1", raised.exception.values["msg"])
 
     def test_rejects_empty_arns(self):
@@ -90,6 +93,7 @@ class Wafv2WebAclLoggingTests(TestCase):
                 self.assertRaises(ModuleFail) as raised,
             ):
                 plugin.main()
+
             self.assertEqual(raised.exception.values["msg"], message)
 
     def test_destination_update_preserves_unmanaged_logging_settings(self):

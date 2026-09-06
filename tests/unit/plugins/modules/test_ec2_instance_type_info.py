@@ -28,6 +28,7 @@ class Ec2InstanceTypeInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(
             require.call_args.args[3],
             {

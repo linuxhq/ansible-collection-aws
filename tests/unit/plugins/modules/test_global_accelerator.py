@@ -52,6 +52,7 @@ class GlobalAcceleratorTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         require.assert_called_once_with(
             module,
             client,
@@ -94,6 +95,7 @@ class GlobalAcceleratorTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.get_accelerator_by_arn(client, module, "arn:accelerator")
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Global Accelerator returned an invalid accelerator",
@@ -107,6 +109,7 @@ class GlobalAcceleratorTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.get_listeners(Mock(), module, "arn:accelerator")
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Global Accelerator returned an invalid listener",
@@ -270,6 +273,7 @@ class GlobalAcceleratorTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         wait_for_accelerator.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed")
         self.assertFalse(raised.exception.values["changed"])
         client.update_accelerator.assert_not_called()
@@ -667,6 +671,7 @@ class GlobalAcceleratorTests(TestCase):
             patch.object(plugin, "require_endpoint_configuration_parameters"),
         ):
             changed, groups = plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired])
+
         require.assert_called_once_with(
             module,
             client,
@@ -720,6 +725,7 @@ class GlobalAcceleratorTests(TestCase):
                 call.args,
                 (client, module, "arn:accelerator", "accelerator_deployed"),
             )
+
         client.delete_accelerator.assert_called_once_with(AcceleratorArn="arn:accelerator", aws_retry=True)
 
     def test_listener_deletion_waits_for_endpoint_group_deletion(self):

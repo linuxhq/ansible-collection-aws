@@ -53,6 +53,7 @@ class Ec2TransitGatewayRouteTableInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             require.call_args_list[0].args[3]["describe_transit_gateway_route_tables"],
             ("TransitGatewayRouteTableIds", "MaxResults", "NextToken"),

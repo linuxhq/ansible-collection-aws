@@ -17,5 +17,13 @@
       tags:
         - molecule-idempotence-notest
 
-    - ec2_vpc_vpn
+    - role: ec2_vpc_vpn
+      ec2_vpc_vpn_list:
+        "{{ ec2_vpc_vpn_list_create }}"
+      tags:
+        - molecule-idempotence-notest
+
+    - role: ec2_vpc_vpn
+      ec2_vpc_vpn_list:
+        "{{ ec2_vpc_vpn_list_update }}"
 ...

@@ -190,7 +190,9 @@ def comparable_targets(targets):
 
         if item.get("values"):
             item["values"] = sorted(set(item["values"]))
+
         normalized.append(item)
+
     unique = {json.dumps(item, sort_keys=True): item for item in normalized}
     return [unique[key] for key in sorted(unique)]
 
@@ -198,6 +200,7 @@ def comparable_targets(targets):
 def association_description_from_response(module, response, message):
     if not isinstance(response, dict) or not isinstance(response.get("AssociationDescription"), dict):
         module.fail_json(msg=message)
+
     return response["AssociationDescription"]
 
 
@@ -274,6 +277,7 @@ def ensure_present(client, module, current):
             "schedule_expression": normalized_current.get("schedule_expression"),
             "targets": comparable_targets(normalized_current.get("targets")),
         }
+
     desired_comparable = {
         "schedule_expression": schedule_expression,
         "targets": comparable_targets(module.params["targets"]),
@@ -320,6 +324,7 @@ def ensure_present(client, module, current):
                     e,
                     msg=f"Unable to create AWS Systems Manager association {name}",
                 )
+
             association = association_description_from_response(
                 module,
                 response,
@@ -327,6 +332,7 @@ def ensure_present(client, module, current):
             )
             if not association.get("AssociationId"):
                 module.fail_json(msg=("AWS Systems Manager did not return the created association " f"{name}"))
+
             if tags is not None:
                 association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
@@ -355,6 +361,7 @@ def ensure_present(client, module, current):
                     e,
                     msg=f"Unable to update AWS Systems Manager association {name}",
                 )
+
             association = association_description_from_response(
                 module,
                 response,
@@ -376,6 +383,7 @@ def ensure_present(client, module, current):
             tags,
             purge_tags=purge_tags,
         )
+
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
@@ -384,6 +392,7 @@ def ensure_present(client, module, current):
         if association_id and tags is not None:
             if resource_changed and current is not None:
                 association = association_with_tags(client, module, association)
+
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
                 boto3_tag_list_to_ansible_dict(association.get("Tags", [])),
                 tags,
@@ -448,6 +457,7 @@ def association_with_tags(client, module, association):
         module.fail_json(
             msg=f"Unexpected response while listing tags for AWS Systems Manager association {association_id}"
         )
+
     association["Tags"] = tags
 
     return association
@@ -491,13 +501,17 @@ def main():
 
         if len(comparable_targets(module.params["targets"])) > 5:
             module.fail_json(msg="targets must contain at most 5 targets")
+
         for target in module.params["targets"]:
             if not 1 <= len(target["key"]) <= 163:
                 module.fail_json(msg="targets[].key must be 1 to 163 characters")
+
             if not target["values"]:
                 module.fail_json(msg="targets[].values must contain at least one entry")
+
             if len(set(target["values"])) > 50:
                 module.fail_json(msg="targets[].values must contain at most 50 entries")
+
         require_valid_tags(module, tags, 1000)
 
     client = module.client(
@@ -517,6 +531,7 @@ def main():
         )
         if tags:
             methods["create_association"] += ("Tags",)
+
         if tags is not None:
             methods["list_tags_for_resource"] = ("ResourceId", "ResourceType")
             if tags:
@@ -525,6 +540,7 @@ def main():
                     "ResourceType",
                     "Tags",
                 )
+
             if module.params["purge_tags"]:
                 methods["remove_tags_from_resource"] = (
                     "ResourceId",

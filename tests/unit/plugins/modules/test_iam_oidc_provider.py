@@ -27,6 +27,7 @@ class IamOidcProviderTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
 
     def test_module_contract(self):
@@ -74,6 +75,7 @@ class IamOidcProviderTests(TestCase):
             patch.object(plugin, "require_client_methods"),
         ):
             result = plugin.get_provider_by_url(client, module)
+
         self.assertEqual(result, provider)
         query_list.assert_called_once_with(
             module,
@@ -189,6 +191,7 @@ class IamOidcProviderTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertFalse(raised.exception.values["changed"])
         client.update_open_id_connect_provider_thumbprint.assert_not_called()
 
@@ -216,6 +219,7 @@ class IamOidcProviderTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(
             raised.exception.values["open_id_connect_provider"]["client_id_list"],
@@ -277,6 +281,7 @@ class IamOidcProviderTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(
             raised.exception.values["open_id_connect_provider"],

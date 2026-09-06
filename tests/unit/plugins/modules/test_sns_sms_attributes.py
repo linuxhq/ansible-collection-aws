@@ -25,6 +25,7 @@ class SnsSmsAttributesTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("between 0 and 100", raised.exception.values["msg"])
 
     def test_partial_update_preserves_unmanaged_attributes(self):
@@ -44,6 +45,7 @@ class SnsSmsAttributesTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         client.set_sms_attributes.assert_called_once_with(attributes={"DefaultSenderID": "new"}, aws_retry=True)
         self.assertEqual(raised.exception.values["attributes"]["monthly_spend_limit"], "100")
 

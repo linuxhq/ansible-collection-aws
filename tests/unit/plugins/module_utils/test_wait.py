@@ -26,6 +26,7 @@ class WaitTests(TestCase):
             params = {"wait": True, "wait_delay": 1, "wait_timeout": 1, name: 0}
             with self.subTest(name=name), self.assertRaises(ModuleFail) as raised:
                 wait.require_positive_wait_bounds(FakeModule(params))
+
             self.assertEqual(raised.exception.values["msg"], f"{name} must be 1 or greater")
 
     def test_run_waiter_uses_module_delay_and_timeout(self):

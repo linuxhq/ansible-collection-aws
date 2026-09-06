@@ -48,6 +48,7 @@ class Route53ResolverRuleInfoTests(TestCase):
                 self.assertRaises(ModuleFail) as raised,
             ):
                 plugin.main()
+
             self.assertIn(message, raised.exception.values["msg"])
 
     def test_empty_unfiltered_rules_skip_association_query(self):
@@ -60,6 +61,7 @@ class Route53ResolverRuleInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(query.call_count, 1)
 
     def test_module_contract(self):
@@ -75,6 +77,7 @@ class Route53ResolverRuleInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(
             require.call_args.args[3],
             {
@@ -102,6 +105,7 @@ class Route53ResolverRuleInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(query.call_count, 1)
         self.assertEqual(raised.exception.values["resolver_rules"], [])
 
@@ -132,6 +136,7 @@ class Route53ResolverRuleInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         rules = raised.exception.values["resolver_rules"]
         self.assertEqual(rules[0]["vpc_ids"], ["vpc-1"])
         self.assertEqual(rules[0]["tags"], {"Name": "main"})

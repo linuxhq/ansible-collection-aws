@@ -135,8 +135,10 @@ def main():
 
     if max_results is not None and not 1 <= max_results <= 100:
         module.fail_json(msg="max_results must be between 1 and 100")
+
     if len(filters or {}) > 20:
         module.fail_json(msg="filters must contain at most 20 entries")
+
     if len(pool_ids) > 5:
         module.fail_json(msg="pool_ids must contain at most 5 entries")
 
@@ -145,10 +147,12 @@ def main():
     request = {}
     if max_results is not None:
         request["MaxResults"] = max_results
+
     if pool_ids:
         request["PoolIds"] = pool_ids
     else:
         request["Owner"] = owner
+
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 

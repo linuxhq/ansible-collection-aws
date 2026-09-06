@@ -106,6 +106,7 @@ def validate_accelerator(module, accelerator, expected_arn=None):
         or (expected_arn is not None and accelerator["AcceleratorArn"] != expected_arn)
     ):
         module.fail_json(msg="Global Accelerator returned an invalid accelerator")
+
     return accelerator
 
 
@@ -115,6 +116,7 @@ def validate_resource_list(module, resources, resource_name, arn_key):
         for resource in resources
     ):
         module.fail_json(msg=f"Global Accelerator returned an invalid {resource_name} list")
+
     return resources
 
 
@@ -127,6 +129,7 @@ def validate_tags(module, tags):
         for tag in tags
     ):
         module.fail_json(msg="Global Accelerator returned invalid tags")
+
     return tags
 
 
@@ -220,6 +223,7 @@ def main():
                 e,
                 msg=("Unable to list tags for AWS Global Accelerator " f"{accelerator_arn}"),
             )
+
         accelerator["Tags"] = validate_tags(
             module,
             response.get("Tags") if isinstance(response, dict) else None,
@@ -248,6 +252,7 @@ def main():
                 e,
                 msg=("Unable to list AWS Global Accelerator listeners for " f"{accelerator_arn}"),
             )
+
         listeners = validate_resource_list(
             module,
             response.get("Listeners") if isinstance(response, dict) else None,
@@ -290,6 +295,7 @@ def main():
                     e,
                     msg=("Unable to list AWS Global Accelerator endpoint " f"groups for {listener_arn}"),
                 )
+
             listener["EndpointGroups"] = validate_resource_list(
                 module,
                 response.get("EndpointGroups") if isinstance(response, dict) else None,

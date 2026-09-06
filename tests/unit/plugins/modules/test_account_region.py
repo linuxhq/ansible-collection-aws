@@ -61,6 +61,7 @@ class AccountRegionTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         client.enable_region.assert_not_called()
         self.assertEqual(raised.exception.values["region_opt_status"], "ENABLED")
         self.assertTrue(raised.exception.values["changed"])
@@ -93,6 +94,7 @@ class AccountRegionTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_present(client, module)
+
         wait_for_status.assert_called_once_with(client, module, "region_disabled", plugin.ABSENT_STEADY_STATUSES)
         client.enable_region.assert_called_once_with(RegionName="af-south-1", aws_retry=True)
         self.assertEqual(require.call_args.args[3], {"enable_region": ("RegionName",)})
@@ -111,6 +113,7 @@ class AccountRegionTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_absent(client, module)
+
         wait_for_status.assert_called_once_with(client, module, "region_enabled", plugin.PRESENT_STEADY_STATUSES)
         client.disable_region.assert_called_once_with(RegionName="af-south-1", aws_retry=True)
         self.assertEqual(require.call_args.args[3], {"disable_region": ("RegionName",)})

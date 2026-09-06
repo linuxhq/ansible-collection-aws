@@ -61,10 +61,12 @@ class Route53ResolverRuleTests(TestCase):
         }
         with self.assertRaises(ModuleFail) as target_raised:
             plugin.validate_resolver_rule(module, rule, "get_resolver_rule", require_details=True)
+
         self.assertIn("without an IP address", target_raised.exception.values["msg"])
 
         with self.assertRaises(ModuleFail) as tag_raised:
             plugin.validate_tags(module, [{"Key": "Name"}])
+
         self.assertIn("invalid tag", tag_raised.exception.values["msg"])
 
     def test_absent_waits_for_deleting_rule_without_deleting_again(self):
@@ -88,6 +90,7 @@ class Route53ResolverRuleTests(TestCase):
         module = FakeModule({"name": "rule", "wait": False})
         with patch.object(plugin, "wait_for_resolver_rule_status") as wait:
             plugin.delete_resolver_rule(client, module, {"Id": "rslvr-rr-1"}, always=True)
+
         wait.assert_called_once_with(client, module, "rslvr-rr-1", {"deleted"})
 
     def test_delete_tolerates_rule_disappearing(self):
@@ -99,6 +102,7 @@ class Route53ResolverRuleTests(TestCase):
         module = FakeModule({"name": "rule", "wait": True})
         with patch.object(plugin, "wait_for_resolver_rule_status") as wait:
             plugin.delete_resolver_rule(client, module, {"Id": "rslvr-rr-1"})
+
         wait.assert_not_called()
 
     def test_module_contract(self):
@@ -203,6 +207,7 @@ class Route53ResolverRuleTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["msg"], "wait_delay must be 1 or greater")
 
     def test_replacement_sensitive_limits_are_rejected(self):
@@ -371,6 +376,7 @@ class Route53ResolverRuleTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         delete.assert_called_once_with(client, module, current, always=True)
         create.assert_called_once()

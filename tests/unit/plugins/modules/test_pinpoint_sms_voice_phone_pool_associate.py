@@ -151,4 +151,5 @@ class PinpointSmsVoicePhonePoolAssociateTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("uppercase", raised.exception.values["msg"])

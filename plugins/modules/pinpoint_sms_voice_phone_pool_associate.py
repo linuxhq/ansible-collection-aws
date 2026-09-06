@@ -138,8 +138,10 @@ def current_associations(client, module):
     associations = response.get("OriginationIdentities") if isinstance(response, dict) else None
     if not isinstance(associations, list):
         module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 origination identity data")
+
     for association in associations:
         validate_association(module, association, require_pool=False)
+
     return associations
 
 
@@ -309,12 +311,14 @@ def main():
     origination_parameters = ("OriginationIdentity", "PoolId")
     if module.params["iso_country_code"] is not None:
         origination_parameters += ("IsoCountryCode",)
+
     if module.params["client_token"] is not None:
         origination_parameters += ("ClientToken",)
 
     methods = {"list_pool_origination_identities": ("PoolId", "MaxResults", "NextToken")}
     if state == "present":
         methods["associate_origination_identity"] = origination_parameters
+
     if state == "absent":
         methods["disassociate_origination_identity"] = origination_parameters
 

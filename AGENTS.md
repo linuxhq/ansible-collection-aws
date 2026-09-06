@@ -16,37 +16,38 @@ An Ansible collection of AWS modules and roles, published to Galaxy on tag push.
 
 Always-on agent rules.  Append new rules to imports section below.
 
-| Rule                           | Covers                                  |
-| ------------------------------ | --------------------------------------- |
-| `ansible-module-utils.md`      | Reusable Ansible module utilities       |
-| `ansible-module-utils-sdk.md`  | AWS SDK module utilities                |
-| `ansible-plugins.md`           | Standards for Ansible Python plugins    |
-| `ansible-plugins-sdk.md`       | AWS SDK standards for plugins           |
-| `ansible-roles.md`             | Standards for Ansible roles             |
+| Rule                          | Covers                               |
+| ----------------------------- | ------------------------------------ |
+| `ansible-module-utils.md`     | Reusable Ansible module utilities    |
+| `ansible-module-utils-sdk.md` | AWS SDK module utilities             |
+| `ansible-plugins.md`          | Standards for Ansible Python plugins |
+| `ansible-plugins-sdk.md`      | AWS SDK standards for plugins        |
+| `ansible-roles.md`            | Standards for Ansible roles          |
 
 ## Tooling
 
 Invoke skills rather than running commands ad hoc.
 
-| Skill              | Purpose                       |
-| ------------------ | ----------------------------- |
-| `ansible-lint`     | Lint roles & playbooks        |
-| `ansible-test`     | Module sanity                 |
-| `black`            | Format Python                 |
-| `changelog`        | Changelog fragments & release |
-| `collection-build` | Build the collection tarball  |
-| `isort`            | Sort Python imports           |
-| `molecule`         | Role tests                    |
-| `plugins-audit`    | Exhaustive plugins audit      |
-| `pyenv`            | Install pyenv + pinned Python |
-| `ruff`             | Lint Python                   |
-| `tox`              | Set up isolated environments  |
-| `unit`             | Run unit tests                |
-| `yamllint`         | Lint YAML                     |
+| Skill                     | Purpose                       |
+| ------------------------- | ----------------------------- |
+| `ansible-lint`            | Lint roles & playbooks        |
+| `ansible-test`            | Module sanity                 |
+| `black`                   | Format Python                 |
+| `blank-line-after-blocks` | Space Python blocks           |
+| `changelog`               | Changelog fragments & release |
+| `collection-build`        | Build the collection tarball  |
+| `isort`                   | Sort Python imports           |
+| `molecule`                | Role tests                    |
+| `plugins-audit`           | Exhaustive plugins audit      |
+| `pyenv`                   | Install pyenv + pinned Python |
+| `ruff`                    | Lint Python                   |
+| `tox`                     | Set up isolated environments  |
+| `unit`                    | Run unit tests                |
+| `yamllint`                | Lint YAML                     |
 
 ## Setup
 
-Enable the review gate once: `/codex:setup --enable-review-gate`
+Enable the review gate once: `$cc:setup --enable-review-gate`
 
 ## Imports
 

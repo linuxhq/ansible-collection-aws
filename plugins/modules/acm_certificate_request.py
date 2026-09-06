@@ -143,8 +143,10 @@ def main():
 
     if idempotency_token is not None and not re.fullmatch(r"\w{1,32}", idempotency_token, flags=re.ASCII):
         module.fail_json(msg="ACM certificate request idempotency_token must be 1 to 32 ASCII word characters")
+
     if len(subject_alternative_names) > 99:
         module.fail_json(msg="subject_alternative_names must contain at most 99 additional entries")
+
     require_valid_tags(module, tags, 50)
 
     client = module.client("acm", retry_decorator=AWSRetry.jittered_backoff())
@@ -152,6 +154,7 @@ def main():
     request_parameters = ["DomainName", "IdempotencyToken", "ValidationMethod"]
     if subject_alternative_names:
         request_parameters.append("SubjectAlternativeNames")
+
     if tags:
         request_parameters.append("Tags")
 
@@ -186,14 +189,18 @@ def main():
     for summary in summaries:
         if not isinstance(summary, dict):
             module.fail_json(msg="AWS Certificate Manager returned an invalid certificate summary")
+
         summary_domain_name = summary.get("DomainName")
         if not isinstance(summary_domain_name, str) or not summary_domain_name:
             module.fail_json(msg="AWS Certificate Manager returned an invalid certificate summary")
+
         if summary_domain_name.lower() != normalized_domain_name:
             continue
+
         certificate_arn = summary.get("CertificateArn")
         if not isinstance(certificate_arn, str) or not certificate_arn:
             module.fail_json(msg="AWS Certificate Manager returned an invalid matching certificate summary")
+
         candidate_summaries.append(summary)
 
     if candidate_summaries:
@@ -226,8 +233,10 @@ def main():
             module.fail_json(
                 msg=("AWS Certificate Manager did not return a status for " f"certificate {certificate_arn}"),
             )
+
         if certificate["Status"] not in {"PENDING_VALIDATION", "ISSUED"}:
             continue
+
         if certificate.get("Type") != "AMAZON_ISSUED":
             continue
 
@@ -250,6 +259,7 @@ def main():
             module.fail_json(
                 msg=("AWS Certificate Manager did not return a creation time for " f"certificate {certificate_arn}"),
             )
+
         if matched is None or created_at > matched["CreatedAt"]:
             matched = {
                 "CertificateArn": certificate_arn,
@@ -295,6 +305,7 @@ def main():
                 e,
                 msg=("Unable to request AWS Certificate Manager certificate " f"{domain_name}"),
             )
+
         certificate_arn = response.get("CertificateArn")
         if not certificate_arn:
             module.fail_json(msg=("AWS Certificate Manager did not return an ARN for " f"certificate {domain_name}"))
@@ -320,6 +331,7 @@ def main():
                 e,
                 msg=("Unable to list tags for AWS Certificate Manager " f"certificate {certificate_arn}"),
             )
+
         current_tags = boto3_tag_list_to_ansible_dict(response.get("Tags", []))
 
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
@@ -333,8 +345,10 @@ def main():
         tag_methods = {}
         if tag_keys_to_unset and not module.check_mode:
             tag_methods["remove_tags_from_certificate"] = ("CertificateArn", "Tags")
+
         if tags_to_set and not module.check_mode:
             tag_methods["add_tags_to_certificate"] = ("CertificateArn", "Tags")
+
         if tag_methods:
             require_client_methods(
                 module,

@@ -24,6 +24,7 @@ class IamOidcProviderInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.list_provider_arns(client, module)
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unable to list AWS IAM OIDC providers: AWS returned an invalid response",
@@ -76,6 +77,7 @@ class IamOidcProviderInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["open_id_connect_providers"][0]["url"],
             "example.com/id",

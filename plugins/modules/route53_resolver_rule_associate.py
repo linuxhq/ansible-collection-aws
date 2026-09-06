@@ -225,6 +225,7 @@ def ensure_absent(client, module):
     result = {"changed": changed, "state": "absent"}
     if name is not None:
         result["name"] = name
+
     module.exit_json(**result)
 
 
@@ -239,6 +240,7 @@ def ensure_present(client, module):
         else:
             wait_for_resolver_rule_association_status(client, module, association.get("Id"), {"deleted"})
             return ensure_present(client, module)
+
     current_association = (
         {
             "name": association.get("Name"),
@@ -306,8 +308,10 @@ def ensure_present(client, module):
         association = response.get("ResolverRuleAssociation") if isinstance(response, dict) else None
         if not isinstance(association, dict) or not association.get("Id"):
             association = get_resolver_rule_association_by_rule_and_vpc(client, module)
+
         if association is None:
             module.fail_json(msg=("AWS Route53 Resolver did not return the created rule " f"association {name}"))
+
         association = validate_resolver_rule_association(module, association, "associate_resolver_rule")
 
         if module.params["wait"]:
@@ -440,6 +444,7 @@ def validate_resolver_rule_association(
     association_id = association.get("Id")
     if not isinstance(association_id, str) or not association_id:
         module.fail_json(msg=f"{operation}: AWS returned a resolver rule association without a valid ID")
+
     if expected_id is not None and association_id != expected_id:
         module.fail_json(msg=f"{operation}: AWS returned an unexpected resolver rule association ID {association_id}")
 

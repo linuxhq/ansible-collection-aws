@@ -39,6 +39,7 @@ class Ec2SerialConsoleTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertTrue(raised.exception.values["serial_console_access"]["serial_console_access_enabled"])
         client.enable_serial_console_access.assert_not_called()

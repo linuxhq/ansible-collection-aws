@@ -211,6 +211,7 @@ def main():
 
     if len(instance_ids) > 100:
         module.fail_json(msg="instance_ids must contain at most 100 instance IDs")
+
     if any(not instance_id for instance_id in instance_ids):
         module.fail_json(msg="instance_ids must not contain empty entries")
 
@@ -221,8 +222,10 @@ def main():
 
     if instance_ids:
         filters["InstanceIds"] = instance_ids
+
     if ping_status:
         filters["PingStatus"] = ping_status
+
     if filters:
         request["Filters"] = []
         for key, value in filters.items():
@@ -270,6 +273,7 @@ def main():
                 f"instance {index} did not contain a valid InstanceId and was omitted from instance_ids"
             )
             continue
+
         matching_instance_ids.append(instance_id)
 
     module.exit_json(

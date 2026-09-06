@@ -249,6 +249,7 @@ def ensure_present(client, module):
     if changed and not module.check_mode:
         if previous_status == "DISABLING":
             wait_for_status(client, module, "region_disabled", ABSENT_STEADY_STATUSES)
+
         require_client_methods(
             module,
             client,
@@ -299,6 +300,7 @@ def ensure_absent(client, module):
     if changed and not module.check_mode:
         if previous_status == "ENABLING":
             wait_for_status(client, module, "region_enabled", PRESENT_STEADY_STATUSES)
+
         require_client_methods(
             module,
             client,

@@ -423,6 +423,7 @@ def validate_cluster(module, cluster):
         )
     ):
         module.fail_json(msg="EKS returned an invalid cluster")
+
     return cluster
 
 
@@ -435,21 +436,25 @@ def validate_update(module, update, expected_id=None):
         or not isinstance(update.get("status"), str)
     ):
         module.fail_json(msg="EKS returned an invalid cluster update")
+
     return update
 
 
 def normalized(value):
     if isinstance(value, dict):
         return {key: normalized(value[key]) for key in sorted(value)}
+
     if isinstance(value, list):
         items = map(normalized, value)
         return sorted({repr(item): item for item in items}.values(), key=repr)
+
     return value
 
 
 def comparable_subset(current, desired):
     if not isinstance(desired, dict):
         return current
+
     current = current or {}
     return {key: comparable_subset(current.get(key), value) for key, value in desired.items()}
 
@@ -467,7 +472,9 @@ def changed_request(current, desired):
 
             if subrequest is not None:
                 request[key] = subrequest
+
         return request or None
+
     if changed(current, desired):
         return desired
 
@@ -478,6 +485,7 @@ def require_nested_request_parameters(module, client, operation_name, request):
         nested_request = request.get(parameter_name)
         if nested_request is None:
             continue
+
         available_parameters = operation_parameters[parameter_name].members
         for nested_parameter in sorted(nested_request):
             if nested_parameter not in available_parameters:
@@ -492,6 +500,7 @@ def require_nested_request_parameters(module, client, operation_name, request):
         elastic_load_balancing = nested_request.get("elasticLoadBalancing")
         if elastic_load_balancing is None:
             continue
+
         available_elastic_parameters = available_parameters["elasticLoadBalancing"].members
         for nested_parameter in sorted(elastic_load_balancing):
             if nested_parameter not in available_elastic_parameters:
@@ -582,11 +591,13 @@ def wait_for_update(client, module, update_id):
 
         if status == "Successful":
             return last_update
+
         if status in ("Cancelled", "Failed"):
             module.fail_json(
                 msg=("AWS EKS cluster update " f"{update_id} for {name} {status.lower()}"),
                 update=boto3_resource_to_ansible_dict(last_update, transform_tags=False, force_tags=False),
             )
+
         time.sleep(min(wait_delay, max(0, deadline - time.monotonic())))
 
     module.fail_json(
@@ -614,6 +625,7 @@ def check_mode_cluster(module, current):
         current_tags = {} if module.params["purge_tags"] else dict(cluster.get("tags") or {})
         current_tags.update(tags)
         cluster["tags"] = current_tags
+
     return cluster
 
 
@@ -652,6 +664,7 @@ def ensure_present(client, module):
 
         if create_request.get("roleArn") is None:
             module.fail_json(msg="role_arn is required to create an EKS cluster")
+
         if not (create_request.get("resourcesVpcConfig") or {}).get("subnetIds"):
             module.fail_json(msg=("resources_vpc_config.subnet_ids is required to create " "an EKS cluster"))
 
@@ -746,6 +759,7 @@ def ensure_present(client, module):
 
             if endpoint_config:
                 update_requests.append({"resourcesVpcConfig": endpoint_config})
+
             if network_config:
                 update_requests.append({"resourcesVpcConfig": network_config})
         else:
@@ -763,6 +777,7 @@ def ensure_present(client, module):
         final_tags = dict(current.get("tags") or {})
         for key in tag_keys_to_unset:
             final_tags.pop(key, None)
+
         final_tags.update(tags_to_set)
         if len(final_tags) > 50:
             module.fail_json(msg="The resulting cluster tags must contain at most 50 entries")
@@ -886,6 +901,7 @@ def ensure_present(client, module):
 
         for tag_key in tag_keys_to_unset:
             current_tags.pop(tag_key, None)
+
         current_tags.update(tags_to_set)
         current["tags"] = current_tags
 
@@ -902,6 +918,7 @@ def ensure_absent(client, module):
     if current.get("status") == "DELETING":
         if module.params["wait"] and not module.check_mode:
             wait_for_cluster(client, module, "cluster_deleted")
+
         exit_result(module, False, current, "absent")
 
     if module.check_mode:
@@ -1064,6 +1081,7 @@ def main():
     require_valid_tags(module, tags if state == "present" else None, 50)
     if state == "present" and len(module.params["encryption_config"] or []) > 1:
         module.fail_json(msg="encryption_config must contain at most one entry")
+
     require_positive_wait_bounds(module, always=True)
 
     client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())

@@ -473,19 +473,26 @@ def main():
     ]
     if timeout_seconds is not None and not 30 <= timeout_seconds <= 2592000:
         module.fail_json(msg="timeout_seconds must be between 30 and 2592000")
+
     if not instance_ids and not targets:
         module.fail_json(msg="instance_ids or targets must contain at least one entry")
+
     if len(instance_ids) > 50:
         module.fail_json(msg="instance_ids must contain at most 50 entries")
+
     if any(not instance_id for instance_id in instance_ids):
         module.fail_json(msg="instance_ids must not contain empty entries")
+
     if len(targets) > 5:
         module.fail_json(msg="targets must contain at most 5 entries")
+
     for target in targets:
         if not target["key"] or not 1 <= len(target["key"]) <= 163:
             module.fail_json(msg="targets[].key must be 1 to 163 characters")
+
         if not target["values"]:
             module.fail_json(msg="targets[].values must contain at least one entry")
+
         if len(target["values"]) > 50:
             module.fail_json(msg="targets[].values must contain at most 50 entries")
 
@@ -588,6 +595,7 @@ def main():
                         "Commands was not a list"
                     ),
                 )
+
             if not isinstance(invocations, list):
                 module.fail_json(
                     changed=True,
@@ -596,6 +604,7 @@ def main():
                         "CommandInvocations was not a list"
                     ),
                 )
+
             for index, invocation in enumerate(invocations):
                 if not isinstance(invocation, dict):
                     module.fail_json(
@@ -621,6 +630,7 @@ def main():
                         "command 0 was not a dictionary"
                     ),
                 )
+
             command_status = command.get("Status")
             if is_populated_status_invalid(command_status):
                 module.fail_json(

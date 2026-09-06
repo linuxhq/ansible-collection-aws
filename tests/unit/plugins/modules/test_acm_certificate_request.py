@@ -128,6 +128,7 @@ class AcmCertificateRequestTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("idempotency_token", raised.exception.values["msg"])
 
     def test_rejects_too_many_subject_alternative_names(self):
@@ -145,6 +146,7 @@ class AcmCertificateRequestTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("at most 99", raised.exception.values["msg"])
 
     def test_reuses_the_newest_matching_dns_certificate(self):
@@ -192,6 +194,7 @@ class AcmCertificateRequestTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertFalse(raised.exception.values["changed"])
         self.assertEqual(raised.exception.values["certificate_arn"], "arn:new")
         client.request_certificate.assert_not_called()
@@ -384,6 +387,7 @@ class AcmCertificateRequestTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(
             client.request_certificate.call_args.kwargs["IdempotencyToken"],
             "e113b629356ead495e5f4cfb72dfd792",

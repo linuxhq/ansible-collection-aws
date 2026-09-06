@@ -116,6 +116,7 @@ def get_queue(client, module, queue_url):
 
     if not isinstance(response, dict) or not isinstance(response.get("Attributes", {}), dict):
         module.fail_json(msg=f"Unexpected response while getting AWS SQS queue {queue_url}")
+
     attributes = response.get("Attributes", {})
 
     queue = boto3_resource_to_ansible_dict(attributes, transform_tags=False, force_tags=False)

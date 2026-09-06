@@ -32,6 +32,7 @@ class SsmInstanceInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("at most 100", raised.exception.values["msg"])
 
     def test_rejects_empty_instance_id(self):
@@ -41,6 +42,7 @@ class SsmInstanceInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("empty entries", raised.exception.values["msg"])
 
     def test_instance_and_ping_filters_override_and_stringify_filters(self):
@@ -59,6 +61,7 @@ class SsmInstanceInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(require.call_args.args[3], {"describe_instance_information": ("Filters",)})
         self.assertEqual(
             query.call_args.kwargs["Filters"],
@@ -82,9 +85,10 @@ class SsmInstanceInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
-            "Unexpected response while describing AWS Systems Manager instances; " "instance 1 was not a dictionary",
+            "Unexpected response while describing AWS Systems Manager instances; instance 1 was not a dictionary",
         )
 
     def test_rejects_malformed_instance_list(self):
@@ -99,6 +103,7 @@ class SsmInstanceInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while describing AWS Systems Manager instances; instance list was not a list",
@@ -120,6 +125,7 @@ class SsmInstanceInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["instance_ids"], ["i-1"])
         self.assertEqual(
             raised.exception.values["instances"],
@@ -139,6 +145,7 @@ class SsmInstanceInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["instance_ids"], ["i-1"])
         self.assertEqual(raised.exception.values["instances"], [{"instance_id": "i-1"}, {}])
         module.warn.assert_called_once_with(

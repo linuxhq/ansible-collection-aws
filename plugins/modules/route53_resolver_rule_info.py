@@ -187,31 +187,39 @@ def main():
 def response_items(module, response, key, operation):
     if not isinstance(response, dict):
         module.fail_json(msg=f"{operation}: AWS returned an invalid response")
+
     items = response.get(key, [])
     if not isinstance(items, list):
         module.fail_json(msg=f"{operation}: AWS returned an invalid {key} value")
+
     return items
 
 
 def validate_resolver_rule(module, rule):
     if not isinstance(rule, dict):
         module.fail_json(msg="list_resolver_rules: AWS returned an invalid resolver rule")
+
     rule_id = rule.get("Id")
     if not isinstance(rule_id, str) or not rule_id:
         module.fail_json(msg="list_resolver_rules: AWS returned a resolver rule without a valid ID")
+
     if "Arn" in rule and not isinstance(rule["Arn"], str):
         module.fail_json(msg="list_resolver_rules: AWS returned an invalid resolver rule ARN")
+
     return rule
 
 
 def validate_association(module, association):
     if not isinstance(association, dict):
         module.fail_json(msg="list_resolver_rule_associations: AWS returned an invalid association")
+
     resolver_rule_id = association.get("ResolverRuleId")
     if not isinstance(resolver_rule_id, str) or not resolver_rule_id:
         module.fail_json(msg="list_resolver_rule_associations: AWS returned an association without a rule ID")
+
     if "VPCId" in association and not isinstance(association["VPCId"], str):
         module.fail_json(msg="list_resolver_rule_associations: AWS returned an invalid association VPC ID")
+
     return association
 
 
@@ -219,6 +227,7 @@ def validate_tags(module, tags):
     for tag in tags:
         if not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str):
             module.fail_json(msg="list_tags_for_resource: AWS returned an invalid tag")
+
     return tags
 
 

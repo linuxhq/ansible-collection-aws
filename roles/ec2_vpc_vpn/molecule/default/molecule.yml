@@ -39,7 +39,7 @@ provisioner:
         ec2_transit_gateway_list:
           - name: molecule
 
-        ec2_vpc_vpn_list:
+        ec2_vpc_vpn_list_create:
           - name: molecule-00
             customer_gateway_id:
               "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id }}"
@@ -53,34 +53,40 @@ provisioner:
               "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
             static_only: true
             tunnel_options:
-              - IKEVersions:
-                  - Value: ikev2
-                Phase1EncryptionAlgorithms:
-                  - Value: AES256
-                Phase1IntegrityAlgorithms:
-                  - Value: SHA2-256
-                Phase1DHGroupNumbers:
-                  - Value: 16
-                Phase2EncryptionAlgorithms:
-                  - Value: AES256
-                Phase2IntegrityAlgorithms:
-                  - Value: SHA2-256
-                Phase2DHGroupNumbers:
-                  - Value: 16
-              - IKEVersions:
-                  - Value: ikev2
-                Phase1EncryptionAlgorithms:
-                  - Value: AES256
-                Phase1IntegrityAlgorithms:
-                  - Value: SHA2-256
-                Phase1DHGroupNumbers:
-                  - Value: 16
-                Phase2EncryptionAlgorithms:
-                  - Value: AES256
-                Phase2IntegrityAlgorithms:
-                  - Value: SHA2-256
-                Phase2DHGroupNumbers:
-                  - Value: 16
+              - ike_versions: [ikev2]
+                phase1_encryption_algorithms: [AES256]
+                phase1_integrity_algorithms: [SHA2-256]
+                phase1_dh_group_numbers: [16]
+                phase2_encryption_algorithms: [AES256]
+                phase2_integrity_algorithms: [SHA2-256]
+                phase2_dh_group_numbers: [16]
+              - ike_versions: [ikev2]
+                phase1_encryption_algorithms: [AES256]
+                phase1_integrity_algorithms: [SHA2-256]
+                phase1_dh_group_numbers: [16]
+                phase2_encryption_algorithms: [AES256]
+                phase2_integrity_algorithms: [SHA2-256]
+                phase2_dh_group_numbers: [16]
+
+        ec2_vpc_vpn_list_update:
+          - name: molecule-00
+            customer_gateway_id:
+              "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id }}"
+            transit_gateway_id:
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+
+          - name: molecule-01
+            customer_gateway_id:
+              "{{ _ec2_customer_gateway_info_dict['molecule-01'].customer_gateway_id }}"
+            transit_gateway_id:
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+            local_ipv4_network_cidr: 10.20.0.0/16
+            static_only: true
+            tunnel_options:
+              - phase1_encryption_algorithms: [AES128]
+                phase2_encryption_algorithms: [AES128]
+              - phase1_encryption_algorithms: [AES128]
+                phase2_encryption_algorithms: [AES128]
 
 scenario:
   test_sequence:

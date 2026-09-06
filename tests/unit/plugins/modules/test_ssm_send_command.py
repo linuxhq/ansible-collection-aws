@@ -58,6 +58,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(
             client.send_command.call_args.kwargs["Targets"],
             [{"Key": "tag:Role", "Values": ["web"]}],
@@ -179,6 +180,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["status"], "Success")
         self.assertEqual(
             raised.exception.values["command_invocations"],
@@ -321,6 +323,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertTrue(raised.exception.values["changed"])
         module.client.assert_called_once()
         require.assert_called_once()
@@ -346,6 +349,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(calls, ["require_client_methods", "send_command"])
 
     def test_rejects_malformed_send_response(self):
@@ -360,6 +364,7 @@ class SsmSendCommandTests(TestCase):
                     self.assertRaises(ModuleFail) as raised,
                 ):
                     plugin.main()
+
                 self.assertEqual(
                     raised.exception.values["msg"],
                     "Unexpected response while sending AWS Systems Manager command using AWS-RunShellScript",
@@ -375,6 +380,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "AWS Systems Manager did not return an ID for the command using AWS-RunShellScript",
@@ -390,6 +396,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "AWS Systems Manager did not return an ID for the command using AWS-RunShellScript",
@@ -405,6 +412,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "AWS Systems Manager command command-1 did not return a valid status",
@@ -430,6 +438,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while getting AWS Systems Manager command command-1; "
@@ -452,6 +461,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while getting AWS Systems Manager command command-1; Commands was not a list",
@@ -468,6 +478,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["command_invocations"], [])
         self.assertIsNone(raised.exception.values["status"])
         self.assertEqual(
@@ -494,6 +505,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleFail),
         ):
             plugin.main()
+
         mocked_time.sleep.assert_called_once_with(0.25)
 
     def test_rejects_malformed_command_status(self):
@@ -515,6 +527,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "AWS Systems Manager command command-1 was returned by list_commands with an invalid status",
@@ -544,6 +557,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["status"], "Success")
 
     def test_rejects_malformed_invocations_response(self):
@@ -562,6 +576,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while getting AWS Systems Manager command command-1; "
@@ -587,6 +602,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while getting AWS Systems Manager command command-1; "
@@ -612,6 +628,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "AWS Systems Manager command command-1 returned invocation 0 without a valid status",
@@ -639,6 +656,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "AWS Systems Manager command command-1 returned invocation 0 without a valid status",
@@ -654,6 +672,7 @@ class SsmSendCommandTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "timeout_seconds must be between 30 and 2592000",

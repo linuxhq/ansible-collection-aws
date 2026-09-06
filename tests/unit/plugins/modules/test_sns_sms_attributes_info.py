@@ -24,6 +24,7 @@ class SnsSmsAttributesInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(require.call_args.args[3], {"get_sms_attributes": ("attributes",)})
         client.get_sms_attributes.assert_called_once_with(attributes=["DefaultSMSType"], aws_retry=True)
 
@@ -36,6 +37,7 @@ class SnsSmsAttributesInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while getting AWS Simple Notification Service SMS attributes",

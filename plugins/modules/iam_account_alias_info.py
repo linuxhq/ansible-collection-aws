@@ -50,6 +50,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 def validate_account_aliases(module, aliases):
     if not isinstance(aliases, list) or any(not isinstance(alias, str) for alias in aliases):
         module.fail_json(msg="Unable to list AWS IAM account aliases: AWS returned an invalid response")
+
     return aliases
 
 

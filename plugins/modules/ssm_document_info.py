@@ -179,6 +179,7 @@ def content_transform(content):
 
     if isinstance(content, dict):
         return boto3_resource_to_ansible_dict(content, transform_tags=False, force_tags=False)
+
     return content
 
 
@@ -259,6 +260,7 @@ def main():
             document_name = document.get("Name") if isinstance(document, dict) else None
             if not isinstance(document_name, str) or not document_name:
                 module.fail_json(msg="Unexpected response while listing AWS Systems Manager documents")
+
             document_names.append(document_name)
 
     documents = []
@@ -279,6 +281,7 @@ def main():
 
         if not isinstance(document, dict):
             module.fail_json(msg=f"Unexpected response while getting AWS Systems Manager document {document_name}")
+
         document.pop("ResponseMetadata", None)
 
         try:
@@ -300,6 +303,7 @@ def main():
             module.fail_json(
                 msg=f"Unexpected response while listing tags for AWS Systems Manager document {document_name}"
             )
+
         document["Tags"] = tags
 
         documents.append(

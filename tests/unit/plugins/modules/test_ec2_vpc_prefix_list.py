@@ -59,6 +59,7 @@ class Ec2VpcPrefixListTests(TestCase):
             patch.object(plugin, "wait_for_prefix_list_state") as wait,
         ):
             plugin.delete_prefix_list(client, module, "pl-1")
+
         require.assert_called_once_with(
             module,
             client,
@@ -262,6 +263,7 @@ class Ec2VpcPrefixListTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(
             modify.call_args_list,
@@ -365,6 +367,7 @@ class Ec2VpcPrefixListTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         delete.assert_called_once_with(client, module, "pl-old", always=True)
         create.assert_called_once()
@@ -403,6 +406,7 @@ class Ec2VpcPrefixListTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         wait_for_ready_state.assert_called_once_with(client, module, "pl-1")
         self.assertFalse(raised.exception.values["changed"])
         client.modify_managed_prefix_list.assert_not_called()
@@ -424,6 +428,7 @@ class Ec2VpcPrefixListTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         self.assertFalse(raised.exception.values["changed"])
         client.delete_managed_prefix_list.assert_not_called()
 

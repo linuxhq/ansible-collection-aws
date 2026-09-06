@@ -204,8 +204,10 @@ def describe_pools(client, module, **request):
     pools = response.get("Pools") if isinstance(response, dict) else None
     if not isinstance(pools, list):
         module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 pool data")
+
     for pool in pools:
         validate_pool(module, pool, "describing pools")
+
     return pools
 
 
@@ -271,6 +273,7 @@ def pool_with_tags(client, module, pool):
             for tag in tag_list
         ):
             module.fail_json(msg=f"AWS returned malformed tags for Pinpoint SMS Voice V2 pool {arn}")
+
         tags = boto3_tag_list_to_ansible_dict(tag_list)
 
     pool["Tags"] = ansible_dict_to_boto3_tag_list(tags)
@@ -284,6 +287,7 @@ def select_pool_by_id(module, pools, pool_id):
     expected_pool_id = pool_id.rsplit("/", 1)[-1]
     if pools[0]["PoolId"] != expected_pool_id:
         module.fail_json(msg=f"AWS returned the wrong Pinpoint SMS Voice V2 pool while describing {pool_id}")
+
     return pools[0]
 
 
@@ -307,6 +311,7 @@ def wait_for_pool_active(client, module, pool_id):
         pool = select_pool_by_id(module, pools, pool_id)
         if pool is None and module.params.get("state") == "absent":
             return {}
+
         pool = pool or {}
         status = pool.get("Status")
 
@@ -316,12 +321,14 @@ def wait_for_pool_active(client, module, pool_id):
         if status == "DELETING":
             if module.params.get("state") == "absent":
                 return pool
+
             module.fail_json(
                 msg=("AWS End User Messaging SMS phone pool " f"{pool_id} was deleted before becoming active"),
                 pool=boto3_resource_to_ansible_dict(pool, transform_tags=False, force_tags=False),
                 pool_id=pool_id,
                 status=status,
             )
+
         time.sleep(
             min(
                 module.params["wait_delay"],
@@ -373,6 +380,7 @@ def find_pool(client, module):
                 f"{module.params['name']}: " + ", ".join(sorted(pool.get("PoolId", "") for pool in matches))
             )
         )
+
     return matches[0] if matches else None
 
 
@@ -384,10 +392,13 @@ def exit_result(module, changed, pool):
     }
     if normalized_pool:
         result["pool"] = normalized_pool
+
     if normalized_pool.get("pool_arn"):
         result["pool_arn"] = normalized_pool["pool_arn"]
+
     if normalized_pool.get("pool_id"):
         result["pool_id"] = normalized_pool["pool_id"]
+
     module.exit_json(**result)
 
 
@@ -498,6 +509,7 @@ def ensure_present(client, module):
         update_request = {}
         if current.get("DeletionProtectionEnabled") != deletion_protection_enabled:
             update_request["DeletionProtectionEnabled"] = deletion_protection_enabled
+
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
             boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
             tags,
@@ -606,6 +618,7 @@ def ensure_present(client, module):
                     }
                 )
             ]
+
         current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
 
     exit_result(module, changed, current)
@@ -656,6 +669,7 @@ def main():
         tags = dict(module.params["tags"] or {})
         tags["Name"] = module.params["name"]
         require_valid_tags(module, tags, 200)
+
     require_positive_wait_bounds(module, always=True)
 
     client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())
@@ -672,8 +686,10 @@ def main():
         )
         if module.params["client_token"] is not None:
             create_parameters += ("ClientToken",)
+
         if module.params["iso_country_code"] is not None:
             create_parameters += ("IsoCountryCode",)
+
         methods["create_pool"] = create_parameters
         methods["list_pool_origination_identities"] = (
             "PoolId",
@@ -683,6 +699,7 @@ def main():
         methods["list_tags_for_resource"] = ("ResourceArn",)
         if module.params["pool_id"] is not None or module.params["tags"] is not None:
             methods["tag_resource"] = ("ResourceArn", "Tags")
+
         methods["update_pool"] = ("DeletionProtectionEnabled", "PoolId")
         if module.params["tags"] is not None and module.params["purge_tags"]:
             methods["untag_resource"] = ("ResourceArn", "TagKeys")

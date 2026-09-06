@@ -32,6 +32,7 @@ class Ec2PlacementGroupInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(
             require.call_args.args[3],
             {"describe_placement_groups": ("GroupIds",)},

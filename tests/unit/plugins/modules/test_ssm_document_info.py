@@ -60,6 +60,7 @@ class SsmDocumentInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         require_methods.assert_called_once_with(
             module,
             client,
@@ -93,6 +94,7 @@ class SsmDocumentInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(query.call_args.kwargs["Filters"], [{"Key": "Owner", "Values": ["123"]}])
 
     def test_rejects_malformed_document_identifier(self):
@@ -113,6 +115,7 @@ class SsmDocumentInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while listing AWS Systems Manager documents",
@@ -136,6 +139,7 @@ class SsmDocumentInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while getting AWS Systems Manager document example",
@@ -162,6 +166,7 @@ class SsmDocumentInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while listing tags for AWS Systems Manager document example",

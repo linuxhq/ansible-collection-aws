@@ -194,6 +194,7 @@ def main():
 
     if max_results is not None and not 1 <= max_results <= 100:
         module.fail_json(msg="max_results must be between 1 and 100")
+
     if len(filters or []) > 50:
         module.fail_json(msg="filters must contain at most 50 entries")
 
@@ -259,6 +260,7 @@ def main():
             parsed = json.loads(product)
         except (TypeError, ValueError) as e:
             module.fail_json(msg=f"Unable to parse AWS Price List product: {e}")
+
         if not isinstance(parsed, dict):
             module.fail_json(msg="AWS Pricing returned a product that is not an object")
 

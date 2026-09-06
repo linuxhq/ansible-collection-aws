@@ -155,6 +155,7 @@ def main():
     methods = {"get_sms_attributes": ()}
     if any(module.params[key] is not None for key in MANAGED_ATTRIBUTES):
         methods["set_sms_attributes"] = ("attributes",)
+
     require_client_methods(
         module,
         client,
@@ -178,6 +179,7 @@ def main():
 
     if not isinstance(response, dict) or not isinstance(response.get("attributes", {}), dict):
         module.fail_json(msg="Unexpected response while getting AWS Simple Notification Service SMS attributes")
+
     current_attributes = response.get("attributes", {})
 
     current = {}

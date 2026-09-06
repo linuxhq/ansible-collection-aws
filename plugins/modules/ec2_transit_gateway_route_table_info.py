@@ -93,6 +93,7 @@ def validate_route_tables(module, route_tables):
             or not route_table["TransitGatewayRouteTableId"]
         ):
             module.fail_json(msg="EC2 returned invalid transit gateway route tables")
+
     return route_tables
 
 
@@ -104,6 +105,7 @@ def validate_routes(module, routes):
             or not isinstance(route.get("Type"), str)
         ):
             module.fail_json(msg="EC2 returned invalid transit gateway routes")
+
     return routes
 
 
@@ -125,6 +127,7 @@ def main():
     request = {}
     if transit_gateway_route_table_ids:
         request["TransitGatewayRouteTableIds"] = transit_gateway_route_table_ids
+
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 

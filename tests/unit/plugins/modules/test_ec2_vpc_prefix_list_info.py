@@ -107,6 +107,7 @@ class Ec2VpcPrefixListInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["msg"], "target_version must be 1 or greater")
 
     def test_target_version_is_used_for_entries(self):
@@ -134,6 +135,7 @@ class Ec2VpcPrefixListInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(query.call_args.kwargs["PrefixListIds"], ["pl-1"])
         self.assertEqual(entries.call_args.kwargs["TargetVersion"], 2)
 

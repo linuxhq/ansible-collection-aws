@@ -128,6 +128,7 @@ def validate_hub(module, hub, operation, require_status=True):
         or not isinstance(status_summary.get("reason"), str)
     ):
         module.fail_json(msg=f"{operation}: AWS returned an invalid hub")
+
     return hub
 
 
@@ -149,6 +150,7 @@ def get_notification_hub(client, module):
         validate_hub(module, hub, "Unable to list AWS Notifications hubs")
         if hub.get("notificationHubRegion") == region:
             return hub
+
     return None
 
 
@@ -213,6 +215,7 @@ def ensure_present(client, module):
             module.fail_json(
                 msg=f"Unable to create AWS Notifications hub {region}: AWS returned a hub for a different region"
             )
+
         hub.pop("ResponseMetadata", None)
     elif changed and module.check_mode:
         hub = {"notification_hub_region": region}

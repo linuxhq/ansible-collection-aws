@@ -231,12 +231,14 @@ def validated_route_table(module, route_table):
         or not isinstance(route_table.get("State"), str)
     ):
         module.fail_json(msg="EC2 returned an invalid transit gateway route table")
+
     return route_table
 
 
 def validated_routes(module, routes):
     if not isinstance(routes, list):
         module.fail_json(msg="EC2 returned invalid transit gateway routes")
+
     for route in routes:
         attachments = route.get("TransitGatewayAttachments") if isinstance(route, dict) else None
         if (
@@ -247,6 +249,7 @@ def validated_routes(module, routes):
             or (isinstance(attachments, list) and any(not isinstance(attachment, dict) for attachment in attachments))
         ):
             module.fail_json(msg="EC2 returned invalid transit gateway routes")
+
     return routes
 
 
@@ -303,8 +306,10 @@ def get_route_table_by_id(client, module, transit_gateway_route_table_id):
     route_tables = response.get("TransitGatewayRouteTables") if isinstance(response, dict) else None
     if not isinstance(route_tables, list) or len(route_tables) > 1:
         module.fail_json(msg="EC2 returned invalid transit gateway route tables")
+
     if route_tables:
         return validated_route_table(module, route_tables[0])
+
     return None
 
 
@@ -319,6 +324,7 @@ def find_route_table(client, module):
     filters = {"state": ["available", "pending"]}
     if transit_gateway_id:
         filters["transit-gateway-id"] = transit_gateway_id
+
     if name:
         filters["tag:Name"] = name
 
@@ -451,8 +457,10 @@ def static_routes(client, module, transit_gateway_route_table_id):
 def desired_route_matches(route, desired):
     if route is None or route.get("Type") != "static":
         return False
+
     if route.get("State") not in ROUTE_PRESENT_STATES:
         return False
+
     if desired.get("blackhole"):
         return route.get("State") == "blackhole"
 
@@ -485,6 +493,7 @@ def check_mode_route(desired):
                 "TransitGatewayAttachmentId": desired["transit_gateway_attachment_id"],
             }
         ]
+
     return route
 
 
@@ -505,6 +514,7 @@ def wait_for_route(client, module, transit_gateway_route_table_id, desired):
             "blackhole",
         ):
             return route
+
         time.sleep(
             min(
                 module.params["wait_delay"],
@@ -528,6 +538,7 @@ def wait_for_route_absent(client, module, transit_gateway_route_table_id, destin
 
         if not route_is_static(route):
             return route
+
         time.sleep(
             min(
                 module.params["wait_delay"],
@@ -549,6 +560,7 @@ def ensure_route_absent(client, module, transit_gateway_route_table_id, destinat
     if not route_is_static(route):
         if wait and route and route.get("State") == "deleting":
             route = wait_for_route_absent(client, module, transit_gateway_route_table_id, destination_cidr_block)
+
         return False, route
 
     if module.check_mode:
@@ -585,6 +597,7 @@ def ensure_route_absent(client, module, transit_gateway_route_table_id, destinat
 
     if wait:
         route = wait_for_route_absent(client, module, transit_gateway_route_table_id, destination_cidr_block)
+
     return True, route
 
 
@@ -604,6 +617,7 @@ def ensure_present(client, module):
                 msg=("EC2 transit gateway route table " f"{route_table_identifier} does not exist"),
                 transit_gateway_route_table_id=route_table_identifier,
             )
+
         changed = True
         if module.check_mode:
             route_table = {
@@ -853,6 +867,7 @@ def ensure_present(client, module):
 
                 if purged_any and not module.check_mode:
                     routes = static_routes(client, module, transit_gateway_route_table_id)
+
     changed = changed or route_changed
 
     exit_module(module, changed, route_table, routes=routes)
@@ -874,6 +889,7 @@ def ensure_absent(client, module):
                 {"deleted"},
                 absent_is_success=True,
             )
+
         exit_module(module, False, route_table)
 
     changed = True
@@ -917,6 +933,7 @@ def ensure_absent(client, module):
             {"deleted"},
             absent_is_success=True,
         )
+
     exit_module(module, changed, route_table)
 
 
@@ -927,10 +944,13 @@ def exit_module(module, changed, route_table, routes=None):
     }
     if route_table:
         result["transit_gateway_route_table"] = normalize_route_table(route_table)
+
     if route_table_id(route_table):
         result["transit_gateway_route_table_id"] = route_table_id(route_table)
+
     if routes is not None:
         result["routes"] = normalize_routes(routes)
+
     module.exit_json(**result)
 
 
@@ -990,11 +1010,13 @@ def main():
             module.fail_json(
                 msg=("routes[].destination_cidr_block must be a valid CIDR: " f"{route['destination_cidr_block']}")
             )
+
         if route["destination_cidr_block"] in destinations:
             module.fail_json(
                 msg="routes[].destination_cidr_block values must be unique",
                 destination_cidr_block=route["destination_cidr_block"],
             )
+
         destinations.add(route["destination_cidr_block"])
 
         if route.get("state", "present") == "absent":
@@ -1018,6 +1040,7 @@ def main():
     require_valid_tags(module, module.params["tags"] if state == "present" else None, 50, key_max=127)
     if state == "present":
         require_valid_tags(module, desired_tags(module), 50, key_max=127)
+
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     describe_parameters = (

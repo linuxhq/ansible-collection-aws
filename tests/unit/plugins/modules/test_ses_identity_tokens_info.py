@@ -22,6 +22,7 @@ class SesIdentityTokensInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("domain name", raised.exception.values["msg"])
 
     def test_rejects_empty_identity(self):
@@ -31,6 +32,7 @@ class SesIdentityTokensInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["msg"], "identity must not be empty")
 
     def test_check_mode_does_not_call_verification_apis(self):
@@ -85,6 +87,7 @@ class SesIdentityTokensInfoTests(TestCase):
         module = FakeModule({})
         with self.assertRaises(ModuleFail) as raised:
             plugin.domain_tokens_from_responses(module, [], {}, "example.com")
+
         self.assertIn("invalid domain token responses", raised.exception.values["msg"])
 
     def test_invalid_dkim_token_is_rejected(self):
@@ -96,4 +99,5 @@ class SesIdentityTokensInfoTests(TestCase):
                 {"VerificationToken": "verification-token"},
                 "example.com",
             )
+
         self.assertIn("did not return domain tokens", raised.exception.values["msg"])

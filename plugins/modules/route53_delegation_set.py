@@ -143,6 +143,7 @@ def ensure_present(client, module):
             or not isinstance(delegation_set.get("Id"), str)
         ):
             delegation_set = get_reusable_delegation_set(client, module)
+
         if delegation_set is None:
             module.fail_json(msg=("AWS Route53 did not return the created reusable delegation set " f"{name}"))
     elif changed and module.check_mode:
@@ -176,12 +177,15 @@ def get_reusable_delegation_set(client, module):
             module.fail_json(
                 msg="Unable to list AWS Route53 reusable delegation sets: AWS returned an invalid response"
             )
+
         if delegation_set["CallerReference"] != name:
             continue
+
         if not isinstance(delegation_set.get("Id"), str):
             module.fail_json(
                 msg="Unable to list AWS Route53 reusable delegation sets: AWS returned an invalid response"
             )
+
         return delegation_set
 
     return None
@@ -208,6 +212,7 @@ def main():
     methods = {"list_reusable_delegation_sets": ("Marker", "MaxItems")}
     if state == "present":
         methods["create_reusable_delegation_set"] = ("CallerReference",)
+
     if state == "absent":
         methods["delete_reusable_delegation_set"] = ("Id",)
 

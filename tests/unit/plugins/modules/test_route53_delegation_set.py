@@ -27,6 +27,7 @@ class Route53DelegationSetTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
 
     def test_module_contract(self):
@@ -50,6 +51,7 @@ class Route53DelegationSetTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(Mock(), module)
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(
             raised.exception.values["delegation_set"],
@@ -68,6 +70,7 @@ class Route53DelegationSetTests(TestCase):
             ],
         ) as query:
             result = plugin.get_reusable_delegation_set(client, module)
+
         self.assertEqual(result["Id"], "delegation-1")
         query.assert_called_once()
 
@@ -113,6 +116,7 @@ class Route53DelegationSetTests(TestCase):
             patch.object(plugin, "ensure_absent"),
         ):
             plugin.main()
+
         require_methods.assert_called_once_with(
             module,
             client,

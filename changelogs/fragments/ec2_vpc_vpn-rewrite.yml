@@ -1,0 +1,30 @@
+---
+breaking_changes:
+  - ec2_vpc_vpn - restrict connection_type to ipsec.1, the only supported EC2 VPN connection type.
+  - ec2_vpc_vpn - replace the upstream-derived module with a collection-native implementation;
+    select connections with mutually exclusive name, vpn_connection_id, or native EC2 filters.
+  - ec2_vpc_vpn - use snake_case tunnel options with scalar algorithm and DH group lists;
+    return connection data under vpn_connection and omit customer gateway XML and pre-shared keys.
+  - ec2_vpc_vpn - default purge_routes to true; omitted routes, tags, routing mode, and CIDRs are preserved during updates.
+  - ec2_vpc_vpn role - align purge_routes with the module default of true; explicitly supplied route lists replace existing routes unless purge_routes=false.
+  - ec2_vpc_vpn - reject CIDRs with host bits set; supply canonical network addresses.
+minor_changes:
+  - ec2_vpc_vpn - apply a single shared tunnel settings entry to both tunnels, discovering their outside IPs internally for updates.
+  - ec2_vpc_vpn - reconcile encryption, integrity, IKE versions, DH groups, pre-shared keys, tunnel CIDRs, and connection CIDRs on existing VPN connections.
+  - ec2_vpc_vpn - add offline regression tests and Molecule encryption-update coverage; update the VPN role for the new interface.
+  - ec2_vpc_vpn - validate configuration before mutation, compare supplied pre-shared keys safely,
+    and wait for requested routes to become available and route deletions to complete.
+bugfixes:
+  - ec2_vpc_vpn - tolerate stale deleted route entries while waiting for recreated routes to become available.
+  - ec2_vpc_vpn - report unmatched ID and filter selectors without suggesting conflicting creation parameters.
+  - ec2_vpc_vpn - treat a null StaticRoutesOnly response as dynamic routing, matching an omitted value.
+  - ec2_vpc_vpn - reject tunnel inside-CIDR updates that collide with another tunnel before modifying the VPN.
+  - ec2_vpc_vpn - validate route CIDRs when reconciling or waiting on routes without blocking unrelated VPN deletion or updates.
+  - ec2_vpc_vpn - fail route waits promptly when the VPN is deleting, deleted, or missing; predict tunnel updates in check mode while pending VPN endpoints are unallocated.
+  - ec2_vpc_vpn role - omit unspecified static_only, routes, and tunnel_options to preserve existing configuration during updates.
+  - ec2_vpc_vpn role - increase default async and polling budgets to one hour for sequential connection and tunnel updates.
+known_issues:
+  - ec2_vpc_vpn - asymmetric tunnel settings may reconfigure both tunnels on the first update after creation
+    because updates use numeric outside-IP order rather than creation list order; this may interrupt connectivity.
+  - ec2_vpc_vpn - supplying pre_shared_key fails if EC2 withholds the current key because it cannot be compared safely; omit pre_shared_key to preserve it.
+...

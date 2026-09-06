@@ -60,6 +60,7 @@ class GlobalAcceleratorInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Global Accelerator returned an invalid accelerator",
@@ -83,6 +84,7 @@ class GlobalAcceleratorInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Global Accelerator returned invalid tags",
@@ -101,6 +103,7 @@ class GlobalAcceleratorInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(require.call_count, 1)
         self.assertNotIn("list_listeners", require.call_args.args[3])
         self.assertNotIn("list_endpoint_groups", require.call_args.args[3])
@@ -151,6 +154,7 @@ class GlobalAcceleratorInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         listener = raised.exception.values["accelerators"][0]["listeners"][0]
         self.assertEqual(listener["accelerator_arn"], "arn:accelerator")
         self.assertEqual(

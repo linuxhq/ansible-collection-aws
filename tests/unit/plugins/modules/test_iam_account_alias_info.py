@@ -25,6 +25,7 @@ class IamAccountAliasInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             require_client_methods.call_args.args[3]["list_account_aliases"],
             ("Marker", "MaxItems"),

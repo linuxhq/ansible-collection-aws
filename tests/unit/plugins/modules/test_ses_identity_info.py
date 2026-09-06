@@ -27,6 +27,7 @@ class SesIdentityInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         query.assert_not_called()
         require_methods.assert_called_once_with(
             module,
@@ -56,6 +57,7 @@ class SesIdentityInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         require_methods.assert_any_call(
             module,
             ses,
@@ -67,28 +69,33 @@ class SesIdentityInfoTests(TestCase):
         module = FakeModule({})
         with self.assertRaises(ModuleFail) as raised:
             plugin.validate_identity_names(module, [None])
+
         self.assertEqual(raised.exception.values["msg"], "AWS SES returned an invalid identity name")
 
     def test_validate_identity_names_rejects_invalid_container(self):
         module = FakeModule({})
         with self.assertRaises(ModuleFail) as raised:
             plugin.validate_identity_names(module, None)
+
         self.assertEqual(raised.exception.values["msg"], "AWS SES returned an invalid identity name")
 
     def test_validate_identity_details_rejects_invalid_response(self):
         module = FakeModule({})
         with self.assertRaises(ModuleFail) as raised:
             plugin.validate_identity_details(module, [], "example.com")
+
         self.assertIn("invalid details", raised.exception.values["msg"])
 
     def test_validate_identity_details_rejects_invalid_tag(self):
         module = FakeModule({})
         with self.assertRaises(ModuleFail) as raised:
             plugin.validate_identity_details(module, {"Tags": [{"Key": "missing-value"}]}, "example.com")
+
         self.assertIn("invalid tags", raised.exception.values["msg"])
 
     def test_validate_identity_details_rejects_invalid_policies(self):
         module = FakeModule({})
         with self.assertRaises(ModuleFail) as raised:
             plugin.validate_identity_details(module, {"Policies": []}, "example.com")
+
         self.assertIn("invalid policies", raised.exception.values["msg"])

@@ -82,6 +82,7 @@ def validate_hubs(module, hubs):
     for hub in hubs:
         if not isinstance(hub, dict):
             module.fail_json(msg="Unable to list AWS Notifications hubs: AWS returned an invalid hub")
+
         status_summary = hub.get("statusSummary")
         if (
             not isinstance(hub.get("notificationHubRegion"), str)
@@ -92,6 +93,7 @@ def validate_hubs(module, hubs):
             or not isinstance(status_summary.get("reason"), str)
         ):
             module.fail_json(msg="Unable to list AWS Notifications hubs: AWS returned an invalid hub")
+
     return hubs
 
 

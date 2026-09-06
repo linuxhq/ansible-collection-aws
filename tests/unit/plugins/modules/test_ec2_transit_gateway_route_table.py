@@ -30,6 +30,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             patch.object(plugin, "require_client_methods"),
         ):
             changed, route = plugin.ensure_route_absent(client, module, "tgw-rtb-1", "10.0.0.0/8")
+
         self.assertTrue(changed)
         self.assertIsNone(route)
         wait.assert_not_called()
@@ -53,6 +54,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
 
     def test_module_contract(self):
@@ -81,6 +83,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["msg"], "tags must contain at most 50 entries")
 
     def test_absent_does_not_validate_unused_routes(self):
@@ -244,6 +247,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         client.replace_transit_gateway_route.assert_called_once_with(
             DestinationCidrBlock="10.0.0.0/8",
@@ -324,6 +328,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_absent(client, module)
+
         wait_for_route_table.assert_called_once_with(client, module, "tgw-rtb-1", {"available"})
         client.delete_transit_gateway_route_table.assert_called_once_with(
             TransitGatewayRouteTableId="tgw-rtb-1", aws_retry=True
@@ -462,6 +467,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             patch.object(plugin, "ensure_present") as ensure_present,
         ):
             plugin.main()
+
         ensure_present.assert_called_once()
 
     def test_route_search_uses_all_paginated_results(self):
@@ -481,6 +487,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
                 "tgw-rtb-1",
                 {"type": ["static"]},
             )
+
         self.assertEqual(result, routes)
         self.assertEqual(query.call_args.args[1], "search_transit_gateway_routes")
         client.search_transit_gateway_routes.assert_not_called()
@@ -551,6 +558,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         remove.assert_called_once_with(client, module, "tgw-rtb-1", "192.0.2.0/24")
         self.assertEqual(

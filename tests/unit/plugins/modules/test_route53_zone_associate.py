@@ -29,6 +29,7 @@ class Route53ZoneAssociateTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module, "zone-1")
+
         self.assertTrue(raised.exception.values["changed"])
 
     def test_module_contract(self):
@@ -102,6 +103,7 @@ class Route53ZoneAssociateTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module, "Z1")
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(
             [vpc["vpc_id"] for vpc in raised.exception.values["vpcs"]],

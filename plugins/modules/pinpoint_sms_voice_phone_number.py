@@ -253,6 +253,7 @@ def validate_phone_number(module, phone_number, context, required_fields=()):
 
     if "DeletionProtectionEnabled" in phone_number and not isinstance(phone_number["DeletionProtectionEnabled"], bool):
         module.fail_json(msg=f"AWS returned a malformed Pinpoint SMS Voice V2 phone number while {context}")
+
     if "NumberCapabilities" in phone_number and (
         not isinstance(phone_number["NumberCapabilities"], list)
         or any(not isinstance(capability, str) for capability in phone_number["NumberCapabilities"])
@@ -270,10 +271,13 @@ def exit_result(module, changed, response):
     }
     if phone_number:
         result["phone_number"] = phone_number
+
     if phone_number.get("phone_number_arn"):
         result["phone_number_arn"] = phone_number["phone_number_arn"]
+
     if phone_number.get("phone_number_id"):
         result["phone_number_id"] = phone_number["phone_number_id"]
+
     module.exit_json(**result)
 
 
@@ -295,6 +299,7 @@ def get_phone_number(client, module, phone_number_id):
     phone_numbers = response.get("PhoneNumbers") if isinstance(response, dict) else None
     if not isinstance(phone_numbers, list):
         module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 phone number data")
+
     if not phone_numbers:
         return None
 
@@ -303,6 +308,7 @@ def get_phone_number(client, module, phone_number_id):
         module.fail_json(
             msg=f"AWS returned the wrong Pinpoint SMS Voice V2 phone number while describing {phone_number_id}"
         )
+
     return phone_number
 
 
@@ -315,6 +321,7 @@ def wait_for_phone_number_active(client, module, phone_number_id):
         found_phone_number = get_phone_number(client, module, phone_number_id)
         if found_phone_number is None and module.params.get("state") == "absent":
             return {}
+
         phone_number = found_phone_number or {}
         status = phone_number.get("Status")
 
@@ -326,11 +333,13 @@ def wait_for_phone_number_active(client, module, phone_number_id):
             ):
                 phone_number = dict(phone_number)
                 phone_number["Tags"] = ansible_dict_to_boto3_tag_list(phone_number_tags(client, module, phone_number))
+
             return phone_number
 
         if status == "DELETED":
             if module.params.get("state") == "absent":
                 return phone_number
+
             module.fail_json(
                 msg=(
                     "AWS End User Messaging SMS phone number " f"{phone_number_id} was deleted before becoming active"
@@ -339,6 +348,7 @@ def wait_for_phone_number_active(client, module, phone_number_id):
                 phone_number_id=phone_number_id,
                 status=status,
             )
+
         time.sleep(min(wait_delay, max(0, deadline - time.monotonic())))
 
     module.fail_json(
@@ -494,6 +504,7 @@ def ensure_present(client, module):
     ):
         if module_value is not None:
             desired[response_key] = module_value.rsplit("/", 1)[-1]
+
     if registration_id is not None:
         desired["RegistrationId"] = registration_id
 
@@ -513,6 +524,7 @@ def ensure_present(client, module):
             module.fail_json(
                 msg="AWS returned a malformed Pinpoint SMS Voice V2 phone number while matching existing phone numbers"
             )
+
         if phone_number.get("Status") == "DELETED":
             continue
 
@@ -521,6 +533,7 @@ def ensure_present(client, module):
             current_value = phone_number.get(key)
             if key == "NumberCapabilities":
                 current_value = sorted(set(current_value or []))
+
             if current_value != value:
                 matched = False
                 break
@@ -549,6 +562,7 @@ def ensure_present(client, module):
     if current is not None:
         if wait and not module.check_mode and current.get("Status") != "ACTIVE":
             current = wait_for_phone_number_active(client, module, current["PhoneNumberId"])
+
         exit_result(module, False, current)
 
     parameters = scrub_none_parameters(
@@ -588,6 +602,7 @@ def ensure_present(client, module):
 
     if not isinstance(response, dict):
         module.fail_json(msg="AWS did not return the requested Pinpoint SMS Voice V2 phone number")
+
     response.pop("ResponseMetadata", None)
     validate_phone_number(module, response, "requesting a phone number")
 
@@ -669,8 +684,10 @@ def main():
     describe_parameters = ("MaxResults", "NextToken")
     if state == "present":
         describe_parameters += ("Filters", "Owner")
+
     if state == "absent":
         describe_parameters += ("PhoneNumberIds",)
+
     require_client_methods(
         module,
         client,

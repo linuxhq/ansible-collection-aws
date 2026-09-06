@@ -259,6 +259,7 @@ def comparable_details(details):
     normalized = {field: details[field] for field in ACCOUNT_DETAILS_FIELDS if details.get(field)}
     if normalized.get("additional_contact_email_addresses"):
         normalized["additional_contact_email_addresses"] = sorted(set(normalized["additional_contact_email_addresses"]))
+
     return normalized
 
 
@@ -292,6 +293,7 @@ def main():
     website_url = module.params["website_url"]
     if use_case_description is not None and (not use_case_description.strip() or not website_url.strip()):
         module.fail_json(msg="use_case_description and website_url must be non-empty strings")
+
     ready = use_case_description is not None and website_url is not None
 
     client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
@@ -306,6 +308,7 @@ def main():
             "UseCaseDescription",
             "WebsiteURL",
         )
+
     require_client_methods(
         module,
         client,

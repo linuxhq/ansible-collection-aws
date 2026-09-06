@@ -21,6 +21,7 @@ class SsmAssociationTests(TestCase):
         module = FakeModule({"name": "document"})
         with self.assertRaises(ModuleExit) as raised:
             plugin.ensure_absent(client, module, {"AssociationId": "association-1"})
+
         self.assertTrue(raised.exception.values["changed"])
 
     def test_module_contract(self):
@@ -125,6 +126,7 @@ class SsmAssociationTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module, current)
+
         self.assertTrue(raised.exception.values["changed"])
         client.update_association.assert_called_once_with(
             AssociationId="association-1",
@@ -150,6 +152,7 @@ class SsmAssociationTests(TestCase):
         client = Mock(describe_association=Mock(return_value={"AssociationDescription": None}))
         with self.assertRaises(ModuleFail) as raised:
             plugin.describe_association(client, FakeModule({}), "a-1")
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while describing AWS Systems Manager association a-1",
@@ -168,6 +171,7 @@ class SsmAssociationTests(TestCase):
         )
         with self.assertRaises(ModuleFail) as raised:
             plugin.ensure_present(client, module, None)
+
         self.assertEqual(
             raised.exception.values["msg"],
             "AWS Systems Manager did not return the created association document",
@@ -181,6 +185,7 @@ class SsmAssociationTests(TestCase):
                 FakeModule({}),
                 {"AssociationId": "a-1"},
             )
+
         self.assertEqual(
             raised.exception.values["msg"],
             "Unexpected response while listing tags for AWS Systems Manager association a-1",
@@ -212,6 +217,7 @@ class SsmAssociationTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.ensure_present(client, module, current)
+
         self.assertEqual(
             raised.exception.values["msg"],
             "AWS Systems Manager did not return the updated association document",
@@ -235,6 +241,7 @@ class SsmAssociationTests(TestCase):
                     self.assertRaises(ModuleFail) as raised,
                 ):
                     plugin.main()
+
                 self.assertEqual(
                     raised.exception.values["msg"],
                     "Unexpected response while listing AWS Systems Manager associations for document",

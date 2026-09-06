@@ -94,8 +94,10 @@ def main():
     request = {}
     if group_ids:
         request["GroupIds"] = group_ids
+
     if group_names:
         request["GroupNames"] = group_names
+
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 

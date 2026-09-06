@@ -25,6 +25,7 @@ class NotificationsHubTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         require.assert_called_once_with(
             module,
@@ -53,6 +54,7 @@ class NotificationsHubTests(TestCase):
         module = FakeModule({"region": "us-east-1"})
         with patch.object(plugin, "query_list", return_value=hubs):
             result = plugin.get_notification_hub(None, module)
+
         self.assertEqual(
             result,
             {"notificationHubRegion": "us-east-1", "statusSummary": {"reason": "", "status": "ACTIVE"}},
