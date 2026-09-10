@@ -26,7 +26,6 @@ updates:
     groups:
       aws:
         patterns:
-          - awscli
           - boto3
           - botocore
 
