@@ -5,6 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: notifications_hub_info
+version_added: '1.9.0'
 short_description: Gather information about AWS Notifications hubs
 description:
   - Gathers information about AWS Notifications hubs.
@@ -16,6 +17,9 @@ extends_documentation_fragment:
   - amazon.aws.region.modules
   - amazon.aws.boto3
 attributes:
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
   check_mode:
     description: The module only retrieves information from AWS.
     support: full

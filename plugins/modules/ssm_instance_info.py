@@ -5,6 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ssm_instance_info
+version_added: '1.9.0'
 short_description: Gather information about AWS Systems Manager instances
 description:
   - Gathers information about AWS Systems Manager managed instances.

@@ -5,6 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ses_sandbox_info
+version_added: '1.9.0'
 short_description: Gather information about AWS Simple Email Service account details
 description:
   - Gathers information about AWS Simple Email Service account details.

@@ -5,6 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: notifications_contacts
+version_added: '1.9.0'
 short_description: Manage AWS Notifications contacts
 description:
   - Manages AWS Notifications email contacts.
@@ -40,6 +41,9 @@ extends_documentation_fragment:
   - amazon.aws.boto3
   - amazon.aws.tags
 attributes:
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
   check_mode:
     description: Predicts contact and tag changes without modifying AWS.
     support: full

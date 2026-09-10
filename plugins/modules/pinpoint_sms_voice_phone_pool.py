@@ -5,6 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: pinpoint_sms_voice_phone_pool
+version_added: '1.9.0'
 short_description: Manage aws end user messaging sms phone pools
 description:
   - Manages AWS End User Messaging SMS phone pools.
@@ -102,6 +103,9 @@ extends_documentation_fragment:
   - amazon.aws.region.modules
   - amazon.aws.boto3
 attributes:
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
   check_mode:
     description: Determines what changes would occur without modifying AWS resources.
     support: full

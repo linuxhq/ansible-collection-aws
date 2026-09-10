@@ -5,6 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: rds_subnet_group_info
+version_added: '1.9.0'
 short_description: Gather information about aws rds subnet groups
 description:
   - Gathers information about AWS Relational Database Service (RDS) DB subnet

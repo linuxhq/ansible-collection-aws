@@ -5,6 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: service_quota
+version_added: '1.9.0'
 short_description: Manage AWS service quotas
 description:
   - Requests AWS service quota increases.
