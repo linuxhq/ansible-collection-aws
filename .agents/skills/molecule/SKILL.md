@@ -1,11 +1,11 @@
 ---
 name: molecule
-description: Run a role's Molecule scenario. Requires explicit authorization.
+description: Run a role's Molecule scenario through Tox. Scenarios hit real AWS and require explicit authorization.
 ---
 
 # molecule
 
-Confirm the intended credentials and target environment with the user before creating resources,
+Confirm the intended credentials and target account with the user before creating resources,
 then run from the collection root:
 
 ```sh
@@ -16,7 +16,7 @@ MOLECULE_ROLE={{ role }} tox run -e molecule -- test -s default
 - `test` runs the full create / converge / verify / destroy cycle.
 - `converge` runs the scenario's converge playbook without teardown.
 - `destroy` removes resources created by the scenario.
-- Scenarios provision **real infrastructure**, can incur cost, and require explicit user authorization.
+- Scenarios provision **real AWS resources**, can incur cost, and require explicit user authorization.
 - The scenario doubles as the role's example playbook.
 - Credential-bearing preparation tasks must use `no_log: true` and `diff: false`; a scenario-level
   `diff: true` must never print credentials.

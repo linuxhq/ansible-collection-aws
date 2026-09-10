@@ -1,11 +1,11 @@
 ---
 name: collection-build
-description: Build the collection tarball.
+description: Build the collection tarball with ansible-galaxy through Tox. Local builds verify only; the tag-driven release workflow builds and publishes.
 ---
 
 # collection-build
 
-Run from the collection root (where `galaxy.yml` lives).
+Build the collection tarball from the collection root (where `galaxy.yml` lives).
 
 ```sh
 collection_artifact_dir="$(mktemp -d)"

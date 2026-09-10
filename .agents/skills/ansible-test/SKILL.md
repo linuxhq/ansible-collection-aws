@@ -5,8 +5,8 @@ description: Run ansible-test sanity on modules and plugins.
 
 # ansible-test
 
-Catches `DOCUMENTATION`/`RETURN`/`EXAMPLES` drift, argspec mismatches, and import errors. It is a
-required local and CI check.
+Catch `DOCUMENTATION`/`RETURN`/`EXAMPLES` drift, argspec mismatches, and import errors. Treat it as
+a required local and CI check.
 
 ## Pre-checks
 

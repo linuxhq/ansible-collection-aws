@@ -1,11 +1,11 @@
 ---
 name: yamllint
-description: Lint YAML files with yamllint.
+description: Strict-lint YAML with yamllint through Tox. Run after every change to a .yml/.yaml file.
 ---
 
 # yamllint
 
-Matches CI's `--strict` mode.
+Match CI's `--strict` mode.
 
 ```sh
 tox run -e yamllint -- roles/{{ role }}/tasks/main.yml
