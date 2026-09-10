@@ -1,3 +1,0 @@
----
-bugfixes:
-  - notifications_contacts - Preserve existing tags when replacing a contact whose tags were omitted, and validate AWS responses before using required fields.

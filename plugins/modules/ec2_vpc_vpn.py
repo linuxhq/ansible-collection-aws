@@ -176,7 +176,7 @@ attributes:
     description: Diff mode is not supported.
     support: none
 notes:
-  - This rewritten implementation was introduced in collection release 2.3.1.
+  - This rewritten implementation was introduced in collection release 2.4.0.
   - Results exclude customer gateway XML and pre-shared keys, including AWS-generated keys.
   - O(name) owns the Name tag even when O(tags) is omitted or empty.
   - All CIDRs must be canonical network addresses without host bits set.

@@ -1,3 +1,0 @@
----
-bugfixes:
-  - sns_topic_attributes - fail cleanly when AWS returns malformed topic attributes.

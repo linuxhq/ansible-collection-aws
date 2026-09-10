@@ -1,3 +1,0 @@
----
-bugfixes:
-  - notifications_contacts_info - Validate AWS contact and tag responses before returning them.

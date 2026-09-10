@@ -1,3 +1,0 @@
----
-bugfixes:
-  - sns_sms_attributes - fail cleanly when AWS returns malformed SMS attributes.

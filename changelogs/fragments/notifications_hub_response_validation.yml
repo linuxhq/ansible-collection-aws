@@ -1,3 +1,0 @@
----
-bugfixes:
-  - notifications_hub - Validate AWS hub responses before making state decisions or returning created resources.

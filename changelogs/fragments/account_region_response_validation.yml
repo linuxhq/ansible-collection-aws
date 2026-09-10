@@ -1,3 +1,0 @@
----
-bugfixes:
-  - account_region - fail safely when AWS returns a missing or unknown region opt-in status.

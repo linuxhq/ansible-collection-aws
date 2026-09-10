@@ -528,3 +528,233 @@ releases:
     fragments:
     - plugin-fixes.yml
     release_date: '2026-08-13'
+  2.4.0:
+    changes:
+      breaking_changes:
+      - ec2_vpc_vpn - default purge_routes to true; omitted routes, tags, routing
+        mode, and CIDRs are preserved during updates.
+      - ec2_vpc_vpn - reject CIDRs with host bits set; supply canonical network addresses.
+      - ec2_vpc_vpn - replace the upstream-derived module with a collection-native
+        implementation; select connections with mutually exclusive name, vpn_connection_id,
+        or native EC2 filters.
+      - ec2_vpc_vpn - restrict connection_type to ipsec.1, the only supported EC2
+        VPN connection type.
+      - ec2_vpc_vpn - use snake_case tunnel options with scalar algorithm and DH group
+        lists; return connection data under vpn_connection and omit customer gateway
+        XML and pre-shared keys.
+      - ec2_vpc_vpn role - align purge_routes with the module default of true; explicitly
+        supplied route lists replace existing routes unless purge_routes=false.
+      bugfixes:
+      - account_region - fail safely when AWS returns a missing or unknown region
+        opt-in status.
+      - acm_certificate_request - list all ACM certificate key types so existing EC
+        and RSA 3072/4096 certificates can be reused, validate AWS responses, and
+        recheck described certificate status to avoid raw failures, duplicate requests,
+        or returning a certificate that is no longer pending validation or issued.
+      - ec2_flow_log - fail clearly when EC2 returns matching or newly created flow
+        logs without usable flow log IDs.
+      - ec2_flow_log_info - fail clearly when EC2 returns a malformed flow log.
+      - ec2_instance_metadata and ec2_instance_metadata_info - fail clearly instead
+        of treating a malformed EC2 account-level metadata-default response as empty
+        defaults.
+      - ec2_instance_type_info - fail clearly when EC2 returns malformed instance
+        type information.
+      - ec2_placement_group_info - fail clearly when EC2 returns malformed placement
+        group information.
+      - ec2_pricing_info - fail clearly when AWS Pricing returns a malformed price
+        list or product document.
+      - ec2_serial_console - fail without changing access when EC2 returns a malformed
+        serial console status.
+      - ec2_serial_console_info - fail clearly when EC2 returns a malformed serial
+        console status.
+      - ec2_transit_gateway_route_table - fail safely when EC2 returns malformed transit
+        gateway route-table or route data.
+      - ec2_transit_gateway_route_table_info - fail safely when EC2 returns malformed
+        transit gateway route-table or route data.
+      - ec2_vpc_prefix_list - fail safely when EC2 returns malformed managed prefix-list
+        or entry data.
+      - ec2_vpc_prefix_list_info - fail safely when EC2 returns malformed managed
+        prefix-list or entry data.
+      - ec2_vpc_vpn - fail route waits promptly when the VPN is deleting, deleted,
+        or missing; predict tunnel updates in check mode while pending VPN endpoints
+        are unallocated.
+      - ec2_vpc_vpn - reject tunnel inside-CIDR updates that collide with another
+        tunnel before modifying the VPN.
+      - ec2_vpc_vpn - report unmatched ID and filter selectors without suggesting
+        conflicting creation parameters.
+      - ec2_vpc_vpn - tolerate stale deleted route entries while waiting for recreated
+        routes to become available.
+      - ec2_vpc_vpn - treat a null StaticRoutesOnly response as dynamic routing, matching
+        an omitted value.
+      - ec2_vpc_vpn - validate route CIDRs when reconciling or waiting on routes without
+        blocking unrelated VPN deletion or updates.
+      - ec2_vpc_vpn role - increase default async and polling budgets to one hour
+        for sequential connection and tunnel updates.
+      - ec2_vpc_vpn role - omit unspecified static_only, routes, and tunnel_options
+        to preserve existing configuration during updates.
+      - ecs_ecr_info - fail safely when ECR returns malformed repository data.
+      - eks_cluster - fail safely when EKS returns malformed cluster or update data.
+      - eks_cluster_info - fail safely when EKS returns malformed cluster list or
+        cluster data.
+      - global_accelerator - fail safely when Global Accelerator returns malformed
+        accelerator, listener, endpoint group, or tag data.
+      - global_accelerator_info - fail safely when Global Accelerator returns malformed
+        accelerator, listener, endpoint group, or tag data.
+      - glue_connection_info - validate AWS responses before transforming connection
+        data.
+      - iam_account_alias - fail cleanly when AWS returns malformed account alias
+        data.
+      - iam_account_alias_info - fail cleanly when AWS returns malformed account alias
+        data.
+      - iam_oidc_provider - add replacement client IDs before removing obsolete IDs.
+      - iam_oidc_provider and iam_oidc_provider_info - fail cleanly when AWS returns
+        a malformed provider response.
+      - iam_policy_info - validate IAM entity, inline policy, and policy document
+        responses before returning them.
+      - notifications_contacts - Preserve existing tags when replacing a contact whose
+        tags were omitted, and validate AWS responses before using required fields.
+      - notifications_contacts_info - Validate AWS contact and tag responses before
+        returning them.
+      - notifications_hub - Validate AWS hub responses before making state decisions
+        or returning created resources.
+      - notifications_hub_info - Validate AWS hub responses before returning them.
+      - pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_number_info, pinpoint_sms_voice_phone_pool,
+        pinpoint_sms_voice_phone_pool_associate, and pinpoint_sms_voice_phone_pool_info
+        - validate AWS responses, avoid waits after resources disappear, prevent stale
+        deletion results, and avoid waiting for existing resources in check mode.
+      - rds_subnet_group_info - fail cleanly when AWS returns malformed subnet group
+        data.
+      - route53_delegation_set and route53_delegation_set_info - validate AWS responses
+        and fail cleanly for malformed data.
+      - route53_resolver - validate endpoint, IP address, tag, and mutation responses
+        and fail clearly instead of raising raw exceptions or reporting unapplied
+        tag changes.
+      - route53_resolver_info - validate endpoint and paginated detail responses before
+        transforming them.
+      - route53_resolver_rule - validate rule, target IP, tag, and mutation responses;
+        recover lean create and update responses; reject ambiguous matches; and avoid
+        stale IDs in check-mode replacement results.
+      - route53_resolver_rule_associate - validate association responses, safely recover
+        lean create responses, reject ambiguous matches, and avoid stale IDs in check-mode
+        replacement results.
+      - route53_resolver_rule_info - validate rule, association, and tag responses
+        before transforming them and skip association queries when no rules exist.
+      - route53_zone_associate - validate hosted-zone and VPC-association responses
+        before transforming them.
+      - service_quota - reject non-finite desired values and validate quota, history,
+        and increase-request responses before using them.
+      - service_quota_info - validate quota responses and reject mismatched quota
+        and context identifiers.
+      - ses_identity_info - validate identity names, details, tags, and policies returned
+        by AWS before transforming them.
+      - ses_identity_tokens_info - validate DKIM and verification token responses
+        while preserving token prepopulation for identities that do not yet exist.
+      - sns_sms_attributes - fail cleanly when AWS returns malformed SMS attributes.
+      - sns_topic_attributes - fail cleanly when AWS returns malformed topic attributes.
+      - sqs_queue_info - fail cleanly when AWS returns malformed queue information.
+      - ssm_association - fail cleanly when AWS returns malformed association data.
+      - ssm_association_info - fail cleanly when AWS returns malformed association
+        data, including missing identifiers.
+      - ssm_document - fail cleanly when AWS returns malformed document data or content.
+      - ssm_document_info - fail cleanly when AWS returns malformed document data.
+      - ssm_instance_info - fail cleanly when AWS returns malformed managed instance
+        data. A null instance list or an entry that was not a dictionary previously
+        raised an unhandled traceback.
+      - ssm_instance_info - warn when a managed instance lacks a valid instance ID,
+        preserve the record in C(instances), and omit the invalid value from C(instance_ids).
+      - ssm_send_command - clarify that target keys are passed to AWS unchanged and
+        correct the documented example to use the C(InstanceIds) target key, which
+        AWS rejected as C(instanceids).
+      - ssm_send_command - fail cleanly when AWS returns malformed command or command
+        invocation data instead of raising an unhandled traceback.
+      - ssm_send_command - fail with a message naming the command ID when AWS returns
+        an invalid command or invocation status value.
+      - ssm_send_command - reject an empty O(document_name) locally instead of sending
+        an invalid request to AWS.
+      - ssm_send_command - report C(changed=true) on failures after AWS accepts the
+        command.
+      - ssm_send_command - return an empty C(command_invocations) list instead of
+        raising an unhandled C(UnboundLocalError) when C(wait=true) and the wait timeout
+        expires before the first poll.
+      - wafv2_ip_set_info - fail cleanly when AWS returns malformed IP set summary
+        data, and fail instead of returning an empty entry for malformed detail data.
+      - wafv2_web_acl_info - fail cleanly when AWS returns malformed web ACL summary
+        data, and fail instead of returning an empty entry for malformed detail data.
+      - wafv2_web_acl_logging - validate AWS SDK response shapes and preserve changed
+        status when post-update validation fails.
+      known_issues:
+      - ec2_vpc_vpn - asymmetric tunnel settings may reconfigure both tunnels on the
+        first update after creation because updates use numeric outside-IP order rather
+        than creation list order; this may interrupt connectivity.
+      - ec2_vpc_vpn - supplying pre_shared_key fails if EC2 withholds the current
+        key because it cannot be compared safely; omit pre_shared_key to preserve
+        it.
+      - ec2_vpc_vpn role - use the name selector; supplying filters or vpn_connection_id
+        conflicts with the name argument required by the role. Use the module directly
+        when selecting an existing connection by ID or filters.
+      minor_changes:
+      - acm_certificate_request - add resource_tags as an alias for tags.
+      - ec2_flow_log - add resource_tags as an alias for tags.
+      - ec2_transit_gateway_route_table - add C(resource_tags) as an alias for O(tags).
+      - ec2_vpc_prefix_list - add C(resource_tags) as an alias for O(tags).
+      - ec2_vpc_vpn - add offline regression tests and Molecule encryption-update
+        coverage; update the VPN role for the new interface.
+      - ec2_vpc_vpn - apply a single shared tunnel settings entry to both tunnels,
+        discovering their outside IPs internally for updates.
+      - ec2_vpc_vpn - reconcile encryption, integrity, IKE versions, DH groups, pre-shared
+        keys, tunnel CIDRs, and connection CIDRs on existing VPN connections.
+      - ec2_vpc_vpn - validate configuration before mutation, compare supplied pre-shared
+        keys safely, and wait for requested routes to become available and route deletions
+        to complete.
+      - eks_cluster - add C(resource_tags) as an alias for O(tags).
+      - global_accelerator - add C(resource_tags) as an alias for O(tags).
+      - iam_oidc_provider - accept ``resource_tags`` as an alias for ``tags``.
+      - ses_credential - accept C(aws_region) as an alias for the required C(region)
+        option.
+      - ses_credential - report a missing C(aws_secret_access_key) through Ansible's
+        required-option handling instead of the lookup's validation error.
+      release_summary: Harden AWS module response handling and validation, rewrite
+        EC2 VPN management, and align development tooling and release automation.
+        The EC2 VPN rewrite includes breaking interface and default changes; review
+        the porting notes before upgrading.
+    fragments:
+    - account_region_response_validation.yml
+    - acm_certificate_request_status.yml
+    - ec2_flow_log_response_validation.yml
+    - ec2_info_response_validation.yml
+    - ec2_instance_metadata_response.yml
+    - ec2_serial_console_response.yml
+    - ec2_vpc_vpn-rewrite.yml
+    - glue_connection_info_response_validation.yml
+    - iam_account_alias_info_response_validation.yml
+    - iam_account_alias_response_validation.yml
+    - iam_oidc_response_validation.yml
+    - iam_policy_info_response_validation.yml
+    - notifications_contacts_info_response_validation.yml
+    - notifications_contacts_response_validation.yml
+    - notifications_hub_info_response_validation.yml
+    - notifications_hub_response_validation.yml
+    - pinpoint_sms_voice_response_validation.yml
+    - rds_subnet_group_info_response_validation.yml
+    - release_2_4_0.yml
+    - route53_delegation_set_response_validation.yml
+    - route53_resolver_response_validation.yml
+    - route53_resolver_rule_associate_response_validation.yml
+    - route53_resolver_rule_response_validation.yml
+    - route53_zone_associate_response_validation.yml
+    - service_quota_response_validation.yml
+    - ses_credential_region_fragment.yml
+    - ses_identity_response_validation.yml
+    - sns_sms_attributes_response_validation.yml
+    - sns_topic_attributes_response_validation.yml
+    - sqs_queue_info_response_validation.yml
+    - ssm_association_info_response_validation.yml
+    - ssm_association_response_validation.yml
+    - ssm_document_info_response_validation.yml
+    - ssm_document_response_validation.yml
+    - ssm_instance_info_response_validation.yml
+    - ssm_send_command_response_validation.yml
+    - wafv2_ip_set_info_response_validation.yml
+    - wafv2_web_acl_info_response_validation.yml
+    - wafv2_web_acl_logging_response_validation.yml
+    release_date: '2026-09-10'

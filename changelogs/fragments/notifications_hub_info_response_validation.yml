@@ -1,3 +1,0 @@
----
-bugfixes:
-  - notifications_hub_info - Validate AWS hub responses before returning them.
