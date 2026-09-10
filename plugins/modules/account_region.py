@@ -13,8 +13,6 @@ description:
   - Before requesting a change, fails if AWS returns an unrecognized region opt-in status.
 author:
   - Taylor Kimball (@tkimball83)
-requirements:
-  - botocore >= 1.29.70
 options:
   name:
     description:

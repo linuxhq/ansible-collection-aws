@@ -11,8 +11,6 @@ description:
   - Gathers EC2 account-level instance metadata defaults for a region.
 author:
   - Taylor Kimball (@tkimball83)
-requirements:
-  - botocore >= 1.34.70
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
