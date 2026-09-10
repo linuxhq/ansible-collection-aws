@@ -4,6 +4,14 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.4.1
+======
+
+Release Summary
+---------------
+
+Maintenance release aligning agent setup guidance, correcting role dependency documentation and metadata, and cleaning up Molecule environment settings.
+
 v2.4.0
 ======
 
