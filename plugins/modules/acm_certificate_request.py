@@ -19,8 +19,6 @@ description:
     O(purge_tags=true).
 author:
   - Taylor Kimball (@tkimball83)
-requirements:
-  - botocore >= 1.5.95
 options:
   domain_name:
     description:

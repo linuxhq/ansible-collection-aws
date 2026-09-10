@@ -12,8 +12,6 @@ description:
   - At least one metadata default option must be provided.
 author:
   - Taylor Kimball (@tkimball83)
-requirements:
-  - botocore >= 1.34.70
 options:
   http_endpoint:
     description:

@@ -11,8 +11,6 @@ description:
   - Gathers EC2 serial console access status for a region.
 author:
   - Taylor Kimball (@tkimball83)
-requirements:
-  - botocore >= 1.20.41
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules

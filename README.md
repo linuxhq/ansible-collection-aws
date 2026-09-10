@@ -7,6 +7,10 @@
 
 An Ansible collection of AWS modules and roles.
 
+## Requirements
+
+See [requirements.yml](requirements.yml).
+
 ## Installation
 
 ```sh
@@ -14,6 +18,8 @@ ansible-galaxy collection install linuxhq.aws
 ```
 
 ## Development
+
+Local Tox environments use the Python version selected by `.python-version`.
 
 With Tox installed, install the pre-commit hook:
 
@@ -42,7 +48,7 @@ tox run -m unit
 Run Ansible sanity tests for a module:
 
 ```sh
-tox run -e ansible-test -- sanity --python "$(cat .python-version)" plugins/modules/account_region.py
+tox run -e ansible-test -- sanity plugins/modules/account_region.py
 ```
 
 ### Molecule

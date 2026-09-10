@@ -11,8 +11,6 @@ description:
   - Enables or disables EC2 serial console access for a region.
 author:
   - Taylor Kimball (@tkimball83)
-requirements:
-  - botocore >= 1.20.41
 options:
   state:
     description:
