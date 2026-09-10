@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver_rule as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -85,11 +87,11 @@ class Route53ResolverRuleTests(TestCase):
         delete.assert_not_called()
         wait.assert_called_once_with(client, module, "rslvr-rr-1", {"deleted"})
 
-    def test_replacement_delete_waits_when_final_wait_is_disabled(self):
+    def test_delete_waits_when_requested(self):
         client = Mock()
-        module = FakeModule({"name": "rule", "wait": False})
+        module = FakeModule({"name": "rule", "wait": True})
         with patch.object(plugin, "wait_for_resolver_rule_status") as wait:
-            plugin.delete_resolver_rule(client, module, {"Id": "rslvr-rr-1"}, always=True)
+            plugin.delete_resolver_rule(client, module, {"Id": "rslvr-rr-1"})
 
         wait.assert_called_once_with(client, module, "rslvr-rr-1", {"deleted"})
 
@@ -347,41 +349,6 @@ class Route53ResolverRuleTests(TestCase):
         client.get_resolver_rule.assert_not_called()
         client.list_tags_for_resource.assert_not_called()
 
-    def test_domain_change_recreates_the_rule(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "domain_name": "new.example.com",
-                "name": "main",
-                "purge_tags": True,
-                "resolver_endpoint_id": "rslvr-out-1",
-                "rule_type": "forward",
-                "tags": None,
-                "target_ips": [{"ip": "192.0.2.1"}],
-                "wait": False,
-            }
-        )
-        current = {
-            "DomainName": "old.example.com",
-            "Id": "rslvr-rr-1",
-            "ResolverEndpointId": "rslvr-out-1",
-            "RuleType": "FORWARD",
-            "TargetIps": [{"Ip": "192.0.2.1"}],
-        }
-        replacement = dict(current, DomainName="new.example.com")
-        with (
-            patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
-            patch.object(plugin, "delete_resolver_rule") as delete,
-            patch.object(plugin, "create_resolver_rule", return_value=replacement) as create,
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertTrue(raised.exception.values["changed"])
-        delete.assert_called_once_with(client, module, current, always=True)
-        create.assert_called_once()
-        client.update_resolver_rule.assert_not_called()
-
     def test_deleting_rule_waits_before_recreation_with_final_wait_disabled(self):
         client = Mock()
         module = FakeModule(
@@ -446,36 +413,6 @@ class Route53ResolverRuleTests(TestCase):
 
         get.assert_called_once_with(client, module, "rslvr-rr-1")
 
-    def test_check_mode_replacement_does_not_return_stale_id(self):
-        module = FakeModule(
-            {
-                "domain_name": "new.example.com",
-                "name": "main",
-                "purge_tags": True,
-                "resolver_endpoint_id": "rslvr-out-1",
-                "rule_type": "forward",
-                "tags": None,
-                "target_ips": [{"ip": "192.0.2.1"}],
-                "wait": False,
-            },
-            check_mode=True,
-        )
-        current = {
-            "DomainName": "old.example.com",
-            "Id": "rslvr-rr-old",
-            "ResolverEndpointId": "rslvr-out-1",
-            "RuleType": "FORWARD",
-            "TargetIps": [{"Ip": "192.0.2.1"}],
-        }
-        with (
-            patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(Mock(), module)
-
-        self.assertTrue(raised.exception.values["changed"])
-        self.assertNotIn("resolver_rule_id", raised.exception.values)
-
     def test_tag_change_rejects_rule_without_arn(self):
         module = FakeModule(
             {
@@ -503,3 +440,77 @@ class Route53ResolverRuleTests(TestCase):
             plugin.ensure_present(Mock(), module)
 
         self.assertIn("invalid rule ARN", raised.exception.values["msg"])
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("field,value", [("domain_name", "new.example.com"), ("rule_type", "system")])
+def test_immutable_changes_preserve_rule(check_mode, field, value):
+    params = {
+        "domain_name": "example.com",
+        "name": "main",
+        "purge_tags": True,
+        "resolver_endpoint_id": "rslvr-out-1",
+        "rule_type": "forward",
+        "tags": {"new": "value"},
+        "target_ips": [{"ip": "192.0.2.1"}],
+        "wait": False,
+    }
+    params[field] = value
+    module = FakeModule(params, check_mode=check_mode)
+    current = {
+        "DomainName": "example.com",
+        "Id": "rslvr-rr-1",
+        "ResolverEndpointId": "rslvr-out-1",
+        "RuleType": "FORWARD",
+        "TargetIps": [{"Ip": "192.0.2.1"}],
+    }
+    client = Mock()
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
+        patch.object(plugin, "delete_resolver_rule") as delete,
+        patch.object(plugin, "create_resolver_rule") as create,
+        pytest.raises(ModuleFail, match=field),
+    ):
+        plugin.ensure_present(client, module)
+
+    delete.assert_not_called()
+    create.assert_not_called()
+    assert not client.mock_calls
+
+
+@pytest.mark.parametrize("wait", [False, True])
+def test_update_mismatch_preserves_rule(wait):
+    module = FakeModule(
+        {
+            "domain_name": "example.com",
+            "name": "main",
+            "purge_tags": True,
+            "resolver_endpoint_id": "rslvr-out-2",
+            "rule_type": "forward",
+            "tags": None,
+            "target_ips": [{"ip": "192.0.2.1"}],
+            "wait": wait,
+        }
+    )
+    current = {
+        "DomainName": "example.com",
+        "Id": "rslvr-rr-1",
+        "ResolverEndpointId": "rslvr-out-1",
+        "RuleType": "FORWARD",
+        "TargetIps": [{"Ip": "192.0.2.1"}],
+    }
+    client = Mock(update_resolver_rule=Mock(return_value={"ResolverRule": current}))
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
+        patch.object(plugin, "get_resolver_rule", return_value=current),
+        patch.object(plugin, "wait_for_resolver_rule_status", return_value=current),
+        patch.object(plugin, "delete_resolver_rule") as delete,
+        patch.object(plugin, "create_resolver_rule") as create,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert "has not been deleted" in raised.value.values["msg"]
+    client.update_resolver_rule.assert_called_once()
+    delete.assert_not_called()
+    create.assert_not_called()

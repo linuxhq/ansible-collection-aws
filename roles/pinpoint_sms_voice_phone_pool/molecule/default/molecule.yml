@@ -1,4 +1,6 @@
 ---
+prerun: false
+
 dependency:
   name: galaxy
   options:
@@ -19,6 +21,7 @@ provisioner:
   name: ansible
   env:
     ANSIBLE_ACTION_WARNINGS: false
+    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
     ANSIBLE_DEPRECATION_WARNINGS: false
   log: true
   options:
@@ -36,6 +39,8 @@ provisioner:
 
         pinpoint_sms_voice_phone_pool_list:
           - name: molecule-pinpoint-pool
+            tags:
+              molecule: pinpoint_sms_voice_phone_pool
             origination_identity:
               "{{ _pinpoint_sms_voice_phone_number_info_list.0.phone_number_id }}"
             iso_country_code: US
