@@ -103,7 +103,7 @@ plugins under `plugins/`. Apply these with `ansible-plugins.md`.
 - Define `purge_tags` as a Boolean that defaults to `true`.
 - Leave tags unchanged when the caller omits `tags`.
 - Remove absent tags only when `tags` is supplied and `purge_tags` is true.
-- Treat an explicit empty `tags` dictionary as a request to remove all tags.
+- An empty `tags` dictionary removes user-managed tags only when `purge_tags=true`.
 - Convert SDK tag lists with `boto3_tag_list_to_ansible_dict`.
 - Convert desired tags with `ansible_dict_to_boto3_tag_list` when required.
 - Calculate tag changes with `compare_aws_tags` before mutating AWS.
