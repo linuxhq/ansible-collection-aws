@@ -758,3 +758,11 @@ releases:
     - wafv2_web_acl_info_response_validation.yml
     - wafv2_web_acl_logging_response_validation.yml
     release_date: '2026-09-10'
+  2.4.1:
+    changes:
+      release_summary: Maintenance release aligning agent setup guidance, correcting
+        role dependency documentation and metadata, and cleaning up Molecule environment
+        settings.
+    fragments:
+    - final-collection-cleanup.yml
+    release_date: '2026-09-10'
