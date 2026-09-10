@@ -10,6 +10,8 @@ short_description: Manage aws route53 resolver endpoints
 description:
   - Manages AWS Route53 Resolver endpoints.
   - Compares the desired endpoint settings against the current endpoint fetched by name.
+  - Existing endpoints are updated in place and are deleted only with O(state=absent).
+  - Changes to direction or security groups fail without modifying the endpoint.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -64,12 +66,6 @@ options:
       - do53
     elements: str
     type: list
-  purge_tags:
-    description:
-      - Whether tags not listed in O(tags) should be removed.
-      - This option is only used when O(tags) is provided.
-    default: true
-    type: bool
   resolver_endpoint_type:
     description:
       - The resolver endpoint type.
@@ -94,12 +90,6 @@ options:
       - present
     default: present
     type: str
-  tags:
-    description:
-      - Tags to apply to the resolver endpoint.
-      - This must contain at most 200 entries; keys must contain 1 to 128
-        characters and values at most 256 characters.
-    type: dict
   wait:
     description:
       - Whether to wait for the resolver endpoint state change to complete.
@@ -117,10 +107,14 @@ options:
       - This must be 1 or greater.
     default: 300
     type: int
+notes:
+  - O(tags) accepts at most 200 entries; keys must contain 1 to 128 characters
+    and values at most 256 characters.
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+  - amazon.aws.tags
 attributes:
   check_mode:
     description: Determines what changes would occur without modifying AWS resources.
@@ -350,7 +344,7 @@ def create_resolver_endpoint(client, module, desired):
     return endpoint
 
 
-def delete_resolver_endpoint(client, module, endpoint, always=False):
+def delete_resolver_endpoint(client, module, endpoint):
     resolver_endpoint_id = endpoint.get("Id")
 
     try:
@@ -366,7 +360,7 @@ def delete_resolver_endpoint(client, module, endpoint, always=False):
             msg=("Unable to delete AWS Route53 Resolver endpoint " f"{module.params['name']}"),
         )
 
-    if module.params["wait"] or always:
+    if module.params["wait"]:
         wait_for_resolver_endpoint_status(
             client,
             module,
@@ -449,6 +443,19 @@ def ensure_present(client, module):
         wait_for_resolver_endpoint_status(client, module, endpoint.get("Id"), {"operational"})
         return ensure_present(client, module)
 
+    if current is not None:
+        immutable_changes = [
+            field for field in ("direction", "security_group_ids") if current[field] != desired_comparable[field]
+        ]
+        if immutable_changes:
+            module.fail_json(
+                msg=(
+                    "Cannot update AWS Route53 Resolver endpoint "
+                    f"{module.params['name']} in place: {', '.join(immutable_changes)} cannot be changed. "
+                    "The existing endpoint has not been modified."
+                ),
+            )
+
     if changed and module.check_mode:
         projected_desired = desired
         if current is not None and comparable_ip_addresses_match(
@@ -472,11 +479,10 @@ def ensure_present(client, module):
                 current["protocols"] != desired_comparable["protocols"]
                 or current["resolver_endpoint_type"] != desired_comparable["resolver_endpoint_type"]
             ):
-                update_params = {
-                    "protocols": desired["protocols"],
-                    "resolver_endpoint_id": endpoint.get("Id"),
-                    "resolver_endpoint_type": desired["resolver_endpoint_type"],
-                }
+                update_params = {"resolver_endpoint_id": endpoint.get("Id")}
+                for field in ("protocols", "resolver_endpoint_type"):
+                    if current[field] != desired_comparable[field]:
+                        update_params[field] = desired[field]
 
                 try:
                     response = client.update_resolver_endpoint(
@@ -533,13 +539,15 @@ def ensure_present(client, module):
             current = comparable_endpoint(endpoint)
 
             if not comparable_endpoints_match(current, desired_comparable):
-                if endpoint is not None:
-                    delete_resolver_endpoint(client, module, endpoint, always=True)
-
-                endpoint = create_resolver_endpoint(client, module, desired)
-                created = True
-                if module.params["wait"]:
-                    endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
+                module.fail_json(
+                    msg=(
+                        "AWS Route53 Resolver endpoint "
+                        f"{module.params['name']} does not match the requested configuration after updating. "
+                        "The endpoint has not been deleted; inspect the current configuration before retrying."
+                    ),
+                    current=current,
+                    desired=desired_comparable,
+                )
 
         if endpoint is not None and tags is not None:
             if resource_changed and not created:
@@ -928,7 +936,7 @@ def main():
                 "default": "present",
                 "type": "str",
             },
-            "tags": {"type": "dict"},
+            "tags": {"aliases": ["resource_tags"], "type": "dict"},
             "wait": {"default": True, "type": "bool"},
             "wait_delay": {"default": 5, "type": "int"},
             "wait_timeout": {"default": 300, "type": "int"},
@@ -992,7 +1000,6 @@ def main():
             {
                 "associate_resolver_endpoint_ip_address",
                 "create_resolver_endpoint",
-                "delete_resolver_endpoint",
                 "disassociate_resolver_endpoint_ip_address",
                 "get_resolver_endpoint",
                 "list_resolver_endpoint_ip_addresses",

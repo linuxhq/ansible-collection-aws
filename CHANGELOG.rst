@@ -4,6 +4,29 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.4.2
+======
+
+Release Summary
+---------------
+
+Preserve existing AWS resources during updates, align shared tag documentation and phone number tag reconciliation, and simplify Molecule configuration and CI triggers.
+
+Minor Changes
+-------------
+
+- pinpoint_sms_voice_phone_number - support purge_tags and use phone_number_id with state=present to reconcile tags on an existing number.
+- pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_pool, route53_resolver, route53_resolver_rule, ssm_association, ssm_document - use the amazon.aws.tags documentation fragment and accept resource_tags as an alias for tags.
+
+Bugfixes
+--------
+
+- ec2_vpc_prefix_list - Reject address family changes and report update mismatches without deleting existing prefix lists.
+- notifications_contacts - Reject contact name changes without deleting existing contacts or requiring email reactivation.
+- route53_resolver - never delete or replace endpoints with state=present; reject immutable changes and report unresolved update mismatches while preserving the endpoint.
+- route53_resolver - omit unchanged endpoint type from protocol updates so AWS applies the requested protocols.
+- route53_resolver_rule - Reject domain name and rule type changes and report update mismatches without deleting existing rules.
+
 v2.4.1
 ======
 

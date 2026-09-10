@@ -9,8 +9,10 @@ version_added: '1.9.0'
 short_description: Manage aws end user messaging sms phone numbers
 description:
   - Requests and releases AWS End User Messaging SMS origination phone numbers.
-  - An existing active phone number matching the requested attributes and tags
-    is adopted; otherwise a new phone number is requested.
+  - Without O(phone_number_id), an existing phone number matching the requested
+    attributes and tags is adopted; otherwise a new phone number is requested.
+  - With O(phone_number_id), tags are reconciled on that number; a missing number
+    or mismatched attributes fail without requesting a replacement.
   - This module maps to the Pinpoint SMS Voice V2 C(RequestPhoneNumber) API,
     the API behind C(aws pinpoint-sms-voice-v2 request-phone-number).
 author:
@@ -77,7 +79,8 @@ options:
     type: str
   phone_number_id:
     description:
-      - The phone number ID to release.
+      - The phone number ID to manage or release.
+      - Set this with O(state=present) to update tags on a specific existing number.
       - This is required when O(state=absent).
     type: str
   pool_id:
@@ -96,11 +99,6 @@ options:
       - present
     default: present
     type: str
-  tags:
-    description:
-      - Tags to apply to the requested phone number.
-      - This must contain at most 200 entries; keys must contain 1 to 128 characters and values at most 256 characters.
-    type: dict
   wait:
     default: true
     description:
@@ -118,10 +116,14 @@ options:
       - The maximum number of seconds to wait when O(wait=true).
       - This must be 1 or greater.
     type: int
+notes:
+  - O(tags) accepts at most 200 entries; keys must contain 1 to 128 characters
+    and values at most 256 characters.
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+  - amazon.aws.tags
 attributes:
   diff_mode:
     description: Diff mode is not supported.
@@ -199,6 +201,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
+    compare_aws_tags,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     ansible_dict_to_boto3_filter_list,
@@ -210,7 +213,11 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tags
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    apply_tag_deltas,
+    reconcile_arn_tags,
+    require_valid_tags,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
 )
@@ -485,14 +492,18 @@ def ensure_present(client, module):
     if opt_out_list_name is not None:
         filters["opt-out-list-name"] = opt_out_list_name
 
+    lookup = (
+        {"PhoneNumberIds": [module.params["phone_number_id"]]}
+        if module.params["phone_number_id"]
+        else {"Filters": ansible_dict_to_boto3_filter_list(filters), "Owner": "SELF"}
+    )
     phone_numbers = query_list(
         module,
         client,
         "describe_phone_numbers",
         "PhoneNumbers",
         "Unable to describe Pinpoint SMS Voice V2 phone numbers",
-        Filters=ansible_dict_to_boto3_filter_list(filters),
-        Owner="SELF",
+        **lookup,
     )
 
     desired = {
@@ -545,7 +556,7 @@ def ensure_present(client, module):
         if not matched:
             continue
 
-        if tags is None:
+        if tags is None or module.params["phone_number_id"]:
             current = phone_number
             break
 
@@ -567,7 +578,35 @@ def ensure_present(client, module):
         if wait and not module.check_mode and current.get("Status") != "ACTIVE":
             current = wait_for_phone_number_active(client, module, current["PhoneNumberId"])
 
-        exit_result(module, False, current)
+        changed = False
+        if tags is not None:
+            current = dict(current)
+            current["Tags"] = ansible_dict_to_boto3_tag_list(phone_number_tags(client, module, current))
+            tags_to_set, tag_keys_to_unset = compare_aws_tags(
+                boto3_tag_list_to_ansible_dict(current["Tags"]), tags, purge_tags=module.params["purge_tags"]
+            )
+            changed = bool(tags_to_set or tag_keys_to_unset)
+            if changed and not module.check_mode:
+                arn = current.get("PhoneNumberArn")
+                if not arn:
+                    module.fail_json(msg="AWS did not return the phone number ARN required for tagging")
+
+                methods = {}
+                if tags_to_set:
+                    methods["tag_resource"] = ("ResourceArn", "Tags")
+
+                if tag_keys_to_unset:
+                    methods["untag_resource"] = ("ResourceArn", "TagKeys")
+
+                require_client_methods(module, client, "Pinpoint SMS Voice V2", methods)
+                reconcile_arn_tags(module, client, arn, tags_to_set, tag_keys_to_unset, "phone number")
+
+            current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
+
+        exit_result(module, changed, current)
+
+    if module.params["phone_number_id"]:
+        module.fail_json(msg="The specified phone number was not found or does not match the requested attributes")
 
     parameters = scrub_none_parameters(
         {
@@ -638,13 +677,14 @@ def main():
         "opt_out_list_name": {"type": "str"},
         "phone_number_id": {"type": "str"},
         "pool_id": {"type": "str"},
+        "purge_tags": {"default": True, "type": "bool"},
         "registration_id": {"type": "str"},
         "state": {
             "choices": ["absent", "present"],
             "default": "present",
             "type": "str",
         },
-        "tags": {"type": "dict"},
+        "tags": {"aliases": ["resource_tags"], "type": "dict"},
         "wait": {"default": True, "type": "bool"},
         "wait_delay": {"default": 5, "type": "int"},
         "wait_timeout": {"default": 300, "type": "int"},
@@ -687,7 +727,7 @@ def main():
     client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())
     describe_parameters = ("MaxResults", "NextToken")
     if state == "present":
-        describe_parameters += ("Filters", "Owner")
+        describe_parameters += ("PhoneNumberIds",) if module.params["phone_number_id"] else ("Filters", "Owner")
 
     if state == "absent":
         describe_parameters += ("PhoneNumberIds",)

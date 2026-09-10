@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_vpc_prefix_list as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -333,46 +335,6 @@ class Ec2VpcPrefixListTests(TestCase):
             with self.subTest(message=message):
                 assert_module_rejects(self, plugin, params, message)
 
-    def test_address_family_change_recreates_without_a_useless_modify(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "address_family": "IPv6",
-                "entries": [{"cidr": "2001:db8::/32"}],
-                "name": "main",
-                "purge_tags": True,
-                "tags": None,
-                "wait": False,
-            }
-        )
-        current = {
-            "AddressFamily": "IPv4",
-            "MaxEntries": 1,
-            "PrefixListId": "pl-old",
-            "PrefixListName": "main",
-            "Version": 1,
-        }
-        entries = [{"Cidr": "10.0.0.0/8"}]
-        desired_entries = [{"Cidr": "2001:db8::/32"}]
-        replacement = dict(current, AddressFamily="IPv6", PrefixListId="pl-new")
-        with (
-            patch.object(plugin, "get_current", return_value=(current, entries)),
-            patch.object(plugin, "delete_prefix_list") as delete,
-            patch.object(
-                plugin,
-                "create_prefix_list",
-                return_value=(replacement, desired_entries),
-            ) as create,
-            patch.object(plugin, "modify_prefix_list") as modify,
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertTrue(raised.exception.values["changed"])
-        delete.assert_called_once_with(client, module, "pl-old", always=True)
-        create.assert_called_once()
-        modify.assert_not_called()
-
     def test_present_waits_for_an_existing_modification_and_rechecks(self):
         client = Mock()
         module = FakeModule(
@@ -485,3 +447,75 @@ class Ec2VpcPrefixListTests(TestCase):
             self.assertRaises(ModuleFail),
         ):
             plugin.get_current(Mock(), module)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_address_family_change_preserves_prefix_list(check_mode):
+    module = FakeModule(
+        {
+            "address_family": "IPv6",
+            "entries": [{"cidr": "2001:db8::/32"}],
+            "name": "main",
+            "purge_tags": True,
+            "tags": {"new": "value"},
+            "wait": False,
+        },
+        check_mode=check_mode,
+    )
+    current = {
+        "AddressFamily": "IPv4",
+        "MaxEntries": 1,
+        "PrefixListId": "pl-old",
+        "PrefixListName": "main",
+        "Version": 1,
+    }
+    client = Mock()
+    with (
+        patch.object(plugin, "get_current", return_value=(current, [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(plugin, "delete_prefix_list") as delete,
+        patch.object(plugin, "create_prefix_list") as create,
+        patch.object(plugin, "modify_prefix_list") as modify,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert "address_family cannot be changed" in raised.value.values["msg"]
+    delete.assert_not_called()
+    create.assert_not_called()
+    modify.assert_not_called()
+    assert not client.mock_calls
+
+
+def test_update_mismatch_preserves_prefix_list():
+    module = FakeModule(
+        {
+            "address_family": "IPv4",
+            "entries": [{"cidr": "10.0.0.0/8"}, {"cidr": "192.0.2.0/24"}],
+            "name": "main",
+            "purge_tags": True,
+            "tags": None,
+            "wait": False,
+        }
+    )
+    current = {
+        "AddressFamily": "IPv4",
+        "MaxEntries": 1,
+        "PrefixListId": "pl-old",
+        "PrefixListName": "main",
+        "Version": 1,
+    }
+    client = Mock()
+    with (
+        patch.object(plugin, "get_current", return_value=(current, [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(plugin, "wait_for_ready_state"),
+        patch.object(plugin, "delete_prefix_list") as delete,
+        patch.object(plugin, "create_prefix_list") as create,
+        patch.object(plugin, "modify_prefix_list") as modify,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert "has not been deleted" in raised.value.values["msg"]
+    modify.assert_called_once_with(client, module, current, max_entries=2)
+    delete.assert_not_called()
+    create.assert_not_called()

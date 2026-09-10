@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_phone_number as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -29,6 +31,8 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
                 "opt_out_list_name": None,
                 "pool_id": None,
                 "registration_id": None,
+                "phone_number_id": None,
+                "purge_tags": True,
                 "state": "present",
                 "tags": None,
                 "wait": False,
@@ -75,6 +79,8 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
                 "opt_out_list_name": None,
                 "pool_id": None,
                 "registration_id": None,
+                "phone_number_id": None,
+                "purge_tags": True,
                 "state": "present",
                 "tags": None,
                 "wait": False,
@@ -123,6 +129,8 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
                 "opt_out_list_name": None,
                 "pool_id": None,
                 "registration_id": None,
+                "phone_number_id": None,
+                "purge_tags": True,
                 "state": "present",
                 "tags": None,
                 "wait": False,
@@ -158,6 +166,8 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
                 "opt_out_list_name": None,
                 "pool_id": None,
                 "registration_id": None,
+                "phone_number_id": None,
+                "purge_tags": True,
                 "state": "present",
                 "tags": None,
                 "wait": False,
@@ -183,6 +193,8 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
                 "opt_out_list_name": "arn:aws:sms-voice:us-east-1:1:opt-out-list/list-1",
                 "pool_id": "arn:aws:sms-voice:us-east-1:1:pool/pool-1",
                 "registration_id": None,
+                "phone_number_id": None,
+                "purge_tags": True,
                 "state": "present",
                 "tags": None,
                 "wait": False,
@@ -220,6 +232,8 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
                 "opt_out_list_name": None,
                 "pool_id": None,
                 "registration_id": None,
+                "phone_number_id": None,
+                "purge_tags": True,
                 "state": "present",
                 "tags": None,
                 "wait": True,
@@ -259,6 +273,8 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
                 "opt_out_list_name": None,
                 "pool_id": None,
                 "registration_id": None,
+                "phone_number_id": None,
+                "purge_tags": True,
                 "state": "present",
                 "tags": None,
                 "wait": False,
@@ -486,3 +502,57 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
 
         self.assertTrue(raised.exception.values["changed"])
         self.assertNotIn("phone_number", raised.exception.values)
+
+
+def test_explicit_number_tags_preserve_resource_identity():
+    for purge in (False, True):
+        for check in (False, True):
+            client = Mock()
+            current = {
+                "PhoneNumberId": "phone-1",
+                "PhoneNumberArn": "arn:phone-1",
+                "Status": "ACTIVE",
+                "IsoCountryCode": "US",
+                "MessageType": "TRANSACTIONAL",
+                "NumberType": "SIMULATOR",
+                "NumberCapabilities": ["SMS"],
+                "DeletionProtectionEnabled": False,
+            }
+            module = FakeModule(
+                {
+                    "phone_number_id": "phone-1",
+                    "purge_tags": purge,
+                    "tags": {"Keep": "updated"},
+                    "deletion_protection_enabled": False,
+                    "iso_country_code": "US",
+                    "message_type": "TRANSACTIONAL",
+                    "number_capabilities": ["SMS"],
+                    "number_type": "SIMULATOR",
+                    "opt_out_list_name": None,
+                    "pool_id": None,
+                    "registration_id": None,
+                    "wait": True,
+                    "state": "present",
+                },
+                check_mode=check,
+            )
+            with (
+                patch.object(plugin, "query_list", return_value=[current]),
+                patch.object(plugin, "phone_number_tags", return_value={"Keep": "old", "Extra": "preserved"}),
+                patch.object(plugin, "require_client_methods"),
+                pytest.raises(ModuleExit) as raised,
+            ):
+                plugin.ensure_present(client, module)
+
+            values = raised.value.values
+            assert values["changed"]
+            assert values["phone_number"]["phone_number_id"] == "phone-1"
+            expected = {"Keep": "updated"}
+            if not purge:
+                expected["Extra"] = "preserved"
+
+            assert values["phone_number"]["tags"] == expected
+            assert client.tag_resource.call_count == (0 if check else 1)
+            assert client.untag_resource.call_count == (1 if purge and not check else 0)
+            client.request_phone_number.assert_not_called()
+            client.release_phone_number.assert_not_called()

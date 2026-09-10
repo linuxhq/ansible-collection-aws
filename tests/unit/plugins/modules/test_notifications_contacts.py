@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import notifications_contacts as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -182,102 +184,6 @@ class NotificationsContactsTests(TestCase):
             with self.subTest(message=message):
                 assert_module_rejects(self, plugin, params, message)
 
-    def test_name_change_replaces_the_contact(self):
-        client = Mock()
-        client.list_tags_for_resource.return_value = {"tags": {}}
-        client.create_email_contact.return_value = {"arn": "arn:new"}
-        client.get_email_contact.return_value = {
-            "emailContact": {
-                "address": "ops@example.com",
-                "arn": "arn:new",
-                "name": "New Name",
-            }
-        }
-        module = FakeModule(
-            {
-                "email_address": "ops@example.com",
-                "name": "New Name",
-                "purge_tags": True,
-                "tags": None,
-            }
-        )
-        current = {
-            "address": "ops@example.com",
-            "arn": "arn:old",
-            "name": "Old Name",
-        }
-        with (
-            patch.object(plugin, "get_contact_by_address", return_value=current),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertTrue(raised.exception.values["changed"])
-        client.delete_email_contact.assert_called_once_with(arn="arn:old", aws_retry=True)
-        client.create_email_contact.assert_called_once_with(
-            emailAddress="ops@example.com", name="New Name", aws_retry=True
-        )
-
-    def test_name_change_preserves_tags_when_tags_are_omitted(self):
-        client = Mock()
-        client.list_tags_for_resource.return_value = {"tags": {"keep": "value"}}
-        client.create_email_contact.return_value = {"arn": "arn:new"}
-        client.get_email_contact.return_value = {
-            "emailContact": {"address": "ops@example.com", "arn": "arn:new", "name": "New Name"}
-        }
-        module = FakeModule(
-            {
-                "email_address": "ops@example.com",
-                "name": "New Name",
-                "purge_tags": True,
-                "tags": None,
-            }
-        )
-        current = {"address": "ops@example.com", "arn": "arn:old", "name": "Old Name"}
-        with (
-            patch.object(plugin, "get_contact_by_address", return_value=current),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        client.list_tags_for_resource.assert_called_once_with(arn="arn:old", aws_retry=True)
-        client.create_email_contact.assert_called_once_with(
-            emailAddress="ops@example.com",
-            name="New Name",
-            tags={"keep": "value"},
-            aws_retry=True,
-        )
-        self.assertEqual(raised.exception.values["email_contact"]["tags"], {"keep": "value"})
-
-    def test_check_mode_name_change_predicts_preserved_tags(self):
-        client = Mock()
-        client.list_tags_for_resource.return_value = {"tags": {"keep": "value"}}
-        module = FakeModule(
-            {
-                "email_address": "ops@example.com",
-                "name": "New Name",
-                "purge_tags": True,
-                "tags": None,
-            },
-            check_mode=True,
-        )
-        current = {"address": "ops@example.com", "arn": "arn:old", "name": "Old Name"}
-        with (
-            patch.object(plugin, "get_contact_by_address", return_value=current),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertEqual(
-            raised.exception.values["email_contact"],
-            {"address": "ops@example.com", "name": "New Name", "tags": {"keep": "value"}},
-        )
-        client.delete_email_contact.assert_not_called()
-        client.create_email_contact.assert_not_called()
-
     def test_new_contact_omits_empty_tags(self):
         client = Mock()
         client.create_email_contact.return_value = {"arn": "arn:new"}
@@ -352,3 +258,19 @@ class NotificationsContactsTests(TestCase):
 
         self.assertFalse(raised.exception.values["changed"])
         require.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("tags", [None, {}, {"new": "value"}])
+def test_name_change_preserves_contact(check_mode, tags):
+    module = FakeModule(
+        {"email_address": "ops@example.com", "name": "New Name", "purge_tags": True, "tags": tags},
+        check_mode=check_mode,
+    )
+    current = {"address": "ops@example.com", "arn": "arn:old", "name": "Old Name"}
+    client = Mock()
+    with patch.object(plugin, "get_contact_by_address", return_value=current), pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, module)
+
+    assert "name cannot be changed" in raised.value.values["msg"]
+    assert not client.mock_calls

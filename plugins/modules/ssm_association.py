@@ -21,12 +21,6 @@ options:
       - The name of the SSM document association.
     required: true
     type: str
-  purge_tags:
-    description:
-      - Whether tags not listed in O(tags) should be removed.
-      - This option is only used when O(tags) is provided.
-    default: true
-    type: bool
   schedule_expression:
     description:
       - The cron or rate expression that defines the association schedule.
@@ -41,11 +35,6 @@ options:
       - present
     default: present
     type: str
-  tags:
-    description:
-      - Tags to apply to the association.
-      - This must contain at most 1000 entries; keys must contain 1 to 128 characters and values at most 256 characters.
-    type: dict
   targets:
     description:
       - The targets for the association.
@@ -67,10 +56,14 @@ options:
         required: true
         type: list
     type: list
+notes:
+  - O(tags) accepts at most 1000 entries; keys must contain 1 to 128 characters
+    and values at most 256 characters.
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+  - amazon.aws.tags
 attributes:
   check_mode:
     description: The module reports the association that would result from the requested changes.
@@ -482,7 +475,7 @@ def main():
             },
             "type": "list",
         },
-        "tags": {"type": "dict"},
+        "tags": {"aliases": ["resource_tags"], "type": "dict"},
     }
 
     module = AnsibleAWSModule(

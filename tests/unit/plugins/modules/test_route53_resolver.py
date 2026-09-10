@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import ANY, Mock, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -98,11 +100,11 @@ class Route53ResolverTests(TestCase):
         delete.assert_not_called()
         wait.assert_called_once_with(client, module, "rslvr-endpt-1", {"deleted"})
 
-    def test_replacement_delete_waits_when_final_wait_is_disabled(self):
+    def test_delete_waits_when_requested(self):
         client = Mock()
-        module = FakeModule({"name": "endpoint", "wait": False})
+        module = FakeModule({"name": "endpoint", "wait": True})
         with patch.object(plugin, "wait_for_resolver_endpoint_status") as wait:
-            plugin.delete_resolver_endpoint(client, module, {"Id": "rslvr-endpt-1"}, always=True)
+            plugin.delete_resolver_endpoint(client, module, {"Id": "rslvr-endpt-1"})
 
         wait.assert_called_once_with(client, module, "rslvr-endpt-1", {"deleted"})
 
@@ -444,7 +446,7 @@ class Route53ResolverTests(TestCase):
                 client.method_calls,
             )
 
-    def test_direction_change_recreates_the_endpoint(self):
+    def test_direction_change_preserves_the_endpoint(self):
         client = Mock()
         module = FakeModule(
             {
@@ -473,7 +475,6 @@ class Route53ResolverTests(TestCase):
             "ResolverEndpointType": "IPV4",
             "SecurityGroupIds": ["sg-1"],
         }
-        replacement = dict(current, Direction="OUTBOUND", Id="rslvr-new")
         with (
             patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
             patch.object(
@@ -488,14 +489,14 @@ class Route53ResolverTests(TestCase):
                 return_value=current,
             ),
             patch.object(plugin, "delete_resolver_endpoint") as delete,
-            patch.object(plugin, "create_resolver_endpoint", return_value=replacement) as create,
-            self.assertRaises(ModuleExit) as raised,
+            patch.object(plugin, "create_resolver_endpoint") as create,
+            self.assertRaises(ModuleFail) as raised,
         ):
             plugin.ensure_present(client, module)
 
-        self.assertTrue(raised.exception.values["changed"])
-        delete.assert_called_once_with(client, module, current, always=True)
-        create.assert_called_once()
+        self.assertIn("direction cannot be changed", raised.exception.values["msg"])
+        delete.assert_not_called()
+        create.assert_not_called()
         client.update_resolver_endpoint.assert_not_called()
 
     def test_no_wait_change_waits_for_operational_endpoint_and_rechecks(self):
@@ -684,3 +685,85 @@ class Route53ResolverTests(TestCase):
 
         self.assertIn("invalid endpoint ARN", raised.exception.values["msg"])
         client.tag_resource.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("field,value", [("direction", "inbound"), ("security_group_ids", ["sg-2"])])
+def test_immutable_changes_never_mutate_endpoint(check_mode, field, value):
+    params = {
+        "direction": "outbound",
+        "ip_addresses": [{"subnet_id": "subnet-1"}, {"subnet_id": "subnet-2"}],
+        "name": "main",
+        "protocols": ["do53"],
+        "purge_tags": True,
+        "resolver_endpoint_type": "ipv4",
+        "security_group_ids": ["sg-1"],
+        "tags": None,
+        "wait": True,
+    }
+    endpoint = {
+        "Direction": "OUTBOUND",
+        "Id": "rslvr-1",
+        "IpAddresses": [{"SubnetId": "subnet-1"}, {"SubnetId": "subnet-2"}],
+        "Protocols": ["Do53"],
+        "ResolverEndpointType": "IPV4",
+        "SecurityGroupIds": ["sg-1"],
+    }
+    params[field] = value
+    module = FakeModule(params, check_mode=check_mode)
+    client = Mock()
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", return_value=endpoint),
+        patch.object(plugin, "resolver_endpoint_with_tags", return_value=endpoint),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert field in raised.value.values["msg"]
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("wait", [False, True])
+def test_unresolved_update_never_replaces_endpoint(wait):
+    module = FakeModule(
+        {
+            "direction": "outbound",
+            "ip_addresses": [{"subnet_id": "subnet-1"}, {"subnet_id": "subnet-2"}],
+            "name": "main",
+            "protocols": ["doh"],
+            "purge_tags": True,
+            "resolver_endpoint_type": "ipv4",
+            "security_group_ids": ["sg-1"],
+            "tags": None,
+            "wait": wait,
+        }
+    )
+    endpoint = {
+        "Direction": "OUTBOUND",
+        "Id": "rslvr-1",
+        "IpAddresses": [{"SubnetId": "subnet-1"}, {"SubnetId": "subnet-2"}],
+        "Protocols": ["Do53"],
+        "ResolverEndpointType": "IPV4",
+        "SecurityGroupIds": ["sg-1"],
+    }
+    client = Mock()
+    client.update_resolver_endpoint.return_value = {"ResolverEndpoint": endpoint}
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", return_value=endpoint),
+        patch.object(plugin, "resolver_endpoint_with_tags", return_value=endpoint),
+        patch.object(plugin, "validate_resolver_endpoint", return_value=endpoint),
+        patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=endpoint),
+        patch.object(plugin, "reconcile_resolver_endpoint_ip_addresses", return_value=endpoint),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["current"]["protocols"] == ["Do53"]
+    assert raised.value.values["desired"]["protocols"] == ["DoH"]
+    client.delete_resolver_endpoint.assert_not_called()
+    client.create_resolver_endpoint.assert_not_called()
+    client.update_resolver_endpoint.assert_called_once_with(
+        ResolverEndpointId="rslvr-1", Protocols=["DoH"], aws_retry=True
+    )
