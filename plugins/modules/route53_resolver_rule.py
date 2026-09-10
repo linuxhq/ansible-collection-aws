@@ -5,6 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: route53_resolver_rule
+version_added: '1.9.0'
 short_description: Manage aws route53 resolver rules
 description:
   - Manages AWS Route53 Resolver rules.

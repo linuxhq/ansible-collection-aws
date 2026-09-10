@@ -5,6 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: notifications_hub
+version_added: '1.9.0'
 short_description: Manage AWS Notifications hubs
 description:
   - Manages AWS Notifications hubs.
@@ -34,6 +35,9 @@ extends_documentation_fragment:
   - amazon.aws.region.modules
   - amazon.aws.boto3
 attributes:
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
   check_mode:
     description: Predicts notification hub changes without modifying AWS.
     support: full

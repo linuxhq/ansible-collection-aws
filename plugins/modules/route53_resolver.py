@@ -5,6 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: route53_resolver
+version_added: '1.9.0'
 short_description: Manage aws route53 resolver endpoints
 description:
   - Manages AWS Route53 Resolver endpoints.
