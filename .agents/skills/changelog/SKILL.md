@@ -1,12 +1,12 @@
 ---
 name: changelog
-description: Manage changelog fragments and releases.
+description: Manage changelog fragments and CHANGELOG.rst with antsibull-changelog through Tox. Add a fragment per user-facing change; release consumes fragments to cut a version.
 ---
 
 # changelog
 
 Record user-facing changes as YAML fragments in `changelogs/fragments/`. `antsibull-changelog`
-folds them into `CHANGELOG.rst`.
+(config `changelogs/config.yaml`) folds them into `CHANGELOG.rst`.
 
 ## Add a fragment
 
@@ -40,7 +40,6 @@ tox run -e changelog -- generate
 
 - `generate` doesn't touch fragments or show pending ones.
 - `lint-changelog-yaml` validates the generated changelog data used to render `CHANGELOG.rst`.
-
 ## Release fragments
 
 After bumping `version` in `galaxy.yml`, consume the fragments:

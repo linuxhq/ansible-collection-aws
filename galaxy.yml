@@ -7,10 +7,6 @@ build_ignore:
   - .ansible
   - .ansible/**
   - .ansible-lint
-  - .claude
-  - .claude/**
-  - .codex
-  - .codex/**
   - .config
   - .config/**
   - .DS_Store
@@ -20,6 +16,8 @@ build_ignore:
   - .gitignore
   - .pre-commit-config.yaml
   - .python-version
+  - .pytest_cache
+  - .pytest_cache/**
   - .ruff.toml
   - .ruff_cache
   - .ruff_cache/**
@@ -27,7 +25,7 @@ build_ignore:
   - AGENTS.md
   - ansible.cfg
   - changelogs/.plugin-cache.yaml
-  - CLAUDE.md
+  - pyproject.toml
   - requirements.txt
   - requirements.yml
   - roles/*/molecule
@@ -41,6 +39,7 @@ build_ignore:
   - '**/__pycache__/**'
   - '**/*.pyc'
   - '**/*.pyo'
+  - '**/AGENTS.md'
   - '*.tar.gz'
   - '*.tgz'
 description: A collection of aws roles
@@ -61,5 +60,5 @@ tags:
   - aws
   - cloud
   - infrastructure
-version: 2.3.0
+version: 2.4.0
 ...

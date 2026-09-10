@@ -27,5 +27,6 @@ class Ec2InstanceMetadataInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["region"], "us-west-2")
         self.assertEqual(raised.exception.values["account_level"], {"http_tokens": "required"})

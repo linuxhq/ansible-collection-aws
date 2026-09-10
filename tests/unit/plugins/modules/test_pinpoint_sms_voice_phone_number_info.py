@@ -71,6 +71,7 @@ class PinpointSmsVoicePhoneNumberInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["msg"], "max_results must be between 1 and 100")
 
     def test_rejects_provider_list_limits(self):
@@ -102,6 +103,7 @@ class PinpointSmsVoicePhoneNumberInfoTests(TestCase):
                     self.assertRaises(ModuleFail) as raised,
                 ):
                     plugin.main()
+
                 self.assertEqual(raised.exception.values["msg"], message)
 
     def test_phone_numbers_are_enriched_with_tags(self):
@@ -127,6 +129,7 @@ class PinpointSmsVoicePhoneNumberInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["phone_number_ids"], ["phone-1"])
         self.assertEqual(
             raised.exception.values["phone_numbers"][0]["tags"],
@@ -155,3 +158,48 @@ class PinpointSmsVoicePhoneNumberInfoTests(TestCase):
                 ),
             ],
         )
+
+    def test_rejects_malformed_phone_number(self):
+        module = FakeModule(
+            {
+                "filters": None,
+                "max_results": None,
+                "owner": "SELF",
+                "phone_number_ids": None,
+            }
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[{"PhoneNumberArn": "arn:phone"}]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertIn("malformed", raised.exception.values["msg"])
+
+    def test_rejects_malformed_tags(self):
+        client = Mock()
+        client.list_tags_for_resource.return_value = {"Tags": "invalid"}
+        module = FakeModule(
+            {
+                "filters": None,
+                "max_results": None,
+                "owner": "SELF",
+                "phone_number_ids": None,
+            },
+            client=client,
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(
+                plugin,
+                "query_list",
+                return_value=[{"PhoneNumberArn": "arn:phone", "PhoneNumberId": "phone-1"}],
+            ),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertIn("malformed tags", raised.exception.values["msg"])

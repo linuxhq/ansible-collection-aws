@@ -25,6 +25,7 @@ class SnsSmsAttributesTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("between 0 and 100", raised.exception.values["msg"])
 
     def test_partial_update_preserves_unmanaged_attributes(self):
@@ -44,6 +45,7 @@ class SnsSmsAttributesTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         client.set_sms_attributes.assert_called_once_with(attributes={"DefaultSenderID": "new"}, aws_retry=True)
         self.assertEqual(raised.exception.values["attributes"]["monthly_spend_limit"], "100")
 
@@ -60,3 +62,16 @@ class SnsSmsAttributesTests(TestCase):
 
         require_methods.assert_called_once_with(module, client, "SNS", {"get_sms_attributes": ()})
         client.set_sms_attributes.assert_not_called()
+
+    def test_rejects_malformed_get_response(self):
+        client = Mock()
+        client.get_sms_attributes.return_value = {"attributes": []}
+        module = FakeModule(dict.fromkeys(plugin.MANAGED_ATTRIBUTES), client=client)
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertIn("Unexpected response", raised.exception.values["msg"])

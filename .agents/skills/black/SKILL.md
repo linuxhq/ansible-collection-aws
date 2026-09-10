@@ -1,11 +1,11 @@
 ---
 name: black
-description: Format Python code with black.
+description: Format Python plugin code with black through Tox. Run after every edit under plugins/.
 ---
 
 # black
 
-Matches CI's pre-commit hook.
+Match CI's pre-commit hook.
 
 ```sh
 tox run -e black -- plugins/modules/{{ file }}.py

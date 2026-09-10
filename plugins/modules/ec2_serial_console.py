@@ -5,11 +5,14 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_serial_console
-short_description: Manage aws ec2 serial console access
+version_added: "1.9.0"
+short_description: Manage AWS EC2 serial console access
 description:
   - Enables or disables EC2 serial console access for a region.
 author:
   - Taylor Kimball (@tkimball83)
+requirements:
+  - botocore >= 1.20.41
 options:
   state:
     description:
@@ -25,6 +28,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: Predicts serial console access changes without modifying AWS.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -49,6 +59,11 @@ serial_console_access:
     - The current EC2 serial console access status for the selected region.
   returned: always
   type: dict
+  contains:
+    serial_console_access_enabled:
+      description: Whether EC2 serial console access is enabled.
+      returned: always
+      type: bool
 state:
   description: The requested state of EC2 serial console access.
   returned: always
@@ -62,23 +77,13 @@ except ImportError:
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
-)
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.ec2_serial_console import (
+    normalized_serial_console_access,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
-
-
-def normalized_serial_console_access(response):
-    response.pop("ResponseMetadata", None)
-
-    return boto3_resource_to_ansible_dict(
-        response,
-        transform_tags=False,
-        force_tags=False,
-    )
 
 
 def main():
@@ -105,7 +110,7 @@ def main():
     )
 
     try:
-        current = normalized_serial_console_access(client.get_serial_console_access_status(aws_retry=True))
+        current = normalized_serial_console_access(module, client.get_serial_console_access_status(aws_retry=True))
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
@@ -123,7 +128,7 @@ def main():
                 {"enable_serial_console_access": ()},
             )
             try:
-                current = normalized_serial_console_access(client.enable_serial_console_access(aws_retry=True))
+                current = normalized_serial_console_access(module, client.enable_serial_console_access(aws_retry=True))
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
@@ -137,7 +142,7 @@ def main():
                 {"disable_serial_console_access": ()},
             )
             try:
-                current = normalized_serial_console_access(client.disable_serial_console_access(aws_retry=True))
+                current = normalized_serial_console_access(module, client.disable_serial_console_access(aws_retry=True))
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,

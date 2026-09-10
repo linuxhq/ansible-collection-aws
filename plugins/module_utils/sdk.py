@@ -51,11 +51,15 @@ def query_list(module, client, method_name, result_key, error_msg, **kwargs):
             if not marker:
                 if response.get("IsTruncated") or response.get("isTruncated"):
                     module.fail_json(msg=f"{error_msg}: truncated response without a marker")
+
                 return items
+
             if marker in markers:
                 module.fail_json(msg=f"{error_msg}: repeated pagination marker")
+
             if marker_name is None:
                 module.fail_json(msg=f"{error_msg}: pagination marker has no request parameter")
+
             markers.add(marker)
             kwargs[marker_name] = marker
     except (BotoCoreError, ClientError) as e:

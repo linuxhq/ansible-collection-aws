@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import ec2_placement_group_
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
@@ -31,6 +32,7 @@ class Ec2PlacementGroupInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(
             require.call_args.args[3],
             {"describe_placement_groups": ("GroupIds",)},
@@ -43,3 +45,18 @@ class Ec2PlacementGroupInfoTests(TestCase):
             "Unable to describe EC2 placement groups",
             GroupIds=["pg-1"],
         )
+
+    def test_rejects_invalid_placement_group_response(self):
+        module = FakeModule(
+            {"filters": None, "group_ids": None, "group_names": None},
+            client=Mock(),
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[None]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertIn("invalid placement group information", raised.exception.values["msg"])

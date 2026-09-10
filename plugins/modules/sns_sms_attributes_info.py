@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: sns_sms_attributes_info
-short_description: Gather information about aws simple notification service sms attributes
+short_description: Gather information about AWS Simple Notification Service SMS attributes
 description:
   - Gathers information about AWS Simple Notification Service SMS attributes.
   - This module maps to the SNS C(GetSMSAttributes) API.
@@ -24,6 +24,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module only gathers information and does not modify resources.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -45,6 +52,31 @@ attributes:
       C(default_sms_type).
   returned: always
   type: dict
+  contains:
+    default_sender_id:
+      description: Default sender ID displayed on receiving devices.
+      returned: when configured and requested
+      type: str
+    default_sms_type:
+      description: Default SMS message type.
+      returned: when configured and requested
+      type: str
+    delivery_status_iam_role:
+      description: IAM role ARN used to write SMS delivery logs.
+      returned: when configured and requested
+      type: str
+    delivery_status_success_sampling_rate:
+      description: Percentage of successful deliveries written to delivery logs.
+      returned: when configured and requested
+      type: str
+    monthly_spend_limit:
+      description: Monthly SMS spending limit in USD.
+      returned: when configured and requested
+      type: str
+    usage_report_s3_bucket:
+      description: S3 bucket receiving daily SMS usage reports.
+      returned: when configured and requested
+      type: str
 """
 
 try:
@@ -87,6 +119,9 @@ def main():
         response = client.get_sms_attributes(**request, aws_retry=True)
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg="Unable to get AWS Simple Notification Service SMS attributes")
+
+    if not isinstance(response, dict) or not isinstance(response.get("attributes", {}), dict):
+        module.fail_json(msg="Unexpected response while getting AWS Simple Notification Service SMS attributes")
 
     module.exit_json(
         attributes=boto3_resource_to_ansible_dict(

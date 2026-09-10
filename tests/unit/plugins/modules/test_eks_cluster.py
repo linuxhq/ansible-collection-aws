@@ -74,6 +74,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["msg"], "tags must contain at most 50 entries")
 
     def test_absent_does_not_validate_unused_create_options(self):
@@ -104,6 +105,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             raised.exception.values["msg"],
             "encryption_config must contain at most one entry",
@@ -126,12 +128,81 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         require.assert_called_once_with(module, client, "EKS", {"delete_cluster": ("name",)})
         self.assertTrue(raised.exception.values["changed"])
 
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
         assert options["argument_spec"]["wait_timeout"]["default"] == 1200
+        assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
+
+    def test_describe_rejects_malformed_response(self):
+        client = Mock(describe_cluster=Mock(return_value={"cluster": None}))
+        module = FakeModule({"name": "example"})
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.describe_cluster(client, module)
+
+        self.assertEqual(raised.exception.values["msg"], "EKS returned an invalid cluster")
+
+    def test_describe_rejects_malformed_cluster_configuration(self):
+        client = Mock(
+            describe_cluster=Mock(
+                return_value={
+                    "cluster": {
+                        "arn": "arn:cluster",
+                        "name": "example",
+                        "resourcesVpcConfig": "invalid",
+                        "status": "ACTIVE",
+                    }
+                }
+            )
+        )
+        module = FakeModule({"name": "example"})
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.describe_cluster(client, module)
+
+        self.assertEqual(raised.exception.values["msg"], "EKS returned an invalid cluster")
+
+    def test_update_validation_rejects_malformed_response(self):
+        module = FakeModule({"name": "example"})
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.validate_update(module, {"id": "update-1"})
+
+        self.assertEqual(raised.exception.values["msg"], "EKS returned an invalid cluster update")
+
+    def test_waited_update_rejects_disappearing_cluster(self):
+        client = Mock(update_cluster_version=Mock(return_value={"update": {"id": "update-1", "status": "InProgress"}}))
+        params = dict.fromkeys(plugin.CREATE_FIELDS)
+        params.update(
+            {
+                "name": "example",
+                "purge_tags": True,
+                "tags": None,
+                "version": "1.34",
+                "wait": True,
+            }
+        )
+        current = {
+            "arn": "arn:cluster",
+            "name": "example",
+            "status": "ACTIVE",
+            "version": "1.33",
+        }
+        module = FakeModule(params)
+        with (
+            patch.object(plugin, "describe_cluster", side_effect=[current, None]),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "wait_for_update"),
+            patch.object(plugin, "wait_for_cluster"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "EKS cluster example disappeared after update",
+        )
 
     def test_changed_request_contains_only_differences(self):
         current = {"version": "1.32", "resources": {"public": True, "private": False}}
@@ -159,8 +230,8 @@ class EksClusterTests(TestCase):
     def test_vpc_endpoint_and_network_changes_use_separate_updates(self):
         client = Mock()
         client.update_cluster_config.side_effect = [
-            {"update": {"id": "update-1"}},
-            {"update": {"id": "update-2"}},
+            {"update": {"id": "update-1", "status": "InProgress"}},
+            {"update": {"id": "update-2", "status": "InProgress"}},
         ]
         params = dict.fromkeys(plugin.CREATE_FIELDS)
         params.update(
@@ -193,6 +264,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(
             [call.kwargs for call in client.update_cluster_config.call_args_list],
@@ -281,6 +353,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.ensure_present(client, FakeModule(params))
+
         self.assertEqual(
             raised.exception.values["msg"],
             "The resulting cluster tags must contain at most 50 entries",
@@ -322,7 +395,17 @@ class EksClusterTests(TestCase):
         self.assertFalse(raised.exception.values["changed"])
 
     def test_deleting_cluster_waits_then_recreates(self):
-        client = Mock(create_cluster=Mock(return_value={"cluster": {"arn": "arn:cluster", "status": "CREATING"}}))
+        client = Mock(
+            create_cluster=Mock(
+                return_value={
+                    "cluster": {
+                        "arn": "arn:cluster",
+                        "name": "example",
+                        "status": "CREATING",
+                    }
+                }
+            )
+        )
         params = dict.fromkeys(plugin.CREATE_FIELDS)
         params.update(
             {
@@ -347,6 +430,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_present(client, module)
+
         wait_for_cluster.assert_called_once_with(client, module, "cluster_deleted")
         self.assertEqual(
             require.call_args.args[3],
@@ -372,6 +456,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         self.assertFalse(raised.exception.values["changed"])
         client.delete_cluster.assert_not_called()
 
@@ -399,6 +484,7 @@ class EksClusterTests(TestCase):
                 self.assertRaises(ModuleFail) as raised,
             ):
                 plugin.ensure_present(Mock(), FakeModule(params))
+
             self.assertIn(message, raised.exception.values["msg"])
 
     def test_failed_update_stops_waiting_with_update_details(self):
@@ -410,6 +496,7 @@ class EksClusterTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.wait_for_update(client, module, "update-1")
+
         require.assert_called_once_with(
             module,
             client,

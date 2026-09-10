@@ -1,11 +1,12 @@
 from types import SimpleNamespace
 from unittest import TestCase
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from ansible_collections.linuxhq.aws.plugins.modules import iam_oidc_provider as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -26,11 +27,13 @@ class IamOidcProviderTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
 
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
         assert options["required_if"] == [("state", "present", ["client_id_list", "thumbprint_list"])]
+        assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
 
     def test_main_only_requires_provider_listing_before_reconciliation(self):
         module = Mock(
@@ -72,6 +75,7 @@ class IamOidcProviderTests(TestCase):
             patch.object(plugin, "require_client_methods"),
         ):
             result = plugin.get_provider_by_url(client, module)
+
         self.assertEqual(result, provider)
         query_list.assert_called_once_with(
             module,
@@ -79,6 +83,19 @@ class IamOidcProviderTests(TestCase):
             "list_open_id_connect_providers",
             "OpenIDConnectProviderList",
             "Unable to list AWS IAM OIDC providers",
+        )
+
+    def test_provider_lookup_rejects_invalid_summaries(self):
+        module = FakeModule({"url": "https://example.com/id"})
+        with (
+            patch.object(plugin, "query_list", return_value=[{}]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.get_provider_by_url(Mock(), module)
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unable to list AWS IAM OIDC providers: AWS returned an invalid response",
         )
 
     def test_non_hexadecimal_thumbprint_is_rejected(self):
@@ -108,6 +125,22 @@ class IamOidcProviderTests(TestCase):
             },
             "url must begin with https://",
         )
+
+    def test_present_rejects_url_without_host(self):
+        for url in ("https://", "https:///path"):
+            with self.subTest(url=url):
+                assert_module_rejects(
+                    self,
+                    plugin,
+                    {
+                        "client_id_list": ["client"],
+                        "state": "present",
+                        "tags": None,
+                        "thumbprint_list": ["a" * 40],
+                        "url": url,
+                    },
+                    "url must identify an OIDC provider host",
+                )
 
     def test_provider_list_limits_are_rejected(self):
         cases = [
@@ -158,6 +191,7 @@ class IamOidcProviderTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertFalse(raised.exception.values["changed"])
         client.update_open_id_connect_provider_thumbprint.assert_not_called()
 
@@ -185,6 +219,7 @@ class IamOidcProviderTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(
             raised.exception.values["open_id_connect_provider"]["client_id_list"],
@@ -204,6 +239,22 @@ class IamOidcProviderTests(TestCase):
             OpenIDConnectProviderArn="arn:provider",
             ClientID="new",
             aws_retry=True,
+        )
+        self.assertLess(
+            client.method_calls.index(
+                call.add_client_id_to_open_id_connect_provider(
+                    OpenIDConnectProviderArn="arn:provider",
+                    ClientID="new",
+                    aws_retry=True,
+                )
+            ),
+            client.method_calls.index(
+                call.remove_client_id_from_open_id_connect_provider(
+                    OpenIDConnectProviderArn="arn:provider",
+                    ClientID="old",
+                    aws_retry=True,
+                )
+            ),
         )
         client.update_open_id_connect_provider_thumbprint.assert_called_once_with(
             OpenIDConnectProviderArn="arn:provider",
@@ -230,6 +281,7 @@ class IamOidcProviderTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(
             raised.exception.values["open_id_connect_provider"],

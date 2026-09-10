@@ -1,6 +1,6 @@
 ---
 name: ruff
-description: Lint Python code with ruff.
+description: Lint Python plugin code with ruff through Tox. Run after every edit under plugins/.
 ---
 
 # ruff

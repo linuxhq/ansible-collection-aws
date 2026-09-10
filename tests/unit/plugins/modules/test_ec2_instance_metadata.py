@@ -36,6 +36,7 @@ class Ec2InstanceMetadataTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("between 1 and 64", raised.exception.values["msg"])
 
     def test_check_mode_projects_clearing_an_account_default(self):
@@ -61,6 +62,7 @@ class Ec2InstanceMetadataTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(raised.exception.values["account_level"], {"http_tokens": "required"})
         client.modify_instance_metadata_defaults.assert_not_called()

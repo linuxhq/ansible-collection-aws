@@ -42,6 +42,7 @@ class PinpointSmsVoicePhonePoolInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["msg"], "max_results must be between 1 and 100")
 
     def test_rejects_provider_list_limits(self):
@@ -73,6 +74,7 @@ class PinpointSmsVoicePhonePoolInfoTests(TestCase):
                     self.assertRaises(ModuleFail) as raised,
                 ):
                     plugin.main()
+
                 self.assertEqual(raised.exception.values["msg"], message)
 
     def test_pools_are_enriched_with_identities_and_tags(self):
@@ -103,6 +105,7 @@ class PinpointSmsVoicePhonePoolInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         pool = raised.exception.values["pools"][0]
         self.assertEqual(pool["origination_identities"][0]["origination_identity"], "phone-1")
         self.assertEqual(pool["tags"], {"Name": "primary"})
@@ -118,3 +121,54 @@ class PinpointSmsVoicePhonePoolInfoTests(TestCase):
                 "list_tags_for_resource": ("ResourceArn",),
             },
         )
+
+    def test_rejects_malformed_pool(self):
+        module = FakeModule({"filters": None, "max_results": None, "owner": "SELF", "pool_ids": None})
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[{"PoolArn": "arn:pool"}]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertIn("malformed", raised.exception.values["msg"])
+
+    def test_rejects_malformed_origination_identities(self):
+        module = FakeModule({"filters": None, "max_results": None, "owner": "SELF", "pool_ids": None})
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[{"PoolId": "pool-1"}]),
+            patch.object(plugin, "paginated_query_with_retries", return_value=[]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertIn("malformed origination identities", raised.exception.values["msg"])
+
+    def test_rejects_malformed_tags(self):
+        client = Mock()
+        client.list_tags_for_resource.return_value = {"Tags": "invalid"}
+        module = FakeModule(
+            {"filters": None, "max_results": None, "owner": "SELF", "pool_ids": None},
+            client=client,
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(
+                plugin,
+                "query_list",
+                return_value=[{"PoolArn": "arn:pool", "PoolId": "pool-1"}],
+            ),
+            patch.object(
+                plugin,
+                "paginated_query_with_retries",
+                return_value={"OriginationIdentities": []},
+            ),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertIn("malformed tags", raised.exception.values["msg"])

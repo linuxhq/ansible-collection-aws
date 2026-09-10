@@ -6,6 +6,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import route53_zone_associa
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -28,6 +29,7 @@ class Route53ZoneAssociateTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module, "zone-1")
+
         self.assertTrue(raised.exception.values["changed"])
 
     def test_module_contract(self):
@@ -63,6 +65,32 @@ class Route53ZoneAssociateTests(TestCase):
             {"VPCId": "vpc-2", "VPCRegion": "us-west-2"},
         ]
 
+    def test_get_vpc_associations_rejects_invalid_response(self):
+        client = Mock()
+        client.get_hosted_zone.return_value = {"VPCs": {}}
+        module = FakeModule({})
+
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.get_vpc_associations(client, module, "Z1")
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "AWS Route53 returned an invalid hosted zone response for Z1",
+        )
+
+    def test_get_vpc_associations_rejects_invalid_vpc(self):
+        client = Mock()
+        client.get_hosted_zone.return_value = {"VPCs": [{"VPCId": "vpc-1"}]}
+        module = FakeModule({})
+
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.get_vpc_associations(client, module, "Z1")
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "AWS Route53 returned an invalid VPC association for hosted zone Z1",
+        )
+
     def test_check_mode_projects_the_new_association(self):
         client = Mock()
         module = FakeModule({"vpc_id": "vpc-2", "vpc_region": "us-west-2"}, check_mode=True)
@@ -75,6 +103,7 @@ class Route53ZoneAssociateTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module, "Z1")
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(
             [vpc["vpc_id"] for vpc in raised.exception.values["vpcs"]],

@@ -38,6 +38,21 @@ class AccountRegionTests(TestCase):
         options = assert_module_contract(self, plugin)
         assert options["argument_spec"]["wait_timeout"]["default"] == 1800
 
+    def test_get_region_opt_status_rejects_missing_status(self):
+        module = FakeModule({"name": "af-south-1"})
+        client = Mock()
+        client.get_region_opt_status.return_value = {}
+
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.get_region_opt_status(client, module)
+
+        client.get_region_opt_status.assert_called_once_with(
+            RegionName="af-south-1",
+            aws_retry=True,
+        )
+        self.assertIn("af-south-1", raised.exception.values["msg"])
+        self.assertIn("unexpected status None", raised.exception.values["msg"])
+
     def test_check_mode_predicts_region_enablement(self):
         module = FakeModule({"name": "af-south-1", "wait": True}, check_mode=True)
         client = Mock()
@@ -46,6 +61,7 @@ class AccountRegionTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         client.enable_region.assert_not_called()
         self.assertEqual(raised.exception.values["region_opt_status"], "ENABLED")
         self.assertTrue(raised.exception.values["changed"])
@@ -78,6 +94,7 @@ class AccountRegionTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_present(client, module)
+
         wait_for_status.assert_called_once_with(client, module, "region_disabled", plugin.ABSENT_STEADY_STATUSES)
         client.enable_region.assert_called_once_with(RegionName="af-south-1", aws_retry=True)
         self.assertEqual(require.call_args.args[3], {"enable_region": ("RegionName",)})
@@ -96,6 +113,7 @@ class AccountRegionTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_absent(client, module)
+
         wait_for_status.assert_called_once_with(client, module, "region_enabled", plugin.PRESENT_STEADY_STATUSES)
         client.disable_region.assert_called_once_with(RegionName="af-south-1", aws_retry=True)
         self.assertEqual(require.call_args.args[3], {"disable_region": ("RegionName",)})

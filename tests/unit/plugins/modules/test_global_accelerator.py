@@ -52,6 +52,7 @@ class GlobalAcceleratorTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         require.assert_called_once_with(
             module,
             client,
@@ -83,7 +84,36 @@ class GlobalAcceleratorTests(TestCase):
         client.delete_accelerator.assert_not_called()
 
     def test_module_contract(self):
-        assert_module_contract(self, plugin)
+        options = assert_module_contract(self, plugin)
+        assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
+
+    def test_describe_rejects_malformed_accelerator(self):
+        client = Mock(describe_accelerator=Mock(return_value={"Accelerator": None}))
+        module = FakeModule({})
+        with (
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.get_accelerator_by_arn(client, module, "arn:accelerator")
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Global Accelerator returned an invalid accelerator",
+        )
+
+    def test_listeners_reject_malformed_response_items(self):
+        module = FakeModule({})
+        with (
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[None]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.get_listeners(Mock(), module, "arn:accelerator")
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Global Accelerator returned an invalid listener",
+        )
 
     def test_main_defers_sdk_validation_until_an_api_is_needed(self):
         endpoint_group = {
@@ -243,6 +273,7 @@ class GlobalAcceleratorTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         wait_for_accelerator.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed")
         self.assertFalse(raised.exception.values["changed"])
         client.update_accelerator.assert_not_called()
@@ -640,6 +671,7 @@ class GlobalAcceleratorTests(TestCase):
             patch.object(plugin, "require_endpoint_configuration_parameters"),
         ):
             changed, groups = plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired])
+
         require.assert_called_once_with(
             module,
             client,
@@ -693,6 +725,7 @@ class GlobalAcceleratorTests(TestCase):
                 call.args,
                 (client, module, "arn:accelerator", "accelerator_deployed"),
             )
+
         client.delete_accelerator.assert_called_once_with(AcceleratorArn="arn:accelerator", aws_retry=True)
 
     def test_listener_deletion_waits_for_endpoint_group_deletion(self):
@@ -722,7 +755,14 @@ class GlobalAcceleratorTests(TestCase):
 
     def test_listener_creation_waits_before_endpoint_groups(self):
         client = Mock()
-        client.create_listener.return_value = {"Listener": {"ListenerArn": "arn:listener"}}
+        client.create_listener.return_value = {
+            "Listener": {
+                "ClientAffinity": "NONE",
+                "ListenerArn": "arn:listener",
+                "PortRanges": [{"FromPort": 443, "ToPort": 443}],
+                "Protocol": "TCP",
+            }
+        }
         desired = {
             "client_affinity": "NONE",
             "endpoint_groups": [{"endpoint_group_region": "us-east-1"}],
@@ -752,7 +792,14 @@ class GlobalAcceleratorTests(TestCase):
                 {"Error": {"Code": "LimitExceededException", "Message": "full"}},
                 "CreateListener",
             ),
-            {"Listener": {"ListenerArn": "arn:new"}},
+            {
+                "Listener": {
+                    "ClientAffinity": "NONE",
+                    "ListenerArn": "arn:new",
+                    "PortRanges": [{"FromPort": 443, "ToPort": 443}],
+                    "Protocol": "TCP",
+                }
+            },
         ]
         desired = {
             "client_affinity": "NONE",
@@ -786,6 +833,8 @@ class GlobalAcceleratorTests(TestCase):
         client.create_accelerator.return_value = {
             "Accelerator": {
                 "AcceleratorArn": "arn:accelerator",
+                "Enabled": True,
+                "IpAddressType": "IPV4",
                 "Name": "example",
             }
         }

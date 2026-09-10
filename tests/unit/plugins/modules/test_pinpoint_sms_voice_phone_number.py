@@ -108,6 +108,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("must be TRANSACTIONAL", raised.exception.values["msg"])
 
     def test_existing_number_matches_capabilities_without_order(self):
@@ -141,9 +142,34 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertFalse(raised.exception.values["changed"])
         self.assertEqual(raised.exception.values["phone_number_id"], "phone-1")
         client.request_phone_number.assert_not_called()
+
+    def test_existing_number_rejects_malformed_response(self):
+        module = FakeModule(
+            {
+                "deletion_protection_enabled": False,
+                "iso_country_code": "US",
+                "message_type": "TRANSACTIONAL",
+                "number_capabilities": ["SMS"],
+                "number_type": "LONG_CODE",
+                "opt_out_list_name": None,
+                "pool_id": None,
+                "registration_id": None,
+                "state": "present",
+                "tags": None,
+                "wait": False,
+            }
+        )
+        with (
+            patch.object(plugin, "query_list", return_value=[{"Status": "ACTIVE"}]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.ensure_present(Mock(), module)
+
+        self.assertIn("malformed", raised.exception.values["msg"])
 
     def test_existing_number_matches_pool_and_opt_out_list_arns(self):
         client = Mock()
@@ -178,8 +204,46 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertFalse(raised.exception.values["changed"])
         client.request_phone_number.assert_not_called()
+
+    def test_check_mode_does_not_wait_for_existing_number(self):
+        client = Mock()
+        module = FakeModule(
+            {
+                "deletion_protection_enabled": False,
+                "iso_country_code": "US",
+                "message_type": "TRANSACTIONAL",
+                "number_capabilities": ["SMS"],
+                "number_type": "LONG_CODE",
+                "opt_out_list_name": None,
+                "pool_id": None,
+                "registration_id": None,
+                "state": "present",
+                "tags": None,
+                "wait": True,
+            },
+            check_mode=True,
+        )
+        current = {
+            "DeletionProtectionEnabled": False,
+            "IsoCountryCode": "US",
+            "MessageType": "TRANSACTIONAL",
+            "NumberCapabilities": ["SMS"],
+            "NumberType": "LONG_CODE",
+            "PhoneNumberId": "phone-1",
+            "Status": "PENDING",
+        }
+        with (
+            patch.object(plugin, "query_list", return_value=[current]),
+            patch.object(plugin, "wait_for_phone_number_active") as wait_for_active,
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertFalse(raised.exception.values["changed"])
+        wait_for_active.assert_not_called()
 
     def test_check_mode_projects_deduplicated_request_without_client_token(self):
         client = Mock()
@@ -206,6 +270,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         phone_number = raised.exception.values["phone_number"]
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(phone_number["number_capabilities"], ["SMS", "VOICE"])
@@ -230,6 +295,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.wait_for_phone_number_active(Mock(), module, "phone-1")
+
         self.assertEqual(raised.exception.values["status"], "DELETED")
 
     def test_absent_activation_wait_does_not_fetch_tags(self):
@@ -275,6 +341,55 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
             result = plugin.wait_for_phone_number_active(Mock(), module, "phone-1")
 
         self.assertEqual(result, deleted)
+
+    def test_absent_activation_wait_accepts_disappearing_number(self):
+        module = FakeModule(
+            {
+                "state": "absent",
+                "tags": None,
+                "wait_delay": 1,
+                "wait_timeout": 10,
+            }
+        )
+        with (
+            patch.object(plugin.time, "monotonic", side_effect=[0, 1]),
+            patch.object(plugin, "get_phone_number", return_value=None),
+        ):
+            result = plugin.wait_for_phone_number_active(Mock(), module, "phone-1")
+
+        self.assertEqual(result, {})
+
+    def test_phone_number_tags_rejects_malformed_response(self):
+        client = Mock()
+        client.list_tags_for_resource.return_value = {"Tags": "invalid"}
+        module = FakeModule({})
+
+        with (
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.phone_number_tags(client, module, {"PhoneNumberArn": "arn:phone-1"})
+
+        self.assertIn("malformed tags", raised.exception.values["msg"])
+
+    def test_get_phone_number_rejects_malformed_response(self):
+        with (
+            patch.object(plugin, "paginated_query_with_retries", return_value=[]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.get_phone_number(Mock(), FakeModule({}), "phone-1")
+
+        self.assertIn("malformed", raised.exception.values["msg"])
+
+    def test_get_phone_number_rejects_wrong_phone_number(self):
+        response = {"PhoneNumbers": [{"PhoneNumberId": "phone-2", "Status": "ACTIVE"}]}
+        with (
+            patch.object(plugin, "paginated_query_with_retries", return_value=response),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.get_phone_number(Mock(), FakeModule({}), "phone-1")
+
+        self.assertIn("wrong", raised.exception.values["msg"])
 
     def test_absent_removes_pool_and_deletion_protection_before_release(self):
         client = Mock()
@@ -348,3 +463,26 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
 
         self.assertTrue(raised.exception.values["changed"])
         client.release_phone_number.assert_not_called()
+
+    def test_absent_does_not_return_stale_data_when_release_races_with_deletion(self):
+        missing = plugin.ClientError(
+            {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
+            "ReleasePhoneNumber",
+        )
+        client = Mock()
+        client.release_phone_number.side_effect = missing
+        module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
+
+        with (
+            patch.object(
+                plugin,
+                "get_phone_number",
+                return_value={"PhoneNumberId": "phone-1", "Status": "ACTIVE"},
+            ),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_absent(client, module)
+
+        self.assertTrue(raised.exception.values["changed"])
+        self.assertNotIn("phone_number", raised.exception.values)

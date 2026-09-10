@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import ecs_ecr_info as plug
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -31,6 +32,7 @@ class EcsEcrInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(
             require.call_args.args[3],
             {
@@ -53,3 +55,16 @@ class EcsEcrInfoTests(TestCase):
             },
             "repository_names must contain at most 100 unique entries",
         )
+
+    def test_rejects_malformed_repository_response(self):
+        module = FakeModule(
+            {"registry_id": None, "repository_names": None},
+            client=Mock(),
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "paginated_query_with_retries", return_value={"repositories": [None]}),
+            self.assertRaises(ModuleFail),
+        ):
+            plugin.main()

@@ -5,7 +5,8 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_vpc_prefix_list
-short_description: Manage aws virtual private cloud prefix lists
+version_added: "1.9.0"
+short_description: Manage AWS EC2 VPC prefix lists
 description:
   - Creates, updates, and deletes EC2 VPC managed prefix lists.
   - Manages prefix list entries idempotently.
@@ -46,12 +47,6 @@ options:
       - The managed prefix list name.
     required: true
     type: str
-  purge_tags:
-    description:
-      - Whether tags not listed in O(tags) should be removed.
-      - This option is only used when O(tags) is provided.
-    default: true
-    type: bool
   state:
     description:
       - Whether the managed prefix list should exist.
@@ -60,11 +55,6 @@ options:
       - present
     default: present
     type: str
-  tags:
-    description:
-      - Tags to apply to the managed prefix list.
-      - This must contain at most 50 entries; keys must contain 1 to 127 characters and values at most 256 characters.
-    type: dict
   wait:
     description:
       - Whether to wait for managed prefix list create, update, and delete operations.
@@ -86,6 +76,14 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+  - amazon.aws.tags
+attributes:
+  check_mode:
+    description: Predicts prefix-list, entry, and tag changes without modifying AWS.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -233,6 +231,49 @@ EC2_WAITER_MODEL_DATA = {
 }
 
 
+def validate_prefix_list(module, prefix_list):
+    tags = prefix_list.get("Tags") if isinstance(prefix_list, dict) else None
+    if (
+        not isinstance(prefix_list, dict)
+        or not isinstance(prefix_list.get("AddressFamily"), str)
+        or not isinstance(prefix_list.get("MaxEntries"), int)
+        or isinstance(prefix_list.get("MaxEntries"), bool)
+        or not isinstance(prefix_list.get("OwnerId"), str)
+        or not isinstance(prefix_list.get("PrefixListId"), str)
+        or not prefix_list["PrefixListId"]
+        or not isinstance(prefix_list.get("PrefixListName"), str)
+        or not isinstance(prefix_list.get("State"), str)
+        or not isinstance(prefix_list.get("Version"), int)
+        or isinstance(prefix_list.get("Version"), bool)
+        or (tags is not None and not isinstance(tags, list))
+        or (
+            isinstance(tags, list)
+            and any(
+                not isinstance(tag, dict)
+                or not isinstance(tag.get("Key"), str)
+                or not isinstance(tag.get("Value"), str)
+                for tag in tags
+            )
+        )
+    ):
+        module.fail_json(msg="EC2 returned an invalid managed prefix list")
+
+    return prefix_list
+
+
+def validate_prefix_list_entries(module, entries):
+    for entry in entries:
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("Cidr"), str)
+            or not entry["Cidr"]
+            or (entry.get("Description") is not None and not isinstance(entry.get("Description"), str))
+        ):
+            module.fail_json(msg="EC2 returned invalid managed prefix list entries")
+
+    return entries
+
+
 def create_prefix_list(client, module, desired_prefix_list, desired_entries):
     tags = module.params["tags"]
     request = scrub_none_parameters(
@@ -254,20 +295,21 @@ def create_prefix_list(client, module, desired_prefix_list, desired_entries):
         {"create_managed_prefix_list": tuple(request)},
     )
     try:
-        prefix_list = client.create_managed_prefix_list(
+        response = client.create_managed_prefix_list(
             **request,
             aws_retry=True,
-        ).get("PrefixList", {})
+        )
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=f"Unable to create EC2 VPC managed prefix list {module.params['name']}",
         )
 
-    created_prefix_list_id = prefix_list.get("PrefixListId")
-
-    if not created_prefix_list_id:
-        module.fail_json(msg=("AWS did not return the created EC2 VPC managed prefix list " f"{module.params['name']}"))
+    prefix_list = validate_prefix_list(
+        module,
+        response.get("PrefixList") if isinstance(response, dict) else None,
+    )
+    created_prefix_list_id = prefix_list["PrefixListId"]
 
     if module.params["wait"]:
         wait_for_ready_state(client, module, created_prefix_list_id)
@@ -321,6 +363,7 @@ def ensure_absent(client, module):
             "restore-in-progress",
         }:
             wait_for_ready_state(client, module, prefix_list_id)
+
         delete_prefix_list(client, module, prefix_list_id)
 
     result = {
@@ -330,6 +373,7 @@ def ensure_absent(client, module):
     }
     if prefix_list_id:
         result["prefix_list_id"] = prefix_list_id
+
     module.exit_json(**result)
 
 
@@ -350,6 +394,7 @@ def ensure_present(client, module):
                 "managed_prefix_list_deleted",
             )
             return ensure_present(client, module)
+
     desired_entries = comparable_entries(module.params["entries"])
 
     changed = current is None
@@ -372,6 +417,7 @@ def ensure_present(client, module):
             current = snake_dict_to_camel_dict(desired_prefix_list, capitalize_first=True)
             if tags is not None:
                 current["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+
             current_entries = desired_entries
     else:
         current_prefix_list = comparable_prefix_list(current)
@@ -389,6 +435,7 @@ def ensure_present(client, module):
                 tags,
                 purge_tags=purge_tags,
             )
+
         changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
         if changed and not module.check_mode:
@@ -399,6 +446,7 @@ def ensure_present(client, module):
             }:
                 wait_for_ready_state(client, module, current.get("PrefixListId"))
                 return ensure_present(client, module)
+
             if remove_entries and not address_family_changed:
                 remove_entry_requests = [{"cidr": entry["cidr"]} for entry in remove_entries]
 
@@ -473,6 +521,7 @@ def ensure_present(client, module):
                     current, current_entries = get_current(client, module)
                 else:
                     current_entries = desired_entries
+
             if current is not None and tags is not None:
                 tags_to_set, tag_keys_to_unset = compare_aws_tags(
                     boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
@@ -526,6 +575,7 @@ def ensure_present(client, module):
             current.update(snake_dict_to_camel_dict(desired_prefix_list, capitalize_first=True))
             if tags is not None:
                 current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
+
             current_entries = desired_entries
 
     prefix_list = boto3_resource_to_ansible_dict(current or {}, transform_tags=True, force_tags=False)
@@ -544,6 +594,7 @@ def ensure_present(client, module):
 
     if prefix_list_id:
         result["prefix_list_id"] = prefix_list_id
+
     module.exit_json(**result)
 
 
@@ -570,13 +621,16 @@ def get_current(client, module):
             )
         },
     )
-    entries = query_list(
+    entries = validate_prefix_list_entries(
         module,
-        client,
-        "get_managed_prefix_list_entries",
-        "Entries",
-        f"Unable to get EC2 VPC managed prefix list entries for {prefix_list_id}",
-        PrefixListId=prefix_list_id,
+        query_list(
+            module,
+            client,
+            "get_managed_prefix_list_entries",
+            "Entries",
+            f"Unable to get EC2 VPC managed prefix list entries for {prefix_list_id}",
+            PrefixListId=prefix_list_id,
+        ),
     )
 
     return prefix_list, entries
@@ -588,6 +642,7 @@ def modify_prefix_list(client, module, current, **kwargs):
     }
     if "add_entries" in kwargs or "remove_entries" in kwargs:
         request["current_version"] = current.get("Version")
+
     request.update(kwargs)
     request = scrub_none_parameters(snake_dict_to_camel_dict(request, capitalize_first=True))
 
@@ -650,6 +705,7 @@ def get_customer_managed_prefix_list_by_name(client, module):
 
     matches = []
     for prefix_list in prefix_lists:
+        validate_prefix_list(module, prefix_list)
         if prefix_list.get("OwnerId") == "AWS" or prefix_list.get("State") == "delete-complete":
             continue
 
@@ -685,6 +741,7 @@ def comparable_entries(entries):
                 normalized_entry[field] = entry.get(field)
 
         result.append(normalized_entry)
+
     return sorted(result, key=lambda entry: json.dumps(entry, sort_keys=True))
 
 
@@ -710,7 +767,7 @@ def main():
             "default": "present",
             "type": "str",
         },
-        "tags": {"type": "dict"},
+        "tags": {"aliases": ["resource_tags"], "type": "dict"},
         "wait": {"default": True, "type": "bool"},
         "wait_delay": {"default": 1, "type": "int"},
         "wait_timeout": {"default": 60, "type": "int"},
@@ -731,6 +788,7 @@ def main():
     if state == "present":
         if not entries:
             module.fail_json(msg="entries must contain at least one item when state=present")
+
         if len(entries) > 100:
             module.fail_json(msg="entries must contain at most 100 items")
 
@@ -738,10 +796,12 @@ def main():
         for entry in entries:
             if len(entry.get("description") or "") > 255:
                 module.fail_json(msg="entries[].description must contain at most 255 characters")
+
             try:
                 cidr = ipaddress.ip_network(entry["cidr"])
             except ValueError:
                 module.fail_json(msg=f"entries[].cidr must be a valid CIDR: {entry['cidr']}")
+
             if cidr.version != int(module.params["address_family"][-1]):
                 module.fail_json(
                     msg=(
@@ -749,12 +809,14 @@ def main():
                         f"{module.params['address_family']}: {entry['cidr']}"
                     )
                 )
+
             entry["cidr"] = str(cidr)
             if entry["cidr"] in cidrs:
                 module.fail_json(
                     msg="entries[].cidr values must be unique",
                     cidr=entry["cidr"],
                 )
+
             cidrs.add(entry["cidr"])
 
     require_valid_tags(module, tags if state == "present" else None, 50, key_max=127)

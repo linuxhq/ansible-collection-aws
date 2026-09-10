@@ -23,6 +23,7 @@ class SsmDocumentTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
 
     def test_module_contract(self):
@@ -59,6 +60,7 @@ class SsmDocumentTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(
             client.update_document.call_args.kwargs["Content"],
@@ -215,6 +217,7 @@ class SsmDocumentTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertIn("immutable fields differ", raised.exception.values["msg"])
         client.update_document.assert_not_called()
 
@@ -241,6 +244,7 @@ class SsmDocumentTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertEqual(
             raised.exception.values["document"],
             {
@@ -258,4 +262,52 @@ class SsmDocumentTests(TestCase):
             Name="example",
             Tags=[{"Key": "Name", "Value": "example"}],
             aws_retry=True,
+        )
+
+    def test_get_document_rejects_malformed_content(self):
+        responses = (None, {"Content": "not-json"}, {"Content": "[]"})
+        for response in responses:
+            with self.subTest(response=response):
+                client = Mock(get_document=Mock(return_value=response))
+                module = FakeModule({"document_version": "$LATEST", "name": "example"})
+                with self.assertRaises(ModuleFail) as raised:
+                    plugin.get_document(client, module)
+
+                self.assertIn("Unexpected", raised.exception.values["msg"])
+
+    def test_get_document_rejects_malformed_tags(self):
+        client = Mock(
+            get_document=Mock(return_value={"Content": "{}"}),
+            list_tags_for_resource=Mock(return_value={"TagList": [None]}),
+        )
+        module = FakeModule({"document_version": "$LATEST", "name": "example"})
+        with self.assertRaises(ModuleFail) as raised:
+            plugin.get_document(client, module, include_tags=True)
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unexpected response while listing tags for AWS Systems Manager document example",
+        )
+
+    def test_create_rejects_malformed_response(self):
+        client = Mock(create_document=Mock(return_value={"DocumentDescription": None}))
+        module = FakeModule(
+            {
+                "content": {"schema_version": "2.2"},
+                "document_type": "Command",
+                "document_version": "$LATEST",
+                "name": "example",
+                "purge_tags": True,
+                "tags": None,
+            }
+        )
+        with (
+            patch.object(plugin, "get_document", return_value=None),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "AWS Systems Manager did not return the created document example",
         )

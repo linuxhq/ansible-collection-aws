@@ -46,6 +46,10 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module does not modify AWS resources.
+    support: full
 """
 
 EXAMPLES = r"""
@@ -102,6 +106,15 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
+def validate_pool(module, pool):
+    if (
+        not isinstance(pool, dict)
+        or not isinstance(pool.get("PoolId"), str)
+        or ("PoolArn" in pool and not isinstance(pool["PoolArn"], str))
+    ):
+        module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 pool data")
+
+
 def main():
     argument_spec = {
         "filters": {"type": "dict"},
@@ -122,8 +135,10 @@ def main():
 
     if max_results is not None and not 1 <= max_results <= 100:
         module.fail_json(msg="max_results must be between 1 and 100")
+
     if len(filters or {}) > 20:
         module.fail_json(msg="filters must contain at most 20 entries")
+
     if len(pool_ids) > 5:
         module.fail_json(msg="pool_ids must contain at most 5 entries")
 
@@ -132,10 +147,12 @@ def main():
     request = {}
     if max_results is not None:
         request["MaxResults"] = max_results
+
     if pool_ids:
         request["PoolIds"] = pool_ids
     else:
         request["Owner"] = owner
+
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
@@ -165,16 +182,17 @@ def main():
 
     normalized_pools = []
     for pool in pools:
+        validate_pool(module, pool)
         pool_id = pool.get("PoolId")
         origination_identities = []
 
         if pool_id:
             try:
-                origination_identities = paginated_query_with_retries(
+                response = paginated_query_with_retries(
                     client,
                     "list_pool_origination_identities",
                     PoolId=pool_id,
-                ).get("OriginationIdentities", [])
+                )
             except is_boto3_error_code("ResourceNotFoundException"):
                 continue
             except (BotoCoreError, ClientError) as e:
@@ -183,15 +201,24 @@ def main():
                     msg=("Unable to list origination identities for Pinpoint SMS Voice " f"V2 pool {pool_id}"),
                 )
 
+            origination_identities = response.get("OriginationIdentities") if isinstance(response, dict) else None
+            if not isinstance(origination_identities, list) or any(
+                not isinstance(identity, dict) or not isinstance(identity.get("OriginationIdentity"), str)
+                for identity in origination_identities
+            ):
+                module.fail_json(
+                    msg=f"AWS returned malformed origination identities for Pinpoint SMS Voice V2 pool {pool_id}"
+                )
+
         arn = pool.get("PoolArn")
         tags = []
 
         if arn:
             try:
-                tags = client.list_tags_for_resource(
+                response = client.list_tags_for_resource(
                     ResourceArn=arn,
                     aws_retry=True,
-                ).get("Tags", [])
+                )
             except is_boto3_error_code("ResourceNotFoundException"):
                 continue
             except (BotoCoreError, ClientError) as e:
@@ -199,6 +226,15 @@ def main():
                     e,
                     msg=f"Unable to list tags for Pinpoint SMS Voice V2 pool {arn}",
                 )
+
+            tags = response.get("Tags", []) if isinstance(response, dict) else None
+            if not isinstance(tags, list) or any(
+                not isinstance(tag, dict)
+                or not isinstance(tag.get("Key"), str)
+                or not isinstance(tag.get("Value"), str)
+                for tag in tags
+            ):
+                module.fail_json(msg=f"AWS returned malformed tags for Pinpoint SMS Voice V2 pool {arn}")
 
         normalized_pools.append(
             boto3_resource_to_ansible_dict(

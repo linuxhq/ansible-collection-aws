@@ -46,6 +46,10 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module does not modify AWS resources.
+    support: full
 """
 
 EXAMPLES = r"""
@@ -102,6 +106,15 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
+def validate_phone_number(module, phone_number):
+    if (
+        not isinstance(phone_number, dict)
+        or not isinstance(phone_number.get("PhoneNumberId"), str)
+        or ("PhoneNumberArn" in phone_number and not isinstance(phone_number["PhoneNumberArn"], str))
+    ):
+        module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 phone number data")
+
+
 def main():
     argument_spec = {
         "filters": {"type": "dict"},
@@ -122,8 +135,10 @@ def main():
 
     if max_results is not None and not 1 <= max_results <= 100:
         module.fail_json(msg="max_results must be between 1 and 100")
+
     if len(filters or {}) > 20:
         module.fail_json(msg="filters must contain at most 20 entries")
+
     if len(phone_number_ids) > 5:
         module.fail_json(msg="phone_number_ids must contain at most 5 entries")
 
@@ -132,10 +147,12 @@ def main():
     request = {}
     if max_results is not None:
         request["MaxResults"] = max_results
+
     if phone_number_ids:
         request["PhoneNumberIds"] = phone_number_ids
     else:
         request["Owner"] = owner
+
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
@@ -157,6 +174,9 @@ def main():
         **request,
     )
 
+    for phone_number in phone_numbers:
+        validate_phone_number(module, phone_number)
+
     if any(phone_number.get("PhoneNumberArn") for phone_number in phone_numbers):
         require_client_methods(
             module,
@@ -172,10 +192,10 @@ def main():
 
         if arn:
             try:
-                tags = client.list_tags_for_resource(
+                response = client.list_tags_for_resource(
                     ResourceArn=arn,
                     aws_retry=True,
-                ).get("Tags", [])
+                )
             except is_boto3_error_code("ResourceNotFoundException"):
                 continue
             except (BotoCoreError, ClientError) as e:
@@ -183,6 +203,15 @@ def main():
                     e,
                     msg=("Unable to list tags for Pinpoint SMS Voice V2 phone number " f"{arn}"),
                 )
+
+            tags = response.get("Tags", []) if isinstance(response, dict) else None
+            if not isinstance(tags, list) or any(
+                not isinstance(tag, dict)
+                or not isinstance(tag.get("Key"), str)
+                or not isinstance(tag.get("Value"), str)
+                for tag in tags
+            ):
+                module.fail_json(msg=f"AWS returned malformed tags for Pinpoint SMS Voice V2 phone number {arn}")
 
         normalized_phone_numbers.append(
             boto3_resource_to_ansible_dict(

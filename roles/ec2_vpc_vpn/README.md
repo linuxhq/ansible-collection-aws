@@ -8,12 +8,12 @@ None
 
 ## Role Variables
 
-    ec2_vpc_vpn_async: 600
+    ec2_vpc_vpn_async: 3600
     ec2_vpc_vpn_batch: 10
     ec2_vpc_vpn_delay: 3
     ec2_vpc_vpn_list: []
     ec2_vpc_vpn_poll: 0
-    ec2_vpc_vpn_retries: 200
+    ec2_vpc_vpn_retries: 1200
 
 ## Return Values
 
@@ -45,31 +45,17 @@ None
                 "{{ _ec2_transit_gateway_info_dict['molecule-01'].transit_gateway_id }}"
               static_only: true
               tunnel_options:
-                - IKEVersions:
-                    - Value: ikev2
-                  Phase1EncryptionAlgorithms:
-                    - Value: AES256
-                  Phase1IntegrityAlgorithms:
-                    - Value: SHA2-256
-                  Phase1DHGroupNumbers:
-                    - Value: 16
-                  Phase2EncryptionAlgorithms:
-                    - Value: AES256
-                  Phase2IntegrityAlgorithms:
-                    - Value: SHA2-256
-                  Phase2DHGroupNumbers:
-                    - Value: 16
-                - IKEVersions:
-                    - Value: ikev2
-                  Phase1EncryptionAlgorithms:
-                    - Value: AES256
-                  Phase1IntegrityAlgorithms:
-                    - Value: SHA2-256
-                  Phase1DHGroupNumbers:
-                    - Value: 16
-                  Phase2EncryptionAlgorithms:
-                    - Value: AES256
-                  Phase2IntegrityAlgorithms:
-                    - Value: SHA2-256
-                  Phase2DHGroupNumbers:
-                    - Value: 16
+                - ike_versions: [ikev2]
+                  phase1_encryption_algorithms: [AES256]
+                  phase1_integrity_algorithms: [SHA2-256]
+                  phase1_dh_group_numbers: [16]
+                  phase2_encryption_algorithms: [AES256]
+                  phase2_integrity_algorithms: [SHA2-256]
+                  phase2_dh_group_numbers: [16]
+                - ike_versions: [ikev2]
+                  phase1_encryption_algorithms: [AES256]
+                  phase1_integrity_algorithms: [SHA2-256]
+                  phase1_dh_group_numbers: [16]
+                  phase2_encryption_algorithms: [AES256]
+                  phase2_integrity_algorithms: [SHA2-256]
+                  phase2_dh_group_numbers: [16]

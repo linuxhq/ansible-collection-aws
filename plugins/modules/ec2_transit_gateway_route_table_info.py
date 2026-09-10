@@ -5,6 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ec2_transit_gateway_route_table_info
+version_added: "1.9.0"
 short_description: Gather information about EC2 transit gateway route tables
 description:
   - Gathers information about AWS EC2 transit gateway route tables.
@@ -27,6 +28,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: This module only gathers information and does not modify AWS.
+    support: full
+  diff_mode:
+    description: Diff mode is not supported.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -76,6 +84,31 @@ def route_sort_key(route):
     )
 
 
+def validate_route_tables(module, route_tables):
+    for route_table in route_tables:
+        if (
+            not isinstance(route_table, dict)
+            or not isinstance(route_table.get("State"), str)
+            or not isinstance(route_table.get("TransitGatewayRouteTableId"), str)
+            or not route_table["TransitGatewayRouteTableId"]
+        ):
+            module.fail_json(msg="EC2 returned invalid transit gateway route tables")
+
+    return route_tables
+
+
+def validate_routes(module, routes):
+    for route in routes:
+        if (
+            not isinstance(route, dict)
+            or not isinstance(route.get("State"), str)
+            or not isinstance(route.get("Type"), str)
+        ):
+            module.fail_json(msg="EC2 returned invalid transit gateway routes")
+
+    return routes
+
+
 def main():
     argument_spec = {
         "filters": {"type": "dict"},
@@ -94,6 +127,7 @@ def main():
     request = {}
     if transit_gateway_route_table_ids:
         request["TransitGatewayRouteTableIds"] = transit_gateway_route_table_ids
+
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
@@ -106,13 +140,16 @@ def main():
         },
     )
 
-    route_tables = query_list(
+    route_tables = validate_route_tables(
         module,
-        client,
-        "describe_transit_gateway_route_tables",
-        "TransitGatewayRouteTables",
-        "Unable to describe EC2 transit gateway route tables",
-        **request,
+        query_list(
+            module,
+            client,
+            "describe_transit_gateway_route_tables",
+            "TransitGatewayRouteTables",
+            "Unable to describe EC2 transit gateway route tables",
+            **request,
+        ),
     )
 
     if any(route_table.get("State") == "available" for route_table in route_tables):
@@ -139,15 +176,19 @@ def main():
             transit_gateway_route_table_id = route_table["TransitGatewayRouteTableId"]
 
             route_table["Routes"] = sorted(
-                query_list(
+                validate_routes(
                     module,
-                    client,
-                    "search_transit_gateway_routes",
-                    "Routes",
-                    "Unable to search EC2 transit gateway routes in route table " f"{transit_gateway_route_table_id}",
-                    TransitGatewayRouteTableId=transit_gateway_route_table_id,
-                    Filters=ansible_dict_to_boto3_filter_list({"type": ["static", "propagated"]}),
-                    MaxResults=1000,
+                    query_list(
+                        module,
+                        client,
+                        "search_transit_gateway_routes",
+                        "Routes",
+                        "Unable to search EC2 transit gateway routes in route table "
+                        f"{transit_gateway_route_table_id}",
+                        TransitGatewayRouteTableId=transit_gateway_route_table_id,
+                        Filters=ansible_dict_to_boto3_filter_list({"type": ["static", "propagated"]}),
+                        MaxResults=1000,
+                    ),
                 ),
                 key=route_sort_key,
             )

@@ -30,6 +30,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             patch.object(plugin, "require_client_methods"),
         ):
             changed, route = plugin.ensure_route_absent(client, module, "tgw-rtb-1", "10.0.0.0/8")
+
         self.assertTrue(changed)
         self.assertIsNone(route)
         wait.assert_not_called()
@@ -53,12 +54,14 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
 
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
         assert len(options["required_one_of"]) == 2
         assert "default" not in options["argument_spec"]["routes"]["options"]["blackhole"]
+        assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
 
     def test_name_is_merged_into_desired_tags(self):
         module = SimpleNamespace(params={"name": "main", "tags": {"Env": "prod"}})
@@ -80,6 +83,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertEqual(raised.exception.values["msg"], "tags must contain at most 50 entries")
 
     def test_absent_does_not_validate_unused_routes(self):
@@ -243,6 +247,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         client.replace_transit_gateway_route.assert_called_once_with(
             DestinationCidrBlock="10.0.0.0/8",
@@ -323,6 +328,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.ensure_absent(client, module)
+
         wait_for_route_table.assert_called_once_with(client, module, "tgw-rtb-1", {"available"})
         client.delete_transit_gateway_route_table.assert_called_once_with(
             TransitGatewayRouteTableId="tgw-rtb-1", aws_retry=True
@@ -461,11 +467,12 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             patch.object(plugin, "ensure_present") as ensure_present,
         ):
             plugin.main()
+
         ensure_present.assert_called_once()
 
     def test_route_search_uses_all_paginated_results(self):
         client = Mock()
-        routes = [{"DestinationCidrBlock": "10.0.0.0/8"}]
+        routes = [{"DestinationCidrBlock": "10.0.0.0/8", "State": "active", "Type": "static"}]
         with (
             patch.object(
                 plugin,
@@ -480,9 +487,33 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
                 "tgw-rtb-1",
                 {"type": ["static"]},
             )
+
         self.assertEqual(result, routes)
         self.assertEqual(query.call_args.args[1], "search_transit_gateway_routes")
         client.search_transit_gateway_routes.assert_not_called()
+
+    def test_route_table_lookup_rejects_malformed_response(self):
+        with (
+            patch.object(
+                plugin,
+                "paginated_query_with_retries",
+                return_value={"TransitGatewayRouteTables": [{}]},
+            ),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.get_route_table_by_id(Mock(), FakeModule({}), "tgw-rtb-1")
+
+        self.assertIn("invalid transit gateway route table", raised.exception.values["msg"])
+
+    def test_route_search_rejects_malformed_response(self):
+        with (
+            patch.object(plugin, "paginated_query_with_retries", return_value={"Routes": [None]}),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.search_routes(Mock(), FakeModule({}), "tgw-rtb-1", {"type": ["static"]})
+
+        self.assertIn("invalid transit gateway routes", raised.exception.values["msg"])
 
     def test_purge_removes_only_undesired_static_routes(self):
         client = Mock()
@@ -527,6 +558,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
+
         self.assertTrue(raised.exception.values["changed"])
         remove.assert_called_once_with(client, module, "tgw-rtb-1", "192.0.2.0/24")
         self.assertEqual(

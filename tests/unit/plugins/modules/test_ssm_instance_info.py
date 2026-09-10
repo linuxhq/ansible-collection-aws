@@ -32,6 +32,7 @@ class SsmInstanceInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("at most 100", raised.exception.values["msg"])
 
     def test_rejects_empty_instance_id(self):
@@ -41,6 +42,7 @@ class SsmInstanceInfoTests(TestCase):
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.main()
+
         self.assertIn("empty entries", raised.exception.values["msg"])
 
     def test_instance_and_ping_filters_override_and_stringify_filters(self):
@@ -59,6 +61,7 @@ class SsmInstanceInfoTests(TestCase):
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
+
         self.assertEqual(require.call_args.args[3], {"describe_instance_information": ("Filters",)})
         self.assertEqual(
             query.call_args.kwargs["Filters"],
@@ -68,4 +71,84 @@ class SsmInstanceInfoTests(TestCase):
                 {"Key": "InstanceIds", "Values": ["i-1"]},
                 {"Key": "PingStatus", "Values": ["Online"]},
             ],
+        )
+
+    def test_rejects_malformed_instance(self):
+        module = FakeModule(
+            {"filters": None, "instance_ids": None, "ping_status": None},
+            client=Mock(),
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[{"InstanceId": "i-1"}, None]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unexpected response while describing AWS Systems Manager instances; instance 1 was not a dictionary",
+        )
+
+    def test_rejects_malformed_instance_list(self):
+        module = FakeModule(
+            {"filters": None, "instance_ids": None, "ping_status": None},
+            client=Mock(),
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=None),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unexpected response while describing AWS Systems Manager instances; instance list was not a list",
+        )
+
+    def test_returns_ids_and_normalized_instances(self):
+        module = FakeModule(
+            {"filters": None, "instance_ids": None, "ping_status": None},
+            client=Mock(),
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(
+                plugin,
+                "query_list",
+                return_value=[{"InstanceId": "i-1", "PingStatus": "Online"}],
+            ),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(raised.exception.values["instance_ids"], ["i-1"])
+        self.assertEqual(
+            raised.exception.values["instances"],
+            [{"instance_id": "i-1", "ping_status": "Online"}],
+        )
+
+    def test_warns_when_instance_id_is_invalid(self):
+        module = FakeModule(
+            {"filters": None, "instance_ids": None, "ping_status": None},
+            client=Mock(),
+        )
+        module.warn = Mock()
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[{"InstanceId": "i-1"}, {}]),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(raised.exception.values["instance_ids"], ["i-1"])
+        self.assertEqual(raised.exception.values["instances"], [{"instance_id": "i-1"}, {}])
+        module.warn.assert_called_once_with(
+            "Unexpected response while describing AWS Systems Manager instances; "
+            "instance 1 did not contain a valid InstanceId and was omitted from instance_ids"
         )

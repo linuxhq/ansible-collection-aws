@@ -5,6 +5,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import eks_cluster_info as 
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
+    ModuleFail,
     assert_module_contract,
 )
 
@@ -48,6 +49,34 @@ class EksClusterInfoTests(TestCase):
             {"list_clusters": ("maxResults", "nextToken")},
         )
 
+    def test_malformed_cluster_list_is_rejected(self):
+        client = Mock()
+        module = FakeModule({"filters": None, "include": None, "name": None}, client=client)
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=[None]),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(raised.exception.values["msg"], "EKS returned an invalid cluster list")
+
+    def test_malformed_describe_response_is_rejected(self):
+        client = Mock(describe_cluster=Mock(return_value={"cluster": None}))
+        module = FakeModule({"filters": None, "include": None, "name": "one"}, client=client)
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "EKS returned an invalid cluster for one",
+        )
+
     def test_nested_and_tag_filters_are_combined(self):
         client = Mock()
         client.describe_cluster.side_effect = [
@@ -84,6 +113,7 @@ class EksClusterInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertEqual(
             [cluster["name"] for cluster in raised.exception.values["clusters"]],
             ["prod"],

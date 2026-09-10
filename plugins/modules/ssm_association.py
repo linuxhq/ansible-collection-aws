@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ssm_association
-short_description: Manage aws systems manager associations
+short_description: Manage AWS Systems Manager associations
 description:
   - Manages AWS Systems Manager associations.
   - Manages the schedule expression, targets, and tags of an association
@@ -70,6 +70,13 @@ extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+attributes:
+  check_mode:
+    description: The module reports the association that would result from the requested changes.
+    support: full
+  diff_mode:
+    description: This module does not return diff output.
+    support: none
 """
 
 EXAMPLES = r"""
@@ -96,6 +103,33 @@ association:
     - The current AWS Systems Manager association after module execution.
   returned: when state is present
   type: dict
+  contains:
+    association_id:
+      description: Association identifier.
+      returned: when available
+      type: str
+    name:
+      description: SSM document name.
+      returned: always
+      type: str
+    schedule_expression:
+      description: Association schedule expression.
+      returned: when configured
+      type: str
+    tags:
+      description: Association tags.
+      returned: when O(tags) is supplied
+      type: dict
+    targets:
+      description: Association targets.
+      returned: when configured
+      type: list
+      elements: dict
+      contains:
+        key:
+          description: Target key.
+          returned: always
+          type: str
 association_id:
   description: The AWS Systems Manager association identifier.
   returned: when an association exists
@@ -156,17 +190,26 @@ def comparable_targets(targets):
 
         if item.get("values"):
             item["values"] = sorted(set(item["values"]))
+
         normalized.append(item)
+
     unique = {json.dumps(item, sort_keys=True): item for item in normalized}
     return [unique[key] for key in sorted(unique)]
 
 
+def association_description_from_response(module, response, message):
+    if not isinstance(response, dict) or not isinstance(response.get("AssociationDescription"), dict):
+        module.fail_json(msg=message)
+
+    return response["AssociationDescription"]
+
+
 def describe_association(client, module, association_id):
     try:
-        return client.describe_association(
+        response = client.describe_association(
             AssociationId=association_id,
             aws_retry=True,
-        ).get("AssociationDescription")
+        )
     except is_boto3_error_code("AssociationDoesNotExist"):
         return None
     except (BotoCoreError, ClientError) as e:
@@ -174,6 +217,12 @@ def describe_association(client, module, association_id):
             e,
             msg=f"Unable to describe AWS Systems Manager association {association_id}",
         )
+
+    return association_description_from_response(
+        module,
+        response,
+        f"Unexpected response while describing AWS Systems Manager association {association_id}",
+    )
 
 
 def ensure_absent(client, module, current):
@@ -228,6 +277,7 @@ def ensure_present(client, module, current):
             "schedule_expression": normalized_current.get("schedule_expression"),
             "targets": comparable_targets(normalized_current.get("targets")),
         }
+
     desired_comparable = {
         "schedule_expression": schedule_expression,
         "targets": comparable_targets(module.params["targets"]),
@@ -255,7 +305,7 @@ def ensure_present(client, module, current):
                 association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
         else:
             try:
-                association = client.create_association(
+                response = client.create_association(
                     **scrub_none_parameters(
                         snake_dict_to_camel_dict(
                             {
@@ -268,14 +318,21 @@ def ensure_present(client, module, current):
                         )
                     ),
                     aws_retry=True,
-                ).get("AssociationDescription", {})
+                )
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to create AWS Systems Manager association {name}",
                 )
+
+            association = association_description_from_response(
+                module,
+                response,
+                f"AWS Systems Manager did not return the created association {name}",
+            )
             if not association.get("AssociationId"):
                 module.fail_json(msg=("AWS Systems Manager did not return the created association " f"{name}"))
+
             if tags is not None:
                 association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
@@ -295,15 +352,21 @@ def ensure_present(client, module, current):
                 }
             )
             try:
-                association = client.update_association(
+                response = client.update_association(
                     **scrub_none_parameters(update_request),
                     aws_retry=True,
-                ).get("AssociationDescription", {})
+                )
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to update AWS Systems Manager association {name}",
                 )
+
+            association = association_description_from_response(
+                module,
+                response,
+                f"AWS Systems Manager did not return the updated association {name}",
+            )
             if not association.get("AssociationId"):
                 module.fail_json(msg=("AWS Systems Manager did not return the updated association " f"{name}"))
 
@@ -320,6 +383,7 @@ def ensure_present(client, module, current):
             tags,
             purge_tags=purge_tags,
         )
+
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
@@ -328,6 +392,7 @@ def ensure_present(client, module, current):
         if association_id and tags is not None:
             if resource_changed and current is not None:
                 association = association_with_tags(client, module, association)
+
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
                 boto3_tag_list_to_ansible_dict(association.get("Tags", [])),
                 tags,
@@ -376,16 +441,24 @@ def association_with_tags(client, module, association):
     association = dict(association)
 
     try:
-        association["Tags"] = client.list_tags_for_resource(
+        response = client.list_tags_for_resource(
             ResourceType=SSM_ASSOCIATION_RESOURCE_TYPE,
             ResourceId=association_id,
             aws_retry=True,
-        ).get("TagList", [])
+        )
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
             msg=("Unable to list tags for AWS Systems Manager " f"{SSM_ASSOCIATION_RESOURCE_TYPE} {association_id}"),
         )
+
+    tags = response.get("TagList", []) if isinstance(response, dict) else None
+    if not isinstance(tags, list) or any(not isinstance(tag, dict) for tag in tags):
+        module.fail_json(
+            msg=f"Unexpected response while listing tags for AWS Systems Manager association {association_id}"
+        )
+
+    association["Tags"] = tags
 
     return association
 
@@ -428,13 +501,17 @@ def main():
 
         if len(comparable_targets(module.params["targets"])) > 5:
             module.fail_json(msg="targets must contain at most 5 targets")
+
         for target in module.params["targets"]:
             if not 1 <= len(target["key"]) <= 163:
                 module.fail_json(msg="targets[].key must be 1 to 163 characters")
+
             if not target["values"]:
                 module.fail_json(msg="targets[].values must contain at least one entry")
+
             if len(set(target["values"])) > 50:
                 module.fail_json(msg="targets[].values must contain at most 50 entries")
+
         require_valid_tags(module, tags, 1000)
 
     client = module.client(
@@ -454,6 +531,7 @@ def main():
         )
         if tags:
             methods["create_association"] += ("Tags",)
+
         if tags is not None:
             methods["list_tags_for_resource"] = ("ResourceId", "ResourceType")
             if tags:
@@ -462,6 +540,7 @@ def main():
                     "ResourceType",
                     "Tags",
                 )
+
             if module.params["purge_tags"]:
                 methods["remove_tags_from_resource"] = (
                     "ResourceId",
@@ -483,10 +562,19 @@ def main():
         AssociationFilterList=[{"key": "Name", "value": name}],
     )
 
+    if any(not isinstance(association, dict) for association in associations):
+        module.fail_json(msg=f"Unexpected response while listing AWS Systems Manager associations for {name}")
+
     matches = [association for association in associations if association.get("Name") == name]
 
+    if any(
+        not isinstance(association.get("AssociationId"), str) or not association["AssociationId"]
+        for association in matches
+    ):
+        module.fail_json(msg=f"Unexpected response while listing AWS Systems Manager associations for {name}")
+
     if len(matches) > 1:
-        association_ids = sorted(association.get("AssociationId", "") for association in matches)
+        association_ids = sorted(association["AssociationId"] for association in matches)
         module.fail_json(
             msg=(
                 "Multiple AWS Systems Manager associations exist for document " f"{name}: {', '.join(association_ids)}"

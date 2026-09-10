@@ -5,7 +5,7 @@ description: Lint roles and playbooks with ansible-lint.
 
 # ansible-lint
 
-Matches CI's pre-commit hook.
+Match CI's pre-commit hook.
 
 ```sh
 tox run -e ansible-lint -- roles/{{ role }}

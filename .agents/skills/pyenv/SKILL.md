@@ -1,11 +1,12 @@
 ---
 name: pyenv
-description: Install the project's pinned Python version.
+description: Install pyenv and the project's pinned Python. Use before the tox skill when the .python-version interpreter is missing.
 ---
 
 # pyenv
 
-Use `pyenv` when the Python pinned in `.python-version` is unavailable. On macOS with Homebrew:
+Install `pyenv` via Homebrew, install the Python pinned in `.python-version`, and activate it so
+Tox builds disposable environments against the right interpreter.
 
 ```sh
 brew install pyenv

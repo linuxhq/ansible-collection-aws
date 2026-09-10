@@ -23,4 +23,5 @@ class SesSandboxInfoTests(TestCase):
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
+
         self.assertTrue(raised.exception.values["account"]["production_access_enabled"])

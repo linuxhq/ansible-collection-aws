@@ -27,6 +27,7 @@ class TagsTests(TestCase):
         ):
             with self.subTest(message=message), self.assertRaises(ModuleFail) as raised:
                 require_valid_tags(module, tags, 1, key_max=3)
+
             self.assertEqual(raised.exception.values["msg"], message)
 
     def test_tag_keys_and_values_are_normalized_for_map_apis(self):
@@ -37,6 +38,7 @@ class TagsTests(TestCase):
     def test_colliding_normalized_tag_keys_are_rejected(self):
         with self.assertRaises(ModuleFail) as raised:
             require_valid_tags(FakeModule({}), {1: "numeric", "1": "string"}, 50)
+
         self.assertEqual(
             raised.exception.values["msg"],
             "tag keys must be unique after string normalization",
