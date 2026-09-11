@@ -4,6 +4,26 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.4.3
+======
+
+Bugfixes
+--------
+
+- ec2_transit_gateway_route_table - wait for deleting static routes to disappear before recreating them.
+- ec2_vpc_prefix_list - recognize completed restoration and deletion in waiters.
+- eks_cluster - compare only explicitly requested control plane logging states.
+- eks_cluster - preserve case-sensitive tag keys in returned cluster data.
+- eks_cluster - preserve user tag keys when creating clusters.
+- eks_cluster - send related Auto Mode configuration updates in one request.
+- glue_connection_info - accept SPARK, ATHENA, or PYTHON strings for the compute environment override.
+- iam_oidc_provider - free audience capacity before adding replacements at the 100-audience limit.
+- roles - align Molecule regional fixtures and README examples, preserve multi-region test coverage, and use the molecule AWS profile in the profile scenario.
+- sqs_queue_info - request a page size so discovery includes queues beyond the first 1000 results.
+- ssm_document - preserve arbitrary keys inside script InputPayload objects when comparing, submitting, and returning content.
+- ssm_send_command - retry temporarily invisible commands until the configured wait deadline.
+- ssm_send_command - wait for invocation results for every reported target before declaring success.
+
 v2.4.2
 ======
 

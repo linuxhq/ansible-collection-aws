@@ -154,7 +154,7 @@ def main():
     if name:
         methods["get_queue_url"] = ("QueueName",) + (("QueueOwnerAWSAccountId",) if queue_owner_aws_account_id else ())
     else:
-        methods["list_queues"] = ("QueueNamePrefix",) if queue_name_prefix else ()
+        methods["list_queues"] = ("MaxResults",) + (("QueueNamePrefix",) if queue_name_prefix else ())
 
     require_client_methods(
         module,
@@ -185,7 +185,7 @@ def main():
         queue = get_queue(client, module, queue_url) if queue_url else None
         queues = [queue] if queue is not None else []
     else:
-        request = {}
+        request = {"MaxResults": 1000}
         if queue_name_prefix:
             request["QueueNamePrefix"] = queue_name_prefix
 

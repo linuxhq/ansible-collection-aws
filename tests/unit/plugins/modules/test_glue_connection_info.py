@@ -1,6 +1,10 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
+from botocore.session import Session
+from botocore.validate import validate_parameters
+
 from ansible_collections.linuxhq.aws.plugins.modules import glue_connection_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -14,6 +18,10 @@ class GlueConnectionInfoTests(TestCase):
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
         assert options["required_by"] == {"apply_override_for_compute_environment": ["name"]}
+        assert options["argument_spec"]["apply_override_for_compute_environment"] == {
+            "type": "str",
+            "choices": ["SPARK", "ATHENA", "PYTHON"],
+        }
 
     def test_named_connection_only_gates_used_parameters(self):
         client = Mock(get_connection=Mock(return_value={"Connection": {"Name": "main"}}))
@@ -131,3 +139,31 @@ class GlueConnectionInfoTests(TestCase):
             raised.exception.values["msg"],
             "Unable to get AWS Glue connections: AWS returned an invalid response",
         )
+
+
+@pytest.mark.parametrize("environment", ["SPARK", "ATHENA", "PYTHON"])
+def test_glue_override_accepted_by_sdk(environment):
+    shape = Session().get_service_model("glue").operation_model("GetConnection").input_shape
+
+    def get_connection(**kwargs):
+        kwargs.pop("aws_retry")
+        validate_parameters(kwargs, shape)
+        return {"Connection": {"Name": "review"}}
+
+    client = Mock(get_connection=Mock(side_effect=get_connection))
+    module = FakeModule(
+        {
+            "name": "review",
+            "filters": None,
+            "catalog_id": None,
+            "hide_password": True,
+            "apply_override_for_compute_environment": environment,
+        },
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()

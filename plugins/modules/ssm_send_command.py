@@ -617,10 +617,9 @@ def main():
                     )
 
             if not commands:
-                module.fail_json(
-                    changed=True,
-                    msg=(f"AWS Systems Manager command {command_id} was not returned " "by list_commands"),
-                )
+                # Run Command may not expose a newly submitted command immediately.
+                time.sleep(min(wait_delay, max(0, deadline - time.monotonic())))
+                continue
 
             command = commands[0]
             if not isinstance(command, dict):
@@ -685,8 +684,17 @@ def main():
                         status=command_status,
                     )
 
+            # The command and invocation APIs can become consistent at different times.
+            target_count = command.get("TargetCount")
+            invocation_ids = {invocation.get("InstanceId") for invocation in invocations}
+            all_targets_reported = target_count is None or (
+                isinstance(target_count, int)
+                and not isinstance(target_count, bool)
+                and len(invocation_ids - {None}) >= target_count
+            )
             if (
                 command_status in TERMINAL_STATUSES
+                and all_targets_reported
                 and invocations
                 and all(status in TERMINAL_STATUSES for status in invocation_statuses)
             ):

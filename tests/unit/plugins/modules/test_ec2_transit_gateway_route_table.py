@@ -565,3 +565,14 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             [route["destination_cidr_block"] for route in raised.exception.values["routes"]],
             ["10.0.0.0/8"],
         )
+
+
+def test_tgw_absence_waits_until_deleting_route_disappears():
+    route = {"Type": "static", "State": "deleting", "DestinationCidrBlock": "10.0.0.0/24"}
+    with patch.object(plugin, "get_route", side_effect=[route, None]) as get, patch.object(plugin.time, "sleep"):
+        result = plugin.wait_for_route_absent(
+            Mock(), FakeModule({"wait_timeout": 10, "wait_delay": 1}), "tgw-rtb-1", "10.0.0.0/24"
+        )
+
+    assert result is None
+    assert get.call_count == 2
