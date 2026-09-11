@@ -31,7 +31,7 @@ provisioner:
       all:
         notifications_hub_list:
           - region: eu-central-1
-          - region: us-west-1
+          - region: us-east-2
 
 scenario:
   test_sequence:

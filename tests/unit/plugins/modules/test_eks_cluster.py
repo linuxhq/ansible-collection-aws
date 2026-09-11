@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import eks_cluster as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -515,3 +517,112 @@ class EksClusterTests(TestCase):
             name="example",
             WaiterConfig={"Delay": 7, "MaxAttempts": 3},
         )
+
+
+def eks_params(**overrides):
+    params = dict.fromkeys(plugin.CREATE_FIELDS)
+    params.update(name="example", tags=None, purge_tags=True, wait=False)
+    params.update(overrides)
+    return params
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_eks_auto_mode_settings_use_one_request(enabled):
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "computeConfig": {"enabled": not enabled},
+        "kubernetesNetworkConfig": {"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": not enabled}},
+        "storageConfig": {"blockStorage": {"enabled": not enabled}},
+    }
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    module = FakeModule(
+        eks_params(
+            compute_config={"enabled": enabled},
+            kubernetes_network_config={"ip_family": "ipv4", "elastic_load_balancing": {"enabled": enabled}},
+            storage_config={"block_storage": {"enabled": enabled}},
+        )
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        patch.object(plugin, "wait_for_update"),
+        patch.object(plugin, "wait_for_cluster"),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
+
+    client.update_cluster_config.assert_called_once_with(
+        name="example",
+        aws_retry=True,
+        computeConfig={"enabled": enabled},
+        kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": enabled}},
+        storageConfig={"blockStorage": {"enabled": enabled}},
+    )
+
+
+@pytest.mark.parametrize(
+    "log_type, enabled, expected_changed",
+    [
+        ("api", False, False),
+        ("audit", True, False),
+        ("api", True, True),
+        ("audit", False, True),
+    ],
+)
+def test_eks_partial_logging_is_idempotent(log_type, enabled, expected_changed):
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "logging": {
+            "clusterLogging": [
+                {"types": ["audit"], "enabled": True},
+                {"types": ["api", "authenticator", "controllerManager", "scheduler"], "enabled": False},
+            ]
+        },
+    }
+    module = FakeModule(
+        eks_params(logging={"cluster_logging": [{"types": [log_type], "enabled": enabled}]}), check_mode=True
+    )
+    with patch.object(plugin, "describe_cluster", return_value=current), pytest.raises(ModuleExit) as result:
+        plugin.ensure_present(Mock(), module)
+
+    assert result.value.values["changed"] is expected_changed
+
+
+def test_eks_result_preserves_tag_keys():
+    module = FakeModule({"name": "example"})
+    with pytest.raises(ModuleExit) as result:
+        plugin.exit_result(module, False, {"tags": {"CostCenter": "engineering", "cost_center": "other"}}, "present")
+
+    assert result.value.values["cluster"]["tags"] == {"CostCenter": "engineering", "cost_center": "other"}
+
+
+def test_eks_creation_preserves_distinct_tag_keys():
+    tags = {"cost_center": "finance", "costCenter": "engineering"}
+    params = dict.fromkeys(plugin.CREATE_FIELDS)
+    params.update(
+        name="review",
+        role_arn="arn:aws:iam::123456789012:role/review",
+        resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
+        tags=tags,
+        wait=False,
+        purge_tags=True,
+    )
+    client = Mock()
+    client.create_cluster.return_value = {
+        "cluster": {"arn": "arn:aws:eks:us-east-1:123456789012:cluster/review", "name": "review", "status": "CREATING"}
+    }
+    with (
+        patch.object(plugin, "describe_cluster", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, FakeModule(params))
+
+    assert client.create_cluster.call_args.kwargs["tags"] == tags

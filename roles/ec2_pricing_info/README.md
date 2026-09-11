@@ -32,7 +32,7 @@ None
             - field: instanceType
               value: t3.micro
             - field: regionCode
-              value: us-west-2
+              value: us-east-2
             - field: operatingSystem
               value: Linux
             - field: tenancy

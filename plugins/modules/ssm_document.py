@@ -24,6 +24,7 @@ options:
       - Provide the content as structured Ansible YAML data.
       - The module serializes the content to JSON for AWS Systems Manager.
       - Content keys may be provided in snake_case or AWS native camelCase.
+      - Keys inside script C(InputPayload) objects are preserved unchanged.
       - Required when O(state=present).
     type: dict
   document_type:
@@ -140,7 +141,10 @@ try:
 except ImportError:
     pass
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+from ansible.module_utils.common.dict_transformations import (
+    camel_dict_to_snake_dict,
+    snake_dict_to_camel_dict,
+)
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
@@ -175,12 +179,38 @@ def document_description_from_response(module, response, message):
     return response["DocumentDescription"]
 
 
+def normalize_document_content(content, *, snake_case=False):
+    """Convert document fields while preserving arbitrary script payload data."""
+    if isinstance(content, list):
+        return [normalize_document_content(item, snake_case=snake_case) for item in content]
+
+    if not isinstance(content, dict):
+        return content
+
+    result = {}
+    for key, value in content.items():
+        converted_key = next(
+            iter(
+                camel_dict_to_snake_dict({key: None})
+                if snake_case
+                else snake_dict_to_camel_dict({key: None}, capitalize_first=False)
+            )
+        )
+        result[converted_key] = (
+            value
+            if converted_key in ("InputPayload", "inputPayload", "input_payload")
+            else normalize_document_content(value, snake_case=snake_case)
+        )
+
+    return result
+
+
 def comparable_document(document):
     if document is None:
         return None
 
     return {
-        "content": snake_dict_to_camel_dict(document_content(document), capitalize_first=False),
+        "content": normalize_document_content(document_content(document)),
         "document_type": document.get("DocumentType"),
     }
 
@@ -223,7 +253,7 @@ def ensure_present(client, module):
     }
     current_comparable = comparable_document(current)
     desired_comparable = {
-        "content": snake_dict_to_camel_dict(desired["content"], capitalize_first=False),
+        "content": normalize_document_content(desired["content"]),
         "document_type": desired["document_type"],
     }
     desired.update(desired_comparable)
@@ -394,9 +424,11 @@ def ensure_present(client, module):
         content = document_content(current)
         document = boto3_resource_to_ansible_dict(
             dict(current, Content=content),
+            ignore_list=["Content"],
             transform_tags=True,
             force_tags=False,
         )
+        document["content"] = normalize_document_content(content, snake_case=True)
 
     result = {
         "changed": changed,

@@ -1,5 +1,8 @@
+import json
 from unittest import TestCase
 from unittest.mock import Mock, patch
+
+import pytest
 
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_document as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -310,4 +313,119 @@ class SsmDocumentTests(TestCase):
         self.assertEqual(
             raised.exception.values["msg"],
             "AWS Systems Manager did not return the created document example",
+        )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("payload_key", ["InputPayload", "inputPayload", "input_payload"])
+def test_ssm_document_preserves_script_payload_keys(check_mode, existing, payload_key):
+    payload = {
+        "myValue": "camel",
+        "my_value": "snake",
+        "nestedData": {"SomeKey": 1, "some_key": 2},
+        "items": [{"AnotherKey": False, "another_key": None}, ["unchanged", 3]],
+    }
+    content = {
+        "schemaVersion": "0.3",
+        "mainSteps": [
+            {
+                "name": "run",
+                "action": "aws:executeScript",
+                "inputs": {
+                    "Runtime": "python3.11",
+                    "Handler": "handler",
+                    payload_key: payload,
+                    "Script": "def handler(events, context):\n    return events['my_value']",
+                },
+            }
+        ],
+    }
+    client = Mock(
+        create_document=Mock(
+            return_value={
+                "DocumentDescription": {"Name": "review", "DocumentType": "Automation", "DocumentVersion": "1"}
+            }
+        )
+    )
+    module = FakeModule(
+        {
+            "name": "review",
+            "tags": None,
+            "purge_tags": True,
+            "content": content,
+            "document_type": "Automation",
+            "document_version": "$LATEST",
+        },
+        check_mode=check_mode,
+    )
+    current = {"Name": "review", "DocumentType": "Automation", "Content": json.dumps(content)} if existing else None
+    with patch.object(plugin, "get_document", return_value=current), pytest.raises(ModuleExit) as result:
+        plugin.ensure_present(client, module)
+
+    returned = result.value.values["document"]["content"]["main_steps"][0]["inputs"]["input_payload"]
+    assert returned == payload
+    if check_mode or existing:
+        client.create_document.assert_not_called()
+        client.update_document.assert_not_called()
+    else:
+        created = json.loads(client.create_document.call_args.kwargs["Content"])
+        normalized_payload_key = "InputPayload" if payload_key == "InputPayload" else "inputPayload"
+        assert created["mainSteps"][0]["inputs"][normalized_payload_key] == payload
+        assert created["mainSteps"][0]["inputs"]["Script"] == content["mainSteps"][0]["inputs"]["Script"]
+
+
+@pytest.mark.parametrize("existing_key", ["my_value", "myValue"])
+def test_script_payload_keys_are_compared_exactly(existing_key):
+    content = {
+        "schemaVersion": "0.3",
+        "mainSteps": [
+            {
+                "name": "run",
+                "action": "aws:executeScript",
+                "inputs": {
+                    "Runtime": "python3.11",
+                    "Handler": "handler",
+                    "Script": "def handler(events, context):\n    return events['my_value']",
+                    "InputPayload": {"my_value": "value"},
+                },
+            }
+        ],
+    }
+    existing_content = json.loads(json.dumps(content))
+    existing_content["mainSteps"][0]["inputs"]["InputPayload"] = {existing_key: "value"}
+    current = {
+        "Name": "review",
+        "DocumentType": "Automation",
+        "DocumentVersion": "1",
+        "Content": json.dumps(existing_content),
+    }
+    client = Mock(update_document=Mock(return_value={"DocumentDescription": {"DocumentVersion": "2"}}))
+    module = FakeModule(
+        {
+            "name": "review",
+            "document_type": "Automation",
+            "document_version": "$LATEST",
+            "content": content,
+            "tags": None,
+            "purge_tags": True,
+        }
+    )
+    with (
+        patch.object(plugin, "get_document", return_value=current),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is (existing_key != "my_value")
+    if existing_key == "my_value":
+        client.update_document.assert_not_called()
+        client.update_document_default_version.assert_not_called()
+    else:
+        submitted = json.loads(client.update_document.call_args.kwargs["Content"])
+        assert submitted == content
+        client.update_document_default_version.assert_called_once_with(
+            DocumentVersion="2",
+            Name="review",
+            aws_retry=True,
         )

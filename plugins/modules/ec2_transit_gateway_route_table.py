@@ -536,7 +536,7 @@ def wait_for_route_absent(client, module, transit_gateway_route_table_id, destin
     while time.monotonic() < deadline:
         route = get_route(client, module, transit_gateway_route_table_id, destination_cidr_block)
 
-        if not route_is_static(route):
+        if route is None or route.get("Type") != "static" or route.get("State") == "deleted":
             return route
 
         time.sleep(

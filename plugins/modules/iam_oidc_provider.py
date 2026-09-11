@@ -325,9 +325,21 @@ def ensure_present(client, module):
 
                 require_client_methods(module, client, "IAM", methods)
 
-                for client_id in added_client_ids:
+                # Free only the capacity needed before adding replacement audiences.
+                remove_first = max(0, len(current_client_ids) + len(added_client_ids) - 100)
+                operations = (
+                    [("remove", client_id) for client_id in removed_client_ids[:remove_first]]
+                    + [("add", client_id) for client_id in added_client_ids]
+                    + [("remove", client_id) for client_id in removed_client_ids[remove_first:]]
+                )
+                for action, client_id in operations:
+                    method = (
+                        client.add_client_id_to_open_id_connect_provider
+                        if action == "add"
+                        else client.remove_client_id_from_open_id_connect_provider
+                    )
                     try:
-                        client.add_client_id_to_open_id_connect_provider(
+                        method(
                             OpenIDConnectProviderArn=arn,
                             ClientID=client_id,
                             aws_retry=True,
@@ -335,20 +347,7 @@ def ensure_present(client, module):
                     except (BotoCoreError, ClientError) as e:
                         module.fail_json_aws(
                             e,
-                            msg=("Unable to add client ID to AWS IAM OIDC " f"provider {url}"),
-                        )
-
-                for client_id in removed_client_ids:
-                    try:
-                        client.remove_client_id_from_open_id_connect_provider(
-                            OpenIDConnectProviderArn=arn,
-                            ClientID=client_id,
-                            aws_retry=True,
-                        )
-                    except (BotoCoreError, ClientError) as e:
-                        module.fail_json_aws(
-                            e,
-                            msg=("Unable to remove client ID from AWS IAM OIDC " f"provider {url}"),
+                            msg=f"Unable to {action} client ID for AWS IAM OIDC provider {url}",
                         )
 
                 provider_changed = True

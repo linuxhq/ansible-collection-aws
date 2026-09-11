@@ -192,6 +192,12 @@ EC2_WAITER_MODEL_DATA = {
             },
             {
                 "argument": "PrefixLists[0].State",
+                "expected": "restore-complete",
+                "matcher": "path",
+                "state": "success",
+            },
+            {
+                "argument": "PrefixLists[0].State",
                 "expected": "create-in-progress",
                 "matcher": "path",
                 "state": "retry",
@@ -218,6 +224,12 @@ EC2_WAITER_MODEL_DATA = {
             {
                 "expected": "InvalidPrefixListID.NotFound",
                 "matcher": "error",
+                "state": "success",
+            },
+            {
+                "argument": "PrefixLists[0].State",
+                "expected": "delete-complete",
+                "matcher": "path",
                 "state": "success",
             },
             {

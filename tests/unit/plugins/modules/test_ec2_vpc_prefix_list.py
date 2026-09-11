@@ -2,6 +2,7 @@ from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
 import pytest
+from botocore.waiter import Waiter, WaiterModel
 
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_vpc_prefix_list as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -519,3 +520,14 @@ def test_update_mismatch_preserves_prefix_list():
     modify.assert_called_once_with(client, module, current, max_entries=2)
     delete.assert_not_called()
     create.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "name,state",
+    [("managed_prefix_list_ready", "restore-complete"), ("managed_prefix_list_deleted", "delete-complete")],
+)
+def test_prefix_list_waiter_accepts_completed_state(name, state):
+    config = WaiterModel({"version": 2, "waiters": plugin.EC2_WAITER_MODEL_DATA}).get_waiter(name)
+    operation = Mock(return_value={"PrefixLists": [{"State": state}]})
+    waiter = Waiter(name, config, operation)
+    waiter.wait(PrefixListIds=["pl-1"], WaiterConfig={"Delay": 0, "MaxAttempts": 1})

@@ -14,10 +14,11 @@ author:
 options:
   apply_override_for_compute_environment:
     description:
-      - Whether to apply an override for the compute environment when getting
-        a selected Glue connection by O(name).
+      - The compute environment whose overridden properties to retrieve for
+        the selected Glue connection in O(name).
       - Requires O(name).
-    type: bool
+    choices: [SPARK, ATHENA, PYTHON]
+    type: str
   catalog_id:
     description:
       - The ID of the Data Catalog in which the connections reside.
@@ -122,7 +123,7 @@ def validate_connections(module, connections):
 
 def main():
     argument_spec = {
-        "apply_override_for_compute_environment": {"type": "bool"},
+        "apply_override_for_compute_environment": {"choices": ["SPARK", "ATHENA", "PYTHON"], "type": "str"},
         "catalog_id": {"type": "str"},
         "filters": {"type": "dict"},
         "hide_password": {"default": True, "no_log": False, "type": "bool"},

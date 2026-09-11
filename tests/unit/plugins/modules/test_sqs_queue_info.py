@@ -1,6 +1,10 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import boto3
+import pytest
+from botocore.stub import Stubber
+
 from ansible_collections.linuxhq.aws.plugins.modules import sqs_queue_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -109,3 +113,26 @@ class SqsQueueInfoTests(TestCase):
             raised.exception.values["msg"],
             "Unexpected response while getting AWS SQS queue URL for main",
         )
+
+
+def test_sqs_pagination_supplies_page_size():
+    client = boto3.client("sqs", region_name="us-east-1", aws_access_key_id="test", aws_secret_access_key="test")
+    module = FakeModule({"name": None, "queue_name_prefix": None, "queue_owner_aws_account_id": None}, client=client)
+    with Stubber(client) as stubber:
+        queue_urls = [f"https://sqs.us-east-1.amazonaws.com/123456789012/queue-{index}" for index in range(1001)]
+        stubber.add_response(
+            "list_queues", {"QueueUrls": queue_urls[:1000], "NextToken": "page-2"}, {"MaxResults": 1000}
+        )
+        stubber.add_response(
+            "list_queues", {"QueueUrls": queue_urls[1000:]}, {"MaxResults": 1000, "NextToken": "page-2"}
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "get_queue", side_effect=lambda client, module, url: {"queue_url": url}),
+            pytest.raises(ModuleExit) as result,
+        ):
+            plugin.main()
+
+        stubber.assert_no_pending_responses()
+
+    assert [queue["queue_url"] for queue in result.value.values["queues"]] == queue_urls
