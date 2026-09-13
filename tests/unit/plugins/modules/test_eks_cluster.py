@@ -626,3 +626,104 @@ def test_eks_creation_preserves_distinct_tag_keys():
         plugin.ensure_present(client, FakeModule(params))
 
     assert client.create_cluster.call_args.kwargs["tags"] == tags
+
+
+@pytest.mark.parametrize("status", ["CREATING", "UPDATING"])
+@pytest.mark.parametrize("tags", [None, {"Environment": "test"}])
+def test_check_mode_predicts_changes_without_waiting_for_active_cluster(status, tags):
+    params = dict.fromkeys(plugin.CREATE_FIELDS)
+    params.update(name="example", tags=tags, version=None, wait=True, purge_tags=True, wait_timeout=1200, wait_delay=15)
+    module = FakeModule(params, check_mode=True)
+    client = Mock()
+    current = {"name": "example", "arn": "arn:aws:eks:us-east-1:123456789012:cluster/example", "status": status}
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "wait_for_cluster") as waiter,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    waiter.assert_not_called()
+    assert result.value.values["changed"] is (tags is not None)
+    if tags is not None:
+        assert result.value.values["cluster"]["tags"] == tags
+
+    client.update_cluster_config.assert_not_called()
+    client.tag_resource.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_partial_update_result_preserves_unmanaged_configuration(check_mode):
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "accessConfig": {"authenticationMode": "API", "bootstrapClusterCreatorAdminPermissions": False},
+        "resourcesVpcConfig": {
+            "endpointPublicAccess": True,
+            "endpointPrivateAccess": True,
+            "subnetIds": ["subnet-1", "subnet-2"],
+        },
+    }
+    module = FakeModule(
+        eks_params(
+            resources_vpc_config={"endpoint_public_access": False},
+            access_config={"authentication_mode": "API", "bootstrap_cluster_creator_admin_permissions": True},
+            bootstrap_self_managed_addons=True,
+        ),
+        check_mode=check_mode,
+    )
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["cluster"]["resources_vpc_config"] == {
+        "endpoint_public_access": False,
+        "endpoint_private_access": True,
+        "subnet_ids": ["subnet-1", "subnet-2"],
+    }
+    assert current["resourcesVpcConfig"]["endpointPublicAccess"] is True
+    assert result.value.values["cluster"]["access_config"]["bootstrap_cluster_creator_admin_permissions"] is False
+    assert "bootstrap_self_managed_addons" not in result.value.values["cluster"]
+    if check_mode:
+        client.update_cluster_config.assert_not_called()
+    else:
+        client.update_cluster_config.assert_called_once_with(
+            name="example", resourcesVpcConfig={"endpointPublicAccess": False}, aws_retry=True
+        )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_partial_logging_result_preserves_unmanaged_log_types(check_mode):
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "logging": {"clusterLogging": [{"types": ["api", "audit"], "enabled": True}]},
+    }
+    module = FakeModule(
+        eks_params(logging={"cluster_logging": [{"types": ["api"], "enabled": False}]}),
+        check_mode=check_mode,
+    )
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    entries = result.value.values["cluster"]["logging"]["cluster_logging"]
+    assert {log_type: entry["enabled"] for entry in entries for log_type in entry["types"]} == {
+        "api": False,
+        "audit": True,
+    }
+    assert current["logging"]["clusterLogging"] == [{"types": ["api", "audit"], "enabled": True}]

@@ -615,11 +615,40 @@ def desired_cluster(module):
     return desired
 
 
+def merge_cluster_configuration(current, desired):
+    result = dict(current or {})
+    for key, value in desired.items():
+        if isinstance(value, dict):
+            result[key] = merge_cluster_configuration(result.get(key), value)
+        else:
+            result[key] = value
+
+    return result
+
+
 def check_mode_cluster(module, current):
     tags = module.params.get("tags")
     cluster = dict(current or {})
     desired = snake_dict_to_camel_dict(desired_cluster(module), capitalize_first=False)
-    cluster.update(desired)
+    if current is not None:
+        desired.pop("bootstrapSelfManagedAddons", None)
+        if "accessConfig" in desired:
+            desired["accessConfig"].pop("bootstrapClusterCreatorAdminPermissions", None)
+
+    cluster = merge_cluster_configuration(cluster, desired)
+    desired_logging = (desired.get("logging") or {}).get("clusterLogging")
+    if desired_logging is not None and current is not None:
+        log_types = {
+            log_type: entry["enabled"]
+            for entry in ((current.get("logging") or {}).get("clusterLogging") or []) + desired_logging
+            for log_type in entry.get("types") or []
+        }
+        cluster["logging"]["clusterLogging"] = [
+            {"enabled": enabled, "types": sorted(log_type for log_type, value in log_types.items() if value == enabled)}
+            for enabled in (True, False)
+            if enabled in log_types.values()
+        ]
+
     cluster["name"] = module.params["name"]
     if tags is not None:
         current_tags = {} if module.params["purge_tags"] else dict(cluster.get("tags") or {})
@@ -697,7 +726,7 @@ def ensure_present(client, module):
 
         exit_result(module, True, cluster, "present")
 
-    if wait and current.get("status") != "ACTIVE":
+    if wait and not module.check_mode and current.get("status") != "ACTIVE":
         wait_for_cluster(client, module, "cluster_active")
         current = describe_cluster(client, module)
         if current is None:

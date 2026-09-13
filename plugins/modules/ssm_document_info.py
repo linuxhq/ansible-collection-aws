@@ -8,6 +8,8 @@ module: ssm_document_info
 version_added: '1.9.0'
 short_description: Gather information about AWS Systems Manager documents
 description:
+  - Application configuration, application configuration schema, and CloudFormation content is preserved unchanged.
+  - Document parameter, variable, and attachment names are preserved unchanged in returned content.
   - Gathers information about AWS Systems Manager documents.
   - Retrieves each document as JSON and parses the returned content when possible.
 author:
@@ -87,7 +89,16 @@ document:
   type: dict
   contains:
     content:
-      description: Document content.
+      description:
+        - Document content.
+        - Application configuration, application configuration schema, and CloudFormation content is preserved unchanged.
+        - Parsed JSON content uses snake_case schema fields while preserving
+          parameter, variable, and attachment names, defaults, and embedded payloads unchanged.
+        - Distributor package platform, release, and architecture keys are preserved unchanged.
+        - API-specific parameters of C(aws:executeAwsApi), C(aws:assertAwsResourceProperty),
+          and C(aws:waitForAwsResourceProperty) retain AWS native keys and values.
+        - Run Command parameters, composite document C(documentParameters), nested Automation runtime parameters and target maps
+          retain their original keys and values.
       returned: when a document is returned
       type: raw
     document_format:
@@ -119,7 +130,16 @@ documents:
   elements: dict
   contains:
     content:
-      description: Document content.
+      description:
+        - Document content.
+        - Application configuration, application configuration schema, and CloudFormation content is preserved unchanged.
+        - Parsed JSON content uses snake_case schema fields while preserving
+          parameter, variable, and attachment names, defaults, and embedded payloads unchanged.
+        - Distributor package platform, release, and architecture keys are preserved unchanged.
+        - API-specific parameters of C(aws:executeAwsApi), C(aws:assertAwsResourceProperty),
+          and C(aws:waitForAwsResourceProperty) retain AWS native keys and values.
+        - Run Command parameters, composite document C(documentParameters), nested Automation runtime parameters and target maps
+          retain their original keys and values.
       returned: always
       type: raw
     document_format:
@@ -145,6 +165,7 @@ documents:
 """
 
 import json
+from functools import partial
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -165,11 +186,12 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm_document import normalize_document_content
 
 SSM_DOCUMENT_RESOURCE_TYPE = "Document"
 
 
-def content_transform(content):
+def content_transform(content, document_type=None):
     if content is None:
         return {}
 
@@ -179,7 +201,7 @@ def content_transform(content):
         return content
 
     if isinstance(content, dict):
-        return boto3_resource_to_ansible_dict(content, transform_tags=False, force_tags=False)
+        return normalize_document_content(content, document_type=document_type, snake_case=True)
 
     return content
 
@@ -310,7 +332,9 @@ def main():
         documents.append(
             boto3_resource_to_ansible_dict(
                 document,
-                nested_transforms={"Content": content_transform},
+                nested_transforms={
+                    "Content": partial(content_transform, document_type=document.get("DocumentType")),
+                },
                 transform_tags=True,
                 force_tags=False,
             )

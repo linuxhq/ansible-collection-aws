@@ -513,7 +513,7 @@ def main():
     require_valid_tags(module, module.params["tags"] if state == "present" else None, 50)
     client = module.client(
         "iam",
-        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConcurrentModificationException"]),
+        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConcurrentModification"]),
     )
     require_client_methods(
         module,

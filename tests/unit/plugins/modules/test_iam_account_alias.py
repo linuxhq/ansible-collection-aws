@@ -46,8 +46,23 @@ class IamAccountAliasTests(TestCase):
         ):
             plugin.ensure_present(client, module)
 
-        client.delete_account_alias.assert_called_once_with(AccountAlias="old-alias", aws_retry=True)
+        client.delete_account_alias.assert_not_called()
         client.create_account_alias.assert_called_once_with(AccountAlias="new-alias", aws_retry=True)
+
+    def test_failed_replacement_preserves_existing_alias(self):
+        client = Mock()
+        client.create_account_alias.side_effect = plugin.ClientError(
+            {"Error": {"Code": "EntityAlreadyExists", "Message": "Alias already taken"}},
+            "CreateAccountAlias",
+        )
+        with (
+            patch.object(plugin, "list_account_aliases", return_value=["old-alias"]),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail),
+        ):
+            plugin.ensure_present(client, FakeModule({"name": "taken-alias"}))
+
+        client.delete_account_alias.assert_not_called()
 
     def test_present_state_only_requires_list_before_reconciliation(self):
         module = Mock(
@@ -79,3 +94,25 @@ class IamAccountAliasTests(TestCase):
             plugin.main()
 
         self.assertIn("lowercase letters", raised.exception.values["msg"])
+
+
+def test_account_alias_retries_concurrent_modification():
+    module = FakeModule({"state": "absent", "name": "example"}, client=Mock())
+    original = plugin.AWSRetry.jittered_backoff
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_absent"),
+        patch.object(plugin.AWSRetry, "jittered_backoff", wraps=original) as configured,
+    ):
+        plugin.main()
+
+    decorator = original(retries=2, delay=0, **configured.call_args.kwargs)
+    operation = Mock(
+        side_effect=[
+            plugin.ClientError({"Error": {"Code": "ConcurrentModification", "Message": "retry"}}, "CreateAccountAlias"),
+            {},
+        ]
+    )
+    assert decorator(operation)() == {}
+    assert operation.call_count == 2

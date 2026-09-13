@@ -1,5 +1,8 @@
+import json
 from unittest import TestCase
 from unittest.mock import Mock, patch
+
+import pytest
 
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_document_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -171,3 +174,102 @@ class SsmDocumentInfoTests(TestCase):
             raised.exception.values["msg"],
             "Unexpected response while listing tags for AWS Systems Manager document example",
         )
+
+
+@pytest.mark.parametrize("payload_key", ["InputPayload", "inputPayload", "input_payload"])
+def test_document_result_preserves_script_payload(payload_key):
+    payload = {"CustomerID": "one", "customer_id": "two", "Items": [{"NestedKey": "value"}]}
+    content = {"schemaVersion": "0.3", "mainSteps": [{"inputs": {payload_key: payload}}]}
+    client = Mock()
+    client.get_document.return_value = {"Name": "example", "Content": json.dumps(content)}
+    client.list_tags_for_resource.return_value = {"TagList": []}
+    module = FakeModule(
+        {"name": "example", "document_format": "JSON", "document_version": None, "version_name": None, "filters": None},
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    result = raised.value.values["document"]["content"]
+    assert result["schema_version"] == "0.3"
+    assert result["main_steps"][0]["inputs"]["input_payload"] == payload
+
+
+def test_document_content_preserves_parameter_names_and_round_trips():
+    content = {
+        "schemaVersion": "2.2",
+        "parameters": {
+            "Message": {"type": "String", "default": "Hello", "allowedValues": ["Hello"]},
+            "message": {"type": "String", "default": "World"},
+        },
+        "mainSteps": [
+            {
+                "action": "aws:runShellScript",
+                "name": "printMessage",
+                "inputs": {"runCommand": ["echo {{Message}} {{message}}"]},
+            }
+        ],
+    }
+    result = plugin.content_transform(json.dumps(content))
+    assert set(result["parameters"]) == {"Message", "message"}
+    assert result["parameters"]["Message"]["allowed_values"] == ["Hello"]
+    assert result["main_steps"][0]["inputs"]["run_command"] == ["echo {{Message}} {{message}}"]
+    assert plugin.normalize_document_content(result) == content
+
+
+@pytest.mark.parametrize(
+    "parameter_type,default",
+    [
+        ("StringMap", {"tenant_id": "alpha", "tenantId": "beta"}),
+        ("MapList", [{"tenant_id": "alpha", "tenantId": "beta"}]),
+    ],
+)
+def test_document_info_preserves_map_defaults(parameter_type, default):
+    content = {
+        "schemaVersion": "0.3",
+        "parameters": {"Payload": {"type": parameter_type, "default": default, "maxItems": 2}},
+    }
+    result = plugin.content_transform(json.dumps(content))
+    assert result["parameters"]["Payload"]["default"] == default
+    assert result["parameters"]["Payload"]["max_items"] == 2
+    assert plugin.normalize_document_content(result) == content
+
+
+@pytest.mark.parametrize("document_type", ["ApplicationConfiguration", "ApplicationConfigurationSchema"])
+def test_application_document_info_preserves_content(document_type):
+    content = {
+        "properties": {"feature_enabled": {"maxLength": 10}},
+        "required": ["feature_enabled"],
+        "featureEnabled": True,
+        "feature_enabled": False,
+    }
+    client = Mock()
+    client.get_document.return_value = {
+        "Name": "example",
+        "DocumentType": document_type,
+        "Content": json.dumps(content),
+    }
+    client.list_tags_for_resource.return_value = {"TagList": []}
+    module = FakeModule(
+        {
+            "name": "example",
+            "document_format": "JSON",
+            "document_version": None,
+            "version_name": None,
+            "filters": None,
+        },
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    assert result.value.values["document"]["content"] == content
+    assert result.value.values["documents"][0]["content"] == content

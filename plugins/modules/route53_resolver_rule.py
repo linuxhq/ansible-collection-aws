@@ -402,7 +402,7 @@ def ensure_present(client, module):
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
     if (
-        changed
+        (changed or module.params["wait"])
         and not module.check_mode
         and rule is not None
         and rule.get("Status")
@@ -584,6 +584,13 @@ def comparable_target_ips(target_ips):
     for target_ip in target_ips or []:
         item = dict(TARGET_IP_DEFAULTS)
         item.update({key: value for key, value in target_ip.items() if value is not None})
+        for field in ("ip", "ipv6"):
+            if item.get(field) is not None:
+                try:
+                    item[field] = str(ipaddress.ip_address(item[field]))
+                except ValueError:
+                    pass
+
         normalized.append({field: item.get(field) for field in TARGET_IP_FIELDS if item.get(field) is not None})
 
     unique = {json.dumps(item, sort_keys=True): item for item in normalized}

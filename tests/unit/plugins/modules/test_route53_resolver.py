@@ -3,6 +3,8 @@ from unittest.mock import ANY, Mock, patch
 
 import pytest
 
+from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
+
 from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -11,6 +13,89 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     assert_module_contract,
     assert_module_rejects,
 )
+
+
+@pytest.mark.parametrize("explicit_first", [False, True])
+@pytest.mark.parametrize(
+    "field,current_addresses,requested",
+    [
+        ("Ip", ["10.0.0.10", "10.0.0.11"], "10.0.0.10"),
+        ("Ipv6", ["2001:db8::10", "2001:db8::11"], "2001:0DB8:0000:0000:0000:0000:0000:0010"),
+    ],
+)
+def test_mixed_explicit_and_automatic_addresses_match_without_replacement(
+    explicit_first, field, current_addresses, requested
+):
+    client = Mock()
+    module = FakeModule({"wait": False})
+    endpoint = {
+        "Id": "rslvr-endpt-1",
+        "IpAddresses": [
+            {"SubnetId": "subnet-a", field: current_addresses[0], "IpId": "ip-1"},
+            {"SubnetId": "subnet-a", field: current_addresses[1], "IpId": "ip-2"},
+        ],
+    }
+    addresses = [{"subnet_id": "subnet-a"}, {"subnet_id": "subnet-a", field.lower(): requested}]
+    if explicit_first:
+        addresses.reverse()
+
+    assert plugin.comparable_ip_addresses_match(
+        plugin.comparable_ip_addresses(endpoint["IpAddresses"]), plugin.comparable_ip_addresses(addresses)
+    )
+    with (
+        patch.object(plugin, "get_resolver_endpoint", return_value=endpoint),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", return_value=endpoint),
+        patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
+    ):
+        result = plugin.reconcile_resolver_endpoint_ip_addresses(
+            client, module, endpoint, {"name": "example", "ip_addresses": addresses}
+        )
+
+    assert result == endpoint
+    client.associate_resolver_endpoint_ip_address.assert_not_called()
+    client.disassociate_resolver_endpoint_ip_address.assert_not_called()
+    wait.assert_not_called()
+
+
+@pytest.mark.parametrize("endpoint_type", ["dualstack", "ipv4", "ipv6"])
+def test_explicit_address_pair_uses_real_argument_validation(endpoint_type):
+    client = Mock()
+    client.create_resolver_endpoint.return_value = {"ResolverEndpoint": {"Id": "rslvr-endpt-1"}}
+    arguments = {
+        "name": "example",
+        "direction": "inbound",
+        "resolver_endpoint_type": endpoint_type,
+        "security_group_ids": ["sg-example"],
+        "wait": False,
+        "ip_addresses": [
+            {"subnet_id": "subnet-a", "ip": "10.0.0.10", "ipv6": "2001:db8:1::10"},
+            {"subnet_id": "subnet-b", "ip": "10.0.1.10", "ipv6": "2001:db8:2::10"},
+        ],
+    }
+
+    def initialize(**kwargs):
+        kwargs.pop("supports_check_mode")
+        result = ArgumentSpecValidator(**kwargs).validate(arguments)
+        assert not result.error_messages, result.error_messages
+        return FakeModule(result.validated_parameters, client=client)
+
+    with (
+        patch.object(plugin, "AnsibleAWSModule", side_effect=initialize),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
+        pytest.raises(ModuleExit if endpoint_type == "dualstack" else ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    if endpoint_type == "dualstack":
+        assert raised.value.values["changed"]
+        assert client.create_resolver_endpoint.call_args.kwargs["IpAddresses"] == [
+            {"SubnetId": entry["subnet_id"], "Ip": entry["ip"], "Ipv6": entry["ipv6"]}
+            for entry in arguments["ip_addresses"]
+        ]
+    else:
+        assert "require resolver_endpoint_type=dualstack" in raised.value.values["msg"]
+        client.create_resolver_endpoint.assert_not_called()
 
 
 class Route53ResolverTests(TestCase):

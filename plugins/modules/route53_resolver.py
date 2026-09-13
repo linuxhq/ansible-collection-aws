@@ -33,12 +33,12 @@ options:
       ip:
         description:
           - The IPv4 address for the endpoint.
-          - Mutually exclusive with O(ip_addresses[].ipv6).
+          - Can be supplied together with O(ip_addresses[].ipv6) for O(resolver_endpoint_type=dualstack).
         type: str
       ipv6:
         description:
           - The IPv6 address for the endpoint.
-          - Mutually exclusive with O(ip_addresses[].ip).
+          - Can be supplied together with O(ip_addresses[].ip) for O(resolver_endpoint_type=dualstack).
         type: str
       subnet_id:
         description:
@@ -434,7 +434,7 @@ def ensure_present(client, module):
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
     if (
-        changed
+        (changed or module.params["wait"])
         and not module.check_mode
         and endpoint is not None
         and endpoint.get("Status")
@@ -602,7 +602,8 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired):
 
     remaining = list(current_ip_addresses)
     ip_addresses_to_add = []
-    for ip_address in desired_ip_addresses:
+    # Reserve explicit addresses before matching subnet-only requests.
+    for ip_address in sorted(desired_ip_addresses, key=lambda item: len(comparable_ip_address(item)), reverse=True):
         desired_comparable = comparable_ip_address(ip_address)
         match = next(
             (
@@ -714,6 +715,13 @@ def comparable_endpoint(endpoint):
 
 def comparable_ip_address(ip_address):
     normalized = boto3_resource_to_ansible_dict(ip_address, transform_tags=False, force_tags=False)
+    for field in ("ip", "ipv6"):
+        if normalized.get(field) is not None:
+            try:
+                normalized[field] = str(ipaddress.ip_address(normalized[field]))
+            except ValueError:
+                pass
+
     return {field: normalized.get(field) for field in IP_ADDRESS_COMPARISON_FIELDS if normalized.get(field) is not None}
 
 
@@ -748,7 +756,7 @@ def comparable_endpoints_match(current, desired):
 
 def comparable_ip_addresses_match(current, desired):
     remaining = list(current)
-    for desired_ip_address in desired:
+    for desired_ip_address in sorted(desired, key=len, reverse=True):
         match = next(
             (
                 index
@@ -906,7 +914,6 @@ def main():
             },
             "ip_addresses": {
                 "elements": "dict",
-                "mutually_exclusive": [["ip", "ipv6"]],
                 "options": {
                     "ip": {"type": "str"},
                     "ipv6": {"type": "str"},
@@ -973,6 +980,15 @@ def main():
             module.fail_json(msg="security_group_ids entries must contain 1 to 64 characters")
 
         for entry in module.params["ip_addresses"]:
+            if (
+                entry.get("ip") is not None
+                and entry.get("ipv6") is not None
+                and module.params["resolver_endpoint_type"] != "dualstack"
+            ):
+                module.fail_json(
+                    msg="ip_addresses entries with both ip and ipv6 require resolver_endpoint_type=dualstack"
+                )
+
             if not 1 <= len(entry["subnet_id"]) <= 32:
                 module.fail_json(msg="ip_addresses[].subnet_id must contain 1 to 32 characters")
 

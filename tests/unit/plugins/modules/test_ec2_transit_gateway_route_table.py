@@ -2,6 +2,8 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_transit_gateway_route_table as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -576,3 +578,74 @@ def test_tgw_absence_waits_until_deleting_route_disappears():
 
     assert result is None
     assert get.call_count == 2
+
+
+@pytest.mark.parametrize("case", ["pending_table", "pending_route", "deleting_route", "purge_pending_table"])
+def test_present_check_mode_skips_transition_waits(case):
+    desired = {"destination_cidr_block": "10.0.0.0/8", "transit_gateway_attachment_id": "tgw-attach-1"}
+    module = FakeModule(
+        {
+            "state": "present",
+            "transit_gateway_route_table_id": "tgw-rtb-1",
+            "transit_gateway_id": None,
+            "name": None,
+            "tags": None,
+            "purge_tags": True,
+            "routes": [desired] if case in ("pending_route", "deleting_route") else [],
+            "purge_routes": case == "purge_pending_table",
+            "wait": case != "purge_pending_table",
+        },
+        check_mode=True,
+    )
+    table = {"TransitGatewayRouteTableId": "tgw-rtb-1", "State": "pending" if "table" in case else "available"}
+    route = {
+        "Type": "static",
+        "State": "deleting" if case == "deleting_route" else "pending",
+        "DestinationCidrBlock": "10.0.0.0/8",
+        "TransitGatewayAttachments": [{"TransitGatewayAttachmentId": "tgw-attach-1"}],
+    }
+    client = Mock()
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "get_route", return_value=route),
+        patch.object(plugin, "static_routes", return_value=[]),
+        patch.object(plugin, "wait_for_route_table", side_effect=AssertionError("Unexpected table wait")),
+        patch.object(plugin, "wait_for_route", side_effect=AssertionError("Unexpected route wait")),
+        patch.object(plugin, "wait_for_route_absent", side_effect=AssertionError("Unexpected deletion wait")),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is (case == "deleting_route")
+    if case == "deleting_route":
+        assert result.value.values["routes"][0]["state"] == "active"
+
+    assert client.mock_calls == []
+
+
+def test_absent_check_mode_skips_deleting_table_wait():
+    module = FakeModule({"state": "absent", "wait": True}, check_mode=True)
+    table = {"TransitGatewayRouteTableId": "tgw-rtb-1", "State": "deleting"}
+    client = Mock()
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "wait_for_route_table", side_effect=AssertionError("Unexpected table wait")),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert result.value.values["changed"] is False
+    assert client.mock_calls == []
+
+
+def test_absent_check_mode_skips_deleting_route_wait():
+    module = FakeModule({"wait": True}, check_mode=True)
+    client = Mock()
+    with (
+        patch.object(plugin, "get_route", return_value={"Type": "static", "State": "deleting"}),
+        patch.object(plugin, "wait_for_route_absent", side_effect=AssertionError("Unexpected route wait")),
+    ):
+        changed, _route = plugin.ensure_route_absent(client, module, "tgw-rtb-1", "10.0.0.0/8")
+
+    assert changed is False
+    assert client.mock_calls == []

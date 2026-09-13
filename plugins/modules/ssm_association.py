@@ -8,6 +8,7 @@ module: ssm_association
 version_added: '1.9.0'
 short_description: Manage AWS Systems Manager associations
 description:
+  - Parameter names in the returned association are preserved unchanged.
   - Manages AWS Systems Manager associations.
   - Manages the schedule expression, targets, and tags of an association
     keyed by its document name.
@@ -412,7 +413,7 @@ def ensure_present(client, module, current):
         "state": "present",
         "association": boto3_resource_to_ansible_dict(
             association,
-            ignore_list=["TargetMaps"],
+            ignore_list=["TargetMaps", "Parameters"],
             transform_tags=True,
             force_tags=False,
         ),

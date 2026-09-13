@@ -73,7 +73,8 @@ RETURN = r"""
 connections:
   description:
     - A list of AWS Glue connections.
-    - C(connection_properties) keys are returned as provided by the Glue API.
+    - Keys in C(connection_properties), C(spark_properties), C(athena_properties),
+      and C(python_properties) are returned as provided by the Glue API.
   returned: always
   type: list
   elements: dict
@@ -207,7 +208,7 @@ def main():
         changed=False,
         connections=boto3_resource_list_to_ansible_dict(
             connections,
-            ignore_list=["ConnectionProperties"],
+            ignore_list=["ConnectionProperties", "SparkProperties", "AthenaProperties", "PythonProperties"],
             transform_tags=False,
             force_tags=False,
         ),

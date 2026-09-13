@@ -999,8 +999,9 @@ def ensure_present(client, module, connection):
     routes = module.params["routes"]
     add_routes = set(routes or []) - current_routes if routes is not None else set()
     remove_routes = current_routes - set(routes) if routes is not None and module.params["purge_routes"] else set()
+    pending_removals = deleting_routes - set(routes) if routes is not None and module.params["purge_routes"] else set()
 
-    for route in add_routes | remove_routes:
+    for route in add_routes | remove_routes | pending_removals:
         validate_network(module, route, "Route destination", 4)
 
     updated = bool(tunnels or options or tags_to_set or tags_to_remove or add_routes or remove_routes)
@@ -1016,7 +1017,7 @@ def ensure_present(client, module, connection):
     for route in sorted(pending_routes):
         wait_for_route_available(client, module, connection_id, route)
 
-    for route in sorted(add_routes & deleting_routes):
+    for route in sorted((add_routes & deleting_routes) | pending_removals):
         wait_for_route_deleted(client, module, connection_id, route)
 
     if options:
@@ -1043,7 +1044,7 @@ def ensure_present(client, module, connection):
     reconcile_routes(client, module, connection_id, add_routes, remove_routes)
     reconcile_tags(client, module, connection_id, tags_to_set, tags_to_remove)
 
-    if updated or pending_routes:
+    if updated or pending_routes or pending_removals:
         connection = read_connection(client, module, connection_id)
 
     module.exit_json(changed=changed, vpn_connection=normalize_connection(connection))
