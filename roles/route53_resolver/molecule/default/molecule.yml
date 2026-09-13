@@ -1,4 +1,6 @@
 ---
+prerun: false
+
 dependency:
   name: galaxy
   options:
@@ -19,6 +21,7 @@ provisioner:
   name: ansible
   env:
     ANSIBLE_ACTION_WARNINGS: false
+    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
     ANSIBLE_DEPRECATION_WARNINGS: false
   log: true
   options:
@@ -68,6 +71,8 @@ provisioner:
 
         route53_resolver_list_create:
           - name: molecule-cloudflare
+            tags:
+              molecule: route53_resolver
             direction: outbound
             ip_addresses:
               - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
@@ -80,6 +85,8 @@ provisioner:
               - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
           - name: molecule-google
+            tags:
+              molecule: route53_resolver
             direction: outbound
             ip_addresses:
               - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
@@ -93,6 +100,8 @@ provisioner:
 
         route53_resolver_list_update:
           - name: molecule-cloudflare
+            tags:
+              molecule: route53_resolver
             direction: outbound
             ip_addresses:
               - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
@@ -106,6 +115,8 @@ provisioner:
               - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
           - name: molecule-google
+            tags:
+              molecule: route53_resolver
             direction: outbound
             ip_addresses:
               - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"

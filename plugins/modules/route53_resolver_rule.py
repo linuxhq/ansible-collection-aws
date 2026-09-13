@@ -10,6 +10,8 @@ short_description: Manage aws route53 resolver rules
 description:
   - Manages AWS Route53 Resolver rules.
   - Updates resolver endpoint and target IP settings for existing rules.
+  - Changes to the domain name or rule type fail without modifying the existing rule.
+  - Existing rules are deleted only with O(state=absent).
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -23,12 +25,6 @@ options:
       - The resolver rule name.
     required: true
     type: str
-  purge_tags:
-    description:
-      - Whether tags not listed in O(tags) should be removed.
-      - This option is only used when O(tags) is provided.
-    default: true
-    type: bool
   resolver_endpoint_id:
     description:
       - The resolver endpoint ID for the rule.
@@ -51,11 +47,6 @@ options:
       - present
     default: present
     type: str
-  tags:
-    description:
-      - Tags to apply to the resolver rule.
-      - This must contain at most 200 entries; keys must contain 1 to 128 characters and values at most 256 characters.
-    type: dict
   target_ips:
     description:
       - The target IP definitions for forwarding rules.
@@ -108,10 +99,14 @@ options:
       - This must be 1 or greater.
     default: 300
     type: int
+notes:
+  - O(tags) accepts at most 200 entries; keys must contain 1 to 128 characters
+    and values at most 256 characters.
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+  - amazon.aws.tags
 attributes:
   check_mode:
     description: Determines what changes would occur without modifying AWS resources.
@@ -324,7 +319,7 @@ def create_resolver_rule(client, module, desired):
     return rule
 
 
-def delete_resolver_rule(client, module, rule, always=False):
+def delete_resolver_rule(client, module, rule):
     resolver_rule_id = rule.get("Id")
 
     try:
@@ -340,7 +335,7 @@ def delete_resolver_rule(client, module, rule, always=False):
             msg=f"Unable to delete AWS Route53 Resolver rule {module.params['name']}",
         )
 
-    if module.params["wait"] or always:
+    if module.params["wait"]:
         wait_for_resolver_rule_status(
             client,
             module,
@@ -396,10 +391,6 @@ def ensure_present(client, module):
     desired.update(desired_comparable)
     changed = current != desired_comparable
     resource_changed = changed
-    replacement_required = current is not None and (
-        current["domain_name"] != desired_comparable["domain_name"]
-        or current["rule_type"] != desired_comparable["rule_type"]
-    )
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
@@ -411,7 +402,7 @@ def ensure_present(client, module):
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
     if (
-        changed
+        (changed or module.params["wait"])
         and not module.check_mode
         and rule is not None
         and rule.get("Status")
@@ -420,8 +411,20 @@ def ensure_present(client, module):
         wait_for_resolver_rule_status(client, module, rule.get("Id"), {"complete"})
         return ensure_present(client, module)
 
+    if current is not None:
+        immutable_changes = [
+            field for field in ("domain_name", "rule_type") if current[field] != desired_comparable[field]
+        ]
+        if immutable_changes:
+            module.fail_json(
+                msg=(
+                    f"{', '.join(immutable_changes)} cannot be changed for an existing AWS Route53 Resolver rule. "
+                    "The existing rule has not been modified."
+                )
+            )
+
     if changed and module.check_mode:
-        rule = {} if replacement_required else dict(rule or {})
+        rule = dict(rule or {})
         rule.update(snake_dict_to_camel_dict(desired, capitalize_first=True))
         if tags is not None:
             rule = apply_tag_deltas(rule, tags_to_set, tag_keys_to_unset)
@@ -486,11 +489,14 @@ def ensure_present(client, module):
                 current = comparable_rule(rule)
 
             if current != desired_comparable:
-                if rule is not None:
-                    delete_resolver_rule(client, module, rule, always=True)
-
-                rule = create_resolver_rule(client, module, desired)
-                created = True
+                module.fail_json(
+                    msg=(
+                        "AWS Route53 Resolver rule does not match the requested configuration after updating. "
+                        "The rule has not been deleted; inspect the current configuration before retrying."
+                    ),
+                    current=current,
+                    desired=desired_comparable,
+                )
 
         if rule is not None and tags is not None:
             if resource_changed and not created:
@@ -578,6 +584,13 @@ def comparable_target_ips(target_ips):
     for target_ip in target_ips or []:
         item = dict(TARGET_IP_DEFAULTS)
         item.update({key: value for key, value in target_ip.items() if value is not None})
+        for field in ("ip", "ipv6"):
+            if item.get(field) is not None:
+                try:
+                    item[field] = str(ipaddress.ip_address(item[field]))
+                except ValueError:
+                    pass
+
         normalized.append({field: item.get(field) for field in TARGET_IP_FIELDS if item.get(field) is not None})
 
     unique = {json.dumps(item, sort_keys=True): item for item in normalized}
@@ -737,7 +750,7 @@ def main():
                 "default": "present",
                 "type": "str",
             },
-            "tags": {"type": "dict"},
+            "tags": {"aliases": ["resource_tags"], "type": "dict"},
             "target_ips": {
                 "elements": "dict",
                 "mutually_exclusive": [["ip", "ipv6"]],
@@ -823,7 +836,6 @@ def main():
             create_parameters += ("Tags",)
 
         methods["create_resolver_rule"] = create_parameters
-        methods["delete_resolver_rule"] = ("ResolverRuleId",)
         methods["get_resolver_rule"] = ("ResolverRuleId",)
         methods["list_tags_for_resource"] = ("MaxResults", "NextToken", "ResourceArn")
         methods["update_resolver_rule"] = ("Config", "ResolverRuleId")

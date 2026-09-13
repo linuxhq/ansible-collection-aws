@@ -31,4 +31,4 @@ None
         - role: linuxhq.aws.notifications_hub
           notifications_hub_list:
             - region: eu-central-1
-            - region: us-west-1
+            - region: us-east-2

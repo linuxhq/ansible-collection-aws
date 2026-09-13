@@ -2,6 +2,9 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
+import pytest
+from botocore.exceptions import ClientError
+
 from ansible_collections.linuxhq.aws.plugins.modules import iam_oidc_provider as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -10,6 +13,35 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     assert_module_contract,
     assert_module_rejects,
 )
+
+
+@pytest.mark.parametrize("error_code", ["ConcurrentModification", "AccessDenied"])
+def test_configured_retry_handles_concurrent_modification_only(error_code):
+    module = FakeModule({"state": "absent", "url": "https://issuer.example", "tags": None}, client=Mock())
+    original = plugin.AWSRetry.jittered_backoff
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_absent"),
+        patch.object(plugin.AWSRetry, "jittered_backoff", wraps=original) as configured,
+    ):
+        plugin.main()
+
+    decorator = original(retries=2, delay=0, **configured.call_args.kwargs)
+    error = ClientError(
+        {"Error": {"Code": error_code, "Message": "conflict or denied"}},
+        "AddClientIDToOpenIDConnectProvider",
+    )
+    operation = Mock(side_effect=[error, {"ok": True}])
+    if error_code == "ConcurrentModification":
+        assert decorator(operation)() == {"ok": True}
+        assert operation.call_count == 2
+    else:
+        with pytest.raises(ClientError) as raised:
+            decorator(operation)()
+
+        assert raised.value is error
+        assert operation.call_count == 1
 
 
 class IamOidcProviderTests(TestCase):
@@ -320,3 +352,51 @@ class IamOidcProviderTests(TestCase):
                     },
                     message,
                 )
+
+
+@pytest.mark.parametrize("current_count,new_count", [(100, 1), (98, 3)])
+def test_oidc_can_replace_audience_at_capacity(current_count, new_count):
+    audiences = {f"app-{i}" for i in range(current_count)}
+    replacements = {f"replacement-{i}" for i in range(new_count)}
+    desired = sorted((audiences - {"app-0"}) | replacements)
+    current = {
+        "OpenIDConnectProviderArn": "arn:aws:iam::123456789012:oidc-provider/example.org",
+        "Url": "example.org",
+        "ClientIDList": sorted(audiences),
+        "ThumbprintList": [],
+    }
+
+    def add(**kwargs):
+        if len(audiences) >= 100:
+            raise ClientError(
+                {"Error": {"Code": "LimitExceeded", "Message": "100 audience limit"}},
+                "AddClientIDToOpenIDConnectProvider",
+            )
+
+        audiences.add(kwargs["ClientID"])
+
+    def remove(**kwargs):
+        audiences.remove(kwargs["ClientID"])
+
+    client = Mock(
+        add_client_id_to_open_id_connect_provider=Mock(side_effect=add),
+        remove_client_id_from_open_id_connect_provider=Mock(side_effect=remove),
+    )
+    module = FakeModule(
+        {
+            "tags": None,
+            "url": "https://example.org",
+            "client_id_list": desired,
+            "thumbprint_list": [],
+            "purge_tags": True,
+        }
+    )
+    with (
+        patch.object(plugin, "get_provider_by_url", return_value=current),
+        patch.object(plugin, "get_provider_by_arn", return_value=dict(current, ClientIDList=desired)),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
+
+    assert audiences == set(desired)

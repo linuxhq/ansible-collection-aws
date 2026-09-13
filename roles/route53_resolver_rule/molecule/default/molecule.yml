@@ -1,4 +1,6 @@
 ---
+prerun: false
+
 dependency:
   name: galaxy
   options:
@@ -19,6 +21,7 @@ provisioner:
   name: ansible
   env:
     ANSIBLE_ACTION_WARNINGS: false
+    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
     ANSIBLE_DEPRECATION_WARNINGS: false
   log: true
   options:
@@ -89,6 +92,8 @@ provisioner:
 
         route53_resolver_rule_list_create:
           - name: molecule-cloudflare
+            tags:
+              molecule: route53_resolver_rule
             domain_name: cloudflare.com
             resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].id }}"
             rule_type: forward
@@ -99,6 +104,8 @@ provisioner:
                 port: 53
 
           - name: molecule-google
+            tags:
+              molecule: route53_resolver_rule
             domain_name: google.com
             resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-google'].id }}"
             rule_type: forward
@@ -110,6 +117,8 @@ provisioner:
 
         route53_resolver_rule_list_update:
           - name: molecule-cloudflare
+            tags:
+              molecule: route53_resolver_rule
             domain_name: cloudflare.com
             resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].id }}"
             rule_type: forward
@@ -120,6 +129,8 @@ provisioner:
                 port: 53
 
           - name: molecule-google
+            tags:
+              molecule: route53_resolver_rule
             domain_name: google.com
             resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-google'].id }}"
             rule_type: forward

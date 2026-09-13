@@ -50,7 +50,7 @@
           - field: instanceType
             value: t3.micro
           - field: regionCode
-            value: us-west-2
+            value: us-east-2
           - field: operatingSystem
             value: Linux
           - field: tenancy
@@ -67,7 +67,7 @@
             ] == _ec2_pricing_info_list[0]
           - _ec2_pricing_info_list[0].service_code == 'AmazonEC2'
           - _ec2_pricing_info_list[0].product.attributes.instance_type == 't3.micro'
-          - _ec2_pricing_info_list[0].product.attributes.region_code == 'us-west-2'
+          - _ec2_pricing_info_list[0].product.attributes.region_code == 'us-east-2'
           - _ec2_pricing_info_list[0].product.attributes.operating_system == 'Linux'
           - _ec2_pricing_info_list[0].product.attributes.tenancy == 'Shared'
 ...

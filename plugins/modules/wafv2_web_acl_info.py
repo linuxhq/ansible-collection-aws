@@ -102,7 +102,9 @@ web_acls:
       returned: when available
       type: dict
     custom_response_bodies:
-      description: Custom response bodies available to web ACL rules.
+      description:
+        - Custom response bodies available to web ACL rules.
+        - Body names retain their original case; body fields use snake_case.
       returned: when available
       type: dict
     data_protection_config:
@@ -178,6 +180,7 @@ try:
 except ImportError:
     pass
 
+from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
 from ansible.module_utils.common.text.converters import to_text
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
@@ -301,7 +304,16 @@ def main():
     module.exit_json(
         changed=False,
         scope=scope.lower(),
-        web_acls=boto3_resource_list_to_ansible_dict(web_acls, transform_tags=False, force_tags=False),
+        web_acls=boto3_resource_list_to_ansible_dict(
+            web_acls,
+            transform_tags=False,
+            force_tags=False,
+            nested_transforms={
+                "CustomResponseBodies": lambda bodies: {
+                    name: camel_dict_to_snake_dict(body) for name, body in bodies.items()
+                },
+            },
+        ),
     )
 
 

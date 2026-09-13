@@ -16,7 +16,7 @@ options:
   address_family:
     description:
       - The address family for the managed prefix list.
-      - Changing this value replaces the managed prefix list.
+      - Changing this value fails without modifying the existing managed prefix list.
     choices:
       - IPv4
       - IPv6
@@ -192,6 +192,12 @@ EC2_WAITER_MODEL_DATA = {
             },
             {
                 "argument": "PrefixLists[0].State",
+                "expected": "restore-complete",
+                "matcher": "path",
+                "state": "success",
+            },
+            {
+                "argument": "PrefixLists[0].State",
                 "expected": "create-in-progress",
                 "matcher": "path",
                 "state": "retry",
@@ -218,6 +224,12 @@ EC2_WAITER_MODEL_DATA = {
             {
                 "expected": "InvalidPrefixListID.NotFound",
                 "matcher": "error",
+                "state": "success",
+            },
+            {
+                "argument": "PrefixLists[0].State",
+                "expected": "delete-complete",
+                "matcher": "path",
                 "state": "success",
             },
             {
@@ -318,7 +330,7 @@ def create_prefix_list(client, module, desired_prefix_list, desired_entries):
     return prefix_list, desired_entries
 
 
-def delete_prefix_list(client, module, prefix_list_id, always=False):
+def delete_prefix_list(client, module, prefix_list_id):
     require_client_methods(
         module,
         client,
@@ -338,7 +350,7 @@ def delete_prefix_list(client, module, prefix_list_id, always=False):
             msg=f"Unable to delete EC2 VPC managed prefix list {module.params['name']}",
         )
 
-    if prefix_list_id and (module.params["wait"] or always):
+    if prefix_list_id and module.params["wait"]:
         wait_for_prefix_list_state(
             client,
             module,
@@ -427,6 +439,14 @@ def ensure_present(client, module):
 
         resource_changed = current_prefix_list != desired_prefix_list
         address_family_changed = current_prefix_list["address_family"] != desired_prefix_list["address_family"]
+        if address_family_changed:
+            module.fail_json(
+                msg=(
+                    "address_family cannot be changed for an existing EC2 VPC managed prefix list. "
+                    "The existing prefix list has not been modified."
+                )
+            )
+
         changed = bool(remove_entries or add_entries or resource_changed)
         tags_to_set, tag_keys_to_unset = ({}, [])
         if tags is not None:
@@ -438,16 +458,16 @@ def ensure_present(client, module):
 
         changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
-        if changed and not module.check_mode:
-            if current.get("State") in {
-                "create-in-progress",
-                "modify-in-progress",
-                "restore-in-progress",
-            }:
-                wait_for_ready_state(client, module, current.get("PrefixListId"))
-                return ensure_present(client, module)
+        if (
+            (changed or wait)
+            and not module.check_mode
+            and current.get("State") in {"create-in-progress", "modify-in-progress", "restore-in-progress"}
+        ):
+            wait_for_ready_state(client, module, current.get("PrefixListId"))
+            return ensure_present(client, module)
 
-            if remove_entries and not address_family_changed:
+        if changed and not module.check_mode:
+            if remove_entries:
                 remove_entry_requests = [{"cidr": entry["cidr"]} for entry in remove_entries]
 
                 modify_prefix_list(
@@ -467,18 +487,7 @@ def ensure_present(client, module):
             if resource_changed:
                 current_prefix_list = comparable_prefix_list(current)
 
-                if address_family_changed:
-                    prefix_list_id = current.get("PrefixListId")
-                    delete_prefix_list(client, module, prefix_list_id, always=True)
-                    current, current_entries = create_prefix_list(
-                        client,
-                        module,
-                        desired_prefix_list,
-                        desired_entries,
-                    )
-                    current_prefix_list = desired_prefix_list
-                    add_entries = []
-                elif (current_prefix_list or {}) != desired_prefix_list:
+                if (current_prefix_list or {}) != desired_prefix_list:
                     modify_prefix_list(
                         client,
                         module,
@@ -495,18 +504,17 @@ def ensure_present(client, module):
                     current_prefix_list = comparable_prefix_list(current)
 
                 if (current_prefix_list or {}) != desired_prefix_list:
-                    prefix_list_id = current.get("PrefixListId")
-                    delete_prefix_list(client, module, prefix_list_id, always=True)
-                    current, current_entries = create_prefix_list(
-                        client,
-                        module,
-                        desired_prefix_list,
-                        desired_entries,
+                    module.fail_json(
+                        msg=(
+                            "EC2 VPC managed prefix list does not match the requested configuration after updating. "
+                            "The prefix list has not been deleted; inspect the current configuration before retrying."
+                        ),
+                        current=current_prefix_list,
+                        desired=desired_prefix_list,
                     )
-                    add_entries = []
 
             if add_entries:
-                modify_prefix_list(
+                current = modify_prefix_list(
                     client,
                     module,
                     current,
@@ -653,7 +661,7 @@ def modify_prefix_list(client, module, current, **kwargs):
         {"modify_managed_prefix_list": tuple(request)},
     )
     try:
-        client.modify_managed_prefix_list(
+        response = client.modify_managed_prefix_list(
             **request,
             aws_retry=True,
         )
@@ -662,6 +670,11 @@ def modify_prefix_list(client, module, current, **kwargs):
             e,
             msg=f"Unable to modify EC2 VPC managed prefix list {module.params['name']}",
         )
+
+    return validate_prefix_list(
+        module,
+        response.get("PrefixList") if isinstance(response, dict) else None,
+    )
 
 
 def wait_for_ready_state(client, module, prefix_list_id):

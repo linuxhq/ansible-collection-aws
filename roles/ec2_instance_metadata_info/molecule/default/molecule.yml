@@ -1,4 +1,6 @@
 ---
+prerun: false
+
 dependency:
   name: galaxy
   options:
@@ -19,6 +21,7 @@ provisioner:
   name: ansible
   env:
     ANSIBLE_ACTION_WARNINGS: false
+    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
     ANSIBLE_DEPRECATION_WARNINGS: false
   log: true
   options:
@@ -33,11 +36,11 @@ provisioner:
         ec2_instance_metadata_regions:
           "{{ (_aws_region_info_list |
               map(attribute='region_name')) |
-              d(['us-west-1']) }}"
+              d(['us-east-1']) }}"
         ec2_instance_metadata_info_regions:
           "{{ (_aws_region_info_list |
               map(attribute='region_name')) |
-              d(['us-west-1']) }}"
+              d(['us-east-1']) }}"
 
 scenario:
   test_sequence:

@@ -615,11 +615,40 @@ def desired_cluster(module):
     return desired
 
 
+def merge_cluster_configuration(current, desired):
+    result = dict(current or {})
+    for key, value in desired.items():
+        if isinstance(value, dict):
+            result[key] = merge_cluster_configuration(result.get(key), value)
+        else:
+            result[key] = value
+
+    return result
+
+
 def check_mode_cluster(module, current):
     tags = module.params.get("tags")
     cluster = dict(current or {})
     desired = snake_dict_to_camel_dict(desired_cluster(module), capitalize_first=False)
-    cluster.update(desired)
+    if current is not None:
+        desired.pop("bootstrapSelfManagedAddons", None)
+        if "accessConfig" in desired:
+            desired["accessConfig"].pop("bootstrapClusterCreatorAdminPermissions", None)
+
+    cluster = merge_cluster_configuration(cluster, desired)
+    desired_logging = (desired.get("logging") or {}).get("clusterLogging")
+    if desired_logging is not None and current is not None:
+        log_types = {
+            log_type: entry["enabled"]
+            for entry in ((current.get("logging") or {}).get("clusterLogging") or []) + desired_logging
+            for log_type in entry.get("types") or []
+        }
+        cluster["logging"]["clusterLogging"] = [
+            {"enabled": enabled, "types": sorted(log_type for log_type, value in log_types.items() if value == enabled)}
+            for enabled in (True, False)
+            if enabled in log_types.values()
+        ]
+
     cluster["name"] = module.params["name"]
     if tags is not None:
         current_tags = {} if module.params["purge_tags"] else dict(cluster.get("tags") or {})
@@ -630,7 +659,9 @@ def check_mode_cluster(module, current):
 
 
 def exit_result(module, changed, cluster, state):
-    normalized_cluster = boto3_resource_to_ansible_dict(cluster or {}, transform_tags=False, force_tags=False)
+    normalized_cluster = boto3_resource_to_ansible_dict(
+        cluster or {}, transform_tags=False, force_tags=False, ignore_list=["tags"]
+    )
 
     module.exit_json(
         changed=changed,
@@ -657,10 +688,9 @@ def ensure_present(client, module):
 
     if current is None:
         create_request = dict(desired, name=name)
+        create_request = scrub_none_parameters(snake_dict_to_camel_dict(create_request, capitalize_first=False))
         if tags:
             create_request["tags"] = tags
-
-        create_request = scrub_none_parameters(snake_dict_to_camel_dict(create_request, capitalize_first=False))
 
         if create_request.get("roleArn") is None:
             module.fail_json(msg="role_arn is required to create an EKS cluster")
@@ -696,7 +726,7 @@ def ensure_present(client, module):
 
         exit_result(module, True, cluster, "present")
 
-    if wait and current.get("status") != "ACTIVE":
+    if wait and not module.check_mode and current.get("status") != "ACTIVE":
         wait_for_cluster(client, module, "cluster_active")
         current = describe_cluster(client, module)
         if current is None:
@@ -733,6 +763,8 @@ def ensure_present(client, module):
         config_request = scrub_none_parameters(snake_dict_to_camel_dict(config_request, capitalize_first=False))
 
     update_requests = []
+    auto_mode_fields = ("computeConfig", "kubernetesNetworkConfig", "storageConfig")
+    auto_mode_request = {}
     for field, value in config_request.items():
         field_request = {field: value}
         update_request = changed_request(current, field_request)
@@ -740,10 +772,18 @@ def ensure_present(client, module):
         if update_request is None:
             continue
 
-        if field == "logging" and enabled_log_types(update_request.get("logging")) == enabled_log_types(
-            current.get("logging")
-        ):
+        if field in auto_mode_fields:
+            auto_mode_request.update(update_request)
             continue
+
+        if field == "logging":
+            current_log_types = enabled_log_types(current.get("logging"))
+            if all(
+                (log_type in current_log_types) == entry["enabled"]
+                for entry in value.get("clusterLogging", [])
+                for log_type in entry.get("types", [])
+            ):
+                continue
 
         if field == "resourcesVpcConfig":
             resources_vpc_config = update_request.get("resourcesVpcConfig") or {}
@@ -764,6 +804,10 @@ def ensure_present(client, module):
                 update_requests.append({"resourcesVpcConfig": network_config})
         else:
             update_requests.append(update_request)
+
+    if auto_mode_request:
+        # EKS requires compute, load balancing, and storage enablement in one request.
+        update_requests.append(auto_mode_request)
 
     config_changed = bool(update_requests)
     version_changed = version is not None and version != current.get("version")

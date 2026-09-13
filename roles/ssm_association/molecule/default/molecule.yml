@@ -1,4 +1,6 @@
 ---
+prerun: false
+
 dependency:
   name: galaxy
   options:
@@ -19,6 +21,7 @@ provisioner:
   name: ansible
   env:
     ANSIBLE_ACTION_WARNINGS: false
+    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
     ANSIBLE_DEPRECATION_WARNINGS: false
   log: true
   options:
@@ -28,6 +31,8 @@ provisioner:
       all:
         ssm_association_list_create:
           - name: AWS-UpdateSSMAgent
+            tags:
+              molecule: ssm_association
             schedule_expression: 'cron(0 0 * * ? *)'
             targets:
               - key: InstanceIds
@@ -35,6 +40,8 @@ provisioner:
 
         ssm_association_list_update:
           - name: AWS-UpdateSSMAgent
+            tags:
+              molecule: ssm_association
             schedule_expression: 'cron(15 0 * * ? *)'
             targets:
               - key: InstanceIds

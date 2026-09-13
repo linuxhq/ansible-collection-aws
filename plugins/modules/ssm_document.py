@@ -8,6 +8,7 @@ module: ssm_document
 version_added: '1.9.0'
 short_description: Manage AWS Systems Manager documents
 description:
+  - Document parameter, variable, and attachment names are preserved unchanged in returned content.
   - Manages AWS Systems Manager documents.
   - Supports creating, updating, and deleting JSON documents.
   - Content updates create a new document version and promote it to the
@@ -24,6 +25,19 @@ options:
       - Provide the content as structured Ansible YAML data.
       - The module serializes the content to JSON for AWS Systems Manager.
       - Content keys may be provided in snake_case or AWS native camelCase.
+      - For V(ApplicationConfiguration), V(ApplicationConfigurationSchema), and V(CloudFormation), content
+        is preserved exactly, including application property names and JSON Schema keywords.
+      - Automation action schema fields, including step outputs and nested loop steps,
+        accept snake_case and are converted to their AWS native field names.
+      - API-specific parameters of C(aws:executeAwsApi), C(aws:assertAwsResourceProperty),
+        and C(aws:waitForAwsResourceProperty) must use AWS native keys and are preserved unchanged.
+        The action fields C(Service), C(Api), C(PropertySelector), and C(DesiredValues)
+        accept snake_case.
+      - Run Command parameters, composite document C(documentParameters), nested Automation runtime parameters and target maps
+        retain their original keys and values.
+      - Parameter and variable names and their default values are preserved unchanged.
+      - Keys inside script C(InputPayload) objects and C(aws:updateVariable) values
+        are preserved unchanged.
       - Required when O(state=present).
     type: dict
   document_type:
@@ -36,6 +50,7 @@ options:
       - The document version to read and update.
       - V($LATEST) reconciles against the newest document version, while
         V($DEFAULT) reconciles against the effective default version.
+      - Matching V($LATEST) content is promoted when it is not the default version.
     default: $LATEST
     type: str
   name:
@@ -43,12 +58,6 @@ options:
       - The Systems Manager document name.
     required: true
     type: str
-  purge_tags:
-    description:
-      - Whether tags not listed in O(tags) should be removed.
-      - This option is only used when O(tags) is provided.
-    default: true
-    type: bool
   state:
     description:
       - Whether the document should exist.
@@ -57,15 +66,14 @@ options:
       - present
     default: present
     type: str
-  tags:
-    description:
-      - Tags to apply to the Systems Manager document.
-      - This must contain at most 1000 entries; keys must contain 1 to 128 characters and values at most 256 characters.
-    type: dict
+notes:
+  - O(tags) accepts at most 1000 entries; keys must contain 1 to 128 characters
+    and values at most 256 characters.
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+  - amazon.aws.tags
 attributes:
   check_mode:
     description: The module reports the document that would result from the requested changes.
@@ -103,7 +111,16 @@ document:
   type: dict
   contains:
     content:
-      description: Document content.
+      description:
+        - Document content.
+        - Application configuration, application configuration schema, and CloudFormation content is preserved unchanged.
+        - Parsed JSON content uses snake_case schema fields while preserving
+          parameter, variable, and attachment names, defaults, and embedded payloads unchanged.
+        - Distributor package platform, release, and architecture keys are preserved unchanged.
+        - API-specific parameters of C(aws:executeAwsApi), C(aws:assertAwsResourceProperty),
+          and C(aws:waitForAwsResourceProperty) retain AWS native keys and values.
+        - Run Command parameters, composite document C(documentParameters), nested Automation runtime parameters and target maps
+          retain their original keys and values.
       returned: always
       type: dict
     document_format:
@@ -147,8 +164,6 @@ try:
 except ImportError:
     pass
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
@@ -166,6 +181,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm_document import normalize_document_content
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_ssm_tags,
@@ -187,7 +203,7 @@ def comparable_document(document):
         return None
 
     return {
-        "content": snake_dict_to_camel_dict(document_content(document), capitalize_first=False),
+        "content": normalize_document_content(document_content(document), document_type=document.get("DocumentType")),
         "document_type": document.get("DocumentType"),
     }
 
@@ -230,7 +246,7 @@ def ensure_present(client, module):
     }
     current_comparable = comparable_document(current)
     desired_comparable = {
-        "content": snake_dict_to_camel_dict(desired["content"], capitalize_first=False),
+        "content": normalize_document_content(desired["content"], document_type=desired["document_type"]),
         "document_type": desired["document_type"],
     }
     desired.update(desired_comparable)
@@ -259,6 +275,18 @@ def ensure_present(client, module):
                 )
 
             resource_changed = False
+
+    if current is not None and not resource_changed and module.params["document_version"] == "$LATEST":
+        default = get_document(client, module, document_version="$DEFAULT")
+        if (default or {}).get("DocumentVersion") != current.get("DocumentVersion"):
+            default_version_to_promote = current.get("DocumentVersion")
+            if not default_version_to_promote:
+                module.fail_json(
+                    msg=f"Unable to promote AWS Systems Manager document {name}: AWS returned no document version"
+                )
+
+            latest = current
+            changed = True
 
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:
@@ -401,8 +429,12 @@ def ensure_present(client, module):
         content = document_content(current)
         document = boto3_resource_to_ansible_dict(
             dict(current, Content=content),
+            ignore_list=["Content"],
             transform_tags=True,
             force_tags=False,
+        )
+        document["content"] = normalize_document_content(
+            content, document_type=current.get("DocumentType"), snake_case=True
         )
 
     result = {
@@ -493,7 +525,7 @@ def main():
             "default": "present",
             "type": "str",
         },
-        "tags": {"type": "dict"},
+        "tags": {"aliases": ["resource_tags"], "type": "dict"},
     }
 
     module = AnsibleAWSModule(

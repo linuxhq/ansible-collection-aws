@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import eks_cluster as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -515,3 +517,213 @@ class EksClusterTests(TestCase):
             name="example",
             WaiterConfig={"Delay": 7, "MaxAttempts": 3},
         )
+
+
+def eks_params(**overrides):
+    params = dict.fromkeys(plugin.CREATE_FIELDS)
+    params.update(name="example", tags=None, purge_tags=True, wait=False)
+    params.update(overrides)
+    return params
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_eks_auto_mode_settings_use_one_request(enabled):
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "computeConfig": {"enabled": not enabled},
+        "kubernetesNetworkConfig": {"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": not enabled}},
+        "storageConfig": {"blockStorage": {"enabled": not enabled}},
+    }
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    module = FakeModule(
+        eks_params(
+            compute_config={"enabled": enabled},
+            kubernetes_network_config={"ip_family": "ipv4", "elastic_load_balancing": {"enabled": enabled}},
+            storage_config={"block_storage": {"enabled": enabled}},
+        )
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        patch.object(plugin, "wait_for_update"),
+        patch.object(plugin, "wait_for_cluster"),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
+
+    client.update_cluster_config.assert_called_once_with(
+        name="example",
+        aws_retry=True,
+        computeConfig={"enabled": enabled},
+        kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": enabled}},
+        storageConfig={"blockStorage": {"enabled": enabled}},
+    )
+
+
+@pytest.mark.parametrize(
+    "log_type, enabled, expected_changed",
+    [
+        ("api", False, False),
+        ("audit", True, False),
+        ("api", True, True),
+        ("audit", False, True),
+    ],
+)
+def test_eks_partial_logging_is_idempotent(log_type, enabled, expected_changed):
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "logging": {
+            "clusterLogging": [
+                {"types": ["audit"], "enabled": True},
+                {"types": ["api", "authenticator", "controllerManager", "scheduler"], "enabled": False},
+            ]
+        },
+    }
+    module = FakeModule(
+        eks_params(logging={"cluster_logging": [{"types": [log_type], "enabled": enabled}]}), check_mode=True
+    )
+    with patch.object(plugin, "describe_cluster", return_value=current), pytest.raises(ModuleExit) as result:
+        plugin.ensure_present(Mock(), module)
+
+    assert result.value.values["changed"] is expected_changed
+
+
+def test_eks_result_preserves_tag_keys():
+    module = FakeModule({"name": "example"})
+    with pytest.raises(ModuleExit) as result:
+        plugin.exit_result(module, False, {"tags": {"CostCenter": "engineering", "cost_center": "other"}}, "present")
+
+    assert result.value.values["cluster"]["tags"] == {"CostCenter": "engineering", "cost_center": "other"}
+
+
+def test_eks_creation_preserves_distinct_tag_keys():
+    tags = {"cost_center": "finance", "costCenter": "engineering"}
+    params = dict.fromkeys(plugin.CREATE_FIELDS)
+    params.update(
+        name="review",
+        role_arn="arn:aws:iam::123456789012:role/review",
+        resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
+        tags=tags,
+        wait=False,
+        purge_tags=True,
+    )
+    client = Mock()
+    client.create_cluster.return_value = {
+        "cluster": {"arn": "arn:aws:eks:us-east-1:123456789012:cluster/review", "name": "review", "status": "CREATING"}
+    }
+    with (
+        patch.object(plugin, "describe_cluster", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, FakeModule(params))
+
+    assert client.create_cluster.call_args.kwargs["tags"] == tags
+
+
+@pytest.mark.parametrize("status", ["CREATING", "UPDATING"])
+@pytest.mark.parametrize("tags", [None, {"Environment": "test"}])
+def test_check_mode_predicts_changes_without_waiting_for_active_cluster(status, tags):
+    params = dict.fromkeys(plugin.CREATE_FIELDS)
+    params.update(name="example", tags=tags, version=None, wait=True, purge_tags=True, wait_timeout=1200, wait_delay=15)
+    module = FakeModule(params, check_mode=True)
+    client = Mock()
+    current = {"name": "example", "arn": "arn:aws:eks:us-east-1:123456789012:cluster/example", "status": status}
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "wait_for_cluster") as waiter,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    waiter.assert_not_called()
+    assert result.value.values["changed"] is (tags is not None)
+    if tags is not None:
+        assert result.value.values["cluster"]["tags"] == tags
+
+    client.update_cluster_config.assert_not_called()
+    client.tag_resource.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_partial_update_result_preserves_unmanaged_configuration(check_mode):
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "accessConfig": {"authenticationMode": "API", "bootstrapClusterCreatorAdminPermissions": False},
+        "resourcesVpcConfig": {
+            "endpointPublicAccess": True,
+            "endpointPrivateAccess": True,
+            "subnetIds": ["subnet-1", "subnet-2"],
+        },
+    }
+    module = FakeModule(
+        eks_params(
+            resources_vpc_config={"endpoint_public_access": False},
+            access_config={"authentication_mode": "API", "bootstrap_cluster_creator_admin_permissions": True},
+            bootstrap_self_managed_addons=True,
+        ),
+        check_mode=check_mode,
+    )
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["cluster"]["resources_vpc_config"] == {
+        "endpoint_public_access": False,
+        "endpoint_private_access": True,
+        "subnet_ids": ["subnet-1", "subnet-2"],
+    }
+    assert current["resourcesVpcConfig"]["endpointPublicAccess"] is True
+    assert result.value.values["cluster"]["access_config"]["bootstrap_cluster_creator_admin_permissions"] is False
+    assert "bootstrap_self_managed_addons" not in result.value.values["cluster"]
+    if check_mode:
+        client.update_cluster_config.assert_not_called()
+    else:
+        client.update_cluster_config.assert_called_once_with(
+            name="example", resourcesVpcConfig={"endpointPublicAccess": False}, aws_retry=True
+        )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_partial_logging_result_preserves_unmanaged_log_types(check_mode):
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "logging": {"clusterLogging": [{"types": ["api", "audit"], "enabled": True}]},
+    }
+    module = FakeModule(
+        eks_params(logging={"cluster_logging": [{"types": ["api"], "enabled": False}]}),
+        check_mode=check_mode,
+    )
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    entries = result.value.values["cluster"]["logging"]["cluster_logging"]
+    assert {log_type: entry["enabled"] for entry in entries for log_type in entry["types"]} == {
+        "api": False,
+        "audit": True,
+    }
+    assert current["logging"]["clusterLogging"] == [{"types": ["api", "audit"], "enabled": True}]

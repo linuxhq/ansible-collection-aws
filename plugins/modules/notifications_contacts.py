@@ -23,8 +23,7 @@ options:
       - The notifications contact name.
       - This must be 1 to 64 characters and contain at least one letter,
         digit, or one of C(_), C(-), C(.), or C(~).
-      - Changing the name of an existing contact deletes and recreates the
-        contact, and the new contact must be activated by email again.
+      - Changing the name of an existing contact fails without modifying the contact.
       - This is required when O(state=present).
     type: str
   state:
@@ -215,10 +214,15 @@ def ensure_present(client, module):
     resource_changed = (current_contact or {}) != desired_contact
 
     tags_to_set, tag_keys_to_unset = ({}, [])
-    needs_current_tags = contact is not None and (
-        (tags is not None and not resource_changed) or (tags is None and resource_changed)
-    )
-    if needs_current_tags:
+    if contact is not None and resource_changed:
+        module.fail_json(
+            msg=(
+                "name cannot be changed for an existing AWS Notifications contact. "
+                "The existing contact has not been modified."
+            )
+        )
+
+    if contact is not None and tags is not None:
         contact = dict(contact)
 
         require_client_methods(
@@ -254,44 +258,22 @@ def ensure_present(client, module):
 
         contact["tags"] = tag_response.get("tags", {})
 
-        if not resource_changed:
-            tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                contact["tags"],
-                tags,
-                purge_tags=module.params["purge_tags"],
-            )
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(
+            contact["tags"],
+            tags,
+            purge_tags=module.params["purge_tags"],
+        )
 
-    desired_tags = tags if tags is not None else contact.get("tags") if contact else None
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
         if resource_changed:
-            if contact is not None:
-                require_client_methods(
-                    module,
-                    client,
-                    "NotificationsContacts",
-                    {"delete_email_contact": ("arn",)},
-                )
-                try:
-                    client.delete_email_contact(
-                        arn=contact["arn"],
-                        aws_retry=True,
-                    )
-                except is_boto3_error_code("ResourceNotFoundException"):
-                    pass
-                except (BotoCoreError, ClientError) as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=("Unable to delete AWS Notifications contact " f"{email_address}"),
-                    )
-
             request = {
                 "emailAddress": email_address,
                 "name": name,
             }
-            if desired_tags:
-                request["tags"] = desired_tags
+            if tags:
+                request["tags"] = tags
 
             require_client_methods(
                 module,
@@ -320,7 +302,6 @@ def ensure_present(client, module):
 
             contact_arn = create_response["arn"]
 
-            contact = None
             require_client_methods(
                 module,
                 client,
@@ -352,8 +333,8 @@ def ensure_present(client, module):
             else:
                 validate_contact(module, contact, f"Unable to get AWS Notifications contact {contact_arn}")
 
-            if desired_tags is not None:
-                contact["tags"] = desired_tags
+            if tags is not None:
+                contact["tags"] = tags
         else:
             contact_arn = contact["arn"]
             if tag_keys_to_unset:
@@ -395,8 +376,8 @@ def ensure_present(client, module):
     elif changed and module.check_mode:
         if resource_changed:
             contact = dict(desired_contact)
-            if desired_tags is not None:
-                contact["tags"] = desired_tags
+            if tags is not None:
+                contact["tags"] = tags
         else:
             contact = apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset)
 

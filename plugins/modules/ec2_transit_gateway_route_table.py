@@ -536,7 +536,7 @@ def wait_for_route_absent(client, module, transit_gateway_route_table_id, destin
     while time.monotonic() < deadline:
         route = get_route(client, module, transit_gateway_route_table_id, destination_cidr_block)
 
-        if not route_is_static(route):
+        if route is None or route.get("Type") != "static" or route.get("State") == "deleted":
             return route
 
         time.sleep(
@@ -554,7 +554,7 @@ def wait_for_route_absent(client, module, transit_gateway_route_table_id, destin
 
 
 def ensure_route_absent(client, module, transit_gateway_route_table_id, destination_cidr_block):
-    wait = module.params["wait"]
+    wait = module.params["wait"] and not module.check_mode
     route = get_route(client, module, transit_gateway_route_table_id, destination_cidr_block)
 
     if not route_is_static(route):
@@ -606,7 +606,7 @@ def ensure_present(client, module):
     transit_gateway_id = module.params["transit_gateway_id"]
     desired_routes = module.params["routes"] or []
     purge_routes = module.params["purge_routes"]
-    wait = module.params["wait"]
+    wait = module.params["wait"] and not module.check_mode
     route_table = find_route_table(client, module)
 
     changed = False
@@ -662,7 +662,7 @@ def ensure_present(client, module):
             transit_gateway_route_table=normalize_route_table(route_table),
             transit_gateway_route_table_id=route_table_id(route_table),
         )
-    elif route_table.get("State") == "pending" and (wait or desired_routes or purge_routes):
+    elif not module.check_mode and route_table.get("State") == "pending" and (wait or desired_routes or purge_routes):
         route_table = wait_for_route_table(client, module, route_table_id(route_table), {"available"})
 
     tags = module.params["tags"]
@@ -755,12 +755,14 @@ def ensure_present(client, module):
                         destination_cidr_block,
                     )
                     if current_route and current_route.get("State") == "deleting":
-                        wait_for_route_absent(
-                            client,
-                            module,
-                            transit_gateway_route_table_id,
-                            destination_cidr_block,
-                        )
+                        if not module.check_mode:
+                            wait_for_route_absent(
+                                client,
+                                module,
+                                transit_gateway_route_table_id,
+                                destination_cidr_block,
+                            )
+
                         current_route = None
 
                     if desired_route_matches(current_route, desired_route):
@@ -874,7 +876,7 @@ def ensure_present(client, module):
 
 
 def ensure_absent(client, module):
-    wait = module.params["wait"]
+    wait = module.params["wait"] and not module.check_mode
     route_table = find_route_table(client, module)
 
     if route_table is None or route_table.get("State") in ROUTE_TABLE_TERMINAL_STATES:

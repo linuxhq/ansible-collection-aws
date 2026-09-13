@@ -14,10 +14,11 @@ author:
 options:
   apply_override_for_compute_environment:
     description:
-      - Whether to apply an override for the compute environment when getting
-        a selected Glue connection by O(name).
+      - The compute environment whose overridden properties to retrieve for
+        the selected Glue connection in O(name).
       - Requires O(name).
-    type: bool
+    choices: [SPARK, ATHENA, PYTHON]
+    type: str
   catalog_id:
     description:
       - The ID of the Data Catalog in which the connections reside.
@@ -72,7 +73,8 @@ RETURN = r"""
 connections:
   description:
     - A list of AWS Glue connections.
-    - C(connection_properties) keys are returned as provided by the Glue API.
+    - Keys in C(connection_properties), C(spark_properties), C(athena_properties),
+      and C(python_properties) are returned as provided by the Glue API.
   returned: always
   type: list
   elements: dict
@@ -122,7 +124,7 @@ def validate_connections(module, connections):
 
 def main():
     argument_spec = {
-        "apply_override_for_compute_environment": {"type": "bool"},
+        "apply_override_for_compute_environment": {"choices": ["SPARK", "ATHENA", "PYTHON"], "type": "str"},
         "catalog_id": {"type": "str"},
         "filters": {"type": "dict"},
         "hide_password": {"default": True, "no_log": False, "type": "bool"},
@@ -206,7 +208,7 @@ def main():
         changed=False,
         connections=boto3_resource_list_to_ansible_dict(
             connections,
-            ignore_list=["ConnectionProperties"],
+            ignore_list=["ConnectionProperties", "SparkProperties", "AthenaProperties", "PythonProperties"],
             transform_tags=False,
             force_tags=False,
         ),

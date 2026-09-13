@@ -62,12 +62,6 @@ options:
         of searching by O(origination_identity).
       - When set with O(state=present), the pool must already exist.
     type: str
-  purge_tags:
-    default: true
-    description:
-      - Whether tags not listed in the desired tag set should be removed.
-      - This option is only applied when O(tags) is provided.
-    type: bool
   state:
     choices:
       - absent
@@ -76,11 +70,6 @@ options:
     description:
       - Whether the phone pool should exist.
     type: str
-  tags:
-    description:
-      - Tags to apply to the pool.
-      - This must contain at most 200 entries; keys must contain 1 to 128 characters and values at most 256 characters.
-    type: dict
   wait:
     default: true
     description:
@@ -98,10 +87,17 @@ options:
       - The maximum number of seconds to wait when O(wait=true).
       - This must be 1 or greater.
     type: int
+notes:
+  - O(tags) accepts at most 200 entries; keys must contain 1 to 128 characters
+    and values at most 256 characters.
+  - The module always manages the C(Name) tag from O(name), even when O(tags)
+    is omitted. This tag overrides any C(Name) entry in O(tags) and counts
+    toward the 200-tag limit. Other tags are left unchanged when O(tags) is omitted.
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
   - amazon.aws.boto3
+  - amazon.aws.tags
 attributes:
   diff_mode:
     description: Diff mode is not supported.
@@ -646,7 +642,7 @@ def main():
             "default": "present",
             "type": "str",
         },
-        "tags": {"type": "dict"},
+        "tags": {"aliases": ["resource_tags"], "type": "dict"},
         "wait": {"default": True, "type": "bool"},
         "wait_delay": {"default": 5, "type": "int"},
         "wait_timeout": {"default": 300, "type": "int"},

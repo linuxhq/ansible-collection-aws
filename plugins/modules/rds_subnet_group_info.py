@@ -18,6 +18,8 @@ options:
       - A dict of filters to apply when describing RDS DB subnet groups.
       - Filter names and values are passed to the RDS
         C(DescribeDBSubnetGroups) API.
+      - AWS currently does not support this API parameter. Use O(name) to
+        select a subnet group.
     type: dict
   name:
     description:
@@ -46,11 +48,6 @@ EXAMPLES = r"""
 - name: Gather a specific RDS subnet group
   linuxhq.aws.rds_subnet_group_info:
     name: molecule
-
-- name: Gather RDS subnet groups using filters
-  linuxhq.aws.rds_subnet_group_info:
-    filters:
-      db-subnet-group-name: molecule
 """
 
 RETURN = r"""

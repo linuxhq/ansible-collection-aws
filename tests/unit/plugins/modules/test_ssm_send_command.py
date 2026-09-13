@@ -2,6 +2,8 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_send_command as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -679,3 +681,84 @@ class SsmSendCommandTests(TestCase):
         )
         module.client.assert_not_called()
         require.assert_not_called()
+
+
+def test_ssm_wait_tolerates_initially_invisible_command():
+    client = Mock()
+    client.send_command.return_value = {"Command": {"CommandId": "command-1", "Status": "Pending"}}
+    module = FakeModule(send_params(wait=True), client=client)
+    responses = [
+        {"Commands": []},
+        {"CommandInvocations": []},
+        {"Commands": [{"CommandId": "command-1", "Status": "Success", "TargetCount": 1}]},
+        {"CommandInvocations": [{"InstanceId": "i-1", "Status": "Success"}]},
+    ]
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "paginated_query_with_retries", side_effect=responses),
+        patch.object(plugin.time, "sleep"),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()
+
+
+def test_ssm_invisible_command_still_times_out():
+    client = Mock()
+    client.send_command.return_value = {"Command": {"CommandId": "command-1", "Status": "Pending"}}
+    module = FakeModule(send_params(wait=True), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=[
+                {"Commands": []},
+                {"CommandInvocations": []},
+            ],
+        ),
+        patch_time(0, 1, 2, 11),
+        pytest.raises(ModuleFail) as result,
+    ):
+        plugin.main()
+
+    assert result.value.values["msg"] == "Timed out waiting for AWS Systems Manager command command-1"
+    assert result.value.values["changed"] is True
+    client.send_command.assert_called_once()
+
+
+@pytest.mark.parametrize("partial_copies", [1, 2])
+def test_ssm_waits_for_all_target_invocations(partial_copies):
+    command = {
+        "CommandId": "review-command",
+        "Status": "Success",
+        "TargetCount": 2,
+        "CompletedCount": 2,
+        "ErrorCount": 1,
+    }
+    success = {"CommandId": "review-command", "InstanceId": "i-1", "Status": "Success"}
+    failed = {"CommandId": "review-command", "InstanceId": "i-2", "Status": "Failed"}
+    client = Mock(send_command=Mock(return_value={"Command": command}))
+    module = FakeModule(send_params(wait=True, instance_ids=["i-1", "i-2"], max_errors="2"), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin.time, "sleep"),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=[
+                {"Commands": [command]},
+                {"CommandInvocations": [success] * partial_copies},
+                {"Commands": [command]},
+                {"CommandInvocations": [success, failed]},
+            ],
+        ) as query,
+        pytest.raises(ModuleFail) as result,
+    ):
+        plugin.main()
+
+    assert query.call_count == 4
+    assert "did not complete successfully" in result.value.values["msg"]
+    assert len(result.value.values["command_invocations"]) == 2

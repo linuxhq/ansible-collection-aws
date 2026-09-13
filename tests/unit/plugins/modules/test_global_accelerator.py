@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import global_accelerator as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -9,6 +11,60 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     assert_module_contract,
     assert_module_rejects,
 )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_listener_consolidation_releases_conflicting_ports_first(check_mode):
+    def listener(arn, port):
+        return {
+            "listener_arn": arn,
+            "protocol": "TCP",
+            "client_affinity": "NONE",
+            "port_ranges": [{"from_port": port, "to_port": port}],
+        }
+
+    current = [listener("arn:a", 80), listener("arn:b", 81), listener("arn:c", 90)]
+    desired = {
+        "protocol": "TCP",
+        "client_affinity": "NONE",
+        "endpoint_groups": None,
+        "port_ranges": [{"from_port": 80, "to_port": 81}],
+    }
+    module = FakeModule({"listeners": [desired], "purge_listeners": True}, check_mode=check_mode)
+    client = Mock()
+    remaining = {item["listener_arn"]: item["port_ranges"] for item in current}
+    operations = []
+
+    def delete(c, m, accelerator_arn, arn):
+        remaining.pop(arn)
+        operations.append(("delete", arn))
+
+    def update(**request):
+        for arn, ranges in remaining.items():
+            if arn == request["ListenerArn"]:
+                continue
+
+            for old in ranges:
+                for new in request["PortRanges"]:
+                    assert new["ToPort"] < old["from_port"] or new["FromPort"] > old["to_port"]
+
+        operations.append(("update", request["ListenerArn"]))
+
+    client.update_listener.side_effect = update
+    with (
+        patch.object(plugin, "get_listeners", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "delete_listener", side_effect=delete),
+        patch.object(plugin, "wait_for_accelerator", side_effect=lambda *args: operations.append(("wait", None))),
+    ):
+        changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    assert changed
+    assert len(listeners) == 1
+    assert listeners[0]["port_ranges"] == desired["port_ranges"]
+    assert operations == (
+        [] if check_mode else [("delete", "arn:b"), ("wait", None), ("update", "arn:a"), ("delete", "arn:c")]
+    )
 
 
 class GlobalAcceleratorTests(TestCase):
@@ -192,7 +248,7 @@ class GlobalAcceleratorTests(TestCase):
             )
         )
 
-    def test_ip_addresses_can_be_cleared(self):
+    def test_empty_ip_addresses_leave_assigned_addresses_unchanged(self):
         module = FakeModule(
             {
                 "enabled": True,
@@ -219,10 +275,10 @@ class GlobalAcceleratorTests(TestCase):
         ):
             plugin.ensure_present(Mock(), module)
 
-        self.assertTrue(raised.exception.values["changed"])
+        self.assertFalse(raised.exception.values["changed"])
         self.assertEqual(
             raised.exception.values["accelerator"]["ip_sets"],
-            [{"ip_addresses": []}],
+            [{"ip_addresses": ["203.0.113.1"]}],
         )
 
     def test_missing_explicit_arn_is_not_replaced_with_an_unselectable_resource(self):
@@ -326,11 +382,10 @@ class GlobalAcceleratorTests(TestCase):
         desired["health_check_port"] = 80
         self.assertTrue(plugin.endpoint_group_requires_update(current, desired))
 
-    def test_endpoint_group_attachment_change_requires_update(self):
+    def test_endpoint_group_attachment_does_not_require_update(self):
         current = {
             "endpoint_descriptions": [
                 {
-                    "attachment_arn": "arn:old",
                     "endpoint_id": "endpoint-1",
                     "weight": 128,
                 }
@@ -354,7 +409,7 @@ class GlobalAcceleratorTests(TestCase):
             "threshold_count": None,
             "traffic_dial_percentage": None,
         }
-        self.assertTrue(plugin.endpoint_group_requires_update(current, desired))
+        self.assertFalse(plugin.endpoint_group_requires_update(current, desired))
         self.assertEqual(
             plugin.predicted_endpoint_group(current, desired)["endpoint_descriptions"][0]["attachment_arn"],
             "arn:new",
@@ -627,7 +682,7 @@ class GlobalAcceleratorTests(TestCase):
             with self.subTest(message=message):
                 assert_module_rejects(self, plugin, params, message)
 
-    def test_endpoint_group_update_sends_changed_attachment(self):
+    def test_endpoint_group_weight_update_sends_attachment(self):
         client = Mock()
         client.update_endpoint_group.return_value = {
             "EndpointGroup": {
@@ -657,9 +712,8 @@ class GlobalAcceleratorTests(TestCase):
         current = {
             "endpoint_descriptions": [
                 {
-                    "attachment_arn": "arn:old",
                     "endpoint_id": "endpoint-1",
-                    "weight": 128,
+                    "weight": 64,
                 }
             ],
             "endpoint_group_arn": "arn:group",
@@ -872,3 +926,286 @@ class GlobalAcceleratorTests(TestCase):
                 )
             },
         )
+
+
+def review_listener(arn, start, end):
+    return {
+        "listener_arn": arn,
+        "protocol": "TCP",
+        "client_affinity": "NONE",
+        "port_ranges": [{"from_port": start, "to_port": end}],
+    }
+
+
+def review_desired(start, end):
+    return {
+        "protocol": "TCP",
+        "client_affinity": "NONE",
+        "endpoint_groups": None,
+        "port_ranges": [{"from_port": start, "to_port": end}],
+    }
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_listener_updates_release_ports_before_dependent_expansion(check_mode):
+    current = [review_listener("arn:a", 90, 90), review_listener("arn:b", 80, 81)]
+    desired = [review_desired(81, 90), review_desired(80, 80)]
+    module = FakeModule({"listeners": desired, "purge_listeners": True}, check_mode=check_mode)
+    client = Mock()
+    active = {item["listener_arn"]: item for item in current}
+    events = []
+    pending = {}
+
+    def update(**request):
+        arn = request["ListenerArn"]
+        target = review_listener(arn, request["PortRanges"][0]["FromPort"], request["PortRanges"][0]["ToPort"])
+        assert not any(plugin.listeners_overlap(target, other) for key, other in active.items() if key != arn)
+        pending[arn] = target
+        events.append(arn)
+
+    def wait(*args):
+        active.update(pending)
+        pending.clear()
+        events.append("wait")
+
+    client.update_listener.side_effect = update
+    with (
+        patch.object(plugin, "get_listeners", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_accelerator", side_effect=wait),
+        patch.object(plugin, "delete_listener") as delete,
+    ):
+        changed, result = plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    assert changed
+    assert len(result) == 2
+    assert events == ([] if check_mode else ["arn:b", "wait", "arn:a"])
+    delete.assert_not_called()
+
+
+@pytest.mark.parametrize("operation", ["update_listener", "create_listener"])
+def test_listener_preflight_failure_does_not_delete_or_write(operation):
+    current = review_listener("arn:a", 80, 80)
+    obsolete = review_listener("arn:b", 81, 81)
+    desired = review_desired(80, 81)
+    plan = (
+        ([], [(current, desired)], [], [obsolete])
+        if operation == "update_listener"
+        else ([], [], [desired], [current, obsolete])
+    )
+    module = FakeModule({"purge_listeners": True})
+    client = Mock()
+
+    def require(module, client, service, methods):
+        if operation in methods:
+            module.fail_json(msg="Unsupported listener write")
+
+    with (
+        patch.object(plugin, "get_listeners", return_value=[current, obsolete]),
+        patch.object(plugin, "reconcile_listeners", return_value=plan),
+        patch.object(plugin, "require_client_methods", side_effect=require),
+        patch.object(plugin, "delete_listener") as delete,
+        pytest.raises(ModuleFail, match="Unsupported listener write"),
+    ):
+        plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    delete.assert_not_called()
+    client.update_listener.assert_not_called()
+    client.create_listener.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_circular_listener_dependencies_fail_before_mutation(check_mode):
+    current = [review_listener("arn:a", 80, 81), review_listener("arn:b", 90, 91)]
+    desired = [review_desired(89, 91), review_desired(80, 82)]
+    module = FakeModule({"listeners": desired, "purge_listeners": True}, check_mode=check_mode)
+    client = Mock()
+    with (
+        patch.object(plugin, "get_listeners", return_value=current),
+        patch.object(plugin, "delete_listener") as delete,
+        pytest.raises(ModuleFail, match="circular port dependencies"),
+    ):
+        plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    delete.assert_not_called()
+    client.update_listener.assert_not_called()
+    client.create_listener.assert_not_called()
+
+
+@pytest.mark.parametrize("wait, check_mode", [(True, False), (False, False), (True, True)])
+def test_unchanged_accelerator_waits_for_requested_readiness(wait, check_mode):
+    module = FakeModule(
+        {
+            "enabled": True,
+            "ip_address_type": "IPV4",
+            "ip_addresses": None,
+            "listeners": None,
+            "name": "example",
+            "tags": None,
+            "wait": wait,
+        },
+        check_mode=check_mode,
+    )
+    current = {
+        "AcceleratorArn": "arn:accelerator",
+        "Enabled": True,
+        "IpAddressType": "IPV4",
+        "Name": "example",
+        "Status": "IN_PROGRESS",
+    }
+    client = Mock()
+    with (
+        patch.object(plugin, "get_accelerator", side_effect=[current, dict(current, Status="DEPLOYED")]) as read,
+        patch.object(plugin, "wait_for_accelerator") as waiter,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    should_wait = wait and not check_mode
+    assert result.value.values["changed"] is False
+    assert result.value.values["accelerator"]["status"] == ("DEPLOYED" if should_wait else "IN_PROGRESS")
+    assert read.call_count == (2 if should_wait else 1)
+    if should_wait:
+        waiter.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed")
+    else:
+        waiter.assert_not_called()
+
+    client.update_accelerator.assert_not_called()
+    client.create_accelerator.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("family", ["IPV4", "DUAL_STACK"])
+@pytest.mark.parametrize("addresses", [["192.0.2.1"], ["192.0.2.1", "192.0.2.2"], ["192.0.2.3"]])
+def test_requested_addresses_ignore_additional_assigned_addresses(check_mode, family, addresses):
+    module = FakeModule(
+        {
+            "enabled": True,
+            "ip_address_type": family,
+            "ip_addresses": addresses,
+            "listeners": None,
+            "name": "example",
+            "tags": None,
+            "wait": False,
+        },
+        check_mode=check_mode,
+    )
+    ip_sets = [{"IpFamily": "IPv4", "IpAddresses": ["192.0.2.1", "192.0.2.2"]}]
+    if family == "DUAL_STACK":
+        ip_sets.append({"IpFamily": "IPv6", "IpAddresses": ["2001:db8::1", "2001:db8::2"]})
+
+    current = {
+        "AcceleratorArn": "arn:accelerator",
+        "Enabled": True,
+        "IpAddressType": family,
+        "IpSets": ip_sets,
+        "Name": "example",
+        "Status": "DEPLOYED",
+    }
+    client = Mock()
+    client.update_accelerator.return_value = {"Accelerator": current}
+    with (
+        patch.object(plugin, "get_accelerator", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    changed = addresses == ["192.0.2.3"]
+    assert result.value.values["changed"] is changed
+    if not changed:
+        assert [item["ip_addresses"] for item in result.value.values["accelerator"]["ip_sets"]] == [
+            item["IpAddresses"] for item in ip_sets
+        ]
+
+    if changed and not check_mode:
+        client.update_accelerator.assert_called_once_with(
+            AcceleratorArn="arn:accelerator",
+            Enabled=True,
+            IpAddresses=addresses,
+            IpAddressType=family,
+            Name="example",
+            aws_retry=True,
+        )
+    else:
+        client.update_accelerator.assert_not_called()
+
+    client.create_accelerator.assert_not_called()
+
+
+@pytest.mark.parametrize("family", ["IPV4", "DUAL_STACK"])
+@pytest.mark.parametrize("addresses", [["192.0.2.1"], ["192.0.2.1", "192.0.2.2"]])
+def test_check_mode_enabled_change_preserves_matching_ip_sets(family, addresses):
+    ip_sets = [{"IpFamily": "IPv4", "IpAddresses": ["192.0.2.1", "192.0.2.2"]}]
+    if family == "DUAL_STACK":
+        ip_sets.append({"IpFamily": "IPv6", "IpAddresses": ["2001:db8::1", "2001:db8::2"]})
+
+    current = {
+        "AcceleratorArn": "arn:accelerator",
+        "Enabled": True,
+        "IpAddressType": family,
+        "IpSets": ip_sets,
+        "Name": "example",
+        "Status": "DEPLOYED",
+    }
+    module = FakeModule(
+        {
+            "enabled": False,
+            "ip_address_type": family,
+            "ip_addresses": addresses,
+            "listeners": None,
+            "name": "example",
+            "tags": None,
+            "wait": False,
+        },
+        check_mode=True,
+    )
+    client = Mock()
+    with (
+        patch.object(plugin, "get_accelerator", return_value=current),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["accelerator"]["enabled"] is False
+    assert result.value.values["accelerator"]["ip_sets"] == [
+        {"ip_family": item["IpFamily"], "ip_addresses": item["IpAddresses"]} for item in ip_sets
+    ]
+    assert current["Enabled"] is True
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_matching_cross_account_endpoint_is_unchanged(check_mode):
+    current = {
+        "endpoint_group_arn": "arn:group",
+        "endpoint_group_region": "us-east-1",
+        "endpoint_descriptions": [{"endpoint_id": "endpoint-1", "weight": 128, "client_ip_preservation_enabled": True}],
+    }
+    desired = {
+        "endpoint_group_region": "us-east-1",
+        "endpoint_configurations": [
+            {
+                "endpoint_id": "endpoint-1",
+                "weight": 128,
+                "client_ip_preservation_enabled": True,
+                "attachment_arn": "arn:attachment",
+            }
+        ],
+        "health_check_interval_seconds": None,
+        "health_check_path": None,
+        "health_check_port": None,
+        "health_check_protocol": None,
+        "threshold_count": None,
+        "traffic_dial_percentage": None,
+        "port_overrides": None,
+    }
+    client = Mock()
+    module = FakeModule({"purge_endpoint_groups": True}, check_mode=check_mode)
+    with patch.object(plugin, "get_endpoint_groups", return_value=[current]):
+        changed, groups = plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired])
+
+    assert changed is False
+    assert groups == [current]
+    assert client.mock_calls == []
