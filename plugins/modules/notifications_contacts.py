@@ -258,14 +258,12 @@ def ensure_present(client, module):
 
         contact["tags"] = tag_response.get("tags", {})
 
-        if not resource_changed:
-            tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                contact["tags"],
-                tags,
-                purge_tags=module.params["purge_tags"],
-            )
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(
+            contact["tags"],
+            tags,
+            purge_tags=module.params["purge_tags"],
+        )
 
-    desired_tags = tags if tags is not None else contact.get("tags") if contact else None
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
@@ -274,8 +272,8 @@ def ensure_present(client, module):
                 "emailAddress": email_address,
                 "name": name,
             }
-            if desired_tags:
-                request["tags"] = desired_tags
+            if tags:
+                request["tags"] = tags
 
             require_client_methods(
                 module,
@@ -304,7 +302,6 @@ def ensure_present(client, module):
 
             contact_arn = create_response["arn"]
 
-            contact = None
             require_client_methods(
                 module,
                 client,
@@ -336,8 +333,8 @@ def ensure_present(client, module):
             else:
                 validate_contact(module, contact, f"Unable to get AWS Notifications contact {contact_arn}")
 
-            if desired_tags is not None:
-                contact["tags"] = desired_tags
+            if tags is not None:
+                contact["tags"] = tags
         else:
             contact_arn = contact["arn"]
             if tag_keys_to_unset:
@@ -379,8 +376,8 @@ def ensure_present(client, module):
     elif changed and module.check_mode:
         if resource_changed:
             contact = dict(desired_contact)
-            if desired_tags is not None:
-                contact["tags"] = desired_tags
+            if tags is not None:
+                contact["tags"] = tags
         else:
             contact = apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset)
 

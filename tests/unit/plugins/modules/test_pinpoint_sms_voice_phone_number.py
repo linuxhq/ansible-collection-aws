@@ -212,11 +212,12 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
             "Status": "ACTIVE",
         }
         with (
-            patch.object(plugin, "query_list", return_value=[current]),
+            patch.object(plugin, "query_list", return_value=[current]) as query,
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_present(client, module)
 
+        self.assertIn({"Name": "opt-out-list-name", "Values": ["list-1"]}, query.call_args.kwargs["Filters"])
         self.assertFalse(raised.exception.values["changed"])
         client.request_phone_number.assert_not_called()
 

@@ -4,6 +4,60 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.4.4
+======
+
+Bugfixes
+--------
+
+- ec2_transit_gateway_route_table - skip resource transition waits in check mode while predicting route changes.
+- ec2_vpc_prefix_list - honor wait=true for unchanged prefix lists with creation, modification, or restoration in progress.
+- ec2_vpc_prefix_list - return the AWS modification response when adding entries without waiting, preserving the updated version and state.
+- ec2_vpc_vpn - wait for routes already being deleted when purging omitted destinations, and return the refreshed route list without repeating deletion.
+- eks_cluster - preserve unmanaged nested configuration and log types in results for partial updates in check mode and when wait is false.
+- eks_cluster - skip cluster readiness waits in check mode.
+- global_accelerator - avoid repeated endpoint group updates when attachment_arn is supplied, since AWS does not return attachment ARNs in endpoint descriptions; continue sending the ARN with create and update requests.
+- global_accelerator - avoid repeated updates when requested IPv4 addresses are already assigned alongside additional AWS-assigned IPv4 or IPv6 addresses.
+- global_accelerator - delete obsolete listeners holding conflicting ports before updating or creating their replacements.
+- global_accelerator - preserve existing IP sets and their metadata in check mode when changing accelerator settings with already-matching requested addresses.
+- global_accelerator - reject circular port dependencies before listener mutations.
+- global_accelerator - treat an empty ip_addresses list as omitted instead of attempting to clear static addresses that remain assigned for the lifetime of an accelerator.
+- global_accelerator - validate listener writes before deleting conflicting listeners and order updates by port dependencies.
+- global_accelerator - wait for an unchanged accelerator to finish deploying when wait is true.
+- glue_connection_info - preserve property keys for Spark, Athena, and Python compute environments.
+- iam_account_alias - replace existing aliases directly so failed creation preserves the working alias.
+- iam_account_alias - retry concurrent modification failures using the AWS error code ConcurrentModification.
+- iam_oidc_provider - retry concurrent modification failures using the AWS error code ConcurrentModification.
+- pinpoint_sms_voice_phone_number - normalize opt-out list ARNs to names when filtering existing numbers to avoid requesting duplicate numbers.
+- route53_resolver - accept explicit IPv4 and IPv6 address pairs for dual-stack endpoints.
+- route53_resolver - compare equivalent IPv6 address spellings consistently to avoid replacing existing addresses.
+- route53_resolver - honor wait=true for unchanged endpoints that are still becoming operational.
+- route53_resolver - match explicit IP addresses before automatically assigned addresses in the same subnet, avoiding unnecessary endpoint address replacements.
+- route53_resolver_rule - avoid unnecessary updates when the requested IPv6 targets use an equivalent address spelling.
+- route53_resolver_rule - honor wait=true for unchanged rules with an operation in progress.
+- route53_resolver_rule_associate - honor wait=true for unchanged associations that are still being created.
+- service_quota and service_quota_info - preserve CloudWatch metric dimension identifiers in returned quota details.
+- ses_sandbox - avoid repeated account updates when contact addresses are omitted and the account already has additional contacts.
+- ses_sandbox - report observed production access after submitting a request and in check mode.
+- ssm_association - preserve parameter names in returned association data.
+- ssm_document - preserve ApplicationConfiguration and ApplicationConfigurationSchema content during comparison, creation, updates, and result conversion.
+- ssm_document - preserve Distributor package platform, release, and architecture keys in requests and results.
+- ssm_document - preserve lower-camel input field names for executeStateMachine and restore StringEquals casing for Command preconditions.
+- ssm_document - recover failed default-version promotion when matching latest content is retried.
+- ssm_document - restore AWS field casing for executeScript and updateVariable Automation steps when using snake_case content.
+- ssm_document - restore AWS schema field casing for all supported Automation actions, their step outputs, nested loops, and branch conditions.
+- ssm_document and ssm_document_info - preserve CloudFormation template content unchanged.
+- ssm_document and ssm_document_info - preserve document parameter names during content normalization.
+- ssm_document and ssm_document_info - preserve embedded AWS API parameter keys, document parameter maps, payloads, and attachment names when normalizing Automation content.
+- ssm_document and ssm_document_info - preserve map-valued parameter defaults without changing or merging their keys.
+- ssm_document and ssm_document_info - preserve parameter names and values in composite aws:runDocument documentParameters instead of converting or merging their keys.
+- ssm_document and ssm_document_info - preserve variable identifiers, defaults, and updateVariable values during content normalization.
+- ssm_document and ssm_document_info - restrict action detection to document steps so parameters and variables named action and inputs do not crash normalization.
+- ssm_document_info - preserve Distributor package manifest identifiers in returned content.
+- ssm_document_info - preserve application configuration data and JSON schemas in returned content.
+- ssm_document_info - preserve case-sensitive script InputPayload keys when transforming document content.
+- wafv2_web_acl_info - preserve custom response body names while normalizing body fields, keeping references valid and preventing name collisions.
+
 v2.4.3
 ======
 

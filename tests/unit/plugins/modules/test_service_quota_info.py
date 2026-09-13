@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import service_quota_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -102,3 +104,26 @@ class ServiceQuotaInfoTests(TestCase):
             )
 
         self.assertIn("invalid quota context", raised.exception.values["msg"])
+
+
+def test_metric_dimension_identifiers_are_preserved():
+    dimensions = {"Class": "Standard/OnDemand", "class": "distinct", "Resource": "vCPU", "Service": "EC2"}
+    current = {
+        "QuotaCode": "L-example",
+        "ServiceCode": "ec2",
+        "Value": 10.0,
+        "UsageMetric": {"MetricNamespace": "AWS/Usage", "MetricName": "ResourceCount", "MetricDimensions": dimensions},
+    }
+    client = Mock(get_service_quota=Mock(return_value={"Quota": current}))
+    module = FakeModule(
+        {"quota_code": "L-example", "service_code": "ec2", "value": 10.0, "context_id": None}, client=client
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    metric = result.value.values["quota"]["usage_metric"]
+    assert metric == {"metric_namespace": "AWS/Usage", "metric_name": "ResourceCount", "metric_dimensions": dimensions}

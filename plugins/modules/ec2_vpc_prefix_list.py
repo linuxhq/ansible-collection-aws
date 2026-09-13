@@ -458,15 +458,15 @@ def ensure_present(client, module):
 
         changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
-        if changed and not module.check_mode:
-            if current.get("State") in {
-                "create-in-progress",
-                "modify-in-progress",
-                "restore-in-progress",
-            }:
-                wait_for_ready_state(client, module, current.get("PrefixListId"))
-                return ensure_present(client, module)
+        if (
+            (changed or wait)
+            and not module.check_mode
+            and current.get("State") in {"create-in-progress", "modify-in-progress", "restore-in-progress"}
+        ):
+            wait_for_ready_state(client, module, current.get("PrefixListId"))
+            return ensure_present(client, module)
 
+        if changed and not module.check_mode:
             if remove_entries:
                 remove_entry_requests = [{"cidr": entry["cidr"]} for entry in remove_entries]
 
@@ -514,7 +514,7 @@ def ensure_present(client, module):
                     )
 
             if add_entries:
-                modify_prefix_list(
+                current = modify_prefix_list(
                     client,
                     module,
                     current,
@@ -661,7 +661,7 @@ def modify_prefix_list(client, module, current, **kwargs):
         {"modify_managed_prefix_list": tuple(request)},
     )
     try:
-        client.modify_managed_prefix_list(
+        response = client.modify_managed_prefix_list(
             **request,
             aws_retry=True,
         )
@@ -670,6 +670,11 @@ def modify_prefix_list(client, module, current, **kwargs):
             e,
             msg=f"Unable to modify EC2 VPC managed prefix list {module.params['name']}",
         )
+
+    return validate_prefix_list(
+        module,
+        response.get("PrefixList") if isinstance(response, dict) else None,
+    )
 
 
 def wait_for_ready_state(client, module, prefix_list_id):

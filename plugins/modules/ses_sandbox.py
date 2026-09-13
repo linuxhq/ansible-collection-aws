@@ -9,6 +9,8 @@ version_added: '1.9.0'
 short_description: Manage AWS Simple Email Service account details
 description:
   - Requests production access for an AWS Simple Email Service account and manages the submitted account details.
+  - Submitting a request does not grant production access. The returned access status
+    reflects the account state observed from AWS, including in check mode.
   - Without O(use_case_description) and O(website_url) the module only
     reports the current account details.
 author:
@@ -18,6 +20,7 @@ options:
     description:
       - Additional contact email addresses to associate with the request.
       - This must contain at most 4 email addresses.
+      - An empty list leaves existing contact addresses unchanged.
     default: []
     elements: str
     type: list
@@ -337,7 +340,11 @@ def main():
             request[request_field] = desired_details[details_field]
 
     current = {
-        "details": comparable_details(current_account.get("details") or {}),
+        "details": {
+            field: value
+            for field, value in comparable_details(current_account.get("details") or {}).items()
+            if field in desired_details
+        },
         "production_access_enabled": current_account.get("production_access_enabled", False),
     }
 
@@ -353,11 +360,10 @@ def main():
             module.fail_json_aws(e, msg="Unable to manage AWS Simple Email Service account details")
 
         if changed:
-            current_account = dict(current_account)
-            current_account.update(desired)
+            current_account = get_account(client, module)
     elif changed and module.check_mode:
         current_account = dict(current_account)
-        current_account.update(desired)
+        current_account["details"] = dict(current_account.get("details") or {}, **desired_details)
 
     result = {
         "changed": changed,

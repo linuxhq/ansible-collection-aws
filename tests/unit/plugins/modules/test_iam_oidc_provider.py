@@ -15,6 +15,35 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
+@pytest.mark.parametrize("error_code", ["ConcurrentModification", "AccessDenied"])
+def test_configured_retry_handles_concurrent_modification_only(error_code):
+    module = FakeModule({"state": "absent", "url": "https://issuer.example", "tags": None}, client=Mock())
+    original = plugin.AWSRetry.jittered_backoff
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_absent"),
+        patch.object(plugin.AWSRetry, "jittered_backoff", wraps=original) as configured,
+    ):
+        plugin.main()
+
+    decorator = original(retries=2, delay=0, **configured.call_args.kwargs)
+    error = ClientError(
+        {"Error": {"Code": error_code, "Message": "conflict or denied"}},
+        "AddClientIDToOpenIDConnectProvider",
+    )
+    operation = Mock(side_effect=[error, {"ok": True}])
+    if error_code == "ConcurrentModification":
+        assert decorator(operation)() == {"ok": True}
+        assert operation.call_count == 2
+    else:
+        with pytest.raises(ClientError) as raised:
+            decorator(operation)()
+
+        assert raised.value is error
+        assert operation.call_count == 1
+
+
 class IamOidcProviderTests(TestCase):
     def test_absent_tolerates_provider_disappearing_during_delete(self):
         client = Mock()

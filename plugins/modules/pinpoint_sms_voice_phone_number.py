@@ -490,7 +490,7 @@ def ensure_present(client, module):
         "deletion-protection-enabled": deletion_protection_enabled,
     }
     if opt_out_list_name is not None:
-        filters["opt-out-list-name"] = opt_out_list_name
+        filters["opt-out-list-name"] = opt_out_list_name.rsplit("/", 1)[-1]
 
     lookup = (
         {"PhoneNumberIds": [module.params["phone_number_id"]]}

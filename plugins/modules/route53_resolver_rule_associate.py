@@ -259,7 +259,7 @@ def ensure_present(client, module):
     changed = (current_association or {}) != desired_association
 
     if (
-        changed
+        (changed or module.params["wait"])
         and not module.check_mode
         and association is not None
         and association.get("Status")

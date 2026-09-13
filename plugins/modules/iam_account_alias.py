@@ -153,9 +153,6 @@ def ensure_present(client, module):
 
     if changed:
         if not module.check_mode:
-            for alias in aliases:
-                delete_account_alias(client, module, alias)
-
             require_client_methods(
                 module,
                 client,
@@ -206,7 +203,7 @@ def main():
 
     client = module.client(
         "iam",
-        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConcurrentModificationException"]),
+        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConcurrentModification"]),
     )
     require_client_methods(
         module,

@@ -1212,6 +1212,30 @@ def test_requested_pending_route_waits_without_recreation(params, connection, ch
         assert result["vpn_connection"]["routes"][0]["state"] == "available"
 
 
+@pytest.mark.parametrize(
+    "routes,purge,check_mode", [([], True, False), ([], True, True), ([], False, False), (None, True, False)]
+)
+def test_purged_route_already_deleting_waits_without_another_delete(params, connection, routes, purge, check_mode):
+    params.update(routes=routes, purge_routes=purge)
+    connection["Routes"][0]["State"] = "deleting"
+    final = deepcopy(connection)
+    final["Routes"] = []
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [final]}
+    module = FakeModule(params, check_mode=check_mode)
+    with patch.object(plugin, "wait_for_route_deleted") as waiter:
+        result = ensure(client, module, connection)
+
+    assert result["changed"] is False
+    client.delete_vpn_connection_route.assert_not_called()
+    if routes is not None and purge and not check_mode:
+        waiter.assert_called_once_with(client, module, "vpn-123", "10.0.0.0/8")
+        assert result["vpn_connection"]["routes"] == []
+    else:
+        waiter.assert_not_called()
+        assert client.mock_calls == []
+
+
 @pytest.mark.parametrize("state,changed", [("available", True), ("deleting", False)])
 def test_absent_check_mode_returns_empty_connection(params, connection, state, changed):
     connection["State"] = state

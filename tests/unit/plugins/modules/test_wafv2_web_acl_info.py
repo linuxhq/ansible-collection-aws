@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import wafv2_web_acl_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -8,6 +10,37 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleFail,
     assert_module_contract,
 )
+
+
+@pytest.mark.parametrize("filters", [{"id": "acl-1"}, {"name": "main"}, {}])
+def test_custom_response_body_names_and_references_are_preserved(filters):
+    acl = {
+        "Id": "acl-1",
+        "Name": "main",
+        "CustomResponseBodies": {
+            "BlockPage": {"Content": "denied", "ContentType": "TEXT_PLAIN"},
+            "block_page": {"Content": "another body", "ContentType": "TEXT_PLAIN"},
+        },
+        "DefaultAction": {"Block": {"CustomResponse": {"ResponseCode": 403, "CustomResponseBodyKey": "BlockPage"}}},
+    }
+    client = Mock(get_web_acl=Mock(return_value={"WebACL": acl}))
+    module = FakeModule({"id": None, "name": None, "scope": "regional", **filters}, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[{"Id": "acl-1", "Name": "main"}]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    result = raised.value.values["web_acls"][0]
+    bodies = result["custom_response_bodies"]
+    assert bodies == {
+        "BlockPage": {"content": "denied", "content_type": "TEXT_PLAIN"},
+        "block_page": {"content": "another body", "content_type": "TEXT_PLAIN"},
+    }
+    reference = result["default_action"]["block"]["custom_response"]["custom_response_body_key"]
+    assert bodies[reference]["content"] == "denied"
 
 
 class Wafv2WebAclInfoTests(TestCase):

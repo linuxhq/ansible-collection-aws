@@ -8,6 +8,8 @@ module: global_accelerator
 version_added: "1.9.0"
 short_description: Manage AWS Global Accelerator accelerators
 description:
+  - Listener updates release conflicting ports before dependent updates.
+  - Circular listener port dependencies fail before listener changes and require an intermediate configuration.
   - Manages AWS Global Accelerator accelerators, their listeners, and their
     endpoint groups as one resource tree.
   - Listener entries in O(listeners) that exactly match an existing listener's
@@ -52,7 +54,8 @@ options:
       - These must be IP addresses from an AWS Global Accelerator BYOIP address pool.
       - This must contain at most 2 entries.
       - When omitted, AWS assigns IP addresses.
-      - An empty list clears existing static IP addresses.
+      - Additional AWS-assigned addresses do not cause updates when all requested addresses are present.
+      - An empty list is treated as omitted. Assigned static addresses cannot be cleared from an existing accelerator.
     elements: str
     type: list
   ip_address_type:
@@ -100,6 +103,9 @@ options:
                 description:
                   - ARN of the cross-account attachment permitting the
                     endpoint.
+                  - Used for create and update requests. AWS does not return
+                    this ARN in endpoint descriptions, so it is not compared
+                    when determining whether an existing endpoint needs updating.
                   - This requires botocore C(1.31.76) or later.
                 type: str
               client_ip_preservation_enabled:
@@ -730,6 +736,32 @@ def listener_request(desired):
     )
 
 
+def listeners_overlap(first, second):
+    return first.get("protocol") == second.get("protocol") and any(
+        left["from_port"] <= right["to_port"] and right["from_port"] <= left["to_port"]
+        for left in first.get("port_ranges", [])
+        for right in second.get("port_ranges", [])
+    )
+
+
+def ordered_listener_updates(module, updates):
+    pending = list(updates)
+    ordered = []
+    while pending:
+        for current, desired in pending:
+            if not any(other is not current and listeners_overlap(other, desired) for other, unused_desired in pending):
+                ordered.append((current, desired))
+                pending.remove((current, desired))
+                break
+        else:
+            module.fail_json(
+                msg="Unable to update AWS Global Accelerator listeners: circular port dependencies; "
+                "apply an intermediate configuration that releases the conflicting ports first"
+            )
+
+    return ordered
+
+
 def normalized_port_overrides(port_overrides):
     return sorted(
         (
@@ -811,11 +843,6 @@ def endpoint_group_requires_update(current, desired):
             if configuration["client_ip_preservation_enabled"] is not None and configuration[
                 "client_ip_preservation_enabled"
             ] != endpoint.get("client_ip_preservation_enabled"):
-                return True
-
-            if configuration.get("attachment_arn") is not None and configuration.get("attachment_arn") != endpoint.get(
-                "attachment_arn"
-            ):
                 return True
 
     return False
@@ -1129,6 +1156,55 @@ def ensure_listeners(client, module, accelerator_arn):
     changed = bool(updates or creates or deletes)
     result_listeners = []
 
+    updates = ordered_listener_updates(module, updates)
+    desired_changes = [desired for current, desired in updates] + creates
+    for current, unused_desired in matched:
+        if any(listeners_overlap(current, desired) for desired in desired_changes):
+            module.fail_json(
+                msg="Unable to update AWS Global Accelerator listeners: desired ports overlap a retained listener"
+            )
+
+    # Build and validate every listener write before releasing any ports.
+    update_requests = {}
+    create_requests = []
+    if not module.check_mode:
+        for current, desired in updates:
+            request = listener_request(desired)
+            request["ListenerArn"] = current["listener_arn"]
+            require_client_methods(module, client, "Global Accelerator", {"update_listener": tuple(request)})
+            update_requests[current["listener_arn"]] = request
+
+        for desired in creates:
+            request = listener_request(desired)
+            request["AcceleratorArn"] = accelerator_arn
+            request["IdempotencyToken"] = hashlib.sha256(
+                to_bytes(
+                    json.dumps(
+                        {
+                            "accelerator_arn": accelerator_arn,
+                            "client_affinity": desired["client_affinity"],
+                            "port_ranges": desired["port_ranges"],
+                            "protocol": desired["protocol"],
+                        },
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    )
+                )
+            ).hexdigest()
+            require_client_methods(module, client, "Global Accelerator", {"create_listener": tuple(request)})
+            create_requests.append(request)
+
+    # Release only obsolete listeners that block the validated writes.
+    conflicting_deletes = [
+        current for current in deletes if any(listeners_overlap(current, desired) for desired in desired_changes)
+    ]
+    if conflicting_deletes and not module.check_mode:
+        for current in conflicting_deletes:
+            delete_listener(client, module, accelerator_arn, current["listener_arn"])
+            deletes.remove(current)
+
+        wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed")
+
     for current, desired in matched:
         result_listeners.append((dict(current), desired))
 
@@ -1145,15 +1221,7 @@ def ensure_listeners(client, module, accelerator_arn):
         if module.check_mode:
             continue
 
-        request = listener_request(desired)
-        request["ListenerArn"] = listener_arn
-
-        require_client_methods(
-            module,
-            client,
-            "Global Accelerator",
-            {"update_listener": tuple(request)},
-        )
+        request = update_requests[listener_arn]
         try:
             client.update_listener(
                 **request,
@@ -1165,7 +1233,10 @@ def ensure_listeners(client, module, accelerator_arn):
                 msg=("Unable to update AWS Global Accelerator listener " f"{listener_arn}"),
             )
 
-    for desired in creates:
+        if any(other is not desired and listeners_overlap(current, other) for other in desired_changes):
+            wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed")
+
+    for index, desired in enumerate(creates):
         result = {
             "client_affinity": desired["client_affinity"],
             "port_ranges": desired["port_ranges"],
@@ -1176,31 +1247,7 @@ def ensure_listeners(client, module, accelerator_arn):
             result_listeners.append((result, desired))
             continue
 
-        token = hashlib.sha256(
-            to_bytes(
-                json.dumps(
-                    {
-                        "accelerator_arn": accelerator_arn,
-                        "client_affinity": desired["client_affinity"],
-                        "port_ranges": desired["port_ranges"],
-                        "protocol": desired["protocol"],
-                    },
-                    separators=(",", ":"),
-                    sort_keys=True,
-                )
-            )
-        ).hexdigest()
-
-        request = listener_request(desired)
-        request["AcceleratorArn"] = accelerator_arn
-        request["IdempotencyToken"] = token
-
-        require_client_methods(
-            module,
-            client,
-            "Global Accelerator",
-            {"create_listener": tuple(request)},
-        )
+        request = create_requests[index]
         while True:
             try:
                 response = client.create_listener(
@@ -1348,7 +1395,7 @@ def ensure_absent(client, module):
 
 def ensure_present(client, module):
     tags = module.params["tags"]
-    ip_addresses = module.params["ip_addresses"]
+    ip_addresses = module.params["ip_addresses"] or None
     desired = {
         "enabled": module.params["enabled"],
         "ip_address_type": module.params["ip_address_type"],
@@ -1405,6 +1452,7 @@ def ensure_present(client, module):
             for ip_set in accelerator.get("IpSets", []):
                 current_ip_addresses.extend(ip_set.get("IpAddresses", []))
 
+            current_ip_addresses = [address for address in current_ip_addresses if address in ip_addresses]
             current["ip_addresses"] = sorted(current_ip_addresses)
 
     resource_changed = current != desired
@@ -1422,7 +1470,7 @@ def ensure_present(client, module):
     if (
         accelerator is not None
         and not module.check_mode
-        and (changed or module.params["listeners"] is not None)
+        and (changed or module.params["listeners"] is not None or module.params["wait"])
         and accelerator.get("Status")
         and accelerator.get("Status") != "DEPLOYED"
     ):
@@ -1534,7 +1582,7 @@ def ensure_present(client, module):
         accelerator["Enabled"] = desired["enabled"]
         accelerator["IpAddressType"] = desired["ip_address_type"]
         accelerator["Name"] = desired["name"]
-        if ip_addresses is not None:
+        if ip_addresses is not None and current["ip_addresses"] != desired["ip_addresses"]:
             accelerator["IpSets"] = [{"IpAddresses": ip_addresses}]
 
     listeners = None
@@ -1750,7 +1798,6 @@ def main():
     if state == "present" and len(set(module.params["ip_addresses"] or [])) != len(module.params["ip_addresses"] or []):
         module.fail_json(msg="ip_addresses entries must be unique")
 
-    listener_identities = set()
     listener_port_ranges = {}
     if state == "present" and (
         sum(len(listener.get("endpoint_groups") or []) for listener in module.params["listeners"] or []) > 42
@@ -1781,23 +1828,6 @@ def main():
                 module.fail_json(msg="listeners port_ranges entries must not overlap")
 
             protocol_port_ranges.append(port_range)
-
-        identity = listener_identity(
-            {
-                "port_ranges": normalized_port_ranges(listener["port_ranges"]),
-                "protocol": listener.get("protocol"),
-            }
-        )
-        if identity in listener_identities:
-            module.fail_json(
-                msg=(
-                    f"Duplicate listener with protocol {listener.get('protocol')} "
-                    f"and port_ranges {normalized_port_ranges(listener['port_ranges'])} "
-                    "in listeners"
-                )
-            )
-
-        listener_identities.add(identity)
 
         regions = set()
         for endpoint_group in listener.get("endpoint_groups") or []:

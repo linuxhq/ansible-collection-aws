@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_association as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -295,3 +297,30 @@ class SsmAssociationTests(TestCase):
         for params, message in cases:
             with self.subTest(message=message):
                 assert_module_rejects(self, plugin, params, message)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_association_result_preserves_parameter_names(check_mode):
+    parameters = {"Message": ["Hello"], "message": ["World"]}
+    current = {
+        "AssociationId": "association-1",
+        "Name": "document",
+        "ScheduleExpression": "rate(1 hour)",
+        "Targets": [{"Key": "InstanceIds", "Values": ["i-1"]}],
+        "Parameters": parameters,
+    }
+    module = FakeModule(
+        {
+            "name": "document",
+            "schedule_expression": "rate(1 hour)",
+            "tags": None,
+            "purge_tags": True,
+            "targets": [{"key": "InstanceIds", "values": ["i-1"]}],
+        },
+        check_mode=check_mode,
+    )
+    with pytest.raises(ModuleExit) as result:
+        plugin.ensure_present(Mock(), module, current)
+
+    assert result.value.values["changed"] is False
+    assert result.value.values["association"]["parameters"] == parameters

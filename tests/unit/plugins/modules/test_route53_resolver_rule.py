@@ -13,6 +13,40 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_equivalent_ipv6_target_is_idempotent(check_mode):
+    module = FakeModule(
+        {
+            "domain_name": "example.com",
+            "name": "main",
+            "purge_tags": True,
+            "resolver_endpoint_id": "rslvr-out-1",
+            "rule_type": "forward",
+            "tags": None,
+            "target_ips": [{"ipv6": "2001:0DB8:0000:0000:0000:0000:0000:0010"}],
+            "wait": False,
+        },
+        check_mode=check_mode,
+    )
+    current = {
+        "DomainName": "example.com",
+        "Id": "rslvr-rr-1",
+        "ResolverEndpointId": "rslvr-out-1",
+        "RuleType": "FORWARD",
+        "TargetIps": [{"Ipv6": "2001:db8::10", "Port": 53, "Protocol": "Do53"}],
+    }
+    client = Mock()
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert not raised.value.values["changed"]
+    assert raised.value.values["resolver_rule"]["target_ips"][0]["ipv6"] == "2001:db8::10"
+    assert not client.mock_calls
+
+
 class Route53ResolverRuleTests(TestCase):
     def test_get_rejects_malformed_response(self):
         client = Mock(get_resolver_rule=Mock(return_value=[]))

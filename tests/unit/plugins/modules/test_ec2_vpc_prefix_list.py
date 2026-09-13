@@ -88,7 +88,18 @@ class Ec2VpcPrefixListTests(TestCase):
 
     def test_entry_changes_include_current_prefix_list_version(self):
         client = Mock()
-        module = Mock(params={"name": "main"})
+        client.modify_managed_prefix_list.return_value = {
+            "PrefixList": {
+                "AddressFamily": "IPv4",
+                "MaxEntries": 2,
+                "OwnerId": "123456789012",
+                "PrefixListId": "pl-1",
+                "PrefixListName": "main",
+                "State": "modify-in-progress",
+                "Version": 4,
+            }
+        }
+        module = FakeModule({"name": "main"})
         with patch.object(plugin, "require_client_methods") as require:
             plugin.modify_prefix_list(
                 client,
@@ -261,7 +272,7 @@ class Ec2VpcPrefixListTests(TestCase):
                     (resized, []),
                 ],
             ),
-            patch.object(plugin, "modify_prefix_list") as modify,
+            patch.object(plugin, "modify_prefix_list", return_value=dict(resized, Version=4)) as modify,
             patch.object(plugin, "wait_for_ready_state") as wait_for_ready_state,
             self.assertRaises(ModuleExit) as raised,
         ):
@@ -531,3 +542,84 @@ def test_prefix_list_waiter_accepts_completed_state(name, state):
     operation = Mock(return_value={"PrefixLists": [{"State": state}]})
     waiter = Waiter(name, config, operation)
     waiter.wait(PrefixListIds=["pl-1"], WaiterConfig={"Delay": 0, "MaxAttempts": 1})
+
+
+@pytest.mark.parametrize("state", ["create-in-progress", "modify-in-progress", "restore-in-progress"])
+@pytest.mark.parametrize("wait_enabled,check_mode", [(True, False), (False, False), (True, True)])
+def test_matching_prefix_list_readiness(state, wait_enabled, check_mode):
+    module = FakeModule(
+        {
+            "name": "example",
+            "address_family": "IPv4",
+            "entries": [{"cidr": "10.0.0.0/8"}],
+            "tags": None,
+            "purge_tags": True,
+            "wait": wait_enabled,
+        },
+        check_mode=check_mode,
+    )
+    current = {
+        "PrefixListId": "pl-1",
+        "PrefixListName": "example",
+        "AddressFamily": "IPv4",
+        "MaxEntries": 1,
+        "Version": 1,
+        "State": state,
+    }
+    entries = [{"Cidr": "10.0.0.0/8"}]
+    ready = dict(current, State="modify-complete")
+    client = Mock()
+    with (
+        patch.object(plugin, "get_current", side_effect=[(current, entries), (ready, entries)]),
+        patch.object(plugin, "wait_for_ready_state") as wait,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is False
+    assert client.mock_calls == []
+    if wait_enabled and not check_mode:
+        wait.assert_called_once_with(client, module, "pl-1")
+        assert result.value.values["prefix_list"]["state"] == "modify-complete"
+    else:
+        wait.assert_not_called()
+        assert result.value.values["prefix_list"]["state"] == state
+
+
+def test_add_entries_without_wait_returns_modified_version_and_state():
+    current = {
+        "PrefixListId": "pl-1",
+        "PrefixListName": "example",
+        "AddressFamily": "IPv4",
+        "MaxEntries": 2,
+        "OwnerId": "123456789012",
+        "Version": 3,
+        "State": "modify-complete",
+    }
+    updated = dict(current, Version=4, State="modify-in-progress")
+    client = Mock(modify_managed_prefix_list=Mock(return_value={"PrefixList": updated}))
+    module = FakeModule(
+        {
+            "name": "example",
+            "address_family": "IPv4",
+            "entries": [{"cidr": "10.0.0.0/8"}, {"cidr": "192.0.2.0/24"}],
+            "tags": None,
+            "purge_tags": True,
+            "wait": False,
+        }
+    )
+    with (
+        patch.object(plugin, "get_current", return_value=(current, [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_ready_state") as wait,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["prefix_list"]["version"] == 4
+    assert result.value.values["prefix_list"]["state"] == "modify-in-progress"
+    client.modify_managed_prefix_list.assert_called_once_with(
+        PrefixListId="pl-1", CurrentVersion=3, AddEntries=[{"Cidr": "192.0.2.0/24"}], aws_retry=True
+    )
+    wait.assert_not_called()

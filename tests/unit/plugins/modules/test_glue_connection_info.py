@@ -167,3 +167,39 @@ def test_glue_override_accepted_by_sdk(environment):
         pytest.raises(ModuleExit),
     ):
         plugin.main()
+
+
+@pytest.mark.parametrize("name", ["example", None])
+@pytest.mark.parametrize(
+    "field,result_key",
+    [
+        ("SparkProperties", "spark_properties"),
+        ("AthenaProperties", "athena_properties"),
+        ("PythonProperties", "python_properties"),
+    ],
+)
+def test_environment_property_keys_are_preserved(name, field, result_key):
+    properties = {"JDBC_CONNECTION_URL": "jdbc:example", "customOption": "value", "custom_option": "another"}
+    connection = {"Name": "example", "ConnectionProperties": properties, field: properties}
+    client = Mock(get_connection=Mock(return_value={"Connection": connection}))
+    module = FakeModule(
+        {
+            "name": name,
+            "catalog_id": None,
+            "filters": None,
+            "hide_password": True,
+            "apply_override_for_compute_environment": None,
+        },
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[connection]),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    returned = result.value.values["connections"][0]
+    assert returned["connection_properties"] == properties
+    assert returned[result_key] == properties

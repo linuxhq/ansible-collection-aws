@@ -68,6 +68,7 @@ RETURN = r"""
 quota:
   description:
     - The AWS service quota details.
+    - CloudWatch metric dimension names retain their original casing.
   returned: always
   type: dict
   contains:
@@ -89,6 +90,8 @@ try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
     pass
+
+from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
@@ -175,7 +178,14 @@ def main():
 
     module.exit_json(
         changed=False,
-        quota=boto3_resource_to_ansible_dict(quota, transform_tags=False, force_tags=False),
+        quota=boto3_resource_to_ansible_dict(
+            quota,
+            transform_tags=False,
+            force_tags=False,
+            nested_transforms={
+                "UsageMetric": lambda metric: camel_dict_to_snake_dict(metric, ignore_list=["MetricDimensions"]),
+            },
+        ),
         quota_code=quota_code,
         service_code=service_code,
     )
