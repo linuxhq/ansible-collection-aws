@@ -949,3 +949,21 @@ releases:
     - vpn-route-purge-readiness.yml
     - waf-body-names-iam-retries.yml
     release_date: '2026-09-13'
+  2.5.0:
+    changes:
+      minor_changes:
+      - account_name - add an idempotent module and role to manage AWS account names.
+      - aws_account_info - add a module and role to retrieve the AWS account name,
+        ID, creation date, and state.
+      release_summary: Add account name management and account information modules
+        and roles.
+    fragments:
+    - account_name.yml
+    modules:
+    - description: Manage the AWS account name
+      name: account_name
+      namespace: ''
+    - description: Gather AWS account information
+      name: aws_account_info
+      namespace: ''
+    release_date: '2026-09-22'

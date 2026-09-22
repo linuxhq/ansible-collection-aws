@@ -1,0 +1,31 @@
+---
+- name: Verify
+  hosts: all
+  tasks:
+    - name: Ensure aws account information is verified
+      block:
+        - name: Ensure information about aws account is gathered
+          ansible.builtin.include_role:
+            name: aws_account_info
+
+        - name: Ensure info is verified
+          ansible.builtin.assert:
+            that:
+              - _aws_account_info_dict.account_name is string
+              - _aws_account_info_dict.account_name | length > 0
+              - _aws_account_info_dict.account_name == account_name_name
+
+      always:
+        - name: Ensure original aws account name is restored
+          ansible.builtin.include_role:
+            name: account_name
+          vars:
+            account_name_name: >-
+              {{ lookup('ansible.builtin.file',
+                 lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') ~ '/original-account-name.json') | from_json }}
+
+        - name: Ensure saved aws account name file is absent
+          ansible.builtin.file:
+            path: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/original-account-name.json"
+            state: absent
+...

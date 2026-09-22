@@ -1,0 +1,16 @@
+---
+- name: Verify
+  hosts: all
+  roles:
+    - aws_account_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _aws_account_info_dict.account_name is string
+          - _aws_account_info_dict.account_name | length > 0
+          - _aws_account_info_dict.account_id is match('^[0-9]{12}$')
+          - _aws_account_info_dict.account_created_date is string
+          - _aws_account_info_dict.account_state in ['PENDING_ACTIVATION', 'ACTIVE', 'SUSPENDED', 'CLOSED']
+...
