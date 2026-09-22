@@ -1,0 +1,30 @@
+---
+- name: Converge
+  hosts: all
+  pre_tasks:
+    - name: Ensure original aws account information is gathered
+      linuxhq.aws.aws_account_info:
+        validate_certs: true
+      register: __account_name_original
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - name: Ensure original aws account name is saved
+      ansible.builtin.copy:
+        content: "{{ __account_name_original.account.account_name | to_json }}"
+        dest: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/original-account-name.json"
+        force: false
+        mode: '0600'
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+  roles:
+    - role: account_name
+      account_name_name: null
+      tags:
+        - molecule-idempotence-notest
+
+    - account_name
+...

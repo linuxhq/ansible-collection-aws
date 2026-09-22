@@ -1,0 +1,11 @@
+---
+- name: Ensure aws account name is managed
+  tags:
+    - account_name
+  linuxhq.aws.account_name:
+    account_id: "{{ account_name_account_id or omit }}"
+    name: "{{ account_name_name }}"
+    validate_certs: true
+  when:
+    - account_name_name is not none
+...

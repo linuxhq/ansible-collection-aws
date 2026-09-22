@@ -4,6 +4,26 @@ linuxhq.aws Release Notes
 
 .. contents:: Topics
 
+v2.5.0
+======
+
+Release Summary
+---------------
+
+Add account name management and account information modules and roles.
+
+Minor Changes
+-------------
+
+- account_name - add an idempotent module and role to manage AWS account names.
+- aws_account_info - add a module and role to retrieve the AWS account name, ID, creation date, and state.
+
+New Modules
+-----------
+
+- account_name - Manage the AWS account name
+- aws_account_info - Gather AWS account information
+
 v2.4.4
 ======
 

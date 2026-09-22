@@ -1,0 +1,19 @@
+---
+- name: Ensure information about aws account is gathered
+  tags:
+    - always
+    - aws_account_info
+  linuxhq.aws.aws_account_info:
+    account_id: "{{ aws_account_info_account_id or omit }}"
+    validate_certs: true
+  register: __aws_account_info_query
+
+- name: Ensure dict of aws account information is generated
+  tags:
+    - always
+    - aws_account_info
+  ansible.builtin.set_fact:
+    _aws_account_info_dict:
+      "{{ __aws_account_info_query.account |
+          d({}) }}"
+...
