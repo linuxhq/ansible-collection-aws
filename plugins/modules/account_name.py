@@ -9,8 +9,7 @@ short_description: Manage the AWS account name
 version_added: "2.5.0"
 description:
   - Manages the AWS account name using AWS Account Management.
-  - Requires a botocore version exposing C(get_account_information).
-  - Updates require a botocore version exposing C(put_account_name).
+  - Requires botocore 1.38.0 or later.
   - Requires C(account:GetAccountInformation) and C(account:PutAccountName) IAM permissions.
 author:
   - Taylor Kimball (@tkimball83)
@@ -21,11 +20,13 @@ options:
       - Omit to use the account of the calling identity, including a management account.
       - Cross-account access requires organization management or delegated administrator credentials,
         all organization features, and trusted access for Account Management.
+      - Requires botocore 1.38.0 or later.
     type: str
   name:
     description:
       - The desired account name, containing 1 to 50 printable ASCII characters except angle brackets.
       - Account names cannot be deleted.
+      - Requires botocore 1.38.0 or later.
     type: str
     required: true
 extends_documentation_fragment:

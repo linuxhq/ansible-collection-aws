@@ -9,7 +9,7 @@ short_description: Gather AWS account information
 version_added: "2.5.0"
 description:
   - Gathers AWS account information using AWS Account Management.
-  - Requires a botocore version exposing C(get_account_information).
+  - Requires botocore 1.38.0 or later.
   - Requires the C(account:GetAccountInformation) IAM permission.
 author:
   - Taylor Kimball (@tkimball83)
@@ -20,6 +20,7 @@ options:
       - Omit to use the account of the calling identity, including a management account.
       - Cross-account access requires organization management or delegated administrator credentials,
         all organization features, and trusted access for Account Management.
+      - Requires botocore 1.38.0 or later.
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
