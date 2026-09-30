@@ -12,7 +12,8 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import Fak
 @pytest.mark.parametrize("current", ["Production", "Previous"])
 def test_manager(check_mode, account_id, current):
     client = Mock()
-    client.get_account_information.side_effect = [{"AccountName": current}, {"AccountName": "Production"}]
+    # A second, stale read would return the old name; the module must not rely on one.
+    client.get_account_information.side_effect = [{"AccountName": current}, {"AccountName": current}]
     module = FakeModule({"name": "Production", "account_id": account_id}, check_mode=check_mode, client=client)
     with patch.object(account_name, "AnsibleAWSModule", return_value=module), patch.object(
         account_name, "require_client_methods"
@@ -24,11 +25,12 @@ def test_manager(check_mode, account_id, current):
     client.get_account_information.assert_any_call(**params, aws_retry=True)
     if current != "Production" and not check_mode:
         client.put_account_name.assert_called_once_with(AccountName="Production", **params, aws_retry=True)
-        assert client.get_account_information.call_count == 2
         assert gate.call_count == 2
     else:
         client.put_account_name.assert_not_called()
         assert gate.call_count == 1
+
+    assert client.get_account_information.call_count == 1
 
 
 @pytest.mark.parametrize("name", ["", "x" * 51, "<name>", "café", "line\n", "tab\t"])
@@ -50,7 +52,7 @@ def test_invalid_account_id(plugin, account_id):
     module._client.get_account_information.assert_not_called()
 
 
-@pytest.mark.parametrize("operation", ["read", "write", "reread"])
+@pytest.mark.parametrize("operation", ["read", "write"])
 @pytest.mark.parametrize(
     "error",
     [
@@ -60,11 +62,7 @@ def test_invalid_account_id(plugin, account_id):
 )
 def test_sdk_errors(operation, error):
     client = Mock()
-    client.get_account_information.side_effect = (
-        [error]
-        if operation == "read"
-        else [{"AccountName": "Previous"}, error] if operation == "reread" else [{"AccountName": "Previous"}]
-    )
+    client.get_account_information.side_effect = [error] if operation == "read" else [{"AccountName": "Previous"}]
     if operation == "write":
         client.put_account_name.side_effect = error
 

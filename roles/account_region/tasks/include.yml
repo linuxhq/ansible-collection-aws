@@ -3,6 +3,7 @@
   tags:
     - account_region
   linuxhq.aws.account_region:
+    account_id: "{{ _region.account_id | d(omit) }}"
     name: "{{ _region.name }}"
     state: "{{ _region.state | d('present') }}"
     wait: "{{ account_region_wait }}"

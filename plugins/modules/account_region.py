@@ -14,6 +14,14 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
+  account_id:
+    description:
+      - The 12-digit ID of a member account in the same organization.
+      - Omit to use the account of the calling identity, including a management account.
+      - Cross-account access requires organization management or delegated administrator credentials,
+        all organization features, and trusted access for Account Management.
+    type: str
+    version_added: "2.6.0"
   name:
     description:
       - The AWS region name to manage.
@@ -70,6 +78,12 @@ EXAMPLES = r"""
   linuxhq.aws.account_region:
     name: af-south-1
     state: absent
+
+- name: Enable an opt-in region for a member account
+  linuxhq.aws.account_region:
+    account_id: "123456789012"
+    name: af-south-1
+    state: present
 """
 
 RETURN = r"""
@@ -95,6 +109,7 @@ except ImportError:
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.account import account_parameters
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
@@ -188,12 +203,22 @@ ACCOUNT_REGION_WAITER_MODEL_DATA = {
 }
 
 
+def region_request(module):
+    return dict(account_parameters(module), RegionName=module.params["name"])
+
+
+def region_target(module):
+    account_id = module.params.get("account_id")
+    name = module.params["name"]
+    return f"{name} in account {account_id}" if account_id else name
+
+
 def get_region_opt_status(client, module):
-    region_name = module.params["name"]
+    region_name = region_target(module)
 
     try:
         response = client.get_region_opt_status(
-            RegionName=region_name,
+            **region_request(module),
             aws_retry=True,
         )
     except (BotoCoreError, ClientError) as e:
@@ -215,7 +240,7 @@ def get_region_opt_status(client, module):
 
 
 def wait_for_status(client, module, waiter_name, statuses):
-    region_name = module.params["name"]
+    region_name = region_target(module)
 
     run_waiter(
         module,
@@ -223,7 +248,7 @@ def wait_for_status(client, module, waiter_name, statuses):
         ACCOUNT_REGION_WAITER_MODEL_DATA,
         waiter_name,
         (f"Timed out waiting for AWS account region {region_name} " f"to reach one of {sorted(statuses)}"),
-        RegionName=region_name,
+        **region_request(module),
     )
 
     return get_region_opt_status(client, module)
@@ -239,7 +264,7 @@ def exit_region(module, previous_status, current_status, changed):
 
 
 def ensure_present(client, module):
-    region_name = module.params["name"]
+    region_name = region_target(module)
     previous_status = get_region_opt_status(client, module)
 
     changed = previous_status not in PRESENT_STATUSES
@@ -252,11 +277,11 @@ def ensure_present(client, module):
             module,
             client,
             "AWS Account",
-            {"enable_region": ("RegionName",)},
+            {"enable_region": tuple(region_request(module))},
         )
         try:
             client.enable_region(
-                RegionName=region_name,
+                **region_request(module),
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
@@ -285,7 +310,7 @@ def ensure_present(client, module):
 
 
 def ensure_absent(client, module):
-    region_name = module.params["name"]
+    region_name = region_target(module)
     previous_status = get_region_opt_status(client, module)
 
     if previous_status == "ENABLED_BY_DEFAULT":
@@ -303,11 +328,11 @@ def ensure_absent(client, module):
             module,
             client,
             "AWS Account",
-            {"disable_region": ("RegionName",)},
+            {"disable_region": tuple(region_request(module))},
         )
         try:
             client.disable_region(
-                RegionName=region_name,
+                **region_request(module),
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
@@ -335,6 +360,7 @@ def ensure_absent(client, module):
 
 def main():
     argument_spec = {
+        "account_id": {"type": "str"},
         "name": {"required": True, "type": "str"},
         "state": {
             "choices": ["present", "absent"],
@@ -349,6 +375,7 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
 
     require_positive_wait_bounds(module, always=True)
+    request = region_request(module)
 
     client = module.client("account", retry_decorator=AWSRetry.jittered_backoff())
 
@@ -357,7 +384,7 @@ def main():
         module,
         client,
         "AWS Account",
-        {"get_region_opt_status": ("RegionName",)},
+        {"get_region_opt_status": tuple(request)},
     )
 
     if state == "present":
