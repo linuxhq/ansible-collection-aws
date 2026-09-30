@@ -1,0 +1,17 @@
+---
+minor_changes:
+  - ec2_vpc_prefix_list - add the ``max_entries`` option to leave headroom so entry changes do not resize
+    the prefix list.
+  - ec2_vpc_prefix_list - manage more than 100 entries by applying creation and entry changes in batches of
+    100, removing unrequested entries before adding new ones so the list never needs more than
+    ``max_entries`` entries.
+  - ec2_vpc_prefix_list role - pass ``max_entries`` from each prefix list entry.
+bugfixes:
+  - ec2_vpc_prefix_list - apply entry additions, removals, description changes, and resizing without
+    temporarily removing requested CIDRs; changes that fit in one EC2 request are applied atomically.
+  - ec2_vpc_prefix_list - stop waiting as soon as a prefix list reaches a failed state instead of waiting
+    until ``wait_timeout`` expires.
+  - ec2_vpc_prefix_list - fail with a clear message when the matching prefix list failed to create instead
+    of attempting to modify it.
+  - ec2_vpc_prefix_list - ignore prefix lists shared from other accounts, which cannot be modified, when
+    looking up a prefix list by name.

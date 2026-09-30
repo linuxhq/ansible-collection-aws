@@ -44,6 +44,7 @@ None
                   description: localhost-5
 
             - name: molecule-private
+              max_entries: 10
               entries:
                 - cidr: 192.168.1.0/24
                   description: private-1
