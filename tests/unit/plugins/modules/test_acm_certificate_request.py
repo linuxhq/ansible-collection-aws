@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import acm_certificate_request as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -396,3 +398,98 @@ class AcmCertificateRequestTests(TestCase):
             client.request_certificate.call_args.kwargs["SubjectAlternativeNames"],
             ["www.example.com", "api.example.com"],
         )
+
+
+def issued_certificate(arn, **overrides):
+    return {
+        "Certificate": dict(
+            {
+                "CertificateArn": arn,
+                "CreatedAt": 1,
+                "DomainValidationOptions": [{"ValidationMethod": "DNS"}],
+                "Status": "ISSUED",
+                "SubjectAlternativeNames": ["example.com"],
+                "Type": "AMAZON_ISSUED",
+            },
+            **overrides,
+        )
+    }
+
+
+def run_request(client, summaries):
+    module = FakeModule(
+        {
+            "domain_name": "example.com",
+            "idempotency_token": None,
+            "purge_tags": True,
+            "subject_alternative_names": None,
+            "tags": None,
+        },
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=summaries),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    return result.value.values
+
+
+def test_summaries_rule_out_certificates_without_describing_them():
+    client = Mock()
+    client.describe_certificate.return_value = issued_certificate("arn:match")
+    summaries = [
+        {"CertificateArn": "arn:imported", "DomainName": "example.com", "Type": "IMPORTED"},
+        {"CertificateArn": "arn:cloudfront", "DomainName": "example.com", "ManagedBy": "CLOUDFRONT"},
+        {
+            "CertificateArn": "arn:other-names",
+            "DomainName": "example.com",
+            "HasAdditionalSubjectAlternativeNames": False,
+            "SubjectAlternativeNameSummaries": ["example.com", "www.example.com"],
+        },
+        {
+            "CertificateArn": "arn:match",
+            "DomainName": "example.com",
+            "HasAdditionalSubjectAlternativeNames": False,
+            "SubjectAlternativeNameSummaries": ["EXAMPLE.COM"],
+            "Type": "AMAZON_ISSUED",
+        },
+    ]
+
+    result = run_request(client, summaries)
+
+    assert result["certificate_arn"] == "arn:match"
+    client.describe_certificate.assert_called_once_with(CertificateArn="arn:match", aws_retry=True)
+    client.request_certificate.assert_not_called()
+
+
+def test_truncated_summary_names_are_described():
+    client = Mock()
+    client.describe_certificate.return_value = issued_certificate("arn:truncated")
+    summaries = [
+        {
+            "CertificateArn": "arn:truncated",
+            "DomainName": "example.com",
+            "HasAdditionalSubjectAlternativeNames": True,
+            "SubjectAlternativeNameSummaries": ["other.example.com"],
+        }
+    ]
+
+    result = run_request(client, summaries)
+
+    assert result["certificate_arn"] == "arn:truncated"
+    client.describe_certificate.assert_called_once()
+
+
+def test_service_managed_certificate_is_not_reused():
+    client = Mock()
+    client.describe_certificate.return_value = issued_certificate("arn:managed", ManagedBy="CLOUDFRONT")
+    client.request_certificate.return_value = {"CertificateArn": "arn:new"}
+
+    result = run_request(client, [{"CertificateArn": "arn:managed", "DomainName": "example.com"}])
+
+    assert result["changed"] is True
+    assert result["certificate_arn"] == "arn:new"
