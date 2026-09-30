@@ -11,6 +11,7 @@
     log_format: "{{ _flow_log.log_format | d(omit) }}"
     log_group_name: "{{ _flow_log.log_group_name | d(omit) }}"
     max_aggregation_interval: "{{ _flow_log.max_aggregation_interval | d(omit) }}"
+    purge_flow_logs: "{{ _flow_log.purge_flow_logs | d(omit) }}"
     purge_tags: "{{ _flow_log.purge_tags | d(true) }}"
     resource_ids: "{{ _flow_log.resource_ids }}"
     resource_type: "{{ _flow_log.resource_type }}"

@@ -2,6 +2,8 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_flow_log as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -195,6 +197,7 @@ class Ec2FlowLogTests(TestCase):
         base = {
             "destination_options": None,
             "log_destination_type": None,
+            "max_aggregation_interval": None,
             "resource_ids": ["tgw-1"],
             "resource_type": "TransitGateway",
             "state": "present",
@@ -209,6 +212,10 @@ class Ec2FlowLogTests(TestCase):
             (
                 dict(base, traffic_type="ALL"),
                 "traffic_type is not supported when resource_type is TransitGateway or TransitGatewayAttachment",
+            ),
+            (
+                dict(base, max_aggregation_interval=600),
+                "max_aggregation_interval must be 60 when resource_type is TransitGateway or TransitGatewayAttachment",
             ),
             (
                 dict(
@@ -334,3 +341,144 @@ class Ec2FlowLogTests(TestCase):
 
         self.assertEqual(raised.exception.values["flow_log_ids"], ["fl-created"])
         self.assertEqual(raised.exception.values["flow_logs"], [{"flow_log_id": "fl-created"}])
+
+
+def present_params(**overrides):
+    params = dict.fromkeys(plugin.PRESENT_MATCH_FIELDS)
+    params.update(
+        {
+            "destination_options": None,
+            "log_destination_type": "s3",
+            "log_destination": "arn:aws:s3:::new-bucket",
+            "purge_flow_logs": False,
+            "purge_tags": True,
+            "resource_ids": ["vpc-1"],
+            "resource_type": "VPC",
+            "state": "present",
+            "tags": None,
+            "traffic_type": None,
+        }
+    )
+    params.update(overrides)
+    return params
+
+
+OLD_FLOW_LOG = {
+    "FlowLogId": "fl-old",
+    "LogDestination": "arn:aws:s3:::old-bucket",
+    "LogDestinationType": "s3",
+    "ResourceId": "vpc-1",
+    "TrafficType": "ALL",
+}
+
+
+def run_present(client, module, flow_logs):
+    client.create_flow_logs.return_value = {"FlowLogIds": ["fl-new"]}
+    client.delete_flow_logs.return_value = {}
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=flow_logs),
+        patch.object(plugin, "query_list", return_value=[{"FlowLogId": "fl-new", "ResourceId": "vpc-1"}]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    return result.value.values
+
+
+def test_changed_settings_keep_the_old_flow_log_by_default():
+    client = Mock()
+    result = run_present(client, FakeModule(present_params()), [dict(OLD_FLOW_LOG)])
+
+    assert result["changed"] is True
+    assert result["deleted_flow_log_ids"] == []
+    client.delete_flow_logs.assert_not_called()
+
+
+def test_purge_replaces_mismatched_flow_logs_after_creating():
+    client = Mock()
+    manager = Mock()
+    manager.attach_mock(client.create_flow_logs, "create")
+    manager.attach_mock(client.delete_flow_logs, "delete")
+    result = run_present(client, FakeModule(present_params(purge_flow_logs=True)), [dict(OLD_FLOW_LOG)])
+
+    assert result["changed"] is True
+    assert result["deleted_flow_log_ids"] == ["fl-old"]
+    assert result["flow_log_ids"] == ["fl-new"]
+    assert [name for name, _args, _kwargs in manager.mock_calls] == ["create", "delete"]
+    client.delete_flow_logs.assert_called_once_with(FlowLogIds=["fl-old"], aws_retry=True)
+
+
+def test_purge_keeps_matching_flow_logs_and_predicts_in_check_mode():
+    matching = dict(OLD_FLOW_LOG, FlowLogId="fl-match", LogDestination="arn:aws:s3:::new-bucket")
+    client = Mock()
+    module = FakeModule(present_params(purge_flow_logs=True), check_mode=True)
+    result = run_present(client, module, [matching, dict(OLD_FLOW_LOG)])
+
+    assert result["changed"] is True
+    assert result["deleted_flow_log_ids"] == ["fl-old"]
+    assert result["flow_log_ids"] == ["fl-match"]
+    client.create_flow_logs.assert_not_called()
+    client.delete_flow_logs.assert_not_called()
+
+
+def test_create_sends_a_client_token():
+    client = Mock()
+    run_present(client, FakeModule(present_params()), [])
+
+    token = client.create_flow_logs.call_args.kwargs["ClientToken"]
+    assert isinstance(token, str) and 0 < len(token) <= 64
+
+
+@pytest.mark.parametrize("traffic_type", [None, "REJECT"])
+def test_regional_nat_gateway_sends_traffic_type_only_when_set(traffic_type):
+    client = Mock()
+    module = FakeModule(
+        present_params(resource_ids=["nat-1"], resource_type="RegionalNatGateway", traffic_type=traffic_type)
+    )
+    run_present(client, module, [])
+
+    request = client.create_flow_logs.call_args.kwargs
+    assert request["ResourceType"] == "RegionalNatGateway"
+    assert request.get("TrafficType") == traffic_type
+
+
+def test_purge_keeps_old_flow_logs_when_a_replacement_fails_delivery():
+    client = Mock()
+    client.create_flow_logs.return_value = {"FlowLogIds": ["fl-new"]}
+    failed = {
+        "DeliverLogsErrorMessage": "Access error",
+        "DeliverLogsStatus": "FAILED",
+        "FlowLogId": "fl-new",
+        "FlowLogStatus": "ACTIVE",
+        "ResourceId": "vpc-1",
+    }
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[dict(OLD_FLOW_LOG)]),
+        patch.object(plugin, "query_list", return_value=[failed]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(present_params(purge_flow_logs=True)))
+
+    assert "fl-new" in raised.value.values["msg"]
+    assert raised.value.values["replacement_errors"] == {"fl-new": "Access error"}
+    client.delete_flow_logs.assert_not_called()
+
+
+def test_purge_waits_for_a_later_run_when_a_replacement_is_not_described_yet():
+    client = Mock()
+    client.create_flow_logs.return_value = {"FlowLogIds": ["fl-new"]}
+    module = FakeModule(present_params(purge_flow_logs=True))
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[dict(OLD_FLOW_LOG)]),
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["deleted_flow_log_ids"] == []
+    assert "will be purged on a later run" in module.warnings[0]
+    client.delete_flow_logs.assert_not_called()
