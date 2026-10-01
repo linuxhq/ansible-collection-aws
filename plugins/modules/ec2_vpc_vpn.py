@@ -479,6 +479,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.waiter import custom_waiter_config
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import require_positive_wait_bounds, run_waiter
 
@@ -570,6 +571,7 @@ def find_connection(client, module, connection_id=None):
         else {"Filters": ansible_dict_to_boto3_filter_list(filters)}
     )
 
+    require_client_methods(module, client, "EC2", {"describe_vpn_connections": tuple(request)})
     try:
         # DescribeVpnConnections has no pagination in the EC2 API.
         response = client.describe_vpn_connections(**request, aws_retry=True)
@@ -704,12 +706,7 @@ def tunnel_deltas(module, connection):
         for field, value in tunnel_request(desired).items():
             # EC2 uses different IKE key casing in requests and responses.
             actual = tunnel.get("IkeVersions" if field == "IKEVersions" else field)
-            if field == "PreSharedKey" and (
-                not isinstance(actual, str)
-                or not actual.strip()
-                or set(actual) <= {"*"}
-                or actual.lower() in {"<redacted>", "redacted", "<hidden>", "hidden"}
-            ):
+            if field == "PreSharedKey" and (not isinstance(actual, str) or not actual):
                 module.fail_json(
                     msg=f"Cannot compare pre_shared_key for VPN connection {connection['VpnConnectionId']} "
                     f"tunnel {outside_ip}; EC2 did not return a usable current key. "
@@ -788,6 +785,9 @@ def validate_inputs(module):
         and module.params["tags"].get("Name", module.params["name"]) != module.params["name"]
     ):
         module.fail_json(msg="tags.Name must match name")
+
+    # Validate the tags, including the Name tag, before any AWS call.
+    desired_tags(module, {})
 
     for name in CONNECTION_FIELDS:
         value = module.params[name]
@@ -943,6 +943,7 @@ def create_connection(client, module):
     if module.check_mode:
         module.exit_json(changed=True, vpn_connection={})
 
+    require_client_methods(module, client, "EC2", {"create_vpn_connection": tuple(request)})
     try:
         response = client.create_vpn_connection(**request, aws_retry=True)
     except (BotoCoreError, ClientError) as e:
@@ -1001,7 +1002,8 @@ def ensure_present(client, module, connection):
     remove_routes = current_routes - set(routes) if routes is not None and module.params["purge_routes"] else set()
     pending_removals = deleting_routes - set(routes) if routes is not None and module.params["purge_routes"] else set()
 
-    for route in add_routes | remove_routes | pending_removals:
+    # Requested routes were normalized by validate_inputs; validate the routes EC2 returned.
+    for route in remove_routes | pending_removals:
         validate_network(module, route, "Route destination", 4)
 
     updated = bool(tunnels or options or tags_to_set or tags_to_remove or add_routes or remove_routes)
@@ -1021,12 +1023,23 @@ def ensure_present(client, module, connection):
         wait_for_route_deleted(client, module, connection_id, route)
 
     if options:
+        require_client_methods(
+            module, client, "EC2", {"modify_vpn_connection_options": ("VpnConnectionId",) + tuple(options)}
+        )
         try:
             client.modify_vpn_connection_options(VpnConnectionId=connection_id, **options, aws_retry=True)
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to modify options for VPN connection {connection_id}")
 
         wait_for_connection(client, module, connection_id)
+
+    if tunnels:
+        require_client_methods(
+            module,
+            client,
+            "EC2",
+            {"modify_vpn_tunnel_options": ("TunnelOptions", "VpnConnectionId", "VpnTunnelOutsideIpAddress")},
+        )
 
     for outside_ip, delta in tunnels:
         try:
@@ -1115,8 +1128,14 @@ def wait_for_route_state(client, module, connection_id, route, state):
 
 
 def reconcile_routes(client, module, connection_id, additions, removals):
-    for route in additions | removals:
-        validate_network(module, route, "Route destination", 4)
+    route_methods = {}
+    if removals:
+        route_methods["delete_vpn_connection_route"] = ("DestinationCidrBlock", "VpnConnectionId")
+
+    if additions:
+        route_methods["create_vpn_connection_route"] = ("DestinationCidrBlock", "VpnConnectionId")
+
+    require_client_methods(module, client, "EC2", route_methods)
 
     for route in sorted(removals):
         try:
@@ -1140,6 +1159,15 @@ def reconcile_routes(client, module, connection_id, additions, removals):
 
 
 def reconcile_tags(client, module, connection_id, additions, removals):
+    tag_methods = {}
+    if removals:
+        tag_methods["delete_tags"] = ("Resources", "Tags")
+
+    if additions:
+        tag_methods["create_tags"] = ("Resources", "Tags")
+
+    require_client_methods(module, client, "EC2", tag_methods)
+
     if removals:
         try:
             client.delete_tags(Resources=[connection_id], Tags=[{"Key": key} for key in removals], aws_retry=True)
@@ -1165,6 +1193,7 @@ def ensure_absent(client, module, connection):
 
     connection_id = connection["VpnConnectionId"]
     if changed:
+        require_client_methods(module, client, "EC2", {"delete_vpn_connection": ("VpnConnectionId",)})
         try:
             client.delete_vpn_connection(VpnConnectionId=connection_id, aws_retry=True)
         except is_boto3_error_code("InvalidVpnConnectionID.NotFound"):

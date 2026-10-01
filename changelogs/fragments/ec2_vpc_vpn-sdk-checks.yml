@@ -1,0 +1,7 @@
+---
+minor_changes:
+  - ec2_vpc_vpn - check that the installed botocore supports each EC2 operation and parameter before calling it.
+  - ec2_vpc_vpn - validate tags, including the Name tag, before any AWS call.
+bugfixes:
+  - ec2_vpc_vpn role - stop passing ``filters`` and ``vpn_connection_id``, which the module rejects alongside the required ``name``.
+...
