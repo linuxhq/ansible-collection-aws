@@ -10,6 +10,7 @@ short_description: Manage AWS EC2 instance metadata defaults
 description:
   - Updates EC2 account-level instance metadata defaults for a region.
   - At least one metadata default option must be provided.
+  - Fails without changes when a declarative policy manages the defaults that would change.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -19,7 +20,7 @@ options:
       - C(no-preference) clears the account-level default.
       - Requires botocore 1.34.70 or later.
       - At least one of O(http_endpoint), O(http_put_response_hop_limit),
-        O(http_tokens), or O(instance_metadata_tags) is required.
+        O(http_tokens), O(http_tokens_enforced), or O(instance_metadata_tags) is required.
     choices:
       - disabled
       - enabled
@@ -32,7 +33,7 @@ options:
         account-level default.
       - Requires botocore 1.34.70 or later.
       - At least one of O(http_endpoint), O(http_put_response_hop_limit),
-        O(http_tokens), or O(instance_metadata_tags) is required.
+        O(http_tokens), O(http_tokens_enforced), or O(instance_metadata_tags) is required.
     type: int
   http_tokens:
     description:
@@ -40,19 +41,33 @@ options:
       - C(no-preference) clears the account-level default.
       - Requires botocore 1.34.70 or later.
       - At least one of O(http_endpoint), O(http_put_response_hop_limit),
-        O(http_tokens), or O(instance_metadata_tags) is required.
+        O(http_tokens), O(http_tokens_enforced), or O(instance_metadata_tags) is required.
     choices:
       - optional
       - required
       - no-preference
     type: str
+  http_tokens_enforced:
+    description:
+      - Whether launching an instance requires IMDSv2, so instances fail to launch unless
+        tokens are required.
+      - C(no-preference) clears the account-level default.
+      - Requires botocore 1.42.56 or later.
+      - At least one of O(http_endpoint), O(http_put_response_hop_limit),
+        O(http_tokens), O(http_tokens_enforced), or O(instance_metadata_tags) is required.
+    choices:
+      - disabled
+      - enabled
+      - no-preference
+    type: str
+    version_added: "2.6.0"
   instance_metadata_tags:
     description:
       - Whether access to instance tags from the instance metadata service is enabled by default.
       - C(no-preference) clears the account-level default.
       - Requires botocore 1.34.70 or later.
       - At least one of O(http_endpoint), O(http_put_response_hop_limit),
-        O(http_tokens), or O(instance_metadata_tags) is required.
+        O(http_tokens), O(http_tokens_enforced), or O(instance_metadata_tags) is required.
     choices:
       - disabled
       - enabled
@@ -78,6 +93,7 @@ EXAMPLES = r"""
     http_endpoint: enabled
     http_put_response_hop_limit: 2
     http_tokens: required
+    http_tokens_enforced: enabled
     instance_metadata_tags: disabled
 """
 
@@ -115,6 +131,7 @@ NO_PREFERENCE_BY_OPTION = {
     "http_endpoint": "no-preference",
     "http_put_response_hop_limit": -1,
     "http_tokens": "no-preference",
+    "http_tokens_enforced": "no-preference",
     "instance_metadata_tags": "no-preference",
 }
 
@@ -130,6 +147,10 @@ def main():
             "choices": ["optional", "required", "no-preference"],
             "type": "str",
         },
+        "http_tokens_enforced": {
+            "choices": ["disabled", "enabled", "no-preference"],
+            "type": "str",
+        },
         "instance_metadata_tags": {
             "choices": ["disabled", "enabled", "no-preference"],
             "type": "str",
@@ -143,6 +164,7 @@ def main():
                 "http_endpoint",
                 "http_put_response_hop_limit",
                 "http_tokens",
+                "http_tokens_enforced",
                 "instance_metadata_tags",
             ]
         ],
@@ -189,6 +211,15 @@ def main():
 
     changed = current != comparable_desired
 
+    if changed and current_account_level.get("managed_by") == "declarative-policy":
+        module.fail_json(
+            msg=(
+                "EC2 instance metadata defaults in region "
+                f"{module.region} are managed by a declarative policy and cannot be changed"
+            ),
+            managed_exception_message=current_account_level.get("managed_exception_message"),
+        )
+
     if changed:
         if not module.check_mode:
             require_client_methods(
@@ -198,11 +229,16 @@ def main():
                 {"modify_instance_metadata_defaults": tuple(desired_update)},
             )
             try:
-                client.modify_instance_metadata_defaults(**desired_update, aws_retry=True)
+                response = client.modify_instance_metadata_defaults(**desired_update, aws_retry=True)
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=("Unable to modify EC2 instance metadata defaults in region " f"{module.region}"),
+                )
+
+            if not isinstance(response, dict) or response.get("Return") is not True:
+                module.fail_json(
+                    msg=f"EC2 did not confirm the instance metadata defaults change in region {module.region}"
                 )
 
         current_account_level = dict(current_account_level)
