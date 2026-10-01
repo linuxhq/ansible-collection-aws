@@ -58,6 +58,13 @@ serial_console_access:
   returned: always
   type: dict
   contains:
+    managed_by:
+      description:
+        - The entity that manages EC2 serial console access.
+        - C(account) when the account manages access and C(declarative-policy) when a declarative policy manages access.
+      returned: when returned by AWS
+      type: str
+      sample: account
     serial_console_access_enabled:
       description: Whether EC2 serial console access is enabled.
       returned: always
@@ -126,11 +133,11 @@ def main():
                 {"enable_serial_console_access": ()},
             )
             try:
-                current = normalized_serial_console_access(module, client.enable_serial_console_access(aws_retry=True))
+                response = client.enable_serial_console_access(aws_retry=True)
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to enable EC2 serial console access in region " f"{module.region}"),
+                    msg=f"Unable to enable EC2 serial console access in region {module.region}",
                 )
         else:
             require_client_methods(
@@ -140,16 +147,17 @@ def main():
                 {"disable_serial_console_access": ()},
             )
             try:
-                current = normalized_serial_console_access(module, client.disable_serial_console_access(aws_retry=True))
+                response = client.disable_serial_console_access(aws_retry=True)
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to disable EC2 serial console access in region " f"{module.region}"),
+                    msg=f"Unable to disable EC2 serial console access in region {module.region}",
                 )
 
-    elif changed and module.check_mode:
-        current = dict(current)
-        current["serial_console_access_enabled"] = desired_enabled
+        current = {**current, **normalized_serial_console_access(module, response)}
+
+    elif changed:
+        current = {**current, "serial_console_access_enabled": desired_enabled}
 
     result = {
         "changed": changed,

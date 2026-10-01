@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - ec2_serial_console - keep ``serial_console_access.managed_by`` in the result after enabling or disabling access instead of returning only the mutation response.
+minor_changes:
+  - ec2_serial_console - document the ``serial_console_access.managed_by`` return value.
+  - ec2_serial_console_info - document the ``serial_console_access.managed_by`` return value.
+...

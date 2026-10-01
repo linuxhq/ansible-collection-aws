@@ -41,6 +41,13 @@ serial_console_access:
   returned: always
   type: dict
   contains:
+    managed_by:
+      description:
+        - The entity that manages EC2 serial console access.
+        - C(account) when the account manages access and C(declarative-policy) when a declarative policy manages access.
+      returned: when returned by AWS
+      type: str
+      sample: account
     serial_console_access_enabled:
       description: Whether EC2 serial console access is enabled.
       returned: always
