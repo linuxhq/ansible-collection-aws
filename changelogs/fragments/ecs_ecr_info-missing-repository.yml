@@ -1,0 +1,7 @@
+---
+breaking_changes:
+  - ecs_ecr_info - fail with the ``DescribeRepositories`` error when a repository in ``repository_names`` does not exist
+    instead of returning an empty list for the whole query.
+minor_changes:
+  - ecs_ecr_info - document the fields returned for each repository.
+...
