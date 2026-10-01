@@ -19,6 +19,7 @@ class Ec2SerialConsoleInfoTests(TestCase):
         client = Mock(
             get_serial_console_access_status=Mock(
                 return_value={
+                    "ManagedBy": "declarative-policy",
                     "SerialConsoleAccessEnabled": True,
                     "ResponseMetadata": {"RequestId": "request"},
                 }
@@ -34,7 +35,7 @@ class Ec2SerialConsoleInfoTests(TestCase):
 
         self.assertEqual(
             raised.exception.values["serial_console_access"],
-            {"serial_console_access_enabled": True},
+            {"managed_by": "declarative-policy", "serial_console_access_enabled": True},
         )
 
     def test_rejects_invalid_serial_console_status(self):

@@ -45,3 +45,33 @@ class Ec2SerialConsoleTests(TestCase):
         client.enable_serial_console_access.assert_not_called()
         self.assertEqual(require.call_count, 1)
         self.assertEqual(require.call_args.args[3], {"get_serial_console_access_status": ()})
+
+    def test_change_keeps_status_fields_missing_from_mutation_response(self):
+        for state, current, method in (
+            ("present", False, "enable_serial_console_access"),
+            ("absent", True, "disable_serial_console_access"),
+        ):
+            with self.subTest(state=state):
+                client = Mock()
+                client.get_serial_console_access_status.return_value = {
+                    "ManagedBy": "account",
+                    "SerialConsoleAccessEnabled": current,
+                }
+                getattr(client, method).return_value = {
+                    "SerialConsoleAccessEnabled": not current,
+                    "ResponseMetadata": {"RequestId": "request"},
+                }
+                module = FakeModule({"state": state}, client=client)
+                with (
+                    patch.object(plugin, "AnsibleAWSModule", return_value=module),
+                    patch.object(plugin, "require_client_methods"),
+                    self.assertRaises(ModuleExit) as raised,
+                ):
+                    plugin.main()
+
+                self.assertTrue(raised.exception.values["changed"])
+                self.assertEqual(
+                    raised.exception.values["serial_console_access"],
+                    {"managed_by": "account", "serial_console_access_enabled": not current},
+                )
+                getattr(client, method).assert_called_once_with(aws_retry=True)
