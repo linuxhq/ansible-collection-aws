@@ -4,9 +4,9 @@
     - ec2_transit_gateway_route_table
   linuxhq.aws.ec2_transit_gateway_route_table:
     name: "{{ _rtb.name }}"
-    purge_routes: "{{ _rtb.purge_routes | d(false) }}"
+    purge_routes: "{{ _rtb.purge_routes | d(true) }}"
     purge_tags: "{{ _rtb.purge_tags | d(true) }}"
-    routes: "{{ _rtb.routes | d([]) }}"
+    routes: "{{ _rtb.routes | d(omit) }}"
     state: "{{ _rtb.state | d('present') }}"
     tags: "{{ _rtb.tags | d(omit) }}"
     transit_gateway_id: "{{ _rtb.transit_gateway_id }}"
