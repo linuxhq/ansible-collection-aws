@@ -6,9 +6,12 @@
     filters: "{{ ec2_pricing_info_filters }}"
     format_version: "{{ ec2_pricing_info_format_version }}"
     max_results: "{{ ec2_pricing_info_max_results or omit }}"
+    region: "{{ ec2_pricing_info_region }}"
     service_code: "{{ ec2_pricing_info_service_code }}"
     validate_certs: true
   register: __ec2_pricing_info_query
+  when:
+    - ec2_pricing_info_filters | length > 0
 
 - name: Ensure list of aws pricing products is generated
   tags:
