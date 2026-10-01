@@ -19,7 +19,15 @@ options:
       - A dict of filters to apply when describing EC2 instance types.
       - Filter names and values are passed to the EC2
         C(DescribeInstanceTypes) API.
+      - Boolean and numeric values, including list entries, are converted to strings.
     type: dict
+  include_unsupported_in_region:
+    description:
+      - Whether to also return instance types that are not supported in the current region.
+      - Requires botocore 1.43.6 or later.
+    default: false
+    type: bool
+    version_added: "2.6.0"
   instance_types:
     description:
       - EC2 instance type names used to limit the result set.
@@ -56,6 +64,19 @@ EXAMPLES = r"""
       processor-info.supported-architecture:
         - x86_64
 
+- name: Gather information about instance types with 2 or 4 default vCPUs
+  linuxhq.aws.ec2_instance_type_info:
+    filters:
+      vcpu-info.default-vcpus:
+        - 2
+        - 4
+
+- name: Gather information about an instance type outside the current region
+  linuxhq.aws.ec2_instance_type_info:
+    include_unsupported_in_region: true
+    instance_types:
+      - m1.small
+
 - name: Gather information about burstable instance types
   linuxhq.aws.ec2_instance_type_info:
     filters:
@@ -87,9 +108,15 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
+def filter_value(value):
+    # EC2 filter values are strings, and boolean values only match in lowercase.
+    return str(value).lower() if isinstance(value, bool) else str(value)
+
+
 def main():
     argument_spec = {
         "filters": {"type": "dict"},
+        "include_unsupported_in_region": {"default": False, "type": "bool"},
         "instance_types": {"elements": "str", "type": "list"},
     }
 
@@ -110,7 +137,15 @@ def main():
         request["InstanceTypes"] = instance_types
 
     if filters:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
+        request["Filters"] = ansible_dict_to_boto3_filter_list(
+            {
+                name: [filter_value(item) for item in value] if isinstance(value, list) else value
+                for name, value in filters.items()
+            }
+        )
+
+    if module.params.get("include_unsupported_in_region"):
+        request["IncludeUnsupportedInRegion"] = True
 
     require_client_methods(
         module,
