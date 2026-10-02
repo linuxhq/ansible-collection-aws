@@ -1,0 +1,13 @@
+---
+breaking_changes:
+  - ec2_pricing_info - the module now requires a region and queries the Pricing API endpoint in that region
+    instead of always using ``us-east-1``. The Pricing API is served from ``us-east-1``, ``eu-central-1``,
+    and ``ap-south-1``.
+  - ec2_pricing_info - omitted or empty ``filters`` now return every product for ``service_code``, as the
+    Pricing API does, instead of returning an empty list without calling AWS.
+  - ec2_pricing_info - return ``terms`` keys in snake_case, such as ``on_demand``, ``price_dimensions``, and
+    ``price_per_unit``, with values unchanged; offer term codes, rate codes, and currency codes used as keys
+    keep the case returned by the Price List API.
+minor_changes:
+  - ec2_pricing_info role - add ``ec2_pricing_info_region``, which defaults to ``us-east-1``, and skip the
+    query when ``ec2_pricing_info_filters`` is empty.
