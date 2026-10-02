@@ -148,6 +148,83 @@ resolver_rule:
     - The current resolver rule after module execution.
   returned: when state is present
   type: dict
+  contains:
+    arn:
+      description: The rule ARN.
+      returned: always
+      type: str
+    creation_time:
+      description: The time the rule was created.
+      returned: when returned by AWS
+      type: str
+    domain_name:
+      description: The rule domain name.
+      returned: always
+      type: str
+    id:
+      description: The rule ID.
+      returned: always
+      type: str
+    name:
+      description: The rule name.
+      returned: when configured
+      type: str
+    owner_id:
+      description: The account that owns the rule.
+      returned: always
+      type: str
+    resolver_endpoint_id:
+      description: The outbound resolver endpoint ID.
+      returned: for forward rules
+      type: str
+    rule_type:
+      description: The rule type.
+      returned: always
+      type: str
+      sample: FORWARD
+    share_status:
+      description: Whether the rule is shared.
+      returned: always
+      type: str
+    status:
+      description: The rule status.
+      returned: always
+      type: str
+      sample: COMPLETE
+    status_message:
+      description: Details about the rule status.
+      returned: when returned by AWS
+      type: str
+    tags:
+      description: The rule tags with key case preserved.
+      returned: when gathered by the module
+      type: dict
+    target_ips:
+      description: The rule target IPs.
+      returned: for forward rules
+      type: list
+      elements: dict
+      contains:
+        ip:
+          description: The IPv4 target address.
+          returned: when configured
+          type: str
+        ipv6:
+          description: The IPv6 target address.
+          returned: when configured
+          type: str
+        port:
+          description: The target port.
+          returned: when returned by AWS
+          type: int
+        protocol:
+          description: The target protocol.
+          returned: when returned by AWS
+          type: str
+        server_name_indication:
+          description: The target server name indication.
+          returned: when configured
+          type: str
 resolver_rule_id:
   description:
     - The resolver rule ID.
@@ -295,7 +372,7 @@ def create_resolver_rule(client, module, desired):
         rule = get_resolver_rule_by_name(client, module)
 
     if rule is None:
-        module.fail_json(msg=("AWS Route53 Resolver did not return the created rule " f"{desired['name']}"))
+        module.fail_json(msg=f"AWS Route53 Resolver did not return the created rule {desired['name']}")
 
     rule = validate_resolver_rule(module, rule, "create_resolver_rule")
 
@@ -458,7 +535,7 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=("Unable to update AWS Route53 Resolver rule " f"{desired['name']}"),
+                        msg=f"Unable to update AWS Route53 Resolver rule {desired['name']}",
                     )
 
                 resolver_rule_id = rule.get("Id")
@@ -475,7 +552,7 @@ def ensure_present(client, module):
                     rule = get_resolver_rule(client, module, resolver_rule_id)
 
                 if rule is None:
-                    module.fail_json(msg=("AWS Route53 Resolver did not return the updated rule " f"{desired['name']}"))
+                    module.fail_json(msg=f"AWS Route53 Resolver did not return the updated rule {desired['name']}")
 
                 if module.params["wait"]:
                     resolver_rule_id = rule.get("Id")
@@ -638,7 +715,7 @@ def get_resolver_rule_by_name(client, module):
 
     if len(rules) > 1:
         rule_ids = sorted(rule["Id"] for rule in rules)
-        module.fail_json(msg=(f"Multiple AWS Route53 Resolver rules are named {name}: " f"{', '.join(rule_ids)}"))
+        module.fail_json(msg=f"Multiple AWS Route53 Resolver rules are named {name}: {', '.join(rule_ids)}")
 
     if not rules:
         return None

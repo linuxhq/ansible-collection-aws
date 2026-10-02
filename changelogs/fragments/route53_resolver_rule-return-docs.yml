@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - route53_resolver_rule - document the returned rule fields.
+  - route53_resolver_rule_info - document the returned rule and association fields.
+...
