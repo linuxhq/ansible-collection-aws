@@ -10,7 +10,6 @@ bugfixes:
   - route53_resolver_rule - explain that VPC associations must be removed when AWS rejects deleting a rule that is in use.
   - route53_resolver_rule - reject duplicate ``target_ips`` entries instead of merging them.
   - route53_resolver_rule_info - include only VPCs with a ``COMPLETE`` or ``OVERRIDDEN`` association in ``vpc_ids``.
-  - route53_resolver_rule role - delete rules from list items that set only ``name`` and ``state=absent`` instead of skipping them.
 minor_changes:
   - route53_resolver_rule - use the rule returned by ``ListResolverRules`` instead of calling ``GetResolverRule``,
     and reuse the tags read at the start after an update.
