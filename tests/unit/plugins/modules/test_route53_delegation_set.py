@@ -126,3 +126,22 @@ class Route53DelegationSetTests(TestCase):
                 "delete_reusable_delegation_set": ("Id",),
             },
         )
+
+    def test_reused_caller_reference_fails_with_an_explanation(self):
+        client = Mock()
+        client.create_reusable_delegation_set.side_effect = plugin.ClientError(
+            {"Error": {"Code": "DelegationSetAlreadyCreated", "Message": "already created"}},
+            "CreateReusableDelegationSet",
+        )
+        module = FakeModule({"name": "main"})
+        with (
+            patch.object(plugin, "get_reusable_delegation_set", return_value=None),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertEqual(
+            raised.exception.values["msg"],
+            "Unable to create AWS Route53 reusable delegation set main: the name was already used "
+            "by a deleted delegation set and cannot be reused; choose a new name",
+        )
