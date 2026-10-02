@@ -14,8 +14,6 @@ bugfixes:
     and fail with the AWS status message when an endpoint still needs action after a run that waits.
   - route53_resolver - explain that resolver rules may still use an endpoint when AWS rejects its deletion.
   - route53_resolver role - pass ``protocols`` and ``resolver_endpoint_type`` only when the list item sets them.
-  - route53_resolver role - delete endpoints from list items that set only ``name`` and ``state=absent``
-    instead of skipping them.
 minor_changes:
   - route53_resolver - avoid rereading an endpoint and its tags when IP addresses or tags do not change.
   - route53_resolver_info - check SDK support for IP address and tag lookups only when endpoints are found.

@@ -37,9 +37,9 @@
               map('combine', {'state': 'absent'}) }}"
         route53_resolver_list:
           "{{ route53_resolver_list_update |
-              json_query('[].{name: name, state: `absent`}') }}"
+              map('combine', {'state': 'absent'}) }}"
 
-    - name: Ensure endpoints are deleted with name-only items
+    - name: Ensure endpoints are deleted
       ansible.builtin.include_role:
         name: route53_resolver
 
