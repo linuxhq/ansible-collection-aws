@@ -87,6 +87,81 @@ phone_numbers:
   returned: always
   type: list
   elements: dict
+  contains:
+    created_timestamp:
+      description: The time the phone number was created.
+      returned: when returned by AWS
+      type: str
+    deletion_protection_enabled:
+      description: Whether deletion protection is enabled.
+      returned: when returned by AWS
+      type: bool
+    international_sending_enabled:
+      description: Whether international sending is enabled.
+      returned: when returned by AWS
+      type: bool
+    iso_country_code:
+      description: The two-character ISO country code.
+      returned: when returned by AWS
+      type: str
+    message_type:
+      description: The type of messages sent from the phone number.
+      returned: when returned by AWS
+      type: str
+    monthly_leasing_price:
+      description: The monthly price to lease the phone number.
+      returned: when returned by AWS
+      type: str
+    number_capabilities:
+      description: The phone number capabilities.
+      returned: when returned by AWS
+      type: list
+      elements: str
+    number_type:
+      description: The phone number type.
+      returned: when returned by AWS
+      type: str
+    opt_out_list_name:
+      description: The OptOutList associated with the phone number.
+      returned: when returned by AWS
+      type: str
+    phone_number:
+      description: The phone number in E.164 format.
+      returned: when returned by AWS
+      type: str
+    phone_number_arn:
+      description: The phone number ARN.
+      returned: when returned by AWS
+      type: str
+    phone_number_id:
+      description: The phone number ID.
+      returned: when returned by AWS
+      type: str
+    pool_id:
+      description: The pool the phone number is associated with.
+      returned: when associated with a pool
+      type: str
+    registration_id:
+      description: The registration associated with the phone number.
+      returned: when associated with a registration
+      type: str
+    self_managed_opt_outs_enabled:
+      description: Whether self-managed opt-outs are enabled.
+      returned: when returned by AWS
+      type: bool
+    status:
+      description: The phone number status.
+      returned: when returned by AWS
+      type: str
+      sample: ACTIVE
+    tags:
+      description: The phone number tags with key case preserved.
+      returned: when returned by AWS
+      type: dict
+    two_way_enabled:
+      description: Whether two-way messaging is enabled.
+      returned: when returned by AWS
+      type: bool
 """
 
 try:
@@ -205,7 +280,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to list tags for Pinpoint SMS Voice V2 phone number " f"{arn}"),
+                    msg=f"Unable to list tags for Pinpoint SMS Voice V2 phone number {arn}",
                 )
 
             tags = response.get("Tags", []) if isinstance(response, dict) else None
