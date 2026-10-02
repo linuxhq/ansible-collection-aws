@@ -82,6 +82,27 @@ association:
     - The requested origination identity association.
   returned: always
   type: dict
+  contains:
+    iso_country_code:
+      description: The two-character ISO country code.
+      returned: when returned by AWS
+      type: str
+    origination_identity:
+      description: The origination identity, such as a phone number ID or sender ID.
+      returned: always
+      type: str
+    origination_identity_arn:
+      description: The origination identity ARN.
+      returned: when returned by AWS
+      type: str
+    pool_arn:
+      description: The pool ARN.
+      returned: when returned by AWS
+      type: str
+    pool_id:
+      description: The pool ID.
+      returned: when returned by AWS
+      type: str
 origination_identity:
   description:
     - The requested origination identity.
@@ -136,7 +157,7 @@ def current_associations(client, module):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=("Unable to list origination identities for Pinpoint SMS Voice " f"V2 pool {module.params['pool_id']}"),
+            msg=f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {module.params['pool_id']}",
         )
 
     associations = response.get("OriginationIdentities") if isinstance(response, dict) else None

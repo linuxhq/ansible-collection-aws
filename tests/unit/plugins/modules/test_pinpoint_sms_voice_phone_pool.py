@@ -20,6 +20,7 @@ class PinpointSmsVoicePhonePoolTests(TestCase):
         module = FakeModule(
             {
                 "client_token": None,
+                "deletion_protection_enabled": None,
                 "iso_country_code": None,
                 "message_type": "TRANSACTIONAL",
                 "name": "main",
@@ -53,13 +54,46 @@ class PinpointSmsVoicePhonePoolTests(TestCase):
         self.assertEqual(
             methods["create_pool"],
             (
-                "DeletionProtectionEnabled",
                 "MessageType",
                 "OriginationIdentity",
                 "Tags",
             ),
         )
         self.assertNotIn("tag_resource", methods)
+
+    def test_module_has_no_deletion_protection_default(self):
+        options = assert_module_contract(self, plugin)
+        self.assertNotIn("default", options["argument_spec"]["deletion_protection_enabled"])
+
+    def test_omitted_deletion_protection_leaves_an_existing_pool_unchanged(self):
+        client = Mock()
+        module = FakeModule(
+            {
+                "deletion_protection_enabled": None,
+                "message_type": "TRANSACTIONAL",
+                "name": "primary",
+                "purge_tags": True,
+                "state": "present",
+                "tags": None,
+                "wait": False,
+            }
+        )
+        current = {
+            "DeletionProtectionEnabled": True,
+            "MessageType": "TRANSACTIONAL",
+            "PoolId": "pool-1",
+            "Status": "ACTIVE",
+            "Tags": [{"Key": "Name", "Value": "primary"}],
+        }
+        with (
+            patch.object(plugin, "find_pool", return_value=current),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertFalse(raised.exception.values["changed"])
+        self.assertTrue(raised.exception.values["pool"]["deletion_protection_enabled"])
+        client.update_pool.assert_not_called()
 
     def test_rejects_lowercase_country_code(self):
         module = FakeModule({"iso_country_code": "us", "state": "present"})
