@@ -1,0 +1,11 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number - match existing numbers only on attributes fixed by ``RequestPhoneNumber`` and update
+    ``deletion_protection_enabled``, ``international_sending_enabled``, and ``opt_out_list_name`` in place with ``UpdatePhoneNumber``,
+    instead of requesting another phone number or failing when those settings differ.
+  - pinpoint_sms_voice_phone_number - ``deletion_protection_enabled`` no longer defaults to ``false``;
+    omitting it leaves an existing number unchanged and uses the AWS default when requesting a number.
+minor_changes:
+  - pinpoint_sms_voice_phone_number - document the returned phone number fields.
+  - pinpoint_sms_voice_phone_number_info - document the returned phone number fields.
+...
