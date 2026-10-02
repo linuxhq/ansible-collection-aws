@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - iam_account_alias - list account aliases through the shared paginated query helper used by ``iam_account_alias_info``.
+  - iam_account_alias - document that ``state=present`` replaces an existing account alias.
+...
