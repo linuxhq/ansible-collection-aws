@@ -60,7 +60,7 @@ account:
   type: dict
   contains:
     account_name:
-      description: The current account name, or the predicted name in check mode.
+      description: The current account name, the name that was set, or the predicted name in check mode.
       returned: always
       type: str
     account_id:
@@ -96,9 +96,7 @@ def ensure_present(module, client, params):
     name = module.params["name"]
     changed = account["account_name"] != name
     if changed:
-        if module.check_mode:
-            account["account_name"] = name
-        else:
+        if not module.check_mode:
             require_client_methods(module, client, "Account", {"put_account_name": ("AccountId", "AccountName")})
             try:
                 client.put_account_name(AccountName=name, **params, aws_retry=True)
@@ -106,7 +104,8 @@ def ensure_present(module, client, params):
                 target = params.get("AccountId", "current account")
                 module.fail_json_aws(e, msg=f"Unable to update account name for {target}")
 
-            account = get_account(module, client, params)
+        # AWS stores the validated name unchanged, and an immediate re-read can still return the old name.
+        account["account_name"] = name
 
     module.exit_json(changed=changed, account=account)
 
