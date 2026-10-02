@@ -158,7 +158,7 @@ resolver_rules:
           returned: always
           type: str
     vpc_ids:
-      description: The VPC IDs associated with the rule.
+      description: The VPC IDs whose association applies the rule, with a status of C(COMPLETE) or C(OVERRIDDEN).
       returned: always
       type: list
       elements: str
@@ -186,6 +186,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 
+ACTIVE_ASSOCIATION_STATUSES = ("COMPLETE", "OVERRIDDEN")
+
 
 def main():
     module = AnsibleAWSModule(
@@ -200,15 +202,7 @@ def main():
         module,
         client,
         "Route53 Resolver",
-        {
-            "list_resolver_rules": ("Filters", "MaxResults", "NextToken"),
-            "list_resolver_rule_associations": (
-                "Filters",
-                "MaxResults",
-                "NextToken",
-            ),
-            "list_tags_for_resource": ("MaxResults", "NextToken", "ResourceArn"),
-        },
+        {"list_resolver_rules": ("Filters", "MaxResults", "NextToken")},
     )
 
     filters = module.params["filters"]
@@ -229,6 +223,15 @@ def main():
     if not resolver_rules:
         associations = []
     else:
+        require_client_methods(
+            module,
+            client,
+            "Route53 Resolver",
+            {
+                "list_resolver_rule_associations": ("Filters", "MaxResults", "NextToken"),
+                "list_tags_for_resource": ("MaxResults", "NextToken", "ResourceArn"),
+            },
+        )
         association_request = {}
         if filters:
             association_request["Filters"] = ansible_dict_to_boto3_filter_list(
@@ -285,10 +288,11 @@ def main():
             force_tags=False,
         )
 
+        # Only associations that apply the rule count; failed and deleting ones stay in associations.
         normalized_rule["vpc_ids"] = [
             association["vpc_id"]
             for association in normalized_rule["associations"]
-            if association.get("vpc_id") is not None
+            if association.get("vpc_id") is not None and association.get("status") in ACTIVE_ASSOCIATION_STATUSES
         ]
         normalized_rules.append(normalized_rule)
 

@@ -78,21 +78,11 @@ class Route53ResolverRuleInfoTests(TestCase):
         ):
             plugin.main()
 
+        # With no rules, only the listing call is checked.
+        require.assert_called_once()
         self.assertEqual(
             require.call_args.args[3],
-            {
-                "list_resolver_rules": ("Filters", "MaxResults", "NextToken"),
-                "list_resolver_rule_associations": (
-                    "Filters",
-                    "MaxResults",
-                    "NextToken",
-                ),
-                "list_tags_for_resource": (
-                    "MaxResults",
-                    "NextToken",
-                    "ResourceArn",
-                ),
-            },
+            {"list_resolver_rules": ("Filters", "MaxResults", "NextToken")},
         )
 
     def test_empty_filtered_rules_skip_association_query(self):
@@ -123,8 +113,10 @@ class Route53ResolverRuleInfoTests(TestCase):
                         {"Id": "rule-2"},
                     ],
                     [
-                        {"ResolverRuleId": "rule-1", "VPCId": "vpc-1"},
-                        {"ResolverRuleId": "rule-2", "VPCId": "vpc-2"},
+                        {"ResolverRuleId": "rule-1", "Status": "COMPLETE", "VPCId": "vpc-1"},
+                        {"ResolverRuleId": "rule-1", "Status": "FAILED", "VPCId": "vpc-3"},
+                        {"ResolverRuleId": "rule-2", "Status": "OVERRIDDEN", "VPCId": "vpc-2"},
+                        {"ResolverRuleId": "rule-2", "Status": "DELETING", "VPCId": "vpc-4"},
                     ],
                 ],
             ),
@@ -138,6 +130,23 @@ class Route53ResolverRuleInfoTests(TestCase):
             plugin.main()
 
         rules = raised.exception.values["resolver_rules"]
+        # Failed and deleting associations stay in associations but not in vpc_ids.
+        self.assertEqual(len(rules[0]["associations"]), 2)
         self.assertEqual(rules[0]["vpc_ids"], ["vpc-1"])
         self.assertEqual(rules[0]["tags"], {"Name": "main"})
         self.assertEqual(rules[1]["vpc_ids"], ["vpc-2"])
+
+    def test_detail_methods_are_checked_only_when_rules_exist(self):
+        module = FakeModule({"filters": None}, client=Mock())
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods") as require,
+            patch.object(plugin, "query_list", side_effect=[[{"Id": "rule-1"}], []]),
+            self.assertRaises(ModuleExit),
+        ):
+            plugin.main()
+
+        self.assertEqual(
+            [sorted(call.args[3]) for call in require.call_args_list],
+            [["list_resolver_rules"], ["list_resolver_rule_associations", "list_tags_for_resource"]],
+        )

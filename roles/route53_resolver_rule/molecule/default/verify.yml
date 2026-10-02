@@ -6,8 +6,22 @@
     - ec2_vpc_net_info
     - ec2_vpc_subnet_info
     - route53_resolver_info
+    - route53_resolver_rule_info
 
   post_tasks:
+    - name: Ensure updated rules are verified
+      ansible.builtin.assert:
+        that:
+          - _route53_resolver_rule_info_dict[_rule.name].status == 'COMPLETE'
+          - _route53_resolver_rule_info_dict[_rule.name].tags.molecule == 'route53_resolver_rule'
+          - (_route53_resolver_rule_info_dict[_rule.name].target_ips | map(attribute='ip') | sort) ==
+              (_rule.target_ips | map(attribute='ip') | sort)
+          - _route53_resolver_rule_info_dict[_rule.name].target_ips | map(attribute='port') | unique == [53]
+      loop: "{{ route53_resolver_rule_list_update }}"
+      loop_control:
+        label: "{{ _rule.name }}"
+        loop_var: _rule
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_security_group_list:
@@ -26,13 +40,29 @@
               map('combine', {'state': 'absent'}) }}"
         route53_resolver_rule_list:
           "{{ route53_resolver_rule_list_update |
-              map('combine', {'state': 'absent'}) }}"
+              json_query('[].{name: name, state: `absent`}') }}"
+
+    - name: Ensure rules are deleted with name-only items
+      ansible.builtin.include_role:
+        name: route53_resolver_rule
+
+    - name: Ensure role is included after deletion
+      ansible.builtin.include_role:
+        name: route53_resolver_rule_info
+
+    - name: Ensure deleted rules are verified
+      ansible.builtin.assert:
+        that:
+          - _rule.name not in _route53_resolver_rule_info_dict
+      loop: "{{ route53_resolver_rule_list_update }}"
+      loop_control:
+        label: "{{ _rule.name }}"
+        loop_var: _rule
 
     - name: Ensure roles are included
       ansible.builtin.include_role:
         name: "{{ _verify }}"
       loop:
-        - route53_resolver_rule
         - route53_resolver
         - ec2_security_group
         - ec2_vpc_subnet

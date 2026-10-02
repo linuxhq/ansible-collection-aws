@@ -136,7 +136,6 @@ provisioner:
             rule_type: forward
             target_ips:
               - ip: 8.8.8.9
-                port: 53
               - ip: 8.8.8.5
                 port: 53
 
