@@ -19,7 +19,7 @@ options:
         apostrophes, hyphens, or underscores.
       - Changing the name of an existing association disassociates and
         reassociates the resolver rule.
-      - This is required when O(state=present).
+      - When omitted, an existing association keeps its current name.
     type: str
   resolver_rule_id:
     description:
@@ -94,6 +94,32 @@ resolver_rule_association:
     - The current resolver rule association after module execution.
   returned: when state is present
   type: dict
+  contains:
+    id:
+      description: The association ID.
+      returned: always
+      type: str
+    name:
+      description: The association name.
+      returned: when configured
+      type: str
+    resolver_rule_id:
+      description: The resolver rule ID.
+      returned: always
+      type: str
+    status:
+      description: The association status.
+      returned: always
+      type: str
+      sample: COMPLETE
+    status_message:
+      description: Details about the association status.
+      returned: when returned by AWS
+      type: str
+    vpc_id:
+      description: The associated VPC ID.
+      returned: always
+      type: str
 resolver_rule_association_id:
   description:
     - The resolver rule association ID.
@@ -212,7 +238,7 @@ def ensure_absent(client, module):
                 identifier = f"{module.params['resolver_rule_id']}/{module.params['vpc_id']}"
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to delete AWS Route53 Resolver rule association " f"{identifier}"),
+                    msg=f"Unable to delete AWS Route53 Resolver rule association {identifier}",
                 )
 
         if module.params["wait"]:
@@ -234,6 +260,7 @@ def ensure_present(client, module):
     name = module.params["name"]
     resolver_rule_id = module.params["resolver_rule_id"]
     vpc_id = module.params["vpc_id"]
+    identifier = name or f"{resolver_rule_id}/{vpc_id}"
     association = get_resolver_rule_association_by_rule_and_vpc(client, module)
     if association is not None and association.get("Status") == "DELETING":
         if module.check_mode:
@@ -256,6 +283,10 @@ def ensure_present(client, module):
         "resolver_rule_id": resolver_rule_id,
         "vpc_id": vpc_id,
     }
+    if name is None and current_association is not None:
+        # An omitted name keeps the current name instead of replacing the association.
+        desired_association["name"] = current_association["name"]
+
     changed = (current_association or {}) != desired_association
 
     if (
@@ -283,7 +314,7 @@ def ensure_present(client, module):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to replace AWS Route53 Resolver rule association " f"{name}"),
+                    msg=f"Unable to replace AWS Route53 Resolver rule association {identifier}",
                 )
 
             wait_for_resolver_rule_association_status(
@@ -293,17 +324,16 @@ def ensure_present(client, module):
                 {"deleted"},
             )
 
+        request = {"ResolverRuleId": resolver_rule_id, "VPCId": vpc_id}
+        if name is not None:
+            request["Name"] = name
+
         try:
-            response = client.associate_resolver_rule(
-                Name=name,
-                ResolverRuleId=resolver_rule_id,
-                VPCId=vpc_id,
-                aws_retry=True,
-            )
+            response = client.associate_resolver_rule(**request, aws_retry=True)
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=f"Unable to create AWS Route53 Resolver rule association {name}",
+                msg=f"Unable to create AWS Route53 Resolver rule association {identifier}",
             )
 
         association = response.get("ResolverRuleAssociation") if isinstance(response, dict) else None
@@ -311,7 +341,7 @@ def ensure_present(client, module):
             association = get_resolver_rule_association_by_rule_and_vpc(client, module)
 
         if association is None:
-            module.fail_json(msg=("AWS Route53 Resolver did not return the created rule " f"association {name}"))
+            module.fail_json(msg=f"AWS Route53 Resolver did not return the created rule association {identifier}")
 
         association = validate_resolver_rule_association(module, association, "associate_resolver_rule")
 
@@ -325,19 +355,21 @@ def ensure_present(client, module):
             )
     elif changed and module.check_mode:
         association = {
-            "Name": name,
             "ResolverRuleId": resolver_rule_id,
             "VPCId": vpc_id,
         }
+        if name is not None:
+            association["Name"] = name
 
     result = {
         "changed": changed,
-        "name": name,
         "resolver_rule_association": boto3_resource_to_ansible_dict(
             association, transform_tags=False, force_tags=False
         ),
         "state": "present",
     }
+    if name is not None:
+        result["name"] = name
 
     resolver_rule_association_id = (association or {}).get("Id")
 
@@ -356,7 +388,7 @@ def wait_for_resolver_rule_association_status(client, module, resolver_rule_asso
         client,
         ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA,
         ("resolver_rule_association_deleted" if deleted else "resolver_rule_association_complete"),
-        ("Timed out waiting for AWS Route53 Resolver rule association " f"{identifier}"),
+        f"Timed out waiting for AWS Route53 Resolver rule association {identifier}",
         ResolverRuleAssociationId=resolver_rule_association_id,
     )
 
@@ -378,7 +410,7 @@ def wait_for_resolver_rule_association_status(client, module, resolver_rule_asso
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=("Unable to get AWS Route53 Resolver rule association " f"{resolver_rule_association_id}"),
+            msg=f"Unable to get AWS Route53 Resolver rule association {resolver_rule_association_id}",
         )
 
     association = response.get("ResolverRuleAssociation") if isinstance(response, dict) else None
@@ -399,7 +431,7 @@ def get_resolver_rule_association_by_rule_and_vpc(client, module):
         client,
         "list_resolver_rule_associations",
         "ResolverRuleAssociations",
-        "Unable to list AWS Route53 Resolver rule associations for " f"{resolver_rule_id}/{vpc_id}",
+        f"Unable to list AWS Route53 Resolver rule associations for {resolver_rule_id}/{vpc_id}",
         Filters=ansible_dict_to_boto3_filter_list(
             {
                 "ResolverRuleId": resolver_rule_id,
@@ -479,15 +511,17 @@ def main():
             "wait_delay": {"default": 5, "type": "int"},
             "wait_timeout": {"default": 300, "type": "int"},
         },
-        required_if=[("state", "present", ["name"])],
         supports_check_mode=True,
     )
     state = module.params["state"]
 
-    if state == "present":
-        name = module.params["name"]
-        if len(name) > 64 or name.isdigit() or re.fullmatch(r"[a-zA-Z0-9\-_ ']+", name) is None:
-            module.fail_json(msg="name must be a valid resolver rule association name of at most 64 characters")
+    name = module.params["name"]
+    if (
+        state == "present"
+        and name is not None
+        and (len(name) > 64 or name.isdigit() or re.fullmatch(r"[a-zA-Z0-9\-_ ']+", name) is None)
+    ):
+        module.fail_json(msg="name must be a valid resolver rule association name of at most 64 characters")
 
     require_positive_wait_bounds(module, always=state == "present")
 
@@ -496,7 +530,7 @@ def main():
         "list_resolver_rule_associations": ("Filters", "MaxResults", "NextToken"),
     }
     if state == "present":
-        methods["associate_resolver_rule"] = ("Name", "ResolverRuleId", "VPCId")
+        methods["associate_resolver_rule"] = ("ResolverRuleId", "VPCId") + (("Name",) if name is not None else ())
         methods["disassociate_resolver_rule"] = ("ResolverRuleId", "VPCId")
         methods["get_resolver_rule_association"] = ("ResolverRuleAssociationId",)
 

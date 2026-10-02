@@ -187,7 +187,7 @@ class Route53ResolverRuleAssociateTests(TestCase):
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
         assert options["argument_spec"]["wait_timeout"]["default"] == 300
-        assert ("state", "present", ["name"]) in options["required_if"]
+        assert "required_if" not in options
         assert {
             acceptor["expected"]
             for acceptor in plugin.ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA[
@@ -216,6 +216,44 @@ class Route53ResolverRuleAssociateTests(TestCase):
 
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(raised.exception.values["resolver_rule_association"]["vpc_id"], "vpc-1")
+
+    def test_omitted_name_keeps_an_existing_association(self):
+        client = Mock()
+        module = FakeModule({"name": None, "resolver_rule_id": "rslvr-rr-1", "vpc_id": "vpc-1", "wait": False})
+        current = {
+            "Id": "rslvr-rrassoc-1",
+            "Name": "existing",
+            "ResolverRuleId": "rslvr-rr-1",
+            "Status": "COMPLETE",
+            "VPCId": "vpc-1",
+        }
+        with (
+            patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=current),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertFalse(raised.exception.values["changed"])
+        self.assertNotIn("name", raised.exception.values)
+        client.disassociate_resolver_rule.assert_not_called()
+        client.associate_resolver_rule.assert_not_called()
+
+    def test_new_association_without_name_omits_it_from_the_request(self):
+        client = Mock()
+        client.associate_resolver_rule.return_value = {
+            "ResolverRuleAssociation": {"Id": "rslvr-rrassoc-1", "ResolverRuleId": "rslvr-rr-1", "VPCId": "vpc-1"}
+        }
+        module = FakeModule({"name": None, "resolver_rule_id": "rslvr-rr-1", "vpc_id": "vpc-1", "wait": False})
+        with (
+            patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=None),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertTrue(raised.exception.values["changed"])
+        client.associate_resolver_rule.assert_called_once_with(
+            ResolverRuleId="rslvr-rr-1", VPCId="vpc-1", aws_retry=True
+        )
 
     def test_replacement_waits_for_deletion_when_final_wait_is_disabled(self):
         client = Mock()
