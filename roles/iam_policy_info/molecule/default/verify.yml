@@ -13,6 +13,8 @@
           - _iam_policy_info_group_dict['molecule-rds'].policies.0.policy_document == iam_policy_list.1.policy_json
           - _iam_policy_info_group_dict['molecule-rds'].policy_names is defined
           - _iam_policy_info_group_dict['molecule-rds'].policy_names.0 == iam_policy_list.1.policy_name
+          - _iam_policy_info_role_dict['molecule-s3'].policies.0.policy_document == iam_policy_list.2.policy_json
+          - _iam_policy_info_role_dict['molecule-s3'].policy_names.0 == iam_policy_list.2.policy_name
           - _iam_policy_info_user_dict['molecule-ec2'].all_policy_names is defined
           - _iam_policy_info_user_dict['molecule-ec2'].policies.0.policy_document == iam_policy_list.0.policy_json
           - _iam_policy_info_user_dict['molecule-ec2'].policy_names is defined
@@ -32,6 +34,25 @@
           - _iam_policy_info_group_dict['molecule-rds'].policy_names == ['MoleculeRdsFullAccess']
           - _iam_policy_info_group_dict['molecule-rds'].policies.0.policy_document ==
               iam_policy_list.1.policy_json
+          - _iam_policy_info_role_list == []
+          - _iam_policy_info_user_list == []
+
+    - name: Ensure role is included with role and policy names
+      ansible.builtin.include_role:
+        name: iam_policy_info
+      vars:
+        iam_policy_info_policy_name: MoleculeS3FullAccess
+        iam_policy_info_role_name: molecule-s3
+
+    - name: Ensure info with role and policy names is verified
+      ansible.builtin.assert:
+        that:
+          - _iam_policy_info_role_dict.keys() | list == ['molecule-s3']
+          - _iam_policy_info_role_dict['molecule-s3'].policy_names == ['MoleculeS3FullAccess']
+          - _iam_policy_info_role_dict['molecule-s3'].policies.0.policy_document ==
+              iam_policy_list.2.policy_json
+          - _iam_policy_info_group_list == []
+          - _iam_policy_info_user_list == []
 
     - name: Ensure role is included with user and policy names
       ansible.builtin.include_role:
@@ -56,6 +77,9 @@
         iam_policy_list:
           "{{ iam_policy_list |
               map('combine', {'state': 'absent'}) }}"
+        iam_role_list:
+          "{{ iam_role_list |
+              map('combine', {'state': 'absent'}) }}"
         iam_user_list:
           "{{ iam_user_list |
               map('combine', {'state': 'absent'}) }}"
@@ -65,6 +89,7 @@
         name: "{{ _verify }}"
       loop:
         - iam_policy
+        - iam_role
         - iam_user
         - iam_group
       loop_control:

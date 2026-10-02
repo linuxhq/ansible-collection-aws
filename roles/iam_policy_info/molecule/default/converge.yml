@@ -12,6 +12,11 @@
         - molecule-idempotence-notest
       check_mode: false
 
+    - role: iam_role
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
     - role: iam_policy
       tags:
         - molecule-idempotence-notest

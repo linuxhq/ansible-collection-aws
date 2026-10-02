@@ -6,6 +6,7 @@
     group_name: "{{ iam_policy_info_group_name or omit }}"
     path_prefix: "{{ iam_policy_info_path_prefix or omit }}"
     policy_name: "{{ iam_policy_info_policy_name or omit }}"
+    role_name: "{{ iam_policy_info_role_name or omit }}"
     user_name: "{{ iam_policy_info_user_name or omit }}"
     validate_certs: true
   register: __iam_policy_info_query
@@ -16,6 +17,14 @@
   ansible.builtin.set_fact:
     _iam_policy_info_group_list:
       "{{ __iam_policy_info_query.group_policies |
+          d([]) }}"
+
+- name: Ensure list of aws iam role inline policies is generated
+  tags:
+    - iam_policy_info
+  ansible.builtin.set_fact:
+    _iam_policy_info_role_list:
+      "{{ __iam_policy_info_query.role_policies |
           d([]) }}"
 
 - name: Ensure list of aws iam user inline policies is generated
@@ -34,6 +43,15 @@
       "{{ dict(_iam_policy_info_group_list |
                json_query('[].name') |
                zip(_iam_policy_info_group_list)) }}"
+
+- name: Ensure dict of aws iam role inline policies is generated
+  tags:
+    - iam_policy_info
+  ansible.builtin.set_fact:
+    _iam_policy_info_role_dict:
+      "{{ dict(_iam_policy_info_role_list |
+               json_query('[].name') |
+               zip(_iam_policy_info_role_list)) }}"
 
 - name: Ensure dict of aws iam user inline policies is generated
   tags:
