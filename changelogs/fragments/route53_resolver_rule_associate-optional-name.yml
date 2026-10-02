@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - route53_resolver_rule_associate - ``name`` is optional, as in the ``AssociateResolverRule`` API;
+    omitting it keeps the name of an existing association.
+  - route53_resolver_rule_associate - document the returned association fields.
+...
