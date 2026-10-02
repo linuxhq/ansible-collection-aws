@@ -47,6 +47,20 @@ delegation_sets:
   returned: always
   type: list
   elements: dict
+  contains:
+    caller_reference:
+      description: The delegation set caller reference.
+      returned: always
+      type: str
+    id:
+      description: The delegation set ID.
+      returned: always
+      type: str
+    name_servers:
+      description: The name servers in the delegation set.
+      returned: always
+      type: list
+      elements: str
 """
 
 try:

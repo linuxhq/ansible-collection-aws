@@ -16,6 +16,8 @@ options:
     description:
       - The delegation set caller reference.
       - This must be 1 to 128 characters.
+      - Route53 permanently reserves a caller reference, so a name cannot be reused
+        after its delegation set is deleted.
     required: true
     type: str
   state:
@@ -56,6 +58,20 @@ delegation_set:
     - The current reusable delegation set after module execution.
   returned: when state is present
   type: dict
+  contains:
+    caller_reference:
+      description: The delegation set caller reference.
+      returned: always
+      type: str
+    id:
+      description: The delegation set ID.
+      returned: except when check mode predicts creation
+      type: str
+    name_servers:
+      description: The name servers in the delegation set.
+      returned: except when check mode predicts creation
+      type: list
+      elements: str
 delegation_set_id:
   description:
     - The reusable delegation set ID.
@@ -131,6 +147,15 @@ def ensure_present(client, module):
                 CallerReference=name,
                 aws_retry=True,
             )
+        except is_boto3_error_code("DelegationSetAlreadyCreated") as e:
+            # The set is not listed, so its caller reference belongs to a deleted delegation set.
+            module.fail_json_aws(
+                e,
+                msg=(
+                    f"Unable to create AWS Route53 reusable delegation set {name}: the name was already used "
+                    "by a deleted delegation set and cannot be reused; choose a new name"
+                ),
+            )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
@@ -146,7 +171,7 @@ def ensure_present(client, module):
             delegation_set = get_reusable_delegation_set(client, module)
 
         if delegation_set is None:
-            module.fail_json(msg=("AWS Route53 did not return the created reusable delegation set " f"{name}"))
+            module.fail_json(msg=f"AWS Route53 did not return the created reusable delegation set {name}")
     elif changed and module.check_mode:
         delegation_set = {"CallerReference": name}
 
