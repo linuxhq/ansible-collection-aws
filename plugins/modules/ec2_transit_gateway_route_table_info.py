@@ -61,6 +61,90 @@ transit_gateway_route_tables:
   returned: always
   type: list
   elements: dict
+  contains:
+    creation_time:
+      description: The time the route table was created.
+      returned: always
+      type: str
+    default_association_route_table:
+      description: Whether this is the default association route table for the transit gateway.
+      returned: always
+      type: bool
+    default_propagation_route_table:
+      description: Whether this is the default propagation route table for the transit gateway.
+      returned: always
+      type: bool
+    routes:
+      description:
+        - The static and propagated routes gathered from C(SearchTransitGatewayRoutes).
+        - Empty unless the route table is available.
+        - Requires botocore 1.42.37 or later when an available route table is returned.
+      returned: always
+      type: list
+      elements: dict
+      contains:
+        destination_cidr_block:
+          description: The destination CIDR block for the route.
+          returned: when the route has a CIDR destination
+          type: str
+          sample: 10.10.0.0/16
+        prefix_list_id:
+          description: The prefix list ID used as the route destination.
+          returned: when the route has a prefix list destination
+          type: str
+        state:
+          description: The route state.
+          returned: always
+          type: str
+          sample: active
+        transit_gateway_attachments:
+          description: The attachments that the route sends traffic to.
+          returned: when the route has attachments
+          type: list
+          elements: dict
+          contains:
+            resource_id:
+              description: The ID of the attached resource.
+              returned: always
+              type: str
+            resource_type:
+              description: The type of the attached resource.
+              returned: always
+              type: str
+              sample: vpc
+            transit_gateway_attachment_id:
+              description: The transit gateway attachment ID.
+              returned: always
+              type: str
+              sample: tgw-attach-0123456789abcdef0
+        transit_gateway_route_table_announcement_id:
+          description: The transit gateway route table announcement ID.
+          returned: when the route is from a route table announcement
+          type: str
+        type:
+          description: The route type.
+          returned: always
+          type: str
+          sample: static
+    state:
+      description: The route table state.
+      returned: always
+      type: str
+      sample: available
+    tags:
+      description: The route table tags.
+      returned: always
+      type: dict
+    transit_gateway_id:
+      description: The transit gateway ID.
+      returned: always
+      type: str
+      sample: tgw-0123456789abcdef0
+    transit_gateway_route_table_id:
+      description: The transit gateway route table ID.
+      returned: always
+      type: str
+      sample: tgw-rtb-0123456789abcdef0
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule

@@ -1,0 +1,16 @@
+---
+breaking_changes:
+  - ec2_transit_gateway_route_table - ``purge_routes`` now defaults to ``true`` to match ``amazon.aws.ec2_vpc_route_table``;
+    static routes not listed in ``routes`` are removed when ``routes`` is supplied.
+  - ec2_transit_gateway_route_table - ``purge_routes`` is ignored unless ``routes`` is supplied.
+  - ec2_transit_gateway_route_table role - list items now default ``purge_routes`` to ``true``;
+    routes are purged only when the item supplies ``routes``.
+bugfixes:
+  - ec2_transit_gateway_route_table - fail when ``transit_gateway_route_table_id`` belongs to a transit gateway other than ``transit_gateway_id``
+    instead of managing that route table.
+  - ec2_transit_gateway_route_table - always return the routes for the destinations in ``routes``
+    instead of every static route in the table after a purge.
+minor_changes:
+  - ec2_transit_gateway_route_table - document that route management requires botocore 1.42.37 or later and the nested return values.
+  - ec2_transit_gateway_route_table_info - document that route searches require botocore 1.42.37 or later and the nested return values.
+...
