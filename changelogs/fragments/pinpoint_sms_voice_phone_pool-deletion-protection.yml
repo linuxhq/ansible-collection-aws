@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_pool - ``deletion_protection_enabled`` no longer defaults to ``false``;
+    omitting it leaves deletion protection unchanged on an existing pool instead of disabling it,
+    and uses the AWS default when creating a pool.
+minor_changes:
+  - pinpoint_sms_voice_phone_pool - document the returned pool fields.
+  - pinpoint_sms_voice_phone_pool_associate - document the returned association fields.
+  - pinpoint_sms_voice_phone_pool_info - document the returned pool fields.
+...

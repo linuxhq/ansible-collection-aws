@@ -20,9 +20,10 @@ options:
       - When omitted, AWS generates an idempotency token for the request.
     type: str
   deletion_protection_enabled:
-    default: false
     description:
       - Whether deletion protection is enabled for the pool.
+      - When omitted while creating a pool, AWS disables deletion protection.
+      - When omitted for an existing pool, the current setting is left unchanged.
     type: bool
   iso_country_code:
     description:
@@ -131,6 +132,79 @@ pool:
       included when available.
   returned: when available
   type: dict
+  contains:
+    created_timestamp:
+      description: The time the pool was created.
+      returned: when returned by AWS
+      type: str
+    deletion_protection_enabled:
+      description: Whether deletion protection is enabled.
+      returned: when returned by AWS
+      type: bool
+    message_type:
+      description: The type of messages sent from the pool.
+      returned: when returned by AWS
+      type: str
+    opt_out_list_name:
+      description: The OptOutList associated with the pool.
+      returned: when returned by AWS
+      type: str
+    origination_identities:
+      description: The origination identities associated with the pool.
+      returned: when gathered by the module
+      type: list
+      elements: dict
+      contains:
+        iso_country_code:
+          description: The two-character ISO country code.
+          returned: when returned by AWS
+          type: str
+        origination_identity:
+          description: The origination identity, such as a phone number ID or sender ID.
+          returned: always
+          type: str
+        origination_identity_arn:
+          description: The origination identity ARN.
+          returned: when returned by AWS
+          type: str
+        number_capabilities:
+          description: The origination identity capabilities.
+          returned: when returned by AWS
+          type: list
+          elements: str
+        phone_number:
+          description: The phone number in E.164 format.
+          returned: when the origination identity is a phone number
+          type: str
+    pool_arn:
+      description: The pool ARN.
+      returned: when returned by AWS
+      type: str
+    pool_id:
+      description: The pool ID.
+      returned: always
+      type: str
+    self_managed_opt_outs_enabled:
+      description: Whether self-managed opt-outs are enabled.
+      returned: when returned by AWS
+      type: bool
+    shared_routes_enabled:
+      description: Whether shared routes are enabled.
+      returned: when returned by AWS
+      type: bool
+    status:
+      description: The pool status.
+      returned: always
+      type: str
+      sample: ACTIVE
+    tags:
+      description: The pool tags with key case preserved.
+      returned: when gathered by the module
+      type: dict
+    two_way_enabled:
+      description: Whether two-way messaging is enabled.
+      returned: when returned by AWS
+      type: bool
 pool_arn:
   description:
     - The ARN of the phone pool.
@@ -235,7 +309,7 @@ def pool_with_origination_identities(client, module, pool):
             client,
             "list_pool_origination_identities",
             "OriginationIdentities",
-            "Unable to list origination identities for Pinpoint SMS Voice " f"V2 pool {pool_id}",
+            f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}",
             PoolId=pool_id,
         )
         if any(
@@ -323,7 +397,7 @@ def wait_for_pool_active(client, module, pool_id):
                 return pool
 
             module.fail_json(
-                msg=("AWS End User Messaging SMS phone pool " f"{pool_id} was deleted before becoming active"),
+                msg=f"AWS End User Messaging SMS phone pool {pool_id} was deleted before becoming active",
                 pool=boto3_resource_to_ansible_dict(pool, transform_tags=False, force_tags=False),
                 pool_id=pool_id,
                 status=status,
@@ -337,7 +411,7 @@ def wait_for_pool_active(client, module, pool_id):
         )
 
     module.fail_json(
-        msg=("Timed out waiting for AWS End User Messaging SMS phone pool " f"{pool_id} to become active"),
+        msg=f"Timed out waiting for AWS End User Messaging SMS phone pool {pool_id} to become active",
         pool=boto3_resource_to_ansible_dict(pool, transform_tags=False, force_tags=False),
         pool_id=pool_id,
         status=pool.get("Status"),
@@ -431,7 +505,7 @@ def ensure_absent(client, module):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to disable deletion protection for Pinpoint " f"SMS Voice V2 pool {pool_id}"),
+                    msg=f"Unable to disable deletion protection for Pinpoint SMS Voice V2 pool {pool_id}",
                 )
 
             validate_pool(module, current, "disabling deletion protection")
@@ -464,11 +538,11 @@ def ensure_present(client, module):
     wait = module.params["wait"]
     current = find_pool(client, module)
     if current is None and module.params.get("pool_id") is not None:
-        module.fail_json(msg=("Pinpoint SMS Voice V2 pool " f"{module.params['pool_id']} does not exist"))
+        module.fail_json(msg=f"Pinpoint SMS Voice V2 pool {module.params['pool_id']} does not exist")
 
     if current is not None and current.get("MessageType") != message_type:
         module.fail_json(
-            msg=("Cannot modify message_type for existing Pinpoint SMS Voice V2 " f"pool {current.get('PoolId')}")
+            msg=f"Cannot modify message_type for existing Pinpoint SMS Voice V2 pool {current.get('PoolId')}"
         )
 
     if (
@@ -482,7 +556,11 @@ def ensure_present(client, module):
         current = get_pool_by_id(client, module, current["PoolId"]) or current
 
     update_request = {}
-    if current is not None and current.get("DeletionProtectionEnabled") != deletion_protection_enabled:
+    if (
+        current is not None
+        and deletion_protection_enabled is not None
+        and current.get("DeletionProtectionEnabled") != deletion_protection_enabled
+    ):
         update_request["DeletionProtectionEnabled"] = deletion_protection_enabled
 
     user_tags = module.params["tags"]
@@ -507,7 +585,10 @@ def ensure_present(client, module):
         wait_for_pool_active(client, module, current["PoolId"])
         current = get_pool_by_id(client, module, current["PoolId"]) or current
         update_request = {}
-        if current.get("DeletionProtectionEnabled") != deletion_protection_enabled:
+        if (
+            deletion_protection_enabled is not None
+            and current.get("DeletionProtectionEnabled") != deletion_protection_enabled
+        ):
             update_request["DeletionProtectionEnabled"] = deletion_protection_enabled
 
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
@@ -564,7 +645,7 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=("Unable to update Pinpoint SMS Voice V2 pool " f"{current['PoolId']}"),
+                        msg=f"Unable to update Pinpoint SMS Voice V2 pool {current['PoolId']}",
                     )
 
                 validate_pool(module, current, "updating a pool")
@@ -604,11 +685,16 @@ def ensure_present(client, module):
         current = dict(current or {})
         current.update(
             {
-                "DeletionProtectionEnabled": deletion_protection_enabled,
                 "MessageType": message_type,
                 "Status": current.get("Status") or "ACTIVE",
             }
         )
+        if deletion_protection_enabled is not None:
+            current["DeletionProtectionEnabled"] = deletion_protection_enabled
+        elif new_pool:
+            # Predict the AWS creation default.
+            current["DeletionProtectionEnabled"] = False
+
         if new_pool:
             current["OriginationIdentities"] = [
                 scrub_none_parameters(
@@ -627,7 +713,7 @@ def ensure_present(client, module):
 def main():
     argument_spec = {
         "client_token": {"no_log": False, "type": "str"},
-        "deletion_protection_enabled": {"default": False, "type": "bool"},
+        "deletion_protection_enabled": {"type": "bool"},
         "iso_country_code": {"type": "str"},
         "message_type": {
             "choices": ["PROMOTIONAL", "TRANSACTIONAL"],
@@ -679,11 +765,13 @@ def main():
     methods = {"describe_pools": describe_parameters}
     if state == "present":
         create_parameters = (
-            "DeletionProtectionEnabled",
             "MessageType",
             "OriginationIdentity",
             "Tags",
         )
+        if module.params["deletion_protection_enabled"] is not None:
+            create_parameters += ("DeletionProtectionEnabled",)
+
         if module.params["client_token"] is not None:
             create_parameters += ("ClientToken",)
 
