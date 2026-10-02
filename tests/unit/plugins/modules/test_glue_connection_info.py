@@ -22,6 +22,11 @@ class GlueConnectionInfoTests(TestCase):
             "type": "str",
             "choices": ["SPARK", "ATHENA", "PYTHON"],
         }
+        assert set(options["argument_spec"]["filters"]["options"]) == {
+            "connection_schema_version",
+            "connection_type",
+            "match_criteria",
+        }
 
     def test_named_connection_only_gates_used_parameters(self):
         client = Mock(get_connection=Mock(return_value={"Connection": {"Name": "main"}}))
@@ -203,3 +208,71 @@ def test_environment_property_keys_are_preserved(name, field, result_key):
     returned = result.value.values["connections"][0]
     assert returned["connection_properties"] == properties
     assert returned[result_key] == properties
+
+
+def glue_params(**overrides):
+    params = {
+        "apply_override_for_compute_environment": None,
+        "catalog_id": None,
+        "filters": None,
+        "hide_password": True,
+        "name": None,
+    }
+    params.update(overrides)
+    return params
+
+
+def test_named_missing_connection_fails_like_the_api():
+    client = Mock()
+    client.get_connection.side_effect = plugin.ClientError(
+        {"Error": {"Code": "EntityNotFoundException", "Message": "missing"}}, "GetConnection"
+    )
+    module = FakeModule(glue_params(name="missing"), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as result,
+    ):
+        plugin.main()
+
+    assert result.value.values["msg"] == "Unable to get AWS Glue connection missing"
+
+
+def test_token_url_parameter_names_are_preserved():
+    parameters = {"audience": "api", "Resource-Id": "abc", "customParam": "value"}
+    connection = {
+        "Name": "example",
+        "AuthenticationConfiguration": {
+            "AuthenticationType": "OAUTH2",
+            "OAuth2Properties": {"TokenUrl": "https://example.com/token", "TokenUrlParametersMap": parameters},
+        },
+    }
+    client = Mock(get_connection=Mock(return_value={"Connection": connection}))
+    module = FakeModule(glue_params(name="example"), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    oauth2 = result.value.values["connections"][0]["authentication_configuration"]["o_auth2_properties"]
+    assert oauth2["token_url"] == "https://example.com/token"
+    assert oauth2["token_url_parameters_map"] == parameters
+
+
+def test_filters_use_documented_fields_and_omit_unset_ones():
+    filters = {"connection_schema_version": None, "connection_type": "NETWORK", "match_criteria": ["main"]}
+    client = Mock()
+    module = FakeModule(glue_params(filters=filters), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]) as query,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()
+
+    request_filter = query.call_args.kwargs["Filter"]
+    assert request_filter == {"ConnectionType": "NETWORK", "MatchCriteria": ["main"]}
+    validate_parameters(request_filter, Session().get_service_model("glue").shape_for("GetConnectionsFilter"))
