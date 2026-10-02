@@ -3,7 +3,6 @@
   tags:
     - eks_cluster_info
   linuxhq.aws.eks_cluster_info:
-    filters: "{{ eks_cluster_info_filters }}"
     include: "{{ eks_cluster_info_include or omit }}"
     name: "{{ eks_cluster_info_name or omit }}"
     validate_certs: true

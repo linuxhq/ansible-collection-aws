@@ -8,11 +8,11 @@
     - ec2_vpc_subnet_info
 
   post_tasks:
-    - name: Ensure role is included without filters or name
+    - name: Ensure role is included without name
       ansible.builtin.include_role:
         name: eks_cluster_info
 
-    - name: Ensure info without filters or name is verified
+    - name: Ensure info without name is verified
       ansible.builtin.assert:
         that:
           - _eks_cluster_info_dict['molecule-eks1'].arn is defined
@@ -44,22 +44,6 @@
           - _eks_cluster_info_dict[eks_cluster_list.0.name].resources_vpc_config.endpoint_public_access
           - _eks_cluster_info_dict[eks_cluster_list.0.name].status == 'ACTIVE'
           - _eks_cluster_info_dict[eks_cluster_list.0.name].version == '1.34'
-
-    - name: Ensure role is included with filters
-      ansible.builtin.include_role:
-        name: eks_cluster_info
-      vars:
-        eks_cluster_info_filters:
-          name: "{{ eks_cluster_list.1.name }}"
-
-    - name: Ensure info with filters is verified
-      ansible.builtin.assert:
-        that:
-          - _eks_cluster_info_list | length == 1
-          - _eks_cluster_info_list.0.name == eks_cluster_list.1.name
-          - _eks_cluster_info_dict.keys() | list == [eks_cluster_list.1.name]
-          - _eks_cluster_info_dict[eks_cluster_list.1.name].resources_vpc_config.endpoint_private_access
-          - _eks_cluster_info_dict[eks_cluster_list.1.name].version == '1.35'
 
     - name: Ensure role is included with another name
       ansible.builtin.include_role:
