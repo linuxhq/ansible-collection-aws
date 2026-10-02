@@ -18,7 +18,7 @@ options:
   group_name:
     description:
       - IAM group name whose inline policies are returned.
-      - Fails when the group does not exist, as C(ListGroupPolicies) does.
+      - A group that does not exist is not included in the results.
     type: str
   path_prefix:
     description:
@@ -35,12 +35,12 @@ options:
   role_name:
     description:
       - IAM role name whose inline policies are returned.
-      - Fails when the role does not exist, as C(ListRolePolicies) does.
+      - A role that does not exist is not included in the results.
     type: str
   user_name:
     description:
       - IAM user name whose inline policies are returned.
-      - Fails when the user does not exist, as C(ListUserPolicies) does.
+      - A user that does not exist is not included in the results.
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -240,7 +240,7 @@ def validate_policy_document(module, response, entity_type, name, policy_name):
     return response["PolicyDocument"]
 
 
-def build_entity_policies(client, module, entity_type, names, explicit):
+def build_entity_policies(client, module, entity_type, names):
     desired_policy_name = module.params["policy_name"]
     list_operation = f"list_{entity_type.lower()}_policies"
     get_operation = f"get_{entity_type.lower()}_policy"
@@ -263,11 +263,7 @@ def build_entity_policies(client, module, entity_type, names, explicit):
                 list_operation,
                 **{f"{entity_type}Name": name},
             )
-        except is_boto3_error_code("NoSuchEntity") as e:
-            # A listed entity can be deleted before its policies are listed; a named one must exist.
-            if explicit:
-                module.fail_json_aws(e, msg=f"Unable to list AWS IAM {entity_type.lower()} policies for {name}")
-
+        except is_boto3_error_code("NoSuchEntity"):
             continue
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
@@ -393,7 +389,6 @@ def main():
             module,
             entity_type,
             entity_names(client, module, entity_type),
-            bool(module.params[f"{entity_type.lower()}_name"]),
         )
 
     module.exit_json(**result)

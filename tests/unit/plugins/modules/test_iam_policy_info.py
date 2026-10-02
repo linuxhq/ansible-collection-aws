@@ -85,7 +85,7 @@ class IamPolicyInfoTests(TestCase):
                 return_value={"PolicyNames": ["ignored", "selected"]},
             ),
         ):
-            result = plugin.build_entity_policies(client, module, "User", ["alice"], False)
+            result = plugin.build_entity_policies(client, module, "User", ["alice"])
 
         self.assertEqual(result[0]["all_policy_names"], ["ignored", "selected"])
         self.assertEqual(result[0]["policy_names"], ["selected"])
@@ -112,7 +112,7 @@ class IamPolicyInfoTests(TestCase):
             patch.object(plugin, "require_client_methods"),
             self.assertRaises(ModuleFail) as raised,
         ):
-            plugin.build_entity_policies(Mock(), module, "User", ["alice"], False)
+            plugin.build_entity_policies(Mock(), module, "User", ["alice"])
 
         self.assertEqual(
             raised.exception.values["msg"],
@@ -127,7 +127,7 @@ class IamPolicyInfoTests(TestCase):
             patch.object(plugin, "require_client_methods"),
             self.assertRaises(ModuleFail) as raised,
         ):
-            plugin.build_entity_policies(client, module, "User", ["alice"], False)
+            plugin.build_entity_policies(client, module, "User", ["alice"])
 
         self.assertEqual(
             raised.exception.values["msg"],
@@ -158,7 +158,7 @@ class IamPolicyInfoTests(TestCase):
     def test_empty_entity_names_require_no_policy_operations(self):
         module = SimpleNamespace(params={"policy_name": None})
         with patch.object(plugin, "require_client_methods") as require_methods:
-            assert plugin.build_entity_policies(Mock(), module, "User", [], False) == []
+            assert plugin.build_entity_policies(Mock(), module, "User", []) == []
 
         require_methods.assert_not_called()
 
@@ -173,7 +173,7 @@ class IamPolicyInfoTests(TestCase):
                 return_value={"PolicyNames": ["ignored"]},
             ),
         ):
-            plugin.build_entity_policies(client, module, "User", ["alice"], False)
+            plugin.build_entity_policies(client, module, "User", ["alice"])
 
         require_methods.assert_called_once_with(
             module,
@@ -200,7 +200,7 @@ class IamPolicyInfoTests(TestCase):
             patch.object(plugin, "require_client_methods") as require_methods,
             patch.object(plugin, "paginated_query_with_retries", return_value={"PolicyNames": ["main"]}) as query,
         ):
-            result = plugin.build_entity_policies(client, module, "Role", ["app"], True)
+            result = plugin.build_entity_policies(client, module, "Role", ["app"])
 
         self.assertEqual(result[0]["policies"], [{"policy_name": "main", "policy_document": {"Statement": []}}])
         query.assert_called_once_with(client, "list_role_policies", RoleName="app")
@@ -213,15 +213,11 @@ class IamPolicyInfoTests(TestCase):
             ],
         )
 
-    def test_named_missing_entity_fails_but_listed_missing_entity_is_skipped(self):
+    def test_missing_entity_is_not_included_in_the_results(self):
         error = plugin.ClientError({"Error": {"Code": "NoSuchEntity", "Message": "missing"}}, "ListUserPolicies")
         module = FakeModule({"policy_name": None})
         with (
             patch.object(plugin, "require_client_methods"),
             patch.object(plugin, "paginated_query_with_retries", side_effect=error),
         ):
-            self.assertEqual(plugin.build_entity_policies(Mock(), module, "User", ["gone"], False), [])
-            with self.assertRaises(ModuleFail) as raised:
-                plugin.build_entity_policies(Mock(), module, "User", ["missing"], True)
-
-        self.assertEqual(raised.exception.values["msg"], "Unable to list AWS IAM user policies for missing")
+            self.assertEqual(plugin.build_entity_policies(Mock(), module, "User", ["missing"]), [])
