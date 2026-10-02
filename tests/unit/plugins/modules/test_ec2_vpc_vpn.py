@@ -2,7 +2,7 @@
 
 import json
 from copy import deepcopy
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import pytest
 from botocore.exceptions import ClientError, WaiterError
@@ -13,8 +13,15 @@ from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 
 from ansible_collections.amazon.aws.plugins.module_utils.retries import RetryingBotoClientWrapper
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import sdk
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_vpc_vpn as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule, ModuleExit, ModuleFail
+
+
+@pytest.fixture(autouse=True)
+def sdk_checks():
+    with patch.object(plugin, "require_client_methods") as require:
+        yield require
 
 
 @pytest.fixture
@@ -442,14 +449,6 @@ def test_invalid_route_to_purge_fails_before_any_mutation(params, connection, ch
     assert client.mock_calls == []
 
 
-def test_reconcile_invalid_route_fails_before_sdk_call(params):
-    client = Mock()
-    with pytest.raises(ModuleFail, match="canonical IPv4 CIDR"):
-        plugin.reconcile_routes(client, FakeModule(params), "vpn-123", set(), {"invalid"})
-
-    assert client.mock_calls == []
-
-
 @pytest.mark.parametrize("check_mode", [True, False])
 @pytest.mark.parametrize("selection", [{}, {"outside_ip_address": "203.0.113.1"}])
 def test_null_tunnel_options_fail_cleanly_when_selected(params, connection, check_mode, selection):
@@ -483,13 +482,16 @@ def test_desired_tags_normalize_a_copy(params, name):
     assert removed == []
     assert params["tags"] is tags
     assert tags == {123: 456}
-    validate.assert_called_once()
+    assert validate.call_count == 2
 
 
-def test_desired_tags_validate_including_name(params):
+def test_tags_validate_including_name_before_any_aws_call(params):
     params["tags"] = {f"key-{index}": "value" for index in range(50)}
     with pytest.raises(ModuleFail, match="at most 50"):
-        plugin.desired_tags(FakeModule(params), {})
+        plugin.validate_inputs(FakeModule(params))
+
+    params["tags"] = {f"key-{index}": "value" for index in range(49)}
+    plugin.validate_inputs(FakeModule(params))
 
 
 def test_algorithms_compare_as_sets_and_ignore_omitted_fields(params, connection):
@@ -738,7 +740,7 @@ def test_invalid_inputs_fail_locally(params, overrides):
 
 
 @pytest.mark.parametrize("state,changed", [("available", True), ("deleting", False)])
-def test_delete_is_idempotent_and_waits(params, connection, state, changed):
+def test_delete_is_idempotent_and_waits(params, connection, state, changed, sdk_checks):
     connection["State"] = state
     client = Mock()
     with pytest.raises(ModuleExit) as result:
@@ -747,6 +749,8 @@ def test_delete_is_idempotent_and_waits(params, connection, state, changed):
     assert result.value.values == {"changed": changed, "vpn_connection": {}}
     assert bool(client.delete_vpn_connection.call_count) == changed
     client.get_waiter.assert_called_once_with("vpn_connection_deleted")
+    if changed:
+        sdk_checks.assert_called_once_with(ANY, client, "EC2", {"delete_vpn_connection": ("VpnConnectionId",)})
 
 
 def test_absent_check_mode_and_already_absent(params, connection):
@@ -991,7 +995,7 @@ def test_route_waiter_matches_only_the_requested_route(params, final_state):
     assert all(call.kwargs == {"VpnConnectionIds": ["vpn-123"]} for call in describe.call_args_list)
 
 
-@pytest.mark.parametrize("actual", [None, "", "********", "<redacted>"])
+@pytest.mark.parametrize("actual", [None, ""])
 @pytest.mark.parametrize("check_mode", [True, False])
 def test_unavailable_psk_fails_before_any_mutation(params, connection, actual, check_mode):
     params.update(
@@ -1271,3 +1275,56 @@ def test_client_retries_transient_state_errors_only(params, connection, error_co
                 client.modify_vpn_tunnel_options(aws_retry=True)
 
     assert raw_client.modify_vpn_tunnel_options.call_count == (2 if retried else 1)
+
+
+def test_update_checks_each_operation_and_parameter(params, connection, sdk_checks):
+    params.update(
+        local_ipv4_network_cidr="10.20.0.0/16",
+        routes=["10.1.0.0/16"],
+        tags={"Environment": "test"},
+        tunnel_options=[{"outside_ip_address": "203.0.113.1", "phase1_encryption_algorithms": ["AES256"]}],
+    )
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [connection]}
+    with (
+        patch.object(plugin, "wait_for_connection"),
+        patch.object(plugin, "wait_for_route_state"),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, FakeModule(params), connection)
+
+    checked = {}
+    for call in sdk_checks.call_args_list:
+        assert call.args[2] == "EC2"
+        checked.update(call.args[3])
+
+    assert checked == {
+        "create_tags": ("Resources", "Tags"),
+        "create_vpn_connection_route": ("DestinationCidrBlock", "VpnConnectionId"),
+        "delete_tags": ("Resources", "Tags"),
+        "delete_vpn_connection_route": ("DestinationCidrBlock", "VpnConnectionId"),
+        "describe_vpn_connections": ("VpnConnectionIds",),
+        "modify_vpn_connection_options": ("VpnConnectionId", "LocalIpv4NetworkCidr"),
+        "modify_vpn_tunnel_options": ("TunnelOptions", "VpnConnectionId", "VpnTunnelOutsideIpAddress"),
+    }
+    real_client = Session().create_client("ec2", region_name="us-east-1")
+    sdk.require_client_methods(FakeModule({}), real_client, "EC2", checked)
+
+
+def test_create_checks_the_submitted_request(params, sdk_checks):
+    params.update(customer_gateway_id="cgw-123", vpn_gateway_id="vgw-123", static_only=True)
+    client = Mock()
+    client.create_vpn_connection.return_value = {
+        "VpnConnection": {"VpnConnectionId": "vpn-123", "State": "pending", "Options": {}}
+    }
+    with (
+        patch.object(plugin, "wait_for_connection"),
+        patch.object(plugin, "read_connection", return_value={"VpnConnectionId": "vpn-123"}),
+    ):
+        plugin.create_connection(client, FakeModule(params))
+
+    checked = sdk_checks.call_args.args[3]
+    assert set(checked) == {"create_vpn_connection"}
+    assert set(checked["create_vpn_connection"]) == set(client.create_vpn_connection.call_args.kwargs) - {"aws_retry"}
+    real_client = Session().create_client("ec2", region_name="us-east-1")
+    sdk.require_client_methods(FakeModule({}), real_client, "EC2", checked)

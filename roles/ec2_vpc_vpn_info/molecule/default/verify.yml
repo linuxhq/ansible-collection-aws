@@ -37,9 +37,6 @@
         ec2_vpc_vpn_list:
           "{{ ec2_vpc_vpn_list |
               map('combine', {'state': 'absent'}) }}"
-        ec2_transit_gateway_list:
-          "{{ ec2_transit_gateway_list |
-              map('combine', {'state': 'absent'}) }}"
         ec2_customer_gateway_list:
           "{{ ec2_customer_gateway_list |
               map('combine', {'state': 'absent'}) }}"
@@ -48,15 +45,37 @@
       ansible.builtin.include_role:
         name: ec2_vpc_vpn
 
-    - name: Ensure pause is executed
-      ansible.builtin.pause:
-        seconds: 300
+    - name: Ensure vpn connections are deleted
+      amazon.aws.ec2_vpc_vpn_info:
+        filters:
+          tag:Name: "{{ ec2_vpc_vpn_list | map(attribute='name') | list }}"
+        validate_certs: true
+      register: __ec2_vpc_vpn_deleted
+      no_log: true
+      until:
+        - __ec2_vpc_vpn_deleted.vpn_connections |
+          rejectattr('state', 'eq', 'deleted') |
+          list | length == 0
+      retries: 40
+      delay: 15
+
+    - name: Ensure transit gateway is deleted once its vpn attachments are released
+      amazon.aws.ec2_transit_gateway:
+        state: absent
+        transit_gateway_id: "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+        validate_certs: true
+        wait: true
+        wait_timeout: 600
+      register: __ec2_transit_gateway_deleted
+      until:
+        - __ec2_transit_gateway_deleted is succeeded
+      retries: 40
+      delay: 15
 
     - name: Ensure roles are included
       ansible.builtin.include_role:
         name: "{{ _verify }}"
       loop:
-        - ec2_transit_gateway
         - ec2_customer_gateway
       loop_control:
         label: "{{ _verify }}"
