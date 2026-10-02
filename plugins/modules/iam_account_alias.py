@@ -9,6 +9,7 @@ short_description: Manage an AWS IAM account alias
 version_added: "1.9.0"
 description:
   - Manages the AWS IAM account alias for the current account.
+  - An account has at most one alias, so O(state=present) replaces an existing alias with O(name).
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -78,28 +79,24 @@ try:
 except ImportError:
     pass
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-    paginated_query_with_retries,
-)
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import is_boto3_error_code
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 
 
 def list_account_aliases(client, module):
-    try:
-        response = paginated_query_with_retries(client, "list_account_aliases")
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg="Unable to list AWS IAM account aliases")
-
-    if not isinstance(response, dict):
-        module.fail_json(msg="Unable to list AWS IAM account aliases: AWS returned an invalid response")
-
-    aliases = response.get("AccountAliases")
+    aliases = query_list(
+        module,
+        client,
+        "list_account_aliases",
+        "AccountAliases",
+        "Unable to list AWS IAM account aliases",
+    )
     if not isinstance(aliases, list) or any(not isinstance(alias, str) for alias in aliases):
         module.fail_json(msg="Unable to list AWS IAM account aliases: AWS returned an invalid response")
 
