@@ -98,7 +98,9 @@ def test_matching_in_progress_resource_readiness(kind, wait_enabled, check_mode)
 
     assert not result.value.values["changed"]
     if wait_enabled and not check_mode:
-        wait.assert_called_once_with(client, module, current["Id"], {ready["Status"].lower()})
+        # Endpoints settle first so an endpoint that needs action can be repaired.
+        expected = {"settled"} if kind == "endpoint" else {ready["Status"].lower()}
+        wait.assert_called_once_with(client, module, current["Id"], expected)
         assert result.value.values[result_key]["status"] == ready["Status"]
     else:
         wait.assert_not_called()

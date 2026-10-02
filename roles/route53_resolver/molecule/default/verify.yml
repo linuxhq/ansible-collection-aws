@@ -5,8 +5,23 @@
     - ec2_security_group_info
     - ec2_vpc_net_info
     - ec2_vpc_subnet_info
+    - route53_resolver_info
 
   post_tasks:
+    - name: Ensure updated endpoints are verified
+      ansible.builtin.assert:
+        that:
+          - _route53_resolver_info_dict[_endpoint.name].protocols | sort == ['Do53', 'DoH']
+          - _route53_resolver_info_dict[_endpoint.name].resolver_endpoint_type == 'IPV4'
+          - _route53_resolver_info_dict[_endpoint.name].status == 'OPERATIONAL'
+          - _route53_resolver_info_dict[_endpoint.name].tags.molecule == 'route53_resolver'
+          - (_route53_resolver_info_dict[_endpoint.name].ip_addresses | map(attribute='ip') | sort) ==
+              (_endpoint.ip_addresses | map(attribute='ip') | sort)
+      loop: "{{ route53_resolver_list_update }}"
+      loop_control:
+        label: "{{ _endpoint.name }}"
+        loop_var: _endpoint
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_security_group_list:
@@ -22,13 +37,29 @@
               map('combine', {'state': 'absent'}) }}"
         route53_resolver_list:
           "{{ route53_resolver_list_update |
-              map('combine', {'state': 'absent'}) }}"
+              json_query('[].{name: name, state: `absent`}') }}"
+
+    - name: Ensure endpoints are deleted with name-only items
+      ansible.builtin.include_role:
+        name: route53_resolver
+
+    - name: Ensure role is included after deletion
+      ansible.builtin.include_role:
+        name: route53_resolver_info
+
+    - name: Ensure deleted endpoints are verified
+      ansible.builtin.assert:
+        that:
+          - _endpoint.name not in _route53_resolver_info_dict
+      loop: "{{ route53_resolver_list_update }}"
+      loop_control:
+        label: "{{ _endpoint.name }}"
+        loop_var: _endpoint
 
     - name: Ensure roles are included
       ansible.builtin.include_role:
         name: "{{ _verify }}"
       loop:
-        - route53_resolver
         - ec2_security_group
         - ec2_vpc_subnet
         - ec2_vpc_net

@@ -170,15 +170,7 @@ def main():
         module,
         client,
         "Route53 Resolver",
-        {
-            "list_resolver_endpoint_ip_addresses": (
-                "MaxResults",
-                "NextToken",
-                "ResolverEndpointId",
-            ),
-            "list_resolver_endpoints": ("Filters", "MaxResults", "NextToken"),
-            "list_tags_for_resource": ("MaxResults", "NextToken", "ResourceArn"),
-        },
+        {"list_resolver_endpoints": ("Filters", "MaxResults", "NextToken")},
     )
 
     filters = module.params["filters"]
@@ -194,6 +186,17 @@ def main():
         "Unable to list AWS Route53 Resolver endpoints",
         **request,
     )
+
+    if resolver_endpoints:
+        require_client_methods(
+            module,
+            client,
+            "Route53 Resolver",
+            {
+                "list_resolver_endpoint_ip_addresses": ("MaxResults", "NextToken", "ResolverEndpointId"),
+                "list_tags_for_resource": ("MaxResults", "NextToken", "ResourceArn"),
+            },
+        )
 
     normalized_endpoints = []
     for endpoint in resolver_endpoints:
