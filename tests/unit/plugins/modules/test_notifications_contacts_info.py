@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+from botocore.exceptions import ClientError
+
 from ansible_collections.linuxhq.aws.plugins.modules import notifications_contacts_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -78,7 +80,7 @@ class NotificationsContactsInfoTests(TestCase):
 
         self.assertEqual(
             raised.exception.values["msg"],
-            "Unable to get AWS Notifications contact arn:contact: AWS returned an invalid response",
+            "Unable to get AWS Notifications contact arn:contact: AWS returned an invalid contact",
         )
 
     def test_list_rejects_invalid_contact(self):
@@ -120,3 +122,18 @@ class NotificationsContactsInfoTests(TestCase):
             raised.exception.values["msg"],
             "Unable to list tags for AWS Notifications contact arn:contact: AWS returned an invalid response",
         )
+
+    def test_missing_contact_arn_fails_like_the_api(self):
+        client = Mock()
+        client.get_email_contact.side_effect = ClientError(
+            {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}}, "GetEmailContact"
+        )
+        module = FakeModule({"arn": "arn:missing"}, client=client)
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(raised.exception.values["msg"], "Unable to get AWS Notifications contact arn:missing")
