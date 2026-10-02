@@ -24,8 +24,9 @@ that shares a name prefix. The user picks the group; work through it with them.
 7. Add a focused regression test for each fix, and a changelog entry if the
    repository uses them.
 8. Run the repository's formatting, lint, sanity, and unit test tooling.
-9. Run each affected integration test one at a time. Do not switch branches or edit
-   files while a test runs. Confirm no test resources remain afterward.
+9. Run each affected Molecule scenario, and any other integration tests, one at a
+   time. Do not switch branches or edit files while a test runs. Confirm no test
+   resources remain afterward.
 10. Commit, push, and open a pull request. Do not merge.
 
 When the API's behavior is unclear from its schema or documentation, check it with
@@ -96,5 +97,21 @@ Where this checklist and the repository's rules differ, the rules win.
       documented contract.
 - [ ] Role documentation changes follow the repository's rules.
 - [ ] Unit tests cover each behavior change.
-- [ ] Integration tests exercise the changed paths, and pass.
 - [ ] Changelog entries match the change, with breaking changes marked.
+
+### Molecule
+
+- [ ] Every affected role's scenario runs to completion: check, converge, a second
+      check, idempotence, verify, and destroy.
+- [ ] Scenarios run one at a time, never alongside another scenario or sanity tests.
+- [ ] Verify asserts the changed behavior, including new results, options, and absent
+      or empty cases, not only that the converge succeeded.
+- [ ] Scenarios that share fixtures or depend on other roles are rerun when those
+      roles change.
+- [ ] Teardown waits for dependent resources to finish deleting with a bounded poll,
+      not a fixed pause.
+- [ ] Resources whose names or identifiers cannot be reused after deletion get names
+      that are unique per run.
+- [ ] A scenario does not depend on state left by another scenario or an earlier run.
+- [ ] After each run, no resources created by the scenario remain.
+- [ ] Credentials and sensitive values stay out of facts, logs, and displayed output.
