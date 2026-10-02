@@ -33,10 +33,14 @@ class FakeModule:
         self.check_mode = check_mode
         self.params = params
         self.region = region
+        self.warnings = []
         self._client = client
 
     def client(self, *args, **kwargs):
         return self._client
+
+    def warn(self, warning):
+        self.warnings.append(warning)
 
     def exit_json(self, **values):
         raise ModuleExit(values)

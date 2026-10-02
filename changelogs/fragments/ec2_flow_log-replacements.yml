@@ -1,0 +1,13 @@
+---
+minor_changes:
+  - ec2_flow_log - add the ``purge_flow_logs`` option to delete flow logs on ``resource_ids`` that no longer
+    match the requested settings, and return ``deleted_flow_log_ids``. Old flow logs are deleted only after
+    their replacements exist, are active, and are not reporting failed delivery.
+  - ec2_flow_log - add the ``RegionalNatGateway`` resource type; ``traffic_type`` is sent for it only when
+    provided.
+  - ec2_flow_log role - pass ``purge_flow_logs`` from each flow log entry.
+bugfixes:
+  - ec2_flow_log - send a client token with ``CreateFlowLogs`` so SDK retries of a request that already
+    succeeded do not create duplicate flow logs.
+  - ec2_flow_log - reject ``max_aggregation_interval=600`` for transit gateway resource types before
+    calling AWS, which requires ``60``.

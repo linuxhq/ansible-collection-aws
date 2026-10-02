@@ -38,6 +38,7 @@ None
                 - "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
               resource_type: VPC
               traffic_type: ALL
+              purge_flow_logs: true
               log_destination_type: s3
               log_destination: "arn:aws:s3:::molecule-flow-log-{{ _aws_caller_info_account }}"
 

@@ -110,6 +110,7 @@ provisioner:
               - "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
             resource_type: VPC
             traffic_type: ALL
+            purge_flow_logs: true
             log_destination_type: s3
             log_destination: "{{ ec2_flow_log_bucket_resource }}"
 

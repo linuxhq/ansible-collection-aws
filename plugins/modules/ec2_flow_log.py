@@ -15,6 +15,8 @@ description:
     127 characters and tag values at most 256 characters.
   - Existing flow log tags are purged only when O(tags) is provided and
     O(purge_tags=true).
+  - EC2 flow logs cannot be modified. When settings change, the module creates a new flow log; set
+    O(purge_flow_logs=true) to delete the flow logs on O(resource_ids) that no longer match.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -76,10 +78,22 @@ options:
   max_aggregation_interval:
     description:
       - The maximum interval, in seconds, during which packets are captured and aggregated.
+      - This must be C(60) when O(resource_type) is C(TransitGateway) or C(TransitGatewayAttachment).
     choices:
       - 60
       - 600
     type: int
+  purge_flow_logs:
+    description:
+      - Whether to delete flow logs on O(resource_ids) that do not match the requested settings.
+      - Replacement flow logs are created before the old ones are deleted, so logging continues.
+      - Old flow logs are kept, and the module fails, when a replacement is not active or reports failed
+        delivery. They are also kept, with a warning, when EC2 does not yet return a new replacement.
+      - Delivery failures that EC2 reports only after the first delivery attempt cannot be detected.
+      - This is only used when O(state=present).
+    default: false
+    type: bool
+    version_added: "2.6.0"
   resource_ids:
     description:
       - The IDs of the resources for which flow logs are managed.
@@ -97,6 +111,7 @@ options:
       - NetworkInterface
       - TransitGateway
       - TransitGatewayAttachment
+      - RegionalNatGateway
     type: str
   state:
     description:
@@ -111,8 +126,10 @@ options:
   traffic_type:
     description:
       - The type of traffic to log.
-      - This is only supported when O(resource_type) is C(VPC), C(Subnet), or C(NetworkInterface).
-      - Defaults to C(ALL) when O(state=present) and O(resource_type) supports traffic type.
+      - This is not supported when O(resource_type) is C(TransitGateway) or C(TransitGatewayAttachment).
+      - Defaults to C(ALL) when O(state=present) and O(resource_type) is C(VPC), C(Subnet), or
+        C(NetworkInterface).
+      - For C(RegionalNatGateway), this is sent only when provided.
     choices:
       - ACCEPT
       - REJECT
@@ -164,6 +181,13 @@ EXAMPLES = r"""
 """
 
 RETURN = r"""
+deleted_flow_log_ids:
+  description:
+    - The EC2 flow log IDs deleted by O(purge_flow_logs=true), or that would be deleted in check mode.
+  returned: when O(state=present)
+  type: list
+  elements: str
+  version_added: "2.6.0"
 flow_log_ids:
   description:
     - The matching EC2 flow log IDs.
@@ -188,6 +212,8 @@ state:
   returned: always
   type: str
 """
+
+import uuid
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -323,6 +349,70 @@ def get_flow_logs(client, module):
     )
 
 
+def delete_flow_logs(client, module, flow_log_ids):
+    require_client_methods(
+        module,
+        client,
+        "EC2",
+        {"delete_flow_logs": ("FlowLogIds",)},
+    )
+    try:
+        response = client.delete_flow_logs(
+            FlowLogIds=flow_log_ids,
+            aws_retry=True,
+        )
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to delete EC2 flow logs {', '.join(flow_log_ids)}")
+
+    unsuccessful = [
+        failure
+        for failure in response.get("Unsuccessful", [])
+        if (failure.get("Error") or {}).get("Code") != "InvalidFlowLogId.NotFound"
+    ]
+
+    if unsuccessful:
+        module.fail_json(
+            msg="Unable to delete one or more EC2 flow logs",
+            unsuccessful=boto3_resource_list_to_ansible_dict(unsuccessful, transform_tags=False, force_tags=False),
+        )
+
+
+def verified_purge(module, flow_logs, current, purge_flow_log_ids):
+    """Return the flow logs that are safe to delete because their replacements are working."""
+    purge_resource_ids = {
+        flow_log.get("ResourceId") for flow_log in flow_logs if flow_log.get("FlowLogId") in purge_flow_log_ids
+    }
+    replacements = [flow_log for flow_log in current if flow_log.get("ResourceId") in purge_resource_ids]
+    failed = sorted(
+        flow_log["FlowLogId"]
+        for flow_log in replacements
+        if flow_log.get("DeliverLogsStatus") == "FAILED" or flow_log.get("FlowLogStatus") not in (None, "ACTIVE")
+    )
+    if failed:
+        module.fail_json(
+            msg=(
+                f"Replacement EC2 flow logs {', '.join(failed)} are not delivering logs; "
+                f"superseded flow logs {', '.join(purge_flow_log_ids)} were kept"
+            ),
+            replacement_errors={
+                flow_log["FlowLogId"]: flow_log.get("DeliverLogsErrorMessage")
+                for flow_log in replacements
+                if flow_log["FlowLogId"] in failed
+            },
+        )
+
+    # Created flow logs that describe_flow_logs has not returned yet only carry their ID.
+    covered = {flow_log.get("ResourceId") for flow_log in replacements}
+    if purge_resource_ids - covered:
+        module.warn(
+            "EC2 has not returned the replacement flow logs yet; "
+            f"superseded flow logs {', '.join(purge_flow_log_ids)} were kept and will be purged on a later run"
+        )
+        return []
+
+    return purge_flow_log_ids
+
+
 def ensure_absent(client, module):
     resource_ids = normalized_resource_ids(module)
     desired = {}
@@ -342,31 +432,7 @@ def ensure_absent(client, module):
     changed = bool(flow_log_ids)
 
     if changed and not module.check_mode:
-        require_client_methods(
-            module,
-            client,
-            "EC2",
-            {"delete_flow_logs": ("FlowLogIds",)},
-        )
-        try:
-            response = client.delete_flow_logs(
-                FlowLogIds=flow_log_ids,
-                aws_retry=True,
-            )
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to delete EC2 flow logs {', '.join(flow_log_ids)}")
-
-        unsuccessful = [
-            failure
-            for failure in response.get("Unsuccessful", [])
-            if (failure.get("Error") or {}).get("Code") != "InvalidFlowLogId.NotFound"
-        ]
-
-        if unsuccessful:
-            module.fail_json(
-                msg="Unable to delete one or more EC2 flow logs",
-                unsuccessful=boto3_resource_list_to_ansible_dict(unsuccessful, transform_tags=False, force_tags=False),
-            )
+        delete_flow_logs(client, module, flow_log_ids)
 
     module.exit_json(
         changed=changed,
@@ -385,6 +451,8 @@ def ensure_present(client, module):
     }
     if resource_type in TRAFFIC_TYPE_RESOURCE_TYPES:
         desired["traffic_type"] = module.params["traffic_type"] or "ALL"
+    elif module.params["traffic_type"] is not None:
+        desired["traffic_type"] = module.params["traffic_type"]
 
     for field in PRESENT_MATCH_FIELDS:
         if module.params[field] is not None:
@@ -395,7 +463,20 @@ def ensure_present(client, module):
     if destination_options:
         desired["destination_options"] = destination_options
 
-    current = matching_flow_logs(module, get_flow_logs(client, module), desired)
+    flow_logs = get_flow_logs(client, module)
+    current = matching_flow_logs(module, flow_logs, desired)
+
+    purge_flow_log_ids = []
+    if module.params.get("purge_flow_logs"):
+        matched_flow_log_ids = {flow_log["FlowLogId"] for flow_log in current}
+        requested_resource_ids = set(resource_ids)
+        purge_flow_log_ids = sorted(
+            flow_log["FlowLogId"]
+            for flow_log in flow_logs
+            if flow_log.get("ResourceId") in requested_resource_ids
+            and flow_log.get("FlowLogId")
+            and flow_log["FlowLogId"] not in matched_flow_log_ids
+        )
 
     matched_resource_ids = {flow_log.get("ResourceId") for flow_log in current}
     missing_resource_ids = [resource_id for resource_id in resource_ids if resource_id not in matched_resource_ids]
@@ -412,16 +493,17 @@ def ensure_present(client, module):
             if tags_to_set or tag_keys_to_unset:
                 tags_changed.append((flow_log, tags_to_set, tag_keys_to_unset))
 
-    changed = bool(missing_resource_ids or tags_changed)
+    changed = bool(missing_resource_ids or tags_changed or purge_flow_log_ids)
 
     if changed:
         if missing_resource_ids and not module.check_mode:
             required_create_parameters = [
+                "ClientToken",
                 "LogDestinationType",
                 "ResourceIds",
                 "ResourceType",
             ]
-            if resource_type in TRAFFIC_TYPE_RESOURCE_TYPES:
+            if "traffic_type" in desired:
                 required_create_parameters.append("TrafficType")
 
             if tags:
@@ -469,6 +551,8 @@ def ensure_present(client, module):
                 resource_type=resource_type,
             )
             request = snake_dict_to_camel_dict(request, capitalize_first=True)
+            # One token per run makes SDK retries of a request that already succeeded idempotent.
+            request["ClientToken"] = str(uuid.uuid4())
 
             if tags is not None:
                 tag_specifications = boto3_tag_specifications(tags, types="vpc-flow-log")
@@ -598,10 +682,17 @@ def ensure_present(client, module):
         for flow_log, tags_to_set, tag_keys_to_unset in tags_changed:
             flow_log.update(apply_tag_deltas(flow_log, tags_to_set, tag_keys_to_unset))
 
+        # Delete superseded flow logs only after their replacements exist and are delivering.
+        if purge_flow_log_ids and not module.check_mode:
+            purge_flow_log_ids = verified_purge(module, flow_logs, current, purge_flow_log_ids)
+            if purge_flow_log_ids:
+                delete_flow_logs(client, module, purge_flow_log_ids)
+
     flow_log_ids = [flow_log["FlowLogId"] for flow_log in current if flow_log.get("FlowLogId")]
 
     module.exit_json(
         changed=changed,
+        deleted_flow_log_ids=purge_flow_log_ids,
         flow_log_ids=flow_log_ids,
         flow_logs=boto3_resource_list_to_ansible_dict(current, transform_tags=True, force_tags=False),
         resource_ids=resource_ids,
@@ -632,6 +723,7 @@ def main():
         "log_format": {"type": "str"},
         "log_group_name": {"type": "str"},
         "max_aggregation_interval": {"choices": [60, 600], "type": "int"},
+        "purge_flow_logs": {"default": False, "type": "bool"},
         "purge_tags": {"default": True, "type": "bool"},
         "resource_ids": {"elements": "str", "required": True, "type": "list"},
         "resource_type": {
@@ -641,6 +733,7 @@ def main():
                 "NetworkInterface",
                 "TransitGateway",
                 "TransitGatewayAttachment",
+                "RegionalNatGateway",
             ],
             "type": "str",
         },
@@ -675,6 +768,15 @@ def main():
     ):
         module.fail_json(
             msg=("traffic_type is not supported when resource_type is " "TransitGateway or TransitGatewayAttachment")
+        )
+
+    if (
+        state == "present"
+        and module.params["max_aggregation_interval"] == 600
+        and resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES
+    ):
+        module.fail_json(
+            msg="max_aggregation_interval must be 60 when resource_type is TransitGateway or TransitGatewayAttachment"
         )
 
     if state == "present" and destination_options and module.params["log_destination_type"] != "s3":
