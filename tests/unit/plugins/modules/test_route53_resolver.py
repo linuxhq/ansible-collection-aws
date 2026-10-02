@@ -353,6 +353,77 @@ class Route53ResolverTests(TestCase):
             },
         )
 
+    def test_endpoint_settings_have_no_module_defaults(self):
+        options = assert_module_contract(self, plugin)
+        self.assertNotIn("default", options["argument_spec"]["protocols"])
+        self.assertNotIn("default", options["argument_spec"]["resolver_endpoint_type"])
+
+    def test_omitted_protocols_and_type_leave_an_existing_endpoint_unchanged(self):
+        client = Mock()
+        module = FakeModule(
+            {
+                "direction": "outbound",
+                "ip_addresses": [
+                    {"ip": "192.0.2.1", "subnet_id": "subnet-1"},
+                    {"ip": "192.0.2.2", "subnet_id": "subnet-2"},
+                ],
+                "name": "main",
+                "protocols": None,
+                "purge_tags": True,
+                "resolver_endpoint_type": None,
+                "security_group_ids": ["sg-1"],
+                "tags": None,
+                "wait": False,
+            }
+        )
+        current = {
+            "Direction": "OUTBOUND",
+            "Id": "rslvr-1",
+            "IpAddresses": [
+                {"Ip": "192.0.2.1", "SubnetId": "subnet-1"},
+                {"Ip": "192.0.2.2", "SubnetId": "subnet-2"},
+            ],
+            "Protocols": ["Do53", "DoH"],
+            "ResolverEndpointType": "DUALSTACK",
+            "SecurityGroupIds": ["sg-1"],
+        }
+        with (
+            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
+            patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args: args[2]),
+            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertFalse(raised.exception.values["changed"])
+        self.assertEqual(raised.exception.values["resolver_endpoint"]["protocols"], ["Do53", "DoH"])
+        client.update_resolver_endpoint.assert_not_called()
+
+    def test_check_mode_predicts_aws_defaults_for_a_new_endpoint(self):
+        module = FakeModule(
+            {
+                "direction": "outbound",
+                "ip_addresses": [{"subnet_id": "subnet-1"}, {"subnet_id": "subnet-2"}],
+                "name": "main",
+                "protocols": None,
+                "purge_tags": True,
+                "resolver_endpoint_type": None,
+                "security_group_ids": ["sg-1"],
+                "tags": None,
+                "wait": False,
+            },
+            check_mode=True,
+        )
+        with (
+            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(Mock(), module)
+
+        endpoint = raised.exception.values["resolver_endpoint"]
+        self.assertEqual(endpoint["protocols"], ["Do53"])
+        self.assertEqual(endpoint["resolver_endpoint_type"], "IPV4")
+
     def test_auto_assigned_ip_addresses_are_idempotent(self):
         client = Mock()
         module = FakeModule(

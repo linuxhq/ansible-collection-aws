@@ -58,22 +58,23 @@ options:
     description:
       - The protocols for the resolver endpoint.
       - This must contain 1 or 2 entries.
+      - When omitted while creating an endpoint, AWS uses C(Do53).
+      - When omitted for an existing endpoint, the current protocols are left unchanged.
     choices:
       - do53
       - doh
       - doh-fips
-    default:
-      - do53
     elements: str
     type: list
   resolver_endpoint_type:
     description:
       - The resolver endpoint type.
+      - When omitted while creating an endpoint, AWS uses C(IPV4).
+      - When omitted for an existing endpoint, the current type is left unchanged.
     choices:
       - dualstack
       - ipv4
       - ipv6
-    default: ipv4
     type: str
   security_group_ids:
     description:
@@ -159,6 +160,90 @@ resolver_endpoint:
     - The current resolver endpoint after module execution.
   returned: when state is present
   type: dict
+  contains:
+    arn:
+      description: The endpoint ARN.
+      returned: always
+      type: str
+    creation_time:
+      description: The time the endpoint was created.
+      returned: when returned by AWS
+      type: str
+    direction:
+      description: The endpoint direction.
+      returned: always
+      type: str
+      sample: OUTBOUND
+    host_vpc_id:
+      description: The VPC the endpoint is in.
+      returned: always
+      type: str
+    id:
+      description: The endpoint ID.
+      returned: always
+      type: str
+    ip_address_count:
+      description: The number of IP addresses.
+      returned: always
+      type: int
+    ip_addresses:
+      description: The endpoint IP addresses gathered by the module.
+      returned: when gathered by the module
+      type: list
+      elements: dict
+      contains:
+        ip:
+          description: The IPv4 address.
+          returned: when assigned
+          type: str
+        ip_id:
+          description: The IP address ID.
+          returned: always
+          type: str
+        ipv6:
+          description: The IPv6 address.
+          returned: when assigned
+          type: str
+        status:
+          description: The IP address status.
+          returned: when returned by AWS
+          type: str
+        subnet_id:
+          description: The subnet ID.
+          returned: always
+          type: str
+    name:
+      description: The endpoint name.
+      returned: always
+      type: str
+    protocols:
+      description: The endpoint protocols.
+      returned: always
+      type: list
+      elements: str
+    resolver_endpoint_type:
+      description: The endpoint type.
+      returned: always
+      type: str
+      sample: IPV4
+    security_group_ids:
+      description: The endpoint security group IDs.
+      returned: always
+      type: list
+      elements: str
+    status:
+      description: The endpoint status.
+      returned: always
+      type: str
+      sample: OPERATIONAL
+    status_message:
+      description: Details about the endpoint status.
+      returned: when returned by AWS
+      type: str
+    tags:
+      description: The endpoint tags with key case preserved.
+      returned: when gathered by the module
+      type: dict
 resolver_endpoint_id:
   description:
     - The resolver endpoint ID.
@@ -278,6 +363,9 @@ ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA = {
 }
 
 IP_ADDRESS_COMPARISON_FIELDS = ("ip", "ipv6", "subnet_id")
+OPTIONAL_ENDPOINT_FIELDS = ("protocols", "resolver_endpoint_type")
+# AWS creation defaults for OPTIONAL_ENDPOINT_FIELDS, used only to predict check-mode results.
+ENDPOINT_CREATION_DEFAULTS = {"protocols": ["Do53"], "resolver_endpoint_type": "IPV4"}
 IP_ADDRESS_REQUEST_FIELDS = ("ip", "ip_id", "ipv6", "subnet_id")
 PROTOCOLS = {
     "do53": "Do53",
@@ -321,7 +409,7 @@ def create_resolver_endpoint(client, module, desired):
         endpoint = get_resolver_endpoint_by_name(client, module)
 
     if endpoint is None:
-        module.fail_json(msg=("AWS Route53 Resolver did not return the created endpoint " f"{desired['name']}"))
+        module.fail_json(msg=f"AWS Route53 Resolver did not return the created endpoint {desired['name']}")
 
     endpoint = validate_resolver_endpoint(module, endpoint, "create_resolver_endpoint")
 
@@ -357,7 +445,7 @@ def delete_resolver_endpoint(client, module, endpoint):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=("Unable to delete AWS Route53 Resolver endpoint " f"{module.params['name']}"),
+            msg=f"Unable to delete AWS Route53 Resolver endpoint {module.params['name']}",
         )
 
     if module.params["wait"]:
@@ -393,8 +481,16 @@ def ensure_present(client, module):
         "direction": module.params["direction"].upper(),
         "ip_addresses": module.params["ip_addresses"],
         "name": module.params["name"],
-        "protocols": sorted({PROTOCOLS[protocol.lower()] for protocol in module.params["protocols"] or []}),
-        "resolver_endpoint_type": module.params["resolver_endpoint_type"].upper(),
+        "protocols": (
+            sorted({PROTOCOLS[protocol.lower()] for protocol in module.params["protocols"]})
+            if module.params["protocols"] is not None
+            else None
+        ),
+        "resolver_endpoint_type": (
+            module.params["resolver_endpoint_type"].upper()
+            if module.params["resolver_endpoint_type"] is not None
+            else None
+        ),
         "security_group_ids": sorted(set(module.params["security_group_ids"])),
     }
     endpoint = get_resolver_endpoint_by_name(client, module)
@@ -420,6 +516,11 @@ def ensure_present(client, module):
     current = comparable_endpoint(endpoint)
     created = current is None
     desired_comparable = comparable_endpoint({field: desired[field] for field in comparable_fields})
+    # Omitted optional settings keep the AWS default on creation and the current value on update.
+    for field in OPTIONAL_ENDPOINT_FIELDS:
+        if desired[field] is None:
+            desired_comparable[field] = None
+
     desired.update(desired_comparable)
     changed = not comparable_endpoints_match(current, desired_comparable)
     resource_changed = changed
@@ -457,11 +558,17 @@ def ensure_present(client, module):
             )
 
     if changed and module.check_mode:
-        projected_desired = desired
+        projected_desired = dict(desired)
+        for field in OPTIONAL_ENDPOINT_FIELDS:
+            if projected_desired[field] is None:
+                if current is None:
+                    projected_desired[field] = ENDPOINT_CREATION_DEFAULTS[field]
+                else:
+                    projected_desired.pop(field)
+
         if current is not None and comparable_ip_addresses_match(
             current["ip_addresses"], desired_comparable["ip_addresses"]
         ):
-            projected_desired = dict(desired)
             projected_desired.pop("ip_addresses")
 
         endpoint = dict(endpoint or {})
@@ -475,14 +582,15 @@ def ensure_present(client, module):
             endpoint = resolver_endpoint_with_tags(client, module, endpoint)
     elif changed:
         if resource_changed:
-            if (
-                current["protocols"] != desired_comparable["protocols"]
-                or current["resolver_endpoint_type"] != desired_comparable["resolver_endpoint_type"]
-            ):
+            changed_optional_fields = [
+                field
+                for field in OPTIONAL_ENDPOINT_FIELDS
+                if desired_comparable[field] is not None and current[field] != desired_comparable[field]
+            ]
+            if changed_optional_fields:
                 update_params = {"resolver_endpoint_id": endpoint.get("Id")}
-                for field in ("protocols", "resolver_endpoint_type"):
-                    if current[field] != desired_comparable[field]:
-                        update_params[field] = desired[field]
+                for field in changed_optional_fields:
+                    update_params[field] = desired[field]
 
                 try:
                     response = client.update_resolver_endpoint(
@@ -492,7 +600,7 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=("Unable to update AWS Route53 Resolver endpoint " f"{module.params['name']}"),
+                        msg=f"Unable to update AWS Route53 Resolver endpoint {module.params['name']}",
                     )
 
                 endpoint = response.get("ResolverEndpoint") if isinstance(response, dict) else None
@@ -501,7 +609,7 @@ def ensure_present(client, module):
 
                 if endpoint is None:
                     module.fail_json(
-                        msg=("AWS Route53 Resolver did not return the updated endpoint " f"{module.params['name']}")
+                        msg=f"AWS Route53 Resolver did not return the updated endpoint {module.params['name']}"
                     )
 
                 endpoint = validate_resolver_endpoint(
@@ -656,7 +764,7 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to reconcile AWS Route53 Resolver endpoint IP addresses " f"for {desired['name']}"),
+                msg=f"Unable to reconcile AWS Route53 Resolver endpoint IP addresses for {desired['name']}",
             )
 
         if module.params["wait"] or index < len(changes) - 1:
@@ -689,7 +797,7 @@ def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, stat
         client,
         ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA,
         "resolver_endpoint_deleted" if deleted else "resolver_endpoint_operational",
-        ("Timed out waiting for AWS Route53 Resolver endpoint " f"{module.params['name']}"),
+        f"Timed out waiting for AWS Route53 Resolver endpoint {module.params['name']}",
         ResolverEndpointId=resolver_endpoint_id,
     )
 
@@ -741,7 +849,7 @@ def comparable_endpoints_match(current, desired):
         return False
 
     if any(
-        current[field] != desired[field]
+        desired[field] is not None and current[field] != desired[field]
         for field in (
             "direction",
             "protocols",
@@ -816,9 +924,7 @@ def get_resolver_endpoint_by_name(client, module):
 
     if len(endpoints) > 1:
         endpoint_ids = sorted(endpoint["Id"] for endpoint in endpoints)
-        module.fail_json(
-            msg=(f"Multiple AWS Route53 Resolver endpoints are named {name}: " f"{', '.join(endpoint_ids)}")
-        )
+        module.fail_json(msg=f"Multiple AWS Route53 Resolver endpoints are named {name}: {', '.join(endpoint_ids)}")
 
     return endpoints[0] if endpoints else None
 
@@ -924,14 +1030,12 @@ def main():
             "name": {"required": True, "type": "str"},
             "protocols": {
                 "choices": ["do53", "doh", "doh-fips"],
-                "default": ["do53"],
                 "elements": "str",
                 "type": "list",
             },
             "purge_tags": {"default": True, "type": "bool"},
             "resolver_endpoint_type": {
                 "choices": ["dualstack", "ipv4", "ipv6"],
-                "default": "ipv4",
                 "type": "str",
             },
             "security_group_ids": {
@@ -970,7 +1074,7 @@ def main():
         ):
             module.fail_json(msg="ip_addresses entries must be unique")
 
-        if not 1 <= len(set(module.params["protocols"])) <= 2:
+        if module.params["protocols"] is not None and not 1 <= len(set(module.params["protocols"])) <= 2:
             module.fail_json(msg="protocols must contain 1 or 2 entries")
 
         if not module.params["security_group_ids"]:
@@ -983,7 +1087,7 @@ def main():
             if (
                 entry.get("ip") is not None
                 and entry.get("ipv6") is not None
-                and module.params["resolver_endpoint_type"] != "dualstack"
+                and module.params["resolver_endpoint_type"] not in (None, "dualstack")
             ):
                 module.fail_json(
                     msg="ip_addresses entries with both ip and ipv6 require resolver_endpoint_type=dualstack"

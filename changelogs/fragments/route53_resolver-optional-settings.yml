@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - route53_resolver - ``protocols`` and ``resolver_endpoint_type`` no longer default to ``do53`` and ``ipv4``;
+    omitting them leaves an existing endpoint unchanged instead of reverting DoH or dual-stack settings,
+    and uses the AWS defaults when creating an endpoint.
+  - route53_resolver role - pass ``protocols`` and ``resolver_endpoint_type`` only when the list item sets them.
+minor_changes:
+  - route53_resolver - document the returned endpoint fields.
+  - route53_resolver_info - document the returned endpoint fields.
+...
