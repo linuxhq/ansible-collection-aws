@@ -17,8 +17,10 @@ options:
     description:
       - The client IDs, also known as audiences, to register with the OIDC provider.
       - Each client ID must be 1 to 255 characters.
-      - This must contain at least 1 and at most 100 unique entries.
-      - This is required when O(state=present).
+      - This must contain at most 100 unique entries.
+      - When omitted while creating a provider, AWS registers no client IDs.
+      - When omitted while updating a provider, the existing client IDs are left unchanged.
+      - An empty list removes all client IDs.
     elements: str
     type: list
   state:
@@ -33,8 +35,10 @@ options:
     description:
       - The certificate thumbprints to register with the OIDC provider.
       - Each thumbprint must be exactly 40 hexadecimal characters.
-      - This must contain at least 1 and at most 5 unique entries.
-      - This is required when O(state=present).
+      - This must contain at most 5 unique entries.
+      - When omitted while creating a provider, IAM retrieves the thumbprint of the
+        provider's top intermediate certificate authority.
+      - When omitted while updating a provider, the existing thumbprints are left unchanged.
     elements: str
     type: list
   url:
@@ -71,6 +75,12 @@ EXAMPLES = r"""
     tags:
       Name: github-actions
 
+- name: Ensure an IAM OIDC provider is present with an IAM-retrieved thumbprint
+  linuxhq.aws.iam_oidc_provider:
+    url: https://token.actions.githubusercontent.com
+    client_id_list:
+      - sts.amazonaws.com
+
 - name: Ensure an IAM OIDC provider is absent
   linuxhq.aws.iam_oidc_provider:
     url: https://token.actions.githubusercontent.com
@@ -89,6 +99,10 @@ open_id_connect_provider:
       returned: always
       type: list
       elements: str
+    create_date:
+      description: The time the provider was created.
+      returned: when returned by AWS
+      type: str
     open_id_connect_provider_arn:
       description: The provider ARN.
       returned: always
@@ -232,11 +246,13 @@ def ensure_present(client, module):
     tags = module.params["tags"]
     url = module.params["url"]
     current = get_provider_by_url(client, module)
-    desired = {
-        "client_id_list": sorted(set(module.params["client_id_list"] or [])),
-        "thumbprint_list": sorted({thumbprint.lower() for thumbprint in module.params["thumbprint_list"] or []}),
-        "url": normalize_provider_url(url),
-    }
+    desired = {"url": normalize_provider_url(url)}
+    if module.params["client_id_list"] is not None:
+        desired["client_id_list"] = sorted(set(module.params["client_id_list"]))
+
+    if module.params["thumbprint_list"] is not None:
+        desired["thumbprint_list"] = sorted({thumbprint.lower() for thumbprint in module.params["thumbprint_list"]})
+
     current_comparable = None
     if current is not None:
         current_comparable = {
@@ -244,6 +260,7 @@ def ensure_present(client, module):
             "thumbprint_list": sorted({thumbprint.lower() for thumbprint in current.get("ThumbprintList") or []}),
             "url": normalize_provider_url(current.get("Url")),
         }
+        current_comparable = {key: value for key, value in current_comparable.items() if key in desired}
 
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:
@@ -258,11 +275,13 @@ def ensure_present(client, module):
 
     if changed and not module.check_mode:
         if current is None:
-            request = {
-                "Url": f"https://{desired['url']}",
-                "ClientIDList": desired["client_id_list"],
-                "ThumbprintList": desired["thumbprint_list"],
-            }
+            request = {"Url": f"https://{desired['url']}"}
+            if "client_id_list" in desired:
+                request["ClientIDList"] = desired["client_id_list"]
+
+            if "thumbprint_list" in desired:
+                request["ThumbprintList"] = desired["thumbprint_list"]
+
             if tags:
                 request["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
@@ -304,7 +323,7 @@ def ensure_present(client, module):
         else:
             arn = current["OpenIDConnectProviderArn"]
             provider_changed = False
-            if current_comparable["client_id_list"] != desired["client_id_list"]:
+            if "client_id_list" in desired and current_comparable["client_id_list"] != desired["client_id_list"]:
                 current_client_ids = set(current.get("ClientIDList") or [])
                 desired_client_ids = set(desired["client_id_list"])
 
@@ -352,7 +371,7 @@ def ensure_present(client, module):
 
                 provider_changed = True
 
-            if current_comparable["thumbprint_list"] != desired["thumbprint_list"]:
+            if "thumbprint_list" in desired and current_comparable["thumbprint_list"] != desired["thumbprint_list"]:
                 require_client_methods(
                     module,
                     client,
@@ -373,7 +392,7 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=("Unable to update thumbprints for AWS IAM OIDC " f"provider {url}"),
+                        msg=f"Unable to update thumbprints for AWS IAM OIDC provider {url}",
                     )
 
                 provider_changed = True
@@ -424,18 +443,22 @@ def ensure_present(client, module):
                     module.fail_json_aws(e, msg=f"Unable to tag AWS IAM OIDC provider {url}")
 
             if provider_changed:
-                current = dict(
-                    current,
-                    ClientIDList=desired["client_id_list"],
-                    ThumbprintList=desired["thumbprint_list"],
-                )
+                current = dict(current)
+                if "client_id_list" in desired:
+                    current["ClientIDList"] = desired["client_id_list"]
+
+                if "thumbprint_list" in desired:
+                    current["ThumbprintList"] = desired["thumbprint_list"]
 
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
         current = dict(current or {})
         current["Url"] = desired["url"]
-        current["ClientIDList"] = desired["client_id_list"]
-        current["ThumbprintList"] = desired["thumbprint_list"]
+        if "client_id_list" in desired:
+            current["ClientIDList"] = desired["client_id_list"]
+
+        if "thumbprint_list" in desired:
+            current["ThumbprintList"] = desired["thumbprint_list"]
 
         if tags is not None:
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
@@ -472,7 +495,6 @@ def main():
 
     module = AnsibleAWSModule(
         argument_spec=argument_spec,
-        required_if=[("state", "present", ["client_id_list", "thumbprint_list"])],
         supports_check_mode=True,
     )
     state = module.params["state"]
@@ -488,27 +510,19 @@ def main():
         if len(module.params["url"]) > 255:
             module.fail_json(msg="url must contain at most 255 characters")
 
-        if len(set(module.params["client_id_list"])) > 100:
+        if len(set(module.params["client_id_list"] or [])) > 100:
             module.fail_json(msg="client_id_list must contain at most 100 unique entries")
 
-        if len({item.lower() for item in module.params["thumbprint_list"]}) > 5:
+        if len({item.lower() for item in module.params["thumbprint_list"] or []}) > 5:
             module.fail_json(msg="thumbprint_list must contain at most 5 unique entries")
 
-        if not module.params["client_id_list"]:
-            module.fail_json(msg="client_id_list must contain at least 1 entry")
-
-        if not module.params["thumbprint_list"]:
-            module.fail_json(msg="thumbprint_list must contain at least 1 entry")
-
-        for client_id in module.params["client_id_list"]:
+        for client_id in module.params["client_id_list"] or []:
             if not 1 <= len(client_id) <= 255:
                 module.fail_json(msg=f"client_id_list entries must be 1 to 255 characters: {client_id}")
 
-        for thumbprint in module.params["thumbprint_list"]:
+        for thumbprint in module.params["thumbprint_list"] or []:
             if not re.fullmatch(r"[0-9a-fA-F]{40}", thumbprint):
-                module.fail_json(
-                    msg=("thumbprint_list entries must be exactly 40 hexadecimal " f"characters: {thumbprint}")
-                )
+                module.fail_json(msg=f"thumbprint_list entries must be exactly 40 hexadecimal characters: {thumbprint}")
 
     require_valid_tags(module, module.params["tags"] if state == "present" else None, 50)
     client = module.client(
