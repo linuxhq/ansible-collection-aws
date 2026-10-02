@@ -15,7 +15,7 @@ options:
   arn:
     description:
       - Optional IAM OIDC provider ARN used to limit the result set.
-      - Fails when the provider does not exist, as C(GetOpenIDConnectProvider) does.
+      - A provider that does not exist results in an empty list.
       - Mutually exclusive with O(url).
     type: str
   url:
@@ -118,14 +118,14 @@ def list_provider_arns(client, module):
     return [provider["Arn"] for provider in providers]
 
 
-def get_provider(client, module, arn, missing_ok=True):
+def get_provider(client, module, arn):
     require_client_methods(
         module,
         client,
         "IAM",
         {"get_open_id_connect_provider": ("OpenIDConnectProviderArn",)},
     )
-    return get_provider_by_arn(client, module, arn, missing_ok=missing_ok)
+    return get_provider_by_arn(client, module, arn)
 
 
 def main():
@@ -150,7 +150,8 @@ def main():
         )
 
     if arn:
-        providers = [get_provider(client, module, arn, missing_ok=False)]
+        provider = get_provider(client, module, arn)
+        providers = [provider] if provider else []
     elif url:
         providers = []
         desired_url = normalize_provider_url(url)

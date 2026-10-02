@@ -39,16 +39,13 @@ def validate_provider_summaries(module, providers):
     return providers
 
 
-def get_provider_by_arn(client, module, arn, missing_ok=True):
+def get_provider_by_arn(client, module, arn):
     try:
         provider = client.get_open_id_connect_provider(
             OpenIDConnectProviderArn=arn,
             aws_retry=True,
         )
-    except is_boto3_error_code("NoSuchEntity") as e:
-        if not missing_ok:
-            module.fail_json_aws(e, msg=f"Unable to get AWS IAM OIDC provider {arn}")
-
+    except is_boto3_error_code("NoSuchEntity"):
         return None
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS IAM OIDC provider {arn}")

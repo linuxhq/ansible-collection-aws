@@ -1,6 +1,4 @@
 ---
-breaking_changes:
-  - iam_oidc_provider_info - fail with the ``GetOpenIDConnectProvider`` error when ``arn`` does not exist instead of returning an empty list.
 minor_changes:
   - iam_oidc_provider - ``client_id_list`` and ``thumbprint_list`` are optional, as in the IAM API;
     omitting them uses the AWS behavior on creation and leaves an existing provider unchanged.

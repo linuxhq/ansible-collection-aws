@@ -86,7 +86,7 @@ class IamOidcProviderInfoTests(TestCase):
         )
         get.assert_called_once()
 
-    def test_missing_provider_arn_fails_like_the_api(self):
+    def test_missing_provider_arn_returns_an_empty_list(self):
         client = Mock()
         client.get_open_id_connect_provider.side_effect = ClientError(
             {"Error": {"Code": "NoSuchEntity", "Message": "missing"}}, "GetOpenIDConnectProvider"
@@ -95,8 +95,8 @@ class IamOidcProviderInfoTests(TestCase):
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleFail) as raised,
+            self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
 
-        self.assertEqual(raised.exception.values["msg"], "Unable to get AWS IAM OIDC provider arn:missing")
+        self.assertEqual(raised.exception.values["open_id_connect_providers"], [])
