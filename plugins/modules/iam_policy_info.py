@@ -8,33 +8,38 @@ module: iam_policy_info
 short_description: Gather information about AWS IAM inline policies
 version_added: "1.9.0"
 description:
-  - Gathers information about AWS IAM inline policies for users and groups.
+  - Gathers information about AWS IAM inline policies for groups, roles, and users.
+  - When none of O(group_name), O(role_name), or O(user_name) is provided, all groups, roles,
+    and users matching O(path_prefix) are queried.
+  - When any of them is provided, only the named entities are queried.
 author:
   - Taylor Kimball (@tkimball83)
 options:
   group_name:
     description:
-      - IAM group name used to limit group inline policy results.
-      - When omitted, all groups matching O(path_prefix) are queried.
+      - IAM group name whose inline policies are returned.
       - A group that does not exist is not included in the results.
     type: str
   path_prefix:
     description:
-      - IAM path prefix used when listing users and groups.
-      - Not used for users when O(user_name) is provided, or for groups
-        when O(group_name) is provided.
+      - IAM path prefix used when listing groups, roles, and users.
+      - Only used when none of O(group_name), O(role_name), or O(user_name) is provided.
       - Must begin and end with C(/) and contain at most 512 characters.
     type: str
   policy_name:
     description:
       - IAM inline policy name used to limit returned policy documents.
       - The policy name is filtered after listing inline policies for each
-        selected user or group.
+        selected group, role, or user.
+    type: str
+  role_name:
+    description:
+      - IAM role name whose inline policies are returned.
+      - A role that does not exist is not included in the results.
     type: str
   user_name:
     description:
-      - IAM user name used to limit user inline policy results.
-      - When omitted, all users matching O(path_prefix) are queried.
+      - IAM user name whose inline policies are returned.
       - A user that does not exist is not included in the results.
     type: str
 extends_documentation_fragment:
@@ -57,6 +62,10 @@ EXAMPLES = r"""
 - name: Gather information about inline policies for selected users
   linuxhq.aws.iam_policy_info:
     user_name: molecule
+
+- name: Gather information about inline policies for a selected role
+  linuxhq.aws.iam_policy_info:
+    role_name: molecule
 
 - name: Gather information about inline policies below an IAM path
   linuxhq.aws.iam_policy_info:
@@ -86,6 +95,44 @@ group_policies:
       elements: str
     name:
       description: The IAM group name.
+      returned: always
+      type: str
+    policies:
+      description: The selected inline policy documents.
+      returned: always
+      type: list
+      elements: dict
+      contains:
+        policy_document:
+          description: The IAM policy document.
+          returned: always
+          type: dict
+        policy_name:
+          description: The inline policy name.
+          returned: always
+          type: str
+    policy_names:
+      description: Inline policy names selected by O(policy_name).
+      returned: always
+      type: list
+      elements: str
+role_policies:
+  description:
+    - The IAM role inline policy information.
+    - Each entry contains C(name), C(all_policy_names), C(policy_names),
+      and C(policies).
+    - C(policies[].policy_document) is returned as provided by the IAM API.
+  returned: always
+  type: list
+  elements: dict
+  contains:
+    all_policy_names:
+      description: All inline policy names attached to the role.
+      returned: always
+      type: list
+      elements: str
+    name:
+      description: The IAM role name.
       returned: always
       type: str
     policies:
@@ -164,6 +211,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 
+ENTITY_TYPES = ("Group", "Role", "User")
+
 
 def validate_policy_names(module, response, entity_type, name):
     valid = (
@@ -193,12 +242,8 @@ def validate_policy_document(module, response, entity_type, name, policy_name):
 
 def build_entity_policies(client, module, entity_type, names):
     desired_policy_name = module.params["policy_name"]
-    if entity_type == "Group":
-        list_operation = "list_group_policies"
-        get_operation = "get_group_policy"
-    else:
-        list_operation = "list_user_policies"
-        get_operation = "get_user_policy"
+    list_operation = f"list_{entity_type.lower()}_policies"
+    get_operation = f"get_{entity_type.lower()}_policy"
 
     results = []
     if names:
@@ -253,7 +298,7 @@ def build_entity_policies(client, module, entity_type, names):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=(f"Unable to get AWS IAM {entity_type.lower()} policy " f"{policy_name} for {name}"),
+                    msg=f"Unable to get AWS IAM {entity_type.lower()} policy {policy_name} for {name}",
                 )
 
             policy_document = validate_policy_document(module, response, entity_type, name, policy_name)
@@ -282,6 +327,9 @@ def entity_names(client, module, entity_type):
 
     if explicit_name:
         return [explicit_name]
+
+    if any(module.params[f"{other.lower()}_name"] for other in ENTITY_TYPES):
+        return []
 
     response_key = f"{entity_type}s"
     name_key = f"{entity_type}Name"
@@ -320,6 +368,7 @@ def main():
         "group_name": {"type": "str"},
         "path_prefix": {"type": "str"},
         "policy_name": {"type": "str"},
+        "role_name": {"type": "str"},
         "user_name": {"type": "str"},
     }
 
@@ -333,24 +382,16 @@ def main():
 
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
 
-    group_names = entity_names(client, module, "Group")
-    user_names = entity_names(client, module, "User")
+    result = {"changed": False}
+    for entity_type in ENTITY_TYPES:
+        result[f"{entity_type.lower()}_policies"] = build_entity_policies(
+            client,
+            module,
+            entity_type,
+            entity_names(client, module, entity_type),
+        )
 
-    module.exit_json(
-        changed=False,
-        group_policies=build_entity_policies(
-            client,
-            module,
-            "Group",
-            group_names,
-        ),
-        user_policies=build_entity_policies(
-            client,
-            module,
-            "User",
-            user_names,
-        ),
-    )
+    module.exit_json(**result)
 
 
 if __name__ == "__main__":
