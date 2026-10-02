@@ -9,6 +9,7 @@ None
 ## Role Variables
 
     ec2_instance_type_info_filters: {}
+    ec2_instance_type_info_include_unsupported_in_region: false
     ec2_instance_type_info_instance_types: []
 
 ## Return Values

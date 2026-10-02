@@ -4,6 +4,7 @@
     - ec2_instance_type_info
   linuxhq.aws.ec2_instance_type_info:
     filters: "{{ ec2_instance_type_info_filters }}"
+    include_unsupported_in_region: "{{ ec2_instance_type_info_include_unsupported_in_region }}"
     instance_types: "{{ ec2_instance_type_info_instance_types }}"
     validate_certs: true
   register: __ec2_instance_type_info_query
