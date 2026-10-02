@@ -53,6 +53,70 @@ repositories:
   returned: always
   type: list
   elements: dict
+  contains:
+    created_at:
+      description: The date and time the repository was created.
+      returned: always
+      type: str
+    encryption_configuration:
+      description: The encryption configuration for the repository.
+      returned: always
+      type: dict
+      contains:
+        encryption_type:
+          description: The encryption type.
+          returned: always
+          type: str
+          sample: AES256
+        kms_key:
+          description: The KMS key used for encryption.
+          returned: when the encryption type uses KMS
+          type: str
+    image_scanning_configuration:
+      description: The image scanning configuration for the repository.
+      returned: always
+      type: dict
+      contains:
+        scan_on_push:
+          description: Whether images are scanned after being pushed.
+          returned: always
+          type: bool
+    image_tag_mutability:
+      description: The tag mutability setting for the repository.
+      returned: always
+      type: str
+      sample: IMMUTABLE
+    image_tag_mutability_exclusion_filters:
+      description: Filters that exempt image tags from the tag mutability setting.
+      returned: when configured
+      type: list
+      elements: dict
+      contains:
+        filter:
+          description: The tag pattern.
+          returned: always
+          type: str
+        filter_type:
+          description: The filter type.
+          returned: always
+          type: str
+          sample: WILDCARD
+    registry_id:
+      description: The AWS account ID associated with the registry.
+      returned: always
+      type: str
+    repository_arn:
+      description: The repository ARN.
+      returned: always
+      type: str
+    repository_name:
+      description: The repository name.
+      returned: always
+      type: str
+    repository_uri:
+      description: The URI for the repository.
+      returned: always
+      type: str
 """
 
 try:
