@@ -80,7 +80,7 @@ class NotificationsContactsInfoTests(TestCase):
 
         self.assertEqual(
             raised.exception.values["msg"],
-            "Unable to get AWS Notifications contact arn:contact: AWS returned an invalid contact",
+            "Unable to get AWS Notifications contact arn:contact: AWS returned an invalid response",
         )
 
     def test_list_rejects_invalid_contact(self):
@@ -123,7 +123,7 @@ class NotificationsContactsInfoTests(TestCase):
             "Unable to list tags for AWS Notifications contact arn:contact: AWS returned an invalid response",
         )
 
-    def test_missing_contact_arn_fails_like_the_api(self):
+    def test_missing_contact_arn_returns_an_empty_list(self):
         client = Mock()
         client.get_email_contact.side_effect = ClientError(
             {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}}, "GetEmailContact"
@@ -132,8 +132,8 @@ class NotificationsContactsInfoTests(TestCase):
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleFail) as raised,
+            self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
 
-        self.assertEqual(raised.exception.values["msg"], "Unable to get AWS Notifications contact arn:missing")
+        self.assertEqual(raised.exception.values["email_contacts"], [])

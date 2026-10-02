@@ -1,6 +1,4 @@
 ---
-breaking_changes:
-  - notifications_contacts_info - fail with the ``GetEmailContact`` error when ``arn`` does not exist instead of returning an empty list.
 minor_changes:
   - notifications_contacts - validate ``email_address`` with the ``CreateEmailContact`` pattern instead of a stricter local check,
     so AWS validates the address itself.

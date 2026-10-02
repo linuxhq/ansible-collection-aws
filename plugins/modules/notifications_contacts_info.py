@@ -15,7 +15,7 @@ options:
   arn:
     description:
       - AWS Notifications contact ARN used to limit the result set.
-      - Fails when the contact does not exist, as C(GetEmailContact) does.
+      - An ARN that does not exist results in an empty list.
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -131,18 +131,22 @@ def main():
     if arn:
         try:
             response = client.get_email_contact(arn=arn, aws_retry=True)
+        except is_boto3_error_code("ResourceNotFoundException"):
+            response = {"emailContact": None}
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to get AWS Notifications contact {arn}",
             )
 
-        if not isinstance(response, dict):
+        if not isinstance(response, dict) or "emailContact" not in response:
             module.fail_json(msg=f"Unable to get AWS Notifications contact {arn}: AWS returned an invalid response")
 
-        email_contacts = [
-            validate_contact(module, response.get("emailContact"), f"Unable to get AWS Notifications contact {arn}")
-        ]
+        contact = response.get("emailContact")
+        if contact is not None:
+            validate_contact(module, contact, f"Unable to get AWS Notifications contact {arn}")
+
+        email_contacts = [contact] if contact is not None else []
     else:
         email_contacts = query_list(
             module,
