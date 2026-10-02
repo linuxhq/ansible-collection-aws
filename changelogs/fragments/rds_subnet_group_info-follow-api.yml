@@ -1,0 +1,9 @@
+---
+breaking_changes:
+  - rds_subnet_group_info - fail with the ``DescribeDBSubnetGroups`` error when ``name`` does not exist instead of returning an empty list.
+  - rds_subnet_group_info - remove ``filters``; the RDS API documents its ``Filters`` parameter as not supported.
+  - rds_subnet_group_info role - remove ``rds_subnet_group_info_filters``.
+minor_changes:
+  - rds_subnet_group_info - return each subnet group's ``tags`` from ``ListTagsForResource``.
+  - rds_subnet_group_info - document the returned subnet group fields.
+...
