@@ -18,7 +18,7 @@ options:
     description:
       - ARN of the accelerator to gather information about.
       - When omitted, all accelerators are returned.
-      - Fails when the accelerator does not exist, as C(DescribeAccelerator) does.
+      - An accelerator that does not exist results in an empty list.
     aliases:
       - accelerator_arn
     type: str
@@ -356,19 +356,22 @@ def main():
                 AcceleratorArn=arn,
                 aws_retry=True,
             )
+        except is_boto3_error_code("AcceleratorNotFoundException"):
+            response = None
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to describe AWS Global Accelerator {arn}",
             )
 
-        accelerators.append(
-            validate_accelerator(
-                module,
-                response.get("Accelerator") if isinstance(response, dict) else None,
-                expected_arn=arn,
+        if response is not None:
+            accelerators.append(
+                validate_accelerator(
+                    module,
+                    response.get("Accelerator") if isinstance(response, dict) else None,
+                    expected_arn=arn,
+                )
             )
-        )
 
     if accelerators:
         require_client_methods(
