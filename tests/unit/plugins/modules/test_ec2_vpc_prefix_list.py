@@ -13,6 +13,8 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     assert_module_rejects,
 )
 
+OWNER = "123456789012"
+
 
 class Ec2VpcPrefixListTests(TestCase):
     def test_sdk_validation_starts_with_lookup_only(self):
@@ -33,9 +35,12 @@ class Ec2VpcPrefixListTests(TestCase):
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods") as require,
-            patch.object(plugin, "ensure_present"),
+            patch.object(plugin, "get_aws_account_id", return_value=OWNER),
+            patch.object(plugin, "ensure_present") as ensure_present,
         ):
             plugin.main()
+
+        ensure_present.assert_called_once_with(module.client.return_value, module, OWNER)
 
         require.assert_called_once_with(
             module,
@@ -152,6 +157,7 @@ class Ec2VpcPrefixListTests(TestCase):
             result = plugin.create_prefix_list(
                 client,
                 module,
+                OWNER,
                 {
                     "address_family": "IPv4",
                     "max_entries": 1,
@@ -200,6 +206,7 @@ class Ec2VpcPrefixListTests(TestCase):
             plugin.create_prefix_list(
                 client,
                 module,
+                OWNER,
                 {
                     "address_family": "IPv4",
                     "max_entries": 1,
@@ -235,14 +242,14 @@ class Ec2VpcPrefixListTests(TestCase):
             patch.object(plugin, "get_current", return_value=(current, entries)),
             self.assertRaises(ModuleExit) as raised,
         ):
-            plugin.ensure_present(Mock(), module)
+            plugin.ensure_present(Mock(), module, OWNER)
 
         self.assertEqual(
             raised.exception.values["prefix_list"]["tags"],
             {"keep": "yes", "managed": "new"},
         )
 
-    def test_entry_replacement_removes_before_shrinking_and_adding(self):
+    def test_entry_replacement_is_one_request_before_shrinking(self):
         client = Mock()
         module = FakeModule(
             {
@@ -261,22 +268,20 @@ class Ec2VpcPrefixListTests(TestCase):
             "PrefixListName": "main",
             "Version": 1,
         }
+        replaced = dict(initial, Version=2)
         resized = dict(initial, MaxEntries=1, Version=3)
         with (
             patch.object(
                 plugin,
                 "get_current",
-                side_effect=[
-                    (initial, [{"Cidr": "10.0.0.0/8"}, {"Cidr": "172.16.0.0/12"}]),
-                    (dict(initial, Version=2), []),
-                    (resized, []),
-                ],
+                return_value=(initial, [{"Cidr": "10.0.0.0/8"}, {"Cidr": "172.16.0.0/12"}]),
             ),
-            patch.object(plugin, "modify_prefix_list", return_value=dict(resized, Version=4)) as modify,
+            patch.object(plugin, "describe_prefix_list", return_value=replaced),
+            patch.object(plugin, "modify_prefix_list", return_value=resized) as modify,
             patch.object(plugin, "wait_for_ready_state") as wait_for_ready_state,
             self.assertRaises(ModuleExit) as raised,
         ):
-            plugin.ensure_present(client, module)
+            plugin.ensure_present(client, module, OWNER)
 
         self.assertTrue(raised.exception.values["changed"])
         self.assertEqual(
@@ -286,21 +291,13 @@ class Ec2VpcPrefixListTests(TestCase):
                     client,
                     module,
                     initial,
-                    remove_entries=[
-                        {"cidr": "10.0.0.0/8"},
-                        {"cidr": "172.16.0.0/12"},
-                    ],
-                ),
-                call(client, module, dict(initial, Version=2), max_entries=1),
-                call(
-                    client,
-                    module,
-                    resized,
                     add_entries=[{"cidr": "192.0.2.0/24"}],
+                    remove_entries=[{"cidr": "10.0.0.0/8"}, {"cidr": "172.16.0.0/12"}],
                 ),
+                call(client, module, replaced, max_entries=1),
             ],
         )
-        self.assertEqual(wait_for_ready_state.call_count, 2)
+        wait_for_ready_state.assert_called_once_with(client, module, "pl-1")
         self.assertEqual(
             raised.exception.values["prefix_list"]["entries"],
             [{"cidr": "192.0.2.0/24"}],
@@ -314,11 +311,8 @@ class Ec2VpcPrefixListTests(TestCase):
                 "entries must contain at least one item when state=present",
             ),
             (
-                dict(
-                    base,
-                    entries=[{"cidr": f"10.0.0.{index}/32"} for index in range(101)],
-                ),
-                "entries must contain at most 100 items",
+                dict(base, entries=[{"cidr": "10.0.0.0/8"}, {"cidr": "192.0.2.0/24"}], max_entries=1),
+                "max_entries must be at least the number of entries",
             ),
             (
                 dict(
@@ -379,7 +373,7 @@ class Ec2VpcPrefixListTests(TestCase):
             patch.object(plugin, "wait_for_ready_state") as wait_for_ready_state,
             self.assertRaises(ModuleExit) as raised,
         ):
-            plugin.ensure_present(client, module)
+            plugin.ensure_present(client, module, OWNER)
 
         wait_for_ready_state.assert_called_once_with(client, module, "pl-1")
         self.assertFalse(raised.exception.values["changed"])
@@ -401,7 +395,7 @@ class Ec2VpcPrefixListTests(TestCase):
             ),
             self.assertRaises(ModuleExit) as raised,
         ):
-            plugin.ensure_absent(client, module)
+            plugin.ensure_absent(client, module, OWNER)
 
         self.assertFalse(raised.exception.values["changed"])
         client.delete_managed_prefix_list.assert_not_called()
@@ -434,7 +428,7 @@ class Ec2VpcPrefixListTests(TestCase):
             ],
         ):
             self.assertEqual(
-                plugin.get_customer_managed_prefix_list_by_name(Mock(), module),
+                plugin.get_customer_managed_prefix_list_by_name(Mock(), module, OWNER),
                 active,
             )
 
@@ -444,7 +438,7 @@ class Ec2VpcPrefixListTests(TestCase):
             patch.object(plugin, "query_list", return_value=[None]),
             self.assertRaises(ModuleFail),
         ):
-            plugin.get_customer_managed_prefix_list_by_name(Mock(), module)
+            plugin.get_customer_managed_prefix_list_by_name(Mock(), module, OWNER)
 
     def test_entries_reject_malformed_response(self):
         module = FakeModule({"name": "main"})
@@ -458,7 +452,7 @@ class Ec2VpcPrefixListTests(TestCase):
             patch.object(plugin, "query_list", return_value=[None]),
             self.assertRaises(ModuleFail),
         ):
-            plugin.get_current(Mock(), module)
+            plugin.get_current(Mock(), module, OWNER)
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -489,7 +483,7 @@ def test_address_family_change_preserves_prefix_list(check_mode):
         patch.object(plugin, "modify_prefix_list") as modify,
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        plugin.ensure_present(client, module, OWNER)
 
     assert "address_family cannot be changed" in raised.value.values["msg"]
     delete.assert_not_called()
@@ -506,7 +500,7 @@ def test_update_mismatch_preserves_prefix_list():
             "name": "main",
             "purge_tags": True,
             "tags": None,
-            "wait": False,
+            "wait": True,
         }
     )
     current = {
@@ -516,19 +510,28 @@ def test_update_mismatch_preserves_prefix_list():
         "PrefixListName": "main",
         "Version": 1,
     }
+    grown = dict(current, MaxEntries=2, Version=2)
     client = Mock()
     with (
-        patch.object(plugin, "get_current", return_value=(current, [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(
+            plugin,
+            "get_current",
+            side_effect=[(current, [{"Cidr": "10.0.0.0/8"}]), (current, [{"Cidr": "10.0.0.0/8"}])],
+        ),
+        patch.object(plugin, "describe_prefix_list", return_value=grown),
         patch.object(plugin, "wait_for_ready_state"),
         patch.object(plugin, "delete_prefix_list") as delete,
         patch.object(plugin, "create_prefix_list") as create,
         patch.object(plugin, "modify_prefix_list") as modify,
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        plugin.ensure_present(client, module, OWNER)
 
     assert "has not been deleted" in raised.value.values["msg"]
-    modify.assert_called_once_with(client, module, current, max_entries=2)
+    assert modify.call_args_list == [
+        call(client, module, current, max_entries=2),
+        call(client, module, grown, add_entries=[{"cidr": "192.0.2.0/24"}], remove_entries=None),
+    ]
     delete.assert_not_called()
     create.assert_not_called()
 
@@ -574,7 +577,7 @@ def test_matching_prefix_list_readiness(state, wait_enabled, check_mode):
         patch.object(plugin, "wait_for_ready_state") as wait,
         pytest.raises(ModuleExit) as result,
     ):
-        plugin.ensure_present(client, module)
+        plugin.ensure_present(client, module, OWNER)
 
     assert result.value.values["changed"] is False
     assert client.mock_calls == []
@@ -614,7 +617,7 @@ def test_add_entries_without_wait_returns_modified_version_and_state():
         patch.object(plugin, "wait_for_ready_state") as wait,
         pytest.raises(ModuleExit) as result,
     ):
-        plugin.ensure_present(client, module)
+        plugin.ensure_present(client, module, OWNER)
 
     assert result.value.values["changed"] is True
     assert result.value.values["prefix_list"]["version"] == 4
@@ -623,3 +626,170 @@ def test_add_entries_without_wait_returns_modified_version_and_state():
         PrefixListId="pl-1", CurrentVersion=3, AddEntries=[{"Cidr": "192.0.2.0/24"}], aws_retry=True
     )
     wait.assert_not_called()
+
+
+def prefix_list(**overrides):
+    return dict(
+        {
+            "AddressFamily": "IPv4",
+            "MaxEntries": 1,
+            "OwnerId": OWNER,
+            "PrefixListId": "pl-1",
+            "PrefixListName": "main",
+            "State": "modify-complete",
+            "Version": 1,
+        },
+        **overrides,
+    )
+
+
+def present_params(entries, **overrides):
+    return dict(
+        {
+            "address_family": "IPv4",
+            "entries": entries,
+            "name": "main",
+            "purge_tags": True,
+            "tags": None,
+            "wait": False,
+        },
+        **overrides,
+    )
+
+
+def cidrs(start, count):
+    return [{"cidr": f"10.{index // 256}.{index % 256}.0/24"} for index in range(start, start + count)]
+
+
+def test_description_change_is_one_addition_without_removal():
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8", "description": "new"}]))
+    current = prefix_list()
+    with (
+        patch.object(plugin, "get_current", return_value=(current, [{"Cidr": "10.0.0.0/8", "Description": "old"}])),
+        patch.object(plugin, "modify_prefix_list", return_value=prefix_list(Version=2)) as modify,
+        patch.object(plugin, "wait_for_ready_state") as wait,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert result.value.values["changed"] is True
+    modify.assert_called_once_with(
+        client, module, current, add_entries=[{"cidr": "10.0.0.0/8", "description": "new"}], remove_entries=None
+    )
+    wait.assert_not_called()
+
+
+def test_max_entries_headroom_avoids_resizing():
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}, {"cidr": "192.0.2.0/24"}], max_entries=10))
+    current = prefix_list(MaxEntries=10)
+    with (
+        patch.object(plugin, "get_current", return_value=(current, [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(plugin, "modify_prefix_list", return_value=prefix_list(MaxEntries=10, Version=2)) as modify,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    modify.assert_called_once_with(client, module, current, add_entries=[{"cidr": "192.0.2.0/24"}], remove_entries=None)
+
+
+@pytest.mark.parametrize("max_entries", [None, 400])
+def test_large_replacement_never_needs_more_than_max_entries(max_entries):
+    current_entries = cidrs(0, 150)
+    desired_entries = cidrs(150, 150)
+    client = Mock()
+    module = FakeModule(present_params(desired_entries, wait=True, max_entries=max_entries))
+    current = prefix_list(MaxEntries=150)
+    final = prefix_list(MaxEntries=max_entries or 150, Version=7)
+    with (
+        patch.object(
+            plugin,
+            "get_current",
+            side_effect=[
+                (current, [{"Cidr": entry["cidr"]} for entry in current_entries]),
+                (final, [{"Cidr": entry["cidr"]} for entry in desired_entries]),
+            ],
+        ),
+        patch.object(plugin, "describe_prefix_list", return_value=current),
+        patch.object(plugin, "modify_prefix_list", return_value=final) as modify,
+        patch.object(plugin, "wait_for_ready_state"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    steps = [call.kwargs for call in modify.call_args_list]
+    sizes = [step["max_entries"] for step in steps if "max_entries" in step]
+    assert max(sizes, default=150) == (max_entries or 150)
+    entry_steps = [step for step in steps if "max_entries" not in step]
+    assert [len(step.get("remove_entries") or []) for step in entry_steps] == [100, 50, 0, 0]
+    assert [len(step.get("add_entries") or []) for step in entry_steps] == [0, 0, 100, 50]
+    assert result.value.values["changed"] is True
+
+
+def test_create_adds_entries_beyond_one_request_in_batches():
+    entries = cidrs(0, 150)
+    created = prefix_list(MaxEntries=150, State="create-in-progress")
+    client = Mock(create_managed_prefix_list=Mock(return_value={"PrefixList": created}))
+    module = FakeModule({"name": "main", "tags": None, "wait": False})
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_ready_state") as wait,
+        patch.object(plugin, "describe_prefix_list", return_value=prefix_list(MaxEntries=150)),
+        patch.object(plugin, "modify_prefix_list", return_value=prefix_list(MaxEntries=150, Version=2)) as modify,
+    ):
+        plugin.create_prefix_list(
+            client,
+            module,
+            OWNER,
+            {"address_family": "IPv4", "max_entries": 150, "prefix_list_name": "main"},
+            plugin.comparable_entries(entries),
+        )
+
+    assert len(client.create_managed_prefix_list.call_args.kwargs["Entries"]) == 100
+    assert len(modify.call_args.kwargs["add_entries"]) == 50
+    wait.assert_called_once_with(client, module, "pl-1")
+
+
+@pytest.mark.parametrize(
+    "name,state",
+    [
+        ("managed_prefix_list_ready", "create-failed"),
+        ("managed_prefix_list_ready", "modify-failed"),
+        ("managed_prefix_list_ready", "restore-failed"),
+        ("managed_prefix_list_deleted", "delete-failed"),
+    ],
+)
+def test_prefix_list_waiter_stops_on_failed_state(name, state):
+    config = WaiterModel({"version": 2, "waiters": plugin.EC2_WAITER_MODEL_DATA}).get_waiter(name)
+    operation = Mock(return_value={"PrefixLists": [{"State": state}]})
+    waiter = Waiter(name, config, operation)
+    with pytest.raises(plugin.BotoCoreError, match="terminal failure state"):
+        waiter.wait(PrefixListIds=["pl-1"], WaiterConfig={"Delay": 0, "MaxAttempts": 5})
+
+    operation.assert_called_once()
+
+
+def test_create_failed_prefix_list_is_not_modified():
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}]))
+    with (
+        patch.object(plugin, "get_current", return_value=(prefix_list(State="create-failed"), [])),
+        patch.object(plugin, "modify_prefix_list") as modify,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert "failed to create" in raised.value.values["msg"]
+    modify.assert_not_called()
+
+
+def test_lookup_ignores_prefix_lists_owned_by_other_accounts():
+    own = prefix_list()
+    shared = prefix_list(OwnerId="210987654321", PrefixListId="pl-shared")
+    aws_managed = prefix_list(OwnerId="AWS", PrefixListId="pl-aws")
+    with patch.object(plugin, "query_list", return_value=[shared, aws_managed, own]):
+        assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": "main"}), OWNER) == own
+
+    with patch.object(plugin, "query_list", return_value=[shared]):
+        assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": "main"}), OWNER) is None
