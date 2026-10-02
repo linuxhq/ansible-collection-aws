@@ -1209,3 +1209,112 @@ def test_matching_cross_account_endpoint_is_unchanged(check_mode):
     assert changed is False
     assert groups == [current]
     assert client.mock_calls == []
+
+
+def test_settings_that_change_existing_accelerators_have_no_module_defaults():
+    captured = {}
+
+    def initialize(**kwargs):
+        captured.update(kwargs)
+        raise ModuleExit({})
+
+    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleExit):
+        plugin.main()
+
+    spec = captured["argument_spec"]
+    assert "default" not in spec["enabled"]
+    assert "default" not in spec["ip_address_type"]
+    assert "default" not in spec["listeners"]["options"]["client_affinity"]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_omitted_settings_leave_an_existing_accelerator_unchanged(check_mode):
+    module = FakeModule(
+        {
+            "enabled": None,
+            "ip_address_type": None,
+            "ip_addresses": None,
+            "listeners": None,
+            "name": "example",
+            "tags": None,
+            "wait": False,
+        },
+        check_mode=check_mode,
+    )
+    current = {
+        "AcceleratorArn": "arn:accelerator",
+        "Enabled": False,
+        "IpAddressType": "DUAL_STACK",
+        "Name": "example",
+        "Status": "DEPLOYED",
+    }
+    client = Mock()
+    with (
+        patch.object(plugin, "get_accelerator", return_value=current),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is False
+    assert result.value.values["accelerator"]["enabled"] is False
+    assert result.value.values["accelerator"]["ip_address_type"] == "DUAL_STACK"
+    client.update_accelerator.assert_not_called()
+
+
+def test_supplied_setting_updates_only_that_setting():
+    module = FakeModule(
+        {
+            "enabled": True,
+            "ip_address_type": None,
+            "ip_addresses": None,
+            "listeners": None,
+            "name": "example",
+            "tags": None,
+            "wait": False,
+        }
+    )
+    current = {
+        "AcceleratorArn": "arn:accelerator",
+        "Enabled": False,
+        "IpAddressType": "DUAL_STACK",
+        "Name": "example",
+        "Status": "DEPLOYED",
+    }
+    client = Mock()
+    client.update_accelerator.return_value = {"Accelerator": dict(current, Enabled=True)}
+    with (
+        patch.object(plugin, "get_accelerator", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    client.update_accelerator.assert_called_once_with(
+        AcceleratorArn="arn:accelerator", Enabled=True, Name="example", aws_retry=True
+    )
+
+
+def test_omitted_client_affinity_keeps_the_existing_listener_setting():
+    current = [
+        {
+            "client_affinity": "SOURCE_IP",
+            "listener_arn": "arn:listener",
+            "port_ranges": [{"from_port": 80, "to_port": 80}],
+            "protocol": "TCP",
+        }
+    ]
+    desired = {"client_affinity": None, "endpoint_groups": None, "protocol": "TCP"}
+    module = Mock(
+        params={
+            "listeners": [dict(desired, port_ranges=[{"from_port": 80, "to_port": 80}])],
+            "purge_listeners": True,
+        }
+    )
+    matched, updates, creates, deletes = plugin.reconcile_listeners(module, current)
+    assert [item[0] for item in matched] == current
+    assert updates == creates == deletes == []
+
+    module.params["listeners"] = [dict(desired, port_ranges=[{"from_port": 443, "to_port": 443}])]
+    matched, updates, creates, deletes = plugin.reconcile_listeners(module, current)
+    assert "ClientAffinity" not in plugin.listener_request(updates[0][1])

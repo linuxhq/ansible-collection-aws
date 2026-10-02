@@ -4,7 +4,7 @@
     - global_accelerator
   linuxhq.aws.global_accelerator:
     arn: "{{ _accelerator.arn | d(omit) }}"
-    enabled: "{{ _accelerator.enabled | d(true) }}"
+    enabled: "{{ _accelerator.enabled | d(omit) }}"
     idempotency_token: "{{ _accelerator.idempotency_token | d(omit) }}"
     ip_addresses: "{{ _accelerator.ip_addresses | d(omit) }}"
     ip_address_type: "{{ _accelerator.ip_address_type | d(omit) }}"
