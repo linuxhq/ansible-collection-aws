@@ -30,7 +30,7 @@ class RdsSubnetGroupInfoTests(TestCase):
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods") as require,
-            patch.object(plugin, "query_list", return_value=[GROUP]) as query,
+            patch.object(plugin, "paginated_query_with_retries", return_value={"DBSubnetGroups": [GROUP]}) as query,
             self.assertRaises(ModuleExit),
         ):
             plugin.main()
@@ -42,6 +42,7 @@ class RdsSubnetGroupInfoTests(TestCase):
                 {"list_tags_for_resource": ("ResourceName",)},
             ],
         )
+        self.assertEqual(query.call_args.args[1], "describe_db_subnet_groups")
         self.assertEqual(query.call_args.kwargs, {"DBSubnetGroupName": "main"})
 
     def test_tags_are_returned_with_key_case_preserved(self):
@@ -54,7 +55,7 @@ class RdsSubnetGroupInfoTests(TestCase):
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods"),
-            patch.object(plugin, "query_list", return_value=[GROUP]),
+            patch.object(plugin, "paginated_query_with_retries", return_value={"DBSubnetGroups": [GROUP]}),
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
@@ -75,7 +76,7 @@ class RdsSubnetGroupInfoTests(TestCase):
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods"),
-            patch.object(plugin, "query_list", return_value=[GROUP]),
+            patch.object(plugin, "paginated_query_with_retries", return_value={"DBSubnetGroups": [GROUP]}),
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
@@ -87,7 +88,7 @@ class RdsSubnetGroupInfoTests(TestCase):
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods") as require,
-            patch.object(plugin, "query_list", return_value=[]),
+            patch.object(plugin, "paginated_query_with_retries", return_value={"DBSubnetGroups": []}),
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
@@ -95,14 +96,29 @@ class RdsSubnetGroupInfoTests(TestCase):
         self.assertEqual(raised.exception.values["subnet_groups"], [])
         self.assertEqual(require.call_count, 1)
 
+    def test_missing_named_group_returns_an_empty_list(self):
+        error = ClientError(
+            {"Error": {"Code": "DBSubnetGroupNotFoundFault", "Message": "missing"}}, "DescribeDBSubnetGroups"
+        )
+        module = FakeModule({"name": "missing"}, client=Mock())
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "paginated_query_with_retries", side_effect=error),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(raised.exception.values["subnet_groups"], [])
+
     def test_malformed_response_fails_cleanly(self):
-        for response in (None, [None], [{}]):
+        for response in (None, {}, {"DBSubnetGroups": [None]}, {"DBSubnetGroups": [{}]}):
             with self.subTest(response=response):
                 module = FakeModule({"name": None}, client=Mock())
                 with (
                     patch.object(plugin, "AnsibleAWSModule", return_value=module),
                     patch.object(plugin, "require_client_methods"),
-                    patch.object(plugin, "query_list", return_value=response),
+                    patch.object(plugin, "paginated_query_with_retries", return_value=response),
                     self.assertRaises(ModuleFail) as raised,
                 ):
                     plugin.main()

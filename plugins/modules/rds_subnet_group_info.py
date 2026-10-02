@@ -18,7 +18,7 @@ options:
       - RDS DB subnet group name used to limit the result set.
       - This value is passed to the RDS C(DescribeDBSubnetGroups) API
         as C(DBSubnetGroupName).
-      - Fails when the subnet group does not exist, as C(DescribeDBSubnetGroups) does.
+      - A subnet group that does not exist results in an empty list.
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -109,7 +109,10 @@ try:
 except ImportError:
     pass
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import is_boto3_error_code
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import boto3_tag_list_to_ansible_dict
@@ -118,7 +121,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    query_list,
     require_client_methods,
 )
 
@@ -167,14 +169,14 @@ def main():
         },
     )
 
-    subnet_groups = query_list(
-        module,
-        client,
-        "describe_db_subnet_groups",
-        "DBSubnetGroups",
-        "Unable to describe AWS RDS DB subnet groups",
-        **request,
-    )
+    try:
+        response = paginated_query_with_retries(client, "describe_db_subnet_groups", **request)
+    except is_boto3_error_code("DBSubnetGroupNotFoundFault"):
+        response = {"DBSubnetGroups": []}
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg="Unable to describe AWS RDS DB subnet groups")
+
+    subnet_groups = response.get("DBSubnetGroups") if isinstance(response, dict) else None
     if not isinstance(subnet_groups, list) or any(
         not isinstance(group, dict) or not isinstance(group.get("DBSubnetGroupArn"), str) for group in subnet_groups
     ):
