@@ -164,3 +164,21 @@ class GlobalAcceleratorInfoTests(TestCase):
         required_methods = {method for call in require.call_args_list for method in call.args[3]}
         self.assertIn("list_listeners", required_methods)
         self.assertIn("list_endpoint_groups", required_methods)
+
+    def test_missing_accelerator_arn_fails_like_the_api(self):
+        client = Mock()
+        client.describe_accelerator.side_effect = plugin.ClientError(
+            {"Error": {"Code": "AcceleratorNotFoundException", "Message": "missing"}}, "DescribeAccelerator"
+        )
+        module = FakeModule(
+            {"arn": "arn:missing", "include_endpoint_groups": False, "include_listeners": False},
+            client=client,
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(raised.exception.values["msg"], "Unable to describe AWS Global Accelerator arn:missing")

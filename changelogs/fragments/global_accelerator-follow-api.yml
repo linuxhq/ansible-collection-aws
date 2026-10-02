@@ -1,0 +1,14 @@
+---
+breaking_changes:
+  - global_accelerator - ``enabled`` no longer defaults to ``true``; omitting it enables a new accelerator, as AWS does,
+    and leaves an existing accelerator unchanged instead of re-enabling it.
+  - global_accelerator - ``ip_address_type`` no longer defaults to ``IPV4``; omitting it uses ``IPV4`` for a new accelerator,
+    as AWS does, and leaves an existing accelerator unchanged instead of converting ``DUAL_STACK`` to ``IPV4``.
+  - global_accelerator - ``listeners[].client_affinity`` no longer defaults to ``NONE``; omitting it uses ``NONE`` for a new listener,
+    as AWS does, and leaves an existing listener unchanged.
+  - global_accelerator role - pass ``enabled`` only when the list item sets it.
+  - global_accelerator_info - fail with the ``DescribeAccelerator`` error when ``arn`` does not exist instead of returning an empty list.
+minor_changes:
+  - global_accelerator - document the returned accelerator, listener, and endpoint group fields.
+  - global_accelerator_info - document the returned accelerator, listener, and endpoint group fields.
+...
