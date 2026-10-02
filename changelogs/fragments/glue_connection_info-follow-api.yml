@@ -1,6 +1,5 @@
 ---
 breaking_changes:
-  - glue_connection_info - fail with the ``GetConnection`` error when ``name`` does not exist instead of returning an empty list.
   - glue_connection_info - validate ``filters`` against the ``GetConnections`` filter fields
     ``connection_schema_version``, ``connection_type``, and ``match_criteria``.
 bugfixes:

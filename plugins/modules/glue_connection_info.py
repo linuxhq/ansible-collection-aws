@@ -54,7 +54,7 @@ options:
     description:
       - Glue connection name used to limit the result set.
       - When set, the module uses the Glue C(GetConnection) API.
-      - Fails when the connection does not exist, as C(GetConnection) does.
+      - A connection that does not exist results in an empty list.
       - Mutually exclusive with O(filters).
     type: str
 extends_documentation_fragment:
@@ -225,6 +225,9 @@ except ImportError:
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -308,13 +311,17 @@ def main():
 
         try:
             response = client.get_connection(**request, aws_retry=True)
+        except is_boto3_error_code("EntityNotFoundException"):
+            connection = None
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to get AWS Glue connection {name}")
+        else:
+            if not isinstance(response, dict) or not isinstance(response.get("Connection"), dict):
+                module.fail_json(msg=f"Unable to get AWS Glue connection {name}: AWS returned an invalid response")
 
-        if not isinstance(response, dict) or not isinstance(response.get("Connection"), dict):
-            module.fail_json(msg=f"Unable to get AWS Glue connection {name}: AWS returned an invalid response")
+            connection = response["Connection"]
 
-        connections = [response["Connection"]]
+        connections = [connection] if connection else []
     else:
         if filters:
             request["Filter"] = scrub_none_parameters(snake_dict_to_camel_dict(filters, capitalize_first=True))

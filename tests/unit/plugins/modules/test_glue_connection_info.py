@@ -222,7 +222,7 @@ def glue_params(**overrides):
     return params
 
 
-def test_named_missing_connection_fails_like_the_api():
+def test_named_missing_connection_returns_an_empty_list():
     client = Mock()
     client.get_connection.side_effect = plugin.ClientError(
         {"Error": {"Code": "EntityNotFoundException", "Message": "missing"}}, "GetConnection"
@@ -231,11 +231,11 @@ def test_named_missing_connection_fails_like_the_api():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as result,
+        pytest.raises(ModuleExit) as result,
     ):
         plugin.main()
 
-    assert result.value.values["msg"] == "Unable to get AWS Glue connection missing"
+    assert result.value.values["connections"] == []
 
 
 def test_token_url_parameter_names_are_preserved():
