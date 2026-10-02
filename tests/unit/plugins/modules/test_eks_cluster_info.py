@@ -74,7 +74,7 @@ class EksClusterInfoTests(TestCase):
             "EKS returned an invalid cluster for one",
         )
 
-    def test_named_missing_cluster_fails_like_the_api(self):
+    def test_named_missing_cluster_returns_an_empty_list(self):
         client = Mock()
         client.describe_cluster.side_effect = plugin.ClientError(
             {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}}, "DescribeCluster"
@@ -83,11 +83,11 @@ class EksClusterInfoTests(TestCase):
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleFail) as raised,
+            self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
 
-        self.assertEqual(raised.exception.values["msg"], "Unable to describe AWS EKS cluster missing")
+        self.assertEqual(raised.exception.values["clusters"], [])
 
     def test_listed_cluster_deleted_before_describe_is_skipped(self):
         client = Mock()

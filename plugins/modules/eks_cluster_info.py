@@ -23,7 +23,7 @@ options:
     description:
       - EKS cluster name used to limit the result set.
       - When omitted, all EKS clusters are returned.
-      - Fails when the cluster does not exist, as C(DescribeCluster) does.
+      - A cluster that does not exist results in an empty list.
       - Mutually exclusive with O(include).
     type: str
 extends_documentation_fragment:
@@ -294,11 +294,7 @@ def main():
                 name=cluster_name,
                 aws_retry=True,
             )
-        except is_boto3_error_code("ResourceNotFoundException") as e:
-            # A listed cluster can be deleted before it is described; a named one must exist.
-            if name:
-                module.fail_json_aws(e, msg=f"Unable to describe AWS EKS cluster {cluster_name}")
-
+        except is_boto3_error_code("ResourceNotFoundException"):
             continue
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to describe AWS EKS cluster {cluster_name}")

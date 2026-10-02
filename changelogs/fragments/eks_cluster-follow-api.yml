@@ -5,7 +5,6 @@ breaking_changes:
   - eks_cluster - ``upgrade_policy`` and ``upgrade_policy.support_type`` no longer default to ``EXTENDED``;
     omitting them uses the AWS default on creation and leaves existing clusters unchanged.
   - eks_cluster_info - remove the client-side ``filters`` option, which the EKS API does not provide.
-  - eks_cluster_info - fail with the ``DescribeCluster`` error when ``name`` does not exist instead of returning an empty list.
   - eks_cluster_info role - remove ``eks_cluster_info_filters``.
 bugfixes:
   - eks_cluster - wait for in-progress cluster updates, including ones EKS starts itself, before deleting a cluster
