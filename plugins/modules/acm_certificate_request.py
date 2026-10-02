@@ -13,6 +13,7 @@ description:
     is C(AMAZON_ISSUED), uses DNS validation, is C(PENDING_VALIDATION) or
     C(ISSUED), and its domain name and subject alternative names match; the
     most recently created certificate is reused when several match.
+  - Certificates managed by another AWS service, such as CloudFront, are never reused.
   - ACM permits at most 50 tags on a certificate; tag keys must contain 1 to
     128 characters and tag values may contain at most 256 characters.
   - Existing certificate tags are purged only when O(tags) is provided and
@@ -114,6 +115,18 @@ CERTIFICATE_KEY_TYPES = [
 ]
 
 
+def summary_can_match(summary, desired_names):
+    """Return False when the list summary already rules a certificate out."""
+    if summary.get("Type", "AMAZON_ISSUED") != "AMAZON_ISSUED" or summary.get("ManagedBy"):
+        return False
+
+    names = summary.get("SubjectAlternativeNameSummaries")
+    if summary.get("HasAdditionalSubjectAlternativeNames") is False and isinstance(names, list):
+        return {name.lower() for name in names if isinstance(name, str)} == desired_names
+
+    return True
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -199,7 +212,9 @@ def main():
         if not isinstance(certificate_arn, str) or not certificate_arn:
             module.fail_json(msg="AWS Certificate Manager returned an invalid matching certificate summary")
 
-        candidate_summaries.append(summary)
+        # Only describe certificates the summary cannot rule out; the details are rechecked below.
+        if summary_can_match(summary, desired_names):
+            candidate_summaries.append(summary)
 
     if candidate_summaries:
         require_client_methods(
@@ -235,7 +250,7 @@ def main():
         if certificate["Status"] not in {"PENDING_VALIDATION", "ISSUED"}:
             continue
 
-        if certificate.get("Type") != "AMAZON_ISSUED":
+        if certificate.get("Type") != "AMAZON_ISSUED" or certificate.get("ManagedBy"):
             continue
 
         validation_methods = set()

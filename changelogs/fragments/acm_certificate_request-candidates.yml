@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - acm_certificate_request - never reuse or retag a certificate managed by another AWS service, such as
+    CloudFront.
+minor_changes:
+  - acm_certificate_request - rule out imported, private, service-managed, and mismatched certificates from
+    the certificate list before describing them, reducing API calls in accounts with many certificates.
