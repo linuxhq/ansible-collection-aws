@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - ecs_ecr_info - document the fields returned for each repository.
+...

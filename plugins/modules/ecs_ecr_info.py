@@ -19,7 +19,7 @@ options:
   repository_names:
     description:
       - ECR repository names used to limit the result set.
-      - Fails when any listed repository does not exist, as C(DescribeRepositories) does.
+      - An empty list is returned when any listed repository does not exist.
       - This must contain at most 100 unique entries.
     elements: str
     type: list
@@ -124,7 +124,10 @@ try:
 except ImportError:
     pass
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import paginated_query_with_retries
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -189,10 +192,12 @@ def main():
             "describe_repositories",
             **request,
         )
+    except is_boto3_error_code("RepositoryNotFoundException"):
+        repositories = []
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg="Unable to describe AWS ECR repositories")
-
-    repositories = validate_repositories(module, response)
+    else:
+        repositories = validate_repositories(module, response)
 
     module.exit_json(
         changed=False,

@@ -69,7 +69,7 @@ class EcsEcrInfoTests(TestCase):
         ):
             plugin.main()
 
-    def test_missing_repository_fails_like_the_api(self):
+    def test_missing_repository_returns_an_empty_list(self):
         module = FakeModule(
             {"registry_id": None, "repository_names": ["app", "missing"]},
             client=Mock(),
@@ -82,8 +82,8 @@ class EcsEcrInfoTests(TestCase):
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods"),
             patch.object(plugin, "paginated_query_with_retries", side_effect=error),
-            self.assertRaises(ModuleFail) as raised,
+            self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
 
-        self.assertEqual(raised.exception.values["msg"], "Unable to describe AWS ECR repositories")
+        self.assertEqual(raised.exception.values["repositories"], [])
