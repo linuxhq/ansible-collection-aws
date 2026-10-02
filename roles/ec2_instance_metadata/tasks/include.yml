@@ -6,6 +6,7 @@
     http_endpoint: "{{ ec2_instance_metadata_http_endpoint }}"
     http_put_response_hop_limit: "{{ ec2_instance_metadata_http_put_response_hop_limit }}"
     http_tokens: "{{ ec2_instance_metadata_http_tokens }}"
+    http_tokens_enforced: "{{ ec2_instance_metadata_http_tokens_enforced | d(omit, true) }}"
     instance_metadata_tags: "{{ ec2_instance_metadata_instance_metadata_tags }}"
     region: "{{ _region }}"
     validate_certs: true
