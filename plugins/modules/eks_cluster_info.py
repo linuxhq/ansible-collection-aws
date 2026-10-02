@@ -12,18 +12,6 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
-  filters:
-    description:
-      - A dict of filters to apply to returned EKS clusters.
-      - The EKS C(ListClusters) API does not support filters, so filters are
-        applied client-side after clusters are described.
-      - Filter keys use the returned snake_case cluster fields.
-      - Dotted keys can be used for nested values such as
-        C(resources_vpc_config.endpoint_private_access).
-      - C(tag:Name) can be used to filter by cluster tag.
-      - String filter values support shell-style wildcards such as
-        C(molecule-*).
-    type: dict
   include:
     description:
       - Additional EKS cluster types to include when listing clusters.
@@ -35,6 +23,7 @@ options:
     description:
       - EKS cluster name used to limit the result set.
       - When omitted, all EKS clusters are returned.
+      - Fails when the cluster does not exist, as C(DescribeCluster) does.
       - Mutually exclusive with O(include).
     type: str
 extends_documentation_fragment:
@@ -58,12 +47,6 @@ EXAMPLES = r"""
   linuxhq.aws.eks_cluster_info:
     name: molecule-eks1
 
-- name: Gather information about active private endpoint EKS clusters
-  linuxhq.aws.eks_cluster_info:
-    filters:
-      status: ACTIVE
-      resources_vpc_config.endpoint_private_access: true
-
 - name: Gather information about all EKS clusters including external clusters
   linuxhq.aws.eks_cluster_info:
     include:
@@ -77,9 +60,147 @@ clusters:
   returned: always
   type: list
   elements: dict
+  contains:
+    access_config:
+      description: The cluster access configuration.
+      returned: always
+      type: dict
+      contains:
+        authentication_mode:
+          description: The cluster authentication mode.
+          returned: always
+          type: str
+          sample: API_AND_CONFIG_MAP
+        bootstrap_cluster_creator_admin_permissions:
+          description: Whether the cluster creator was granted admin permissions at creation.
+          returned: when returned by AWS
+          type: bool
+    arn:
+      description: The cluster ARN.
+      returned: always
+      type: str
+    certificate_authority:
+      description: The certificate authority data for the cluster.
+      returned: always
+      type: dict
+    compute_config:
+      description: The EKS Auto Mode compute configuration.
+      returned: when returned by AWS
+      type: dict
+    created_at:
+      description: The time the cluster was created.
+      returned: always
+      type: str
+    deletion_protection:
+      description: Whether deletion protection is enabled.
+      returned: when returned by AWS
+      type: bool
+    encryption_config:
+      description: The cluster encryption configuration.
+      returned: when configured
+      type: list
+      elements: dict
+    endpoint:
+      description: The Kubernetes API server endpoint.
+      returned: when the cluster is active
+      type: str
+    identity:
+      description: The identity provider information for the cluster.
+      returned: when returned by AWS
+      type: dict
+    kubernetes_network_config:
+      description: The Kubernetes network configuration.
+      returned: always
+      type: dict
+    logging:
+      description: The control plane logging configuration.
+      returned: always
+      type: dict
+    name:
+      description: The cluster name.
+      returned: always
+      type: str
+    platform_version:
+      description: The EKS platform version.
+      returned: always
+      type: str
+    remote_network_config:
+      description: The remote node and pod networks for EKS hybrid nodes.
+      returned: when configured
+      type: dict
+    resources_vpc_config:
+      description: The cluster VPC configuration.
+      returned: always
+      type: dict
+      contains:
+        cluster_security_group_id:
+          description: The cluster security group ID created by EKS.
+          returned: when returned by AWS
+          type: str
+        endpoint_private_access:
+          description: Whether the private API server endpoint is enabled.
+          returned: always
+          type: bool
+        endpoint_public_access:
+          description: Whether the public API server endpoint is enabled.
+          returned: always
+          type: bool
+        public_access_cidrs:
+          description: The CIDR blocks that can access the public API server endpoint.
+          returned: always
+          type: list
+          elements: str
+        security_group_ids:
+          description: The additional security group IDs.
+          returned: always
+          type: list
+          elements: str
+        subnet_ids:
+          description: The cluster subnet IDs.
+          returned: always
+          type: list
+          elements: str
+        vpc_id:
+          description: The cluster VPC ID.
+          returned: always
+          type: str
+    role_arn:
+      description: The cluster IAM role ARN.
+      returned: always
+      type: str
+    status:
+      description: The cluster status.
+      returned: always
+      type: str
+      sample: ACTIVE
+    storage_config:
+      description: The EKS Auto Mode storage configuration.
+      returned: when returned by AWS
+      type: dict
+    tags:
+      description: The cluster tags with key case preserved.
+      returned: always
+      type: dict
+    upgrade_policy:
+      description: The cluster upgrade policy.
+      returned: when returned by AWS
+      type: dict
+      contains:
+        support_type:
+          description: The cluster support type.
+          returned: always
+          type: str
+          sample: EXTENDED
+    version:
+      description: The Kubernetes version.
+      returned: always
+      type: str
+      sample: "1.34"
+    zonal_shift_config:
+      description: The zonal shift configuration.
+      returned: when returned by AWS
+      type: dict
 """
-
-from fnmatch import fnmatchcase
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -101,16 +222,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
-def value_matches(current, desired):
-    if isinstance(current, (list, tuple, set)):
-        return any(value_matches(item, desired) for item in current)
-
-    if isinstance(desired, str) and isinstance(current, str):
-        return fnmatchcase(current, desired)
-
-    return current == desired
-
-
 def validate_cluster(module, cluster, expected_name):
     tags = cluster.get("tags") if isinstance(cluster, dict) else None
     if (
@@ -130,7 +241,6 @@ def validate_cluster(module, cluster, expected_name):
 def main():
     module = AnsibleAWSModule(
         argument_spec={
-            "filters": {"type": "dict"},
             "include": {"elements": "str", "type": "list"},
             "name": {"type": "str"},
         },
@@ -139,7 +249,6 @@ def main():
     )
     client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())
 
-    filters = module.params["filters"]
     include = list(dict.fromkeys(module.params["include"] or []))
     name = module.params["name"]
 
@@ -179,22 +288,26 @@ def main():
         )
 
     clusters = []
-    for name in cluster_names:
+    for cluster_name in cluster_names:
         try:
             response = client.describe_cluster(
-                name=name,
+                name=cluster_name,
                 aws_retry=True,
             )
-        except is_boto3_error_code("ResourceNotFoundException"):
+        except is_boto3_error_code("ResourceNotFoundException") as e:
+            # A listed cluster can be deleted before it is described; a named one must exist.
+            if name:
+                module.fail_json_aws(e, msg=f"Unable to describe AWS EKS cluster {cluster_name}")
+
             continue
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to describe AWS EKS cluster {name}")
+            module.fail_json_aws(e, msg=f"Unable to describe AWS EKS cluster {cluster_name}")
 
         clusters.append(
             validate_cluster(
                 module,
                 response.get("cluster") if isinstance(response, dict) else None,
-                name,
+                cluster_name,
             )
         )
 
@@ -203,36 +316,6 @@ def main():
     for cluster, tags in zip(clusters, cluster_tags):
         if tags is not None:
             cluster["tags"] = tags
-
-    if filters:
-        filtered_clusters = []
-        for cluster in clusters:
-            matches = True
-            for key, expected in filters.items():
-                if isinstance(expected, (list, tuple, set)):
-                    expected_values = list(expected)
-                else:
-                    expected_values = [expected]
-
-                if key.startswith("tag:"):
-                    current = (cluster.get("tags") or {}).get(key[4:])
-                else:
-                    current = cluster
-                    for part in key.replace("-", "_").split("."):
-                        if not isinstance(current, dict):
-                            current = None
-                            break
-
-                        current = current.get(part)
-
-                if not any(value_matches(current, expected) for expected in expected_values):
-                    matches = False
-                    break
-
-            if matches:
-                filtered_clusters.append(cluster)
-
-        clusters = filtered_clusters
 
     module.exit_json(
         changed=False,

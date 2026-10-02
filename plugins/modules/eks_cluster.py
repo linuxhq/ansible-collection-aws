@@ -14,11 +14,10 @@ author:
   - Taylor Kimball (@tkimball83)
 options:
   access_config:
-    default:
-      authentication_mode: API_AND_CONFIG_MAP
-      bootstrap_cluster_creator_admin_permissions: true
     description:
       - The cluster access configuration.
+      - When omitted while creating a cluster, AWS uses its default values.
+      - When omitted while updating a cluster, the existing values are left unchanged.
     suboptions:
       authentication_mode:
         choices:
@@ -27,7 +26,9 @@ options:
           - CONFIG_MAP
         description:
           - The cluster authentication mode.
-        default: API_AND_CONFIG_MAP
+          - When omitted while creating a cluster, AWS uses C(CONFIG_MAP).
+          - When omitted while updating a cluster, the existing value is left unchanged.
+          - AWS only permits changes from C(CONFIG_MAP) to C(API_AND_CONFIG_MAP) to C(API).
         type: str
       bootstrap_cluster_creator_admin_permissions:
         description:
@@ -45,6 +46,7 @@ options:
   compute_config:
     description:
       - The EKS Auto Mode compute configuration.
+      - This requires botocore C(1.35.72) or later.
     suboptions:
       enabled:
         description:
@@ -60,6 +62,14 @@ options:
           - The IAM role ARN used by EKS Auto Mode nodes.
         type: str
     type: dict
+  deletion_protection:
+    description:
+      - Whether deletion protection is enabled for the cluster.
+      - AWS rejects deleting a cluster while deletion protection is enabled.
+      - When omitted while creating a cluster, AWS uses its default value.
+      - When omitted while updating a cluster, the existing value is left unchanged.
+      - This requires botocore C(1.40.3) or later.
+    type: bool
   encryption_config:
     description:
       - The cluster encryption configuration.
@@ -140,6 +150,37 @@ options:
       - The EKS cluster name.
     required: true
     type: str
+  remote_network_config:
+    description:
+      - The remote node and pod networks for EKS hybrid nodes.
+      - The supplied configuration is sent as a whole when it differs from the cluster.
+      - This requires botocore C(1.35.72) or later, and C(1.37.24) or later to update an existing cluster.
+    suboptions:
+      remote_node_networks:
+        description:
+          - The remote node networks. This must contain at most one entry.
+        elements: dict
+        suboptions:
+          cidrs:
+            description:
+              - The CIDR blocks of the remote node network.
+            elements: str
+            required: true
+            type: list
+        type: list
+      remote_pod_networks:
+        description:
+          - The remote pod networks. This must contain at most one entry.
+        elements: dict
+        suboptions:
+          cidrs:
+            description:
+              - The CIDR blocks of the remote pod network.
+            elements: str
+            required: true
+            type: list
+        type: list
+    type: dict
   resources_vpc_config:
     description:
       - The VPC configuration for the cluster.
@@ -192,6 +233,7 @@ options:
   storage_config:
     description:
       - The EKS Auto Mode storage configuration.
+      - This requires botocore C(1.35.72) or later.
     suboptions:
       block_storage:
         description:
@@ -204,8 +246,6 @@ options:
         type: dict
     type: dict
   upgrade_policy:
-    default:
-      support_type: EXTENDED
     description:
       - The cluster upgrade policy.
     suboptions:
@@ -215,7 +255,8 @@ options:
           - STANDARD
         description:
           - The support type for the cluster.
-        default: EXTENDED
+          - When omitted while creating a cluster, AWS uses C(EXTENDED).
+          - When omitted while updating a cluster, the existing value is left unchanged.
         type: str
     type: dict
   version:
@@ -307,9 +348,149 @@ EXAMPLES = r"""
 RETURN = r"""
 cluster:
   description:
-    - The EKS cluster.
+    - The EKS cluster. Empty when the cluster does not exist.
   returned: always
   type: dict
+  contains:
+    access_config:
+      description: The cluster access configuration.
+      returned: when the cluster exists
+      type: dict
+      contains:
+        authentication_mode:
+          description: The cluster authentication mode.
+          returned: always
+          type: str
+          sample: API_AND_CONFIG_MAP
+        bootstrap_cluster_creator_admin_permissions:
+          description: Whether the cluster creator was granted admin permissions at creation.
+          returned: when returned by AWS
+          type: bool
+    arn:
+      description: The cluster ARN.
+      returned: when the cluster exists
+      type: str
+    certificate_authority:
+      description: The certificate authority data for the cluster.
+      returned: when the cluster exists
+      type: dict
+    compute_config:
+      description: The EKS Auto Mode compute configuration.
+      returned: when returned by AWS
+      type: dict
+    created_at:
+      description: The time the cluster was created.
+      returned: when the cluster exists
+      type: str
+    deletion_protection:
+      description: Whether deletion protection is enabled.
+      returned: when returned by AWS
+      type: bool
+    encryption_config:
+      description: The cluster encryption configuration.
+      returned: when configured
+      type: list
+      elements: dict
+    endpoint:
+      description: The Kubernetes API server endpoint.
+      returned: when the cluster is active
+      type: str
+    identity:
+      description: The identity provider information for the cluster.
+      returned: when returned by AWS
+      type: dict
+    kubernetes_network_config:
+      description: The Kubernetes network configuration.
+      returned: when the cluster exists
+      type: dict
+    logging:
+      description: The control plane logging configuration.
+      returned: when the cluster exists
+      type: dict
+    name:
+      description: The cluster name.
+      returned: when the cluster exists
+      type: str
+    platform_version:
+      description: The EKS platform version.
+      returned: when the cluster exists
+      type: str
+    remote_network_config:
+      description: The remote node and pod networks for EKS hybrid nodes.
+      returned: when configured
+      type: dict
+    resources_vpc_config:
+      description: The cluster VPC configuration.
+      returned: when the cluster exists
+      type: dict
+      contains:
+        cluster_security_group_id:
+          description: The cluster security group ID created by EKS.
+          returned: when returned by AWS
+          type: str
+        endpoint_private_access:
+          description: Whether the private API server endpoint is enabled.
+          returned: always
+          type: bool
+        endpoint_public_access:
+          description: Whether the public API server endpoint is enabled.
+          returned: always
+          type: bool
+        public_access_cidrs:
+          description: The CIDR blocks that can access the public API server endpoint.
+          returned: always
+          type: list
+          elements: str
+        security_group_ids:
+          description: The additional security group IDs.
+          returned: always
+          type: list
+          elements: str
+        subnet_ids:
+          description: The cluster subnet IDs.
+          returned: always
+          type: list
+          elements: str
+        vpc_id:
+          description: The cluster VPC ID.
+          returned: always
+          type: str
+    role_arn:
+      description: The cluster IAM role ARN.
+      returned: when the cluster exists
+      type: str
+    status:
+      description: The cluster status.
+      returned: when the cluster exists
+      type: str
+      sample: ACTIVE
+    storage_config:
+      description: The EKS Auto Mode storage configuration.
+      returned: when returned by AWS
+      type: dict
+    tags:
+      description: The cluster tags with key case preserved.
+      returned: when the cluster exists
+      type: dict
+    upgrade_policy:
+      description: The cluster upgrade policy.
+      returned: when returned by AWS
+      type: dict
+      contains:
+        support_type:
+          description: The cluster support type.
+          returned: always
+          type: str
+          sample: EXTENDED
+    version:
+      description: The Kubernetes version.
+      returned: when the cluster exists
+      type: str
+      sample: "1.34"
+    zonal_shift_config:
+      description: The zonal shift configuration.
+      returned: when returned by AWS
+      type: dict
 name:
   description:
     - The EKS cluster name.
@@ -344,6 +525,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.amazon.aws.plugins.module_utils.waiters import get_waiter
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tags
@@ -355,9 +537,11 @@ CREATE_FIELDS = [
     "access_config",
     "bootstrap_self_managed_addons",
     "compute_config",
+    "deletion_protection",
     "encryption_config",
     "kubernetes_network_config",
     "logging",
+    "remote_network_config",
     "resources_vpc_config",
     "role_arn",
     "storage_config",
@@ -369,8 +553,10 @@ CREATE_FIELDS = [
 UPDATE_CONFIG_FIELDS = [
     "access_config",
     "compute_config",
+    "deletion_protection",
     "kubernetes_network_config",
     "logging",
+    "remote_network_config",
     "resources_vpc_config",
     "storage_config",
     "upgrade_policy",
@@ -398,6 +584,7 @@ CLUSTER_MAPPING_FIELDS = (
     "computeConfig",
     "kubernetesNetworkConfig",
     "logging",
+    "remoteNetworkConfig",
     "resourcesVpcConfig",
     "storageConfig",
     "upgradePolicy",
@@ -557,7 +744,7 @@ def wait_for_cluster(client, module, waiter_name):
         module.fail_json_aws(e, msg=f"Timed out waiting for AWS EKS cluster {name}")
 
 
-def wait_for_update(client, module, update_id):
+def wait_for_update(client, module, update_id, require_success=True):
     name = module.params["name"]
     wait_delay = module.params["wait_delay"]
     deadline = time.monotonic() + module.params["wait_timeout"]
@@ -578,7 +765,7 @@ def wait_for_update(client, module, update_id):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to describe AWS EKS cluster update " f"{update_id} for {name}"),
+                msg=f"Unable to describe AWS EKS cluster update {update_id} for {name}",
             )
 
         last_update = validate_update(
@@ -593,8 +780,11 @@ def wait_for_update(client, module, update_id):
             return last_update
 
         if status in ("Cancelled", "Failed"):
+            if not require_success:
+                return last_update
+
             module.fail_json(
-                msg=("AWS EKS cluster update " f"{update_id} for {name} {status.lower()}"),
+                msg=f"AWS EKS cluster update {update_id} for {name} {status.lower()}",
                 update=boto3_resource_to_ansible_dict(last_update, transform_tags=False, force_tags=False),
             )
 
@@ -604,6 +794,30 @@ def wait_for_update(client, module, update_id):
         msg=f"Timed out waiting for AWS EKS cluster update {update_id} for {name}",
         update=boto3_resource_to_ansible_dict(last_update, transform_tags=False, force_tags=False),
     )
+
+
+def wait_for_cluster_updates(client, module):
+    name = module.params["name"]
+    require_client_methods(
+        module,
+        client,
+        "EKS",
+        {"list_updates": ("maxResults", "name", "nextToken")},
+    )
+    update_ids = query_list(
+        module,
+        client,
+        "list_updates",
+        "updateIds",
+        f"Unable to list AWS EKS cluster updates for {name}",
+        name=name,
+    )
+    if not isinstance(update_ids, list) or any(not isinstance(update_id, str) for update_id in update_ids):
+        module.fail_json(msg=f"EKS returned invalid cluster updates for {name}")
+
+    # EKS can start its own update after one completes; DeleteCluster rejects an in-progress update.
+    for update_id in update_ids:
+        wait_for_update(client, module, update_id, require_success=False)
 
 
 def desired_cluster(module):
@@ -696,7 +910,7 @@ def ensure_present(client, module):
             module.fail_json(msg="role_arn is required to create an EKS cluster")
 
         if not (create_request.get("resourcesVpcConfig") or {}).get("subnetIds"):
-            module.fail_json(msg=("resources_vpc_config.subnet_ids is required to create " "an EKS cluster"))
+            module.fail_json(msg="resources_vpc_config.subnet_ids is required to create an EKS cluster")
 
         if module.check_mode:
             exit_result(module, True, check_mode_cluster(module, None), "present")
@@ -775,6 +989,9 @@ def ensure_present(client, module):
         if field in auto_mode_fields:
             auto_mode_request.update(update_request)
             continue
+
+        if field == "remoteNetworkConfig":
+            update_request = field_request
 
         if field == "logging":
             current_log_types = enabled_log_types(current.get("logging"))
@@ -971,6 +1188,8 @@ def ensure_absent(client, module):
     if current.get("status") in {"CREATING", "PENDING", "UPDATING"}:
         wait_for_cluster(client, module, "cluster_active")
 
+    wait_for_cluster_updates(client, module)
+
     require_client_methods(
         module,
         client,
@@ -993,14 +1212,9 @@ def ensure_absent(client, module):
 def main():
     argument_spec = {
         "access_config": {
-            "default": {
-                "authentication_mode": "API_AND_CONFIG_MAP",
-                "bootstrap_cluster_creator_admin_permissions": True,
-            },
             "options": {
                 "authentication_mode": {
                     "choices": ["API", "API_AND_CONFIG_MAP", "CONFIG_MAP"],
-                    "default": "API_AND_CONFIG_MAP",
                     "type": "str",
                 },
                 "bootstrap_cluster_creator_admin_permissions": {
@@ -1019,6 +1233,7 @@ def main():
             },
             "type": "dict",
         },
+        "deletion_protection": {"type": "bool"},
         "encryption_config": {
             "elements": "dict",
             "options": {
@@ -1064,6 +1279,21 @@ def main():
         },
         "name": {"required": True, "type": "str"},
         "purge_tags": {"default": True, "type": "bool"},
+        "remote_network_config": {
+            "options": {
+                "remote_node_networks": {
+                    "elements": "dict",
+                    "options": {"cidrs": {"elements": "str", "required": True, "type": "list"}},
+                    "type": "list",
+                },
+                "remote_pod_networks": {
+                    "elements": "dict",
+                    "options": {"cidrs": {"elements": "str", "required": True, "type": "list"}},
+                    "type": "list",
+                },
+            },
+            "type": "dict",
+        },
         "resources_vpc_config": {
             "options": {
                 "endpoint_private_access": {"type": "bool"},
@@ -1093,11 +1323,9 @@ def main():
         },
         "tags": {"aliases": ["resource_tags"], "type": "dict"},
         "upgrade_policy": {
-            "default": {"support_type": "EXTENDED"},
             "options": {
                 "support_type": {
                     "choices": ["EXTENDED", "STANDARD"],
-                    "default": "EXTENDED",
                     "type": "str",
                 },
             },
@@ -1125,6 +1353,10 @@ def main():
     require_valid_tags(module, tags if state == "present" else None, 50)
     if state == "present" and len(module.params["encryption_config"] or []) > 1:
         module.fail_json(msg="encryption_config must contain at most one entry")
+
+    for network in ("remote_node_networks", "remote_pod_networks"):
+        if state == "present" and len((module.params["remote_network_config"] or {}).get(network) or []) > 1:
+            module.fail_json(msg=f"remote_network_config.{network} must contain at most one entry")
 
     require_positive_wait_bounds(module, always=True)
 

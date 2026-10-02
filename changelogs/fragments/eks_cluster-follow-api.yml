@@ -1,0 +1,20 @@
+---
+breaking_changes:
+  - eks_cluster - ``access_config`` and ``access_config.authentication_mode`` no longer default to ``API_AND_CONFIG_MAP``;
+    omitting them uses the AWS default (``CONFIG_MAP``) on creation and leaves existing clusters unchanged.
+  - eks_cluster - ``upgrade_policy`` and ``upgrade_policy.support_type`` no longer default to ``EXTENDED``;
+    omitting them uses the AWS default on creation and leaves existing clusters unchanged.
+  - eks_cluster_info - remove the client-side ``filters`` option, which the EKS API does not provide.
+  - eks_cluster_info - fail with the ``DescribeCluster`` error when ``name`` does not exist instead of returning an empty list.
+  - eks_cluster_info role - remove ``eks_cluster_info_filters``.
+bugfixes:
+  - eks_cluster - wait for in-progress cluster updates, including ones EKS starts itself, before deleting a cluster
+    instead of failing with ``ResourceInUseException``.
+minor_changes:
+  - eks_cluster - add ``deletion_protection`` (requires botocore 1.40.3 or later).
+  - eks_cluster - add ``remote_network_config`` for EKS hybrid nodes
+    (requires botocore 1.35.72 or later, and 1.37.24 or later to update an existing cluster).
+  - eks_cluster role - pass ``deletion_protection`` and ``remote_network_config`` through to the module.
+  - eks_cluster - document the botocore requirement for ``compute_config`` and ``storage_config`` and the returned cluster fields.
+  - eks_cluster_info - document the returned cluster fields.
+...

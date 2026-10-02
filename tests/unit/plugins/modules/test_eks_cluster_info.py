@@ -14,14 +14,11 @@ class EksClusterInfoTests(TestCase):
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
         assert options["mutually_exclusive"] == [["include", "name"]]
-
-    def test_value_matching_supports_wildcards_and_collections(self):
-        assert plugin.value_matches(["prod-a", "dev-a"], "prod-*")
-        assert not plugin.value_matches(["dev-a"], "prod-*")
+        assert "filters" not in options["argument_spec"]
 
     def test_named_lookup_only_requires_describe(self):
         client = Mock(describe_cluster=Mock(return_value={"cluster": {"name": "one"}}))
-        module = FakeModule({"filters": None, "include": None, "name": "one"}, client=client)
+        module = FakeModule({"include": None, "name": "one"}, client=client)
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods") as require_methods,
@@ -33,7 +30,7 @@ class EksClusterInfoTests(TestCase):
 
     def test_empty_name_requires_list_clusters(self):
         client = Mock()
-        module = FakeModule({"filters": None, "include": None, "name": ""}, client=client)
+        module = FakeModule({"include": None, "name": ""}, client=client)
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods") as require_methods,
@@ -51,7 +48,7 @@ class EksClusterInfoTests(TestCase):
 
     def test_malformed_cluster_list_is_rejected(self):
         client = Mock()
-        module = FakeModule({"filters": None, "include": None, "name": None}, client=client)
+        module = FakeModule({"include": None, "name": None}, client=client)
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods"),
@@ -64,7 +61,7 @@ class EksClusterInfoTests(TestCase):
 
     def test_malformed_describe_response_is_rejected(self):
         client = Mock(describe_cluster=Mock(return_value={"cluster": None}))
-        module = FakeModule({"filters": None, "include": None, "name": "one"}, client=client)
+        module = FakeModule({"include": None, "name": "one"}, client=client)
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods"),
@@ -77,45 +74,34 @@ class EksClusterInfoTests(TestCase):
             "EKS returned an invalid cluster for one",
         )
 
-    def test_nested_and_tag_filters_are_combined(self):
+    def test_named_missing_cluster_fails_like_the_api(self):
         client = Mock()
-        client.describe_cluster.side_effect = [
-            {
-                "cluster": {
-                    "name": "prod",
-                    "resourcesVpcConfig": {"endpointPublicAccess": False},
-                    "tags": {"Environment": "prod-west"},
-                }
-            },
-            {
-                "cluster": {
-                    "name": "dev",
-                    "resourcesVpcConfig": {"endpointPublicAccess": False},
-                    "tags": {"Environment": "dev-west"},
-                }
-            },
-        ]
-        module = FakeModule(
-            {
-                "filters": {
-                    "resources-vpc-config.endpoint-public-access": False,
-                    "tag:Environment": "prod-*",
-                },
-                "include": ["all", "all"],
-                "name": None,
-            },
-            client=client,
+        client.describe_cluster.side_effect = plugin.ClientError(
+            {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}}, "DescribeCluster"
         )
+        module = FakeModule({"include": None, "name": "missing"}, client=client)
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods"),
-            patch.object(plugin, "query_list", return_value=["prod", "dev"]) as query,
+            self.assertRaises(ModuleFail) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(raised.exception.values["msg"], "Unable to describe AWS EKS cluster missing")
+
+    def test_listed_cluster_deleted_before_describe_is_skipped(self):
+        client = Mock()
+        client.describe_cluster.side_effect = [
+            plugin.ClientError({"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}}, "DescribeCluster"),
+            {"cluster": {"name": "two"}},
+        ]
+        module = FakeModule({"include": None, "name": None}, client=client)
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "query_list", return_value=["one", "two"]),
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
 
-        self.assertEqual(
-            [cluster["name"] for cluster in raised.exception.values["clusters"]],
-            ["prod"],
-        )
-        self.assertEqual(query.call_args.kwargs["include"], ["all"])
+        self.assertEqual([cluster["name"] for cluster in raised.exception.values["clusters"]], ["two"])

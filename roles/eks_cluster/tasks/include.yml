@@ -7,12 +7,14 @@
     bootstrap_self_managed_addons:
       "{{ _cluster.bootstrap_self_managed_addons | d(omit) }}"
     compute_config: "{{ _cluster.compute_config | d(omit) }}"
+    deletion_protection: "{{ _cluster.deletion_protection | d(omit) }}"
     encryption_config: "{{ _cluster.encryption_config | d(omit) }}"
     kubernetes_network_config:
       "{{ _cluster.kubernetes_network_config | d(omit) }}"
     logging: "{{ _cluster.logging | d(omit) }}"
     name: "{{ _cluster.name }}"
     purge_tags: "{{ _cluster.purge_tags | d(true) }}"
+    remote_network_config: "{{ _cluster.remote_network_config | d(omit) }}"
     resources_vpc_config: "{{ _cluster.resources_vpc_config | d(omit) }}"
     role_arn: "{{ _cluster.role_arn | d(omit) }}"
     state: "{{ _cluster.state | d('present') }}"

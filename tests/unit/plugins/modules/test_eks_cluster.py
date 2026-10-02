@@ -127,10 +127,12 @@ class EksClusterTests(TestCase):
                 return_value={"name": "example", "status": "ACTIVE"},
             ),
             patch.object(plugin, "require_client_methods") as require,
+            patch.object(plugin, "wait_for_cluster_updates") as wait_for_updates,
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
 
+        wait_for_updates.assert_called_once_with(client, module)
         require.assert_called_once_with(module, client, "EKS", {"delete_cluster": ("name",)})
         self.assertTrue(raised.exception.values["changed"])
 
@@ -727,3 +729,150 @@ def test_partial_logging_result_preserves_unmanaged_log_types(check_mode):
         "audit": True,
     }
     assert current["logging"]["clusterLogging"] == [{"types": ["api", "audit"], "enabled": True}]
+
+
+def test_access_and_upgrade_settings_have_no_module_defaults():
+    captured = {}
+
+    def initialize(**kwargs):
+        captured.update(kwargs)
+        raise ModuleExit({})
+
+    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleExit):
+        plugin.main()
+
+    spec = captured["argument_spec"]
+    assert "default" not in spec["access_config"]
+    assert "default" not in spec["access_config"]["options"]["authentication_mode"]
+    assert "default" not in spec["upgrade_policy"]
+    assert "default" not in spec["upgrade_policy"]["options"]["support_type"]
+
+
+def test_omitted_access_and_upgrade_settings_leave_the_cluster_unchanged():
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "accessConfig": {"authenticationMode": "CONFIG_MAP"},
+        "upgradePolicy": {"supportType": "STANDARD"},
+        "deletionProtection": False,
+    }
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, FakeModule(eks_params()))
+
+    assert result.value.values["changed"] is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize(
+    "overrides, expected",
+    [
+        ({"deletion_protection": True}, {"deletionProtection": True}),
+        (
+            {"remote_network_config": {"remote_node_networks": [{"cidrs": ["10.80.0.0/16"]}]}},
+            {"remoteNetworkConfig": {"remoteNodeNetworks": [{"cidrs": ["10.80.0.0/16"]}]}},
+        ),
+    ],
+)
+def test_deletion_protection_and_remote_networks_use_their_own_update(overrides, expected):
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "deletionProtection": False,
+        "remoteNetworkConfig": {
+            "remoteNodeNetworks": [{"cidrs": ["10.90.0.0/16"]}],
+            "remotePodNetworks": [{"cidrs": ["10.91.0.0/16"]}],
+        },
+    }
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods") as require_methods,
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, FakeModule(eks_params(**overrides)))
+
+    assert result.value.values["changed"] is True
+    client.update_cluster_config.assert_called_once_with(name="example", aws_retry=True, **expected)
+    assert require_methods.call_args.args[3] == {"update_cluster_config": tuple(expected) + ("name",)}
+
+
+def test_matching_remote_networks_are_unchanged():
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "remoteNetworkConfig": {"remoteNodeNetworks": [{"cidrs": ["10.80.0.0/16", "10.81.0.0/16"]}]},
+    }
+    client = Mock()
+    module = FakeModule(
+        eks_params(remote_network_config={"remote_node_networks": [{"cidrs": ["10.81.0.0/16", "10.80.0.0/16"]}]})
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is False
+    assert client.mock_calls == []
+
+
+def test_remote_networks_accept_at_most_one_entry():
+    module = FakeModule(
+        eks_params(
+            encryption_config=None,
+            remote_network_config={"remote_pod_networks": [{"cidrs": ["10.80.0.0/16"]}, {"cidrs": ["10.81.0.0/16"]}]},
+            state="present",
+            wait_delay=15,
+            wait_timeout=60,
+        )
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as result,
+    ):
+        plugin.main()
+
+    assert result.value.values["msg"] == "remote_network_config.remote_pod_networks must contain at most one entry"
+
+
+def test_delete_waits_for_in_progress_cluster_updates_first():
+    client = Mock()
+    module = FakeModule({"name": "example", "wait": False, "wait_delay": 1, "wait_timeout": 60})
+    calls = []
+    client.delete_cluster.side_effect = lambda **kwargs: calls.append("delete")
+    client.describe_update.side_effect = [
+        {"update": {"id": "old", "status": "Failed"}},
+        {"update": {"id": "auto", "status": "InProgress"}},
+        {"update": {"id": "auto", "status": "Successful"}},
+    ]
+    with (
+        patch.object(plugin, "describe_cluster", return_value={"name": "example", "status": "ACTIVE"}),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=["old", "auto"]) as query,
+        patch.object(plugin.time, "sleep"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert result.value.values["changed"] is True
+    assert query.call_args.args[2:4] == ("list_updates", "updateIds")
+    assert query.call_args.kwargs == {"name": "example"}
+    assert client.describe_update.call_count == 3
+    assert calls == ["delete"]
+
+
+def test_failed_update_still_fails_a_requested_change():
+    client = Mock()
+    client.describe_update.return_value = {"update": {"id": "update-1", "status": "Failed"}}
+    module = FakeModule({"name": "example", "wait_delay": 1, "wait_timeout": 60})
+    with patch.object(plugin, "require_client_methods"), pytest.raises(ModuleFail):
+        plugin.wait_for_update(client, module, "update-1")
