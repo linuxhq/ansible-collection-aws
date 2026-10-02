@@ -15,7 +15,7 @@ options:
   email_address:
     description:
       - The email address for the notifications contact.
-      - This must be a valid email address of 6 to 254 characters.
+      - This must be 6 to 254 characters and contain C(@), as the AWS Notifications Contacts API requires.
     required: true
     type: str
   name:
@@ -192,7 +192,7 @@ def ensure_absent(client, module):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to delete AWS Notifications contact " f"{module.params['email_address']}"),
+                msg=f"Unable to delete AWS Notifications contact {module.params['email_address']}",
             )
 
     module.exit_json(
@@ -239,7 +239,7 @@ def ensure_present(client, module):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to list tags for AWS Notifications contact " f"{contact['arn']}"),
+                msg=f"Unable to list tags for AWS Notifications contact {contact['arn']}",
             )
 
         if (
@@ -353,7 +353,7 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=("Unable to remove tags from AWS Notifications contact " f"{contact_arn}"),
+                        msg=f"Unable to remove tags from AWS Notifications contact {contact_arn}",
                     )
 
             if tags_to_set:
@@ -411,8 +411,9 @@ def main():
     if state == "present":
         email_address = module.params["email_address"]
 
-        if not 6 <= len(email_address) <= 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+", email_address):
-            module.fail_json(msg="email_address must be a valid email address of 6 to 254 characters")
+        # Match the CreateEmailContact emailAddress pattern; AWS validates the address itself.
+        if not 6 <= len(email_address) <= 254 or not re.fullmatch(r"(.+)@(.+)", email_address):
+            module.fail_json(msg="email_address must be 6 to 254 characters and contain @")
 
         name = module.params["name"]
 
