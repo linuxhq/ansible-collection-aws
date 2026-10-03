@@ -59,7 +59,9 @@ RETURN = r"""
 queues:
   description:
     - A list of AWS Simple Queue Service queues.
-    - Each queue includes C(name) and C(queue_url) added by the module.
+    - Each queue includes C(name) and C(queue_url) added by the module, and
+      C(tags) from C(ListQueueTags).
+    - Attribute values are returned as AWS returns them.
   returned: always
   type: list
   elements: dict
@@ -76,6 +78,12 @@ queues:
       description: Queue URL.
       returned: always
       type: str
+    tags:
+      description:
+        - Queue tags.
+        - Tag keys keep their original case.
+      returned: always
+      type: dict
 """
 
 try:
@@ -120,7 +128,18 @@ def get_queue(client, module, queue_url):
 
     attributes = response.get("Attributes", {})
 
+    try:
+        response = client.list_queue_tags(QueueUrl=queue_url, aws_retry=True)
+    except is_boto3_error_code(QUEUE_NOT_FOUND_CODES):
+        return None
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to list AWS SQS queue tags for {queue_url}")
+
+    if not isinstance(response, dict) or not isinstance(response.get("Tags", {}), dict):
+        module.fail_json(msg=f"Unexpected response while listing AWS SQS queue tags for {queue_url}")
+
     queue = boto3_resource_to_ansible_dict(attributes, transform_tags=False, force_tags=False)
+    queue["tags"] = response.get("Tags", {})
 
     queue_arn = queue.get("queue_arn")
     queue["name"] = (queue_arn or queue_url.rsplit("/", 1)[-1]).split(":")[-1]
@@ -150,7 +169,10 @@ def main():
 
     client = module.client("sqs", retry_decorator=AWSRetry.jittered_backoff())
 
-    methods = {"get_queue_attributes": ("AttributeNames", "QueueUrl")}
+    methods = {
+        "get_queue_attributes": ("AttributeNames", "QueueUrl"),
+        "list_queue_tags": ("QueueUrl",),
+    }
     if name:
         methods["get_queue_url"] = ("QueueName",) + (("QueueOwnerAWSAccountId",) if queue_owner_aws_account_id else ())
     else:
