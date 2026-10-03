@@ -48,7 +48,7 @@
         name: glue_connection_info
       vars:
         glue_connection_info_filters:
-          connection_type: "{{ glue_connection_list.0.connection_type }}"
+          ConnectionType: "{{ glue_connection_list.0.connection_type }}"
 
     - name: Ensure info with filters is verified
       ansible.builtin.assert:
