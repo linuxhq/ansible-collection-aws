@@ -100,6 +100,12 @@
           - _route53_resolver_rule_info_list == []
           - _route53_resolver_rule_info_dict == {}
 
+    - name: Ensure role is included without name
+      ansible.builtin.include_role:
+        name: route53_resolver_rule_info
+      vars:
+        route53_resolver_rule_info_filters: {}
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_security_group_list:
