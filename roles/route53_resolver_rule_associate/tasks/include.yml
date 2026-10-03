@@ -10,7 +10,7 @@
     vpc_id: "{{ _resolver_rule_association.vpc_id }}"
     wait: "{{ _resolver_rule_association.wait | d(true) }}"
     wait_delay: 5
-    wait_timeout: 300
+    wait_timeout: "{{ _resolver_rule_association.wait_timeout | d(route53_resolver_rule_associate_timeout) }}"
   register: __route53_resolver_rule_associate_result
   loop: "{{ __route53_resolver_rule_associate_list }}"
   loop_control:

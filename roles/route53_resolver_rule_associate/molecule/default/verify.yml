@@ -9,6 +9,49 @@
     - route53_resolver_rule_info
 
   post_tasks:
+    - name: Ensure associations are verified
+      ansible.builtin.assert:
+        that:
+          - __association | length == 1
+          - __association.0.name == _association.name
+          - __association.0.status == 'COMPLETE'
+      vars:
+        __association:
+          "{{ _route53_resolver_rule_info_list |
+              selectattr('id', 'equalto', _association.resolver_rule_id) |
+              map(attribute='associations') | flatten |
+              selectattr('vpc_id', 'equalto', _association.vpc_id) | list }}"
+      loop: "{{ route53_resolver_rule_associate_list }}"
+      loop_control:
+        label: "{{ _association.name }}"
+        loop_var: _association
+
+    - name: Ensure an association is renamed
+      linuxhq.aws.route53_resolver_rule_associate:
+        name: "{{ route53_resolver_rule_associate_list.0.name }}-renamed"
+        resolver_rule_id: "{{ route53_resolver_rule_associate_list.0.resolver_rule_id }}"
+        vpc_id: "{{ route53_resolver_rule_associate_list.0.vpc_id }}"
+      register: __route53_resolver_rule_associate_rename
+
+    - name: Ensure an association without a name keeps its name
+      linuxhq.aws.route53_resolver_rule_associate:
+        resolver_rule_id: "{{ route53_resolver_rule_associate_list.0.resolver_rule_id }}"
+        vpc_id: "{{ route53_resolver_rule_associate_list.0.vpc_id }}"
+      register: __route53_resolver_rule_associate_unnamed
+
+    - name: Ensure renamed association is verified
+      ansible.builtin.assert:
+        that:
+          - __route53_resolver_rule_associate_rename is changed
+          - __route53_resolver_rule_associate_rename.resolver_rule_association.name ==
+              route53_resolver_rule_associate_list.0.name ~ '-renamed'
+          - __route53_resolver_rule_associate_rename.resolver_rule_association.status == 'COMPLETE'
+          - __route53_resolver_rule_associate_unnamed is not changed
+          - __route53_resolver_rule_associate_unnamed.resolver_rule_association.name ==
+              route53_resolver_rule_associate_list.0.name ~ '-renamed'
+          - __route53_resolver_rule_associate_unnamed.resolver_rule_association_id ==
+              __route53_resolver_rule_associate_rename.resolver_rule_association_id
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_security_group_list:

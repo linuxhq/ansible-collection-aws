@@ -9,6 +9,7 @@ version_added: '1.9.0'
 short_description: Manage aws route53 resolver rule associations
 description:
   - Manages AWS Route53 Resolver rule associations.
+  - An association in the C(FAILED) status is replaced.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -47,12 +48,16 @@ options:
   wait_delay:
     description:
       - The delay between polling attempts when O(wait=true).
+      - When O(state=present), this also applies while an association is
+        replaced, regardless of O(wait).
       - This must be 1 or greater.
     default: 5
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait when O(wait=true).
+      - When O(state=present), this also applies while an association is
+        replaced, regardless of O(wait).
       - This must be 1 or greater.
     default: 300
     type: int
@@ -97,7 +102,7 @@ resolver_rule_association:
   contains:
     id:
       description: The association ID.
-      returned: always
+      returned: except for a create or replacement predicted in check mode
       type: str
     name:
       description: The association name.
@@ -109,7 +114,7 @@ resolver_rule_association:
       type: str
     status:
       description: The association status.
-      returned: always
+      returned: except for a create or replacement predicted in check mode
       type: str
       sample: COMPLETE
     status_message:
@@ -186,13 +191,13 @@ ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA = {
                 "argument": "ResolverRuleAssociation.Status",
                 "expected": "DELETING",
                 "matcher": "path",
-                "state": "retry",
+                "state": "failure",
             },
             {
                 "argument": "ResolverRuleAssociation.Status",
                 "expected": "FAILED",
                 "matcher": "path",
-                "state": "failure",
+                "state": "success",
             },
         ],
     },
@@ -211,6 +216,12 @@ ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA = {
                 "expected": "DELETING",
                 "matcher": "path",
                 "state": "retry",
+            },
+            {
+                "argument": "ResolverRuleAssociation.Status",
+                "expected": "FAILED",
+                "matcher": "path",
+                "state": "failure",
             },
         ],
     },
@@ -246,7 +257,7 @@ def ensure_absent(client, module):
                 client,
                 module,
                 resolver_rule_association_id,
-                {"deleted"},
+                "deleted",
             )
 
     result = {"changed": changed, "state": "absent"}
@@ -266,7 +277,7 @@ def ensure_present(client, module):
         if module.check_mode:
             association = None
         else:
-            wait_for_resolver_rule_association_status(client, module, association.get("Id"), {"deleted"})
+            wait_for_resolver_rule_association_status(client, module, association.get("Id"), "deleted")
             return ensure_present(client, module)
 
     current_association = (
@@ -287,16 +298,18 @@ def ensure_present(client, module):
         # An omitted name keeps the current name instead of replacing the association.
         desired_association["name"] = current_association["name"]
 
-    changed = (current_association or {}) != desired_association
+    failed = association is not None and association.get("Status") == "FAILED"
+    # A failed association cannot be updated, so it is replaced.
+    changed = failed or (current_association or {}) != desired_association
 
     if (
         (changed or module.params["wait"])
         and not module.check_mode
         and association is not None
         and association.get("Status")
-        and association.get("Status") not in ("COMPLETE", "OVERRIDDEN")
+        and association.get("Status") not in ("COMPLETE", "FAILED", "OVERRIDDEN")
     ):
-        wait_for_resolver_rule_association_status(client, module, association.get("Id"), {"complete"})
+        wait_for_resolver_rule_association_status(client, module, association.get("Id"), "complete", allow_failed=True)
         return ensure_present(client, module)
 
     if changed and not module.check_mode:
@@ -321,12 +334,12 @@ def ensure_present(client, module):
                 client,
                 module,
                 resolver_rule_association_id,
-                {"deleted"},
+                "deleted",
             )
 
         request = {"ResolverRuleId": resolver_rule_id, "VPCId": vpc_id}
-        if name is not None:
-            request["Name"] = name
+        if desired_association["name"] is not None:
+            request["Name"] = desired_association["name"]
 
         try:
             response = client.associate_resolver_rule(**request, aws_retry=True)
@@ -351,15 +364,15 @@ def ensure_present(client, module):
                 client,
                 module,
                 resolver_rule_association_id,
-                {"complete"},
+                "complete",
             )
     elif changed and module.check_mode:
         association = {
             "ResolverRuleId": resolver_rule_id,
             "VPCId": vpc_id,
         }
-        if name is not None:
-            association["Name"] = name
+        if desired_association["name"] is not None:
+            association["Name"] = desired_association["name"]
 
     result = {
         "changed": changed,
@@ -379,20 +392,20 @@ def ensure_present(client, module):
     module.exit_json(**result)
 
 
-def wait_for_resolver_rule_association_status(client, module, resolver_rule_association_id, statuses):
-    deleted = "deleted" in statuses
-    identifier = module.params.get("name") or (f"{module.params['resolver_rule_id']}/{module.params['vpc_id']}")
+def wait_for_resolver_rule_association_status(client, module, resolver_rule_association_id, state, allow_failed=False):
+    identifier = module.params.get("name") or f"{module.params['resolver_rule_id']}/{module.params['vpc_id']}"
 
+    # The waiter fails on terminal states as well as on timeouts, so the message names neither.
     run_waiter(
         module,
         client,
         ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA,
-        ("resolver_rule_association_deleted" if deleted else "resolver_rule_association_complete"),
-        f"Timed out waiting for AWS Route53 Resolver rule association {identifier}",
+        f"resolver_rule_association_{state}",
+        f"Unable to wait for AWS Route53 Resolver rule association {identifier} to become {state}",
         ResolverRuleAssociationId=resolver_rule_association_id,
     )
 
-    if deleted:
+    if state == "deleted":
         return None
 
     try:
@@ -414,12 +427,24 @@ def wait_for_resolver_rule_association_status(client, module, resolver_rule_asso
         )
 
     association = response.get("ResolverRuleAssociation") if isinstance(response, dict) else None
-    return validate_resolver_rule_association(
+    association = validate_resolver_rule_association(
         module,
         association,
         "get_resolver_rule_association",
         expected_id=resolver_rule_association_id,
     )
+    if association.get("Status") == "FAILED" and not allow_failed:
+        module.fail_json(
+            msg=(
+                f"AWS Route53 Resolver rule association {identifier} failed: "
+                f"{association.get('StatusMessage') or 'no status message was returned'}"
+            ),
+            resolver_rule_association=boto3_resource_to_ansible_dict(
+                association, transform_tags=False, force_tags=False
+            ),
+        )
+
+    return association
 
 
 def get_resolver_rule_association_by_rule_and_vpc(client, module):
