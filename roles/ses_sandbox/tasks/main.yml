@@ -16,7 +16,6 @@
     use_case_description: "{{ ses_sandbox_use_case_description }}"
     validate_certs: true
     website_url: "{{ ses_sandbox_website_url }}"
-  register: _ses_sandbox_request
   when:
     - not __ses_sandbox_info_query.account.production_access_enabled | bool
     - __ses_sandbox_info_query.account.details.review_details.status is not defined

@@ -1,5 +1,21 @@
 ---
 - name: Verify
   hosts: all
-  tasks: []
+  tasks:
+    - name: Ensure account details are queried
+      linuxhq.aws.ses_sandbox:
+        additional_contact_email_addresses:
+          - jake@molecule.org
+          - john@molecule.org
+        use_case_description: |
+          New account creation
+        website_url: 'https://github.com/ansible/molecule'
+      check_mode: true
+      register: __ses_sandbox_query
+
+    - name: Ensure account details are verified
+      ansible.builtin.assert:
+        that:
+          - __ses_sandbox_query is not changed
+          - __ses_sandbox_query.account.details.website_url == 'https://github.com/ansible/molecule'
 ...

@@ -17,5 +17,8 @@ def get_account(client, module):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg="Unable to get AWS Simple Email Service account details")
 
+    if not isinstance(account, dict):
+        module.fail_json(msg="AWS Simple Email Service returned an invalid account response")
+
     account.pop("ResponseMetadata", None)
     return boto3_resource_to_ansible_dict(account, transform_tags=False, force_tags=False)
