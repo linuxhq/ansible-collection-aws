@@ -14,7 +14,7 @@
     validate_certs: true
     wait: "{{ _resolver_rule.wait | d(true) }}"
     wait_delay: 5
-    wait_timeout: 300
+    wait_timeout: "{{ _resolver_rule.wait_timeout | d(route53_resolver_rule_timeout) }}"
   register: __route53_resolver_rule_result
   loop: "{{ __route53_resolver_rule_list }}"
   loop_control:

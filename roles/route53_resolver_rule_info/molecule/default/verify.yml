@@ -87,6 +87,19 @@
           - _route53_resolver_rule_info_dict[route53_resolver_rule_list.0.name].vpc_ids ==
               [_ec2_vpc_net_info_dict['molecule'].id]
 
+    - name: Ensure role is included with a filter that matches nothing
+      ansible.builtin.include_role:
+        name: route53_resolver_rule_info
+      vars:
+        route53_resolver_rule_info_filters:
+          Name: molecule-does-not-exist
+
+    - name: Ensure info with no matches is verified
+      ansible.builtin.assert:
+        that:
+          - _route53_resolver_rule_info_list == []
+          - _route53_resolver_rule_info_dict == {}
+
     - name: Ensure role is included without name
       ansible.builtin.include_role:
         name: route53_resolver_rule_info

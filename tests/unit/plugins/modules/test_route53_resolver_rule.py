@@ -61,16 +61,16 @@ class Route53ResolverRuleTests(TestCase):
     def test_create_rereads_rule_when_response_is_lean(self):
         client = Mock(create_resolver_rule=Mock(return_value={}))
         module = FakeModule({"state": "present", "tags": None, "wait": False})
-        desired = {
-            "domain_name": "example.com",
-            "name": "main",
-            "resolver_endpoint_id": "rslvr-out-1",
-            "rule_type": "FORWARD",
-            "target_ips": [{"ip": "192.0.2.1"}],
+        request = {
+            "DomainName": "example.com",
+            "Name": "main",
+            "ResolverEndpointId": "rslvr-out-1",
+            "RuleType": "FORWARD",
+            "TargetIps": [{"Ip": "192.0.2.1"}],
         }
         rule = {"Id": "rslvr-rr-1"}
         with patch.object(plugin, "get_resolver_rule_by_name", return_value=rule) as get:
-            result = plugin.create_resolver_rule(client, module, desired)
+            result = plugin.create_resolver_rule(client, module, request)
 
         get.assert_called_once_with(client, module)
         self.assertEqual(result["DomainName"], "example.com")
@@ -119,7 +119,7 @@ class Route53ResolverRuleTests(TestCase):
 
         self.assertFalse(raised.exception.values["changed"])
         delete.assert_not_called()
-        wait.assert_called_once_with(client, module, "rslvr-rr-1", {"deleted"})
+        wait.assert_called_once_with(client, module, "rslvr-rr-1", "deleted")
 
     def test_delete_waits_when_requested(self):
         client = Mock()
@@ -127,7 +127,7 @@ class Route53ResolverRuleTests(TestCase):
         with patch.object(plugin, "wait_for_resolver_rule_status") as wait:
             plugin.delete_resolver_rule(client, module, {"Id": "rslvr-rr-1"})
 
-        wait.assert_called_once_with(client, module, "rslvr-rr-1", {"deleted"})
+        wait.assert_called_once_with(client, module, "rslvr-rr-1", "deleted")
 
     def test_delete_tolerates_rule_disappearing(self):
         client = Mock()
@@ -331,21 +331,21 @@ class Route53ResolverRuleTests(TestCase):
                     message,
                 )
 
-    def test_rule_comparison_normalizes_domain_and_target_defaults(self):
+    def test_rule_comparison_normalizes_domain_without_adding_target_defaults(self):
         self.assertEqual(
             plugin.comparable_rule(
                 {
                     "DomainName": "Example.COM.",
                     "ResolverEndpointId": "rslvr-out-1",
                     "RuleType": "FORWARD",
-                    "TargetIps": [{"Ip": "192.0.2.1"}, {"Ip": "192.0.2.1"}],
+                    "TargetIps": [{"Ip": "192.0.2.1"}],
                 }
             ),
             {
                 "domain_name": "example.com",
                 "resolver_endpoint_id": "rslvr-out-1",
                 "rule_type": "FORWARD",
-                "target_ips": [{"ip": "192.0.2.1", "port": 53, "protocol": "Do53"}],
+                "target_ips": [{"ip": "192.0.2.1"}],
             },
         )
 
@@ -359,19 +359,19 @@ class Route53ResolverRuleTests(TestCase):
             )
         )
         module = FakeModule({"tags": {"Env": "test"}, "wait": False})
-        desired = {
-            "domain_name": "example.com",
-            "name": "main",
-            "resolver_endpoint_id": "rslvr-out-1",
-            "rule_type": "FORWARD",
-            "target_ips": [{"ip": "192.0.2.1"}],
+        request = {
+            "DomainName": "example.com",
+            "Name": "main",
+            "ResolverEndpointId": "rslvr-out-1",
+            "RuleType": "FORWARD",
+            "TargetIps": [{"Ip": "192.0.2.1"}],
         }
-        created = plugin.create_resolver_rule(client, module, desired)
-        plugin.create_resolver_rule(client, module, dict(desired, domain_name="changed.example.com"))
+        plugin.create_resolver_rule(client, module, request)
+        plugin.create_resolver_rule(client, module, dict(request, DomainName="changed.example.com"))
 
-        tokens = [call.kwargs["CreatorRequestId"] for call in client.create_resolver_rule.call_args_list]
-        self.assertNotEqual(tokens[0], tokens[1])
-        self.assertEqual(created["Tags"], [{"Key": "Env", "Value": "test"}])
+        calls = client.create_resolver_rule.call_args_list
+        self.assertNotEqual(calls[0].kwargs["CreatorRequestId"], calls[1].kwargs["CreatorRequestId"])
+        self.assertEqual(calls[0].kwargs["Tags"], [{"Key": "Env", "Value": "test"}])
 
     def test_absent_lookup_does_not_fetch_unused_rule_details(self):
         client = Mock()
@@ -413,7 +413,7 @@ class Route53ResolverRuleTests(TestCase):
         ):
             plugin.ensure_present(client, module)
 
-        wait_for_status.assert_called_once_with(client, module, "rslvr-rr-old", {"deleted"})
+        wait_for_status.assert_called_once_with(client, module, "rslvr-rr-old", "deleted")
         create.assert_called_once()
 
     def test_update_rereads_rule_when_response_is_lean(self):
@@ -548,3 +548,200 @@ def test_update_mismatch_preserves_rule(wait):
     client.update_resolver_rule.assert_called_once()
     delete.assert_not_called()
     create.assert_not_called()
+
+
+def rule_params(**overrides):
+    params = {
+        "domain_name": "example.com",
+        "name": "main",
+        "purge_tags": True,
+        "resolver_endpoint_id": "rslvr-out-1",
+        "rule_type": "forward",
+        "state": "present",
+        "tags": None,
+        "target_ips": [
+            {"ip": "192.0.2.1", "ipv6": None, "port": None, "protocol": None, "server_name_indication": None}
+        ],
+        "wait": False,
+        "wait_delay": 5,
+        "wait_timeout": 300,
+    }
+    params.update(overrides)
+    return params
+
+
+def existing_rule(**overrides):
+    rule = {
+        "Arn": "arn:rule",
+        "DomainName": "example.com.",
+        "Id": "rslvr-rr-1",
+        "Name": "main",
+        "OwnerId": "123456789012",
+        "ResolverEndpointId": "rslvr-out-1",
+        "RuleType": "FORWARD",
+        "ShareStatus": "NOT_SHARED",
+        "Status": "COMPLETE",
+        "Tags": [],
+        "TargetIps": [{"Ip": "192.0.2.1", "Port": 53, "Protocol": "Do53"}],
+    }
+    rule.update(overrides)
+    return rule
+
+
+def test_requests_send_supplied_values_without_comparison_defaults():
+    module = FakeModule(
+        rule_params(
+            domain_name=".",
+            target_ips=[
+                {
+                    "ip": "192.0.2.1",
+                    "ipv6": None,
+                    "port": None,
+                    "protocol": "DoH",
+                    "server_name_indication": "dns.example.com",
+                }
+            ],
+        )
+    )
+    assert plugin.desired_request(module) == {
+        "DomainName": ".",
+        "Name": "main",
+        "ResolverEndpointId": "rslvr-out-1",
+        "RuleType": "FORWARD",
+        "TargetIps": [{"Ip": "192.0.2.1", "Protocol": "DoH", "ServerNameIndication": "dns.example.com"}],
+    }
+
+
+def test_omitted_target_fields_match_the_values_aws_stored():
+    module = FakeModule(rule_params())
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=existing_rule()),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    assert result.value.values["changed"] is False
+
+
+def test_a_supplied_target_field_that_differs_is_a_change():
+    current = plugin.comparable_rule(existing_rule())
+    desired = plugin.comparable_rule(dict(existing_rule(), TargetIps=[{"Ip": "192.0.2.1", "Port": 5353}]))
+    assert not plugin.rules_match(current, desired)
+
+
+def test_waiting_for_a_complete_rule_stops_when_it_is_deleting():
+    model = plugin.ROUTE53_RESOLVER_RULE_WAITER_MODEL_DATA
+    complete = {a["expected"]: a["state"] for a in model["resolver_rule_complete"]["acceptors"]}
+    deleted = {a["expected"]: a["state"] for a in model["resolver_rule_deleted"]["acceptors"]}
+    assert complete == {"COMPLETE": "success", "UPDATING": "retry", "DELETING": "failure", "FAILED": "success"}
+    assert deleted == {"ResourceNotFoundException": "success", "DELETING": "retry"}
+
+
+def test_lookup_skips_shared_and_aws_owned_rules():
+    owned = existing_rule()
+    shared = existing_rule(Id="rslvr-rr-shared", ShareStatus="SHARED_WITH_ME", OwnerId="210987654321")
+    aws_owned = existing_rule(Id="rslvr-autodefined-rr-1", OwnerId="Route 53 Resolver")
+    with (
+        patch.object(plugin, "query_list", return_value=[shared, owned, aws_owned]),
+        patch.object(plugin, "resolver_rule_with_tags", side_effect=lambda client, module, rule: rule) as with_tags,
+    ):
+        assert plugin.get_resolver_rule_by_name(Mock(), FakeModule(rule_params()))["Id"] == "rslvr-rr-1"
+
+    with_tags.assert_called_once()
+
+
+def test_present_lookup_uses_the_listed_rule_without_get_resolver_rule():
+    client = Mock()
+    with (
+        patch.object(plugin, "query_list", return_value=[existing_rule()]),
+        patch.object(plugin, "resolver_rule_with_tags", side_effect=lambda client, module, rule: rule),
+    ):
+        plugin.get_resolver_rule_by_name(client, FakeModule(rule_params()))
+
+    client.get_resolver_rule.assert_not_called()
+
+
+def test_failed_rule_is_repaired_by_sending_the_desired_configuration():
+    client = Mock()
+    client.update_resolver_rule.return_value = {"ResolverRule": existing_rule(Status="UPDATING")}
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=existing_rule(Status="FAILED")),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, FakeModule(rule_params()))
+
+    assert result.value.values["changed"] is True
+    client.update_resolver_rule.assert_called_once_with(
+        Config={"Name": "main", "ResolverEndpointId": "rslvr-out-1", "TargetIps": [{"Ip": "192.0.2.1"}]},
+        ResolverRuleId="rslvr-rr-1",
+        aws_retry=True,
+    )
+
+
+def test_rule_that_fails_after_a_change_reports_the_aws_status_message():
+    module = FakeModule(rule_params())
+    failed = existing_rule(Status="FAILED", StatusMessage="Target 192.0.2.1 is unreachable")
+    with (
+        patch.object(plugin, "run_waiter") as run_waiter,
+        patch.object(plugin, "get_resolver_rule", return_value=failed),
+        pytest.raises(ModuleFail) as result,
+    ):
+        plugin.wait_for_resolver_rule_status(Mock(), module, "rslvr-rr-1", "complete")
+
+    assert run_waiter.call_args.args[4] == "Unable to wait for AWS Route53 Resolver rule main to become complete"
+    assert result.value.values["msg"] == "AWS Route53 Resolver rule main failed: Target 192.0.2.1 is unreachable"
+
+
+def test_delete_of_an_associated_rule_says_to_remove_associations():
+    client = Mock()
+    client.delete_resolver_rule.side_effect = plugin.ClientError(
+        {"Error": {"Code": "ResourceInUseException", "Message": "in use"}}, "DeleteResolverRule"
+    )
+    with pytest.raises(ModuleFail) as result:
+        plugin.delete_resolver_rule(client, FakeModule(rule_params()), existing_rule())
+
+    assert result.value.values["msg"] == (
+        "Unable to delete AWS Route53 Resolver rule main: it is still associated with VPCs; remove its associations first"
+    )
+
+
+def test_duplicate_target_ips_are_rejected():
+    target = {"ip": "192.0.2.1", "ipv6": None, "port": 53, "protocol": None, "server_name_indication": None}
+    module = FakeModule(rule_params(target_ips=[target, dict(target)]))
+    with patch.object(plugin, "AnsibleAWSModule", return_value=module), pytest.raises(ModuleFail) as result:
+        plugin.main()
+
+    assert result.value.values["msg"] == "target_ips entries must be unique"
+
+
+def test_update_reuses_tags_read_at_the_start():
+    client = Mock()
+    updated = existing_rule(ResolverEndpointId="rslvr-out-2")
+    updated.pop("Tags")
+    client.update_resolver_rule.return_value = {"ResolverRule": updated}
+    start = existing_rule(Tags=[{"Key": "Name", "Value": "main"}])
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=start),
+        patch.object(plugin, "resolver_rule_with_tags") as with_tags,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(
+            client, FakeModule(rule_params(resolver_endpoint_id="rslvr-out-2", tags={"Name": "main"}))
+        )
+
+    with_tags.assert_not_called()
+    assert result.value.values["resolver_rule"]["tags"] == {"Name": "main"}
+    client.tag_resource.assert_not_called()
+
+
+def test_check_mode_tag_change_keeps_the_stored_target_values():
+    module = FakeModule(rule_params(tags={"Env": "test"}), check_mode=True)
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=existing_rule()),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["resolver_rule"]["target_ips"] == [{"ip": "192.0.2.1", "port": 53, "protocol": "Do53"}]
+    assert result.value.values["resolver_rule"]["tags"] == {"Env": "test"}
