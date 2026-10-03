@@ -1,21 +1,21 @@
 ---
 - name: Ensure information about aws simple queue service availability zones is gathered
   tags:
-    - sqs_queue
+    - sqs_queue_info
   amazon.aws.aws_az_info:
     validate_certs: true
   register: __sqs_queue_info_availability_zone
 
 - name: Ensure string of aws simple queue service region is generated
   tags:
-    - sqs_queue
+    - sqs_queue_info
   ansible.builtin.set_fact:
     __sqs_queue_info_region:
       "{{ __sqs_queue_info_availability_zone.availability_zones.0.region_name }}"
 
 - name: Ensure information about aws simple queue service queues is gathered
   tags:
-    - sqs_queue
+    - sqs_queue_info
   linuxhq.aws.sqs_queue_info:
     name: "{{ sqs_queue_info_name or omit }}"
     queue_name_prefix: "{{ sqs_queue_info_queue_name_prefix or omit }}"
@@ -27,7 +27,7 @@
 
 - name: Ensure list of aws simple queue service queues is generated
   tags:
-    - sqs_queue
+    - sqs_queue_info
   ansible.builtin.set_fact:
     _sqs_queue_info_list:
       "{{ __sqs_queue_info_query.queues |
