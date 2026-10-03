@@ -1,0 +1,13 @@
+---
+bugfixes:
+  - ses_sandbox - stop resubmitting a production access request with unchanged details on every run
+    while it is pending, denied, or failed; a denied or failed request now produces a warning instead.
+  - ses_sandbox - keep the account's contact language and mail type when ``contact_language`` or ``mail_type``
+    is omitted, instead of reverting them to ``EN`` and ``TRANSACTIONAL``.
+  - ses_sandbox - make ``use_case_description`` optional, as in the ``PutAccountDetails`` API, which deprecates it;
+    ``website_url`` alone submits a request. The use case description is sent but not compared,
+    because AWS does not return it as submitted.
+  - ses_sandbox and ses_sandbox_info - fail clearly when AWS returns an invalid account response.
+minor_changes:
+  - ses_sandbox role - stop registering the unused ``_ses_sandbox_request`` result.
+...
