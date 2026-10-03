@@ -20,10 +20,15 @@ The repository's rules win over this checklist.
 - Report issues, optimizations, and inconsistencies with evidence.
 - Mark breaking changes, open decisions, and anything unverified.
 - Fix only what the user approves.
+- Make breaking changes only with explicit approval.
+- Check siblings and open branches for each bug found.
 - Add a regression test and changelog entry for each fix.
 - Run formatting, lint, sanity, and unit tests.
 - Run affected Molecule scenarios one at a time.
+- Wait for running tests instead of working around them.
 - Commit, push, and open a pull request; do not merge.
+- Keep pull request descriptions in sync with the final commits.
+- State only what was verified.
 
 ## Checklist
 
@@ -69,11 +74,13 @@ The repository's rules win over this checklist.
 - User-defined keys keep their case at every level.
 - Docs match options, defaults, and return values.
 - Version requirements are checked and documented.
+- Existing version checks stay, even for old versions.
 
 ### Maintenance
 
 - No redundant API calls or duplicated code.
 - No dead options, unused imports, or split strings.
+- Shared helpers change only after every caller is checked.
 
 ### Roles
 
@@ -82,6 +89,7 @@ The repository's rules win over this checklist.
 - Other role changes are proposed, not made.
 - Optional inputs pass through without forced values.
 - Role docs follow the repository's rules.
+- Role READMEs change only variables, defaults, and examples.
 
 ### Tests
 
@@ -98,5 +106,6 @@ The repository's rules win over this checklist.
 - Teardown polls for deletion instead of pausing.
 - Non-reusable names are unique per run.
 - Scenarios do not depend on earlier runs.
-- No test resources remain afterward.
+- Test edits keep the facts later steps rely on.
+- No test resources remain, even after a failed or stopped run.
 - No secrets in facts, logs, or output.
