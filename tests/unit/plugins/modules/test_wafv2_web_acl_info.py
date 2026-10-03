@@ -1,20 +1,65 @@
-from unittest import TestCase
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import wafv2_web_acl_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
+    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    assert_module_contract,
+    ModuleInitialized,
 )
+
+SUMMARY = {"Id": "acl-1", "Name": "main"}
+
+
+def params(**overrides):
+    values = {"id": None, "name": None, "scope": "regional"}
+    values.update(overrides)
+    return values
+
+
+def acl_client(acl, tags=None):
+    return Mock(
+        get_web_acl=Mock(return_value={"WebACL": acl}),
+        list_tags_for_resource=Mock(return_value={"TagInfoForResource": {"TagList": tags or []}}),
+    )
+
+
+def run(module, summaries=None):
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require_client_methods,
+        patch.object(plugin, "query_list", return_value=summaries) as query_list,
+        pytest.raises((ModuleExit, ModuleFail)) as raised,
+    ):
+        plugin.main()
+
+    return raised.value, require_client_methods, query_list
+
+
+def test_module_contract():
+    captured = {}
+
+    def initialize(**kwargs):
+        captured.update(kwargs)
+        raise ModuleInitialized
+
+    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
+        plugin.main()
+
+    assert captured["supports_check_mode"]
+    assert captured["argument_spec"]["scope"]["choices"] == ["cloudfront", "regional"]
+    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
 @pytest.mark.parametrize("filters", [{"id": "acl-1"}, {"name": "main"}, {}])
 def test_custom_response_body_names_and_references_are_preserved(filters):
     acl = {
+        "ARN": "arn:web-acl",
         "Id": "acl-1",
         "Name": "main",
         "CustomResponseBodies": {
@@ -23,158 +68,142 @@ def test_custom_response_body_names_and_references_are_preserved(filters):
         },
         "DefaultAction": {"Block": {"CustomResponse": {"ResponseCode": 403, "CustomResponseBodyKey": "BlockPage"}}},
     }
-    client = Mock(get_web_acl=Mock(return_value={"WebACL": acl}))
-    module = FakeModule({"id": None, "name": None, "scope": "regional", **filters}, client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[{"Id": "acl-1", "Name": "main"}]),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.main()
+    result, _require, _query = run(FakeModule(params(**filters), client=acl_client(acl)), [SUMMARY])
 
-    result = raised.value.values["web_acls"][0]
-    bodies = result["custom_response_bodies"]
+    web_acl = result.values["web_acls"][0]
+    bodies = web_acl["custom_response_bodies"]
     assert bodies == {
         "BlockPage": {"content": "denied", "content_type": "TEXT_PLAIN"},
         "block_page": {"content": "another body", "content_type": "TEXT_PLAIN"},
     }
-    reference = result["default_action"]["block"]["custom_response"]["custom_response_body_key"]
+    reference = web_acl["default_action"]["block"]["custom_response"]["custom_response_body_key"]
     assert bodies[reference]["content"] == "denied"
 
 
-class Wafv2WebAclInfoTests(TestCase):
-    def test_module_contract(self):
-        options = assert_module_contract(self, plugin)
-        assert options["argument_spec"]["scope"]["choices"] == [
-            "cloudfront",
-            "regional",
-        ]
-
-    def test_regional_scope_is_uppercase_for_aws(self):
-        client = Mock()
-        module = FakeModule({"id": None, "name": None, "scope": "regional"}, client=client)
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            patch.object(plugin, "query_list", return_value=[]) as query,
-            self.assertRaises(ModuleExit),
-        ):
-            plugin.main()
-
-        self.assertEqual(query.call_args.kwargs["Scope"], "REGIONAL")
-
-    def test_byte_values_are_returned_as_json_safe_text(self):
-        client = Mock()
-        client.get_web_acl.return_value = {
-            "WebACL": {
-                "CustomResponseBodies": {"body": {"Content": bytearray(b"hello")}},
-                "Id": "acl-1",
-                "Name": "main",
+def test_request_body_resource_types_are_preserved():
+    acl = {
+        "ARN": "arn:web-acl",
+        "Id": "acl-1",
+        "Name": "main",
+        "AssociationConfig": {
+            "RequestBody": {
+                "CLOUDFRONT": {"DefaultSizeInspectionLimit": "KB_16"},
+                "API_GATEWAY": {"DefaultSizeInspectionLimit": "KB_32"},
             }
+        },
+    }
+    result, _require, _query = run(FakeModule(params(), client=acl_client(acl)), [SUMMARY])
+
+    assert result.values["web_acls"][0]["association_config"] == {
+        "request_body": {
+            "CLOUDFRONT": {"default_size_inspection_limit": "KB_16"},
+            "API_GATEWAY": {"default_size_inspection_limit": "KB_32"},
         }
-        module = FakeModule({"id": "acl-1", "name": None, "scope": "regional"}, client=client)
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            patch.object(
-                plugin,
-                "query_list",
-                return_value=[{"Id": "acl-1", "Name": "main"}],
-            ),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.main()
+    }
 
-        self.assertEqual(
-            raised.exception.values["web_acls"][0]["custom_response_bodies"]["body"]["content"],
-            "hello",
-        )
 
-    def test_rejects_empty_filters(self):
-        for option in ("id", "name"):
-            params = {"id": None, "name": None, "scope": "regional"}
-            params[option] = ""
-            with (
-                self.subTest(option=option),
-                patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params)),
-                self.assertRaises(ModuleFail) as raised,
-            ):
-                plugin.main()
+def test_tags_are_returned_with_their_case():
+    client = acl_client(
+        {"ARN": "arn:web-acl", "Id": "acl-1", "Name": "main"},
+        [{"Key": "Name", "Value": "main"}, {"Key": "CostCenter", "Value": "A1"}],
+    )
+    result, require_client_methods, _query = run(FakeModule(params(), client=client), [SUMMARY])
 
-            self.assertEqual(raised.exception.values["msg"], f"{option} must not be empty")
+    assert result.values["web_acls"][0]["tags"] == {"Name": "main", "CostCenter": "A1"}
+    client.list_tags_for_resource.assert_called_once_with(ResourceARN="arn:web-acl", aws_retry=True)
+    assert "list_tags_for_resource" in require_client_methods.call_args.args[3]
 
-    def test_rejects_malformed_summary_list(self):
-        module = FakeModule({"id": None, "name": None, "scope": "regional"}, client=Mock())
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            patch.object(plugin, "query_list", return_value=None),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.main()
 
-        self.assertIn("Unexpected response while listing", raised.exception.values["msg"])
+def test_tags_are_paginated():
+    client = acl_client({"ARN": "arn:web-acl", "Id": "acl-1", "Name": "main"})
+    client.list_tags_for_resource.side_effect = [
+        {"TagInfoForResource": {"TagList": [{"Key": "A", "Value": "1"}]}, "NextMarker": "page-2"},
+        {"TagInfoForResource": {"TagList": [{"Key": "B", "Value": "2"}]}},
+    ]
+    result, _require, _query = run(FakeModule(params(), client=client), [SUMMARY])
 
-    def test_rejects_malformed_selected_summary(self):
-        for summary, message in (
-            (None, "Unexpected response while listing"),
-            ({}, "invalid ID"),
-            ({"Id": "acl-1"}, "invalid name"),
-        ):
-            module = FakeModule({"id": None, "name": None, "scope": "regional"}, client=Mock())
-            with (
-                self.subTest(summary=summary),
-                patch.object(plugin, "AnsibleAWSModule", return_value=module),
-                patch.object(plugin, "require_client_methods"),
-                patch.object(plugin, "query_list", return_value=[summary]),
-                self.assertRaises(ModuleFail) as raised,
-            ):
-                plugin.main()
+    assert result.values["web_acls"][0]["tags"] == {"A": "1", "B": "2"}
+    assert client.list_tags_for_resource.call_args.kwargs["NextMarker"] == "page-2"
 
-            self.assertIn(message, raised.exception.values["msg"])
 
-    def test_filtered_lookup_skips_malformed_unmatched_summary(self):
-        client = Mock(
-            get_web_acl=Mock(
-                return_value={
-                    "WebACL": {
-                        "ARN": "arn:web-acl",
-                        "DefaultAction": {"Allow": {}},
-                        "Id": "wanted",
-                        "Name": "target",
-                        "VisibilityConfig": {},
-                    }
-                }
-            )
-        )
-        module = FakeModule({"id": "wanted", "name": None, "scope": "regional"}, client=client)
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            patch.object(
-                plugin,
-                "query_list",
-                return_value=[None, {"Id": "wanted", "Name": "target"}],
-            ),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.main()
+def test_web_acl_deleted_before_its_tags_are_read_is_skipped():
+    client = acl_client({"ARN": "arn:web-acl", "Id": "acl-1", "Name": "main"})
+    client.list_tags_for_resource.side_effect = ClientError(
+        {"Error": {"Code": "WAFNonexistentItemException", "Message": "gone"}}, "ListTagsForResource"
+    )
+    result, _require, _query = run(FakeModule(params(), client=client), [SUMMARY])
 
-        self.assertEqual(raised.exception.values["web_acls"][0]["id"], "wanted")
+    assert result.values["web_acls"] == []
 
-    def test_rejects_malformed_web_acl_response(self):
-        client = Mock(get_web_acl=Mock(return_value={}))
-        module = FakeModule({"id": None, "name": None, "scope": "regional"}, client=client)
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            patch.object(plugin, "query_list", return_value=[{"Id": "acl-1", "Name": "main"}]),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.main()
 
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "Unexpected response while getting AWS WAFv2 web ACL main/acl-1",
-        )
+def test_regional_scope_is_uppercase_for_aws():
+    _result, _require, query_list = run(FakeModule(params(), client=Mock()), [])
+
+    assert query_list.call_args.kwargs["Scope"] == "REGIONAL"
+
+
+def test_cloudfront_scope_outside_us_east_1_fails_before_aws():
+    module = FakeModule(params(scope="cloudfront"), client=Mock(), region="us-west-2")
+    result, require_client_methods, query_list = run(module, [])
+
+    assert result.values["msg"] == "scope cloudfront requires the us-east-1 region, not us-west-2"
+    require_client_methods.assert_not_called()
+    query_list.assert_not_called()
+
+
+def test_byte_values_are_returned_as_json_safe_text():
+    acl = {"ARN": "arn:web-acl", "CustomResponseBodies": {"body": {"Content": bytearray(b"hello")}}, **SUMMARY}
+    result, _require, _query = run(FakeModule(params(id="acl-1"), client=acl_client(acl)), [SUMMARY])
+
+    assert result.values["web_acls"][0]["custom_response_bodies"]["body"]["content"] == "hello"
+
+
+@pytest.mark.parametrize("option", ["id", "name"])
+def test_rejects_empty_filters(option):
+    result, _require, _query = run(FakeModule(params(**{option: ""})))
+
+    assert result.values["msg"] == f"{option} must not be empty"
+
+
+def test_rejects_malformed_summary_list():
+    result, _require, _query = run(FakeModule(params(), client=Mock()), None)
+
+    assert "Unexpected response while listing" in result.values["msg"]
+
+
+@pytest.mark.parametrize(
+    ("summary", "message"),
+    [(None, "Unexpected response while listing"), ({}, "invalid ID"), ({"Id": "acl-1"}, "invalid name")],
+)
+def test_rejects_malformed_selected_summary(summary, message):
+    result, _require, _query = run(FakeModule(params(), client=Mock()), [summary])
+
+    assert message in result.values["msg"]
+
+
+def test_filtered_lookup_skips_malformed_unmatched_summary():
+    acl = {
+        "ARN": "arn:web-acl",
+        "DefaultAction": {"Allow": {}},
+        "Id": "wanted",
+        "Name": "target",
+        "VisibilityConfig": {},
+    }
+    result, _require, _query = run(
+        FakeModule(params(id="wanted"), client=acl_client(acl)), [None, {"Id": "wanted", "Name": "target"}]
+    )
+
+    assert result.values["web_acls"][0]["id"] == "wanted"
+
+
+def test_missing_name_returns_empty_list():
+    result, _require, _query = run(FakeModule(params(name="missing"), client=Mock()), [SUMMARY])
+
+    assert result.values["web_acls"] == []
+
+
+def test_rejects_malformed_web_acl_response():
+    client = Mock(get_web_acl=Mock(return_value={}))
+    result, _require, _query = run(FakeModule(params(), client=client), [SUMMARY])
+
+    assert result.values["msg"] == "Unexpected response while getting AWS WAFv2 web ACL main/acl-1"
