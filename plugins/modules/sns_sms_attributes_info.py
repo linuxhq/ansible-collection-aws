@@ -102,7 +102,10 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
+    client = module.client(
+        "sns",
+        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["Throttled"]),
+    )
 
     attributes = list(dict.fromkeys(module.params["attributes"] or []))
     request = {}

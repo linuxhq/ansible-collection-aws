@@ -11,4 +11,16 @@
         that:
           - _sns_sms_attributes_info_dict is mapping
           - _sns_sms_attributes_info_dict.monthly_spend_limit is defined
+
+    - name: Ensure role is included with requested attributes
+      ansible.builtin.include_role:
+        name: sns_sms_attributes_info
+      vars:
+        sns_sms_attributes_info_attributes:
+          - DefaultSMSType
+
+    - name: Ensure info with requested attributes is verified
+      ansible.builtin.assert:
+        that:
+          - _sns_sms_attributes_info_dict.keys() | list == ['default_sms_type']
 ...

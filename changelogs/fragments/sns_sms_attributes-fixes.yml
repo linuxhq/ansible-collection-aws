@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - sns_sms_attributes role - pass a ``sns_sms_attributes_delivery_status_success_sampling_rate`` of ``0``
+    instead of omitting it; ``0`` logs only failed deliveries.
+  - sns_sms_attributes and sns_sms_attributes_info - retry the SNS ``Throttled`` error.
+...
