@@ -9,7 +9,8 @@ version_added: '1.9.0'
 short_description: Gather information about AWS WAFv2 IP sets
 description:
   - Gathers information about AWS WAFv2 IP sets.
-  - Lists IP sets for the requested scope and returns each full IP set definition.
+  - Lists IP sets for the requested scope and returns each full IP set definition
+    with its tags.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -32,7 +33,8 @@ options:
     description:
       - The scope of the IP sets to gather.
       - Use C(cloudfront) for global IP sets and C(regional) for regional IP sets.
-      - V(cloudfront) requires the C(us-east-1) region.
+      - V(cloudfront) requires the C(us-east-1) region; any other region fails
+        before AWS is called.
     choices:
       - cloudfront
       - regional
@@ -98,6 +100,12 @@ ip_sets:
       description: Name of the IP set.
       returned: always
       type: str
+    tags:
+      description:
+        - Tags of the IP set.
+        - Tag keys keep their original case.
+      returned: always
+      type: dict
 scope:
   description: The AWS WAFv2 scope that was queried.
   returned: always
@@ -114,6 +122,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.tagging import boto3_tag_list_to_ansible_dict
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
@@ -122,6 +131,31 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+
+
+def get_ip_set_tags(client, module, ip_set):
+    """Return the IP set's tags, or None when it was deleted after it was listed."""
+    identifier = f"{ip_set.get('Name')}/{ip_set.get('Id')}"
+    request = {"ResourceARN": ip_set.get("ARN")}
+    tags = []
+    while True:
+        try:
+            response = client.list_tags_for_resource(**request, aws_retry=True)
+        except is_boto3_error_code("WAFNonexistentItemException"):
+            return None
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, msg=f"Unable to list tags for AWS WAFv2 IP set {identifier}")
+
+        tag_info = response.get("TagInfoForResource", {}) if isinstance(response, dict) else None
+        tag_list = tag_info.get("TagList", []) if isinstance(tag_info, dict) else None
+        if not isinstance(tag_list, list) or any(not isinstance(tag, dict) for tag in tag_list):
+            module.fail_json(msg=f"Unexpected response while listing tags for AWS WAFv2 IP set {identifier}")
+
+        tags.extend(tag_list)
+        if not response.get("NextMarker"):
+            return boto3_tag_list_to_ansible_dict(tags)
+
+        request["NextMarker"] = response["NextMarker"]
 
 
 def main():
@@ -144,6 +178,9 @@ def main():
     if target_name == "":
         module.fail_json(msg="name must not be empty")
 
+    if module.params["scope"] == "cloudfront" and module.region != "us-east-1":
+        module.fail_json(msg=f"scope cloudfront requires the us-east-1 region, not {module.region}")
+
     client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
     require_client_methods(
         module,
@@ -152,6 +189,7 @@ def main():
         {
             "list_ip_sets": ("Limit", "NextMarker", "Scope"),
             "get_ip_set": ("Id", "Name", "Scope"),
+            "list_tags_for_resource": ("NextMarker", "ResourceARN"),
         },
     )
 
@@ -202,7 +240,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to get AWS WAFv2 IP set " f"{summary['Name']}/{summary['Id']}"),
+                msg=f"Unable to get AWS WAFv2 IP set {summary['Name']}/{summary['Id']}",
             )
 
         ip_set = response.get("IPSet") if isinstance(response, dict) else None
@@ -211,11 +249,17 @@ def main():
                 msg=f"Unexpected response while getting AWS WAFv2 IP set {summary['Name']}/{summary['Id']}"
             )
 
-        ip_sets.append(ip_set)
+        tags = get_ip_set_tags(client, module, ip_set)
+        if tags is None:
+            continue
+
+        ip_sets.append(dict(ip_set, Tags=tags))
 
     module.exit_json(
         changed=False,
-        ip_sets=boto3_resource_list_to_ansible_dict(ip_sets, transform_tags=False, force_tags=False),
+        ip_sets=boto3_resource_list_to_ansible_dict(
+            ip_sets, ignore_list=["Tags"], transform_tags=False, force_tags=False
+        ),
         scope=scope.lower(),
     )
 
