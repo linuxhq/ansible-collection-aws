@@ -45,6 +45,8 @@ options:
   parameters:
     description:
       - The document parameters to pass to the command.
+      - AWS treats parameter values as sensitive, so Ansible masks them in the
+        module's output and logs.
     default: {}
     type: dict
   targets:
@@ -204,6 +206,8 @@ command:
         - The document parameters sent with the command.
         - Parameter names are returned unchanged, so they keep the casing AWS
           reports rather than being converted to snake_case.
+        - Parameter values are masked in Ansible output because O(parameters)
+          is treated as sensitive.
       returned: when available
       type: dict
     requested_date_time:
@@ -438,7 +442,7 @@ def main():
         "instance_ids": {"elements": "str", "type": "list"},
         "max_concurrency": {"type": "str"},
         "max_errors": {"type": "str"},
-        "parameters": {"default": {}, "type": "dict"},
+        "parameters": {"default": {}, "no_log": True, "type": "dict"},
         "targets": {
             "elements": "dict",
             "options": {
@@ -525,7 +529,7 @@ def main():
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=("Unable to send AWS Systems Manager command using " f"{document_name}"),
+            msg=f"Unable to send AWS Systems Manager command using {document_name}",
         )
 
     command = response.get("Command", {}) if isinstance(response, dict) else None
@@ -539,7 +543,7 @@ def main():
     if not isinstance(command_id, str) or not command_id:
         module.fail_json(
             changed=True,
-            msg=("AWS Systems Manager did not return an ID for the command using " f"{document_name}"),
+            msg=f"AWS Systems Manager did not return an ID for the command using {document_name}",
         )
 
     command_status = command.get("Status")
@@ -670,14 +674,14 @@ def main():
             if command_status in TERMINAL_STATUSES and not invocations:
                 if command_status in SUCCESS_STATUSES and command.get("TargetCount") == 0:
                     module.warn(
-                        f"AWS Systems Manager command {command_id} completed " "without invocations; no targets matched"
+                        f"AWS Systems Manager command {command_id} completed without invocations; no targets matched"
                     )
                     break
 
                 if command_status not in SUCCESS_STATUSES:
                     module.fail_json(
                         changed=True,
-                        msg=(f"AWS Systems Manager command {command_id} did not " "complete successfully"),
+                        msg=f"AWS Systems Manager command {command_id} did not complete successfully",
                         command=normalize_command(command),
                         command_id=command_id,
                         command_invocations=[],
@@ -705,7 +709,7 @@ def main():
 
                 module.fail_json(
                     changed=True,
-                    msg=(f"AWS Systems Manager command {command_id} did not complete " "successfully"),
+                    msg=f"AWS Systems Manager command {command_id} did not complete successfully",
                     command=normalize_command(command),
                     command_id=command_id,
                     command_invocations=boto3_resource_list_to_ansible_dict(
