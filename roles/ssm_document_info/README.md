@@ -10,7 +10,8 @@ None
 
     ssm_document_info_document_format: JSON
     ssm_document_info_document_version: null
-    ssm_document_info_filters: {}
+    ssm_document_info_filters:
+      Owner: Self
     ssm_document_info_name: null
     ssm_document_info_version_name: null
 

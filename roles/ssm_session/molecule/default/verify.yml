@@ -28,7 +28,7 @@
       register: __ssm_send_command_result
       until:
         - __ssm_send_command_result is not failed
-      retries: 12
+      retries: 30
       delay: 10
 
     - name: Ensure command result is gathered
