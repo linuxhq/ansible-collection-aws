@@ -8,10 +8,9 @@ module: ssm_document_info
 version_added: '1.9.0'
 short_description: Gather information about AWS Systems Manager documents
 description:
-  - Application configuration, application configuration schema, and CloudFormation content is preserved unchanged.
-  - Document parameter, variable, and attachment names are preserved unchanged in returned content.
   - Gathers information about AWS Systems Manager documents.
-  - Retrieves each document as JSON and parses the returned content when possible.
+  - Retrieves each document as JSON and parses the returned content when
+    possible; the content is returned exactly as AWS stores it.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -90,15 +89,8 @@ document:
   contains:
     content:
       description:
-        - Document content.
-        - Application configuration, application configuration schema, and CloudFormation content is preserved unchanged.
-        - Parsed JSON content uses snake_case schema fields while preserving
-          parameter, variable, and attachment names, defaults, and embedded payloads unchanged.
-        - Distributor package platform, release, and architecture keys are preserved unchanged.
-        - API-specific parameters of C(aws:executeAwsApi), C(aws:assertAwsResourceProperty),
-          and C(aws:waitForAwsResourceProperty) retain AWS native keys and values.
-        - Run Command parameters, composite document C(documentParameters), nested Automation runtime parameters and target maps
-          retain their original keys and values.
+        - Document content, parsed from JSON when possible and returned exactly as AWS stores it.
+        - Content in the YAML or TEXT format is returned as a string.
       returned: when a document is returned
       type: raw
     document_format:
@@ -131,15 +123,8 @@ documents:
   contains:
     content:
       description:
-        - Document content.
-        - Application configuration, application configuration schema, and CloudFormation content is preserved unchanged.
-        - Parsed JSON content uses snake_case schema fields while preserving
-          parameter, variable, and attachment names, defaults, and embedded payloads unchanged.
-        - Distributor package platform, release, and architecture keys are preserved unchanged.
-        - API-specific parameters of C(aws:executeAwsApi), C(aws:assertAwsResourceProperty),
-          and C(aws:waitForAwsResourceProperty) retain AWS native keys and values.
-        - Run Command parameters, composite document C(documentParameters), nested Automation runtime parameters and target maps
-          retain their original keys and values.
+        - Document content, parsed from JSON when possible and returned exactly as AWS stores it.
+        - Content in the YAML or TEXT format is returned as a string.
       returned: always
       type: raw
     document_format:
@@ -165,7 +150,6 @@ documents:
 """
 
 import json
-from functools import partial
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -186,24 +170,18 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.ssm_document import normalize_document_content
 
 SSM_DOCUMENT_RESOURCE_TYPE = "Document"
 
 
-def content_transform(content, document_type=None):
+def content_transform(content):
     if content is None:
         return {}
 
     try:
-        content = json.loads(content)
+        return json.loads(content)
     except (TypeError, ValueError):
         return content
-
-    if isinstance(content, dict):
-        return normalize_document_content(content, document_type=document_type, snake_case=True)
-
-    return content
 
 
 def main():
@@ -318,7 +296,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to list tags for AWS Systems Manager document " f"{document_name}"),
+                msg=f"Unable to list tags for AWS Systems Manager document {document_name}",
             )
 
         tags = response.get("TagList", []) if isinstance(response, dict) else None
@@ -332,9 +310,7 @@ def main():
         documents.append(
             boto3_resource_to_ansible_dict(
                 document,
-                nested_transforms={
-                    "Content": partial(content_transform, document_type=document.get("DocumentType")),
-                },
+                nested_transforms={"Content": content_transform},
                 transform_tags=True,
                 force_tags=False,
             )
