@@ -98,7 +98,11 @@ def test_matching_in_progress_resource_readiness(kind, wait_enabled, check_mode)
 
     assert not result.value.values["changed"]
     if wait_enabled and not check_mode:
-        wait.assert_called_once_with(client, module, current["Id"], {ready["Status"].lower()})
+        if kind == "association":
+            wait.assert_called_once_with(client, module, current["Id"], "complete", allow_failed=True)
+        else:
+            wait.assert_called_once_with(client, module, current["Id"], {ready["Status"].lower()})
+
         assert result.value.values[result_key]["status"] == ready["Status"]
     else:
         wait.assert_not_called()
