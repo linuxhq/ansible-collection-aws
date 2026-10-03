@@ -1,0 +1,13 @@
+---
+bugfixes:
+  - service_quota - fail before requesting an increase for a quota that is not adjustable,
+    including in check mode, instead of predicting a change that AWS rejects.
+  - service_quota_info role - leave quotas that do not exist out of ``_service_quota_info_list``
+    and ``_service_quota_info_dict``; a missing quota shifted the remaining keys onto the wrong quotas.
+minor_changes:
+  - service_quota - add ``context_id`` to request resource-level quota increases.
+  - service_quota - warn when an open or pending request asks for less than ``value``.
+  - service_quota role - pass ``context_id`` when a quota sets it.
+  - service_quota - document the returned quota and request fields.
+  - service_quota_info - document the returned quota fields.
+...

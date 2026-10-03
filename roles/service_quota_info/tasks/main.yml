@@ -39,7 +39,8 @@
     _service_quota_info_list:
       "{{ __service_quota_info_query.results |
           d([]) |
-          map(attribute='quota', default=[]) |
+          map(attribute='quota', default={}) |
+          select |
           list }}"
 
 - name: Ensure dict of aws service quotas is generated
@@ -48,6 +49,6 @@
   ansible.builtin.set_fact:
     _service_quota_info_dict:
       "{{ dict(_service_quota_info_list |
-               json_query('[].quota_code') |
+               map(attribute='quota_code') |
                zip(_service_quota_info_list)) }}"
 ...
