@@ -5,113 +5,98 @@ description: Review a group of related modules with the user, fix approved findi
 
 # audit
 
-Audit one group of related modules at a time, such as every module, role, and test
-that shares a name prefix. The user picks the group; work through it with them.
+Audit one group of related modules at a time, chosen by the user.
+
+The repository's rules win over this checklist.
 
 ## Workflow
 
-1. Read the repository's agent instructions and every rule they import before
-   reviewing anything. Findings and fixes follow those rules.
-2. Create a branch for the group from an up-to-date default branch.
-3. Read every module, shared helper, role, integration test, and unit test in the
-   group in full, and find what outside the group depends on it.
-4. Review each module from every angle in the checklist below. Read it again from a
-   different angle; keep going until a pass finds nothing new.
-5. Report findings as issues, optimizations, and inconsistencies. For each, give the
-   module, the failure scenario, the evidence, and the proposed fix. Mark breaking
-   changes and anything that needs a decision. Say what was not verified.
-6. Wait for the user. Fix only what they approve.
-7. Add a focused regression test for each fix, and a changelog entry if the
-   repository uses them.
-8. Run the repository's formatting, lint, sanity, and unit test tooling.
-9. Run each affected Molecule scenario, and any other integration tests, one at a
-   time. Do not switch branches or edit files while a test runs. Confirm no test
-   resources remain afterward.
-10. Commit, push, and open a pull request. Do not merge.
-
-When the API's behavior is unclear from its schema or documentation, check it with
-read-only calls, or with throwaway resources the user approves and that are cleaned
-up afterward. Do not report anything as fine without evidence.
-
-Where this checklist and the repository's rules differ, the rules win.
+- Read the agent instructions and every imported rule.
+- Branch from an up-to-date default branch.
+- Read the group's modules, helpers, roles, and tests in full.
+- Find what outside the group depends on it.
+- Review each module from every angle below until a pass finds nothing new.
+- Verify unclear API behavior with read-only calls or approved test resources.
+- Report issues, optimizations, and inconsistencies with evidence.
+- Mark breaking changes, open decisions, and anything unverified.
+- Fix only what the user approves.
+- Add a regression test and changelog entry for each fix.
+- Run formatting, lint, sanity, and unit tests.
+- Run affected Molecule scenarios one at a time.
+- Commit, push, and open a pull request; do not merge.
 
 ## Checklist
 
-### Rules and conventions
+### Rules
 
-- [ ] The change follows every rule the repository's agent instructions import.
-- [ ] Behavior matches the upstream projects the rules point to.
-- [ ] Sibling modules handle the same situation the same way.
+- Follows every imported rule.
+- Matches upstream projects the rules reference.
+- Matches sibling modules.
 
-### Inputs and requests
+### Inputs
 
-- [ ] Each option behaves like the API parameter it maps to: required, optional,
-      defaults, limits, allowed values, and errors.
-- [ ] An omitted option leaves an existing resource unchanged; no module default
-      overrides a value the user did not set.
-- [ ] Values used only for comparison or matching are never sent in a request.
-- [ ] Inputs keep the API's naming; validation does not reject values the API accepts.
-- [ ] Options exist only for parameters the API supports.
+- Options behave like their API parameters.
+- Omitted options leave resources unchanged.
+- Comparison-only values are never sent.
+- Inputs keep the API's naming and accepted values.
+- No options for unsupported parameters.
 
-### State and idempotence
+### State
 
-- [ ] A second run with the same input reports no change.
-- [ ] Changes made outside the module are detected and converged, or fail clearly.
-- [ ] Attributes that cannot change, or change only in one way, fail clearly before
-      any modification.
-- [ ] Every status the API can return is handled, including transitional, failed,
-      and deleting states of the resource and its children.
-- [ ] Waits end on terminal states and stay within their timeout.
-- [ ] Identifiers and idempotency tokens behave correctly when reused after a delete.
+- A second run reports no change.
+- Outside changes converge or fail clearly.
+- Unchangeable attributes fail before any modification.
+- Every status is handled, including failed and deleting.
+- Waits end on terminal states within their timeout.
+- Reused names and tokens work after a delete.
 
 ### Lookups
 
-- [ ] Lookups by name handle duplicates, resources owned by someone else or by the
-      platform, eventual consistency, and resources deleted mid-run.
-- [ ] Information modules return an empty result when nothing matches.
-- [ ] Management modules fail when an explicitly identified resource is missing and
-      must exist, and report no change when it should be absent.
+- Name lookups handle duplicates, foreign owners, and mid-run deletes.
+- Info modules return empty results when nothing matches.
+- Manager modules fail on missing required resources.
+- Manager modules report no change for already-absent resources.
 
 ### Check mode and failures
 
-- [ ] Check mode predicts the result a real run would produce and changes nothing.
-- [ ] After a partial failure, the next run converges.
-- [ ] Failure messages name the operation, the resource, and any blocking dependency.
+- Check mode predicts the real result and changes nothing.
+- The next run converges after a partial failure.
+- Failures name the operation, resource, and blocker.
 
-### Results and documentation
+### Results and docs
 
-- [ ] Result keys follow the repository's naming convention and values are
-      unchanged; user-defined keys, such as tags and property maps, keep their case
-      at every nesting level.
-- [ ] Documented options, defaults, return values, and nested fields match the code.
-- [ ] Version requirements are checked in code and documented on the affected option.
+- Result keys follow the naming convention; values are unchanged.
+- User-defined keys keep their case at every level.
+- Docs match options, defaults, and return values.
+- Version requirements are checked and documented.
 
-### Efficiency and maintenance
+### Maintenance
 
-- [ ] No redundant API calls, repeated reads, or duplicated code.
-- [ ] No dead options, unused imports, or split string literals.
+- No redundant API calls or duplicated code.
+- No dead options, unused imports, or split strings.
 
-### Roles and tests
+### Roles
 
-- [ ] Roles pass optional inputs through without forcing a value and keep their
-      documented contract.
-- [ ] Role documentation changes follow the repository's rules.
-- [ ] Unit tests cover each behavior change.
-- [ ] Changelog entries match the change, with breaking changes marked.
+- Role behavior is unchanged unless a module fix requires it.
+- Existing conditions, defaults, and skips stay as they are.
+- Other role changes are proposed, not made.
+- Optional inputs pass through without forced values.
+- Role docs follow the repository's rules.
+
+### Tests
+
+- Unit tests cover each behavior change.
+- Changelog entries match the change; breaking changes are marked.
 
 ### Molecule
 
-- [ ] Every affected role's scenario runs to completion: check, converge, a second
-      check, idempotence, verify, and destroy.
-- [ ] Scenarios run one at a time, never alongside another scenario or sanity tests.
-- [ ] Verify asserts the changed behavior, including new results, options, and absent
-      or empty cases, not only that the converge succeeded.
-- [ ] Scenarios that share fixtures or depend on other roles are rerun when those
-      roles change.
-- [ ] Teardown waits for dependent resources to finish deleting with a bounded poll,
-      not a fixed pause.
-- [ ] Resources whose names or identifiers cannot be reused after deletion get names
-      that are unique per run.
-- [ ] A scenario does not depend on state left by another scenario or an earlier run.
-- [ ] After each run, no resources created by the scenario remain.
-- [ ] Credentials and sensitive values stay out of facts, logs, and displayed output.
+- Scenarios run every stage to completion.
+- Scenarios run one at a time, never alongside others.
+- No branch switches or edits while a scenario runs.
+- Verify asserts changed behavior, including absent and empty cases.
+- Dependent scenarios rerun when a shared role changes.
+- Teardown polls for deletion instead of pausing.
+- Non-reusable names are unique per run.
+- Scenarios do not depend on earlier runs.
+- No test resources remain afterward.
+- No secrets in facts, logs, or output.
