@@ -4,8 +4,33 @@
   roles:
     - aws_az_info
     - aws_caller_info
+    - sns_topic_info
 
   post_tasks:
+    - name: Ensure topics are verified
+      ansible.builtin.assert:
+        that:
+          - _sns_topic_info_dict[_topic.name].subscriptions | length == 1
+          - _sns_topic_info_dict[_topic.name].subscriptions.0.endpoint == _topic.subscriptions.0.endpoint
+          - _sns_topic_info_dict[_topic.name].topic_arn is defined
+      loop: "{{ sns_topic_list }}"
+      loop_control:
+        label: "{{ _topic.name }}"
+        loop_var: _topic
+
+    - name: Ensure topic encryption is queried
+      linuxhq.aws.sns_topic_attributes:
+        kms_master_key_id: "{{ sns_topic_list.0.kms_master_key_id }}"
+        topic_arn: "{{ _sns_topic_info_dict[sns_topic_list.0.name].topic_arn }}"
+      check_mode: true
+      register: __sns_topic_attributes_query
+
+    - name: Ensure topic encryption is verified
+      ansible.builtin.assert:
+        that:
+          - __sns_topic_attributes_query is not changed
+          - __sns_topic_attributes_query.attributes.kms_master_key_id == sns_topic_list.0.kms_master_key_id
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         sns_topic_list:

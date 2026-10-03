@@ -19,9 +19,10 @@
     file: include.yml
   loop: "{{ __sns_topic_list }}"
   loop_control:
-    label: "{{ _topic.name | d(omit) }}"
+    label: "{{ _topic.name | d(none) }}"
     loop_var: _topic
   when:
     - _topic.name is defined
+    # community.aws.sns_topic does not predict changes correctly in check mode.
     - not ansible_check_mode
 ...
