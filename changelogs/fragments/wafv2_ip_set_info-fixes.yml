@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - wafv2_ip_set_info - fail before calling AWS when ``scope=cloudfront`` is used outside the ``us-east-1`` region,
+    instead of reporting AWS's "The scope is not valid" error.
+minor_changes:
+  - wafv2_ip_set_info - return each IP set's ``tags`` from ``ListTagsForResource``, keeping the tag keys' case.
+...
