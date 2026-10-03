@@ -88,6 +88,19 @@
           - _route53_resolver_info_dict[route53_resolver_list.0.name].protocols.0 == 'Do53'
           - _route53_resolver_info_dict[route53_resolver_list.0.name].resolver_endpoint_type == 'IPV4'
 
+    - name: Ensure role is included with a filter that matches nothing
+      ansible.builtin.include_role:
+        name: route53_resolver_info
+      vars:
+        route53_resolver_info_filters:
+          Name: molecule-does-not-exist
+
+    - name: Ensure info with no matches is verified
+      ansible.builtin.assert:
+        that:
+          - _route53_resolver_info_list == []
+          - _route53_resolver_info_dict == {}
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_security_group_list:

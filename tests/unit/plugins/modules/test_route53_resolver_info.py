@@ -76,7 +76,7 @@ class Route53ResolverInfoTests(TestCase):
         details = Mock()
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "require_client_methods") as require_methods,
             patch.object(plugin, "query_list", return_value=[]),
             patch.object(plugin, "paginated_query_with_retries", details),
             self.assertRaises(ModuleExit) as raised,
@@ -84,6 +84,8 @@ class Route53ResolverInfoTests(TestCase):
             plugin.main()
 
         details.assert_not_called()
+        require_methods.assert_called_once()
+        self.assertEqual(list(require_methods.call_args.args[3]), ["list_resolver_endpoints"])
         self.assertEqual(raised.exception.values["resolver_endpoints"], [])
 
     def test_endpoints_are_enriched_with_ip_addresses_and_tags(self):

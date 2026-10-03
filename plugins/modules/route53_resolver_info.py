@@ -49,6 +49,90 @@ resolver_endpoints:
   returned: always
   type: list
   elements: dict
+  contains:
+    arn:
+      description: The endpoint ARN.
+      returned: always
+      type: str
+    creation_time:
+      description: The time the endpoint was created.
+      returned: when returned by AWS
+      type: str
+    direction:
+      description: The endpoint direction.
+      returned: always
+      type: str
+      sample: OUTBOUND
+    host_vpc_id:
+      description: The VPC the endpoint is in.
+      returned: always
+      type: str
+    id:
+      description: The endpoint ID.
+      returned: always
+      type: str
+    ip_address_count:
+      description: The number of IP addresses.
+      returned: always
+      type: int
+    ip_addresses:
+      description: The endpoint IP addresses gathered by the module.
+      returned: when gathered by the module
+      type: list
+      elements: dict
+      contains:
+        ip:
+          description: The IPv4 address.
+          returned: when assigned
+          type: str
+        ip_id:
+          description: The IP address ID.
+          returned: always
+          type: str
+        ipv6:
+          description: The IPv6 address.
+          returned: when assigned
+          type: str
+        status:
+          description: The IP address status.
+          returned: when returned by AWS
+          type: str
+        subnet_id:
+          description: The subnet ID.
+          returned: always
+          type: str
+    name:
+      description: The endpoint name.
+      returned: always
+      type: str
+    protocols:
+      description: The endpoint protocols.
+      returned: always
+      type: list
+      elements: str
+    resolver_endpoint_type:
+      description: The endpoint type.
+      returned: always
+      type: str
+      sample: IPV4
+    security_group_ids:
+      description: The endpoint security group IDs.
+      returned: always
+      type: list
+      elements: str
+    status:
+      description: The endpoint status.
+      returned: always
+      type: str
+      sample: OPERATIONAL
+    status_message:
+      description: Details about the endpoint status.
+      returned: when returned by AWS
+      type: str
+    tags:
+      description: The endpoint tags with key case preserved.
+      returned: when gathered by the module
+      type: dict
 """
 
 try:
@@ -86,15 +170,7 @@ def main():
         module,
         client,
         "Route53 Resolver",
-        {
-            "list_resolver_endpoint_ip_addresses": (
-                "MaxResults",
-                "NextToken",
-                "ResolverEndpointId",
-            ),
-            "list_resolver_endpoints": ("Filters", "MaxResults", "NextToken"),
-            "list_tags_for_resource": ("MaxResults", "NextToken", "ResourceArn"),
-        },
+        {"list_resolver_endpoints": ("Filters", "MaxResults", "NextToken")},
     )
 
     filters = module.params["filters"]
@@ -111,6 +187,17 @@ def main():
         **request,
     )
 
+    if resolver_endpoints:
+        require_client_methods(
+            module,
+            client,
+            "Route53 Resolver",
+            {
+                "list_resolver_endpoint_ip_addresses": ("MaxResults", "NextToken", "ResolverEndpointId"),
+                "list_tags_for_resource": ("MaxResults", "NextToken", "ResourceArn"),
+            },
+        )
+
     normalized_endpoints = []
     for endpoint in resolver_endpoints:
         endpoint = validate_endpoint(module, endpoint)
@@ -126,7 +213,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to list AWS Route53 Resolver endpoint IP addresses " f"for {endpoint_id}"),
+                msg=f"Unable to list AWS Route53 Resolver endpoint IP addresses for {endpoint_id}",
             )
 
         ip_addresses = validate_ip_addresses(
@@ -148,7 +235,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to list tags for AWS Route53 Resolver endpoint " f"{endpoint_arn}"),
+                    msg=f"Unable to list tags for AWS Route53 Resolver endpoint {endpoint_arn}",
                 )
 
             tags = validate_tags(module, response_items(module, response, "Tags", "list_tags_for_resource"))
