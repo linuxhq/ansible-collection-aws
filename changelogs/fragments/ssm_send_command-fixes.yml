@@ -1,0 +1,5 @@
+---
+security_fixes:
+  - ssm_send_command - mark ``parameters`` as ``no_log``, because AWS treats Run Command parameter values as sensitive;
+    Ansible now masks them in the module's output and logs, including the returned ``command.parameters``.
+...
