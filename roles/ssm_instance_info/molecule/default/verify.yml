@@ -57,6 +57,19 @@
           - _ssm_instance_info_list | length == 1
           - _ssm_instance_info_list.0.ping_status == 'Online'
 
+    - name: Ensure role is included with an unregistered instance id
+      ansible.builtin.include_role:
+        name: ssm_instance_info
+      vars:
+        ssm_instance_info_instance_ids:
+          - i-0123456789abcdef0
+
+    - name: Ensure info with an unregistered instance id is verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_instance_info_list == []
+          - _ssm_instance_info_dict == {}
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_instance_list:

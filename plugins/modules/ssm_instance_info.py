@@ -102,6 +102,18 @@ instances:
       description: Summary of the managed instance's association states.
       returned: when available
       type: dict
+      contains:
+        detailed_status:
+          description: Detailed association status.
+          returned: when available
+          type: str
+        instance_association_status_aggregated_count:
+          description:
+            - Number of associations in each status.
+            - Status names, such as C(Success) and C(Failed), are returned as
+              AWS returns them.
+          returned: when available
+          type: dict
     association_status:
       description: State of the most recent Systems Manager association.
       returned: when available
@@ -181,6 +193,8 @@ instances:
       type: str
 """
 
+from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
+
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -191,6 +205,14 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+
+
+def association_overview(overview):
+    # The aggregated count is keyed by association status names, which are data rather than field names.
+    if not isinstance(overview, dict):
+        return overview
+
+    return camel_dict_to_snake_dict(overview, ignore_list=["InstanceAssociationStatusAggregatedCount"])
 
 
 def main():
@@ -280,7 +302,12 @@ def main():
     module.exit_json(
         changed=False,
         instance_ids=matching_instance_ids,
-        instances=boto3_resource_list_to_ansible_dict(instances, transform_tags=False, force_tags=False),
+        instances=boto3_resource_list_to_ansible_dict(
+            instances,
+            transform_tags=False,
+            force_tags=False,
+            nested_transforms={"AssociationOverview": association_overview},
+        ),
     )
 
 
