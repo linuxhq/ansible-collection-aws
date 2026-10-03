@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - wafv2_web_acl_info - return the associated resource types in ``association_config.request_body``
+    as AWS returns them, such as ``CLOUDFRONT`` and ``API_GATEWAY``, instead of converting them to snake_case.
+  - wafv2_web_acl_info - fail before calling AWS when ``scope=cloudfront`` is used outside the ``us-east-1`` region,
+    instead of reporting AWS's "The scope is not valid" error.
+minor_changes:
+  - wafv2_web_acl_info - return each web ACL's ``tags`` from ``ListTagsForResource``, keeping the tag keys' case.
+...
