@@ -1,0 +1,5 @@
+---
+trivial:
+  - sns_topic_attributes - join split string literals and convert the unit tests to pytest.
+  - sns_topic role - use a null loop label for topics without a name, and explain why check mode is skipped.
+...

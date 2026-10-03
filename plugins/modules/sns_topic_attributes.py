@@ -123,11 +123,11 @@ def main():
             aws_retry=True,
         )
     except is_boto3_error_code("NotFound"):
-        module.fail_json(msg=("AWS Simple Notification Service topic does not exist " f"{topic_arn}"))
+        module.fail_json(msg=f"AWS Simple Notification Service topic does not exist {topic_arn}")
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=("Unable to get AWS Simple Notification Service topic attributes " f"for {topic_arn}"),
+            msg=f"Unable to get AWS Simple Notification Service topic attributes for {topic_arn}",
         )
 
     if not isinstance(response, dict) or not isinstance(response.get("Attributes", {}), dict):
@@ -156,7 +156,7 @@ def main():
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=("Unable to manage AWS Simple Notification Service topic " f"attributes for {topic_arn}"),
+                        msg=f"Unable to manage AWS Simple Notification Service topic attributes for {topic_arn}",
                     )
 
         current_attributes = dict(current_attributes)
