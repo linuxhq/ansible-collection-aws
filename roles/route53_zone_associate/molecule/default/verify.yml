@@ -6,6 +6,53 @@
     - route53_zone_info
 
   post_tasks:
+    - name: Ensure associations are queried
+      linuxhq.aws.route53_zone_associate:
+        hosted_zone_id: "{{ _association.hosted_zone_id }}"
+        vpc_id: "{{ _association.vpc_id }}"
+        vpc_region: "{{ _association.vpc_region }}"
+      check_mode: true
+      register: __route53_zone_associate_query
+      loop: "{{ route53_zone_associate_list }}"
+      loop_control:
+        label: "{{ _association.hosted_zone_id }}"
+        loop_var: _association
+
+    - name: Ensure associations are verified
+      ansible.builtin.assert:
+        that:
+          - _query is not changed
+          - _query.vpc in _query.vpcs
+      loop: "{{ __route53_zone_associate_query.results }}"
+      loop_control:
+        label: "{{ _query._association.hosted_zone_id }}"
+        loop_var: _query
+
+    - name: Ensure an association is removed and waited on
+      linuxhq.aws.route53_zone_associate:
+        hosted_zone_id: "{{ route53_zone_associate_list.0.hosted_zone_id }}"
+        state: absent
+        vpc_id: "{{ route53_zone_associate_list.0.vpc_id }}"
+        vpc_region: "{{ route53_zone_associate_list.0.vpc_region }}"
+        wait: true
+      register: __route53_zone_associate_removed
+
+    - name: Ensure an association is restored and waited on
+      linuxhq.aws.route53_zone_associate:
+        hosted_zone_id: "{{ route53_zone_associate_list.0.hosted_zone_id }}"
+        vpc_id: "{{ route53_zone_associate_list.0.vpc_id }}"
+        vpc_region: "{{ route53_zone_associate_list.0.vpc_region }}"
+        wait: true
+      register: __route53_zone_associate_restored
+
+    - name: Ensure waited associations are verified
+      ansible.builtin.assert:
+        that:
+          - __route53_zone_associate_removed is changed
+          - __route53_zone_associate_removed.vpc not in __route53_zone_associate_removed.vpcs
+          - __route53_zone_associate_restored is changed
+          - __route53_zone_associate_restored.vpc in __route53_zone_associate_restored.vpcs
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_vpc_net_list:
