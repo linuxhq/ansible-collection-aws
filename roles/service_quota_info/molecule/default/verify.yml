@@ -32,4 +32,23 @@
           - _service_quota_info_dict['L-0EA8095F'].service_code ==
               service_quota_list.2.service_code
           - _service_quota_info_dict['L-0EA8095F'].value is defined
+
+    - name: Ensure role is included with a missing quota
+      ansible.builtin.include_role:
+        name: service_quota_info
+      vars:
+        service_quota_info_list:
+          - service_code: ec2
+            quotas:
+              - quota_code: L-00000000
+              - quota_code: "{{ service_quota_list.0.quotas.0.quota_code }}"
+
+    - name: Ensure info with a missing quota is verified
+      ansible.builtin.assert:
+        that:
+          - _service_quota_info_list | length == 1
+          - _service_quota_info_dict.keys() | list == [service_quota_list.0.quotas.0.quota_code]
+          - _service_quota_info_dict[service_quota_list.0.quotas.0.quota_code].quota_code ==
+              service_quota_list.0.quotas.0.quota_code
+          - _service_quota_info_dict[service_quota_list.0.quotas.0.quota_code].value is defined
 ...
