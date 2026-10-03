@@ -22,11 +22,7 @@ class GlueConnectionInfoTests(TestCase):
             "type": "str",
             "choices": ["SPARK", "ATHENA", "PYTHON"],
         }
-        assert set(options["argument_spec"]["filters"]["options"]) == {
-            "connection_schema_version",
-            "connection_type",
-            "match_criteria",
-        }
+        assert options["argument_spec"]["filters"] == {"type": "dict"}
 
     def test_named_connection_only_gates_used_parameters(self):
         client = Mock(get_connection=Mock(return_value={"Connection": {"Name": "main"}}))
@@ -261,8 +257,8 @@ def test_token_url_parameter_names_are_preserved():
     assert oauth2["token_url_parameters_map"] == parameters
 
 
-def test_filters_use_documented_fields_and_omit_unset_ones():
-    filters = {"connection_schema_version": None, "connection_type": "NETWORK", "match_criteria": ["main"]}
+def test_filters_are_passed_unchanged():
+    filters = {"ConnectionType": "NETWORK", "MatchCriteria": ["main"]}
     client = Mock()
     module = FakeModule(glue_params(filters=filters), client=client)
     with (
@@ -274,5 +270,5 @@ def test_filters_use_documented_fields_and_omit_unset_ones():
         plugin.main()
 
     request_filter = query.call_args.kwargs["Filter"]
-    assert request_filter == {"ConnectionType": "NETWORK", "MatchCriteria": ["main"]}
+    assert request_filter == filters
     validate_parameters(request_filter, Session().get_service_model("glue").shape_for("GetConnectionsFilter"))

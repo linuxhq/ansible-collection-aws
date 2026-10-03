@@ -1,7 +1,8 @@
 ---
 breaking_changes:
-  - glue_connection_info - validate ``filters`` against the ``GetConnections`` filter fields
-    ``connection_schema_version``, ``connection_type``, and ``match_criteria``.
+  - glue_connection_info - pass ``filters`` unchanged to the ``GetConnections`` API as ``Filter``,
+    so keys must use the API field names ``ConnectionType``, ``ConnectionSchemaVersion``, and ``MatchCriteria``;
+    snake_case keys are no longer converted.
 bugfixes:
   - glue_connection_info - return ``authentication_configuration.o_auth2_properties.token_url_parameters_map`` keys
     as provided by the Glue API instead of converting them to snake_case.

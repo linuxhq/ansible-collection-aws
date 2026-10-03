@@ -26,22 +26,10 @@ options:
   filters:
     description:
       - The filter to apply when listing Glue connections.
-      - Passed to the Glue C(GetConnections) API as C(Filter).
+      - Passed unchanged to the Glue C(GetConnections) API as C(Filter), so keys
+        use the API field names C(ConnectionType), C(ConnectionSchemaVersion),
+        and C(MatchCriteria).
       - Mutually exclusive with O(name).
-    suboptions:
-      connection_schema_version:
-        description:
-          - The connection schema version to return.
-        type: int
-      connection_type:
-        description:
-          - The connection type to return, such as C(JDBC) or C(NETWORK).
-        type: str
-      match_criteria:
-        description:
-          - The match criteria the returned connections must meet.
-        elements: str
-        type: list
     type: dict
   hide_password:
     default: true
@@ -81,7 +69,7 @@ EXAMPLES = r"""
 - name: Gather information about Glue connections using filters
   linuxhq.aws.glue_connection_info:
     filters:
-      connection_type: NETWORK
+      ConnectionType: NETWORK
 """
 
 RETURN = r"""
@@ -223,7 +211,6 @@ try:
 except ImportError:
     pass
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
@@ -232,7 +219,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
-    scrub_none_parameters,
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
@@ -252,14 +238,7 @@ def main():
     argument_spec = {
         "apply_override_for_compute_environment": {"choices": ["SPARK", "ATHENA", "PYTHON"], "type": "str"},
         "catalog_id": {"type": "str"},
-        "filters": {
-            "options": {
-                "connection_schema_version": {"type": "int"},
-                "connection_type": {"type": "str"},
-                "match_criteria": {"elements": "str", "type": "list"},
-            },
-            "type": "dict",
-        },
+        "filters": {"type": "dict"},
         "hide_password": {"default": True, "no_log": False, "type": "bool"},
         "name": {"type": "str"},
     }
@@ -324,7 +303,7 @@ def main():
         connections = [connection] if connection else []
     else:
         if filters:
-            request["Filter"] = scrub_none_parameters(snake_dict_to_camel_dict(filters, capitalize_first=True))
+            request["Filter"] = filters
 
         connections = query_list(
             module,
