@@ -21,6 +21,6 @@
   ansible.builtin.set_fact:
     _ssm_association_info_dict:
       "{{ dict(_ssm_association_info_list |
-               json_query('[].name') |
+               json_query('[].[association_name || name][]') |
                zip(_ssm_association_info_list)) }}"
 ...

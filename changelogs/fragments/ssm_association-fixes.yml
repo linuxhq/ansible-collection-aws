@@ -1,0 +1,12 @@
+---
+bugfixes:
+  - ssm_association - make ``schedule_expression`` and ``targets`` optional, as in the ``CreateAssociation`` API;
+    an omitted option keeps the existing association's value.
+minor_changes:
+  - ssm_association - add ``association_name`` to manage one of several associations of the same document;
+    without it, any association of the document matches, including one created by another tool.
+  - ssm_association role - pass ``association_name`` when an item sets it.
+  - ssm_association_info role - key ``_ssm_association_info_dict`` by association name when one is set,
+    falling back to the document name, so associations of the same document no longer overwrite each other.
+  - ssm_association - document the returned association fields.
+...
