@@ -58,6 +58,26 @@ associations:
       description: SSM document name.
       returned: always
       type: str
+    overview:
+      description: The association status overview.
+      returned: when available
+      type: dict
+      contains:
+        association_status_aggregated_count:
+          description:
+            - Number of targets in each association status.
+            - Status names, such as C(Success) and C(Failed), are returned as
+              AWS returns them.
+          returned: when available
+          type: dict
+        detailed_status:
+          description: Detailed association status.
+          returned: when available
+          type: str
+        status:
+          description: Association status.
+          returned: when available
+          type: str
     schedule_expression:
       description: Association schedule expression.
       returned: when configured
@@ -67,7 +87,11 @@ associations:
       returned: always
       type: dict
     targets:
-      description: Association targets.
+      description:
+        - Association targets.
+        - Each target also contains C(values), the list of target value
+          strings; read it as C(target["values"]) because Jinja dot notation
+          cannot access a key named C(values).
       returned: when configured
       type: list
       elements: dict
@@ -96,6 +120,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import association_overview
 
 SSM_ASSOCIATION_RESOURCE_TYPE = "Association"
 
@@ -174,6 +199,7 @@ def main():
                 ignore_list=["TargetMaps"],
                 transform_tags=True,
                 force_tags=False,
+                nested_transforms={"Overview": association_overview},
             )
         )
 

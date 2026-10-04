@@ -31,6 +31,7 @@ options:
       - Mutually exclusive with O(version_name).
       - When O(document_version) and O(version_name) are omitted, C($LATEST)
         is requested to preserve the module default behavior.
+      - Documents that do not have this version are omitted from the results.
     type: str
   filters:
     description:
@@ -42,13 +43,16 @@ options:
     description:
       - Systems Manager document name used to limit the result set.
       - This must not be empty when provided.
-      - A document that does not exist results in an empty list.
+      - A document that does not exist, or that does not have the requested
+        version, results in an empty list.
       - Mutually exclusive with O(filters).
     type: str
   version_name:
     description:
       - The document version name to request from the Systems Manager
         C(GetDocument) API.
+      - Documents that do not have this version name are omitted from the
+        results.
       - Mutually exclusive with O(document_version).
     type: str
 extends_documentation_fragment:
@@ -272,7 +276,8 @@ def main():
                 Name=document_name,
                 aws_retry=True,
             )
-        except is_boto3_error_code("InvalidDocument"):
+        except is_boto3_error_code(["InvalidDocument", "InvalidDocumentVersion"]):
+            # Missing documents and documents without the requested version are omitted.
             continue
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(

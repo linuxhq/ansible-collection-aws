@@ -158,6 +158,22 @@ association:
       description: The association status overview.
       returned: when available
       type: dict
+      contains:
+        association_status_aggregated_count:
+          description:
+            - Number of targets in each association status.
+            - Status names, such as C(Success) and C(Failed), are returned as
+              AWS returns them.
+          returned: when available
+          type: dict
+        detailed_status:
+          description: Detailed association status.
+          returned: when available
+          type: str
+        status:
+          description: Association status.
+          returned: when available
+          type: str
     parameters:
       description:
         - The association parameters.
@@ -173,7 +189,11 @@ association:
       returned: when O(tags) is supplied
       type: dict
     targets:
-      description: Association targets.
+      description:
+        - Association targets.
+        - Each target also contains C(values), the list of target value
+          strings; read it as C(target["values"]) because Jinja dot notation
+          cannot access a key named C(values).
       returned: when configured
       type: list
       elements: dict
@@ -187,7 +207,7 @@ association_id:
   returned: when an association exists
   type: str
 name:
-  description: The managed association name.
+  description: The SSM document name of the managed association.
   returned: always
   type: str
 state:
@@ -226,6 +246,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import association_overview
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_ssm_tags,
@@ -250,9 +271,9 @@ def comparable_targets(targets):
     return [unique[key] for key in sorted(unique)]
 
 
-def association_description_from_response(module, response, message):
+def association_description_from_response(module, response, message, changed=False):
     if not isinstance(response, dict) or not isinstance(response.get("AssociationDescription"), dict):
-        module.fail_json(msg=message)
+        module.fail_json(changed=changed, msg=message)
 
     return response["AssociationDescription"]
 
@@ -390,9 +411,13 @@ def ensure_present(client, module, current):
                 module,
                 response,
                 f"AWS Systems Manager did not return the created association {name}",
+                changed=True,
             )
             if not association.get("AssociationId"):
-                module.fail_json(msg=f"AWS Systems Manager did not return the created association {name}")
+                module.fail_json(
+                    changed=True,
+                    msg=f"AWS Systems Manager did not return the created association {name}",
+                )
 
             if tags is not None:
                 association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
@@ -427,9 +452,13 @@ def ensure_present(client, module, current):
                 module,
                 response,
                 f"AWS Systems Manager did not return the updated association {name}",
+                changed=True,
             )
             if not association.get("AssociationId"):
-                module.fail_json(msg=f"AWS Systems Manager did not return the updated association {name}")
+                module.fail_json(
+                    changed=True,
+                    msg=f"AWS Systems Manager did not return the updated association {name}",
+                )
 
         elif changed and module.check_mode:
             association = dict(current)
@@ -452,7 +481,7 @@ def ensure_present(client, module, current):
 
         if association_id and tags is not None:
             if resource_changed and current is not None:
-                association = association_with_tags(client, module, association)
+                association = association_with_tags(client, module, association, changed=True)
 
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
                 boto3_tag_list_to_ansible_dict(association.get("Tags", [])),
@@ -467,6 +496,7 @@ def ensure_present(client, module, current):
                 tags_to_set,
                 tag_keys_to_unset,
                 "AWS Systems Manager association",
+                changed=resource_changed,
             )
 
             association = apply_tag_deltas(association, tags_to_set, tag_keys_to_unset)
@@ -482,6 +512,7 @@ def ensure_present(client, module, current):
             ignore_list=["TargetMaps", "Parameters"],
             transform_tags=True,
             force_tags=False,
+            nested_transforms={"Overview": association_overview},
         ),
     }
 
@@ -493,7 +524,8 @@ def ensure_present(client, module, current):
     module.exit_json(**result)
 
 
-def association_with_tags(client, module, association):
+def association_with_tags(client, module, association, changed=False):
+    """Add the association tags; changed reports whether it was already modified, for failure results."""
     association_id = (association or {}).get("AssociationId")
 
     if not association_id:
@@ -510,13 +542,15 @@ def association_with_tags(client, module, association):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
+            changed=changed,
             msg=f"Unable to list tags for AWS Systems Manager {SSM_ASSOCIATION_RESOURCE_TYPE} {association_id}",
         )
 
     tags = response.get("TagList", []) if isinstance(response, dict) else None
     if not isinstance(tags, list) or any(not isinstance(tag, dict) for tag in tags):
         module.fail_json(
-            msg=f"Unexpected response while listing tags for AWS Systems Manager association {association_id}"
+            changed=changed,
+            msg=f"Unexpected response while listing tags for AWS Systems Manager association {association_id}",
         )
 
     association["Tags"] = tags

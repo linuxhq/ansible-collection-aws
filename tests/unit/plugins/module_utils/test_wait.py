@@ -51,3 +51,16 @@ def test_run_waiter_translates_sdk_errors():
         wait.run_waiter(module, Mock(), {}, "ready", "timed out")
 
     assert raised.value.values["msg"] == "timed out"
+
+
+def test_run_waiter_reports_the_supplied_changed_state():
+    waiter = Mock()
+    waiter.wait.side_effect = ClientError({"Error": {"Code": "Failed", "Message": "no"}}, "Wait")
+    factory = Mock()
+    factory.get_waiter.return_value = waiter
+    module = FakeModule({"wait_delay": 3, "wait_timeout": 30})
+    with patch.object(wait, "build_waiter_factory", return_value=factory), pytest.raises(ModuleFail) as raised:
+        wait.run_waiter(module, Mock(), {}, "ready", "timed out", changed=True, Id="id")
+
+    assert raised.value.values["changed"] is True
+    assert "changed" not in waiter.wait.call_args.kwargs

@@ -45,6 +45,8 @@ options:
   parameters:
     description:
       - The document parameters to pass to the command.
+      - Each value must be a list of strings, as the Systems Manager
+        C(SendCommand) API requires.
       - AWS treats parameter values as sensitive, so Ansible masks them in the
         module's output and logs.
     default: {}

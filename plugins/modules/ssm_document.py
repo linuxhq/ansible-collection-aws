@@ -19,7 +19,8 @@ description:
     compared, and a document that is being deleted is waited on and created
     again.
   - A document whose AWS status is C(Failed) with the requested content fails
-    with the AWS status information.
+    with the AWS status information, and one with different content is
+    updated with the requested content.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -235,8 +236,9 @@ TRANSITIONAL_STATUSES = ("Creating", "Updating")
 
 
 def document_description_from_response(module, response, message):
+    # Only create and update responses are read here, so the document has already changed.
     if not isinstance(response, dict) or not isinstance(response.get("DocumentDescription"), dict):
-        module.fail_json(msg=message)
+        module.fail_json(changed=True, msg=message)
 
     return response["DocumentDescription"]
 
@@ -251,18 +253,22 @@ def comparable_document(document):
     }
 
 
-def fail_failed_document(module, document):
+def fail_failed_document(module, document, changed=False):
     name = module.params["name"]
     module.fail_json(
+        changed=changed,
         msg=(
             f"AWS Systems Manager document {name} failed: "
             f"{document.get('StatusInformation') or 'no status information was returned'}"
-        )
+        ),
     )
 
 
-def wait_for_document(client, module, state, document_version=None):
-    """Wait for a document version to settle, failing when it ends in the Failed status."""
+def wait_for_document(client, module, state, document_version=None, changed=False, fail_on_failed=True):
+    """Wait for a document version to settle, failing when it ends in the Failed status unless fail_on_failed is false.
+
+    changed reports whether the document was already modified, for failure results.
+    """
     name = module.params["name"]
     request = {"Name": name}
     if document_version:
@@ -275,22 +281,26 @@ def wait_for_document(client, module, state, document_version=None):
         SSM_DOCUMENT_WAITER_MODEL_DATA,
         f"document_{state}",
         f"Unable to wait for AWS Systems Manager document {name} to become {state}",
+        changed=changed,
         **request,
     )
 
-    if state == "deleted":
+    if state == "deleted" or not fail_on_failed:
         return
 
     try:
         response = client.describe_document(**request, aws_retry=True)
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to describe AWS Systems Manager document {name}")
+        module.fail_json_aws(e, changed=changed, msg=f"Unable to describe AWS Systems Manager document {name}")
 
     if not isinstance(response, dict) or not isinstance(response.get("Document"), dict):
-        module.fail_json(msg=f"Unexpected response while describing AWS Systems Manager document {name}")
+        module.fail_json(
+            changed=changed,
+            msg=f"Unexpected response while describing AWS Systems Manager document {name}",
+        )
 
     if response["Document"].get("Status") == "Failed":
-        fail_failed_document(module, response["Document"])
+        fail_failed_document(module, response["Document"], changed=changed)
 
 
 def ensure_absent(client, module):
@@ -320,7 +330,7 @@ def ensure_absent(client, module):
                 module.fail_json_aws(e, msg=f"Unable to delete AWS Systems Manager document {name}")
 
         if module.params["wait"]:
-            wait_for_document(client, module, "deleted")
+            wait_for_document(client, module, "deleted", changed=changed)
 
     module.exit_json(
         changed=changed,
@@ -342,7 +352,8 @@ def current_document(client, module, include_tags):
         return get_document(client, module, include_tags=include_tags)
 
     if status in TRANSITIONAL_STATUSES and not module.check_mode:
-        wait_for_document(client, module, "active", current.get("DocumentVersion"))
+        # A version that ends Failed is re-read so ensure_present can replace it or report the failure.
+        wait_for_document(client, module, "active", current.get("DocumentVersion"), fail_on_failed=False)
         return get_document(client, module, include_tags=include_tags)
 
     return current
@@ -430,10 +441,10 @@ def ensure_present(client, module):
                 f"AWS Systems Manager did not return the created document {name}",
             )
             if not current.get("DocumentVersion"):
-                module.fail_json(msg=f"AWS Systems Manager did not return the created document {name}")
+                module.fail_json(changed=True, msg=f"AWS Systems Manager did not return the created document {name}")
 
             if module.params["wait"]:
-                wait_for_document(client, module, "active", current["DocumentVersion"])
+                wait_for_document(client, module, "active", current["DocumentVersion"], changed=True)
 
             current["Content"] = desired_content
             if tags:
@@ -468,11 +479,12 @@ def ensure_present(client, module):
                 new_version = updated.get("DocumentVersion")
                 if not new_version:
                     module.fail_json(
-                        msg=f"Unable to promote updated AWS Systems Manager document {name}: AWS returned no document version"
+                        changed=True,
+                        msg=f"Unable to promote updated AWS Systems Manager document {name}: AWS returned no document version",
                     )
 
                 # A new version can be promoted only after AWS has validated it.
-                wait_for_document(client, module, "active", new_version)
+                wait_for_document(client, module, "active", new_version, changed=True)
                 current = dict(current or {}, **updated, Content=desired_content)
 
             try:
@@ -482,10 +494,14 @@ def ensure_present(client, module):
                     aws_retry=True,
                 )
             except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(e, msg=f"Unable to set the default version of AWS Systems Manager document {name}")
+                module.fail_json_aws(
+                    e,
+                    changed=resource_changed,
+                    msg=f"Unable to set the default version of AWS Systems Manager document {name}",
+                )
 
         if resource_changed or default_version_to_promote:
-            refreshed = get_document(client, module, include_tags=tags is not None)
+            refreshed = get_document(client, module, include_tags=tags is not None, changed=True)
             if refreshed and comparable_document(refreshed) == desired_comparable:
                 current = refreshed
 
@@ -504,6 +520,7 @@ def ensure_present(client, module):
                 tags_to_set,
                 tag_keys_to_unset,
                 "AWS Systems Manager document",
+                changed=bool(resource_changed or default_version_to_promote),
             )
 
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
@@ -536,7 +553,8 @@ def ensure_present(client, module):
     )
 
 
-def get_document(client, module, include_tags=False, document_version=None):
+def get_document(client, module, include_tags=False, document_version=None, changed=False):
+    """Get a document; changed reports whether it was already modified, for failure results."""
     name = module.params["name"]
 
     try:
@@ -549,10 +567,10 @@ def get_document(client, module, include_tags=False, document_version=None):
     except is_boto3_error_code("InvalidDocument"):
         return None
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to get AWS Systems Manager document {name}")
+        module.fail_json_aws(e, changed=changed, msg=f"Unable to get AWS Systems Manager document {name}")
 
     if not isinstance(document, dict):
-        module.fail_json(msg=f"Unexpected response while getting AWS Systems Manager document {name}")
+        module.fail_json(changed=changed, msg=f"Unexpected response while getting AWS Systems Manager document {name}")
 
     content = document.get("Content")
     try:
@@ -561,7 +579,7 @@ def get_document(client, module, include_tags=False, document_version=None):
         parsed_content = None
 
     if not isinstance(parsed_content, dict):
-        module.fail_json(msg=f"Unexpected content while getting AWS Systems Manager document {name}")
+        module.fail_json(changed=changed, msg=f"Unexpected content while getting AWS Systems Manager document {name}")
 
     document.pop("ResponseMetadata", None)
 
@@ -574,12 +592,17 @@ def get_document(client, module, include_tags=False, document_version=None):
             )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
-                e, msg=f"Unable to list tags for AWS Systems Manager {SSM_DOCUMENT_RESOURCE_TYPE} {name}"
+                e,
+                changed=changed,
+                msg=f"Unable to list tags for AWS Systems Manager {SSM_DOCUMENT_RESOURCE_TYPE} {name}",
             )
 
         tags = response.get("TagList", []) if isinstance(response, dict) else None
         if not isinstance(tags, list) or any(not isinstance(tag, dict) for tag in tags):
-            module.fail_json(msg=f"Unexpected response while listing tags for AWS Systems Manager document {name}")
+            module.fail_json(
+                changed=changed,
+                msg=f"Unexpected response while listing tags for AWS Systems Manager document {name}",
+            )
 
         document["Tags"] = tags
 

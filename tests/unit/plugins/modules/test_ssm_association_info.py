@@ -70,3 +70,17 @@ def test_rejects_malformed_tags():
     result, _require, _query = run(FakeModule({"filters": None}, client=client), [{"AssociationId": "a-1"}])
 
     assert result.values["msg"] == "Unexpected response while listing tags for association a-1"
+
+
+def test_association_status_names_are_preserved():
+    client = Mock(list_tags_for_resource=Mock(return_value={"TagList": []}))
+    association = {
+        "AssociationId": "a-1",
+        "Overview": {"AssociationStatusAggregatedCount": {"InProgress": 1, "Success": 2}, "Status": "Pending"},
+    }
+    result, _require, _query = run(FakeModule({"filters": None}, client=client), [association])
+
+    assert result.values["associations"][0]["overview"] == {
+        "association_status_aggregated_count": {"InProgress": 1, "Success": 2},
+        "status": "Pending",
+    }
