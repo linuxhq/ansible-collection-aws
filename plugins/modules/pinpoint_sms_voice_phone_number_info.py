@@ -185,6 +185,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
 
 
 def describe_phone_numbers_by_id(module, client, request):
@@ -307,14 +308,11 @@ def main():
                     msg=f"Unable to list tags for Pinpoint SMS Voice V2 phone number {arn}",
                 )
 
-            tags = response.get("Tags", []) if isinstance(response, dict) else None
-            if not isinstance(tags, list) or any(
-                not isinstance(tag, dict)
-                or not isinstance(tag.get("Key"), str)
-                or not isinstance(tag.get("Value"), str)
-                for tag in tags
-            ):
-                module.fail_json(msg=f"AWS returned malformed tags for Pinpoint SMS Voice V2 phone number {arn}")
+            tags = require_valid_tag_list(
+                module,
+                response.get("Tags", []) if isinstance(response, dict) else None,
+                f"AWS returned malformed tags for Pinpoint SMS Voice V2 phone number {arn}",
+            )
 
         normalized_phone_numbers.append(
             boto3_resource_to_ansible_dict(

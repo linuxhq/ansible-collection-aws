@@ -181,6 +181,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
+    response_items,
+    validate_tags,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -302,17 +306,6 @@ def main():
     )
 
 
-def response_items(module, response, key, operation):
-    if not isinstance(response, dict):
-        module.fail_json(msg=f"{operation}: AWS returned an invalid response")
-
-    items = response.get(key, [])
-    if not isinstance(items, list):
-        module.fail_json(msg=f"{operation}: AWS returned an invalid {key} value")
-
-    return items
-
-
 def validate_resolver_rule(module, rule):
     if not isinstance(rule, dict):
         module.fail_json(msg="list_resolver_rules: AWS returned an invalid resolver rule")
@@ -339,14 +332,6 @@ def validate_association(module, association):
         module.fail_json(msg="list_resolver_rule_associations: AWS returned an invalid association VPC ID")
 
     return association
-
-
-def validate_tags(module, tags):
-    for tag in tags:
-        if not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str):
-            module.fail_json(msg="list_tags_for_resource: AWS returned an invalid tag")
-
-    return tags
 
 
 if __name__ == "__main__":

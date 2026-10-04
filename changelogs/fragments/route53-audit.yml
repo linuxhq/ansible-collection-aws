@@ -1,0 +1,16 @@
+---
+bugfixes:
+  - route53_delegation_set - list more than one page of reusable delegation sets instead of failing with a repeated pagination marker.
+  - route53_delegation_set_info - list more than one page of reusable delegation sets instead of failing with a repeated pagination marker.
+  - route53_resolver - allow protocol changes on inbound endpoints and fail before modifying the endpoint
+    only when the protocols would change directly from only ``do53`` to only ``doh`` or ``doh-fips``.
+  - route53_resolver - do not wait for the endpoint to settle after an update with ``wait=false``
+    when the existing IP addresses already satisfy the requested subnet-only entries.
+  - route53_resolver - document that ``resolver_endpoint.ip_addresses[].ip_id`` and ``status`` are absent
+    after a create or IP address change that does not wait.
+  - route53_resolver_info - document ``ip_addresses`` and ``tags`` as always returned.
+trivial:
+  - module_utils - stop manual pagination when a response is not truncated,
+    and ignore an echoed request ``Marker`` for operations that return ``NextMarker``.
+  - module_utils - share the AWS tag list validation and the Route53 Resolver response validation helpers.
+  - route53_resolver_info - validate the types of returned IP address fields like route53_resolver.

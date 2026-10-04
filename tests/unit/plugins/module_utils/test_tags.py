@@ -10,6 +10,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     reconcile_arn_tags,
     reconcile_ec2_tags,
     reconcile_ssm_tags,
+    require_valid_tag_list,
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -106,3 +107,29 @@ def test_reconcile_ec2_tags_failures_name_resources(method, tags_to_set, tag_key
         reconcile_ec2_tags(FakeModule({}), client, ["fl-1", "fl-2"], tags_to_set, tag_keys_to_unset, "EC2 flow logs")
 
     assert raised.value.values["msg"] == message
+
+
+def test_valid_tag_list_is_returned_unchanged():
+    tags = [{"Key": "Name", "Value": "example"}, {"Key": "Empty", "Value": ""}]
+
+    assert require_valid_tag_list(FakeModule({}), tags, "invalid tags") is tags
+    assert require_valid_tag_list(FakeModule({}), [], "invalid tags") == []
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        None,
+        {"Key": "Name", "Value": "example"},
+        ["Name"],
+        [{"Key": "Name"}],
+        [{"Value": "example"}],
+        [{"Key": 1, "Value": "example"}],
+        [{"Key": "Name", "Value": None}],
+    ],
+)
+def test_invalid_tag_list_fails_with_caller_message(tags):
+    with pytest.raises(ModuleFail) as raised:
+        require_valid_tag_list(FakeModule({}), tags, "invalid tags")
+
+    assert raised.value.values["msg"] == "invalid tags"

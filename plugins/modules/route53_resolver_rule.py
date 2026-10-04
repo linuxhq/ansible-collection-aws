@@ -265,6 +265,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
+    validate_tags,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -794,14 +797,6 @@ def validate_target_ips(module, target_ips, operation):
             module.fail_json(msg=f"{operation}: AWS returned an invalid target IP Port")
 
     return target_ips
-
-
-def validate_tags(module, tags):
-    for tag in tags:
-        if not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str):
-            module.fail_json(msg="list_tags_for_resource: AWS returned an invalid tag")
-
-    return tags
 
 
 def main():
