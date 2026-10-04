@@ -1,0 +1,8 @@
+---
+minor_changes:
+  - ec2_instance_type_info - add the ``include_unsupported_in_region`` option to also return instance types
+    that are not supported in the current region (requires botocore 1.43.6 or later).
+  - ec2_instance_type_info role - add ``ec2_instance_type_info_include_unsupported_in_region``.
+bugfixes:
+  - ec2_instance_type_info - convert boolean and numeric values in list filters to strings, which EC2
+    requires, instead of failing parameter validation.
