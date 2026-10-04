@@ -567,7 +567,7 @@ def ensure_present(client, module, owner_id):
                         except (BotoCoreError, ClientError) as e:
                             module.fail_json_aws(
                                 e,
-                                msg=("Unable to remove tags from EC2 VPC managed " f"prefix list {prefix_list_id}"),
+                                msg=f"Unable to remove tags from EC2 VPC managed prefix list {prefix_list_id}",
                             )
 
                     if tags_to_set:
@@ -586,7 +586,7 @@ def ensure_present(client, module, owner_id):
                         except (BotoCoreError, ClientError) as e:
                             module.fail_json_aws(
                                 e,
-                                msg=("Unable to tag EC2 VPC managed prefix list " f"{prefix_list_id}"),
+                                msg=f"Unable to tag EC2 VPC managed prefix list {prefix_list_id}",
                             )
 
                     current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)

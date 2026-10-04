@@ -238,13 +238,13 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to describe AWS Certificate Manager certificate " f"{certificate_arn}"),
+                msg=f"Unable to describe AWS Certificate Manager certificate {certificate_arn}",
             )
 
         certificate = response.get("Certificate")
         if not isinstance(certificate, dict) or not certificate.get("Status"):
             module.fail_json(
-                msg=("AWS Certificate Manager did not return a status for " f"certificate {certificate_arn}"),
+                msg=f"AWS Certificate Manager did not return a status for certificate {certificate_arn}",
             )
 
         if certificate["Status"] not in {"PENDING_VALIDATION", "ISSUED"}:
@@ -270,7 +270,7 @@ def main():
         created_at = certificate.get("CreatedAt")
         if created_at is None:
             module.fail_json(
-                msg=("AWS Certificate Manager did not return a creation time for " f"certificate {certificate_arn}"),
+                msg=f"AWS Certificate Manager did not return a creation time for certificate {certificate_arn}",
             )
 
         if matched is None or created_at > matched["CreatedAt"]:
@@ -316,12 +316,12 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to request AWS Certificate Manager certificate " f"{domain_name}"),
+                msg=f"Unable to request AWS Certificate Manager certificate {domain_name}",
             )
 
         certificate_arn = response.get("CertificateArn")
         if not certificate_arn:
-            module.fail_json(msg=("AWS Certificate Manager did not return an ARN for " f"certificate {domain_name}"))
+            module.fail_json(msg=f"AWS Certificate Manager did not return an ARN for certificate {domain_name}")
     else:
         certificate_arn = matched["CertificateArn"]
 
@@ -342,7 +342,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to list tags for AWS Certificate Manager " f"certificate {certificate_arn}"),
+                msg=f"Unable to list tags for AWS Certificate Manager certificate {certificate_arn}",
             )
 
         current_tags = boto3_tag_list_to_ansible_dict(response.get("Tags", []))
@@ -380,7 +380,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to remove tags from AWS Certificate Manager " f"certificate {certificate_arn}"),
+                    msg=f"Unable to remove tags from AWS Certificate Manager certificate {certificate_arn}",
                 )
 
         if tags_to_set and not module.check_mode:
@@ -393,7 +393,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to tag AWS Certificate Manager certificate " f"{certificate_arn}"),
+                    msg=f"Unable to tag AWS Certificate Manager certificate {certificate_arn}",
                 )
 
     module.exit_json(

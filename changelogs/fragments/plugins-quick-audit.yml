@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - eks_cluster - report waiter failures as being unable to wait for the cluster to become active or deleted,
+    instead of always reporting a timeout, since the waiter also stops on terminal cluster states.
+trivial:
+  - account_region, acm_certificate_request, ec2_flow_log, ec2_instance_metadata, ec2_vpc_prefix_list,
+    ec2_vpc_prefix_list_info - join implicitly concatenated message strings.
+...

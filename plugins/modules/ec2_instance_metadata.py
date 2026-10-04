@@ -175,7 +175,7 @@ def main():
 
     if hop_limit is not None and hop_limit != -1 and not 1 <= hop_limit <= 64:
         module.fail_json(
-            msg=("http_put_response_hop_limit must be between 1 and 64, " "or -1 to clear the account-level default")
+            msg="http_put_response_hop_limit must be between 1 and 64, or -1 to clear the account-level default"
         )
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
@@ -233,7 +233,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to modify EC2 instance metadata defaults in region " f"{module.region}"),
+                    msg=f"Unable to modify EC2 instance metadata defaults in region {module.region}",
                 )
 
             if not isinstance(response, dict) or response.get("Return") is not True:

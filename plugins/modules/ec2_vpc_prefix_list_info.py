@@ -210,7 +210,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to get EC2 VPC managed prefix list entries for " f"{prefix_list['PrefixListId']}"),
+                msg=f"Unable to get EC2 VPC managed prefix list entries for {prefix_list['PrefixListId']}",
             )
 
         entries = validate_entries(

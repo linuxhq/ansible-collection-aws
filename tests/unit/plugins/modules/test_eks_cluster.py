@@ -2,6 +2,7 @@ from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
 import pytest
+from botocore.exceptions import WaiterError
 
 from ansible_collections.linuxhq.aws.plugins.modules import eks_cluster as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -519,6 +520,20 @@ class EksClusterTests(TestCase):
             name="example",
             WaiterConfig={"Delay": 7, "MaxAttempts": 3},
         )
+
+
+@pytest.mark.parametrize(
+    ("waiter_name", "state"),
+    [("cluster_active", "active"), ("cluster_deleted", "deleted")],
+)
+def test_cluster_waiter_failure_names_the_target_state(waiter_name, state):
+    waiter = Mock()
+    waiter.wait.side_effect = WaiterError(waiter_name, "terminal failure state", {})
+    module = FakeModule({"name": "example", "wait_delay": 5, "wait_timeout": 10})
+    with patch.object(plugin, "get_waiter", return_value=waiter), pytest.raises(ModuleFail) as raised:
+        plugin.wait_for_cluster(Mock(), module, waiter_name)
+
+    assert raised.value.values["msg"] == f"Unable to wait for AWS EKS cluster example to become {state}"
 
 
 def eks_params(**overrides):
