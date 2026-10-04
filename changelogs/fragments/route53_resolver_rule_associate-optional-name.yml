@@ -1,0 +1,17 @@
+---
+bugfixes:
+  - route53_resolver_rule_associate - stop waiting for an association to become complete once it starts deleting,
+    and stop waiting for a deletion once the association fails; both waited for the full timeout.
+  - route53_resolver_rule_associate - replace an association in ``FAILED`` status, keeping its name when ``name`` is omitted,
+    and fail with the AWS status message when a new association fails.
+  - route53_resolver_rule_associate - report waits without calling every failure a timeout.
+  - route53_resolver_rule_associate role - raise ``route53_resolver_rule_associate_async`` to ``1200``
+    and ``route53_resolver_rule_associate_retries`` to ``400`` so renames, which wait for a deletion and a creation,
+    are not stopped early.
+minor_changes:
+  - route53_resolver_rule_associate - ``name`` is optional, as in the ``AssociateResolverRule`` API;
+    omitting it keeps the name of an existing association.
+  - route53_resolver_rule_associate - document the returned association fields,
+    and that ``wait_delay`` and ``wait_timeout`` also apply while an association is replaced.
+  - route53_resolver_rule_associate role - add ``route53_resolver_rule_associate_timeout`` and per-item ``wait_timeout``.
+...

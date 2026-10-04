@@ -99,13 +99,11 @@ def test_matching_in_progress_resource_readiness(kind, wait_enabled, check_mode)
     assert not result.value.values["changed"]
     if wait_enabled and not check_mode:
         # Endpoints settle first so an endpoint that needs action can be repaired,
-        # and rules accept FAILED here so a failed rule can be repaired.
+        # and rules and associations accept FAILED here so they can be repaired.
         if kind == "endpoint":
             wait.assert_called_once_with(client, module, current["Id"], {"settled"})
-        elif kind == "rule":
-            wait.assert_called_once_with(client, module, current["Id"], "complete", allow_failed=True)
         else:
-            wait.assert_called_once_with(client, module, current["Id"], {ready["Status"].lower()})
+            wait.assert_called_once_with(client, module, current["Id"], "complete", allow_failed=True)
 
         assert result.value.values[result_key]["status"] == ready["Status"]
     else:
