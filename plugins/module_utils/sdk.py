@@ -78,5 +78,5 @@ def require_client_methods(module, client, service, methods):
                 continue
 
             module.fail_json(
-                msg=(f"Installed botocore does not support {service} " f"{method_name} parameter {parameter_name}")
+                msg=f"Installed botocore does not support {service} {method_name} parameter {parameter_name}"
             )

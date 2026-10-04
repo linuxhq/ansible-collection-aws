@@ -1,0 +1,4 @@
+---
+trivial:
+  - module_utils - join split string literals in the tags and sdk helpers, and convert their unit tests to pytest.
+...
