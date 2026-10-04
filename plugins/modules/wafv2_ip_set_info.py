@@ -122,7 +122,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.tagging import boto3_tag_list_to_ansible_dict
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
@@ -131,31 +130,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-
-
-def get_ip_set_tags(client, module, ip_set):
-    """Return the IP set's tags, or None when it was deleted after it was listed."""
-    identifier = f"{ip_set.get('Name')}/{ip_set.get('Id')}"
-    request = {"ResourceARN": ip_set.get("ARN")}
-    tags = []
-    while True:
-        try:
-            response = client.list_tags_for_resource(**request, aws_retry=True)
-        except is_boto3_error_code("WAFNonexistentItemException"):
-            return None
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to list tags for AWS WAFv2 IP set {identifier}")
-
-        tag_info = response.get("TagInfoForResource", {}) if isinstance(response, dict) else None
-        tag_list = tag_info.get("TagList", []) if isinstance(tag_info, dict) else None
-        if not isinstance(tag_list, list) or any(not isinstance(tag, dict) for tag in tag_list):
-            module.fail_json(msg=f"Unexpected response while listing tags for AWS WAFv2 IP set {identifier}")
-
-        tags.extend(tag_list)
-        if not response.get("NextMarker"):
-            return boto3_tag_list_to_ansible_dict(tags)
-
-        request["NextMarker"] = response["NextMarker"]
+from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import get_resource_tags
 
 
 def main():
@@ -249,7 +224,7 @@ def main():
                 msg=f"Unexpected response while getting AWS WAFv2 IP set {summary['Name']}/{summary['Id']}"
             )
 
-        tags = get_ip_set_tags(client, module, ip_set)
+        tags = get_resource_tags(client, module, ip_set, "IP set")
         if tags is None:
             continue
 
