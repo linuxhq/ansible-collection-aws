@@ -256,7 +256,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_arn_tags,
-    require_valid_tag_list,
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
@@ -342,11 +341,12 @@ def pool_with_tags(client, module, pool):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to list tags for Pinpoint SMS Voice V2 pool {arn}")
 
-        tag_list = require_valid_tag_list(
-            module,
-            response.get("Tags", []) if isinstance(response, dict) else None,
-            f"AWS returned malformed tags for Pinpoint SMS Voice V2 pool {arn}",
-        )
+        tag_list = response.get("Tags", []) if isinstance(response, dict) else None
+        if not isinstance(tag_list, list) or any(
+            not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str)
+            for tag in tag_list
+        ):
+            module.fail_json(msg=f"AWS returned malformed tags for Pinpoint SMS Voice V2 pool {arn}")
 
         tags = boto3_tag_list_to_ansible_dict(tag_list)
 

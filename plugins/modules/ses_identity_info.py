@@ -219,7 +219,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
 
 
 def validate_identity_names(module, identity_names):
@@ -233,11 +232,12 @@ def validate_identity_details(module, details, identity_name):
     if not isinstance(details, dict):
         module.fail_json(msg=f"AWS SES returned invalid details for identity {identity_name}")
 
-    require_valid_tag_list(
-        module,
-        details.get("Tags", []),
-        f"AWS SES returned invalid tags for identity {identity_name}",
-    )
+    tags = details.get("Tags", [])
+    if not isinstance(tags, list) or any(
+        not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str)
+        for tag in tags
+    ):
+        module.fail_json(msg=f"AWS SES returned invalid tags for identity {identity_name}")
 
     policies = details.get("Policies", {})
     if not isinstance(policies, dict):
