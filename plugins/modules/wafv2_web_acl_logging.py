@@ -27,7 +27,10 @@ options:
     description:
       - The ARN of the WAFv2 web ACL to manage logging for.
       - This must not be empty.
-      - CloudFront web ACLs require the C(us-east-1) region.
+      - A regional web ACL must be in the module's region, and a CloudFront
+        (C(global)) web ACL requires the C(us-east-1) region; any other region
+        fails before AWS is called.
+      - When O(state=present), the web ACL must exist.
     required: true
     type: str
   state:
@@ -116,6 +119,7 @@ try:
 except ImportError:
     pass
 
+from ansible_collections.amazon.aws.plugins.module_utils.arn import parse_aws_arn
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
@@ -146,7 +150,7 @@ def ensure_absent(client, module):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to delete AWS WAFv2 logging configuration for " f"{resource_arn}"),
+                msg=f"Unable to delete AWS WAFv2 logging configuration for {resource_arn}",
             )
 
     module.exit_json(
@@ -156,10 +160,14 @@ def ensure_absent(client, module):
     )
 
 
-def ensure_present(client, module):
+def ensure_present(client, module, web_acl):
     log_destination_configs = module.params["log_destination_configs"]
     resource_arn = module.params["resource_arn"]
     current = get_logging_configuration(client, module)
+    if current is None:
+        # A missing web ACL also returns WAFNonexistentItemException for its logging configuration.
+        require_web_acl(client, module, web_acl)
+
     current_comparable = None
     if current:
         normalized_current = boto3_resource_to_ansible_dict(current, transform_tags=False, force_tags=False)
@@ -194,14 +202,14 @@ def ensure_present(client, module):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to manage AWS WAFv2 logging configuration for " f"{resource_arn}"),
+                msg=f"Unable to manage AWS WAFv2 logging configuration for {resource_arn}",
             )
 
         current = response.get("LoggingConfiguration") if isinstance(response, dict) else None
         if not isinstance(current, dict) or not current:
             module.fail_json(
                 changed=True,
-                msg=("AWS WAFv2 did not return the logging configuration for " f"{resource_arn}"),
+                msg=f"AWS WAFv2 did not return the logging configuration for {resource_arn}",
             )
 
     elif changed and module.check_mode:
@@ -217,6 +225,39 @@ def ensure_present(client, module):
     }
 
     module.exit_json(**result)
+
+
+def require_web_acl(client, module, web_acl):
+    resource_arn = module.params["resource_arn"]
+
+    try:
+        client.get_web_acl(**web_acl, aws_retry=True)
+    except is_boto3_error_code("WAFNonexistentItemException"):
+        module.fail_json(msg=f"AWS WAFv2 web ACL {resource_arn} does not exist")
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to get AWS WAFv2 web ACL {resource_arn}")
+
+
+def web_acl_identity(module):
+    """Return the web ACL's GetWebACL parameters, failing when its ARN cannot be used from this region."""
+    resource_arn = module.params["resource_arn"]
+    arn = parse_aws_arn(resource_arn) or {}
+    parts = (arn.get("resource") or "").split("/")
+    if (
+        arn.get("service") != "wafv2"
+        or len(parts) != 4
+        or parts[0] not in ("global", "regional")
+        or parts[1] != "webacl"
+    ):
+        module.fail_json(msg=f"resource_arn must be an AWS WAFv2 web ACL ARN, not {resource_arn}")
+
+    required_region = "us-east-1" if parts[0] == "global" else arn.get("region")
+    if module.region != required_region:
+        module.fail_json(
+            msg=f"AWS WAFv2 web ACL {resource_arn} requires the {required_region} region, not {module.region}"
+        )
+
+    return {"Id": parts[3], "Name": parts[2], "Scope": "CLOUDFRONT" if parts[0] == "global" else "REGIONAL"}
 
 
 def get_logging_configuration(client, module):
@@ -273,9 +314,11 @@ def main():
     if state == "present" and not module.params["log_destination_configs"][0]:
         module.fail_json(msg="log_destination_configs must not contain empty entries")
 
+    web_acl = web_acl_identity(module)
     client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
     methods = {"get_logging_configuration": ("ResourceArn",)}
     if state == "present":
+        methods["get_web_acl"] = ("Id", "Name", "Scope")
         methods["put_logging_configuration"] = ("LoggingConfiguration",)
 
     if state == "absent":
@@ -284,7 +327,7 @@ def main():
     require_client_methods(module, client, "WAFv2", methods)
 
     if state == "present":
-        ensure_present(client, module)
+        ensure_present(client, module, web_acl)
 
     if state == "absent":
         ensure_absent(client, module)

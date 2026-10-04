@@ -2,6 +2,41 @@
 - name: Verify
   hosts: all
   pre_tasks:
+    - name: Ensure web acl info is gathered
+      ansible.builtin.include_role:
+        name: wafv2_web_acl_info
+
+    - name: Ensure web acl log groups are queried
+      amazon.aws.cloudwatchlogs_log_group_info:
+        log_group_name: "aws-waf-logs-{{ _webacl.name }}"
+      register: __wafv2_web_acl_log_groups
+      loop: "{{ wafv2_web_acl_list }}"
+      loop_control:
+        label: "{{ _webacl.name }}"
+        loop_var: _webacl
+
+    - name: Ensure logging configurations are queried
+      linuxhq.aws.wafv2_web_acl_logging:
+        log_destination_configs:
+          - "{{ (_log.log_groups | selectattr('log_group_name', 'equalto', 'aws-waf-logs-' ~ _log._webacl.name) | first).arn }}"
+        resource_arn: "{{ _wafv2_web_acl_info_dict[_log._webacl.name].arn }}"
+      check_mode: true
+      register: __wafv2_web_acl_logging
+      loop: "{{ __wafv2_web_acl_log_groups.results }}"
+      loop_control:
+        label: "{{ _log._webacl.name }}"
+        loop_var: _log
+
+    - name: Ensure logging configurations are verified
+      ansible.builtin.assert:
+        that:
+          - _query is not changed
+          - _query.logging_configuration.resource_arn == _wafv2_web_acl_info_dict[_query._log._webacl.name].arn
+      loop: "{{ __wafv2_web_acl_logging.results }}"
+      loop_control:
+        label: "{{ _query._log._webacl.name }}"
+        loop_var: _query
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         wafv2_web_acl_list:
