@@ -82,18 +82,12 @@ def test_response_resources_rejects_invalid_entry():
     assert raised.value.values["msg"] == "AWS Service Quotas returned an invalid quota history entry"
 
 
-@pytest.mark.parametrize(
-    ("quota", "message"),
-    [
-        ({"ServiceCode": "iam", "QuotaCode": "L-1", "Value": 5.0}, "mismatched quota"),
-        ({"Value": "5"}, "valid value"),
-    ],
-)
-def test_validate_current_quota_rejects_invalid_quota(quota, message):
+@pytest.mark.parametrize("quota", [{"Value": "5"}, {"Value": True}, {"Value": float("nan")}, {"Adjustable": True}])
+def test_validate_current_quota_rejects_invalid_value(quota):
     with pytest.raises(ModuleFail) as raised:
         plugin.validate_current_quota(FakeModule({}), quota, "ec2", "L-1")
 
-    assert message in raised.value.values["msg"]
+    assert raised.value.values["msg"] == "AWS service quota ec2/L-1 did not return a valid value"
 
 
 def test_validate_current_quota_accepts_large_integer_without_crashing():
@@ -118,6 +112,7 @@ def test_check_mode_reports_the_quota_request():
 
     assert result.values["changed"]
     assert result.values["requested_quota"]["desired_value"] == 10.0
+    assert result.values["requested_quota"]["quota_requested_at_level"] == "ACCOUNT"
     client.request_service_quota_increase.assert_not_called()
     assert "request_service_quota_increase" not in require_client_methods.call_args.args[3]
 
@@ -182,7 +177,7 @@ def test_missing_applied_quota_falls_back_to_default():
 
 def test_context_id_requests_a_resource_level_increase():
     client = Mock()
-    client.get_service_quota.return_value = {"Quota": {"Value": 5.0}}
+    client.get_service_quota.return_value = {"Quota": {"Value": 5.0, "QuotaContext": {"ContextId": "arn:resource"}}}
     client.request_service_quota_increase.return_value = {
         "RequestedQuota": {"DesiredValue": 10.0, "QuotaContext": {"ContextId": "arn:resource"}}
     }
@@ -211,10 +206,31 @@ def test_context_id_requests_a_resource_level_increase():
 
 def test_context_id_check_mode_reports_the_context():
     client = Mock()
-    client.get_service_quota.return_value = {"Quota": {"Value": 5.0}}
+    client.get_service_quota.return_value = {"Quota": {"Value": 5.0, "QuotaContext": {"ContextId": "arn:resource"}}}
     result = run(FakeModule(params(context_id="arn:resource"), check_mode=True, client=client))[0]
 
     assert result.values["requested_quota"]["quota_context"] == {"context_id": "arn:resource"}
+    assert result.values["requested_quota"]["quota_requested_at_level"] == "RESOURCE"
+
+
+def test_mismatched_quota_context_fails_before_requesting():
+    client = Mock()
+    client.get_service_quota.return_value = {"Quota": {"Value": 5.0, "QuotaContext": {"ContextId": "arn:other"}}}
+    result = run(FakeModule(params(context_id="arn:resource"), client=client))[0]
+
+    assert isinstance(result, ModuleFail)
+    assert result.values["msg"] == "AWS Service Quotas returned a mismatched quota context for ec2/L-1"
+    client.request_service_quota_increase.assert_not_called()
+
+
+def test_missing_applied_and_default_quota_fails():
+    client = Mock()
+    client.get_service_quota.side_effect = missing("GetServiceQuota")
+    client.get_aws_default_service_quota.side_effect = missing("GetAWSDefaultServiceQuota")
+    result = run(FakeModule(params(), client=client))[0]
+
+    assert isinstance(result, ModuleFail)
+    assert result.values["msg"] == "AWS service quota ec2/L-1 does not exist"
 
 
 def test_missing_resource_level_quota_fails_without_default_fallback():

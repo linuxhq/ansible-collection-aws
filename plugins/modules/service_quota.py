@@ -166,6 +166,10 @@ pending_requests:
       description: The date and time the request was created.
       returned: when returned by AWS
       type: str
+    global_quota:
+      description: Whether the quota is global.
+      returned: when returned by AWS
+      type: bool
     id:
       description: The request ID.
       returned: when returned by AWS
@@ -192,6 +196,10 @@ pending_requests:
       type: str
     quota_requested_at_level:
       description: Whether the request applies to the account or to a resource.
+      returned: when returned by AWS
+      type: str
+    request_type:
+      description: The type of quota increase request.
       returned: when returned by AWS
       type: str
     requester:
@@ -236,6 +244,10 @@ requested_quota:
       description: The date and time the request was created.
       returned: when returned by AWS
       type: str
+    global_quota:
+      description: Whether the quota is global.
+      returned: when returned by AWS
+      type: bool
     id:
       description: The request ID.
       returned: when returned by AWS
@@ -262,6 +274,10 @@ requested_quota:
       type: str
     quota_requested_at_level:
       description: Whether the request applies to the account or to a resource.
+      returned: when returned by AWS
+      type: str
+    request_type:
+      description: The type of quota increase request.
       returned: when returned by AWS
       type: str
     requester:
@@ -293,10 +309,9 @@ try:
 except ImportError:
     pass
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict, snake_dict_to_camel_dict
+from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
     paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -309,6 +324,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
+)
+from ansible_collections.linuxhq.aws.plugins.module_utils.service_quotas import (
+    get_quota,
+    quota_to_ansible_dict,
 )
 
 
@@ -331,10 +350,6 @@ def response_resources(module, response, key, description):
 
 
 def validate_current_quota(module, quota, service_code, quota_code):
-    for key, expected in (("ServiceCode", service_code), ("QuotaCode", quota_code)):
-        if key in quota and quota[key] != expected:
-            module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota for {service_code}/{quota_code}")
-
     value = quota.get("Value")
     if (
         isinstance(value, bool)
@@ -413,22 +428,9 @@ def main():
 
     require_client_methods(module, client, "Service Quotas", methods)
 
-    try:
-        response = client.get_service_quota(**quota_request, aws_retry=True)
-        current_quota = response_resource(module, response, "Quota", "service quota")
-    except is_boto3_error_code("NoSuchResourceException") as e:
-        if context_id:
-            module.fail_json_aws(e, msg=f"AWS service quota {identifier} does not exist")
-
-        try:
-            response = client.get_aws_default_service_quota(
-                QuotaCode=quota_code, ServiceCode=service_code, aws_retry=True
-            )
-            current_quota = response_resource(module, response, "Quota", "default service quota")
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to get AWS default service quota {identifier}")
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to get AWS service quota {identifier}")
+    current_quota = get_quota(client, module, service_code, quota_code, context_id)
+    if current_quota is None:
+        module.fail_json(msg=f"AWS service quota {identifier} does not exist")
 
     validate_current_quota(module, current_quota, service_code, quota_code)
 
@@ -457,14 +459,7 @@ def main():
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to list AWS service quota change history for {identifier}")
 
-    current_quota_details = boto3_resource_to_ansible_dict(
-        current_quota,
-        transform_tags=False,
-        force_tags=False,
-        nested_transforms={
-            "UsageMetric": lambda metric: camel_dict_to_snake_dict(metric, ignore_list=["MetricDimensions"]),
-        },
-    )
+    current_quota_details = quota_to_ansible_dict(current_quota)
     current_value = current_quota_details["value"]
 
     has_pending_request = bool(pending_requests)
@@ -498,6 +493,7 @@ def main():
                         "quota_code": quota_code,
                         "quota_context": {"context_id": context_id} if context_id else None,
                         "quota_name": current_quota_details.get("quota_name"),
+                        "quota_requested_at_level": "RESOURCE" if context_id else "ACCOUNT",
                         "service_code": service_code,
                         "service_name": current_quota_details.get("service_name"),
                         "status": "PENDING",
