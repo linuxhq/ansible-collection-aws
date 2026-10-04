@@ -1,0 +1,5 @@
+---
+trivial:
+  - tests - convert the remaining unittest.TestCase unit tests to pytest functions, share the pytest-style module
+    contract helpers, and run the notifications_contacts email pattern test that was nested inside another test.
+...

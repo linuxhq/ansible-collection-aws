@@ -1,6 +1,6 @@
-from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
 from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import iam_oidc_provider_info as plugin
@@ -12,91 +12,88 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
-class IamOidcProviderInfoTests(TestCase):
-    def test_module_contract(self):
-        options = assert_module_contract(self, plugin)
-        assert options["mutually_exclusive"] == [["arn", "url"]]
+def test_module_contract():
+    options = assert_module_contract(plugin)
+    assert options["mutually_exclusive"] == [["arn", "url"]]
 
-    def test_provider_listing_rejects_missing_arns(self):
-        client = Mock()
-        module = FakeModule({})
-        providers = [{}, {"Arn": "arn:aws:iam::1:oidc-provider/example.com"}]
-        with (
-            patch.object(plugin, "query_list", return_value=providers) as query_list,
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.list_provider_arns(client, module)
 
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "Unable to list AWS IAM OIDC providers: AWS returned an invalid response",
-        )
-        query_list.assert_called_once_with(
-            module,
-            client,
-            "list_open_id_connect_providers",
-            "OpenIDConnectProviderList",
-            "Unable to list AWS IAM OIDC providers",
-        )
+def test_provider_listing_rejects_missing_arns():
+    client = Mock()
+    module = FakeModule({})
+    providers = [{}, {"Arn": "arn:aws:iam::1:oidc-provider/example.com"}]
+    with (
+        patch.object(plugin, "query_list", return_value=providers) as query_list,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.list_provider_arns(client, module)
 
-    def test_empty_listing_does_not_require_provider_get(self):
-        client = Mock()
-        module = FakeModule({"arn": None, "url": None}, client=client)
-        require_client_methods = Mock()
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "list_provider_arns", return_value=[]),
-            patch.object(plugin, "require_client_methods", require_client_methods),
-            self.assertRaises(ModuleExit),
-        ):
-            plugin.main()
+    assert raised.value.values["msg"] == "Unable to list AWS IAM OIDC providers: AWS returned an invalid response"
+    query_list.assert_called_once_with(
+        module,
+        client,
+        "list_open_id_connect_providers",
+        "OpenIDConnectProviderList",
+        "Unable to list AWS IAM OIDC providers",
+    )
 
-        require_client_methods.assert_called_once_with(
-            module,
-            client,
-            "IAM",
-            {"list_open_id_connect_providers": ()},
-        )
 
-    def test_url_filter_normalizes_scheme_and_ignores_other_arns(self):
-        module = FakeModule({"arn": None, "url": "https://example.com/id"}, client=Mock())
-        provider = {
-            "OpenIDConnectProviderArn": "arn:aws:iam::1:oidc-provider/example.com/id",
-            "Url": "example.com/id",
-        }
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            patch.object(
-                plugin,
-                "list_provider_arns",
-                return_value=[
-                    "arn:aws:iam::1:oidc-provider/other.example.com",
-                    "arn:aws:iam::1:oidc-provider/EXAMPLE.com/id",
-                ],
-            ),
-            patch.object(plugin, "get_provider_by_arn", return_value=provider) as get,
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.main()
+def test_empty_listing_does_not_require_provider_get():
+    client = Mock()
+    module = FakeModule({"arn": None, "url": None}, client=client)
+    require_client_methods = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "list_provider_arns", return_value=[]),
+        patch.object(plugin, "require_client_methods", require_client_methods),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()
 
-        self.assertEqual(
-            raised.exception.values["open_id_connect_providers"][0]["url"],
-            "example.com/id",
-        )
-        get.assert_called_once()
+    require_client_methods.assert_called_once_with(
+        module,
+        client,
+        "IAM",
+        {"list_open_id_connect_providers": ()},
+    )
 
-    def test_missing_provider_arn_returns_an_empty_list(self):
-        client = Mock()
-        client.get_open_id_connect_provider.side_effect = ClientError(
-            {"Error": {"Code": "NoSuchEntity", "Message": "missing"}}, "GetOpenIDConnectProvider"
-        )
-        module = FakeModule({"arn": "arn:missing", "url": None}, client=client)
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.main()
 
-        self.assertEqual(raised.exception.values["open_id_connect_providers"], [])
+def test_url_filter_normalizes_scheme_and_ignores_other_arns():
+    module = FakeModule({"arn": None, "url": "https://example.com/id"}, client=Mock())
+    provider = {
+        "OpenIDConnectProviderArn": "arn:aws:iam::1:oidc-provider/example.com/id",
+        "Url": "example.com/id",
+    }
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "list_provider_arns",
+            return_value=[
+                "arn:aws:iam::1:oidc-provider/other.example.com",
+                "arn:aws:iam::1:oidc-provider/EXAMPLE.com/id",
+            ],
+        ),
+        patch.object(plugin, "get_provider_by_arn", return_value=provider) as get,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["open_id_connect_providers"][0]["url"] == "example.com/id"
+    get.assert_called_once()
+
+
+def test_missing_provider_arn_returns_an_empty_list():
+    client = Mock()
+    client.get_open_id_connect_provider.side_effect = ClientError(
+        {"Error": {"Code": "NoSuchEntity", "Message": "missing"}}, "GetOpenIDConnectProvider"
+    )
+    module = FakeModule({"arn": "arn:missing", "url": None}, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["open_id_connect_providers"] == []
