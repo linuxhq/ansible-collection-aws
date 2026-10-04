@@ -35,19 +35,6 @@
     # In check mode a new identity is not created, so its DKIM cannot be predicted.
     - not ansible_check_mode or __ses_identity_info_query.identities | length > 0
 
-- name: Ensure information about aws simple email service identity txt records is gathered
-  tags:
-    - ses_identity
-  amazon.aws.route53:
-    record: "_amazonses.{{ _identity.identity }}"
-    state: get
-    type: TXT
-    zone: "{{ _identity.zone }}"
-  register: __ses_identity_txt_query
-  check_mode: false
-  when:
-    - _identity.state == 'absent'
-
 - name: Ensure aws simple email service identity dns records are generated
   tags:
     - ses_identity
@@ -60,15 +47,6 @@
           map(attribute='tokens', default=[]) |
           first |
           d([]) }}"
-    __ses_identity_value_txt_absent:
-      "{{ __ses_identity_txt_query.resource_record_sets.0.resource_records |
-          d([]) |
-          map(attribute='value') |
-          map('from_json') |
-          reject('in', __ses_identity_info_query.identities |
-                       map(attribute='verification_token', default='') |
-                       list) |
-          list }}"
 
 - name: Ensure aws simple email service identity dmarc records are managed
   tags:
@@ -103,23 +81,6 @@
     type: TXT
     value: '"v=spf1 include:amazonses.com -all"'
     zone: "{{ _identity.zone }}"
-
-- name: Ensure aws simple email service identity txt records are absent
-  tags:
-    - ses_identity
-  amazon.aws.route53:
-    overwrite: true
-    record: "_amazonses.{{ _identity.identity }}"
-    state: "{{ 'present' if __ses_identity_value_txt_absent | length > 0 else 'absent' }}"
-    type: TXT
-    value:
-      "{{ __ses_identity_value_txt_absent |
-          map('to_json') |
-          unique }}"
-    zone: "{{ _identity.zone }}"
-  when:
-    - _identity.state == 'absent'
-    - __ses_identity_txt_query.resource_record_sets | d([]) | length > 0
 
 - name: Ensure aws simple email service identity is absent
   tags:
