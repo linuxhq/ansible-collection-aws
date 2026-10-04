@@ -95,3 +95,27 @@ def reconcile_ssm_tags(
             )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to tag {description} {resource_id}")
+
+
+def reconcile_ec2_tags(module, client, resource_ids, tags_to_set, tag_keys_to_unset, description):
+    identifier = ", ".join(resource_ids)
+
+    if tag_keys_to_unset:
+        try:
+            client.delete_tags(
+                Resources=resource_ids,
+                Tags=[{"Key": key} for key in tag_keys_to_unset],
+                aws_retry=True,
+            )
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, msg=f"Unable to remove tags from {description} {identifier}")
+
+    if tags_to_set:
+        try:
+            client.create_tags(
+                Resources=resource_ids,
+                Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
+                aws_retry=True,
+            )
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, msg=f"Unable to tag {description} {identifier}")

@@ -3,10 +3,12 @@
 from unittest.mock import Mock
 
 import pytest
+from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_arn_tags,
+    reconcile_ec2_tags,
     reconcile_ssm_tags,
     require_valid_tags,
 )
@@ -64,3 +66,43 @@ def test_reconcile_ssm_tags_uses_ssm_parameter_names():
     client.remove_tags_from_resource.assert_called_once_with(
         ResourceType="Document", ResourceId="doc", TagKeys=["old"], aws_retry=True
     )
+
+
+def test_reconcile_ec2_tags_removes_then_adds_tags():
+    client = Mock()
+    reconcile_ec2_tags(Mock(), client, ["fl-1", "fl-2"], {"new": "value"}, ("old",), "EC2 flow logs")
+    client.delete_tags.assert_called_once_with(Resources=["fl-1", "fl-2"], Tags=[{"Key": "old"}], aws_retry=True)
+    client.create_tags.assert_called_once_with(
+        Resources=["fl-1", "fl-2"], Tags=[{"Key": "new", "Value": "value"}], aws_retry=True
+    )
+    assert [call[0] for call in client.method_calls] == ["delete_tags", "create_tags"]
+
+
+@pytest.mark.parametrize(
+    ("tags_to_set", "tag_keys_to_unset", "called", "not_called"),
+    (
+        ({"new": "value"}, [], "create_tags", "delete_tags"),
+        ({}, ["old"], "delete_tags", "create_tags"),
+    ),
+)
+def test_reconcile_ec2_tags_only_calls_nonempty_operations(tags_to_set, tag_keys_to_unset, called, not_called):
+    client = Mock()
+    reconcile_ec2_tags(Mock(), client, ["rtb-1"], tags_to_set, tag_keys_to_unset, "resource")
+    getattr(client, called).assert_called_once()
+    getattr(client, not_called).assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("method", "tags_to_set", "tag_keys_to_unset", "message"),
+    (
+        ("delete_tags", {}, ["old"], "Unable to remove tags from EC2 flow logs fl-1, fl-2"),
+        ("create_tags", {"new": "value"}, [], "Unable to tag EC2 flow logs fl-1, fl-2"),
+    ),
+)
+def test_reconcile_ec2_tags_failures_name_resources(method, tags_to_set, tag_keys_to_unset, message):
+    client = Mock()
+    getattr(client, method).side_effect = ClientError({"Error": {"Code": "Failed", "Message": "no"}}, method)
+    with pytest.raises(ModuleFail) as raised:
+        reconcile_ec2_tags(FakeModule({}), client, ["fl-1", "fl-2"], tags_to_set, tag_keys_to_unset, "EC2 flow logs")
+
+    assert raised.value.values["msg"] == message
