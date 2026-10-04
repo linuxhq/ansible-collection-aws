@@ -2,6 +2,8 @@ from unittest.mock import Mock, call, patch
 
 import pytest
 from botocore.exceptions import WaiterError
+from botocore.session import Session
+from botocore.stub import Stubber
 
 from ansible_collections.linuxhq.aws.plugins.modules import eks_cluster as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -506,10 +508,11 @@ def test_failed_update_stops_waiting_with_update_details():
 
 def test_cluster_waiter_uses_requested_delay():
     waiter = Mock()
+    client = Mock(get_waiter=Mock(return_value=waiter))
     module = FakeModule({"name": "example", "wait_delay": 7, "wait_timeout": 20})
-    with patch.object(plugin, "get_waiter", return_value=waiter):
-        plugin.wait_for_cluster(Mock(), module, "cluster_active")
+    plugin.wait_for_cluster(client, module, "cluster_active")
 
+    client.get_waiter.assert_called_once_with("cluster_active")
     waiter.wait.assert_called_once_with(
         name="example",
         WaiterConfig={"Delay": 7, "MaxAttempts": 3},
@@ -524,8 +527,8 @@ def test_cluster_waiter_failure_names_the_target_state(waiter_name, state):
     waiter = Mock()
     waiter.wait.side_effect = WaiterError(waiter_name, "terminal failure state", {})
     module = FakeModule({"name": "example", "wait_delay": 5, "wait_timeout": 10})
-    with patch.object(plugin, "get_waiter", return_value=waiter), pytest.raises(ModuleFail) as raised:
-        plugin.wait_for_cluster(Mock(), module, waiter_name)
+    with pytest.raises(ModuleFail) as raised:
+        plugin.wait_for_cluster(Mock(get_waiter=Mock(return_value=waiter)), module, waiter_name)
 
     assert raised.value.values["msg"] == f"Unable to wait for AWS EKS cluster example to become {state}"
 
@@ -885,3 +888,153 @@ def test_failed_update_still_fails_a_requested_change():
     module = FakeModule({"name": "example", "wait_delay": 1, "wait_timeout": 60})
     with patch.object(plugin, "require_client_methods"), pytest.raises(ModuleFail):
         plugin.wait_for_update(client, module, "update-1")
+
+
+def eks_client():
+    return Session().create_client(
+        "eks",
+        region_name="us-east-1",
+        aws_access_key_id="EXAMPLE",
+        aws_secret_access_key="EXAMPLE",
+    )
+
+
+@pytest.mark.parametrize(
+    ("waiter_name", "status", "state"),
+    [
+        ("cluster_active", "FAILED", "active"),
+        ("cluster_active", "DELETING", "active"),
+        ("cluster_deleted", "ACTIVE", "deleted"),
+    ],
+)
+def test_cluster_waiter_stops_on_a_terminal_state(waiter_name, status, state):
+    client = eks_client()
+    module = FakeModule({"name": "example", "wait_delay": 15, "wait_timeout": 1200})
+    with Stubber(client) as stubber, pytest.raises(ModuleFail) as raised:
+        stubber.add_response(
+            "describe_cluster", {"cluster": {"name": "example", "status": status}}, {"name": "example"}
+        )
+        plugin.wait_for_cluster(client, module, waiter_name)
+
+    stubber.assert_no_pending_responses()
+    assert raised.value.values["msg"] == f"Unable to wait for AWS EKS cluster example to become {state}"
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("ip_family", "ipv6"), ("service_ipv4_cidr", "172.20.0.0/16")],
+)
+def test_create_only_network_settings_fail_before_any_update(field, value, check_mode):
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "kubernetesNetworkConfig": {"ipFamily": "ipv4", "serviceIpv4Cidr": "10.100.0.0/16"},
+        "deletionProtection": False,
+    }
+    client = Mock()
+    module = FakeModule(
+        eks_params(deletion_protection=True, kubernetes_network_config={field: value}),
+        check_mode=check_mode,
+    )
+    with patch.object(plugin, "describe_cluster", return_value=current), pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, module)
+
+    assert (
+        raised.value.values["msg"]
+        == f"Cannot modify kubernetes_network_config.{field} for existing EKS cluster example"
+    )
+    client.update_cluster_config.assert_not_called()
+
+
+def test_auto_mode_load_balancing_updates_with_matching_create_only_network_settings():
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "kubernetesNetworkConfig": {
+            "ipFamily": "ipv4",
+            "serviceIpv4Cidr": "10.100.0.0/16",
+            "elasticLoadBalancing": {"enabled": False},
+        },
+    }
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    module = FakeModule(
+        eks_params(
+            kubernetes_network_config={
+                "ip_family": "ipv4",
+                "service_ipv4_cidr": "10.100.0.0/16",
+                "elastic_load_balancing": {"enabled": True},
+            },
+        )
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
+
+    client.update_cluster_config.assert_called_once_with(
+        name="example",
+        aws_retry=True,
+        kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
+    )
+
+
+def test_cluster_updates_describe_history_once_and_poll_only_in_progress_updates():
+    client = Mock()
+    module = FakeModule({"name": "example", "wait_delay": 1, "wait_timeout": 60})
+    client.describe_update.side_effect = [
+        {"update": {"id": "old", "status": "Successful"}},
+        {"update": {"id": "first", "status": "InProgress"}},
+        {"update": {"id": "second", "status": "InProgress"}},
+        {"update": {"id": "first", "status": "Successful"}},
+        {"update": {"id": "second", "status": "InProgress"}},
+        {"update": {"id": "second", "status": "Failed"}},
+    ]
+    with (
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(plugin, "query_list", return_value=["old", "first", "second"]),
+        patch.object(plugin.time, "sleep") as sleep,
+    ):
+        plugin.wait_for_cluster_updates(client, module)
+
+    require.assert_called_once_with(
+        module,
+        client,
+        "EKS",
+        {
+            "describe_update": ("name", "updateId"),
+            "list_updates": ("maxResults", "name", "nextToken"),
+        },
+    )
+    assert [c.kwargs["updateId"] for c in client.describe_update.call_args_list] == [
+        "old",
+        "first",
+        "second",
+        "first",
+        "second",
+        "second",
+    ]
+    assert sleep.call_count == 2
+
+
+def test_cluster_updates_share_one_deadline():
+    client = Mock()
+    client.describe_update.side_effect = lambda **kwargs: {"update": {"id": kwargs["updateId"], "status": "InProgress"}}
+    module = FakeModule({"name": "example", "wait_delay": 5, "wait_timeout": 10})
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=["first", "second"]),
+        patch.object(plugin.time, "monotonic", side_effect=[0, 5, 5, 10]),
+        patch.object(plugin.time, "sleep"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.wait_for_cluster_updates(client, module)
+
+    assert raised.value.values["msg"] == "Timed out waiting for AWS EKS cluster updates first, second for example"
+    assert client.describe_update.call_count == 4

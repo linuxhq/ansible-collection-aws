@@ -113,11 +113,15 @@ options:
           - ipv6
         description:
           - The IP family used to assign Kubernetes pod and service addresses.
+          - This can only be set when creating a cluster.
+          - The module fails if this differs from the existing cluster.
           - This requires botocore C(1.23.29) or later.
         type: str
       service_ipv4_cidr:
         description:
           - The CIDR block Kubernetes assigns service IP addresses from.
+          - This can only be set when creating a cluster.
+          - The module fails if this differs from the existing cluster.
         type: str
     type: dict
   logging:
@@ -522,7 +526,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.waiters import get_waiter
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
@@ -567,6 +570,11 @@ CREATE_ONLY_FIELDS = [
     "encryption_config",
     "role_arn",
 ]
+
+KUBERNETES_NETWORK_CREATE_ONLY_FIELDS = {
+    "ip_family": "ipFamily",
+    "service_ipv4_cidr": "serviceIpv4Cidr",
+}
 
 RESOURCES_VPC_CONFIG_ENDPOINT_FIELDS = [
     "endpointPrivateAccess",
@@ -731,7 +739,7 @@ def describe_cluster(client, module):
 
 def wait_for_cluster(client, module, waiter_name):
     name = module.params["name"]
-    waiter = get_waiter(client, waiter_name)
+    waiter = client.get_waiter(waiter_name)
     wait_delay = module.params["wait_delay"]
     attempts = 1 + int(module.params["wait_timeout"] / wait_delay)
 
@@ -741,12 +749,35 @@ def wait_for_cluster(client, module, waiter_name):
             WaiterConfig={"Delay": wait_delay, "MaxAttempts": attempts},
         )
     except (BotoCoreError, ClientError) as e:
-        # The waiter fails on terminal states as well as on timeouts, so the message names neither.
+        # Botocore's waiters stop on a terminal state that rules out the target state (such as FAILED or
+        # DELETING while waiting for ACTIVE) as well as on timeouts, so the message names neither.
         state = waiter_name.replace("cluster_", "")
         module.fail_json_aws(e, msg=f"Unable to wait for AWS EKS cluster {name} to become {state}")
 
 
-def wait_for_update(client, module, update_id, require_success=True):
+def describe_update(client, module, update_id):
+    name = module.params["name"]
+
+    try:
+        response = client.describe_update(
+            name=name,
+            updateId=update_id,
+            aws_retry=True,
+        )
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to describe AWS EKS cluster update {update_id} for {name}",
+        )
+
+    return validate_update(
+        module,
+        response.get("update") if isinstance(response, dict) else None,
+        expected_id=update_id,
+    )
+
+
+def wait_for_update(client, module, update_id):
     name = module.params["name"]
     wait_delay = module.params["wait_delay"]
     deadline = time.monotonic() + module.params["wait_timeout"]
@@ -758,33 +789,13 @@ def wait_for_update(client, module, update_id, require_success=True):
         {"describe_update": ("name", "updateId")},
     )
     while time.monotonic() < deadline:
-        try:
-            response = client.describe_update(
-                name=name,
-                updateId=update_id,
-                aws_retry=True,
-            )
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to describe AWS EKS cluster update {update_id} for {name}",
-            )
-
-        last_update = validate_update(
-            module,
-            response.get("update") if isinstance(response, dict) else None,
-            expected_id=update_id,
-        )
-
+        last_update = describe_update(client, module, update_id)
         status = last_update.get("status")
 
         if status == "Successful":
             return last_update
 
         if status in ("Cancelled", "Failed"):
-            if not require_success:
-                return last_update
-
             module.fail_json(
                 msg=f"AWS EKS cluster update {update_id} for {name} {status.lower()}",
                 update=boto3_resource_to_ansible_dict(last_update, transform_tags=False, force_tags=False),
@@ -800,11 +811,16 @@ def wait_for_update(client, module, update_id, require_success=True):
 
 def wait_for_cluster_updates(client, module):
     name = module.params["name"]
+    wait_delay = module.params["wait_delay"]
+    deadline = time.monotonic() + module.params["wait_timeout"]
     require_client_methods(
         module,
         client,
         "EKS",
-        {"list_updates": ("maxResults", "name", "nextToken")},
+        {
+            "describe_update": ("name", "updateId"),
+            "list_updates": ("maxResults", "name", "nextToken"),
+        },
     )
     update_ids = query_list(
         module,
@@ -818,8 +834,20 @@ def wait_for_cluster_updates(client, module):
         module.fail_json(msg=f"EKS returned invalid cluster updates for {name}")
 
     # EKS can start its own update after one completes; DeleteCluster rejects an in-progress update.
-    for update_id in update_ids:
-        wait_for_update(client, module, update_id, require_success=False)
+    # ListUpdates returns only IDs, so each update is described once and only in-progress ones are polled.
+    while update_ids:
+        update_ids = [
+            update_id
+            for update_id in update_ids
+            if describe_update(client, module, update_id)["status"] == "InProgress"
+        ]
+        if not update_ids:
+            return
+
+        if time.monotonic() >= deadline:
+            module.fail_json(msg=f"Timed out waiting for AWS EKS cluster updates {', '.join(update_ids)} for {name}")
+
+        time.sleep(min(wait_delay, max(0, deadline - time.monotonic())))
 
 
 def desired_cluster(module):
@@ -958,6 +986,13 @@ def ensure_present(client, module):
 
         if changed(current_value, {camel_field: desired_boto3[camel_field]}):
             module.fail_json(msg=f"Cannot modify {field} for existing EKS cluster {name}")
+
+    # EKS rejects these after creation; failing here keeps other updates from applying first.
+    current_network_config = current.get("kubernetesNetworkConfig") or {}
+    for field, camel_field in KUBERNETES_NETWORK_CREATE_ONLY_FIELDS.items():
+        value = (desired.get("kubernetes_network_config") or {}).get(field)
+        if value is not None and value != current_network_config.get(camel_field):
+            module.fail_json(msg=f"Cannot modify kubernetes_network_config.{field} for existing EKS cluster {name}")
 
     config_request = {}
     for field in UPDATE_CONFIG_FIELDS:
