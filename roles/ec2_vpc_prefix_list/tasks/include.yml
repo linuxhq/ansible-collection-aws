@@ -5,6 +5,7 @@
   linuxhq.aws.ec2_vpc_prefix_list:
     address_family: "{{ _pl.address_family | d('IPv4') }}"
     entries: "{{ _pl.entries }}"
+    max_entries: "{{ _pl.max_entries | d(omit) }}"
     name: "{{ _pl.name }}"
     purge_tags: "{{ _pl.purge_tags | d(true) }}"
     state: "{{ _pl.state | d('present') }}"
