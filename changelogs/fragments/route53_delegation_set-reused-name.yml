@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - route53_delegation_set - explain that a name cannot be reused after its delegation set is deleted
+    when Route53 reports ``DelegationSetAlreadyCreated``, instead of passing the bare AWS error through.
+minor_changes:
+  - route53_delegation_set - document that Route53 permanently reserves a delegation set name and the returned fields.
+  - route53_delegation_set_info - document the returned delegation set fields.
+...
