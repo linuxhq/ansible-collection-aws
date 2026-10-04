@@ -56,10 +56,10 @@ EXAMPLES = r"""
     resource_ids:
       - vpc-0123456789abcdef0
 
-- name: Gather information about active accepted-traffic flow logs
+- name: Gather information about successfully delivering accepted-traffic flow logs
   linuxhq.aws.ec2_flow_log_info:
     filters:
-      flow-log-status: ACTIVE
+      deliver-log-status: SUCCESS
       traffic-type: ACCEPT
 """
 

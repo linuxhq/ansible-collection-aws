@@ -139,7 +139,7 @@ def main():
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(
             {
-                name: [filter_value(item) for item in value] if isinstance(value, list) else value
+                name: [filter_value(item) for item in value] if isinstance(value, list) else filter_value(value)
                 for name, value in filters.items()
             }
         )

@@ -97,6 +97,26 @@ def test_list_filter_values_are_sent_as_ec2_strings():
     ]
 
 
+def test_scalar_filter_values_are_sent_as_ec2_strings():
+    _methods, request = run_info(
+        {
+            "filters": {
+                "memory-info.size-in-mib": 1024,
+                "network-info.baseline-bandwidth-in-gbps": 0.5,
+                "burstable-performance-supported": False,
+                "instance-type": "t3.*",
+            }
+        }
+    )
+
+    assert request["Filters"] == [
+        {"Name": "memory-info.size-in-mib", "Values": ["1024"]},
+        {"Name": "network-info.baseline-bandwidth-in-gbps", "Values": ["0.5"]},
+        {"Name": "burstable-performance-supported", "Values": ["false"]},
+        {"Name": "instance-type", "Values": ["t3.*"]},
+    ]
+
+
 def test_unsupported_region_types_are_requested_only_when_enabled():
     methods, request = run_info({"include_unsupported_in_region": True})
     assert request["IncludeUnsupportedInRegion"] is True

@@ -96,7 +96,9 @@ open_id_connect_provider:
   contains:
     client_id_list:
       description: The client IDs registered with the provider.
-      returned: always
+      returned: >-
+        when the provider exists, or in check mode when a provider would be created and
+        O(client_id_list) is specified
       type: list
       elements: str
     create_date:
@@ -105,7 +107,7 @@ open_id_connect_provider:
       type: str
     open_id_connect_provider_arn:
       description: The provider ARN.
-      returned: always
+      returned: when the provider exists; not returned in check mode when a provider would be created
       type: str
     tags:
       description: Tags applied to the provider.
@@ -113,7 +115,9 @@ open_id_connect_provider:
       type: dict
     thumbprint_list:
       description: The certificate thumbprints registered with the provider.
-      returned: always
+      returned: >-
+        when the provider exists, or in check mode when a provider would be created and
+        O(thumbprint_list) is specified
       type: list
       elements: str
     url:

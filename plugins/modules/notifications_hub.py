@@ -250,7 +250,7 @@ def main():
     state = module.params["state"]
     region = module.params["region"]
 
-    if not 2 <= len(region) <= 25 or not re.fullmatch(r"[a-z]{1,2}(?:-[a-z]{1,15})+-[0-9]", region):
+    if not 2 <= len(region) <= 25 or not re.fullmatch(r"[a-z]{1,4}(?:-[a-z]{1,15})+-[0-9]", region):
         module.fail_json(msg="region must be a valid AWS region name")
 
     client = module.client(

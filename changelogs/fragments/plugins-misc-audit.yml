@@ -1,0 +1,24 @@
+---
+minor_changes:
+  - wafv2_ip_set_info - get the IP set directly when both ``id`` and ``name`` are specified instead of listing
+    every IP set in the scope.
+  - wafv2_web_acl_info - get the web ACL directly when both ``id`` and ``name`` are specified instead of listing
+    every web ACL in the scope.
+  - wafv2_web_acl_logging - retry ``WAFOptimisticLockException`` errors when putting or deleting the logging
+    configuration.
+bugfixes:
+  - ec2_instance_type_info - convert scalar float filter values to strings, which EC2 requires, instead of
+    failing parameter validation.
+  - ec2_serial_console - fail before changing serial console access when a declarative policy manages it,
+    including in check mode.
+  - notifications_hub - accept region names with a prefix of up to four letters, such as ``eusc-de-east-1``,
+    matching the AWS User Notifications region pattern.
+  - ec2_flow_log_info - replace the unsupported ``flow-log-status`` filter in the examples with
+    ``deliver-log-status``.
+  - account_region - document that a pending opposite transition is always awaited, bounded by
+    ``wait_timeout``, even when ``wait=false``.
+  - iam_oidc_provider - document that the provider ARN and unspecified lists are not returned when check mode
+    predicts a create.
+  - iam_oidc_provider_info - document that ``url`` matches the host case-insensitively.
+trivial:
+  - ec2_serial_console - share the serial console access lookup with ec2_serial_console_info.

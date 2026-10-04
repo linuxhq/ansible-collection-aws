@@ -315,7 +315,10 @@ def main():
         module.fail_json(msg="log_destination_configs must not contain empty entries")
 
     web_acl = web_acl_identity(module)
-    client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
+    client = module.client(
+        "wafv2",
+        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["WAFOptimisticLockException"]),
+    )
     methods = {"get_logging_configuration": ("ResourceArn",)}
     if state == "present":
         methods["get_web_acl"] = ("Id", "Name", "Scope")

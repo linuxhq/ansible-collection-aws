@@ -2,6 +2,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import ec2_serial_console as helper
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_serial_console_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -29,7 +30,7 @@ def test_response_metadata_is_removed():
     module = FakeModule({}, client=client)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
+        patch.object(helper, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
@@ -45,7 +46,7 @@ def test_rejects_invalid_serial_console_status():
     module = FakeModule({}, client=client)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
+        patch.object(helper, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.main()

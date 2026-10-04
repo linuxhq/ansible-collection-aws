@@ -9,6 +9,7 @@ version_added: "1.9.0"
 short_description: Manage AWS EC2 serial console access
 description:
   - Enables or disables EC2 serial console access for a region.
+  - Fails without changes when a declarative policy manages access that would change.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -84,6 +85,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.ec2_serial_console import (
+    get_serial_console_access,
     normalized_serial_console_access,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
@@ -107,22 +109,17 @@ def main():
     state = module.params["state"]
     desired_enabled = state == "present"
 
-    require_client_methods(
-        module,
-        client,
-        "EC2",
-        {"get_serial_console_access_status": ()},
-    )
-
-    try:
-        current = normalized_serial_console_access(module, client.get_serial_console_access_status(aws_retry=True))
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get EC2 serial console access in region {module.region}",
-        )
+    current = get_serial_console_access(client, module)
 
     changed = current.get("serial_console_access_enabled") != desired_enabled
+
+    if changed and current.get("managed_by") == "declarative-policy":
+        module.fail_json(
+            msg=(
+                "EC2 serial console access in region "
+                f"{module.region} is managed by a declarative policy and cannot be changed"
+            ),
+        )
 
     if changed and not module.check_mode:
         if state == "present":
