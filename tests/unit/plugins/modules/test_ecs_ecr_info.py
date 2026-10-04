@@ -68,3 +68,22 @@ class EcsEcrInfoTests(TestCase):
             self.assertRaises(ModuleFail),
         ):
             plugin.main()
+
+    def test_missing_repository_returns_an_empty_list(self):
+        module = FakeModule(
+            {"registry_id": None, "repository_names": ["app", "missing"]},
+            client=Mock(),
+        )
+        error = plugin.ClientError(
+            {"Error": {"Code": "RepositoryNotFoundException", "Message": "missing"}},
+            "DescribeRepositories",
+        )
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "paginated_query_with_retries", side_effect=error),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(raised.exception.values["repositories"], [])
