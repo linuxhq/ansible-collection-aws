@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - ec2_placement_group_info - return an empty list for a ``group_names`` or ``group_ids`` entry that does not exist,
+    like ``amazon.aws.ec2_placement_group_info``, instead of failing with ``InvalidPlacementGroup.Unknown``
+    or ``InvalidParameterValue``. Names are sent as the ``group-name`` filter and IDs are matched locally.
+minor_changes:
+  - ec2_placement_group_info - document the returned placement group fields.
+...
