@@ -2,6 +2,21 @@
 - name: Verify
   hosts: all
   pre_tasks:
+    - name: Ensure association info is gathered
+      ansible.builtin.include_role:
+        name: ssm_association_info
+      vars:
+        ssm_association_info_filters:
+          Name: "{{ ssm_association_list_update.0.name }}"
+
+    - name: Ensure updated association is verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_association_info_list | length == 1
+          - _ssm_association_info_list.0.schedule_expression == ssm_association_list_update.0.schedule_expression
+          - _ssm_association_info_list.0.targets == ssm_association_list_update.0.targets
+          - _ssm_association_info_list.0.tags.molecule == 'ssm_association'
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ssm_association_list:

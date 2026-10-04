@@ -11,12 +11,23 @@ description:
   - Parameter names in the returned association are preserved unchanged.
   - Manages AWS Systems Manager associations.
   - Manages the schedule expression, targets, and tags of an association
-    keyed by its document name.
+    keyed by its document name, or by O(association_name) when it is set.
+  - Without O(association_name), any association of the document matches,
+    including one created by another tool such as Quick Setup.
   - Updates preserve association fields not managed by this module, such as
     association parameters.
 author:
   - Taylor Kimball (@tkimball83)
 options:
+  association_name:
+    description:
+      - The association name, which identifies one of several associations
+        of the same document.
+      - When set, only the association with this name is managed, and it is
+        sent when the association is created.
+      - This must be 3 to 128 letters, numbers, underscores, hyphens, or
+        periods.
+    type: str
   name:
     description:
       - The name of the SSM document association.
@@ -26,7 +37,8 @@ options:
     description:
       - The cron or rate expression that defines the association schedule.
       - This must be 1 to 256 characters.
-      - This is required when O(state=present).
+      - When omitted, an existing association keeps its current schedule, and a
+        new association runs once.
     type: str
   state:
     description:
@@ -40,7 +52,8 @@ options:
     description:
       - The targets for the association.
       - This must contain at most 5 targets.
-      - This is required when O(state=present).
+      - When omitted, an existing association keeps its current targets, and a
+        new association is created without targets.
     elements: dict
     suboptions:
       key:
@@ -86,6 +99,16 @@ EXAMPLES = r"""
         values:
           - "*"
 
+- name: Ensure a named SSM association is present
+  linuxhq.aws.ssm_association:
+    association_name: update-ssm-agent-weekly
+    name: AWS-UpdateSSMAgent
+    schedule_expression: rate(7 days)
+    targets:
+      - key: tag:Environment
+        values:
+          - production
+
 - name: Ensure an SSM association is absent
   linuxhq.aws.ssm_association:
     name: AWS-UpdateSSMAgent
@@ -103,10 +126,44 @@ association:
       description: Association identifier.
       returned: when available
       type: str
+    association_name:
+      description: Association name.
+      returned: when configured
+      type: str
+    association_version:
+      description: Association version.
+      returned: when available
+      type: str
+    date:
+      description: The date the association was created.
+      returned: when available
+      type: str
+    document_version:
+      description: The document version the association uses.
+      returned: when available
+      type: str
+    last_execution_date:
+      description: The date the association last ran.
+      returned: when available
+      type: str
+    last_update_association_date:
+      description: The date the association was last updated.
+      returned: when available
+      type: str
     name:
       description: SSM document name.
       returned: always
       type: str
+    overview:
+      description: The association status overview.
+      returned: when available
+      type: dict
+    parameters:
+      description:
+        - The association parameters.
+        - Parameter names keep their original case.
+      returned: when configured
+      type: dict
     schedule_expression:
       description: Association schedule expression.
       returned: when configured
@@ -140,6 +197,7 @@ state:
 """
 
 import json
+import re
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -249,6 +307,7 @@ def ensure_absent(client, module, current):
 
 
 def ensure_present(client, module, current):
+    association_name = module.params.get("association_name")
     name = module.params["name"]
     schedule_expression = module.params["schedule_expression"]
     tags = module.params["tags"]
@@ -266,23 +325,29 @@ def ensure_present(client, module, current):
         if current
         else None
     )
+    # Omitted options keep the association's current values, so only supplied options are compared and sent.
+    desired_comparable = {}
+    if schedule_expression is not None:
+        desired_comparable["schedule_expression"] = schedule_expression
+
+    if module.params["targets"] is not None:
+        desired_comparable["targets"] = comparable_targets(module.params["targets"])
+
     current_comparable = None
     if normalized_current:
         current_comparable = {
             "schedule_expression": normalized_current.get("schedule_expression"),
             "targets": comparable_targets(normalized_current.get("targets")),
         }
+        current_comparable = {key: value for key, value in current_comparable.items() if key in desired_comparable}
 
-    desired_comparable = {
-        "schedule_expression": schedule_expression,
-        "targets": comparable_targets(module.params["targets"]),
-    }
-    aws_targets = desired_comparable["targets"]
+    aws_targets = desired_comparable.get("targets")
     association_id = (current or {}).get("AssociationId")
     desired = scrub_none_parameters(
         snake_dict_to_camel_dict(
             {
                 "association_id": association_id,
+                "association_name": association_name,
                 "name": name,
                 "schedule_expression": schedule_expression,
                 "targets": aws_targets,
@@ -304,6 +369,7 @@ def ensure_present(client, module, current):
                     **scrub_none_parameters(
                         snake_dict_to_camel_dict(
                             {
+                                "association_name": association_name,
                                 "name": name,
                                 "schedule_expression": schedule_expression,
                                 "tags": (ansible_dict_to_boto3_tag_list(tags) if tags else None),
@@ -326,7 +392,7 @@ def ensure_present(client, module, current):
                 f"AWS Systems Manager did not return the created association {name}",
             )
             if not association.get("AssociationId"):
-                module.fail_json(msg=("AWS Systems Manager did not return the created association " f"{name}"))
+                module.fail_json(msg=f"AWS Systems Manager did not return the created association {name}")
 
             if tags is not None:
                 association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
@@ -339,13 +405,13 @@ def ensure_present(client, module, current):
                 parameter: current.get(parameter)
                 for parameter in get_boto3_client_method_parameters(client, "update_association")
             }
-            update_request.update(
-                {
-                    "AssociationId": association_id,
-                    "ScheduleExpression": schedule_expression,
-                    "Targets": desired["Targets"],
-                }
-            )
+            update_request["AssociationId"] = association_id
+            if schedule_expression is not None:
+                update_request["ScheduleExpression"] = schedule_expression
+
+            if aws_targets is not None:
+                update_request["Targets"] = desired["Targets"]
+
             try:
                 response = client.update_association(
                     **scrub_none_parameters(update_request),
@@ -363,7 +429,7 @@ def ensure_present(client, module, current):
                 f"AWS Systems Manager did not return the updated association {name}",
             )
             if not association.get("AssociationId"):
-                module.fail_json(msg=("AWS Systems Manager did not return the updated association " f"{name}"))
+                module.fail_json(msg=f"AWS Systems Manager did not return the updated association {name}")
 
         elif changed and module.check_mode:
             association = dict(current)
@@ -444,7 +510,7 @@ def association_with_tags(client, module, association):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=("Unable to list tags for AWS Systems Manager " f"{SSM_ASSOCIATION_RESOURCE_TYPE} {association_id}"),
+            msg=f"Unable to list tags for AWS Systems Manager {SSM_ASSOCIATION_RESOURCE_TYPE} {association_id}",
         )
 
     tags = response.get("TagList", []) if isinstance(response, dict) else None
@@ -460,6 +526,7 @@ def association_with_tags(client, module, association):
 
 def main():
     argument_spec = {
+        "association_name": {"type": "str"},
         "name": {"required": True, "type": "str"},
         "purge_tags": {"default": True, "type": "bool"},
         "schedule_expression": {"type": "str"},
@@ -479,25 +546,25 @@ def main():
         "tags": {"aliases": ["resource_tags"], "type": "dict"},
     }
 
-    module = AnsibleAWSModule(
-        argument_spec=argument_spec,
-        required_if=[
-            ("state", "present", ["schedule_expression", "targets"]),
-        ],
-        supports_check_mode=True,
-    )
+    module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     state = module.params["state"]
+    association_name = module.params["association_name"]
     name = module.params["name"]
+    schedule_expression = module.params["schedule_expression"]
+    targets = module.params["targets"]
     tags = module.params["tags"]
 
+    if association_name is not None and not re.fullmatch(r"[a-zA-Z0-9_\-.]{3,128}", association_name):
+        module.fail_json(msg="association_name must be 3 to 128 letters, numbers, underscores, hyphens, or periods")
+
     if state == "present":
-        if not 1 <= len(module.params["schedule_expression"]) <= 256:
+        if schedule_expression is not None and not 1 <= len(schedule_expression) <= 256:
             module.fail_json(msg="schedule_expression must be 1 to 256 characters")
 
-        if len(comparable_targets(module.params["targets"])) > 5:
+        if targets is not None and len(comparable_targets(targets)) > 5:
             module.fail_json(msg="targets must contain at most 5 targets")
 
-        for target in module.params["targets"]:
+        for target in targets or []:
             if not 1 <= len(target["key"]) <= 163:
                 module.fail_json(msg="targets[].key must be 1 to 163 characters")
 
@@ -524,6 +591,9 @@ def main():
             "ScheduleExpression",
             "Targets",
         )
+        if association_name is not None:
+            methods["create_association"] += ("AssociationName",)
+
         if tags:
             methods["create_association"] += ("Tags",)
 
@@ -560,7 +630,12 @@ def main():
     if any(not isinstance(association, dict) for association in associations):
         module.fail_json(msg=f"Unexpected response while listing AWS Systems Manager associations for {name}")
 
-    matches = [association for association in associations if association.get("Name") == name]
+    matches = [
+        association
+        for association in associations
+        if association.get("Name") == name
+        and (association_name is None or association.get("AssociationName") == association_name)
+    ]
 
     if any(
         not isinstance(association.get("AssociationId"), str) or not association["AssociationId"]
@@ -572,7 +647,8 @@ def main():
         association_ids = sorted(association["AssociationId"] for association in matches)
         module.fail_json(
             msg=(
-                "Multiple AWS Systems Manager associations exist for document " f"{name}: {', '.join(association_ids)}"
+                f"Multiple AWS Systems Manager associations exist for document {name}: "
+                f"{', '.join(association_ids)}; set association_name to select one"
             )
         )
 

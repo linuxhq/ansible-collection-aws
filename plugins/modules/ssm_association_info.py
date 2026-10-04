@@ -159,7 +159,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to list tags for AWS Systems Manager association " f"{association_id}"),
+                msg=f"Unable to list tags for AWS Systems Manager association {association_id}",
             )
 
         tags = response.get("TagList", []) if isinstance(response, dict) else None

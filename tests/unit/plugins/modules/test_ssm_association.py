@@ -1,326 +1,352 @@
-from unittest import TestCase
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_association as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
+    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    assert_module_contract,
-    assert_module_rejects,
+    ModuleInitialized,
+)
+
+UPDATE_PARAMETERS = (
+    "AssociationId",
+    "AssociationName",
+    "DocumentVersion",
+    "Name",
+    "Parameters",
+    "ScheduleExpression",
+    "Targets",
 )
 
 
-class SsmAssociationTests(TestCase):
-    def test_absent_tolerates_association_disappearing_during_delete(self):
-        client = Mock()
-        client.delete_association.side_effect = plugin.ClientError(
-            {"Error": {"Code": "AssociationDoesNotExist", "Message": "gone"}},
-            "DeleteAssociation",
+def params(**overrides):
+    values = {
+        "association_name": None,
+        "name": "document",
+        "purge_tags": True,
+        "schedule_expression": "rate(1 hour)",
+        "state": "present",
+        "tags": None,
+        "targets": [{"key": "InstanceIds", "values": ["i-1"]}],
+    }
+    values.update(overrides)
+    return values
+
+
+def current_association(**overrides):
+    values = {
+        "AssociationId": "association-1",
+        "DocumentVersion": "$LATEST",
+        "Name": "document",
+        "Parameters": {"Mode": ["safe"]},
+        "ScheduleExpression": "rate(1 hour)",
+        "Targets": [{"Key": "InstanceIds", "Values": ["i-1"]}],
+    }
+    values.update(overrides)
+    return values
+
+
+def run_present(client, module, current):
+    with (
+        patch.object(plugin, "get_boto3_client_method_parameters", return_value=UPDATE_PARAMETERS),
+        pytest.raises((ModuleExit, ModuleFail)) as raised,
+    ):
+        plugin.ensure_present(client, module, current)
+
+    return raised.value
+
+
+def run_main(module, associations):
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require_client_methods,
+        patch.object(plugin, "query_list", return_value=associations),
+        patch.object(
+            plugin,
+            "describe_association",
+            side_effect=lambda client, module, association_id: {"AssociationId": association_id},
+        ),
+        patch.object(
+            plugin, "ensure_present", side_effect=lambda client, module, current: module.exit_json(current=current)
+        ),
+        patch.object(
+            plugin, "ensure_absent", side_effect=lambda client, module, current: module.exit_json(current=current)
+        ),
+        pytest.raises((ModuleExit, ModuleFail)) as raised,
+    ):
+        plugin.main()
+
+    return raised.value, require_client_methods
+
+
+def test_module_contract():
+    captured = {}
+
+    def initialize(**kwargs):
+        captured.update(kwargs)
+        raise ModuleInitialized
+
+    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
+        plugin.main()
+
+    assert captured["supports_check_mode"]
+    assert "required_if" not in captured
+    assert captured["argument_spec"]["association_name"] == {"type": "str"}
+    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
+
+
+def test_targets_apply_defaults_and_ignore_order():
+    left = [
+        {"key": "tag:Role", "values": ["web", "api", "web"]},
+        {"key": "InstanceIds", "values": ["i-2", "i-1"]},
+        {"key": "InstanceIds", "values": ["i-1", "i-2"]},
+    ]
+    normalized = plugin.comparable_targets(left)
+
+    assert normalized == plugin.comparable_targets(reversed(left))
+    assert normalized[1]["values"] == ["api", "web"]
+
+
+def test_absent_tolerates_association_disappearing_during_delete():
+    client = Mock()
+    client.delete_association.side_effect = ClientError(
+        {"Error": {"Code": "AssociationDoesNotExist", "Message": "gone"}}, "DeleteAssociation"
+    )
+    with pytest.raises(ModuleExit) as raised:
+        plugin.ensure_absent(client, FakeModule({"name": "document"}), {"AssociationId": "association-1"})
+
+    assert raised.value.values["changed"]
+
+
+def test_check_mode_predicts_new_association_without_api_call():
+    client = Mock()
+    result = run_present(client, FakeModule(params(tags={"Env": "test"}), check_mode=True), None)
+
+    client.create_association.assert_not_called()
+    assert result.values["changed"]
+    assert result.values["association"]["schedule_expression"] == "rate(1 hour)"
+
+
+def test_create_uses_known_tags_without_eventual_lookup():
+    client = Mock()
+    client.create_association.return_value = {
+        "AssociationDescription": {"AssociationId": "association-1", "Name": "document"}
+    }
+    run_present(client, FakeModule(params(tags={"Env": "test"})), None)
+
+    client.list_tags_for_resource.assert_not_called()
+    client.add_tags_to_resource.assert_not_called()
+
+
+def test_create_sends_association_name():
+    client = Mock()
+    client.create_association.return_value = {
+        "AssociationDescription": {"AssociationId": "association-1", "Name": "document"}
+    }
+    result = run_present(client, FakeModule(params(association_name="weekly")), None)
+
+    assert result.values["changed"]
+    assert client.create_association.call_args.kwargs["AssociationName"] == "weekly"
+
+
+def test_create_without_schedule_or_targets_sends_only_the_document():
+    client = Mock()
+    client.create_association.return_value = {
+        "AssociationDescription": {"AssociationId": "association-1", "Name": "document"}
+    }
+    run_present(client, FakeModule(params(schedule_expression=None, targets=None)), None)
+
+    client.create_association.assert_called_once_with(Name="document", aws_retry=True)
+
+
+def test_existing_association_updates_schedule_and_sorted_targets():
+    client = Mock()
+    client.update_association.return_value = {
+        "AssociationDescription": current_association(
+            ScheduleExpression="rate(2 hours)", Targets=[{"Key": "InstanceIds", "Values": ["i-1", "i-2"]}]
         )
-        module = FakeModule({"name": "document"})
-        with self.assertRaises(ModuleExit) as raised:
-            plugin.ensure_absent(client, module, {"AssociationId": "association-1"})
+    }
+    result = run_present(
+        client,
+        FakeModule(
+            params(schedule_expression="rate(2 hours)", targets=[{"key": "InstanceIds", "values": ["i-2", "i-1"]}])
+        ),
+        current_association(),
+    )
 
-        self.assertTrue(raised.exception.values["changed"])
+    assert result.values["changed"]
+    client.update_association.assert_called_once_with(
+        AssociationId="association-1",
+        DocumentVersion="$LATEST",
+        Name="document",
+        Parameters={"Mode": ["safe"]},
+        ScheduleExpression="rate(2 hours)",
+        Targets=[{"Key": "InstanceIds", "Values": ["i-1", "i-2"]}],
+        aws_retry=True,
+    )
 
-    def test_module_contract(self):
-        options = assert_module_contract(self, plugin)
-        assert options["required_if"] == [("state", "present", ["schedule_expression", "targets"])]
 
-    def test_targets_apply_defaults_and_ignore_order(self):
-        left = [
-            {"key": "tag:Role", "values": ["web", "api", "web"]},
-            {"key": "InstanceIds", "values": ["i-2", "i-1"]},
-            {"key": "InstanceIds", "values": ["i-1", "i-2"]},
-        ]
-        normalized = plugin.comparable_targets(left)
-        assert normalized == plugin.comparable_targets(reversed(left))
-        assert normalized[1]["values"] == ["api", "web"]
+@pytest.mark.parametrize(
+    ("overrides", "kept"),
+    [
+        ({"schedule_expression": None}, {"ScheduleExpression": "rate(1 hour)"}),
+        ({"targets": None}, {"Targets": [{"Key": "InstanceIds", "Values": ["i-1"]}]}),
+    ],
+)
+def test_omitted_option_keeps_the_current_value(overrides, kept):
+    client = Mock()
+    client.update_association.return_value = {"AssociationDescription": current_association()}
+    changes = {"schedule_expression": "rate(2 hours)", "targets": [{"key": "InstanceIds", "values": ["i-2"]}]}
+    changes.update(overrides)
+    result = run_present(client, FakeModule(params(**changes)), current_association())
 
-    def test_check_mode_predicts_new_association_without_api_call(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "name": "document",
-                "purge_tags": True,
-                "schedule_expression": "rate(1 hour)",
-                "tags": {"Env": "test"},
-                "targets": [{"key": "InstanceIds", "values": ["i-1"]}],
-            },
-            check_mode=True,
-        )
-        with self.assertRaises(ModuleExit) as raised:
-            plugin.ensure_present(client, module, None)
+    assert result.values["changed"]
+    request = client.update_association.call_args.kwargs
+    for key, value in kept.items():
+        assert request[key] == value
 
-        client.create_association.assert_not_called()
-        self.assertTrue(raised.exception.values["changed"])
-        self.assertEqual(
-            raised.exception.values["association"]["schedule_expression"],
-            "rate(1 hour)",
-        )
 
-    def test_create_uses_known_tags_without_eventual_lookup(self):
-        client = Mock()
-        client.create_association.return_value = {
-            "AssociationDescription": {
-                "AssociationId": "association-1",
-                "Name": "document",
-            }
-        }
-        module = FakeModule(
-            {
-                "name": "document",
-                "purge_tags": True,
-                "schedule_expression": "rate(1 hour)",
-                "tags": {"Env": "test"},
-                "targets": [{"key": "InstanceIds", "values": ["i-1"]}],
-            }
-        )
+def test_omitted_schedule_and_targets_report_no_change():
+    client = Mock()
+    result = run_present(client, FakeModule(params(schedule_expression=None, targets=None)), current_association())
 
-        with self.assertRaises(ModuleExit):
-            plugin.ensure_present(client, module, None)
+    assert not result.values["changed"]
+    client.update_association.assert_not_called()
 
-        client.list_tags_for_resource.assert_not_called()
-        client.add_tags_to_resource.assert_not_called()
 
-    def test_existing_association_updates_schedule_and_sorted_targets(self):
-        client = Mock()
-        updated = {
-            "AssociationId": "association-1",
-            "Name": "document",
-            "ScheduleExpression": "rate(2 hours)",
-            "Targets": [{"Key": "InstanceIds", "Values": ["i-1", "i-2"]}],
-        }
-        client.update_association.return_value = {"AssociationDescription": updated}
-        module = FakeModule(
-            {
-                "name": "document",
-                "purge_tags": True,
-                "schedule_expression": "rate(2 hours)",
-                "tags": None,
-                "targets": [{"key": "InstanceIds", "values": ["i-2", "i-1"]}],
-            }
-        )
-        current = {
-            "AssociationId": "association-1",
-            "DocumentVersion": "$LATEST",
-            "Name": "document",
-            "Parameters": {"Mode": ["safe"]},
-            "ScheduleExpression": "rate(1 hour)",
-            "Targets": [{"Key": "InstanceIds", "Values": ["i-1"]}],
-        }
-        with (
-            patch.object(
-                plugin,
-                "get_boto3_client_method_parameters",
-                return_value=(
-                    "AssociationId",
-                    "DocumentVersion",
-                    "Name",
-                    "Parameters",
-                    "ScheduleExpression",
-                    "Targets",
-                ),
-            ),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module, current)
+def test_describe_missing_association_returns_none():
+    client = Mock()
+    client.describe_association.side_effect = ClientError(
+        {"Error": {"Code": "AssociationDoesNotExist", "Message": "gone"}}, "DescribeAssociation"
+    )
 
-        self.assertTrue(raised.exception.values["changed"])
-        client.update_association.assert_called_once_with(
-            AssociationId="association-1",
-            DocumentVersion="$LATEST",
-            Name="document",
-            Parameters={"Mode": ["safe"]},
-            ScheduleExpression="rate(2 hours)",
-            Targets=[{"Key": "InstanceIds", "Values": ["i-1", "i-2"]}],
-            aws_retry=True,
-        )
+    assert plugin.describe_association(client, FakeModule({}), "a-1") is None
 
-    def test_describe_missing_association_returns_none(self):
-        client = Mock()
-        error = plugin.ClientError(
-            {"Error": {"Code": "AssociationDoesNotExist", "Message": "gone"}},
-            "DescribeAssociation",
-        )
-        client.describe_association.side_effect = error
 
-        self.assertIsNone(plugin.describe_association(client, FakeModule({}), "a-1"))
+def test_describe_rejects_malformed_response():
+    client = Mock(describe_association=Mock(return_value={"AssociationDescription": None}))
+    with pytest.raises(ModuleFail) as raised:
+        plugin.describe_association(client, FakeModule({}), "a-1")
 
-    def test_describe_rejects_malformed_response(self):
-        client = Mock(describe_association=Mock(return_value={"AssociationDescription": None}))
-        with self.assertRaises(ModuleFail) as raised:
-            plugin.describe_association(client, FakeModule({}), "a-1")
+    assert raised.value.values["msg"] == "Unexpected response while describing AWS Systems Manager association a-1"
 
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "Unexpected response while describing AWS Systems Manager association a-1",
-        )
 
-    def test_create_rejects_malformed_response(self):
-        client = Mock(create_association=Mock(return_value={"AssociationDescription": None}))
-        module = FakeModule(
-            {
-                "name": "document",
-                "purge_tags": True,
-                "schedule_expression": "rate(1 hour)",
-                "tags": None,
-                "targets": [{"key": "InstanceIds", "values": ["i-1"]}],
-            }
-        )
-        with self.assertRaises(ModuleFail) as raised:
-            plugin.ensure_present(client, module, None)
+def test_create_rejects_malformed_response():
+    client = Mock(create_association=Mock(return_value={"AssociationDescription": None}))
+    result = run_present(client, FakeModule(params()), None)
 
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "AWS Systems Manager did not return the created association document",
-        )
+    assert result.values["msg"] == "AWS Systems Manager did not return the created association document"
 
-    def test_association_tags_rejects_malformed_response(self):
-        client = Mock(list_tags_for_resource=Mock(return_value={"TagList": [None]}))
-        with self.assertRaises(ModuleFail) as raised:
-            plugin.association_with_tags(
-                client,
-                FakeModule({}),
-                {"AssociationId": "a-1"},
-            )
 
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "Unexpected response while listing tags for AWS Systems Manager association a-1",
-        )
+def test_association_tags_rejects_malformed_response():
+    client = Mock(list_tags_for_resource=Mock(return_value={"TagList": [None]}))
+    with pytest.raises(ModuleFail) as raised:
+        plugin.association_with_tags(client, FakeModule({}), {"AssociationId": "a-1"})
 
-    def test_update_rejects_malformed_response(self):
-        client = Mock(update_association=Mock(return_value={"AssociationDescription": None}))
-        module = FakeModule(
-            {
-                "name": "document",
-                "purge_tags": True,
-                "schedule_expression": "rate(2 hours)",
-                "tags": None,
-                "targets": [{"key": "InstanceIds", "values": ["i-1"]}],
-            }
-        )
-        current = {
-            "AssociationId": "a-1",
-            "Name": "document",
-            "ScheduleExpression": "rate(1 hour)",
-            "Targets": [{"Key": "InstanceIds", "Values": ["i-1"]}],
-        }
-        with (
-            patch.object(
-                plugin,
-                "get_boto3_client_method_parameters",
-                return_value=("AssociationId", "Name", "ScheduleExpression", "Targets"),
-            ),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.ensure_present(client, module, current)
+    assert (
+        raised.value.values["msg"] == "Unexpected response while listing tags for AWS Systems Manager association a-1"
+    )
 
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "AWS Systems Manager did not return the updated association document",
-        )
 
-    def test_main_rejects_malformed_association_summaries(self):
-        for association in (None, {"Name": "document"}):
-            with self.subTest(association=association):
-                module = FakeModule(
-                    {
-                        "name": "document",
-                        "state": "absent",
-                        "tags": None,
-                    },
-                    client=Mock(),
-                )
-                with (
-                    patch.object(plugin, "AnsibleAWSModule", return_value=module),
-                    patch.object(plugin, "require_client_methods"),
-                    patch.object(plugin, "query_list", return_value=[association]),
-                    self.assertRaises(ModuleFail) as raised,
-                ):
-                    plugin.main()
+def test_update_rejects_malformed_response():
+    client = Mock(update_association=Mock(return_value={"AssociationDescription": None}))
+    result = run_present(client, FakeModule(params(schedule_expression="rate(2 hours)")), current_association())
 
-                self.assertEqual(
-                    raised.exception.values["msg"],
-                    "Unexpected response while listing AWS Systems Manager associations for document",
-                )
+    assert result.values["msg"] == "AWS Systems Manager did not return the updated association document"
 
-    def test_provider_limits_are_rejected(self):
-        base = {"name": "document", "state": "present", "tags": None}
-        cases = [
-            (
-                dict(base, schedule_expression="", targets=[]),
-                "schedule_expression must be 1 to 256 characters",
-            ),
-            (
-                dict(
-                    base,
-                    schedule_expression="rate(1 hour)",
-                    targets=[{"key": f"tag:Role{index}", "values": ["web"]} for index in range(6)],
-                ),
-                "targets must contain at most 5 targets",
-            ),
-            (
-                dict(
-                    base,
-                    schedule_expression="rate(1 hour)",
-                    targets=[{"key": "", "values": ["web"]}],
-                ),
-                "targets[].key must be 1 to 163 characters",
-            ),
-            (
-                dict(
-                    base,
-                    schedule_expression="rate(1 hour)",
-                    targets=[
-                        {
-                            "key": "tag:Role",
-                            "values": [f"role-{index}" for index in range(51)],
-                        }
-                    ],
-                ),
-                "targets[].values must contain at most 50 entries",
-            ),
-            (
-                dict(
-                    base,
-                    schedule_expression="rate(1 hour)",
-                    targets=[{"key": "tag:Role", "values": []}],
-                ),
-                "targets[].values must contain at least one entry",
-            ),
-        ]
-        for params, message in cases:
-            with self.subTest(message=message):
-                assert_module_rejects(self, plugin, params, message)
+
+@pytest.mark.parametrize("association", [None, {"Name": "document"}])
+def test_main_rejects_malformed_association_summaries(association):
+    result, _require = run_main(FakeModule(params(state="absent"), client=Mock()), [association])
+
+    assert result.values["msg"] == "Unexpected response while listing AWS Systems Manager associations for document"
+
+
+def test_association_name_selects_one_of_several_associations():
+    associations = [
+        {"AssociationId": "a-1", "Name": "document", "AssociationName": "quick-setup"},
+        {"AssociationId": "a-2", "Name": "document", "AssociationName": "weekly"},
+    ]
+    result, _require = run_main(
+        FakeModule(params(association_name="weekly", state="absent"), client=Mock()), associations
+    )
+
+    assert result.values["current"]["AssociationId"] == "a-2"
+
+
+def test_association_name_ignores_associations_with_another_name():
+    associations = [{"AssociationId": "a-1", "Name": "document", "AssociationName": "quick-setup"}]
+    result, _require = run_main(
+        FakeModule(params(association_name="weekly", state="absent"), client=Mock()), associations
+    )
+
+    assert result.values["current"] is None
+
+
+def test_multiple_associations_suggest_association_name():
+    associations = [
+        {"AssociationId": "a-1", "Name": "document"},
+        {"AssociationId": "a-2", "Name": "document", "AssociationName": "weekly"},
+    ]
+    result, _require = run_main(FakeModule(params(state="absent"), client=Mock()), associations)
+
+    assert result.values["msg"] == (
+        "Multiple AWS Systems Manager associations exist for document document: a-1, a-2; "
+        "set association_name to select one"
+    )
+
+
+def test_association_name_requires_sdk_support_on_create():
+    _result, require_client_methods = run_main(FakeModule(params(association_name="weekly"), client=Mock()), [])
+
+    assert "AssociationName" in require_client_methods.call_args.args[3]["create_association"]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        (
+            {"association_name": "ab"},
+            "association_name must be 3 to 128 letters, numbers, underscores, hyphens, or periods",
+        ),
+        (
+            {"association_name": "has space"},
+            "association_name must be 3 to 128 letters, numbers, underscores, hyphens, or periods",
+        ),
+        ({"schedule_expression": ""}, "schedule_expression must be 1 to 256 characters"),
+        (
+            {"targets": [{"key": f"tag:Role{index}", "values": ["web"]} for index in range(6)]},
+            "targets must contain at most 5 targets",
+        ),
+        ({"targets": [{"key": "", "values": ["web"]}]}, "targets[].key must be 1 to 163 characters"),
+        (
+            {"targets": [{"key": "tag:Role", "values": [f"role-{index}" for index in range(51)]}]},
+            "targets[].values must contain at most 50 entries",
+        ),
+        ({"targets": [{"key": "tag:Role", "values": []}]}, "targets[].values must contain at least one entry"),
+    ],
+)
+def test_provider_limits_are_rejected(overrides, message):
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params(**overrides))),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == message
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_association_result_preserves_parameter_names(check_mode):
     parameters = {"Message": ["Hello"], "message": ["World"]}
-    current = {
-        "AssociationId": "association-1",
-        "Name": "document",
-        "ScheduleExpression": "rate(1 hour)",
-        "Targets": [{"Key": "InstanceIds", "Values": ["i-1"]}],
-        "Parameters": parameters,
-    }
-    module = FakeModule(
-        {
-            "name": "document",
-            "schedule_expression": "rate(1 hour)",
-            "tags": None,
-            "purge_tags": True,
-            "targets": [{"key": "InstanceIds", "values": ["i-1"]}],
-        },
-        check_mode=check_mode,
+    result = run_present(
+        Mock(), FakeModule(params(), check_mode=check_mode), current_association(Parameters=parameters)
     )
-    with pytest.raises(ModuleExit) as result:
-        plugin.ensure_present(Mock(), module, current)
 
-    assert result.value.values["changed"] is False
-    assert result.value.values["association"]["parameters"] == parameters
+    assert result.values["changed"] is False
+    assert result.values["association"]["parameters"] == parameters
