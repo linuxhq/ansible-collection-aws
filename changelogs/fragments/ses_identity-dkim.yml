@@ -12,5 +12,6 @@ bugfixes:
 major_changes:
   - ses_identity_dkim - new module that enables Easy DKIM for an SES domain identity and returns its DKIM tokens.
 minor_changes:
-  - ses_identity_info - document the DKIM and verification fields.
+  - ses_identity_info - return each domain identity's SES v1 ``verification_token`` alongside its DKIM tokens,
+    so both verification methods are covered, and document the DKIM and verification fields.
 ...

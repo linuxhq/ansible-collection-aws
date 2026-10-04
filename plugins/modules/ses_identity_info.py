@@ -97,6 +97,12 @@ identities:
       description: The identity's verification status.
       returned: when available
       type: str
+    verification_token:
+      description:
+        - The SES v1 domain verification token for the C(_amazonses) TXT
+          record, the alternative to DKIM verification.
+      returned: when AWS returns it for a domain identity
+      type: str
     verified_for_sending_status:
       description: Whether the identity can be used to send email.
       returned: when available
@@ -111,6 +117,7 @@ except ImportError:
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
+from ansible_collections.amazon.aws.plugins.module_utils.iterators import chunks
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -146,6 +153,27 @@ def validate_identity_details(module, details, identity_name):
         module.fail_json(msg=f"AWS SES returned invalid policies for identity {identity_name}")
 
 
+def get_verification_tokens(module, ses_client, identity_names):
+    """Return the SES v1 domain verification tokens, keyed by identity name."""
+    tokens = {}
+    # GetIdentityVerificationAttributes accepts up to 100 identities per request.
+    for batch in chunks(identity_names, 100):
+        try:
+            response = ses_client.get_identity_verification_attributes(Identities=batch, aws_retry=True)
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, msg="Unable to get AWS SES identity verification attributes")
+
+        attributes = response.get("VerificationAttributes", {}) if isinstance(response, dict) else None
+        if not isinstance(attributes, dict) or any(not isinstance(value, dict) for value in attributes.values()):
+            module.fail_json(msg="AWS SES returned invalid identity verification attributes")
+
+        for identity_name, value in attributes.items():
+            if isinstance(value.get("VerificationToken"), str):
+                tokens[identity_name] = value["VerificationToken"]
+
+    return tokens
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -161,15 +189,12 @@ def main():
     if name == "":
         module.fail_json(msg="name must not be empty")
 
-    ses_client = None
+    ses_client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
+    ses_methods = {"get_identity_verification_attributes": ("Identities",)}
     if name is None:
-        ses_client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
-        require_client_methods(
-            module,
-            ses_client,
-            "SES",
-            {"list_identities": ("IdentityType", "MaxItems", "NextToken")},
-        )
+        ses_methods["list_identities"] = ("IdentityType", "MaxItems", "NextToken")
+
+    require_client_methods(module, ses_client, "SES", ses_methods)
 
     sesv2_client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
     require_client_methods(
@@ -225,6 +250,12 @@ def main():
 
         identity["name"] = identity_name
         identities.append(identity)
+
+    if identities:
+        verification_tokens = get_verification_tokens(module, ses_client, [identity["name"] for identity in identities])
+        for identity in identities:
+            if identity["name"] in verification_tokens:
+                identity["verification_token"] = verification_tokens[identity["name"]]
 
     module.exit_json(
         changed=False,

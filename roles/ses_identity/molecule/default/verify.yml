@@ -22,6 +22,7 @@
           - _query.identities.0.dkim_attributes.signing_attributes_origin == 'AWS_SES'
           - _query.identities.0.dkim_attributes.signing_enabled | bool
           - _query.identities.0.dkim_attributes.tokens | length == 3
+          - _query.identities.0.verification_token | length > 0
       loop: "{{ __ses_identity_verify.results }}"
       loop_control:
         label: "{{ _query._identity.identity }}"
