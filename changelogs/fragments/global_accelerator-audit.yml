@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - global_accelerator - retry ``TransactionInProgressException`` instead of ``ConflictException``, which AWS
+    returns for invalid ``UpdateAccelerator`` option combinations rather than for concurrent changes.
+  - global_accelerator - never send ``ip_addresses`` when updating an existing accelerator because AWS only
+    accepts static IP addresses at creation; fail before modifying the accelerator when its addresses do not
+    include every requested address.
