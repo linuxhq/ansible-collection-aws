@@ -14,7 +14,7 @@ class IamAccountAliasTests(TestCase):
     def test_list_account_aliases_rejects_invalid_response(self):
         module = FakeModule({})
         with (
-            patch.object(plugin, "paginated_query_with_retries", return_value={}),
+            patch.object(plugin, "query_list", return_value=[None]),
             self.assertRaises(ModuleFail) as raised,
         ):
             plugin.list_account_aliases(Mock(), module)
@@ -22,6 +22,16 @@ class IamAccountAliasTests(TestCase):
         self.assertEqual(
             raised.exception.values["msg"],
             "Unable to list AWS IAM account aliases: AWS returned an invalid response",
+        )
+
+    def test_list_account_aliases_uses_the_shared_paginated_query(self):
+        client = Mock()
+        module = FakeModule({})
+        with patch.object(plugin, "query_list", return_value=["b-alias", "a-alias"]) as query:
+            self.assertEqual(plugin.list_account_aliases(client, module), ["a-alias", "b-alias"])
+
+        query.assert_called_once_with(
+            module, client, "list_account_aliases", "AccountAliases", "Unable to list AWS IAM account aliases"
         )
 
     def test_delete_tolerates_alias_disappearing(self):
