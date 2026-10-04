@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - ssm_instance_info - return the association status names in
+    ``association_overview.instance_association_status_aggregated_count`` as AWS returns them,
+    such as ``Success`` and ``Failed``, instead of converting them to snake_case.
+...
