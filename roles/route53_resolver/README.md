@@ -8,12 +8,12 @@ None
 
 ## Role Variables
 
-    route53_resolver_async: 1200
+    route53_resolver_async: 3600
     route53_resolver_batch: 10
     route53_resolver_delay: 5
     route53_resolver_list: []
     route53_resolver_poll: 0
-    route53_resolver_retries: 240
+    route53_resolver_retries: 720
     route53_resolver_timeout: 600
 
 ## Return Values

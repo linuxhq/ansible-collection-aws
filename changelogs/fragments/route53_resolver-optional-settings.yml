@@ -1,0 +1,24 @@
+---
+bugfixes:
+  - route53_resolver - ``protocols`` and ``resolver_endpoint_type`` no longer default to ``do53`` and ``ipv4``;
+    omitting them leaves an existing endpoint unchanged instead of reverting DoH or dual-stack settings,
+    and uses the AWS defaults when creating an endpoint.
+  - route53_resolver - stop waiting as soon as an endpoint that should become operational starts deleting.
+  - route53_resolver - replace IP addresses that failed to create or lost their network interface,
+    which also repairs endpoints in ``ACTION_NEEDED``, and ignore addresses that are already being removed.
+  - route53_resolver - send the requested IPv6 addresses with ``UpdateResolverEndpoint`` when converting an endpoint to dual-stack
+    instead of replacing its IP addresses afterward.
+  - route53_resolver - fail before modifying an endpoint when a change AWS does not support is requested,
+    such as converting to or from ``ipv6`` or changing the protocols of an inbound endpoint.
+  - route53_resolver - report waits that end in a failure state without calling them timeouts,
+    and fail with the AWS status message when an endpoint still needs action after a run that waits.
+  - route53_resolver - explain that resolver rules may still use an endpoint when AWS rejects its deletion.
+  - route53_resolver role - pass ``protocols`` and ``resolver_endpoint_type`` only when the list item sets them.
+minor_changes:
+  - route53_resolver - avoid rereading an endpoint and its tags when IP addresses or tags do not change.
+  - route53_resolver_info - check SDK support for IP address and tag lookups only when endpoints are found.
+  - route53_resolver role - raise ``route53_resolver_async`` to ``3600`` and ``route53_resolver_retries`` to ``720``
+    so jobs that replace several IP addresses are not stopped early.
+  - route53_resolver - document the returned endpoint fields.
+  - route53_resolver_info - document the returned endpoint fields.
+...
