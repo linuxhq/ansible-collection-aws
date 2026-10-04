@@ -11,8 +11,11 @@ description:
   - Requests production access for an AWS Simple Email Service account and manages the submitted account details.
   - Submitting a request does not grant production access. The returned access status
     reflects the account state observed from AWS, including in check mode.
-  - Without O(use_case_description) and O(website_url) the module only
-    reports the current account details.
+  - Without O(website_url) the module only reports the current account details.
+  - A request is submitted when the account details differ from the requested
+    details, or when production access is disabled and no request was made.
+    A pending, denied, or failed request with the same details is not
+    submitted again; a denied or failed request produces a warning.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -27,28 +30,32 @@ options:
   contact_language:
     description:
       - Contact language to submit with the request.
+      - When omitted, the account's current contact language is kept, or
+        V(en) is used when the account has none.
     choices:
       - en
       - ja
-    default: en
     type: str
   mail_type:
     description:
       - Mail type to submit with the request.
+      - When omitted, the account's current mail type is kept, or
+        V(transactional) is used when the account has none.
     choices:
       - marketing
       - transactional
-    default: transactional
     type: str
   use_case_description:
     description:
       - Description of the intended SES use case.
-      - This is required with O(website_url) to request production access.
+      - AWS treats this as optional and deprecated.
+      - This is sent with a request but does not trigger one, because AWS
+        does not return it as submitted.
     type: str
   website_url:
     description:
       - Website URL associated with the SES account request.
-      - This is required with O(use_case_description) to request production access.
+      - This is required to request production access.
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -274,31 +281,26 @@ def main():
             "elements": "str",
             "type": "list",
         },
-        "contact_language": {"choices": ["en", "ja"], "default": "en", "type": "str"},
-        "mail_type": {
-            "choices": ["marketing", "transactional"],
-            "default": "transactional",
-            "type": "str",
-        },
+        "contact_language": {"choices": ["en", "ja"], "type": "str"},
+        "mail_type": {"choices": ["marketing", "transactional"], "type": "str"},
         "use_case_description": {"type": "str"},
         "website_url": {"type": "str"},
     }
 
-    module = AnsibleAWSModule(
-        argument_spec=argument_spec,
-        required_together=[["use_case_description", "website_url"]],
-        supports_check_mode=True,
-    )
+    module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
 
     if len(set(module.params["additional_contact_email_addresses"])) > 4:
         module.fail_json(msg="additional_contact_email_addresses must contain at most 4 addresses")
 
     use_case_description = module.params["use_case_description"]
     website_url = module.params["website_url"]
-    if use_case_description is not None and (not use_case_description.strip() or not website_url.strip()):
-        module.fail_json(msg="use_case_description and website_url must be non-empty strings")
+    if website_url is not None and not website_url.strip():
+        module.fail_json(msg="website_url must be a non-empty string")
 
-    ready = use_case_description is not None and website_url is not None
+    if use_case_description is not None and not use_case_description.strip():
+        module.fail_json(msg="use_case_description must be a non-empty string")
+
+    ready = website_url is not None
 
     client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
 
@@ -321,34 +323,44 @@ def main():
     )
 
     current_account = get_account(client, module)
+    current_details = current_account.get("details") or {}
     desired_details = comparable_details(
         {
             "additional_contact_email_addresses": module.params["additional_contact_email_addresses"],
-            "contact_language": module.params["contact_language"].upper(),
-            "mail_type": module.params["mail_type"].upper(),
+            # Omitted choices keep the account's values instead of reverting them to defaults.
+            "contact_language": (module.params["contact_language"] or "").upper()
+            or current_details.get("contact_language")
+            or "EN",
+            "mail_type": (module.params["mail_type"] or "").upper()
+            or current_details.get("mail_type")
+            or "TRANSACTIONAL",
             "use_case_description": (use_case_description or "").strip(),
             "website_url": website_url,
         }
     )
-    desired = {
-        "details": desired_details,
-        "production_access_enabled": True,
-    }
     request = {"ProductionAccessEnabled": True}
     for request_field, details_field in ACCOUNT_DETAILS_REQUEST_FIELDS:
         if details_field in desired_details:
             request[request_field] = desired_details[details_field]
 
-    current = {
-        "details": {
-            field: value
-            for field, value in comparable_details(current_account.get("details") or {}).items()
-            if field in desired_details
-        },
-        "production_access_enabled": current_account.get("production_access_enabled", False),
+    # AWS deprecated the use case description and does not return it as submitted, so it is sent but not compared.
+    desired_compared = {field: value for field, value in desired_details.items() if field != "use_case_description"}
+    compared_details = {
+        field: value for field, value in comparable_details(current_details).items() if field in desired_compared
     }
+    production_access_enabled = current_account.get("production_access_enabled", False)
+    review_status = (current_details.get("review_details") or {}).get("status")
 
-    changed = ready and current != desired
+    # A request with unchanged details is not submitted again while it is reviewed or after it is rejected.
+    changed = ready and (
+        compared_details != desired_compared or (not production_access_enabled and review_status is None)
+    )
+
+    if ready and not changed and not production_access_enabled and review_status in ("DENIED", "FAILED"):
+        module.warn(
+            f"AWS Simple Email Service production access request was {review_status}; "
+            "change the account details to submit a new request"
+        )
 
     if changed and not module.check_mode:
         try:
