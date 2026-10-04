@@ -350,13 +350,15 @@ def test_no_wait_update_waits_for_transition_and_rechecks_state():
     )
     with (
         patch.object(plugin, "find_pool", return_value=transitioning),
-        patch.object(plugin, "wait_for_pool_active") as wait_for_pool_active,
-        patch.object(plugin, "get_pool_by_id", return_value=active),
+        patch.object(plugin, "wait_for_pool_active", return_value=active) as wait_for_pool_active,
+        patch.object(plugin, "pool_with_details", side_effect=lambda client, module, pool: pool),
+        patch.object(plugin, "get_pool_by_id") as get_pool_by_id,
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
 
     wait_for_pool_active.assert_called_once_with(client, module, "pool-1")
+    get_pool_by_id.assert_not_called()
     client.update_pool.assert_not_called()
     assert not raised.value.values["changed"]
 
@@ -527,3 +529,63 @@ def test_absent_does_not_return_stale_data_when_delete_races():
 
     assert raised.value.values["changed"]
     assert "pool" not in raised.value.values
+
+
+def test_wait_reuses_the_described_pool_after_update():
+    client = Mock()
+    client.update_pool.return_value = {
+        "DeletionProtectionEnabled": True,
+        "MessageType": "TRANSACTIONAL",
+        "PoolArn": "arn:pool",
+        "PoolId": "pool-1",
+        "Status": "UPDATING",
+    }
+    module = FakeModule(
+        {
+            "deletion_protection_enabled": True,
+            "message_type": "TRANSACTIONAL",
+            "name": "primary",
+            "purge_tags": True,
+            "state": "present",
+            "tags": None,
+            "wait": True,
+        }
+    )
+    current = {
+        "DeletionProtectionEnabled": False,
+        "MessageType": "TRANSACTIONAL",
+        "OriginationIdentities": [],
+        "PoolArn": "arn:pool",
+        "PoolId": "pool-1",
+        "Status": "ACTIVE",
+        "Tags": [{"Key": "Name", "Value": "primary"}],
+    }
+    active = dict(client.update_pool.return_value, Status="ACTIVE")
+    detailed = dict(active, OriginationIdentities=[], Tags=current["Tags"])
+    with (
+        patch.object(plugin, "find_pool", return_value=current),
+        patch.object(plugin, "wait_for_pool_active", return_value=active) as wait_for_pool_active,
+        patch.object(plugin, "pool_with_details", return_value=detailed) as pool_with_details,
+        patch.object(plugin, "get_pool_by_id") as get_pool_by_id,
+        patch.object(plugin, "reconcile_arn_tags"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    wait_for_pool_active.assert_called_once_with(client, module, "pool-1")
+    pool_with_details.assert_called_once_with(client, module, active)
+    get_pool_by_id.assert_not_called()
+    assert raised.value.values["changed"]
+    assert raised.value.values["pool"]["deletion_protection_enabled"] is True
+    assert raised.value.values["pool"]["status"] == "ACTIVE"
+
+
+def test_get_pool_by_id_adds_details_to_the_described_pool():
+    pool = {"PoolId": "pool-1", "Status": "ACTIVE"}
+    with (
+        patch.object(plugin, "describe_pools", return_value=[pool]),
+        patch.object(plugin, "pool_with_details", return_value="detailed") as pool_with_details,
+    ):
+        assert plugin.get_pool_by_id("client", "module", "pool-1") == "detailed"
+
+    pool_with_details.assert_called_once_with("client", "module", pool)

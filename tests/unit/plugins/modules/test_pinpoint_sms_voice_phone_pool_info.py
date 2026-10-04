@@ -29,12 +29,83 @@ def test_ids_do_not_send_the_implicit_owner():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[]) as query,
+        patch.object(plugin, "paginated_query_with_retries", return_value={"Pools": []}) as query,
+        patch.object(plugin, "query_list") as query_list,
         pytest.raises(ModuleExit),
     ):
         plugin.main()
 
     assert query.call_args.kwargs == {"PoolIds": ["pool-1"]}
+    query_list.assert_not_called()
+
+
+def test_missing_ids_are_omitted_from_results():
+    missing = plugin.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},
+        "DescribePools",
+    )
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"Tags": []}
+    module = FakeModule(
+        {
+            "filters": None,
+            "max_results": None,
+            "owner": None,
+            "pool_ids": ["pool-missing", "pool-1"],
+        },
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=[
+                missing,
+                {"Pools": [{"PoolArn": "arn:pool", "PoolId": "pool-1"}]},
+                {"OriginationIdentities": []},
+            ],
+        ) as query,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert [item.kwargs.get("PoolIds") for item in query.call_args_list[:2]] == [["pool-missing"], ["pool-1"]]
+    assert raised.value.values["pool_ids"] == ["pool-1"]
+    assert raised.value.values["changed"] is False
+
+
+def test_only_missing_ids_return_empty_results():
+    missing = plugin.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},
+        "DescribePools",
+    )
+    module = FakeModule({"filters": None, "max_results": None, "owner": None, "pool_ids": ["pool-missing"]})
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "paginated_query_with_retries", side_effect=missing),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["pool_ids"] == []
+    assert raised.value.values["pools"] == []
+
+
+def test_empty_result_does_not_require_detail_operations():
+    module = FakeModule({"filters": None, "max_results": None, "owner": "SELF", "pool_ids": None})
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(plugin, "query_list", return_value=[]),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()
+
+    assert require.call_count == 1
+    assert require.call_args.args[3] == {"describe_pools": ("Owner", "MaxResults", "NextToken")}
 
 
 def test_rejects_nonpositive_max_results():
@@ -112,15 +183,17 @@ def test_pools_are_enriched_with_identities_and_tags():
     pool = raised.value.values["pools"][0]
     assert pool["origination_identities"][0]["origination_identity"] == "phone-1"
     assert pool["tags"] == {"Name": "primary"}
-    assert require.call_args.args[3] == {
-        "describe_pools": ("Owner", "MaxResults", "NextToken"),
-        "list_pool_origination_identities": (
-            "PoolId",
-            "MaxResults",
-            "NextToken",
-        ),
-        "list_tags_for_resource": ("ResourceArn",),
-    }
+    assert [item.args[3] for item in require.call_args_list] == [
+        {"describe_pools": ("Owner", "MaxResults", "NextToken")},
+        {
+            "list_pool_origination_identities": (
+                "PoolId",
+                "MaxResults",
+                "NextToken",
+            ),
+            "list_tags_for_resource": ("ResourceArn",),
+        },
+    ]
 
 
 def test_rejects_malformed_pool():

@@ -39,6 +39,7 @@ options:
   pool_ids:
     description:
       - Phone pool IDs used to limit the result set.
+      - IDs that do not exist are omitted from the results.
       - This must contain at most 5 entries.
       - Mutually exclusive with O(owner).
     elements: str
@@ -183,6 +184,25 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
+def describe_pools_by_id(module, client, request):
+    pools = []
+    for pool_id in request["PoolIds"]:
+        try:
+            response = paginated_query_with_retries(
+                client,
+                "describe_pools",
+                **dict(request, PoolIds=[pool_id]),
+            )
+        except is_boto3_error_code("ResourceNotFoundException"):
+            continue
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, msg=f"Unable to describe Pinpoint SMS Voice V2 pool {pool_id}")
+
+        pools.extend(response.get("Pools", []))
+
+    return pools
+
+
 def validate_pool(module, pool):
     if (
         not isinstance(pool, dict)
@@ -239,23 +259,35 @@ def main():
         "Pinpoint SMS Voice V2",
         {
             "describe_pools": tuple(dict.fromkeys((*request, "MaxResults", "NextToken"))),
-            "list_pool_origination_identities": (
-                "PoolId",
-                "MaxResults",
-                "NextToken",
-            ),
-            "list_tags_for_resource": ("ResourceArn",),
         },
     )
 
-    pools = query_list(
-        module,
-        client,
-        "describe_pools",
-        "Pools",
-        "Unable to describe Pinpoint SMS Voice V2 pools",
-        **request,
-    )
+    if pool_ids:
+        pools = describe_pools_by_id(module, client, request)
+    else:
+        pools = query_list(
+            module,
+            client,
+            "describe_pools",
+            "Pools",
+            "Unable to describe Pinpoint SMS Voice V2 pools",
+            **request,
+        )
+
+    if pools:
+        require_client_methods(
+            module,
+            client,
+            "Pinpoint SMS Voice V2",
+            {
+                "list_pool_origination_identities": (
+                    "PoolId",
+                    "MaxResults",
+                    "NextToken",
+                ),
+                "list_tags_for_resource": ("ResourceArn",),
+            },
+        )
 
     normalized_pools = []
     for pool in pools:

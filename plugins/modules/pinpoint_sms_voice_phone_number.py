@@ -32,11 +32,13 @@ options:
       - Whether deletion protection is enabled for the phone number.
       - When omitted while requesting a number, AWS disables deletion protection.
       - When omitted for an existing number, the current setting is left unchanged.
+      - This cannot be changed on an existing number that is associated with a pool.
     type: bool
   international_sending_enabled:
     description:
       - Whether international sending is enabled for the phone number.
       - When omitted for an existing number, the current setting is left unchanged.
+      - This cannot be changed on an existing number that is associated with a pool.
       - This option requires AWS SDK support for the
         C(InternationalSendingEnabled) request parameter.
     type: bool
@@ -81,6 +83,7 @@ options:
     description:
       - The OptOutList name or ARN to associate with the phone number.
       - When omitted for an existing number, the current OptOutList is left unchanged.
+      - This cannot be changed on an existing number that is associated with a pool.
     type: str
   phone_number_id:
     description:
@@ -239,7 +242,7 @@ phone_number:
       sample: ACTIVE
     tags:
       description: The phone number tags with key case preserved.
-      returned: when returned by AWS
+      returned: when O(tags) is provided and O(state=present)
       type: dict
     two_way_enabled:
       description: Whether two-way messaging is enabled.
@@ -301,6 +304,12 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
 )
+
+SETTING_OPTIONS = {
+    "DeletionProtectionEnabled": "deletion_protection_enabled",
+    "InternationalSendingEnabled": "international_sending_enabled",
+    "OptOutListName": "opt_out_list_name",
+}
 
 
 def phone_number_tags(client, module, phone_number):
@@ -525,6 +534,10 @@ def ensure_absent(client, module):
                         f"number {phone_number_id} from pool {current['PoolId']}"
                     ),
                 )
+            else:
+                current = wait_for_phone_number_active(client, module, phone_number_id)
+                if not current or current.get("Status") == "DELETED":
+                    exit_result(module, True, None)
 
         if current.get("DeletionProtectionEnabled"):
             require_client_methods(
@@ -602,19 +615,19 @@ def ensure_present(client, module):
         "number-type": number_type,
     }
 
-    lookup = (
-        {"PhoneNumberIds": [module.params["phone_number_id"]]}
-        if module.params["phone_number_id"]
-        else {"Filters": ansible_dict_to_boto3_filter_list(filters), "Owner": "SELF"}
-    )
-    phone_numbers = query_list(
-        module,
-        client,
-        "describe_phone_numbers",
-        "PhoneNumbers",
-        "Unable to describe Pinpoint SMS Voice V2 phone numbers",
-        **lookup,
-    )
+    if module.params["phone_number_id"]:
+        phone_number = get_phone_number(client, module, module.params["phone_number_id"])
+        phone_numbers = [phone_number] if phone_number is not None else []
+    else:
+        phone_numbers = query_list(
+            module,
+            client,
+            "describe_phone_numbers",
+            "PhoneNumbers",
+            "Unable to describe Pinpoint SMS Voice V2 phone numbers",
+            Filters=ansible_dict_to_boto3_filter_list(filters),
+            Owner="SELF",
+        )
 
     # Match only attributes fixed by RequestPhoneNumber; updatable settings converge below.
     desired = {
@@ -686,6 +699,12 @@ def ensure_present(client, module):
 
         changed = False
         updates = updatable_settings_delta(module, current)
+        if updates and current.get("PoolId"):
+            options = ", ".join(SETTING_OPTIONS[field] for field in updates)
+            module.fail_json(
+                msg=f"Unable to update {options} for Pinpoint SMS Voice V2 phone number {current['PhoneNumberId']} in pool {current['PoolId']}"
+            )
+
         if updates:
             changed = True
             if module.check_mode:
