@@ -1,0 +1,8 @@
+---
+breaking_changes:
+  - iam_policy_info - when any of ``group_name``, ``role_name``, or ``user_name`` is provided, only the named entities are queried
+    instead of also returning the inline policies of every entity of the other types.
+minor_changes:
+  - iam_policy_info - add ``role_name`` and return ``role_policies`` for IAM role inline policies.
+  - iam_policy_info role - add ``iam_policy_info_role_name`` and publish ``_iam_policy_info_role_list`` and ``_iam_policy_info_role_dict``.
+...

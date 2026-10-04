@@ -58,6 +58,31 @@ provisioner:
                     - '*'
             policy_name: MoleculeRdsFullAccess
 
+          - iam_name: molecule-s3
+            iam_type: role
+            policy_json:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - s3:*
+                  Resource:
+                    - '*'
+            policy_name: MoleculeS3FullAccess
+
+        iam_role_list:
+          - name: molecule-s3
+            assume_role_policy_document:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Principal:
+                    Service: ec2.amazonaws.com
+                  Action:
+                    - sts:AssumeRole
+            create_instance_profile: false
+            delete_instance_profile: true
+
         iam_user_list:
           - name: molecule-ec2
           - name: molecule-rds
