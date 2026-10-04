@@ -9,7 +9,8 @@ version_added: '1.9.0'
 short_description: Gather information about AWS WAFv2 web ACLs
 description:
   - Gathers information about AWS WAFv2 web ACLs.
-  - Lists web ACLs for the requested scope and returns each full web ACL definition.
+  - Lists web ACLs for the requested scope and returns each full web ACL definition
+    with its tags.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -32,7 +33,8 @@ options:
     description:
       - The scope of the web ACLs to gather.
       - Use C(cloudfront) for global web ACLs and C(regional) for regional web ACLs.
-      - V(cloudfront) requires the C(us-east-1) region.
+      - V(cloudfront) requires the C(us-east-1) region; any other region fails
+        before AWS is called.
     choices:
       - cloudfront
       - regional
@@ -89,6 +91,14 @@ web_acls:
       description: Request-body inspection settings for associated resources.
       returned: when available
       type: dict
+      contains:
+        request_body:
+          description:
+            - Request-body inspection settings keyed by associated resource type.
+            - Resource types, such as C(CLOUDFRONT) and C(API_GATEWAY), are
+              returned as AWS returns them; their settings use snake_case.
+          returned: when available
+          type: dict
     capacity:
       description: Web ACL capacity units currently used.
       returned: when available
@@ -162,6 +172,12 @@ web_acls:
       returned: when available
       type: list
       elements: dict
+    tags:
+      description:
+        - Tags of the web ACL.
+        - Tag keys keep their original case.
+      returned: always
+      type: dict
     token_domains:
       description: Domains accepted in WAF tokens.
       returned: when available
@@ -188,6 +204,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
+from ansible_collections.amazon.aws.plugins.module_utils.tagging import boto3_tag_list_to_ansible_dict
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
@@ -196,6 +213,43 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+
+
+def association_config(config):
+    # RequestBody is keyed by associated resource types, which are AWS values rather than field names.
+    request_body = config.get("RequestBody")
+    result = camel_dict_to_snake_dict({key: value for key, value in config.items() if key != "RequestBody"})
+    if isinstance(request_body, dict):
+        result["request_body"] = {
+            resource_type: camel_dict_to_snake_dict(settings) for resource_type, settings in request_body.items()
+        }
+
+    return result
+
+
+def get_web_acl_tags(client, module, web_acl):
+    """Return the web ACL's tags, or None when it was deleted after it was listed."""
+    identifier = f"{web_acl.get('Name')}/{web_acl.get('Id')}"
+    request = {"ResourceARN": web_acl.get("ARN")}
+    tags = []
+    while True:
+        try:
+            response = client.list_tags_for_resource(**request, aws_retry=True)
+        except is_boto3_error_code("WAFNonexistentItemException"):
+            return None
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, msg=f"Unable to list tags for AWS WAFv2 web ACL {identifier}")
+
+        tag_info = response.get("TagInfoForResource", {}) if isinstance(response, dict) else None
+        tag_list = tag_info.get("TagList", []) if isinstance(tag_info, dict) else None
+        if not isinstance(tag_list, list) or any(not isinstance(tag, dict) for tag in tag_list):
+            module.fail_json(msg=f"Unexpected response while listing tags for AWS WAFv2 web ACL {identifier}")
+
+        tags.extend(tag_list)
+        if not response.get("NextMarker"):
+            return boto3_tag_list_to_ansible_dict(tags)
+
+        request["NextMarker"] = response["NextMarker"]
 
 
 def main():
@@ -218,6 +272,9 @@ def main():
     if target_name == "":
         module.fail_json(msg="name must not be empty")
 
+    if module.params["scope"] == "cloudfront" and module.region != "us-east-1":
+        module.fail_json(msg=f"scope cloudfront requires the us-east-1 region, not {module.region}")
+
     client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
     require_client_methods(
         module,
@@ -226,6 +283,7 @@ def main():
         {
             "list_web_acls": ("Limit", "NextMarker", "Scope"),
             "get_web_acl": ("Id", "Name", "Scope"),
+            "list_tags_for_resource": ("NextMarker", "ResourceARN"),
         },
     )
 
@@ -276,7 +334,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to get AWS WAFv2 web ACL " f"{summary['Name']}/{summary['Id']}"),
+                msg=f"Unable to get AWS WAFv2 web ACL {summary['Name']}/{summary['Id']}",
             )
 
         web_acl = response.get("WebACL") if isinstance(response, dict) else None
@@ -284,6 +342,10 @@ def main():
             module.fail_json(
                 msg=f"Unexpected response while getting AWS WAFv2 web ACL {summary['Name']}/{summary['Id']}"
             )
+
+        tags = get_web_acl_tags(client, module, web_acl)
+        if tags is None:
+            continue
 
         web_acls.append(
             json.loads(
@@ -300,6 +362,7 @@ def main():
                 )
             )
         )
+        web_acls[-1]["Tags"] = tags
 
     module.exit_json(
         changed=False,
@@ -308,7 +371,9 @@ def main():
             web_acls,
             transform_tags=False,
             force_tags=False,
+            ignore_list=["Tags"],
             nested_transforms={
+                "AssociationConfig": association_config,
                 "CustomResponseBodies": lambda bodies: {
                     name: camel_dict_to_snake_dict(body) for name, body in bodies.items()
                 },
