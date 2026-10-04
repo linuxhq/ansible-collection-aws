@@ -6,7 +6,6 @@
     connection_type: "{{ _vpn.connection_type | d('ipsec.1') }}"
     customer_gateway_id: "{{ _vpn.customer_gateway_id }}"
     delay: "{{ _vpn.delay | d(15) }}"
-    filters: "{{ _vpn.filters | d(omit) }}"
     local_ipv4_network_cidr: "{{ _vpn.local_ipv4_network_cidr | d(omit) }}"
     local_ipv6_network_cidr: "{{ _vpn.local_ipv6_network_cidr | d(omit) }}"
     name: "{{ _vpn.name }}"
@@ -22,7 +21,6 @@
     tunnel_inside_ip_version: "{{ _vpn.tunnel_inside_ip_version | d(omit) }}"
     tunnel_options: "{{ _vpn.tunnel_options | d(omit) }}"
     validate_certs: true
-    vpn_connection_id: "{{ _vpn.vpn_connection_id | d(omit) }}"
     vpn_gateway_id: "{{ _vpn.vpn_gateway_id | d(omit) }}"
     wait_timeout: "{{ _vpn.wait_timeout | d(600) }}"
   register: __ec2_vpc_vpn_result
