@@ -130,12 +130,77 @@ prefix_list:
   returned: when state is present
   type: dict
   contains:
+    address_family:
+      description: The IP address version of the prefix list.
+      returned: always
+      type: str
+      sample: IPv4
     entries:
-      description:
-        - The current managed prefix list entries.
+      description: The prefix list entries.
       returned: when entries are available
       type: list
       elements: dict
+      contains:
+        cidr:
+          description: The CIDR block.
+          returned: always
+          type: str
+          sample: 10.0.0.0/16
+        description:
+          description: The entry description.
+          returned: when the entry has a description
+          type: str
+    ipam_prefix_list_resolver_sync_enabled:
+      description: Whether synchronization with an IPAM prefix list resolver is enabled.
+      returned: when returned by EC2
+      type: bool
+    ipam_prefix_list_resolver_target_id:
+      description: The ID of the IPAM prefix list resolver target associated with the prefix list.
+      returned: when returned by EC2
+      type: str
+    max_entries:
+      description: The maximum number of entries for the prefix list.
+      returned: always
+      type: int
+      sample: 10
+    owner_id:
+      description: The ID of the owner of the prefix list.
+      returned: when the prefix list exists
+      type: str
+      sample: "123456789012"
+    prefix_list_arn:
+      description: The ARN of the prefix list.
+      returned: when the prefix list exists
+      type: str
+      sample: arn:aws:ec2:us-east-1:123456789012:prefix-list/pl-0123456789abcdef0
+    prefix_list_id:
+      description: The ID of the prefix list.
+      returned: when the prefix list exists
+      type: str
+      sample: pl-0123456789abcdef0
+    prefix_list_name:
+      description: The name of the prefix list.
+      returned: always
+      type: str
+      sample: example
+    state:
+      description: The current state of the prefix list.
+      returned: when the prefix list exists
+      type: str
+      sample: create-complete
+    state_message:
+      description: The state message.
+      returned: when returned by EC2
+      type: str
+    tags:
+      description: The prefix list tags.
+      returned: when available
+      type: dict
+    version:
+      description: The version of the prefix list.
+      returned: when returned by EC2
+      type: int
+      sample: 1
 prefix_list_id:
   description: The managed prefix list identifier.
   returned: when a prefix list exists

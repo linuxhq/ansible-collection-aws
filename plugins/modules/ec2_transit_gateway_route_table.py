@@ -30,6 +30,9 @@ options:
     description:
       - Whether static routes not listed in O(routes) should be removed.
       - Ignored unless O(routes) is supplied.
+      - Routes with O(routes[].state=absent) do not count as listed, so a
+        O(routes) list that contains only absent routes removes every static
+        route when O(purge_routes=true).
       - Propagated routes and routes referencing a prefix list are ignored.
       - Requires botocore 1.42.37 or later.
     default: true
@@ -138,6 +141,7 @@ EXAMPLES = r"""
 - name: Ensure a static route is absent
   linuxhq.aws.ec2_transit_gateway_route_table:
     transit_gateway_route_table_id: tgw-rtb-0123456789abcdef0
+    purge_routes: false
     routes:
       - destination_cidr_block: 10.10.0.0/16
         state: absent
@@ -869,7 +873,7 @@ def ensure_present(client, module):
                             request["TransitGatewayAttachmentId"] = desired_route["transit_gateway_attachment_id"]
 
                         current_route_changed = True
-                        if current_route is None or current_route.get("State") == "deleted":
+                        if current_route is None:
                             require_client_methods(
                                 module,
                                 client,

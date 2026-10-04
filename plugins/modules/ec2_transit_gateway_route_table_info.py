@@ -22,6 +22,9 @@ options:
   transit_gateway_route_table_ids:
     description:
       - EC2 transit gateway route table IDs used to limit the result set.
+      - This is sent as the C(transit-gateway-route-table-id) filter and takes
+        precedence over a C(transit-gateway-route-table-id) key in O(filters).
+      - An ID that does not exist results in no entry; no error is raised.
     elements: str
     type: list
 extends_documentation_fragment:
@@ -205,13 +208,15 @@ def main():
     )
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    filters = module.params["filters"]
+    filters = dict(module.params["filters"] or {})
     transit_gateway_route_table_ids = list(dict.fromkeys(module.params["transit_gateway_route_table_ids"] or []))
 
-    request = {}
+    # TransitGatewayRouteTableIds fails for a route table that does not exist, so
+    # IDs are sent as the documented transit-gateway-route-table-id filter.
     if transit_gateway_route_table_ids:
-        request["TransitGatewayRouteTableIds"] = transit_gateway_route_table_ids
+        filters["transit-gateway-route-table-id"] = transit_gateway_route_table_ids
 
+    request = {}
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 

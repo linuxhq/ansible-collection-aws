@@ -1,0 +1,13 @@
+---
+bugfixes:
+  - ec2_transit_gateway_route_table - set ``purge_routes=false`` in the example that removes one static route,
+    which otherwise removed every other static route in the route table.
+  - ec2_transit_gateway_route_table_info - return an empty list for a ``transit_gateway_route_table_ids`` entry that does not exist
+    instead of failing with ``InvalidRouteTableID.NotFound``. IDs are sent as the ``transit-gateway-route-table-id`` filter.
+  - ec2_vpc_prefix_list_info - return an empty list for a ``prefix_list_ids`` entry that does not exist
+    instead of failing with ``InvalidPrefixListID.NotFound``. IDs are sent as the ``prefix-list-id`` filter.
+minor_changes:
+  - ec2_transit_gateway_route_table - document that routes with ``state=absent`` do not count as listed for ``purge_routes``.
+  - ec2_vpc_prefix_list - document the returned prefix list fields.
+  - ec2_vpc_prefix_list_info - document the returned prefix list fields.
+...
