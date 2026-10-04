@@ -10,4 +10,5 @@
         that:
           - _sns_sms_attributes_info_dict is mapping
           - _sns_sms_attributes_info_dict.default_sms_type == 'Transactional'
+          - _sns_sms_attributes_info_dict.delivery_status_success_sampling_rate == '0'
 ...

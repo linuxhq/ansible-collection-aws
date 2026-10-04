@@ -151,7 +151,10 @@ def main():
     if sampling_rate is not None and not 0 <= sampling_rate <= 100:
         module.fail_json(msg="delivery_status_success_sampling_rate must be between 0 and 100")
 
-    client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
+    client = module.client(
+        "sns",
+        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["Throttled"]),
+    )
 
     methods = {"get_sms_attributes": ()}
     if any(module.params[key] is not None for key in MANAGED_ATTRIBUTES):
