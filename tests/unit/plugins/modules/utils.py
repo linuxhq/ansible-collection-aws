@@ -1,7 +1,10 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 HEADER = [
     "#!/usr/bin/python",
@@ -52,37 +55,30 @@ class FakeModule:
         raise ModuleFail(values)
 
 
-def assert_module_contract(test, plugin):
+def assert_module_contract(plugin):
     captured = {}
 
     def initialize(**kwargs):
         captured.update(kwargs)
         raise ModuleInitialized
 
-    with (
-        patch.object(plugin, "AnsibleAWSModule", initialize),
-        test.assertRaises(ModuleInitialized),
-    ):
+    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
         plugin.main()
 
-    test.assertTrue(captured["supports_check_mode"])
-    test.assertIsInstance(captured["argument_spec"], dict)
-    test.assertEqual(Path(plugin.__file__).read_text().splitlines()[:3], HEADER)
+    assert captured["supports_check_mode"]
+    assert isinstance(captured["argument_spec"], dict)
+    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
     return captured
 
 
-def assert_module_rejects(test, plugin, params, message):
+def assert_module_rejects(plugin, params, message):
     module = FakeModule(params)
+    with ExitStack() as stack:
+        stack.enter_context(patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module))
+        if hasattr(plugin, "require_positive_wait_bounds"):
+            stack.enter_context(patch.object(plugin, "require_positive_wait_bounds"))
 
-    patches = [patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module)]
-    if hasattr(plugin, "require_positive_wait_bounds"):
-        patches.append(patch.object(plugin, "require_positive_wait_bounds", lambda module, **kwargs: None))
-
-    for item in patches:
-        item.start()
-        test.addCleanup(item.stop)
-
-    with test.assertRaises(ModuleFail) as raised:
+        raised = stack.enter_context(pytest.raises(ModuleFail))
         plugin.main()
 
-    test.assertEqual(raised.exception.values["msg"], message)
+    assert raised.value.values["msg"] == message

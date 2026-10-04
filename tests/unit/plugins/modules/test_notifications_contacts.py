@@ -1,4 +1,3 @@
-from unittest import TestCase
 from unittest.mock import Mock, patch
 
 import pytest
@@ -13,247 +12,254 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
-class NotificationsContactsTests(TestCase):
-    def test_absent_tolerates_contact_disappearing_during_delete(self):
-        client = Mock()
-        client.delete_email_contact.side_effect = plugin.ClientError(
-            {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
-            "DeleteEmailContact",
-        )
-        module = FakeModule({"email_address": "ops@example.com"})
-        with (
-            patch.object(
-                plugin,
-                "get_contact_by_address",
-                return_value={"arn": "arn:contact"},
-            ),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_absent(client, module)
+def test_absent_tolerates_contact_disappearing_during_delete():
+    client = Mock()
+    client.delete_email_contact.side_effect = plugin.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
+        "DeleteEmailContact",
+    )
+    module = FakeModule({"email_address": "ops@example.com"})
+    with (
+        patch.object(
+            plugin,
+            "get_contact_by_address",
+            return_value={"arn": "arn:contact"},
+        ),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
 
-        self.assertTrue(raised.exception.values["changed"])
+    assert raised.value.values["changed"]
 
-    def test_module_contract(self):
-        options = assert_module_contract(self, plugin)
-        assert options["required_if"] == [("state", "present", ["name"])]
-        assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
 
-    def test_list_rejects_invalid_contacts(self):
-        client = Mock()
-        module = FakeModule({"email_address": "ops@example.com"})
-        with (
-            patch.object(plugin, "query_list", return_value=[{"address": "ops@example.com"}]),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.get_contact_by_address(client, module)
+def test_module_contract():
+    options = assert_module_contract(plugin)
+    assert options["required_if"] == [("state", "present", ["name"])]
+    assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
 
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "Unable to list AWS Notifications contacts: AWS returned an invalid contact",
-        )
 
-    def test_tag_deltas_remove_and_replace_tags(self):
-        contact = {"arn": "arn:contact", "tags": {"keep": "old", "remove": "yes"}}
-        assert plugin.apply_tag_deltas(contact, {"keep": "new"}, ["remove"]) == {
-            "arn": "arn:contact",
+def test_list_rejects_invalid_contacts():
+    client = Mock()
+    module = FakeModule({"email_address": "ops@example.com"})
+    with (
+        patch.object(plugin, "query_list", return_value=[{"address": "ops@example.com"}]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.get_contact_by_address(client, module)
+
+    assert raised.value.values["msg"] == "Unable to list AWS Notifications contacts: AWS returned an invalid contact"
+
+
+def test_tag_deltas_remove_and_replace_tags():
+    contact = {"arn": "arn:contact", "tags": {"keep": "old", "remove": "yes"}}
+    assert plugin.apply_tag_deltas(contact, {"keep": "new"}, ["remove"]) == {
+        "arn": "arn:contact",
+        "tags": {"keep": "new"},
+    }
+    assert contact["tags"]["keep"] == "old"
+
+
+def test_tag_only_update_does_not_recreate_the_contact():
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"tags": {"keep": "old", "remove": "yes"}}
+    module = FakeModule(
+        {
+            "email_address": "ops@example.com",
+            "name": "Operations",
+            "purge_tags": True,
             "tags": {"keep": "new"},
         }
-        assert contact["tags"]["keep"] == "old"
+    )
+    contact = {
+        "address": "ops@example.com",
+        "arn": "arn:contact",
+        "name": "Operations",
+    }
+    with (
+        patch.object(plugin, "get_contact_by_address", return_value=contact),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
 
-    def test_tag_only_update_does_not_recreate_the_contact(self):
-        client = Mock()
-        client.list_tags_for_resource.return_value = {"tags": {"keep": "old", "remove": "yes"}}
-        module = FakeModule(
-            {
-                "email_address": "ops@example.com",
-                "name": "Operations",
-                "purge_tags": True,
-                "tags": {"keep": "new"},
-            }
-        )
-        contact = {
-            "address": "ops@example.com",
-            "arn": "arn:contact",
+    assert raised.value.values["changed"]
+    client.untag_resource.assert_called_once_with(arn="arn:contact", tagKeys=["remove"], aws_retry=True)
+    client.tag_resource.assert_called_once_with(arn="arn:contact", tags={"keep": "new"}, aws_retry=True)
+    client.create_email_contact.assert_not_called()
+
+
+def test_tag_update_rejects_invalid_tag_response():
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"tags": []}
+    module = FakeModule(
+        {
+            "email_address": "ops@example.com",
             "name": "Operations",
+            "purge_tags": True,
+            "tags": {"keep": "new"},
         }
-        with (
-            patch.object(plugin, "get_contact_by_address", return_value=contact),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module)
+    )
+    contact = {"address": "ops@example.com", "arn": "arn:contact", "name": "Operations"}
+    with (
+        patch.object(plugin, "get_contact_by_address", return_value=contact),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
 
-        self.assertTrue(raised.exception.values["changed"])
-        client.untag_resource.assert_called_once_with(arn="arn:contact", tagKeys=["remove"], aws_retry=True)
-        client.tag_resource.assert_called_once_with(arn="arn:contact", tags={"keep": "new"}, aws_retry=True)
-        client.create_email_contact.assert_not_called()
+    assert (
+        raised.value.values["msg"]
+        == "Unable to list tags for AWS Notifications contact arn:contact: AWS returned an invalid response"
+    )
 
-    def test_tag_update_rejects_invalid_tag_response(self):
-        client = Mock()
-        client.list_tags_for_resource.return_value = {"tags": []}
-        module = FakeModule(
-            {
-                "email_address": "ops@example.com",
-                "name": "Operations",
-                "purge_tags": True,
-                "tags": {"keep": "new"},
-            }
-        )
-        contact = {"address": "ops@example.com", "arn": "arn:contact", "name": "Operations"}
-        with (
-            patch.object(plugin, "get_contact_by_address", return_value=contact),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.ensure_present(client, module)
 
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "Unable to list tags for AWS Notifications contact arn:contact: AWS returned an invalid response",
-        )
-
-    def test_create_rejects_invalid_response(self):
-        client = Mock()
-        client.create_email_contact.return_value = {}
-        module = FakeModule(
-            {
-                "email_address": "ops@example.com",
-                "name": "Operations",
-                "purge_tags": True,
-                "tags": None,
-            }
-        )
-        with (
-            patch.object(plugin, "get_contact_by_address", return_value=None),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "Unable to create AWS Notifications contact ops@example.com: AWS returned an invalid response",
-        )
-
-    def test_create_rejects_post_create_response_without_contact(self):
-        client = Mock()
-        client.create_email_contact.return_value = {"arn": "arn:new"}
-        client.get_email_contact.return_value = {}
-        module = FakeModule(
-            {
-                "email_address": "ops@example.com",
-                "name": "Operations",
-                "purge_tags": True,
-                "tags": None,
-            }
-        )
-        with (
-            patch.object(plugin, "get_contact_by_address", return_value=None),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "Unable to get AWS Notifications contact arn:new: AWS returned an invalid response",
-        )
-
-    def test_contact_address_and_name_are_validated_before_api_calls(self):
-        base = {"state": "present", "tags": None}
-        cases = [
-            (
-                dict(base, email_address="invalid", name="Operations"),
-                "email_address must be 6 to 254 characters and contain @",
-            ),
-            (
-                dict(base, email_address="a@b.c", name="Operations"),
-                "email_address must be 6 to 254 characters and contain @",
-            ),
-            (
-                dict(base, email_address="ops@example.com", name=" "),
-                "name must be 1 to 64 characters and contain at least one letter, digit, underscore, hyphen, period, or tilde",
-            ),
-        ]
-        for params, message in cases:
-            with self.subTest(message=message):
-                assert_module_rejects(self, plugin, params, message)
-
-    def test_new_contact_omits_empty_tags(self):
-        client = Mock()
-        client.create_email_contact.return_value = {"arn": "arn:new"}
-        client.get_email_contact.return_value = {"emailContact": None}
-        module = FakeModule(
-            {
-                "email_address": "ops@example.com",
-                "name": "Operations",
-                "purge_tags": True,
-                "tags": {},
-            }
-        )
-        with (
-            patch.object(plugin, "get_contact_by_address", return_value=None),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleExit),
-        ):
-            plugin.ensure_present(client, module)
-
-        client.create_email_contact.assert_called_once_with(
-            emailAddress="ops@example.com", name="Operations", aws_retry=True
-        )
-
-    def test_new_contact_tolerates_post_create_lookup_race(self):
-        client = Mock()
-        client.create_email_contact.return_value = {"arn": "arn:new"}
-        client.get_email_contact.side_effect = plugin.ClientError(
-            {"Error": {"Code": "ResourceNotFoundException", "Message": "not visible yet"}},
-            "GetEmailContact",
-        )
-        module = FakeModule(
-            {
-                "email_address": "ops@example.com",
-                "name": "Operations",
-                "purge_tags": True,
-                "tags": None,
-            }
-        )
-        with (
-            patch.object(plugin, "get_contact_by_address", return_value=None),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertEqual(
-            raised.exception.values["email_contact"],
-            {"address": "ops@example.com", "arn": "arn:new", "name": "Operations"},
-        )
-
-    def test_converged_contact_does_not_require_unused_operations(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "email_address": "ops@example.com",
-                "name": "Operations",
-                "purge_tags": True,
-                "tags": None,
-            }
-        )
-        contact = {
-            "address": "ops@example.com",
-            "arn": "arn:contact",
+def test_create_rejects_invalid_response():
+    client = Mock()
+    client.create_email_contact.return_value = {}
+    module = FakeModule(
+        {
+            "email_address": "ops@example.com",
             "name": "Operations",
+            "purge_tags": True,
+            "tags": None,
         }
-        with (
-            patch.object(plugin, "get_contact_by_address", return_value=contact),
-            patch.object(plugin, "require_client_methods") as require,
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module)
+    )
+    with (
+        patch.object(plugin, "get_contact_by_address", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
 
-        self.assertFalse(raised.exception.values["changed"])
-        require.assert_not_called()
+    assert (
+        raised.value.values["msg"]
+        == "Unable to create AWS Notifications contact ops@example.com: AWS returned an invalid response"
+    )
+
+
+def test_create_rejects_post_create_response_without_contact():
+    client = Mock()
+    client.create_email_contact.return_value = {"arn": "arn:new"}
+    client.get_email_contact.return_value = {}
+    module = FakeModule(
+        {
+            "email_address": "ops@example.com",
+            "name": "Operations",
+            "purge_tags": True,
+            "tags": None,
+        }
+    )
+    with (
+        patch.object(plugin, "get_contact_by_address", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert (
+        raised.value.values["msg"]
+        == "Unable to get AWS Notifications contact arn:new: AWS returned an invalid response"
+    )
+
+
+def test_contact_address_and_name_are_validated_before_api_calls():
+    base = {"state": "present", "tags": None}
+    cases = [
+        (
+            dict(base, email_address="invalid", name="Operations"),
+            "email_address must be 6 to 254 characters and contain @",
+        ),
+        (
+            dict(base, email_address="a@b.c", name="Operations"),
+            "email_address must be 6 to 254 characters and contain @",
+        ),
+        (
+            dict(base, email_address="ops@example.com", name=" "),
+            "name must be 1 to 64 characters and contain at least one letter, digit, underscore, hyphen, period, or tilde",
+        ),
+    ]
+    for params, message in cases:
+        assert_module_rejects(plugin, params, message)
+
+
+def test_new_contact_omits_empty_tags():
+    client = Mock()
+    client.create_email_contact.return_value = {"arn": "arn:new"}
+    client.get_email_contact.return_value = {"emailContact": None}
+    module = FakeModule(
+        {
+            "email_address": "ops@example.com",
+            "name": "Operations",
+            "purge_tags": True,
+            "tags": {},
+        }
+    )
+    with (
+        patch.object(plugin, "get_contact_by_address", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
+
+    client.create_email_contact.assert_called_once_with(
+        emailAddress="ops@example.com", name="Operations", aws_retry=True
+    )
+
+
+def test_new_contact_tolerates_post_create_lookup_race():
+    client = Mock()
+    client.create_email_contact.return_value = {"arn": "arn:new"}
+    client.get_email_contact.side_effect = plugin.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "not visible yet"}},
+        "GetEmailContact",
+    )
+    module = FakeModule(
+        {
+            "email_address": "ops@example.com",
+            "name": "Operations",
+            "purge_tags": True,
+            "tags": None,
+        }
+    )
+    with (
+        patch.object(plugin, "get_contact_by_address", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["email_contact"] == {
+        "address": "ops@example.com",
+        "arn": "arn:new",
+        "name": "Operations",
+    }
+
+
+def test_converged_contact_does_not_require_unused_operations():
+    client = Mock()
+    module = FakeModule(
+        {
+            "email_address": "ops@example.com",
+            "name": "Operations",
+            "purge_tags": True,
+            "tags": None,
+        }
+    )
+    contact = {
+        "address": "ops@example.com",
+        "arn": "arn:contact",
+        "name": "Operations",
+    }
+    with (
+        patch.object(plugin, "get_contact_by_address", return_value=contact),
+        patch.object(plugin, "require_client_methods") as require,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert not raised.value.values["changed"]
+    require.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -271,17 +277,15 @@ def test_name_change_preserves_contact(check_mode, tags):
     assert "name cannot be changed" in raised.value.values["msg"]
     assert not client.mock_calls
 
-    def test_email_address_follows_the_api_pattern(self):
-        for email_address in ("ops@@example.com", "ops @example.com"):
-            with self.subTest(email_address=email_address):
-                module = FakeModule(
-                    {"email_address": email_address, "name": "Operations", "state": "present", "tags": None}
-                )
-                with (
-                    patch.object(plugin, "AnsibleAWSModule", return_value=module),
-                    patch.object(plugin, "require_client_methods"),
-                    patch.object(plugin, "ensure_present") as ensure_present,
-                ):
-                    plugin.main()
 
-                ensure_present.assert_called_once()
+def test_email_address_follows_the_api_pattern():
+    for email_address in ("ops@@example.com", "ops @example.com"):
+        module = FakeModule({"email_address": email_address, "name": "Operations", "state": "present", "tags": None})
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "ensure_present") as ensure_present,
+        ):
+            plugin.main()
+
+        ensure_present.assert_called_once()

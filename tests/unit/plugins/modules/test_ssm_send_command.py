@@ -1,4 +1,3 @@
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -6,38 +5,12 @@ import pytest
 
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_send_command as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    ModuleInitialized,
+    assert_module_contract,
+    assert_module_rejects,
 )
-
-
-def assert_module_contract(plugin):
-    captured = {}
-
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleInitialized
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
-        plugin.main()
-
-    assert captured["supports_check_mode"]
-    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
-    return captured
-
-
-def assert_module_rejects(plugin, params, message):
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params)),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == message
 
 
 def send_params(**overrides):

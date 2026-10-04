@@ -1,4 +1,3 @@
-from unittest import TestCase
 from unittest.mock import ANY, Mock, patch
 
 import pytest
@@ -98,749 +97,756 @@ def test_explicit_address_pair_uses_real_argument_validation(endpoint_type):
         client.create_resolver_endpoint.assert_not_called()
 
 
-class Route53ResolverTests(TestCase):
-    def test_get_rejects_malformed_response(self):
-        client = Mock(get_resolver_endpoint=Mock(return_value=[]))
-        module = FakeModule({"name": "endpoint"})
+def test_get_rejects_malformed_response():
+    client = Mock(get_resolver_endpoint=Mock(return_value=[]))
+    module = FakeModule({"name": "endpoint"})
 
-        with self.assertRaises(ModuleFail) as raised:
-            plugin.get_resolver_endpoint(client, module, "rslvr-endpt-1")
+    with pytest.raises(ModuleFail) as raised:
+        plugin.get_resolver_endpoint(client, module, "rslvr-endpt-1")
 
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "get_resolver_endpoint: AWS returned an invalid resolver endpoint",
-        )
+    assert raised.value.values["msg"] == "get_resolver_endpoint: AWS returned an invalid resolver endpoint"
 
-    def test_get_rejects_unexpected_endpoint_id(self):
-        client = Mock(get_resolver_endpoint=Mock(return_value={"ResolverEndpoint": {"Id": "rslvr-endpt-2"}}))
-        module = FakeModule({"name": "endpoint"})
 
-        with self.assertRaises(ModuleFail) as raised:
-            plugin.get_resolver_endpoint(client, module, "rslvr-endpt-1")
+def test_get_rejects_unexpected_endpoint_id():
+    client = Mock(get_resolver_endpoint=Mock(return_value={"ResolverEndpoint": {"Id": "rslvr-endpt-2"}}))
+    module = FakeModule({"name": "endpoint"})
 
-        self.assertIn("unexpected resolver endpoint ID", raised.exception.values["msg"])
+    with pytest.raises(ModuleFail) as raised:
+        plugin.get_resolver_endpoint(client, module, "rslvr-endpt-1")
 
-    def test_create_rereads_endpoint_when_response_is_lean(self):
-        client = Mock(create_resolver_endpoint=Mock(return_value={}))
-        module = FakeModule({"tags": None, "wait": False})
-        desired = {
-            "direction": "OUTBOUND",
-            "ip_addresses": [{"subnet_id": "subnet-1"}],
-            "name": "main",
-            "protocols": ["Do53"],
-            "resolver_endpoint_type": "IPV4",
-            "security_group_ids": ["sg-1"],
-        }
-        endpoint = {"Id": "rslvr-endpt-1", "Name": "main"}
+    assert "unexpected resolver endpoint ID" in raised.value.values["msg"]
 
-        with patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint) as get:
-            result = plugin.create_resolver_endpoint(client, module, desired)
 
-        get.assert_called_once_with(client, module)
-        self.assertEqual(result["Id"], "rslvr-endpt-1")
+def test_create_rereads_endpoint_when_response_is_lean():
+    client = Mock(create_resolver_endpoint=Mock(return_value={}))
+    module = FakeModule({"tags": None, "wait": False})
+    desired = {
+        "direction": "OUTBOUND",
+        "ip_addresses": [{"subnet_id": "subnet-1"}],
+        "name": "main",
+        "protocols": ["Do53"],
+        "resolver_endpoint_type": "IPV4",
+        "security_group_ids": ["sg-1"],
+    }
+    endpoint = {"Id": "rslvr-endpt-1", "Name": "main"}
 
-    def test_list_by_name_rejects_malformed_endpoint(self):
-        module = FakeModule({"name": "endpoint"})
-        with (
-            patch.object(plugin, "query_list", return_value=[{"Name": "endpoint"}]),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.get_resolver_endpoint_by_name(Mock(), module)
+    with patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint) as get:
+        result = plugin.create_resolver_endpoint(client, module, desired)
 
-        self.assertIn("without a valid ID", raised.exception.values["msg"])
+    get.assert_called_once_with(client, module)
+    assert result["Id"] == "rslvr-endpt-1"
 
-    def test_ip_and_tag_enrichment_reject_malformed_entries(self):
-        module = FakeModule({"name": "endpoint"})
-        endpoint = {"Arn": "arn:aws:route53resolver:::endpoint", "Id": "rslvr-endpt-1"}
 
-        with (
-            patch.object(plugin, "query_list", return_value=[{"Ip": "192.0.2.1"}]),
-            self.assertRaises(ModuleFail) as ip_raised,
-        ):
-            plugin.resolver_endpoint_with_ip_addresses(Mock(), module, endpoint)
+def test_list_by_name_rejects_malformed_endpoint():
+    module = FakeModule({"name": "endpoint"})
+    with (
+        patch.object(plugin, "query_list", return_value=[{"Name": "endpoint"}]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.get_resolver_endpoint_by_name(Mock(), module)
 
-        self.assertIn("without a subnet ID", ip_raised.exception.values["msg"])
+    assert "without a valid ID" in raised.value.values["msg"]
 
-        with (
-            patch.object(plugin, "query_list", return_value=[{"Key": "Name"}]),
-            self.assertRaises(ModuleFail) as tag_raised,
-        ):
-            plugin.resolver_endpoint_with_tags(Mock(), module, endpoint)
 
-        self.assertIn("invalid tag", tag_raised.exception.values["msg"])
+def test_ip_and_tag_enrichment_reject_malformed_entries():
+    module = FakeModule({"name": "endpoint"})
+    endpoint = {"Arn": "arn:aws:route53resolver:::endpoint", "Id": "rslvr-endpt-1"}
 
-    def test_absent_waits_for_deleting_endpoint_without_deleting_again(self):
-        client = Mock()
-        module = FakeModule({"name": "endpoint", "wait": True})
-        endpoint = {"Id": "rslvr-endpt-1", "Status": "DELETING"}
-        with (
-            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint),
-            patch.object(plugin, "delete_resolver_endpoint") as delete,
-            patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_absent(client, module)
+    with (
+        patch.object(plugin, "query_list", return_value=[{"Ip": "192.0.2.1"}]),
+        pytest.raises(ModuleFail) as ip_raised,
+    ):
+        plugin.resolver_endpoint_with_ip_addresses(Mock(), module, endpoint)
 
-        self.assertFalse(raised.exception.values["changed"])
-        delete.assert_not_called()
-        wait.assert_called_once_with(client, module, "rslvr-endpt-1", {"deleted"})
+    assert "without a subnet ID" in ip_raised.value.values["msg"]
 
-    def test_delete_waits_when_requested(self):
-        client = Mock()
-        module = FakeModule({"name": "endpoint", "wait": True})
-        with patch.object(plugin, "wait_for_resolver_endpoint_status") as wait:
-            plugin.delete_resolver_endpoint(client, module, {"Id": "rslvr-endpt-1"})
+    with (
+        patch.object(plugin, "query_list", return_value=[{"Key": "Name"}]),
+        pytest.raises(ModuleFail) as tag_raised,
+    ):
+        plugin.resolver_endpoint_with_tags(Mock(), module, endpoint)
 
-        wait.assert_called_once_with(client, module, "rslvr-endpt-1", {"deleted"})
+    assert "invalid tag" in tag_raised.value.values["msg"]
 
-    def test_delete_tolerates_endpoint_disappearing(self):
-        client = Mock()
-        client.delete_resolver_endpoint.side_effect = plugin.ClientError(
-            {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
-            "DeleteResolverEndpoint",
-        )
-        module = FakeModule({"name": "endpoint", "wait": True})
-        with patch.object(plugin, "wait_for_resolver_endpoint_status") as wait:
-            plugin.delete_resolver_endpoint(client, module, {"Id": "rslvr-endpt-1"})
 
-        wait.assert_not_called()
+def test_absent_waits_for_deleting_endpoint_without_deleting_again():
+    client = Mock()
+    module = FakeModule({"name": "endpoint", "wait": True})
+    endpoint = {"Id": "rslvr-endpt-1", "Status": "DELETING"}
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint),
+        patch.object(plugin, "delete_resolver_endpoint") as delete,
+        patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
 
-    def test_module_contract(self):
-        assert_module_contract(self, plugin)
+    assert not raised.value.values["changed"]
+    delete.assert_not_called()
+    wait.assert_called_once_with(client, module, "rslvr-endpt-1", {"deleted"})
 
-    def test_absent_rejects_invalid_name(self):
-        assert_module_rejects(
-            self,
-            plugin,
-            {"name": "", "state": "absent", "tags": None},
-            "name must be a valid resolver endpoint name of at most 64 characters",
-        )
 
-    def test_empty_tags_do_not_gate_tag_resource(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "direction": "outbound",
-                "ip_addresses": [
-                    {"subnet_id": "subnet-1"},
-                    {"subnet_id": "subnet-2"},
-                ],
-                "name": "endpoint",
-                "protocols": ["do53"],
-                "purge_tags": True,
-                "resolver_endpoint_type": "ipv4",
-                "security_group_ids": ["sg-1"],
-                "state": "present",
-                "tags": {},
-                "wait": False,
-            },
-            client=client,
-        )
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods") as require_methods,
-            patch.object(plugin, "require_positive_wait_bounds"),
-            patch.object(plugin, "ensure_present"),
-        ):
-            plugin.main()
+def test_delete_waits_when_requested():
+    client = Mock()
+    module = FakeModule({"name": "endpoint", "wait": True})
+    with patch.object(plugin, "wait_for_resolver_endpoint_status") as wait:
+        plugin.delete_resolver_endpoint(client, module, {"Id": "rslvr-endpt-1"})
 
-        methods = require_methods.call_args.args[3]
-        self.assertNotIn("tag_resource", methods)
-        self.assertIn("untag_resource", methods)
+    wait.assert_called_once_with(client, module, "rslvr-endpt-1", {"deleted"})
 
-    def test_endpoint_list_limits_are_rejected(self):
-        base = {
+
+def test_delete_tolerates_endpoint_disappearing():
+    client = Mock()
+    client.delete_resolver_endpoint.side_effect = plugin.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
+        "DeleteResolverEndpoint",
+    )
+    module = FakeModule({"name": "endpoint", "wait": True})
+    with patch.object(plugin, "wait_for_resolver_endpoint_status") as wait:
+        plugin.delete_resolver_endpoint(client, module, {"Id": "rslvr-endpt-1"})
+
+    wait.assert_not_called()
+
+
+def test_module_contract():
+    assert_module_contract(plugin)
+
+
+def test_absent_rejects_invalid_name():
+    assert_module_rejects(
+        plugin,
+        {"name": "", "state": "absent", "tags": None},
+        "name must be a valid resolver endpoint name of at most 64 characters",
+    )
+
+
+def test_empty_tags_do_not_gate_tag_resource():
+    client = Mock()
+    module = FakeModule(
+        {
+            "direction": "outbound",
             "ip_addresses": [
                 {"subnet_id": "subnet-1"},
                 {"subnet_id": "subnet-2"},
             ],
             "name": "endpoint",
-            "protocols": ["Do53"],
+            "protocols": ["do53"],
+            "purge_tags": True,
+            "resolver_endpoint_type": "ipv4",
             "security_group_ids": ["sg-1"],
             "state": "present",
-            "tags": None,
-        }
-        cases = [
-            (
-                dict(base, name="123"),
-                "name must be a valid resolver endpoint name of at most 64 characters",
-            ),
-            (
-                dict(base, ip_addresses=[{"subnet_id": "subnet-1"}]),
-                "ip_addresses must contain 2 to 20 entries",
-            ),
-            (
-                dict(
-                    base,
-                    ip_addresses=[
-                        {"subnet_id": "subnet-1"},
-                        {"subnet_id": "subnet-1"},
-                    ],
-                ),
-                "ip_addresses entries must be unique",
-            ),
-            (dict(base, protocols=[]), "protocols must contain 1 or 2 entries"),
-            (
-                dict(base, security_group_ids=[]),
-                "security_group_ids must contain at least one entry",
-            ),
-            (
-                dict(base, security_group_ids=["s" * 65]),
-                "security_group_ids entries must contain 1 to 64 characters",
-            ),
-            (
-                dict(
-                    base,
-                    ip_addresses=[
-                        {"subnet_id": "s" * 33},
-                        {"subnet_id": "subnet-2"},
-                    ],
-                ),
-                "ip_addresses[].subnet_id must contain 1 to 32 characters",
-            ),
-            (
-                dict(
-                    base,
-                    ip_addresses=[
-                        {"ip": "2001:db8::1", "subnet_id": "subnet-1"},
-                        {"subnet_id": "subnet-2"},
-                    ],
-                ),
-                "ip_addresses[].ip must be a valid IPv4 address",
-            ),
-            (
-                dict(
-                    base,
-                    ip_addresses=[
-                        {"ipv6": "192.0.2.1", "subnet_id": "subnet-1"},
-                        {"subnet_id": "subnet-2"},
-                    ],
-                ),
-                "ip_addresses[].ipv6 must be a valid IPv6 address",
-            ),
-            (
-                dict(base, tags={str(index): "" for index in range(201)}),
-                "tags must contain at most 200 entries",
-            ),
-        ]
-        for params, message in cases:
-            with self.subTest(message=message):
-                assert_module_rejects(self, plugin, params, message)
+            "tags": {},
+            "wait": False,
+        },
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require_methods,
+        patch.object(plugin, "require_positive_wait_bounds"),
+        patch.object(plugin, "ensure_present"),
+    ):
+        plugin.main()
 
-    def test_endpoint_comparison_ignores_order_and_response_fields(self):
-        endpoint = {
-            "Direction": "OUTBOUND",
-            "IpAddresses": [
-                {"SubnetId": "subnet-b", "IpId": "rni-2"},
-                {"SubnetId": "subnet-a", "Ip": "192.0.2.1", "Status": "ATTACHED"},
-            ],
-            "Protocols": ["DoH", "Do53", "DoH"],
-            "ResolverEndpointType": "IPV4",
-            "SecurityGroupIds": ["sg-b", "sg-a", "sg-b"],
-            "Status": "OPERATIONAL",
-        }
-        self.assertEqual(
-            plugin.comparable_endpoint(endpoint),
-            {
-                "direction": "OUTBOUND",
-                "ip_addresses": [
-                    {"ip": "192.0.2.1", "subnet_id": "subnet-a"},
-                    {"subnet_id": "subnet-b"},
-                ],
-                "protocols": ["Do53", "DoH"],
-                "resolver_endpoint_type": "IPV4",
-                "security_group_ids": ["sg-a", "sg-b"],
-            },
-        )
+    methods = require_methods.call_args.args[3]
+    assert "tag_resource" not in methods
+    assert "untag_resource" in methods
 
-    def test_endpoint_settings_have_no_module_defaults(self):
-        options = assert_module_contract(self, plugin)
-        self.assertNotIn("default", options["argument_spec"]["protocols"])
-        self.assertNotIn("default", options["argument_spec"]["resolver_endpoint_type"])
 
-    def test_omitted_protocols_and_type_leave_an_existing_endpoint_unchanged(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "direction": "outbound",
-                "ip_addresses": [
-                    {"ip": "192.0.2.1", "subnet_id": "subnet-1"},
-                    {"ip": "192.0.2.2", "subnet_id": "subnet-2"},
-                ],
-                "name": "main",
-                "protocols": None,
-                "purge_tags": True,
-                "resolver_endpoint_type": None,
-                "security_group_ids": ["sg-1"],
-                "tags": None,
-                "wait": False,
-            }
-        )
-        current = {
-            "Direction": "OUTBOUND",
-            "Id": "rslvr-1",
-            "IpAddresses": [
-                {"Ip": "192.0.2.1", "SubnetId": "subnet-1"},
-                {"Ip": "192.0.2.2", "SubnetId": "subnet-2"},
-            ],
-            "Protocols": ["Do53", "DoH"],
-            "ResolverEndpointType": "DUALSTACK",
-            "SecurityGroupIds": ["sg-1"],
-        }
-        with (
-            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
-            patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args: args[2]),
-            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertFalse(raised.exception.values["changed"])
-        self.assertEqual(raised.exception.values["resolver_endpoint"]["protocols"], ["Do53", "DoH"])
-        client.update_resolver_endpoint.assert_not_called()
-
-    def test_check_mode_predicts_aws_defaults_for_a_new_endpoint(self):
-        module = FakeModule(
-            {
-                "direction": "outbound",
-                "ip_addresses": [{"subnet_id": "subnet-1"}, {"subnet_id": "subnet-2"}],
-                "name": "main",
-                "protocols": None,
-                "purge_tags": True,
-                "resolver_endpoint_type": None,
-                "security_group_ids": ["sg-1"],
-                "tags": None,
-                "wait": False,
-            },
-            check_mode=True,
-        )
-        with (
-            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(Mock(), module)
-
-        endpoint = raised.exception.values["resolver_endpoint"]
-        self.assertEqual(endpoint["protocols"], ["Do53"])
-        self.assertEqual(endpoint["resolver_endpoint_type"], "IPV4")
-
-    def test_auto_assigned_ip_addresses_are_idempotent(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "direction": "outbound",
-                "ip_addresses": [
+def test_endpoint_list_limits_are_rejected():
+    base = {
+        "ip_addresses": [
+            {"subnet_id": "subnet-1"},
+            {"subnet_id": "subnet-2"},
+        ],
+        "name": "endpoint",
+        "protocols": ["Do53"],
+        "security_group_ids": ["sg-1"],
+        "state": "present",
+        "tags": None,
+    }
+    cases = [
+        (
+            dict(base, name="123"),
+            "name must be a valid resolver endpoint name of at most 64 characters",
+        ),
+        (
+            dict(base, ip_addresses=[{"subnet_id": "subnet-1"}]),
+            "ip_addresses must contain 2 to 20 entries",
+        ),
+        (
+            dict(
+                base,
+                ip_addresses=[
                     {"subnet_id": "subnet-1"},
+                    {"subnet_id": "subnet-1"},
+                ],
+            ),
+            "ip_addresses entries must be unique",
+        ),
+        (dict(base, protocols=[]), "protocols must contain 1 or 2 entries"),
+        (
+            dict(base, security_group_ids=[]),
+            "security_group_ids must contain at least one entry",
+        ),
+        (
+            dict(base, security_group_ids=["s" * 65]),
+            "security_group_ids entries must contain 1 to 64 characters",
+        ),
+        (
+            dict(
+                base,
+                ip_addresses=[
+                    {"subnet_id": "s" * 33},
                     {"subnet_id": "subnet-2"},
                 ],
-                "name": "main",
-                "protocols": ["do53"],
-                "purge_tags": True,
-                "resolver_endpoint_type": "ipv4",
-                "security_group_ids": ["sg-1"],
-                "tags": None,
-                "wait": False,
-            }
-        )
-        current = {
-            "Direction": "OUTBOUND",
-            "Id": "rslvr-1",
-            "IpAddresses": [
-                {"Ip": "192.0.2.1", "SubnetId": "subnet-1"},
-                {"Ip": "192.0.2.2", "SubnetId": "subnet-2"},
-            ],
-            "Protocols": ["Do53"],
-            "ResolverEndpointType": "IPV4",
-            "SecurityGroupIds": ["sg-1"],
-        }
-        with (
-            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
-            patch.object(
-                plugin,
-                "resolver_endpoint_with_ip_addresses",
-                side_effect=lambda *args: args[2],
             ),
-            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertFalse(raised.exception.values["changed"])
-        client.associate_resolver_endpoint_ip_address.assert_not_called()
-        client.disassociate_resolver_endpoint_ip_address.assert_not_called()
-
-    def test_check_mode_preserves_unchanged_auto_assigned_addresses(self):
-        module = FakeModule(
-            {
-                "direction": "outbound",
-                "ip_addresses": [
-                    {"subnet_id": "subnet-1"},
+            "ip_addresses[].subnet_id must contain 1 to 32 characters",
+        ),
+        (
+            dict(
+                base,
+                ip_addresses=[
+                    {"ip": "2001:db8::1", "subnet_id": "subnet-1"},
                     {"subnet_id": "subnet-2"},
                 ],
-                "name": "main",
-                "protocols": ["doh"],
-                "purge_tags": True,
-                "resolver_endpoint_type": "ipv4",
-                "security_group_ids": ["sg-1"],
-                "tags": None,
-                "wait": False,
-            },
-            check_mode=True,
-        )
-        current = {
-            "Direction": "OUTBOUND",
-            "Id": "rslvr-1",
-            "IpAddresses": [
-                {"Ip": "192.0.2.1", "SubnetId": "subnet-1"},
-                {"Ip": "192.0.2.2", "SubnetId": "subnet-2"},
-            ],
-            "Protocols": ["Do53"],
-            "ResolverEndpointType": "IPV4",
-            "SecurityGroupIds": ["sg-1"],
-        }
-        with (
-            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
-            patch.object(
-                plugin,
-                "resolver_endpoint_with_ip_addresses",
-                side_effect=lambda *args: args[2],
             ),
-            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(Mock(), module)
+            "ip_addresses[].ip must be a valid IPv4 address",
+        ),
+        (
+            dict(
+                base,
+                ip_addresses=[
+                    {"ipv6": "192.0.2.1", "subnet_id": "subnet-1"},
+                    {"subnet_id": "subnet-2"},
+                ],
+            ),
+            "ip_addresses[].ipv6 must be a valid IPv6 address",
+        ),
+        (
+            dict(base, tags={str(index): "" for index in range(201)}),
+            "tags must contain at most 200 entries",
+        ),
+    ]
+    for params, message in cases:
+        assert_module_rejects(plugin, params, message)
 
-        self.assertTrue(raised.exception.values["changed"])
-        self.assertEqual(
-            raised.exception.values["resolver_endpoint"]["ip_addresses"],
-            [
+
+def test_endpoint_comparison_ignores_order_and_response_fields():
+    endpoint = {
+        "Direction": "OUTBOUND",
+        "IpAddresses": [
+            {"SubnetId": "subnet-b", "IpId": "rni-2"},
+            {"SubnetId": "subnet-a", "Ip": "192.0.2.1", "Status": "ATTACHED"},
+        ],
+        "Protocols": ["DoH", "Do53", "DoH"],
+        "ResolverEndpointType": "IPV4",
+        "SecurityGroupIds": ["sg-b", "sg-a", "sg-b"],
+        "Status": "OPERATIONAL",
+    }
+    assert plugin.comparable_endpoint(endpoint) == {
+        "direction": "OUTBOUND",
+        "ip_addresses": [
+            {"ip": "192.0.2.1", "subnet_id": "subnet-a"},
+            {"subnet_id": "subnet-b"},
+        ],
+        "protocols": ["Do53", "DoH"],
+        "resolver_endpoint_type": "IPV4",
+        "security_group_ids": ["sg-a", "sg-b"],
+    }
+
+
+def test_endpoint_settings_have_no_module_defaults():
+    options = assert_module_contract(plugin)
+    assert "default" not in options["argument_spec"]["protocols"]
+    assert "default" not in options["argument_spec"]["resolver_endpoint_type"]
+
+
+def test_omitted_protocols_and_type_leave_an_existing_endpoint_unchanged():
+    client = Mock()
+    module = FakeModule(
+        {
+            "direction": "outbound",
+            "ip_addresses": [
                 {"ip": "192.0.2.1", "subnet_id": "subnet-1"},
                 {"ip": "192.0.2.2", "subnet_id": "subnet-2"},
             ],
-        )
-
-    def test_create_token_changes_with_desired_endpoint(self):
-        client = Mock(
-            create_resolver_endpoint=Mock(
-                side_effect=[
-                    {"ResolverEndpoint": {"Id": "endpoint-1"}},
-                    {"ResolverEndpoint": {"Id": "endpoint-2"}},
-                ]
-            )
-        )
-        module = FakeModule({"tags": None, "wait": False})
-        desired = {
-            "direction": "OUTBOUND",
-            "ip_addresses": [{"subnet_id": "subnet-1"}],
             "name": "main",
-            "protocols": ["Do53"],
-            "resolver_endpoint_type": "IPV4",
+            "protocols": None,
+            "purge_tags": True,
+            "resolver_endpoint_type": None,
             "security_group_ids": ["sg-1"],
+            "tags": None,
+            "wait": False,
         }
-        created = plugin.create_resolver_endpoint(client, module, desired)
-        plugin.create_resolver_endpoint(client, module, dict(desired, direction="INBOUND"))
+    )
+    current = {
+        "Direction": "OUTBOUND",
+        "Id": "rslvr-1",
+        "IpAddresses": [
+            {"Ip": "192.0.2.1", "SubnetId": "subnet-1"},
+            {"Ip": "192.0.2.2", "SubnetId": "subnet-2"},
+        ],
+        "Protocols": ["Do53", "DoH"],
+        "ResolverEndpointType": "DUALSTACK",
+        "SecurityGroupIds": ["sg-1"],
+    }
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args: args[2]),
+        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
 
-        tokens = [call.kwargs["CreatorRequestId"] for call in client.create_resolver_endpoint.call_args_list]
-        self.assertNotEqual(tokens[0], tokens[1])
-        self.assertEqual(created["IpAddresses"], [{"SubnetId": "subnet-1"}])
+    assert not raised.value.values["changed"]
+    assert raised.value.values["resolver_endpoint"]["protocols"] == ["Do53", "DoH"]
+    client.update_resolver_endpoint.assert_not_called()
 
-    def test_ip_reconciliation_adds_and_removes_only_differences(self):
-        client = Mock()
-        module = Mock(params={"wait": False})
-        endpoint = {
-            "Id": "rslvr-1",
-            "IpAddresses": [{"IpId": "rni-old", "SubnetId": "subnet-old"}],
+
+def test_check_mode_predicts_aws_defaults_for_a_new_endpoint():
+    module = FakeModule(
+        {
+            "direction": "outbound",
+            "ip_addresses": [{"subnet_id": "subnet-1"}, {"subnet_id": "subnet-2"}],
+            "name": "main",
+            "protocols": None,
+            "purge_tags": True,
+            "resolver_endpoint_type": None,
+            "security_group_ids": ["sg-1"],
+            "tags": None,
+            "wait": False,
+        },
+        check_mode=True,
+    )
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    endpoint = raised.value.values["resolver_endpoint"]
+    assert endpoint["protocols"] == ["Do53"]
+    assert endpoint["resolver_endpoint_type"] == "IPV4"
+
+
+def test_auto_assigned_ip_addresses_are_idempotent():
+    client = Mock()
+    module = FakeModule(
+        {
+            "direction": "outbound",
+            "ip_addresses": [
+                {"subnet_id": "subnet-1"},
+                {"subnet_id": "subnet-2"},
+            ],
+            "name": "main",
+            "protocols": ["do53"],
+            "purge_tags": True,
+            "resolver_endpoint_type": "ipv4",
+            "security_group_ids": ["sg-1"],
+            "tags": None,
+            "wait": False,
         }
+    )
+    current = {
+        "Direction": "OUTBOUND",
+        "Id": "rslvr-1",
+        "IpAddresses": [
+            {"Ip": "192.0.2.1", "SubnetId": "subnet-1"},
+            {"Ip": "192.0.2.2", "SubnetId": "subnet-2"},
+        ],
+        "Protocols": ["Do53"],
+        "ResolverEndpointType": "IPV4",
+        "SecurityGroupIds": ["sg-1"],
+    }
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
+        patch.object(
+            plugin,
+            "resolver_endpoint_with_ip_addresses",
+            side_effect=lambda *args: args[2],
+        ),
+        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert not raised.value.values["changed"]
+    client.associate_resolver_endpoint_ip_address.assert_not_called()
+    client.disassociate_resolver_endpoint_ip_address.assert_not_called()
+
+
+def test_check_mode_preserves_unchanged_auto_assigned_addresses():
+    module = FakeModule(
+        {
+            "direction": "outbound",
+            "ip_addresses": [
+                {"subnet_id": "subnet-1"},
+                {"subnet_id": "subnet-2"},
+            ],
+            "name": "main",
+            "protocols": ["doh"],
+            "purge_tags": True,
+            "resolver_endpoint_type": "ipv4",
+            "security_group_ids": ["sg-1"],
+            "tags": None,
+            "wait": False,
+        },
+        check_mode=True,
+    )
+    current = {
+        "Direction": "OUTBOUND",
+        "Id": "rslvr-1",
+        "IpAddresses": [
+            {"Ip": "192.0.2.1", "SubnetId": "subnet-1"},
+            {"Ip": "192.0.2.2", "SubnetId": "subnet-2"},
+        ],
+        "Protocols": ["Do53"],
+        "ResolverEndpointType": "IPV4",
+        "SecurityGroupIds": ["sg-1"],
+    }
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
+        patch.object(
+            plugin,
+            "resolver_endpoint_with_ip_addresses",
+            side_effect=lambda *args: args[2],
+        ),
+        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    assert raised.value.values["changed"]
+    assert raised.value.values["resolver_endpoint"]["ip_addresses"] == [
+        {"ip": "192.0.2.1", "subnet_id": "subnet-1"},
+        {"ip": "192.0.2.2", "subnet_id": "subnet-2"},
+    ]
+
+
+def test_create_token_changes_with_desired_endpoint():
+    client = Mock(
+        create_resolver_endpoint=Mock(
+            side_effect=[
+                {"ResolverEndpoint": {"Id": "endpoint-1"}},
+                {"ResolverEndpoint": {"Id": "endpoint-2"}},
+            ]
+        )
+    )
+    module = FakeModule({"tags": None, "wait": False})
+    desired = {
+        "direction": "OUTBOUND",
+        "ip_addresses": [{"subnet_id": "subnet-1"}],
+        "name": "main",
+        "protocols": ["Do53"],
+        "resolver_endpoint_type": "IPV4",
+        "security_group_ids": ["sg-1"],
+    }
+    created = plugin.create_resolver_endpoint(client, module, desired)
+    plugin.create_resolver_endpoint(client, module, dict(desired, direction="INBOUND"))
+
+    tokens = [call.kwargs["CreatorRequestId"] for call in client.create_resolver_endpoint.call_args_list]
+    assert tokens[0] != tokens[1]
+    assert created["IpAddresses"] == [{"SubnetId": "subnet-1"}]
+
+
+def test_ip_reconciliation_adds_and_removes_only_differences():
+    client = Mock()
+    module = Mock(params={"wait": False})
+    endpoint = {
+        "Id": "rslvr-1",
+        "IpAddresses": [{"IpId": "rni-old", "SubnetId": "subnet-old"}],
+    }
+    desired = {
+        "name": "main",
+        "ip_addresses": [{"subnet_id": "subnet-new"}],
+    }
+    with (
+        patch.object(
+            plugin,
+            "wait_for_resolver_endpoint_status",
+        ) as wait_for_resolver_endpoint_status,
+    ):
+        result = plugin.reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired)
+
+    client.associate_resolver_endpoint_ip_address.assert_called_once_with(
+        IpAddress={"SubnetId": "subnet-new"},
+        ResolverEndpointId="rslvr-1",
+        aws_retry=True,
+    )
+    client.disassociate_resolver_endpoint_ip_address.assert_called_once_with(
+        IpAddress={"IpId": "rni-old", "SubnetId": "subnet-old"},
+        ResolverEndpointId="rslvr-1",
+        aws_retry=True,
+    )
+    wait_for_resolver_endpoint_status.assert_called_once_with(client, module, "rslvr-1", {"settled"})
+    assert result["Id"] == "rslvr-1"
+    assert result["IpAddresses"] == [{"SubnetId": "subnet-new"}]
+
+
+def test_ip_replacements_stay_within_provider_count_bounds():
+    for count, first_operation in ((2, "associate"), (20, "disassociate")):
+        current = [{"IpId": f"rni-{index}", "SubnetId": f"subnet-{index}"} for index in range(count)]
         desired = {
             "name": "main",
-            "ip_addresses": [{"subnet_id": "subnet-new"}],
+            "ip_addresses": [{"subnet_id": f"subnet-{index}"} for index in range(1, count)]
+            + [{"subnet_id": "subnet-new"}],
         }
-        with (
-            patch.object(
-                plugin,
-                "wait_for_resolver_endpoint_status",
-            ) as wait_for_resolver_endpoint_status,
-        ):
-            result = plugin.reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired)
-
-        client.associate_resolver_endpoint_ip_address.assert_called_once_with(
-            IpAddress={"SubnetId": "subnet-new"},
-            ResolverEndpointId="rslvr-1",
-            aws_retry=True,
-        )
-        client.disassociate_resolver_endpoint_ip_address.assert_called_once_with(
-            IpAddress={"IpId": "rni-old", "SubnetId": "subnet-old"},
-            ResolverEndpointId="rslvr-1",
-            aws_retry=True,
-        )
-        wait_for_resolver_endpoint_status.assert_called_once_with(client, module, "rslvr-1", {"settled"})
-        self.assertEqual(result["Id"], "rslvr-1")
-        self.assertEqual(result["IpAddresses"], [{"SubnetId": "subnet-new"}])
-
-    def test_ip_replacements_stay_within_provider_count_bounds(self):
-        for count, first_operation in ((2, "associate"), (20, "disassociate")):
-            current = [{"IpId": f"rni-{index}", "SubnetId": f"subnet-{index}"} for index in range(count)]
-            desired = {
-                "name": "main",
-                "ip_addresses": [{"subnet_id": f"subnet-{index}"} for index in range(1, count)]
-                + [{"subnet_id": "subnet-new"}],
-            }
-            client = Mock()
-            with (
-                self.subTest(count=count),
-                patch.object(plugin, "wait_for_resolver_endpoint_status"),
-            ):
-                plugin.reconcile_resolver_endpoint_ip_addresses(
-                    client,
-                    Mock(params={"wait": False}),
-                    {"Id": "rslvr-1", "IpAddresses": current},
-                    desired,
-                )
-
-            self.assertTrue(
-                client.method_calls[0][0].startswith(first_operation),
-                client.method_calls,
+        client = Mock()
+        with (patch.object(plugin, "wait_for_resolver_endpoint_status"),):
+            plugin.reconcile_resolver_endpoint_ip_addresses(
+                client,
+                Mock(params={"wait": False}),
+                {"Id": "rslvr-1", "IpAddresses": current},
+                desired,
             )
 
-    def test_direction_change_preserves_the_endpoint(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "direction": "outbound",
-                "ip_addresses": [
-                    {"subnet_id": "subnet-1"},
-                    {"subnet_id": "subnet-2"},
-                ],
-                "name": "main",
-                "protocols": ["do53"],
-                "purge_tags": True,
-                "resolver_endpoint_type": "ipv4",
-                "security_group_ids": ["sg-1"],
-                "tags": None,
-                "wait": False,
-            }
-        )
-        current = {
-            "Direction": "INBOUND",
-            "Id": "rslvr-old",
-            "IpAddresses": [
-                {"SubnetId": "subnet-1"},
-                {"SubnetId": "subnet-2"},
+        assert client.method_calls[0][0].startswith(first_operation)
+
+
+def test_direction_change_preserves_the_endpoint():
+    client = Mock()
+    module = FakeModule(
+        {
+            "direction": "outbound",
+            "ip_addresses": [
+                {"subnet_id": "subnet-1"},
+                {"subnet_id": "subnet-2"},
             ],
-            "Protocols": ["Do53"],
-            "ResolverEndpointType": "IPV4",
-            "SecurityGroupIds": ["sg-1"],
+            "name": "main",
+            "protocols": ["do53"],
+            "purge_tags": True,
+            "resolver_endpoint_type": "ipv4",
+            "security_group_ids": ["sg-1"],
+            "tags": None,
+            "wait": False,
         }
-        with (
-            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
-            patch.object(
-                plugin,
-                "resolver_endpoint_with_ip_addresses",
-                side_effect=lambda *args: args[2],
-            ),
-            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
-            patch.object(
-                plugin,
-                "reconcile_resolver_endpoint_ip_addresses",
-                return_value=current,
-            ),
-            patch.object(plugin, "delete_resolver_endpoint") as delete,
-            patch.object(plugin, "create_resolver_endpoint") as create,
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.ensure_present(client, module)
+    )
+    current = {
+        "Direction": "INBOUND",
+        "Id": "rslvr-old",
+        "IpAddresses": [
+            {"SubnetId": "subnet-1"},
+            {"SubnetId": "subnet-2"},
+        ],
+        "Protocols": ["Do53"],
+        "ResolverEndpointType": "IPV4",
+        "SecurityGroupIds": ["sg-1"],
+    }
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
+        patch.object(
+            plugin,
+            "resolver_endpoint_with_ip_addresses",
+            side_effect=lambda *args: args[2],
+        ),
+        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+        patch.object(
+            plugin,
+            "reconcile_resolver_endpoint_ip_addresses",
+            return_value=current,
+        ),
+        patch.object(plugin, "delete_resolver_endpoint") as delete,
+        patch.object(plugin, "create_resolver_endpoint") as create,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
 
-        self.assertIn("direction cannot be changed", raised.exception.values["msg"])
-        delete.assert_not_called()
-        create.assert_not_called()
-        client.update_resolver_endpoint.assert_not_called()
+    assert "direction cannot be changed" in raised.value.values["msg"]
+    delete.assert_not_called()
+    create.assert_not_called()
+    client.update_resolver_endpoint.assert_not_called()
 
-    def test_no_wait_change_waits_for_operational_endpoint_and_rechecks(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "direction": "outbound",
-                "ip_addresses": [
-                    {"subnet_id": "subnet-1"},
-                    {"subnet_id": "subnet-2"},
-                ],
-                "name": "main",
-                "protocols": ["do53"],
-                "purge_tags": True,
-                "resolver_endpoint_type": "ipv4",
-                "security_group_ids": ["sg-1"],
-                "tags": None,
-                "wait": False,
-            }
-        )
-        transitioning = {
-            "Direction": "INBOUND",
-            "Id": "rslvr-1",
-            "IpAddresses": [
-                {"SubnetId": "subnet-1"},
-                {"SubnetId": "subnet-2"},
+
+def test_no_wait_change_waits_for_operational_endpoint_and_rechecks():
+    client = Mock()
+    module = FakeModule(
+        {
+            "direction": "outbound",
+            "ip_addresses": [
+                {"subnet_id": "subnet-1"},
+                {"subnet_id": "subnet-2"},
             ],
-            "Protocols": ["Do53"],
-            "ResolverEndpointType": "IPV4",
-            "SecurityGroupIds": ["sg-1"],
-            "Status": "UPDATING",
+            "name": "main",
+            "protocols": ["do53"],
+            "purge_tags": True,
+            "resolver_endpoint_type": "ipv4",
+            "security_group_ids": ["sg-1"],
+            "tags": None,
+            "wait": False,
         }
-        active = dict(transitioning, Direction="OUTBOUND", Status="OPERATIONAL")
-        with (
-            patch.object(
-                plugin,
-                "get_resolver_endpoint_by_name",
-                side_effect=[transitioning, active],
-            ),
-            patch.object(
-                plugin,
-                "resolver_endpoint_with_ip_addresses",
-                side_effect=lambda *args: args[2],
-            ),
-            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
-            patch.object(plugin, "wait_for_resolver_endpoint_status") as wait_for_status,
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module)
+    )
+    transitioning = {
+        "Direction": "INBOUND",
+        "Id": "rslvr-1",
+        "IpAddresses": [
+            {"SubnetId": "subnet-1"},
+            {"SubnetId": "subnet-2"},
+        ],
+        "Protocols": ["Do53"],
+        "ResolverEndpointType": "IPV4",
+        "SecurityGroupIds": ["sg-1"],
+        "Status": "UPDATING",
+    }
+    active = dict(transitioning, Direction="OUTBOUND", Status="OPERATIONAL")
+    with (
+        patch.object(
+            plugin,
+            "get_resolver_endpoint_by_name",
+            side_effect=[transitioning, active],
+        ),
+        patch.object(
+            plugin,
+            "resolver_endpoint_with_ip_addresses",
+            side_effect=lambda *args: args[2],
+        ),
+        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+        patch.object(plugin, "wait_for_resolver_endpoint_status") as wait_for_status,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
 
-        wait_for_status.assert_called_once_with(client, module, "rslvr-1", {"settled"})
-        client.update_resolver_endpoint.assert_not_called()
-        self.assertFalse(raised.exception.values["changed"])
+    wait_for_status.assert_called_once_with(client, module, "rslvr-1", {"settled"})
+    client.update_resolver_endpoint.assert_not_called()
+    assert not raised.value.values["changed"]
 
-    def test_waited_endpoint_is_enriched_before_ip_reconciliation(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "direction": "outbound",
-                "ip_addresses": [
-                    {"subnet_id": "subnet-1"},
-                    {"subnet_id": "subnet-2"},
-                ],
-                "name": "main",
-                "protocols": ["doh"],
-                "purge_tags": True,
-                "resolver_endpoint_type": "ipv4",
-                "security_group_ids": ["sg-1"],
-                "tags": None,
-                "wait": True,
-            }
-        )
-        current = {
-            "Direction": "OUTBOUND",
-            "Id": "rslvr-1",
-            "IpAddresses": [
-                {"SubnetId": "subnet-1"},
-                {"SubnetId": "subnet-2"},
+
+def test_waited_endpoint_is_enriched_before_ip_reconciliation():
+    client = Mock()
+    module = FakeModule(
+        {
+            "direction": "outbound",
+            "ip_addresses": [
+                {"subnet_id": "subnet-1"},
+                {"subnet_id": "subnet-2"},
             ],
-            "Protocols": ["Do53"],
-            "ResolverEndpointType": "IPV4",
-            "SecurityGroupIds": ["sg-1"],
+            "name": "main",
+            "protocols": ["doh"],
+            "purge_tags": True,
+            "resolver_endpoint_type": "ipv4",
+            "security_group_ids": ["sg-1"],
+            "tags": None,
+            "wait": True,
         }
-        updated = dict(current, Protocols=["DoH"])
-        waited = {key: value for key, value in updated.items() if key != "IpAddresses"}
-        client.update_resolver_endpoint.return_value = {"ResolverEndpoint": updated}
-        with (
-            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
-            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
-            patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=waited),
-            patch.object(
-                plugin,
-                "resolver_endpoint_with_ip_addresses",
-                side_effect=[current, updated],
-            ) as enrich,
-            patch.object(
-                plugin,
-                "reconcile_resolver_endpoint_ip_addresses",
-                return_value=updated,
-            ) as reconcile,
-            self.assertRaises(ModuleExit),
-        ):
-            plugin.ensure_present(client, module)
+    )
+    current = {
+        "Direction": "OUTBOUND",
+        "Id": "rslvr-1",
+        "IpAddresses": [
+            {"SubnetId": "subnet-1"},
+            {"SubnetId": "subnet-2"},
+        ],
+        "Protocols": ["Do53"],
+        "ResolverEndpointType": "IPV4",
+        "SecurityGroupIds": ["sg-1"],
+    }
+    updated = dict(current, Protocols=["DoH"])
+    waited = {key: value for key, value in updated.items() if key != "IpAddresses"}
+    client.update_resolver_endpoint.return_value = {"ResolverEndpoint": updated}
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
+        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+        patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=waited),
+        patch.object(
+            plugin,
+            "resolver_endpoint_with_ip_addresses",
+            side_effect=[current, updated],
+        ) as enrich,
+        patch.object(
+            plugin,
+            "reconcile_resolver_endpoint_ip_addresses",
+            return_value=updated,
+        ) as reconcile,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
 
-        enrich.assert_called_with(client, module, waited)
-        reconcile.assert_called_once_with(client, module, updated, ANY)
+    enrich.assert_called_with(client, module, waited)
+    reconcile.assert_called_once_with(client, module, updated, ANY)
 
-    def test_update_rereads_endpoint_when_response_is_lean(self):
-        client = Mock(update_resolver_endpoint=Mock(return_value={}))
-        module = FakeModule(
-            {
-                "direction": "outbound",
-                "ip_addresses": [
-                    {"subnet_id": "subnet-1"},
-                    {"subnet_id": "subnet-2"},
-                ],
-                "name": "main",
-                "protocols": ["doh"],
-                "purge_tags": True,
-                "resolver_endpoint_type": "ipv4",
-                "security_group_ids": ["sg-1"],
-                "tags": None,
-                "wait": False,
-            }
-        )
-        current = {
-            "Direction": "OUTBOUND",
-            "Id": "rslvr-1",
-            "IpAddresses": [
-                {"SubnetId": "subnet-1"},
-                {"SubnetId": "subnet-2"},
+
+def test_update_rereads_endpoint_when_response_is_lean():
+    client = Mock(update_resolver_endpoint=Mock(return_value={}))
+    module = FakeModule(
+        {
+            "direction": "outbound",
+            "ip_addresses": [
+                {"subnet_id": "subnet-1"},
+                {"subnet_id": "subnet-2"},
             ],
-            "Protocols": ["Do53"],
-            "ResolverEndpointType": "IPV4",
-            "SecurityGroupIds": ["sg-1"],
+            "name": "main",
+            "protocols": ["doh"],
+            "purge_tags": True,
+            "resolver_endpoint_type": "ipv4",
+            "security_group_ids": ["sg-1"],
+            "tags": None,
+            "wait": False,
         }
-        updated = dict(current, Protocols=["DoH"])
-        with (
-            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
-            patch.object(plugin, "get_resolver_endpoint", return_value=updated) as get,
-            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
-            patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args: args[2]),
-            patch.object(plugin, "reconcile_resolver_endpoint_ip_addresses", return_value=updated),
-            self.assertRaises(ModuleExit),
-        ):
-            plugin.ensure_present(client, module)
+    )
+    current = {
+        "Direction": "OUTBOUND",
+        "Id": "rslvr-1",
+        "IpAddresses": [
+            {"SubnetId": "subnet-1"},
+            {"SubnetId": "subnet-2"},
+        ],
+        "Protocols": ["Do53"],
+        "ResolverEndpointType": "IPV4",
+        "SecurityGroupIds": ["sg-1"],
+    }
+    updated = dict(current, Protocols=["DoH"])
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
+        patch.object(plugin, "get_resolver_endpoint", return_value=updated) as get,
+        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args: args[2]),
+        patch.object(plugin, "reconcile_resolver_endpoint_ip_addresses", return_value=updated),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
 
-        get.assert_called_once_with(client, module, "rslvr-1")
+    get.assert_called_once_with(client, module, "rslvr-1")
 
-    def test_tag_change_rejects_endpoint_without_arn(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "direction": "outbound",
-                "ip_addresses": [
-                    {"subnet_id": "subnet-1"},
-                    {"subnet_id": "subnet-2"},
-                ],
-                "name": "main",
-                "protocols": ["do53"],
-                "purge_tags": True,
-                "resolver_endpoint_type": "ipv4",
-                "security_group_ids": ["sg-1"],
-                "tags": {"Name": "main"},
-                "wait": False,
-            }
-        )
-        current = {
-            "Direction": "OUTBOUND",
-            "Id": "rslvr-1",
-            "IpAddresses": [
-                {"SubnetId": "subnet-1"},
-                {"SubnetId": "subnet-2"},
+
+def test_tag_change_rejects_endpoint_without_arn():
+    client = Mock()
+    module = FakeModule(
+        {
+            "direction": "outbound",
+            "ip_addresses": [
+                {"subnet_id": "subnet-1"},
+                {"subnet_id": "subnet-2"},
             ],
-            "Protocols": ["Do53"],
-            "ResolverEndpointType": "IPV4",
-            "SecurityGroupIds": ["sg-1"],
+            "name": "main",
+            "protocols": ["do53"],
+            "purge_tags": True,
+            "resolver_endpoint_type": "ipv4",
+            "security_group_ids": ["sg-1"],
+            "tags": {"Name": "main"},
+            "wait": False,
         }
-        with (
-            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
-            patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args: args[2]),
-            patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.ensure_present(client, module)
+    )
+    current = {
+        "Direction": "OUTBOUND",
+        "Id": "rslvr-1",
+        "IpAddresses": [
+            {"SubnetId": "subnet-1"},
+            {"SubnetId": "subnet-2"},
+        ],
+        "Protocols": ["Do53"],
+        "ResolverEndpointType": "IPV4",
+        "SecurityGroupIds": ["sg-1"],
+    }
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args: args[2]),
+        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
 
-        self.assertIn("invalid endpoint ARN", raised.exception.values["msg"])
-        client.tag_resource.assert_not_called()
+    assert "invalid endpoint ARN" in raised.value.values["msg"]
+    client.tag_resource.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

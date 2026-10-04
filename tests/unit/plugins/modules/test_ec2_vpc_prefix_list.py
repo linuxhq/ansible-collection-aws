@@ -1,4 +1,3 @@
-from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -16,173 +15,131 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 OWNER = "123456789012"
 
 
-class Ec2VpcPrefixListTests(TestCase):
-    def test_sdk_validation_starts_with_lookup_only(self):
-        module = Mock(
-            params={
-                "address_family": "IPv4",
-                "entries": [{"cidr": "10.0.0.0/8"}],
-                "name": "main",
-                "purge_tags": True,
-                "state": "present",
-                "tags": {},
-                "wait": False,
-                "wait_delay": 1,
-                "wait_timeout": 60,
-            },
-            client=Mock(return_value=Mock()),
-        )
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods") as require,
-            patch.object(plugin, "get_aws_account_id", return_value=OWNER),
-            patch.object(plugin, "ensure_present") as ensure_present,
-        ):
-            plugin.main()
+def test_sdk_validation_starts_with_lookup_only():
+    module = Mock(
+        params={
+            "address_family": "IPv4",
+            "entries": [{"cidr": "10.0.0.0/8"}],
+            "name": "main",
+            "purge_tags": True,
+            "state": "present",
+            "tags": {},
+            "wait": False,
+            "wait_delay": 1,
+            "wait_timeout": 60,
+        },
+        client=Mock(return_value=Mock()),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(plugin, "get_aws_account_id", return_value=OWNER),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
 
-        ensure_present.assert_called_once_with(module.client.return_value, module, OWNER)
+    ensure_present.assert_called_once_with(module.client.return_value, module, OWNER)
 
-        require.assert_called_once_with(
-            module,
-            module.client.return_value,
-            "EC2",
-            {
-                "describe_managed_prefix_lists": (
-                    "Filters",
-                    "MaxResults",
-                    "NextToken",
-                )
-            },
-        )
+    require.assert_called_once_with(
+        module,
+        module.client.return_value,
+        "EC2",
+        {
+            "describe_managed_prefix_lists": (
+                "Filters",
+                "MaxResults",
+                "NextToken",
+            )
+        },
+    )
 
-    def test_delete_tolerates_prefix_list_disappearing(self):
-        client = Mock()
-        client.delete_managed_prefix_list.side_effect = plugin.ClientError(
-            {"Error": {"Code": "InvalidPrefixListID.NotFound", "Message": "gone"}},
-            "DeleteManagedPrefixList",
-        )
-        module = FakeModule({"name": "main", "wait": True})
-        with (
-            patch.object(plugin, "require_client_methods") as require,
-            patch.object(plugin, "wait_for_prefix_list_state") as wait,
-        ):
-            plugin.delete_prefix_list(client, module, "pl-1")
 
-        require.assert_called_once_with(
-            module,
-            client,
-            "EC2",
-            {"delete_managed_prefix_list": ("PrefixListId",)},
-        )
-        wait.assert_not_called()
+def test_delete_tolerates_prefix_list_disappearing():
+    client = Mock()
+    client.delete_managed_prefix_list.side_effect = plugin.ClientError(
+        {"Error": {"Code": "InvalidPrefixListID.NotFound", "Message": "gone"}},
+        "DeleteManagedPrefixList",
+    )
+    module = FakeModule({"name": "main", "wait": True})
+    with (
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(plugin, "wait_for_prefix_list_state") as wait,
+    ):
+        plugin.delete_prefix_list(client, module, "pl-1")
 
-    def test_module_contract(self):
-        options = assert_module_contract(self, plugin)
-        assert options["required_if"] == [("state", "present", ["entries"])]
+    require.assert_called_once_with(
+        module,
+        client,
+        "EC2",
+        {"delete_managed_prefix_list": ("PrefixListId",)},
+    )
+    wait.assert_not_called()
 
-    def test_entries_are_normalized_and_sorted(self):
-        assert plugin.comparable_entries(
-            [
-                {"Cidr": "192.0.2.0/24", "Description": None},
-                {"Cidr": "10.0.0.0/8", "Description": "private"},
-            ]
-        ) == [
-            {"cidr": "10.0.0.0/8", "description": "private"},
-            {"cidr": "192.0.2.0/24"},
+
+def test_module_contract():
+    options = assert_module_contract(plugin)
+    assert options["required_if"] == [("state", "present", ["entries"])]
+
+
+def test_entries_are_normalized_and_sorted():
+    assert plugin.comparable_entries(
+        [
+            {"Cidr": "192.0.2.0/24", "Description": None},
+            {"Cidr": "10.0.0.0/8", "Description": "private"},
         ]
+    ) == [
+        {"cidr": "10.0.0.0/8", "description": "private"},
+        {"cidr": "192.0.2.0/24"},
+    ]
 
-    def test_entry_changes_include_current_prefix_list_version(self):
-        client = Mock()
-        client.modify_managed_prefix_list.return_value = {
-            "PrefixList": {
-                "AddressFamily": "IPv4",
-                "MaxEntries": 2,
-                "OwnerId": "123456789012",
-                "PrefixListId": "pl-1",
-                "PrefixListName": "main",
-                "State": "modify-in-progress",
-                "Version": 4,
-            }
+
+def test_entry_changes_include_current_prefix_list_version():
+    client = Mock()
+    client.modify_managed_prefix_list.return_value = {
+        "PrefixList": {
+            "AddressFamily": "IPv4",
+            "MaxEntries": 2,
+            "OwnerId": "123456789012",
+            "PrefixListId": "pl-1",
+            "PrefixListName": "main",
+            "State": "modify-in-progress",
+            "Version": 4,
         }
-        module = FakeModule({"name": "main"})
-        with patch.object(plugin, "require_client_methods") as require:
-            plugin.modify_prefix_list(
-                client,
-                module,
-                {"PrefixListId": "pl-1", "Version": 3},
-                add_entries=[{"cidr": "192.0.2.0/24"}],
-            )
-
-        require.assert_called_once_with(
-            module,
+    }
+    module = FakeModule({"name": "main"})
+    with patch.object(plugin, "require_client_methods") as require:
+        plugin.modify_prefix_list(
             client,
-            "EC2",
-            {
-                "modify_managed_prefix_list": (
-                    "PrefixListId",
-                    "CurrentVersion",
-                    "AddEntries",
-                )
-            },
-        )
-        client.modify_managed_prefix_list.assert_called_once_with(
-            AddEntries=[{"Cidr": "192.0.2.0/24"}],
-            CurrentVersion=3,
-            PrefixListId="pl-1",
-            aws_retry=True,
-        )
-
-    def test_create_without_wait_returns_the_create_response(self):
-        client = Mock(
-            create_managed_prefix_list=Mock(
-                return_value={
-                    "PrefixList": {
-                        "AddressFamily": "IPv4",
-                        "MaxEntries": 1,
-                        "OwnerId": "123456789012",
-                        "PrefixListId": "pl-new",
-                        "PrefixListName": "main",
-                        "State": "create-in-progress",
-                        "Version": 1,
-                    }
-                }
-            )
-        )
-        module = FakeModule({"name": "main", "tags": None, "wait": False})
-        entries = [{"cidr": "192.0.2.0/24"}]
-        with (
-            patch.object(plugin, "require_client_methods") as require,
-            patch.object(plugin, "get_current") as get_current,
-        ):
-            result = plugin.create_prefix_list(
-                client,
-                module,
-                OWNER,
-                {
-                    "address_family": "IPv4",
-                    "max_entries": 1,
-                    "prefix_list_name": "main",
-                },
-                entries,
-            )
-
-        require.assert_called_once_with(
             module,
-            client,
-            "EC2",
-            {
-                "create_managed_prefix_list": (
-                    "AddressFamily",
-                    "MaxEntries",
-                    "PrefixListName",
-                    "Entries",
-                )
-            },
+            {"PrefixListId": "pl-1", "Version": 3},
+            add_entries=[{"cidr": "192.0.2.0/24"}],
         )
-        self.assertEqual(
-            result,
-            (
-                {
+
+    require.assert_called_once_with(
+        module,
+        client,
+        "EC2",
+        {
+            "modify_managed_prefix_list": (
+                "PrefixListId",
+                "CurrentVersion",
+                "AddEntries",
+            )
+        },
+    )
+    client.modify_managed_prefix_list.assert_called_once_with(
+        AddEntries=[{"Cidr": "192.0.2.0/24"}],
+        CurrentVersion=3,
+        PrefixListId="pl-1",
+        aws_retry=True,
+    )
+
+
+def test_create_without_wait_returns_the_create_response():
+    client = Mock(
+        create_managed_prefix_list=Mock(
+            return_value={
+                "PrefixList": {
                     "AddressFamily": "IPv4",
                     "MaxEntries": 1,
                     "OwnerId": "123456789012",
@@ -190,269 +147,308 @@ class Ec2VpcPrefixListTests(TestCase):
                     "PrefixListName": "main",
                     "State": "create-in-progress",
                     "Version": 1,
-                },
-                entries,
-            ),
+                }
+            }
         )
-        get_current.assert_not_called()
-
-    def test_create_rejects_malformed_response(self):
-        client = Mock(create_managed_prefix_list=Mock(return_value={"PrefixList": None}))
-        module = FakeModule({"name": "main", "tags": None, "wait": False})
-        with (
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleFail),
-        ):
-            plugin.create_prefix_list(
-                client,
-                module,
-                OWNER,
-                {
-                    "address_family": "IPv4",
-                    "max_entries": 1,
-                    "prefix_list_name": "main",
-                },
-                [{"cidr": "192.0.2.0/24"}],
-            )
-
-    def test_additive_check_mode_preserves_unmanaged_tags(self):
-        current = {
-            "AddressFamily": "IPv4",
-            "MaxEntries": 1,
-            "PrefixListId": "pl-1",
-            "PrefixListName": "main",
-            "Tags": [
-                {"Key": "keep", "Value": "yes"},
-                {"Key": "managed", "Value": "old"},
-            ],
-        }
-        entries = [{"Cidr": "10.0.0.0/8"}]
-        module = FakeModule(
+    )
+    module = FakeModule({"name": "main", "tags": None, "wait": False})
+    entries = [{"cidr": "192.0.2.0/24"}]
+    with (
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(plugin, "get_current") as get_current,
+    ):
+        result = plugin.create_prefix_list(
+            client,
+            module,
+            OWNER,
             {
                 "address_family": "IPv4",
-                "entries": [{"cidr": "10.0.0.0/8"}],
-                "name": "main",
-                "purge_tags": False,
-                "tags": {"managed": "new"},
-                "wait": False,
+                "max_entries": 1,
+                "prefix_list_name": "main",
             },
-            check_mode=True,
-        )
-        with (
-            patch.object(plugin, "get_current", return_value=(current, entries)),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(Mock(), module, OWNER)
-
-        self.assertEqual(
-            raised.exception.values["prefix_list"]["tags"],
-            {"keep": "yes", "managed": "new"},
+            entries,
         )
 
-    def test_entry_replacement_is_one_request_before_shrinking(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "address_family": "IPv4",
-                "entries": [{"cidr": "192.0.2.0/24"}],
-                "name": "main",
-                "purge_tags": True,
-                "tags": None,
-                "wait": False,
-            }
-        )
-        initial = {
-            "AddressFamily": "IPv4",
-            "MaxEntries": 2,
-            "PrefixListId": "pl-1",
-            "PrefixListName": "main",
-            "Version": 1,
-        }
-        replaced = dict(initial, Version=2)
-        resized = dict(initial, MaxEntries=1, Version=3)
-        with (
-            patch.object(
-                plugin,
-                "get_current",
-                return_value=(initial, [{"Cidr": "10.0.0.0/8"}, {"Cidr": "172.16.0.0/12"}]),
-            ),
-            patch.object(plugin, "describe_prefix_list", return_value=replaced),
-            patch.object(plugin, "modify_prefix_list", return_value=resized) as modify,
-            patch.object(plugin, "wait_for_ready_state") as wait_for_ready_state,
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module, OWNER)
-
-        self.assertTrue(raised.exception.values["changed"])
-        self.assertEqual(
-            modify.call_args_list,
-            [
-                call(
-                    client,
-                    module,
-                    initial,
-                    add_entries=[{"cidr": "192.0.2.0/24"}],
-                    remove_entries=[{"cidr": "10.0.0.0/8"}, {"cidr": "172.16.0.0/12"}],
-                ),
-                call(client, module, replaced, max_entries=1),
-            ],
-        )
-        wait_for_ready_state.assert_called_once_with(client, module, "pl-1")
-        self.assertEqual(
-            raised.exception.values["prefix_list"]["entries"],
-            [{"cidr": "192.0.2.0/24"}],
-        )
-
-    def test_present_entries_must_be_nonempty_and_unique(self):
-        base = {"address_family": "IPv4", "state": "present", "tags": None}
-        cases = [
-            (
-                dict(base, entries=[]),
-                "entries must contain at least one item when state=present",
-            ),
-            (
-                dict(base, entries=[{"cidr": "10.0.0.0/8"}, {"cidr": "192.0.2.0/24"}], max_entries=1),
-                "max_entries must be at least the number of entries",
-            ),
-            (
-                dict(
-                    base,
-                    entries=[{"cidr": "10.0.0.0/8"}, {"cidr": "10.0.0.0/8"}],
-                ),
-                "entries[].cidr values must be unique",
-            ),
-            (
-                dict(base, entries=[{"cidr": "not-a-cidr"}]),
-                "entries[].cidr must be a valid CIDR: not-a-cidr",
-            ),
-            (
-                dict(base, entries=[{"cidr": "2001:db8::/32"}]),
-                "entries[].cidr must match address_family IPv4: 2001:db8::/32",
-            ),
-            (
-                dict(
-                    base,
-                    entries=[{"cidr": "192.0.2.0/24", "description": "d" * 256}],
-                ),
-                "entries[].description must contain at most 255 characters",
-            ),
-        ]
-        for params, message in cases:
-            with self.subTest(message=message):
-                assert_module_rejects(self, plugin, params, message)
-
-    def test_present_waits_for_an_existing_modification_and_rechecks(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "address_family": "IPv4",
-                "entries": [{"cidr": "10.0.0.0/8"}],
-                "name": "main",
-                "purge_tags": True,
-                "tags": None,
-                "wait": False,
-            }
-        )
-        transitioning = {
-            "AddressFamily": "IPv4",
-            "MaxEntries": 2,
-            "PrefixListId": "pl-1",
-            "PrefixListName": "main",
-            "State": "modify-in-progress",
-        }
-        ready = dict(transitioning, MaxEntries=1, State="modify-complete")
-        with (
-            patch.object(
-                plugin,
-                "get_current",
-                side_effect=[
-                    (transitioning, [{"Cidr": "10.0.0.0/8"}]),
-                    (ready, [{"Cidr": "10.0.0.0/8"}]),
-                ],
-            ),
-            patch.object(plugin, "wait_for_ready_state") as wait_for_ready_state,
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module, OWNER)
-
-        wait_for_ready_state.assert_called_once_with(client, module, "pl-1")
-        self.assertFalse(raised.exception.values["changed"])
-        client.modify_managed_prefix_list.assert_not_called()
-
-    def test_absent_does_not_repeat_an_in_progress_delete(self):
-        client = Mock()
-        module = FakeModule({"name": "main", "wait": False})
-        current = {
-            "PrefixListId": "pl-1",
-            "PrefixListName": "main",
-            "State": "delete-in-progress",
-        }
-        with (
-            patch.object(
-                plugin,
-                "get_customer_managed_prefix_list_by_name",
-                return_value=current,
-            ),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_absent(client, module, OWNER)
-
-        self.assertFalse(raised.exception.values["changed"])
-        client.delete_managed_prefix_list.assert_not_called()
-
-    def test_lookup_ignores_delete_complete_tombstones(self):
-        module = FakeModule({"name": "main"})
-        active = {
+    require.assert_called_once_with(
+        module,
+        client,
+        "EC2",
+        {
+            "create_managed_prefix_list": (
+                "AddressFamily",
+                "MaxEntries",
+                "PrefixListName",
+                "Entries",
+            )
+        },
+    )
+    assert result == (
+        {
             "AddressFamily": "IPv4",
             "MaxEntries": 1,
             "OwnerId": "123456789012",
             "PrefixListId": "pl-new",
             "PrefixListName": "main",
-            "State": "create-complete",
+            "State": "create-in-progress",
             "Version": 1,
+        },
+        entries,
+    )
+    get_current.assert_not_called()
+
+
+def test_create_rejects_malformed_response():
+    client = Mock(create_managed_prefix_list=Mock(return_value={"PrefixList": None}))
+    module = FakeModule({"name": "main", "tags": None, "wait": False})
+    with (
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail),
+    ):
+        plugin.create_prefix_list(
+            client,
+            module,
+            OWNER,
+            {
+                "address_family": "IPv4",
+                "max_entries": 1,
+                "prefix_list_name": "main",
+            },
+            [{"cidr": "192.0.2.0/24"}],
+        )
+
+
+def test_additive_check_mode_preserves_unmanaged_tags():
+    current = {
+        "AddressFamily": "IPv4",
+        "MaxEntries": 1,
+        "PrefixListId": "pl-1",
+        "PrefixListName": "main",
+        "Tags": [
+            {"Key": "keep", "Value": "yes"},
+            {"Key": "managed", "Value": "old"},
+        ],
+    }
+    entries = [{"Cidr": "10.0.0.0/8"}]
+    module = FakeModule(
+        {
+            "address_family": "IPv4",
+            "entries": [{"cidr": "10.0.0.0/8"}],
+            "name": "main",
+            "purge_tags": False,
+            "tags": {"managed": "new"},
+            "wait": False,
+        },
+        check_mode=True,
+    )
+    with (
+        patch.object(plugin, "get_current", return_value=(current, entries)),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(Mock(), module, OWNER)
+
+    assert raised.value.values["prefix_list"]["tags"] == {"keep": "yes", "managed": "new"}
+
+
+def test_entry_replacement_is_one_request_before_shrinking():
+    client = Mock()
+    module = FakeModule(
+        {
+            "address_family": "IPv4",
+            "entries": [{"cidr": "192.0.2.0/24"}],
+            "name": "main",
+            "purge_tags": True,
+            "tags": None,
+            "wait": False,
         }
-        with patch.object(
+    )
+    initial = {
+        "AddressFamily": "IPv4",
+        "MaxEntries": 2,
+        "PrefixListId": "pl-1",
+        "PrefixListName": "main",
+        "Version": 1,
+    }
+    replaced = dict(initial, Version=2)
+    resized = dict(initial, MaxEntries=1, Version=3)
+    with (
+        patch.object(
             plugin,
-            "query_list",
-            return_value=[
-                {
-                    "AddressFamily": "IPv4",
-                    "MaxEntries": 1,
-                    "OwnerId": "123456789012",
-                    "PrefixListId": "pl-old",
-                    "PrefixListName": "main",
-                    "State": "delete-complete",
-                    "Version": 1,
-                },
-                active,
-            ],
-        ):
-            self.assertEqual(
-                plugin.get_customer_managed_prefix_list_by_name(Mock(), module, OWNER),
-                active,
-            )
+            "get_current",
+            return_value=(initial, [{"Cidr": "10.0.0.0/8"}, {"Cidr": "172.16.0.0/12"}]),
+        ),
+        patch.object(plugin, "describe_prefix_list", return_value=replaced),
+        patch.object(plugin, "modify_prefix_list", return_value=resized) as modify,
+        patch.object(plugin, "wait_for_ready_state") as wait_for_ready_state,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module, OWNER)
 
-    def test_lookup_rejects_malformed_response(self):
-        module = FakeModule({"name": "main"})
-        with (
-            patch.object(plugin, "query_list", return_value=[None]),
-            self.assertRaises(ModuleFail),
-        ):
-            plugin.get_customer_managed_prefix_list_by_name(Mock(), module, OWNER)
+    assert raised.value.values["changed"]
+    assert modify.call_args_list == [
+        call(
+            client,
+            module,
+            initial,
+            add_entries=[{"cidr": "192.0.2.0/24"}],
+            remove_entries=[{"cidr": "10.0.0.0/8"}, {"cidr": "172.16.0.0/12"}],
+        ),
+        call(client, module, replaced, max_entries=1),
+    ]
+    wait_for_ready_state.assert_called_once_with(client, module, "pl-1")
+    assert raised.value.values["prefix_list"]["entries"] == [{"cidr": "192.0.2.0/24"}]
 
-    def test_entries_reject_malformed_response(self):
-        module = FakeModule({"name": "main"})
-        with (
-            patch.object(
-                plugin,
-                "get_customer_managed_prefix_list_by_name",
-                return_value={"PrefixListId": "pl-1", "State": "create-complete"},
+
+def test_present_entries_must_be_nonempty_and_unique():
+    base = {"address_family": "IPv4", "state": "present", "tags": None}
+    cases = [
+        (
+            dict(base, entries=[]),
+            "entries must contain at least one item when state=present",
+        ),
+        (
+            dict(base, entries=[{"cidr": "10.0.0.0/8"}, {"cidr": "192.0.2.0/24"}], max_entries=1),
+            "max_entries must be at least the number of entries",
+        ),
+        (
+            dict(
+                base,
+                entries=[{"cidr": "10.0.0.0/8"}, {"cidr": "10.0.0.0/8"}],
             ),
-            patch.object(plugin, "require_client_methods"),
-            patch.object(plugin, "query_list", return_value=[None]),
-            self.assertRaises(ModuleFail),
-        ):
-            plugin.get_current(Mock(), module, OWNER)
+            "entries[].cidr values must be unique",
+        ),
+        (
+            dict(base, entries=[{"cidr": "not-a-cidr"}]),
+            "entries[].cidr must be a valid CIDR: not-a-cidr",
+        ),
+        (
+            dict(base, entries=[{"cidr": "2001:db8::/32"}]),
+            "entries[].cidr must match address_family IPv4: 2001:db8::/32",
+        ),
+        (
+            dict(
+                base,
+                entries=[{"cidr": "192.0.2.0/24", "description": "d" * 256}],
+            ),
+            "entries[].description must contain at most 255 characters",
+        ),
+    ]
+    for params, message in cases:
+        assert_module_rejects(plugin, params, message)
+
+
+def test_present_waits_for_an_existing_modification_and_rechecks():
+    client = Mock()
+    module = FakeModule(
+        {
+            "address_family": "IPv4",
+            "entries": [{"cidr": "10.0.0.0/8"}],
+            "name": "main",
+            "purge_tags": True,
+            "tags": None,
+            "wait": False,
+        }
+    )
+    transitioning = {
+        "AddressFamily": "IPv4",
+        "MaxEntries": 2,
+        "PrefixListId": "pl-1",
+        "PrefixListName": "main",
+        "State": "modify-in-progress",
+    }
+    ready = dict(transitioning, MaxEntries=1, State="modify-complete")
+    with (
+        patch.object(
+            plugin,
+            "get_current",
+            side_effect=[
+                (transitioning, [{"Cidr": "10.0.0.0/8"}]),
+                (ready, [{"Cidr": "10.0.0.0/8"}]),
+            ],
+        ),
+        patch.object(plugin, "wait_for_ready_state") as wait_for_ready_state,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    wait_for_ready_state.assert_called_once_with(client, module, "pl-1")
+    assert not raised.value.values["changed"]
+    client.modify_managed_prefix_list.assert_not_called()
+
+
+def test_absent_does_not_repeat_an_in_progress_delete():
+    client = Mock()
+    module = FakeModule({"name": "main", "wait": False})
+    current = {
+        "PrefixListId": "pl-1",
+        "PrefixListName": "main",
+        "State": "delete-in-progress",
+    }
+    with (
+        patch.object(
+            plugin,
+            "get_customer_managed_prefix_list_by_name",
+            return_value=current,
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module, OWNER)
+
+    assert not raised.value.values["changed"]
+    client.delete_managed_prefix_list.assert_not_called()
+
+
+def test_lookup_ignores_delete_complete_tombstones():
+    module = FakeModule({"name": "main"})
+    active = {
+        "AddressFamily": "IPv4",
+        "MaxEntries": 1,
+        "OwnerId": "123456789012",
+        "PrefixListId": "pl-new",
+        "PrefixListName": "main",
+        "State": "create-complete",
+        "Version": 1,
+    }
+    with patch.object(
+        plugin,
+        "query_list",
+        return_value=[
+            {
+                "AddressFamily": "IPv4",
+                "MaxEntries": 1,
+                "OwnerId": "123456789012",
+                "PrefixListId": "pl-old",
+                "PrefixListName": "main",
+                "State": "delete-complete",
+                "Version": 1,
+            },
+            active,
+        ],
+    ):
+        assert plugin.get_customer_managed_prefix_list_by_name(Mock(), module, OWNER) == active
+
+
+def test_lookup_rejects_malformed_response():
+    module = FakeModule({"name": "main"})
+    with (
+        patch.object(plugin, "query_list", return_value=[None]),
+        pytest.raises(ModuleFail),
+    ):
+        plugin.get_customer_managed_prefix_list_by_name(Mock(), module, OWNER)
+
+
+def test_entries_reject_malformed_response():
+    module = FakeModule({"name": "main"})
+    with (
+        patch.object(
+            plugin,
+            "get_customer_managed_prefix_list_by_name",
+            return_value={"PrefixListId": "pl-1", "State": "create-complete"},
+        ),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[None]),
+        pytest.raises(ModuleFail),
+    ):
+        plugin.get_current(Mock(), module, OWNER)
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
