@@ -247,7 +247,7 @@ def wait_for_status(client, module, waiter_name, statuses):
         client,
         ACCOUNT_REGION_WAITER_MODEL_DATA,
         waiter_name,
-        (f"Timed out waiting for AWS account region {region_name} " f"to reach one of {sorted(statuses)}"),
+        f"Timed out waiting for AWS account region {region_name} to reach one of {sorted(statuses)}",
         **region_request(module),
     )
 
@@ -315,7 +315,7 @@ def ensure_absent(client, module):
 
     if previous_status == "ENABLED_BY_DEFAULT":
         module.fail_json(
-            msg=(f"Unable to disable AWS account region {region_name} " "because default Regions cannot be disabled"),
+            msg=f"Unable to disable AWS account region {region_name} because default Regions cannot be disabled",
         )
 
     changed = previous_status not in ABSENT_STATUSES

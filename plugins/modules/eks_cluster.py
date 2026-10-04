@@ -741,7 +741,9 @@ def wait_for_cluster(client, module, waiter_name):
             WaiterConfig={"Delay": wait_delay, "MaxAttempts": attempts},
         )
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Timed out waiting for AWS EKS cluster {name}")
+        # The waiter fails on terminal states as well as on timeouts, so the message names neither.
+        state = waiter_name.replace("cluster_", "")
+        module.fail_json_aws(e, msg=f"Unable to wait for AWS EKS cluster {name} to become {state}")
 
 
 def wait_for_update(client, module, update_id, require_success=True):

@@ -344,7 +344,7 @@ def get_flow_logs(client, module):
         client,
         "describe_flow_logs",
         "FlowLogs",
-        "Unable to describe EC2 flow logs for resources " f"{', '.join(resource_ids)}",
+        f"Unable to describe EC2 flow logs for resources {', '.join(resource_ids)}",
         **request,
     )
 
@@ -565,7 +565,7 @@ def ensure_present(client, module):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to create EC2 flow logs for resources " f"{', '.join(missing_resource_ids)}"),
+                    msg=f"Unable to create EC2 flow logs for resources {', '.join(missing_resource_ids)}",
                 )
 
             unsuccessful = response.get("Unsuccessful", [])
@@ -597,7 +597,7 @@ def ensure_present(client, module):
                 client,
                 "describe_flow_logs",
                 "FlowLogs",
-                "Unable to describe EC2 flow logs " f"{', '.join(created_flow_log_ids)}",
+                f"Unable to describe EC2 flow logs {', '.join(created_flow_log_ids)}",
                 FlowLogIds=created_flow_log_ids,
             )
 
@@ -655,7 +655,7 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=("Unable to remove tags from EC2 flow logs " f"{', '.join(delete_resources)}"),
+                        msg=f"Unable to remove tags from EC2 flow logs {', '.join(delete_resources)}",
                     )
 
             if create_groups:
@@ -676,7 +676,7 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
-                        msg=("Unable to tag EC2 flow logs " f"{', '.join(create_resources)}"),
+                        msg=f"Unable to tag EC2 flow logs {', '.join(create_resources)}",
                     )
 
         for flow_log, tags_to_set, tag_keys_to_unset in tags_changed:
@@ -767,7 +767,7 @@ def main():
         and resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES
     ):
         module.fail_json(
-            msg=("traffic_type is not supported when resource_type is " "TransitGateway or TransitGatewayAttachment")
+            msg="traffic_type is not supported when resource_type is TransitGateway or TransitGatewayAttachment"
         )
 
     if (
@@ -780,7 +780,7 @@ def main():
         )
 
     if state == "present" and destination_options and module.params["log_destination_type"] != "s3":
-        module.fail_json(msg=("destination_options requires log_destination_type to be s3 " "when state is present"))
+        module.fail_json(msg="destination_options requires log_destination_type to be s3 when state is present")
 
     require_valid_tags(module, module.params["tags"] if state == "present" else None, 50, key_max=127)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
