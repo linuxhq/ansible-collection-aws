@@ -11,7 +11,9 @@ description:
   - Gathers AWS Price List product information.
   - This module maps to the AWS Pricing C(GetProducts) API, the API behind
     C(aws pricing get-products).
-  - The Pricing API endpoint is queried in C(us-east-1). Use filters such as
+  - Requires a region. The Pricing API is served from C(us-east-1),
+    C(eu-central-1), and C(ap-south-1).
+  - The endpoint region does not limit the products returned. Use filters such as
     C(regionCode) or C(location) for product-specific regional pricing data.
 author:
   - Taylor Kimball (@tkimball83)
@@ -21,8 +23,8 @@ options:
       - Filters to apply when gathering products.
       - Filter entries are passed to the AWS Pricing C(GetProducts) API.
       - This must contain at most 50 entries.
-      - When omitted or empty, no API call is made and an empty product list
-        is returned.
+      - When omitted or empty, every product for O(service_code) is returned,
+        which can be very large.
     elements: dict
     suboptions:
       field:
@@ -121,9 +123,10 @@ format_version:
 products:
   description:
     - A list of parsed AWS Price List products.
-    - C(terms) is returned as provided by the Price List API, preserving
-      case-sensitive keys such as offer term codes, rate codes, and currency
-      codes.
+    - Keys, including those in C(terms), are returned in snake_case and values
+      are returned unchanged.
+    - Offer term codes, rate codes, and currency codes used as keys in C(terms)
+      keep the case returned by the Price List API.
   returned: always
   type: list
   elements: dict
@@ -141,6 +144,8 @@ try:
 except ImportError:
     pass
 
+from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
+
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     paginated_query_with_retries,
 )
@@ -154,6 +159,52 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
+
+
+def snake_name(name):
+    return next(iter(camel_dict_to_snake_dict({name: None})))
+
+
+def normalize_terms(terms):
+    """Snake-case term keys while keeping offer term, rate, and currency code keys as AWS returns them."""
+    if not isinstance(terms, dict):
+        return terms
+
+    return {
+        snake_name(term_type): (
+            {code: normalize_offer_term(offer) for code, offer in offers.items()}
+            if isinstance(offers, dict)
+            else offers
+        )
+        for term_type, offers in terms.items()
+    }
+
+
+def normalize_offer_term(offer):
+    if not isinstance(offer, dict):
+        return offer
+
+    result = camel_dict_to_snake_dict({key: value for key, value in offer.items() if key != "priceDimensions"})
+    dimensions = offer.get("priceDimensions")
+    if isinstance(dimensions, dict):
+        result["price_dimensions"] = {
+            rate_code: normalize_price_dimension(dimension) for rate_code, dimension in dimensions.items()
+        }
+    elif "priceDimensions" in offer:
+        result["price_dimensions"] = dimensions
+
+    return result
+
+
+def normalize_price_dimension(dimension):
+    if not isinstance(dimension, dict):
+        return dimension
+
+    result = camel_dict_to_snake_dict({key: value for key, value in dimension.items() if key != "pricePerUnit"})
+    if "pricePerUnit" in dimension:
+        result["price_per_unit"] = dimension["pricePerUnit"]
+
+    return result
 
 
 def main():
@@ -187,7 +238,7 @@ def main():
         supports_check_mode=True,
     )
 
-    filters = module.params["filters"]
+    filters = module.params["filters"] or []
     format_version = module.params["format_version"]
     max_results = module.params["max_results"]
     service_code = module.params["service_code"]
@@ -195,22 +246,15 @@ def main():
     if max_results is not None and not 1 <= max_results <= 100:
         module.fail_json(msg="max_results must be between 1 and 100")
 
-    if len(filters or []) > 50:
+    if len(filters) > 50:
         module.fail_json(msg="filters must contain at most 50 entries")
 
-    if not filters:
-        module.exit_json(
-            changed=False,
-            format_version=format_version,
-            products=[],
-            service_code=service_code,
+    if not module.region:
+        module.fail_json(
+            msg="region is required; the Pricing API is served from us-east-1, eu-central-1, and ap-south-1"
         )
 
-    client = module.client(
-        "pricing",
-        retry_decorator=AWSRetry.jittered_backoff(),
-        region="us-east-1",
-    )
+    client = module.client("pricing", retry_decorator=AWSRetry.jittered_backoff())
 
     if any(pricing_filter["type"] != "TERM_MATCH" for pricing_filter in filters):
         module.require_botocore_at_least("1.39.5")
@@ -232,7 +276,8 @@ def main():
         for pricing_filter in filters
     ]
 
-    request["Filters"] = request_filters
+    if request_filters:
+        request["Filters"] = request_filters
 
     require_client_methods(
         module,
@@ -271,7 +316,7 @@ def main():
         )
 
         if "terms" in normalized:
-            normalized["terms"] = parsed.get("terms")
+            normalized["terms"] = normalize_terms(parsed.get("terms"))
 
         products.append(normalized)
 

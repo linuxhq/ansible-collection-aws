@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+import pytest
+
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_pricing_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -15,24 +17,28 @@ class Ec2PricingInfoTests(TestCase):
         options = assert_module_contract(self, plugin)
         assert options["argument_spec"]["service_code"]["default"] == "AmazonEC2"
 
-    def test_empty_filters_return_without_creating_client(self):
+    def test_empty_filters_query_every_product_like_the_api(self):
         module = FakeModule(
             {
                 "filters": [],
                 "format_version": "aws_v1",
                 "max_results": None,
                 "service_code": "AmazonEC2",
-            }
+            },
+            client=Mock(),
         )
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "paginated_query_with_retries", return_value={"PriceList": []}) as query,
             self.assertRaises(ModuleExit) as raised,
         ):
             plugin.main()
 
         self.assertEqual(raised.exception.values["products"], [])
+        query.assert_called_once_with(module._client, "get_products", FormatVersion="aws_v1", ServiceCode="AmazonEC2")
 
-    def test_product_terms_preserve_case_sensitive_aws_keys(self):
+    def test_product_terms_use_snake_case_fields_and_keep_codes(self):
         client = Mock()
         module = FakeModule(
             {
@@ -43,7 +49,18 @@ class Ec2PricingInfoTests(TestCase):
             },
             client=client,
         )
-        terms = {"OnDemand": {"SKU.OFFER": {"priceDimensions": {"SKU.RATE": {"pricePerUnit": {"USD": "1"}}}}}}
+        terms = {
+            "OnDemand": {
+                "SKU.OFFER": {
+                    "effectiveDate": "2026-09-01T00:00:00Z",
+                    "offerTermCode": "OFFER",
+                    "priceDimensions": {
+                        "SKU.OFFER.RATE": {"appliesTo": [], "pricePerUnit": {"USD": "1"}, "rateCode": "SKU.OFFER.RATE"}
+                    },
+                    "termAttributes": {"LeaseContractLength": "3yr"},
+                }
+            }
+        }
         with (
             patch.object(plugin, "AnsibleAWSModule", return_value=module),
             patch.object(plugin, "require_client_methods") as require,
@@ -67,7 +84,25 @@ class Ec2PricingInfoTests(TestCase):
                 )
             },
         )
-        self.assertEqual(raised.exception.values["products"][0]["terms"], terms)
+        self.assertEqual(
+            raised.exception.values["products"][0]["terms"],
+            {
+                "on_demand": {
+                    "SKU.OFFER": {
+                        "effective_date": "2026-09-01T00:00:00Z",
+                        "offer_term_code": "OFFER",
+                        "price_dimensions": {
+                            "SKU.OFFER.RATE": {
+                                "applies_to": [],
+                                "price_per_unit": {"USD": "1"},
+                                "rate_code": "SKU.OFFER.RATE",
+                            }
+                        },
+                        "term_attributes": {"lease_contract_length": "3yr"},
+                    }
+                }
+            },
+        )
         query.assert_called_once_with(
             client,
             "get_products",
@@ -188,3 +223,47 @@ class Ec2PricingInfoTests(TestCase):
                 plugin.main()
 
             self.assertIn(message, raised.exception.values["msg"])
+
+
+@pytest.mark.parametrize("region", ["us-east-1", "eu-central-1", "us-west-2"])
+def test_pricing_client_uses_the_selected_region(region):
+    module = Mock(
+        params={
+            "filters": [{"field": "instanceType", "type": "TERM_MATCH", "value": "t3.micro"}],
+            "format_version": "aws_v1",
+            "max_results": None,
+            "service_code": "AmazonEC2",
+        },
+        region=region,
+        client=Mock(return_value=Mock()),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "paginated_query_with_retries", return_value={"PriceList": []}),
+    ):
+        plugin.main()
+
+    # module.client() connects to module.region; the module no longer overrides it.
+    assert module.client.call_args.args == ("pricing",)
+    assert "region" not in module.client.call_args.kwargs
+
+
+def test_region_is_required():
+    module = FakeModule(
+        {
+            "filters": [{"field": "instanceType", "type": "TERM_MATCH", "value": "t3.micro"}],
+            "format_version": "aws_v1",
+            "max_results": None,
+            "service_code": "AmazonEC2",
+        },
+        region=None,
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert "region is required" in raised.value.values["msg"]
