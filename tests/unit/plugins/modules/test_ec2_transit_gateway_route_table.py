@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from unittest import TestCase
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import pytest
 
@@ -42,7 +42,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
         client.delete_transit_gateway_route_table.side_effect = plugin.ClientError(
             {
                 "Error": {
-                    "Code": "InvalidTransitGatewayRouteTableID.NotFound",
+                    "Code": "InvalidRouteTableID.NotFound",
                     "Message": "gone",
                 }
             },
@@ -64,6 +64,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
         assert len(options["required_one_of"]) == 2
         assert "default" not in options["argument_spec"]["routes"]["options"]["blackhole"]
         assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
+        assert options["argument_spec"]["purge_routes"]["default"] is True
 
     def test_name_is_merged_into_desired_tags(self):
         module = SimpleNamespace(params={"name": "main", "tags": {"Env": "prod"}})
@@ -476,11 +477,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
         client = Mock()
         routes = [{"DestinationCidrBlock": "10.0.0.0/8", "State": "active", "Type": "static"}]
         with (
-            patch.object(
-                plugin,
-                "paginated_query_with_retries",
-                return_value={"Routes": routes},
-            ) as query,
+            patch.object(plugin, "query_list", return_value=routes) as query,
             patch.object(plugin, "require_client_methods"),
         ):
             result = plugin.search_routes(
@@ -491,7 +488,8 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
             )
 
         self.assertEqual(result, routes)
-        self.assertEqual(query.call_args.args[1], "search_transit_gateway_routes")
+        self.assertEqual(query.call_args.args[2:4], ("search_transit_gateway_routes", "Routes"))
+        self.assertEqual(query.call_args.kwargs["TransitGatewayRouteTableId"], "tgw-rtb-1")
         client.search_transit_gateway_routes.assert_not_called()
 
     def test_route_table_lookup_rejects_malformed_response(self):
@@ -509,7 +507,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
 
     def test_route_search_rejects_malformed_response(self):
         with (
-            patch.object(plugin, "paginated_query_with_retries", return_value={"Routes": [None]}),
+            patch.object(plugin, "query_list", return_value=[None]),
             patch.object(plugin, "require_client_methods"),
             self.assertRaises(ModuleFail) as raised,
         ):
@@ -551,11 +549,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
         with (
             patch.object(plugin, "find_route_table", return_value=route_table),
             patch.object(plugin, "get_route", return_value=desired_route),
-            patch.object(
-                plugin,
-                "static_routes",
-                side_effect=[[desired_route, stale_route], [desired_route]],
-            ),
+            patch.object(plugin, "static_routes", return_value=[desired_route, stale_route]) as static_routes,
             patch.object(plugin, "ensure_route_absent", return_value=(True, None)) as remove,
             self.assertRaises(ModuleExit) as raised,
         ):
@@ -563,6 +557,7 @@ class Ec2TransitGatewayRouteTableTests(TestCase):
 
         self.assertTrue(raised.exception.values["changed"])
         remove.assert_called_once_with(client, module, "tgw-rtb-1", "192.0.2.0/24")
+        static_routes.assert_called_once()
         self.assertEqual(
             [route["destination_cidr_block"] for route in raised.exception.values["routes"]],
             ["10.0.0.0/8"],
@@ -649,3 +644,73 @@ def test_absent_check_mode_skips_deleting_route_wait():
 
     assert changed is False
     assert client.mock_calls == []
+
+
+def present_params(**overrides):
+    return dict(
+        {
+            "name": None,
+            "purge_routes": True,
+            "purge_tags": True,
+            "routes": None,
+            "state": "present",
+            "tags": None,
+            "transit_gateway_id": None,
+            "transit_gateway_route_table_id": "tgw-rtb-1",
+            "wait": False,
+        },
+        **overrides,
+    )
+
+
+def test_purge_routes_is_ignored_without_routes():
+    module = FakeModule(present_params())
+    table = {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "static_routes", side_effect=AssertionError("Unexpected route search")),
+        patch.object(plugin, "get_route", side_effect=AssertionError("Unexpected route search")),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    assert result.value.values["changed"] is False
+    assert "routes" not in result.value.values
+
+
+def test_empty_routes_purge_every_static_route():
+    module = FakeModule(present_params(routes=[]))
+    table = {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    stale = {"DestinationCidrBlock": "192.0.2.0/24", "State": "active", "Type": "static"}
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "static_routes", return_value=[stale]),
+        patch.object(plugin, "ensure_route_absent", return_value=(True, None)) as remove,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["routes"] == []
+    remove.assert_called_once_with(ANY, module, "tgw-rtb-1", "192.0.2.0/24")
+
+
+def test_route_table_id_must_belong_to_transit_gateway():
+    module = FakeModule(present_params(name="main", transit_gateway_id="tgw-1"))
+    table = {"State": "available", "TransitGatewayId": "tgw-2", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    with (
+        patch.object(plugin, "get_route_table_by_id", return_value=table),
+        pytest.raises(ModuleFail) as result,
+    ):
+        plugin.find_route_table(Mock(), module)
+
+    assert result.value.values["msg"] == (
+        "EC2 transit gateway route table tgw-rtb-1 belongs to transit gateway tgw-2, not tgw-1"
+    )
+
+
+def test_route_table_id_matching_transit_gateway_is_returned():
+    module = FakeModule(present_params(transit_gateway_id="tgw-1"))
+    table = {"State": "available", "TransitGatewayId": "tgw-1", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    with patch.object(plugin, "get_route_table_by_id", return_value=table):
+        assert plugin.find_route_table(Mock(), module) is table
