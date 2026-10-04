@@ -15,6 +15,7 @@ options:
   arn:
     description:
       - Optional IAM OIDC provider ARN used to limit the result set.
+      - A provider that does not exist results in an empty list.
       - Mutually exclusive with O(url).
     type: str
   url:
@@ -62,6 +63,10 @@ open_id_connect_providers:
       returned: always
       type: list
       elements: str
+    create_date:
+      description: The time the provider was created.
+      returned: when returned by AWS
+      type: str
     open_id_connect_provider_arn:
       description: The provider ARN.
       returned: always

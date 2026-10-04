@@ -1,0 +1,9 @@
+---
+minor_changes:
+  - iam_oidc_provider - ``client_id_list`` and ``thumbprint_list`` are optional, as in the IAM API;
+    omitting them uses the AWS behavior on creation and leaves an existing provider unchanged.
+  - iam_oidc_provider - an empty ``client_id_list`` removes all client IDs.
+  - iam_oidc_provider role - ``client_id_list`` and ``thumbprint_list`` are optional for list items.
+  - iam_oidc_provider - document the returned ``create_date``.
+  - iam_oidc_provider_info - document the returned ``create_date``.
+...

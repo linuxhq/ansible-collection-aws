@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+from botocore.exceptions import ClientError
+
 from ansible_collections.linuxhq.aws.plugins.modules import iam_oidc_provider_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -83,3 +85,18 @@ class IamOidcProviderInfoTests(TestCase):
             "example.com/id",
         )
         get.assert_called_once()
+
+    def test_missing_provider_arn_returns_an_empty_list(self):
+        client = Mock()
+        client.get_open_id_connect_provider.side_effect = ClientError(
+            {"Error": {"Code": "NoSuchEntity", "Message": "missing"}}, "GetOpenIDConnectProvider"
+        )
+        module = FakeModule({"arn": "arn:missing", "url": None}, client=client)
+        with (
+            patch.object(plugin, "AnsibleAWSModule", return_value=module),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.main()
+
+        self.assertEqual(raised.exception.values["open_id_connect_providers"], [])

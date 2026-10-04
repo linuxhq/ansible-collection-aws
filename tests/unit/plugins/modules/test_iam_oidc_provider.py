@@ -64,7 +64,7 @@ class IamOidcProviderTests(TestCase):
 
     def test_module_contract(self):
         options = assert_module_contract(self, plugin)
-        assert options["required_if"] == [("state", "present", ["client_id_list", "thumbprint_list"])]
+        assert "required_if" not in options
         assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
 
     def test_main_only_requires_provider_listing_before_reconciliation(self):
@@ -333,25 +333,87 @@ class IamOidcProviderTests(TestCase):
             aws_retry=True,
         )
 
-    def test_present_rejects_empty_provider_lists(self):
-        cases = [
-            ([], ["a" * 40], "client_id_list must contain at least 1 entry"),
-            (["client"], [], "thumbprint_list must contain at least 1 entry"),
-        ]
-        for client_ids, thumbprints, message in cases:
-            with self.subTest(message=message):
-                assert_module_rejects(
-                    self,
-                    plugin,
-                    {
-                        "client_id_list": client_ids,
-                        "state": "present",
-                        "tags": None,
-                        "thumbprint_list": thumbprints,
-                        "url": "https://example.com/id",
-                    },
-                    message,
-                )
+    def test_new_provider_omits_unset_lists_so_aws_applies_its_defaults(self):
+        client = Mock()
+        client.create_open_id_connect_provider.return_value = {"OpenIDConnectProviderArn": "arn:provider"}
+        module = FakeModule(
+            {
+                "client_id_list": ["sts.amazonaws.com"],
+                "purge_tags": True,
+                "tags": None,
+                "thumbprint_list": None,
+                "url": "https://example.com/id",
+            }
+        )
+        with (
+            patch.object(plugin, "get_provider_by_url", return_value=None),
+            patch.object(plugin, "get_provider_by_arn", return_value=None),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertTrue(raised.exception.values["changed"])
+        client.create_open_id_connect_provider.assert_called_once_with(
+            ClientIDList=["sts.amazonaws.com"],
+            Url="https://example.com/id",
+            aws_retry=True,
+        )
+
+    def test_omitted_lists_leave_an_existing_provider_unchanged(self):
+        client = Mock()
+        current = {
+            "ClientIDList": ["client"],
+            "OpenIDConnectProviderArn": "arn:provider",
+            "ThumbprintList": ["a" * 40],
+            "Url": "example.com/id",
+        }
+        module = FakeModule(
+            {
+                "client_id_list": None,
+                "purge_tags": True,
+                "tags": None,
+                "thumbprint_list": None,
+                "url": "https://example.com/id",
+            }
+        )
+        with (
+            patch.object(plugin, "get_provider_by_url", return_value=current),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertFalse(raised.exception.values["changed"])
+        self.assertEqual(client.mock_calls, [])
+
+    def test_empty_client_id_list_removes_all_client_ids(self):
+        client = Mock()
+        current = {
+            "ClientIDList": ["client-a", "client-b"],
+            "OpenIDConnectProviderArn": "arn:provider",
+            "ThumbprintList": ["a" * 40],
+            "Url": "example.com/id",
+        }
+        module = FakeModule(
+            {
+                "client_id_list": [],
+                "purge_tags": True,
+                "tags": None,
+                "thumbprint_list": None,
+                "url": "https://example.com/id",
+            }
+        )
+        with (
+            patch.object(plugin, "get_provider_by_url", return_value=current),
+            patch.object(plugin, "require_client_methods"),
+            self.assertRaises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        self.assertTrue(raised.exception.values["changed"])
+        self.assertEqual(raised.exception.values["open_id_connect_provider"]["client_id_list"], [])
+        self.assertEqual(client.remove_client_id_from_open_id_connect_provider.call_count, 2)
+        client.update_open_id_connect_provider_thumbprint.assert_not_called()
 
 
 @pytest.mark.parametrize("current_count,new_count", [(100, 1), (98, 3)])
