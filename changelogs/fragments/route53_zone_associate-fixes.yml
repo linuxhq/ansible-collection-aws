@@ -1,0 +1,14 @@
+---
+bugfixes:
+  - route53_zone_associate - fail before associating a VPC with a hosted zone that does not exist or is public,
+    including in check mode, instead of predicting a change that AWS rejects.
+  - route53_zone_associate - fail before removing the last VPC from a private hosted zone,
+    including in check mode, and explain the AWS rejection.
+  - route53_zone_associate - accept every region AWS accepts for ``vpc_region``, such as ``eusc-de-east-1``.
+  - route53_zone_associate - retry ``PriorRequestNotComplete`` while another change to the hosted zone is in progress.
+  - route53_zone_associate - manage associations with hosted zones owned by another AWS account
+    by looking them up with ``ListHostedZonesByVPC`` when ``GetHostedZone`` is denied.
+minor_changes:
+  - route53_zone_associate - add ``wait``, ``wait_delay``, and ``wait_timeout``
+    to wait for the change to propagate to all Route53 DNS servers.
+...
