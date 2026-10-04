@@ -1,275 +1,124 @@
 import json
-from unittest import TestCase
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_document_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
+    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    assert_module_contract,
-    assert_module_rejects,
+    ModuleInitialized,
 )
 
 
-class SsmDocumentInfoTests(TestCase):
-    def test_module_contract(self):
-        options = assert_module_contract(self, plugin)
-        assert len(options["mutually_exclusive"]) == 2
-
-    def test_content_transform_handles_json_text_and_empty_values(self):
-        assert plugin.content_transform('{"schemaVersion":"2.2"}') == {"schema_version": "2.2"}
-        assert plugin.content_transform("not-json") == "not-json"
-        assert plugin.content_transform(None) == {}
-        content = {"schemaVersion": "2.2"}
-        assert plugin.content_transform(content) is content
-
-    def test_empty_name_is_rejected(self):
-        assert_module_rejects(
-            self,
-            plugin,
-            {
-                "document_format": "JSON",
-                "document_version": None,
-                "filters": None,
-                "name": "",
-                "version_name": None,
-            },
-            "name must not be empty",
-        )
-
-    def test_version_name_omits_document_version_and_loads_content_and_tags(self):
-        client = Mock()
-        client.get_document.return_value = {
-            "Content": '{"schemaVersion":"2.2"}',
-            "Name": "example",
-        }
-        client.list_tags_for_resource.return_value = {"TagList": [{"Key": "Name", "Value": "example"}]}
-        module = FakeModule(
-            {
-                "document_format": "JSON",
-                "document_version": None,
-                "filters": None,
-                "name": "example",
-                "version_name": "production",
-            },
-            client=client,
-        )
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods") as require_methods,
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.main()
-
-        require_methods.assert_called_once_with(
-            module,
-            client,
-            "Systems Manager",
-            {
-                "get_document": ("Name", "DocumentFormat", "VersionName"),
-                "list_tags_for_resource": ("ResourceId", "ResourceType"),
-            },
-        )
-        self.assertNotIn("DocumentVersion", client.get_document.call_args.kwargs)
-        self.assertEqual(client.get_document.call_args.kwargs["VersionName"], "production")
-        document = raised.exception.values["document"]
-        self.assertEqual(document["content"]["schema_version"], "2.2")
-        self.assertEqual(document["tags"], {"Name": "example"})
-
-    def test_filter_values_are_converted_to_strings(self):
-        module = FakeModule(
-            {
-                "document_format": "JSON",
-                "document_version": None,
-                "filters": {"Owner": [123]},
-                "name": None,
-                "version_name": None,
-            },
-            client=Mock(),
-        )
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            patch.object(plugin, "query_list", return_value=[]) as query,
-            self.assertRaises(ModuleExit),
-        ):
-            plugin.main()
-
-        self.assertEqual(query.call_args.kwargs["Filters"], [{"Key": "Owner", "Values": ["123"]}])
-
-    def test_rejects_malformed_document_identifier(self):
-        module = FakeModule(
-            {
-                "document_format": "JSON",
-                "document_version": None,
-                "filters": None,
-                "name": None,
-                "version_name": None,
-            },
-            client=Mock(),
-        )
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            patch.object(plugin, "query_list", return_value=[None]),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.main()
-
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "Unexpected response while listing AWS Systems Manager documents",
-        )
-
-    def test_rejects_malformed_get_response(self):
-        client = Mock(get_document=Mock(return_value=None))
-        module = FakeModule(
-            {
-                "document_format": "JSON",
-                "document_version": None,
-                "filters": None,
-                "name": "example",
-                "version_name": None,
-            },
-            client=client,
-        )
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.main()
-
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "Unexpected response while getting AWS Systems Manager document example",
-        )
-
-    def test_rejects_malformed_tags(self):
-        client = Mock(
-            get_document=Mock(return_value={"Content": "{}", "Name": "example"}),
-            list_tags_for_resource=Mock(return_value={"TagList": [None]}),
-        )
-        module = FakeModule(
-            {
-                "document_format": "JSON",
-                "document_version": None,
-                "filters": None,
-                "name": "example",
-                "version_name": None,
-            },
-            client=client,
-        )
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.main()
-
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "Unexpected response while listing tags for AWS Systems Manager document example",
-        )
+def params(**overrides):
+    values = {"document_format": "JSON", "document_version": None, "filters": None, "name": None, "version_name": None}
+    values.update(overrides)
+    return values
 
 
-@pytest.mark.parametrize("payload_key", ["InputPayload", "inputPayload", "input_payload"])
-def test_document_result_preserves_script_payload(payload_key):
-    payload = {"CustomerID": "one", "customer_id": "two", "Items": [{"NestedKey": "value"}]}
-    content = {"schemaVersion": "0.3", "mainSteps": [{"inputs": {payload_key: payload}}]}
-    client = Mock()
-    client.get_document.return_value = {"Name": "example", "Content": json.dumps(content)}
-    client.list_tags_for_resource.return_value = {"TagList": []}
-    module = FakeModule(
-        {"name": "example", "document_format": "JSON", "document_version": None, "version_name": None, "filters": None},
-        client=client,
-    )
+def run(module, documents=None):
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleExit) as raised,
+        patch.object(plugin, "require_client_methods") as require_client_methods,
+        patch.object(plugin, "query_list", return_value=documents or []) as query_list,
+        pytest.raises((ModuleExit, ModuleFail)) as raised,
     ):
         plugin.main()
 
-    result = raised.value.values["document"]["content"]
-    assert result["schema_version"] == "0.3"
-    assert result["main_steps"][0]["inputs"]["input_payload"] == payload
+    return raised.value, require_client_methods, query_list
 
 
-def test_document_content_preserves_parameter_names_and_round_trips():
+def test_module_contract():
+    captured = {}
+
+    def initialize(**kwargs):
+        captured.update(kwargs)
+        raise ModuleInitialized
+
+    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
+        plugin.main()
+
+    assert captured["supports_check_mode"]
+    assert len(captured["mutually_exclusive"]) == 2
+    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
+
+
+def test_content_transform_returns_json_unchanged_and_text_as_is():
+    assert plugin.content_transform('{"schemaVersion":"2.2"}') == {"schemaVersion": "2.2"}
+    assert plugin.content_transform("not-json") == "not-json"
+    assert plugin.content_transform(None) == {}
+
+
+def test_empty_name_is_rejected():
+    result, _require, _query = run(FakeModule(params(name="")))
+
+    assert result.values["msg"] == "name must not be empty"
+
+
+def test_version_name_omits_document_version_and_loads_content_and_tags():
+    client = Mock()
+    client.get_document.return_value = {"Content": '{"schemaVersion":"2.2"}', "Name": "example"}
+    client.list_tags_for_resource.return_value = {"TagList": [{"Key": "Name", "Value": "example"}]}
+    module = FakeModule(params(name="example", version_name="production"), client=client)
+    result, require_client_methods, _query = run(module)
+
+    require_client_methods.assert_called_once_with(
+        module,
+        client,
+        "Systems Manager",
+        {
+            "get_document": ("Name", "DocumentFormat", "VersionName"),
+            "list_tags_for_resource": ("ResourceId", "ResourceType"),
+        },
+    )
+    assert "DocumentVersion" not in client.get_document.call_args.kwargs
+    assert client.get_document.call_args.kwargs["VersionName"] == "production"
+    assert result.values["document"]["content"] == {"schemaVersion": "2.2"}
+    assert result.values["document"]["tags"] == {"Name": "example"}
+
+
+def test_content_keys_are_returned_unchanged():
     content = {
         "schemaVersion": "2.2",
-        "parameters": {
-            "Message": {"type": "String", "default": "Hello", "allowedValues": ["Hello"]},
-            "message": {"type": "String", "default": "World"},
-        },
-        "mainSteps": [
-            {
-                "action": "aws:runShellScript",
-                "name": "printMessage",
-                "inputs": {"runCommand": ["echo {{Message}} {{message}}"]},
-            }
-        ],
-    }
-    result = plugin.content_transform(json.dumps(content))
-    assert set(result["parameters"]) == {"Message", "message"}
-    assert result["parameters"]["Message"]["allowed_values"] == ["Hello"]
-    assert result["main_steps"][0]["inputs"]["run_command"] == ["echo {{Message}} {{message}}"]
-    assert plugin.normalize_document_content(result) == content
-
-
-@pytest.mark.parametrize(
-    "parameter_type,default",
-    [
-        ("StringMap", {"tenant_id": "alpha", "tenantId": "beta"}),
-        ("MapList", [{"tenant_id": "alpha", "tenantId": "beta"}]),
-    ],
-)
-def test_document_info_preserves_map_defaults(parameter_type, default):
-    content = {
-        "schemaVersion": "0.3",
-        "parameters": {"Payload": {"type": parameter_type, "default": default, "maxItems": 2}},
-    }
-    result = plugin.content_transform(json.dumps(content))
-    assert result["parameters"]["Payload"]["default"] == default
-    assert result["parameters"]["Payload"]["max_items"] == 2
-    assert plugin.normalize_document_content(result) == content
-
-
-@pytest.mark.parametrize("document_type", ["ApplicationConfiguration", "ApplicationConfigurationSchema"])
-def test_application_document_info_preserves_content(document_type):
-    content = {
-        "properties": {"feature_enabled": {"maxLength": 10}},
-        "required": ["feature_enabled"],
-        "featureEnabled": True,
-        "feature_enabled": False,
+        "parameters": {"Message": {"type": "String"}},
+        "mainSteps": [{"action": "aws:executeScript", "inputs": {"InputPayload": {"Key_Name": 1}}}],
     }
     client = Mock()
-    client.get_document.return_value = {
-        "Name": "example",
-        "DocumentType": document_type,
-        "Content": json.dumps(content),
-    }
+    client.get_document.return_value = {"Content": json.dumps(content), "Name": "example"}
     client.list_tags_for_resource.return_value = {"TagList": []}
-    module = FakeModule(
-        {
-            "name": "example",
-            "document_format": "JSON",
-            "document_version": None,
-            "version_name": None,
-            "filters": None,
-        },
-        client=client,
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleExit) as result,
-    ):
-        plugin.main()
+    result, _require, _query = run(FakeModule(params(name="example"), client=client))
 
-    assert result.value.values["document"]["content"] == content
-    assert result.value.values["documents"][0]["content"] == content
+    assert result.values["documents"][0]["content"] == content
+
+
+def test_filter_values_are_converted_to_strings():
+    _result, _require, query_list = run(FakeModule(params(filters={"Owner": [123]}), client=Mock()))
+
+    assert query_list.call_args.kwargs["Filters"] == [{"Key": "Owner", "Values": ["123"]}]
+
+
+def test_rejects_malformed_document_identifier():
+    result, _require, _query = run(FakeModule(params(), client=Mock()), [None])
+
+    assert result.values["msg"] == "Unexpected response while listing AWS Systems Manager documents"
+
+
+def test_rejects_malformed_get_response():
+    client = Mock(get_document=Mock(return_value=None))
+    result, _require, _query = run(FakeModule(params(name="example"), client=client))
+
+    assert result.values["msg"] == "Unexpected response while getting AWS Systems Manager document example"
+
+
+def test_rejects_malformed_tags():
+    client = Mock(
+        get_document=Mock(return_value={"Content": "{}", "Name": "example"}),
+        list_tags_for_resource=Mock(return_value={"TagList": [None]}),
+    )
+    result, _require, _query = run(FakeModule(params(name="example"), client=client))
+
+    assert result.values["msg"] == "Unexpected response while listing tags for AWS Systems Manager document example"

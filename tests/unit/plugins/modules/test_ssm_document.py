@@ -1,434 +1,323 @@
 import json
-from unittest import TestCase
-from unittest.mock import Mock, patch
+from pathlib import Path
+from unittest.mock import Mock, call, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_document as plugin
-from ansible_collections.linuxhq.aws.plugins.modules.ssm_document_info import content_transform
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
+    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    assert_module_contract,
+    ModuleInitialized,
 )
 
 
-class SsmDocumentTests(TestCase):
-    def test_absent_tolerates_document_disappearing_during_delete(self):
-        client = Mock()
-        client.delete_document.side_effect = plugin.ClientError(
-            {"Error": {"Code": "InvalidDocument", "Message": "gone"}},
-            "DeleteDocument",
-        )
-        module = FakeModule({"name": "document"})
-        with (
-            patch.object(plugin, "get_document", return_value={"Name": "document"}),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_absent(client, module)
-
-        self.assertTrue(raised.exception.values["changed"])
-
-    def test_module_contract(self):
-        options = assert_module_contract(self, plugin)
-        assert options["required_if"] == [("state", "present", ["content", "document_type"])]
-
-    def test_document_content_accepts_json_or_mapping(self):
-        assert plugin.document_content({"Content": '{"schemaVersion":"2.2"}'}) == {"schemaVersion": "2.2"}
-        content = {"schemaVersion": "2.2"}
-        assert plugin.document_content({"Content": content}) is content
-        assert plugin.document_content(None) == {}
-
-    def test_content_update_promotes_the_new_default_version(self):
-        client = Mock()
-        client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2"}}
-        module = FakeModule(
-            {
-                "content": {"schema_version": "2.2"},
-                "document_type": "Command",
-                "document_version": "$LATEST",
-                "name": "example",
-                "purge_tags": True,
-                "tags": None,
-            }
-        )
-        current = {
-            "Content": '{"schemaVersion":"1.2"}',
-            "DocumentType": "Command",
-            "Name": "example",
-        }
-        updated = dict(current, Content='{"schemaVersion":"2.2"}')
-        with (
-            patch.object(plugin, "get_document", side_effect=[current, updated]),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertTrue(raised.exception.values["changed"])
-        self.assertEqual(
-            client.update_document.call_args.kwargs["Content"],
-            '{"schemaVersion":"2.2"}',
-        )
-        client.update_document_default_version.assert_called_once_with(
-            DocumentVersion="2", Name="example", aws_retry=True
-        )
-
-    def test_default_version_updates_latest_instead_of_the_older_default(self):
-        client = Mock()
-        client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "3"}}
-        module = FakeModule(
-            {
-                "content": {"schema_version": "2.2"},
-                "document_type": "Command",
-                "document_version": "$DEFAULT",
-                "name": "example",
-                "purge_tags": True,
-                "tags": None,
-            }
-        )
-        current = {
-            "Content": '{"schemaVersion":"1.2"}',
-            "DocumentType": "Command",
-            "DocumentVersion": "1",
-            "Name": "example",
-        }
-        latest = dict(current, DocumentVersion="2")
-        updated = dict(current, Content='{"schemaVersion":"2.2"}', DocumentVersion="3")
-        with (
-            patch.object(plugin, "get_document", side_effect=[current, latest, updated]),
-            self.assertRaises(ModuleExit),
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertEqual(client.update_document.call_args.kwargs["DocumentVersion"], "$LATEST")
-        client.update_document_default_version.assert_called_once_with(
-            DocumentVersion="3", Name="example", aws_retry=True
-        )
-
-    def test_default_version_promotes_matching_latest_without_duplicate_update(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "content": {"schema_version": "2.2"},
-                "document_type": "Command",
-                "document_version": "$DEFAULT",
-                "name": "example",
-                "purge_tags": True,
-                "tags": None,
-            }
-        )
-        current = {
-            "Content": '{"schemaVersion":"1.2"}',
-            "DocumentType": "Command",
-            "DocumentVersion": "1",
-            "Name": "example",
-        }
-        latest = dict(
-            current,
-            Content='{"schemaVersion":"2.2"}',
-            DocumentVersion="2",
-        )
-        with (
-            patch.object(plugin, "get_document", side_effect=[current, latest, latest]),
-            self.assertRaises(ModuleExit),
-        ):
-            plugin.ensure_present(client, module)
-
-        client.update_document.assert_not_called()
-        client.update_document_default_version.assert_called_once_with(
-            DocumentVersion="2", Name="example", aws_retry=True
-        )
-
-    def test_update_result_ignores_stale_default_version_refresh(self):
-        client = Mock()
-        client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2", "Name": "example"}}
-        module = FakeModule(
-            {
-                "content": {"schema_version": "2.2"},
-                "document_type": "Command",
-                "document_version": "$DEFAULT",
-                "name": "example",
-                "purge_tags": True,
-                "tags": None,
-            }
-        )
-        current = {
-            "Content": '{"schemaVersion":"1.2"}',
-            "DocumentType": "Command",
-            "DocumentVersion": "1",
-            "Name": "example",
-        }
-        with (
-            patch.object(plugin, "get_document", side_effect=[current, current, current]),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertEqual(
-            raised.exception.values["document"]["content"],
-            {"schema_version": "2.2"},
-        )
-        self.assertEqual(raised.exception.values["document"]["document_version"], "2")
-
-    def test_update_fails_when_aws_omits_the_new_document_version(self):
-        client = Mock()
-        client.update_document.return_value = {"DocumentDescription": {}}
-        module = FakeModule(
-            {
-                "content": {"schema_version": "2.2"},
-                "document_type": "Command",
-                "document_version": "$LATEST",
-                "name": "example",
-                "purge_tags": True,
-                "tags": None,
-            }
-        )
-        current = {
-            "Content": '{"schemaVersion":"1.2"}',
-            "DocumentType": "Command",
-            "Name": "example",
-        }
-
-        with (
-            patch.object(plugin, "get_document", return_value=current),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertIn("no document version", raised.exception.values["msg"])
-        client.update_document_default_version.assert_not_called()
-
-    def test_existing_document_type_is_immutable(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "content": {"schema_version": "2.2"},
-                "document_type": "Session",
-                "document_version": "$LATEST",
-                "name": "example",
-                "purge_tags": True,
-                "tags": None,
-            }
-        )
-        current = {
-            "Content": '{"schemaVersion":"2.2"}',
-            "DocumentType": "Command",
-            "Name": "example",
-        }
-        with (
-            patch.object(plugin, "get_document", return_value=current),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertIn("immutable fields differ", raised.exception.values["msg"])
-        client.update_document.assert_not_called()
-
-    def test_new_document_serializes_content_and_tags_for_aws(self):
-        client = Mock()
-        client.create_document.return_value = {
-            "DocumentDescription": {
-                "DocumentVersion": "1",
-                "Name": "example",
-            }
-        }
-        module = FakeModule(
-            {
-                "content": {"schema_version": "2.2"},
-                "document_type": "Command",
-                "document_version": "$LATEST",
-                "name": "example",
-                "purge_tags": True,
-                "tags": {"Name": "example"},
-            }
-        )
-        with (
-            patch.object(plugin, "get_document", side_effect=[None, None]),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertEqual(
-            raised.exception.values["document"],
-            {
-                "content": {"schema_version": "2.2"},
-                "document_version": "1",
-                "name": "example",
-                "tags": {"Name": "example"},
-            },
-        )
-        self.assertTrue(raised.exception.values["changed"])
-        client.create_document.assert_called_once_with(
-            Content='{"schemaVersion":"2.2"}',
-            DocumentFormat="JSON",
-            DocumentType="Command",
-            Name="example",
-            Tags=[{"Key": "Name", "Value": "example"}],
-            aws_retry=True,
-        )
-
-    def test_get_document_rejects_malformed_content(self):
-        responses = (None, {"Content": "not-json"}, {"Content": "[]"})
-        for response in responses:
-            with self.subTest(response=response):
-                client = Mock(get_document=Mock(return_value=response))
-                module = FakeModule({"document_version": "$LATEST", "name": "example"})
-                with self.assertRaises(ModuleFail) as raised:
-                    plugin.get_document(client, module)
-
-                self.assertIn("Unexpected", raised.exception.values["msg"])
-
-    def test_get_document_rejects_malformed_tags(self):
-        client = Mock(
-            get_document=Mock(return_value={"Content": "{}"}),
-            list_tags_for_resource=Mock(return_value={"TagList": [None]}),
-        )
-        module = FakeModule({"document_version": "$LATEST", "name": "example"})
-        with self.assertRaises(ModuleFail) as raised:
-            plugin.get_document(client, module, include_tags=True)
-
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "Unexpected response while listing tags for AWS Systems Manager document example",
-        )
-
-    def test_create_rejects_malformed_response(self):
-        client = Mock(create_document=Mock(return_value={"DocumentDescription": None}))
-        module = FakeModule(
-            {
-                "content": {"schema_version": "2.2"},
-                "document_type": "Command",
-                "document_version": "$LATEST",
-                "name": "example",
-                "purge_tags": True,
-                "tags": None,
-            }
-        )
-        with (
-            patch.object(plugin, "get_document", return_value=None),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.ensure_present(client, module)
-
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "AWS Systems Manager did not return the created document example",
-        )
-
-
-@pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("existing", [False, True])
-@pytest.mark.parametrize("payload_key", ["InputPayload", "inputPayload", "input_payload"])
-def test_ssm_document_preserves_script_payload_keys(check_mode, existing, payload_key):
-    payload = {
-        "myValue": "camel",
-        "my_value": "snake",
-        "nestedData": {"SomeKey": 1, "some_key": 2},
-        "items": [{"AnotherKey": False, "another_key": None}, ["unchanged", 3]],
+def params(**overrides):
+    values = {
+        "content": {"schemaVersion": "2.2"},
+        "document_type": "Command",
+        "document_version": "$LATEST",
+        "force": False,
+        "name": "example",
+        "purge_tags": True,
+        "state": "present",
+        "tags": None,
+        "wait": True,
+        "wait_delay": 5,
+        "wait_timeout": 300,
     }
-    content = {
-        "schemaVersion": "0.3",
-        "mainSteps": [
-            {
-                "name": "run",
-                "action": "aws:executeScript",
-                "inputs": {
-                    "Runtime": "python3.11",
-                    "Handler": "handler",
-                    payload_key: payload,
-                    "Script": "def handler(events, context):\n    return events['my_value']",
-                },
-            }
-        ],
-    }
-    client = Mock(
-        create_document=Mock(
-            return_value={
-                "DocumentDescription": {"Name": "review", "DocumentType": "Automation", "DocumentVersion": "1"}
-            }
-        )
-    )
-    module = FakeModule(
-        {
-            "name": "review",
-            "tags": None,
-            "purge_tags": True,
-            "content": content,
-            "document_type": "Automation",
-            "document_version": "$LATEST",
-        },
-        check_mode=check_mode,
-    )
-    current = {"Name": "review", "DocumentType": "Automation", "Content": json.dumps(content)} if existing else None
-    with patch.object(plugin, "get_document", return_value=current), pytest.raises(ModuleExit) as result:
-        plugin.ensure_present(client, module)
-
-    returned = result.value.values["document"]["content"]["main_steps"][0]["inputs"]["input_payload"]
-    assert returned == payload
-    if check_mode or existing:
-        client.create_document.assert_not_called()
-        client.update_document.assert_not_called()
-    else:
-        created = json.loads(client.create_document.call_args.kwargs["Content"])
-        assert created["mainSteps"][0]["inputs"]["InputPayload"] == payload
-        assert created["mainSteps"][0]["inputs"]["Script"] == content["mainSteps"][0]["inputs"]["Script"]
+    values.update(overrides)
+    return values
 
 
-@pytest.mark.parametrize("existing_key", ["my_value", "myValue"])
-def test_script_payload_keys_are_compared_exactly(existing_key):
-    content = {
-        "schemaVersion": "0.3",
-        "mainSteps": [
-            {
-                "name": "run",
-                "action": "aws:executeScript",
-                "inputs": {
-                    "Runtime": "python3.11",
-                    "Handler": "handler",
-                    "Script": "def handler(events, context):\n    return events['my_value']",
-                    "InputPayload": {"my_value": "value"},
-                },
-            }
-        ],
-    }
-    existing_content = json.loads(json.dumps(content))
-    existing_content["mainSteps"][0]["inputs"]["InputPayload"] = {existing_key: "value"}
-    current = {
-        "Name": "review",
-        "DocumentType": "Automation",
-        "DocumentVersion": "1",
-        "Content": json.dumps(existing_content),
-    }
-    client = Mock(update_document=Mock(return_value={"DocumentDescription": {"DocumentVersion": "2"}}))
-    module = FakeModule(
-        {
-            "name": "review",
-            "document_type": "Automation",
-            "document_version": "$LATEST",
-            "content": content,
-            "tags": None,
-            "purge_tags": True,
-        }
-    )
+def document(content, **overrides):
+    values = {"Content": json.dumps(content), "DocumentType": "Command", "DocumentVersion": "1", "Name": "example"}
+    values.update(overrides)
+    return values
+
+
+def run_present(client, module, documents):
+    """Run ensure_present with get_document returning each document in turn and waits patched out."""
+    reads = documents if callable(documents) else Mock(side_effect=list(documents))
     with (
-        patch.object(plugin, "get_document", return_value=current),
-        pytest.raises(ModuleExit) as result,
+        patch.object(plugin, "get_document", side_effect=reads) as get_document,
+        patch.object(plugin, "wait_for_document") as wait_for_document,
+        pytest.raises((ModuleExit, ModuleFail)) as raised,
     ):
         plugin.ensure_present(client, module)
 
-    assert result.value.values["changed"] is (existing_key != "my_value")
-    if existing_key == "my_value":
-        client.update_document.assert_not_called()
-        client.update_document_default_version.assert_not_called()
-    else:
-        submitted = json.loads(client.update_document.call_args.kwargs["Content"])
-        assert submitted == content
-        client.update_document_default_version.assert_called_once_with(
-            DocumentVersion="2",
-            Name="review",
-            aws_retry=True,
-        )
+    return raised.value, wait_for_document, get_document
+
+
+def run_absent(client, module, current):
+    with (
+        patch.object(plugin, "get_document", return_value=current),
+        patch.object(plugin, "wait_for_document") as wait_for_document,
+        pytest.raises((ModuleExit, ModuleFail)) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    return raised.value, wait_for_document
+
+
+def test_module_contract():
+    captured = {}
+
+    def initialize(**kwargs):
+        captured.update(kwargs)
+        raise ModuleInitialized
+
+    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
+        plugin.main()
+
+    spec = captured["argument_spec"]
+    assert captured["supports_check_mode"]
+    assert captured["required_if"] == [("state", "present", ["content", "document_type"])]
+    assert spec["force"]["default"] is False
+    assert spec["wait"]["default"] is True
+    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
+
+
+def test_document_content_accepts_json_or_mapping():
+    assert plugin.document_content({"Content": '{"schemaVersion":"2.2"}'}) == {"schemaVersion": "2.2"}
+    content = {"schemaVersion": "2.2"}
+    assert plugin.document_content({"Content": content}) is content
+    assert plugin.document_content(None) == {}
+
+
+def test_content_is_sent_compared_and_returned_unchanged():
+    content = {
+        "schemaVersion": "2.2",
+        "parameters": {"Message": {"type": "String", "default": "Hi"}, "message": {"type": "String"}},
+        "mainSteps": [{"action": "aws:runShellScript", "name": "run", "inputs": {"runCommand": ["echo"]}}],
+    }
+    client = Mock()
+    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1", "Name": "example"}}
+    result, _wait, _get = run_present(client, FakeModule(params(content=content)), [None, document(content)])
+
+    assert json.loads(client.create_document.call_args.kwargs["Content"]) == content
+    assert result.values["document"]["content"] == content
+
+    result, _wait, _get = run_present(
+        Mock(), FakeModule(params(content=content)), [document(content), document(content)]
+    )
+    assert not result.values["changed"]
+
+
+def test_snake_case_content_is_not_converted():
+    client = Mock()
+    client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2"}}
+    result, _wait, _get = run_present(
+        client,
+        FakeModule(params(content={"schema_version": "2.2"})),
+        [document({"schemaVersion": "2.2"}), document({"schema_version": "2.2"}, DocumentVersion="2")],
+    )
+
+    assert result.values["changed"]
+    assert client.update_document.call_args.kwargs["Content"] == '{"schema_version":"2.2"}'
+
+
+def test_content_update_waits_for_the_new_version_before_promoting():
+    client = Mock()
+    client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2"}}
+    calls = Mock()
+    client.update_document_default_version.side_effect = calls.promote
+    module = FakeModule(params(wait=False))
+    with (
+        patch.object(
+            plugin,
+            "get_document",
+            side_effect=[document({"schemaVersion": "1.2"}), document({"schemaVersion": "2.2"}, DocumentVersion="2")],
+        ),
+        patch.object(plugin, "wait_for_document", side_effect=lambda *args: calls.wait(*args[2:])),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"]
+    assert client.update_document.call_args.kwargs["Content"] == '{"schemaVersion":"2.2"}'
+    assert calls.mock_calls == [
+        call.wait("active", "2"),
+        call.promote(DocumentVersion="2", Name="example", aws_retry=True),
+    ]
+
+
+def test_default_version_updates_latest_instead_of_the_older_default():
+    client = Mock()
+    client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "3"}}
+    current = document({"schemaVersion": "1.2"})
+    latest = dict(current, DocumentVersion="2")
+    updated = document({"schemaVersion": "2.2"}, DocumentVersion="3")
+    run_present(client, FakeModule(params(document_version="$DEFAULT")), [current, latest, updated])
+
+    assert client.update_document.call_args.kwargs["DocumentVersion"] == "$LATEST"
+    client.update_document_default_version.assert_called_once_with(DocumentVersion="3", Name="example", aws_retry=True)
+
+
+def test_default_version_promotes_matching_latest_without_duplicate_update():
+    client = Mock()
+    current = document({"schemaVersion": "1.2"})
+    latest = document({"schemaVersion": "2.2"}, DocumentVersion="2")
+    run_present(client, FakeModule(params(document_version="$DEFAULT")), [current, latest, latest])
+
+    client.update_document.assert_not_called()
+    client.update_document_default_version.assert_called_once_with(DocumentVersion="2", Name="example", aws_retry=True)
+
+
+def test_update_result_ignores_stale_default_version_refresh():
+    client = Mock()
+    client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2", "Name": "example"}}
+    current = document({"schemaVersion": "1.2"})
+    result, _wait, _get = run_present(
+        client, FakeModule(params(document_version="$DEFAULT")), [current, current, current]
+    )
+
+    assert result.values["document"]["content"] == {"schemaVersion": "2.2"}
+    assert result.values["document"]["document_version"] == "2"
+
+
+def test_update_fails_when_aws_omits_the_new_document_version():
+    client = Mock()
+    client.update_document.return_value = {"DocumentDescription": {}}
+    result, _wait, _get = run_present(
+        client, FakeModule(params()), lambda *args, **kwargs: document({"schemaVersion": "1.2"})
+    )
+
+    assert "no document version" in result.values["msg"]
+    client.update_document_default_version.assert_not_called()
+
+
+def test_existing_document_type_is_immutable():
+    client = Mock()
+    result, _wait, _get = run_present(
+        client, FakeModule(params(document_type="Session")), [document({"schemaVersion": "2.2"})]
+    )
+
+    assert "immutable fields differ" in result.values["msg"]
+    client.update_document.assert_not_called()
+
+
+def test_new_document_serializes_content_and_tags_for_aws():
+    client = Mock()
+    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1", "Name": "example"}}
+    result, wait_for_document, _get = run_present(client, FakeModule(params(tags={"Name": "example"})), [None, None])
+
+    assert result.values["changed"]
+    assert result.values["document"] == {
+        "content": {"schemaVersion": "2.2"},
+        "document_version": "1",
+        "name": "example",
+        "tags": {"Name": "example"},
+    }
+    client.create_document.assert_called_once_with(
+        Content='{"schemaVersion":"2.2"}',
+        DocumentFormat="JSON",
+        DocumentType="Command",
+        Name="example",
+        Tags=[{"Key": "Name", "Value": "example"}],
+        aws_retry=True,
+    )
+    assert wait_for_document.call_args.args[2:] == ("active", "1")
+
+
+def test_new_document_does_not_wait_when_wait_is_disabled():
+    client = Mock()
+    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1", "Name": "example"}}
+    _result, wait_for_document, _get = run_present(client, FakeModule(params(wait=False)), [None, None])
+
+    wait_for_document.assert_not_called()
+
+
+def test_deleting_document_is_waited_on_and_created_again():
+    client = Mock()
+    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1", "Name": "example"}}
+    deleting = document({"schemaVersion": "2.2"}, Status="Deleting")
+    result, wait_for_document, _get = run_present(client, FakeModule(params()), [deleting, None, None])
+
+    assert result.values["changed"]
+    assert wait_for_document.call_args_list[0].args[2:] == ("deleted",)
+    client.create_document.assert_called_once()
+
+
+def test_deleting_document_is_predicted_as_created_in_check_mode():
+    client = Mock()
+    deleting = document({"schemaVersion": "2.2"}, Status="Deleting")
+    result, wait_for_document, _get = run_present(client, FakeModule(params(), check_mode=True), [deleting])
+
+    assert result.values["changed"]
+    wait_for_document.assert_not_called()
+    client.create_document.assert_not_called()
+
+
+@pytest.mark.parametrize("status", ["Creating", "Updating"])
+def test_transitional_document_is_waited_on_before_comparing(status):
+    settling = document({"schemaVersion": "2.2"}, Status=status)
+    active = document({"schemaVersion": "2.2"}, Status="Active")
+    result, wait_for_document, _get = run_present(Mock(), FakeModule(params()), [settling, active, active])
+
+    assert not result.values["changed"]
+    assert wait_for_document.call_args_list[0].args[2:] == ("active", "1")
+
+
+def test_failed_document_with_the_requested_content_fails_with_status_information():
+    failed = document({"schemaVersion": "2.2"}, Status="Failed", StatusInformation="Invalid step")
+    result, _wait, _get = run_present(Mock(), FakeModule(params()), [failed])
+
+    assert result.values["msg"] == "AWS Systems Manager document example failed: Invalid step"
+
+
+def test_failed_document_with_new_content_is_updated():
+    client = Mock()
+    client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2"}}
+    failed = document({"schemaVersion": "1.2"}, Status="Failed")
+    result, _wait, _get = run_present(
+        client, FakeModule(params()), [failed, document({"schemaVersion": "2.2"}, DocumentVersion="2")]
+    )
+
+    assert result.values["changed"]
+    client.update_document.assert_called_once()
+
+
+@pytest.mark.parametrize("state", ["active", "deleted"])
+def test_wait_message_names_the_target_state(state):
+    module = FakeModule(params())
+    with patch.object(plugin, "run_waiter", side_effect=ModuleFail({})) as run_waiter, pytest.raises(ModuleFail):
+        plugin.wait_for_document(Mock(), module, state, "2" if state == "active" else None)
+
+    assert run_waiter.call_args.args[3] == f"document_{state}"
+    assert run_waiter.call_args.args[4] == f"Unable to wait for AWS Systems Manager document example to become {state}"
+
+
+def test_wait_fails_when_the_document_version_failed():
+    client = Mock(describe_document=Mock(return_value={"Document": {"Status": "Failed", "StatusInformation": "Bad"}}))
+    with patch.object(plugin, "run_waiter"), pytest.raises(ModuleFail) as raised:
+        plugin.wait_for_document(client, FakeModule(params()), "active", "2")
+
+    assert raised.value.values["msg"] == "AWS Systems Manager document example failed: Bad"
+    client.describe_document.assert_called_once_with(Name="example", DocumentVersion="2", aws_retry=True)
+
+
+def test_waiters_stop_on_terminal_states():
+    active = {
+        acceptor["expected"]: acceptor["state"]
+        for acceptor in plugin.SSM_DOCUMENT_WAITER_MODEL_DATA["document_active"]["acceptors"]
+    }
+    deleted = {
+        acceptor["expected"]: acceptor["state"]
+        for acceptor in plugin.SSM_DOCUMENT_WAITER_MODEL_DATA["document_deleted"]["acceptors"]
+    }
+
+    assert active == {
+        "Active": "success",
+        "Failed": "success",
+        "Creating": "retry",
+        "Updating": "retry",
+        "Deleting": "failure",
+    }
+    assert deleted == {"InvalidDocument": "success", "Deleting": "retry"}
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -436,274 +325,115 @@ def test_retry_recovers_failed_default_promotion(check_mode):
     client = Mock()
     client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2"}}
     client.update_document_default_version.side_effect = [
-        plugin.ClientError(
-            {"Error": {"Code": "InternalServerError", "Message": "failed"}}, "UpdateDocumentDefaultVersion"
-        ),
+        ClientError({"Error": {"Code": "InternalServerError", "Message": "failed"}}, "UpdateDocumentDefaultVersion"),
         {},
     ]
-    module = FakeModule(
-        {
-            "content": {"schema_version": "2.2"},
-            "document_type": "Command",
-            "document_version": "$LATEST",
-            "name": "example",
-            "purge_tags": True,
-            "tags": None,
-        }
-    )
-    old = {"Content": '{"schemaVersion":"1.2"}', "DocumentType": "Command", "Name": "example", "DocumentVersion": "1"}
-    latest = dict(old, Content='{"schemaVersion":"2.2"}', DocumentVersion="2")
-    with patch.object(plugin, "get_document", return_value=old), pytest.raises(ModuleFail):
-        plugin.ensure_present(client, module)
+    module = FakeModule(params())
+    old = document({"schemaVersion": "1.2"})
+    latest = document({"schemaVersion": "2.2"}, DocumentVersion="2")
+    run_present(client, module, lambda *args, **kwargs: old)
 
     module.check_mode = check_mode
 
     def read_document(client, module, include_tags=False, document_version=None):
-        if document_version == "$DEFAULT":
-            return old
+        return old if document_version == "$DEFAULT" else latest
 
-        return latest
-
-    with patch.object(plugin, "get_document", side_effect=read_document), pytest.raises(ModuleExit) as result:
-        plugin.ensure_present(client, module)
+    result, _wait, _get = run_present(client, module, read_document)
 
     assert client.update_document.call_count == 1
     assert client.update_document_default_version.call_count == (1 if check_mode else 2)
-    assert result.value.values["changed"] is True
+    assert result.values["changed"] is True
     if not check_mode:
-        with patch.object(plugin, "get_document", return_value=latest), pytest.raises(ModuleExit) as result:
-            plugin.ensure_present(client, module)
+        result, _wait, _get = run_present(client, module, lambda *args, **kwargs: latest)
 
-        assert result.value.values["changed"] is False
+        assert result.values["changed"] is False
         assert client.update_document_default_version.call_count == 2
 
 
-def test_existing_document_preserves_parameter_names_in_result_and_reuse():
-    content = {
-        "schemaVersion": "2.2",
-        "parameters": {"Message": {"type": "String", "default": "Hello"}},
-        "mainSteps": [
-            {"action": "aws:runShellScript", "name": "printMessage", "inputs": {"runCommand": ["echo {{Message}}"]}}
-        ],
-    }
-    current = {"Name": "example", "DocumentType": "Command", "DocumentVersion": "1", "Content": json.dumps(content)}
-    module = FakeModule(
-        {
-            "name": "example",
-            "content": content,
-            "document_type": "Command",
-            "document_version": "$LATEST",
-            "tags": None,
-            "purge_tags": True,
-        }
-    )
+def test_absent_tolerates_document_disappearing_during_delete():
     client = Mock()
-    with patch.object(plugin, "get_document", return_value=current):
-        with pytest.raises(ModuleExit) as result:
-            plugin.ensure_present(client, module)
+    client.delete_document.side_effect = ClientError(
+        {"Error": {"Code": "InvalidDocument", "Message": "gone"}}, "DeleteDocument"
+    )
+    result, _wait = run_absent(client, FakeModule(params(state="absent")), {"Name": "example"})
 
-        assert "Message" in result.value.values["document"]["content"]["parameters"]
-        module.params["content"] = result.value.values["document"]["content"]
-        with pytest.raises(ModuleExit) as repeated:
-            plugin.ensure_present(client, module)
-
-    assert repeated.value.values["changed"] is False
-    client.update_document.assert_not_called()
+    assert result.values["changed"]
 
 
-@pytest.mark.parametrize(
-    "parameter_type,default",
-    [
-        ("StringMap", {"tenant_id": "alpha", "tenantId": "beta"}),
-        ("MapList", [{"tenant_id": "alpha", "tenantId": "beta"}]),
-    ],
-)
-def test_document_create_preserves_map_defaults_and_returned_content(parameter_type, default):
-    content = {
-        "schemaVersion": "0.3",
-        "parameters": {"Payload": {"type": parameter_type, "default": default}},
-        "mainSteps": [
-            {
-                "name": "readPayload",
-                "action": "aws:executeScript",
-                "inputs": {
-                    "Runtime": "python3.11",
-                    "Handler": "handler",
-                    "InputPayload": "{{Payload}}",
-                    "Script": "def handler(events, context):\n    return events",
-                },
-            }
-        ],
-    }
+def test_absent_waits_for_deletion():
     client = Mock()
-    client.create_document.return_value = {
-        "DocumentDescription": {"Name": "example", "DocumentVersion": "1", "DocumentType": "Automation"}
-    }
-    module = FakeModule(
-        {
-            "name": "example",
-            "content": content,
-            "document_type": "Automation",
-            "document_version": "$LATEST",
-            "tags": None,
-            "purge_tags": True,
-        }
+    result, wait_for_document = run_absent(client, FakeModule(params(state="absent")), {"Name": "example"})
+
+    assert result.values["changed"]
+    client.delete_document.assert_called_once_with(Name="example", aws_retry=True)
+    assert wait_for_document.call_args.args[2:] == ("deleted",)
+
+
+def test_absent_sends_force_when_requested():
+    client = Mock()
+    run_absent(client, FakeModule(params(state="absent", force=True, wait=False)), {"Name": "example"})
+
+    client.delete_document.assert_called_once_with(Name="example", Force=True, aws_retry=True)
+
+
+def test_absent_explains_documents_used_by_associations():
+    client = Mock()
+    client.delete_document.side_effect = ClientError(
+        {"Error": {"Code": "AssociatedInstances", "Message": "in use"}}, "DeleteDocument"
     )
-    with patch.object(plugin, "get_document", return_value=None), pytest.raises(ModuleExit) as result:
-        plugin.ensure_present(client, module)
+    result, _wait = run_absent(client, FakeModule(params(state="absent")), {"Name": "example"})
 
-    sent = json.loads(client.create_document.call_args.kwargs["Content"])
-    assert sent["parameters"]["Payload"]["default"] == default
-    assert result.value.values["document"]["content"]["parameters"]["Payload"]["default"] == default
-
-
-@pytest.mark.parametrize("snake_input", [False, True])
-@pytest.mark.parametrize("existing", [False, True])
-def test_automation_script_and_variables_round_trip(snake_input, existing):
-    native = {
-        "schemaVersion": "0.3",
-        "variables": {
-            "MyVariable": {"type": "StringMap", "default": {"MyKey": "one", "my_key": "two"}},
-            "my_variable": {"type": "String", "default": "another"},
-        },
-        "mainSteps": [
-            {
-                "name": "run",
-                "action": "aws:executeScript",
-                "inputs": {
-                    "Runtime": "python3.11",
-                    "Handler": "handler",
-                    "InputPayload": {"MyKey": "{{variable:my_variable}}"},
-                    "Script": "def handler(events, context):\n    return events",
-                },
-                "outputs": [{"Name": "Result", "Selector": "$.Payload", "Type": "StringMap"}],
-            },
-            {
-                "name": "update",
-                "action": "aws:updateVariable",
-                "inputs": {"Name": "variable:MyVariable", "Value": {"MyKey": "one", "my_key": "two"}},
-            },
-        ],
-    }
-    returned = content_transform(json.dumps(native))
-    assert returned["variables"] == native["variables"]
-    assert returned["main_steps"][1]["inputs"]["value"] == native["mainSteps"][1]["inputs"]["Value"]
-    content = returned if snake_input else native
-    current = (
-        {"Name": "review", "DocumentType": "Automation", "DocumentVersion": "1", "Content": json.dumps(native)}
-        if existing
-        else None
+    assert result.values["msg"] == (
+        "Unable to delete AWS Systems Manager document example because associations use it; "
+        "delete the associations first"
     )
+
+
+def test_absent_waits_on_a_document_already_deleting_without_deleting_again():
+    client = Mock()
+    result, wait_for_document = run_absent(
+        client, FakeModule(params(state="absent")), {"Name": "example", "Status": "Deleting"}
+    )
+
+    assert not result.values["changed"]
+    client.delete_document.assert_not_called()
+    wait_for_document.assert_called_once()
+
+
+@pytest.mark.parametrize("response", [None, {"Content": "not-json"}, {"Content": "[]"}])
+def test_get_document_rejects_malformed_content(response):
+    client = Mock(get_document=Mock(return_value=response))
+    with pytest.raises(ModuleFail) as raised:
+        plugin.get_document(client, FakeModule(params()))
+
+    assert "Unexpected" in raised.value.values["msg"]
+
+
+def test_get_document_rejects_malformed_tags():
     client = Mock(
-        create_document=Mock(
-            return_value={
-                "DocumentDescription": {"Name": "review", "DocumentType": "Automation", "DocumentVersion": "1"}
-            }
-        )
+        get_document=Mock(return_value={"Content": "{}"}),
+        list_tags_for_resource=Mock(return_value={"TagList": [None]}),
     )
-    module = FakeModule(
-        {
-            "name": "review",
-            "tags": None,
-            "purge_tags": True,
-            "content": content,
-            "document_type": "Automation",
-            "document_version": "$LATEST",
-        }
+    with pytest.raises(ModuleFail) as raised:
+        plugin.get_document(client, FakeModule(params()), include_tags=True)
+
+    assert (
+        raised.value.values["msg"] == "Unexpected response while listing tags for AWS Systems Manager document example"
     )
-    with patch.object(plugin, "get_document", return_value=current), pytest.raises(ModuleExit) as result:
-        plugin.ensure_present(client, module)
-
-    assert result.value.values["document"]["content"] == returned
-    assert result.value.values["changed"] is (not existing)
-    if existing:
-        client.create_document.assert_not_called()
-        client.update_document.assert_not_called()
-    else:
-        assert json.loads(client.create_document.call_args.kwargs["Content"]) == native
 
 
-@pytest.mark.parametrize("document_type", ["ApplicationConfiguration", "ApplicationConfigurationSchema"])
-@pytest.mark.parametrize("operation", ["create", "update", "unchanged", "check_mode"])
-def test_application_document_content_is_preserved(document_type, operation):
-    content = (
-        {"feature_enabled": True, "featureEnabled": False}
-        if document_type == "ApplicationConfiguration"
-        else {
-            "type": "object",
-            "properties": {"feature_enabled": {"type": "boolean"}},
-            "required": ["feature_enabled"],
-            "additionalProperties": False,
-        }
-    )
-    current = {
-        "Name": "example",
-        "DocumentType": document_type,
-        "DocumentVersion": "1",
-        "Content": json.dumps(content if operation == "unchanged" else {}),
-    }
-    updated = dict(current, Content=json.dumps(content), DocumentVersion="2")
-    client = Mock()
-    client.create_document.return_value = {
-        "DocumentDescription": {key: value for key, value in updated.items() if key != "Content"}
-    }
-    client.update_document.return_value = {
-        "DocumentDescription": {key: value for key, value in updated.items() if key != "Content"}
-    }
-    module = FakeModule(
-        {
-            "name": "example",
-            "document_type": document_type,
-            "document_version": "$LATEST",
-            "content": content,
-            "tags": None,
-            "purge_tags": True,
-        },
-        check_mode=operation == "check_mode",
-    )
-    reads = [None, updated] if operation == "create" else [current, current if operation == "unchanged" else updated]
-    with patch.object(plugin, "get_document", side_effect=reads), pytest.raises(ModuleExit) as result:
-        plugin.ensure_present(client, module)
+def test_create_rejects_malformed_response():
+    client = Mock(create_document=Mock(return_value={"DocumentDescription": None}))
+    result, _wait, _get = run_present(client, FakeModule(params()), [None])
 
-    assert result.value.values["changed"] == (operation != "unchanged")
-    assert result.value.values["document"]["content"] == content
-    if operation in ("create", "update"):
-        request = getattr(client, operation + "_document").call_args.kwargs
-        assert json.loads(request["Content"]) == content
-    else:
-        assert client.mock_calls == []
+    assert result.values["msg"] == "AWS Systems Manager did not return the created document example"
 
 
-def test_package_update_preserves_architecture_and_platform_wildcard():
-    content = {
-        "schemaVersion": "2.0",
-        "version": "2.0",
-        "packages": {"amazon": {"_any": {"x86_64": {"file": "test.zip"}}}},
-        "files": {"test.zip": {"checksums": {"sha256": "a" * 64}}},
-    }
-    current = {
-        "Name": "example",
-        "DocumentType": "Package",
-        "DocumentVersion": "1",
-        "Content": json.dumps(dict(content, version="1.0")),
-    }
-    updated = dict(current, DocumentVersion="2", Content=json.dumps(content))
-    module = FakeModule(
-        {
-            "name": "example",
-            "content": content,
-            "document_type": "Package",
-            "document_version": "$LATEST",
-            "tags": None,
-            "purge_tags": True,
-        }
-    )
-    client = Mock()
-    client.update_document.return_value = {
-        "DocumentDescription": {"Name": "example", "DocumentType": "Package", "DocumentVersion": "2"}
-    }
-    with patch.object(plugin, "get_document", side_effect=[current, updated]), pytest.raises(ModuleExit):
-        plugin.ensure_present(client, module)
+def test_present_validates_bounds_for_internal_promotion_wait():
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params(wait=False, wait_delay=0))),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
 
-    sent = json.loads(client.update_document.call_args.kwargs["Content"])
-    assert sent["packages"] == content["packages"]
+    assert "wait_delay" in raised.value.values["msg"]

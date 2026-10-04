@@ -1,0 +1,18 @@
+---
+breaking_changes:
+  - ssm_document - ``content`` is sent and compared exactly as provided and must use the AWS document schema field names,
+    for example ``schemaVersion`` and ``mainSteps``; snake_case keys are no longer converted.
+    The returned ``content`` is the document exactly as AWS stores it.
+  - ssm_document_info - ``content`` is returned exactly as AWS stores it instead of with snake_case schema fields.
+  - ssm_document_info role - ``ssm_document_info_filters`` defaults to the ``Owner`` filter ``Self`` instead of listing every
+    document visible to the account, including several hundred AWS-owned documents.
+bugfixes:
+  - ssm_document - wait for a created or updated document version to become active before promoting it,
+    fail with the AWS status information when a document version fails, wait for a document that is being deleted
+    before creating it again, and wait for deletion when ``state=absent``.
+  - ssm_document - explain that associations must be deleted when AWS rejects deleting a document that is in use.
+minor_changes:
+  - ssm_document - add ``force`` to delete document types that require it, such as ``ApplicationConfigurationSchema``.
+  - ssm_document - add ``wait``, ``wait_delay``, and ``wait_timeout``.
+  - ssm_document_info role - pass ``ssm_document_info_filters`` only when ``ssm_document_info_name`` is not set.
+...

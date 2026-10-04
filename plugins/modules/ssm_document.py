@@ -8,36 +8,26 @@ module: ssm_document
 version_added: '1.9.0'
 short_description: Manage AWS Systems Manager documents
 description:
-  - Document parameter, variable, and attachment names are preserved unchanged in returned content.
   - Manages AWS Systems Manager documents.
   - Supports creating, updating, and deleting JSON documents.
   - Content updates create a new document version and promote it to the
-    default version.
-  - Accepts structured Ansible YAML content and serializes it to JSON for AWS.
-  - Converts document content input keys to AWS format for comparison and API requests.
+    default version once AWS reports it as active.
+  - Content is sent and compared exactly as provided, with the AWS document
+    schema field names, and is returned exactly as AWS stores it.
   - O(document_type) is immutable after creation.
+  - A document that is being created or updated is waited on before it is
+    compared, and a document that is being deleted is waited on and created
+    again.
+  - A document whose AWS status is C(Failed) with the requested content fails
+    with the AWS status information.
 author:
   - Taylor Kimball (@tkimball83)
 options:
   content:
     description:
-      - The document content to manage.
-      - Provide the content as structured Ansible YAML data.
+      - The document content to manage, using the AWS document schema field
+        names, for example C(schemaVersion) and C(mainSteps).
       - The module serializes the content to JSON for AWS Systems Manager.
-      - Content keys may be provided in snake_case or AWS native camelCase.
-      - For V(ApplicationConfiguration), V(ApplicationConfigurationSchema), and V(CloudFormation), content
-        is preserved exactly, including application property names and JSON Schema keywords.
-      - Automation action schema fields, including step outputs and nested loop steps,
-        accept snake_case and are converted to their AWS native field names.
-      - API-specific parameters of C(aws:executeAwsApi), C(aws:assertAwsResourceProperty),
-        and C(aws:waitForAwsResourceProperty) must use AWS native keys and are preserved unchanged.
-        The action fields C(Service), C(Api), C(PropertySelector), and C(DesiredValues)
-        accept snake_case.
-      - Run Command parameters, composite document C(documentParameters), nested Automation runtime parameters and target maps
-        retain their original keys and values.
-      - Parameter and variable names and their default values are preserved unchanged.
-      - Keys inside script C(InputPayload) objects and C(aws:updateVariable) values
-        are preserved unchanged.
       - Required when O(state=present).
     type: dict
   document_type:
@@ -53,6 +43,13 @@ options:
       - Matching V($LATEST) content is promoted when it is not the default version.
     default: $LATEST
     type: str
+  force:
+    description:
+      - Whether to force the deletion of a document when O(state=absent).
+      - AWS requires this for some document types, such as
+        V(ApplicationConfigurationSchema).
+    default: false
+    type: bool
   name:
     description:
       - The Systems Manager document name.
@@ -66,6 +63,28 @@ options:
       - present
     default: present
     type: str
+  wait:
+    description:
+      - Whether to wait for a created document to become active, or for a
+        deleted document to be removed.
+      - An updated document version is always waited on before it is promoted
+        to the default version.
+    default: true
+    type: bool
+  wait_delay:
+    description:
+      - The delay between polling attempts.
+      - This must be 1 or greater.
+    default: 5
+    type: int
+  wait_timeout:
+    description:
+      - The maximum number of seconds to wait.
+      - When O(state=present), this also applies while an updated document
+        version is promoted, regardless of O(wait).
+      - This must be 1 or greater.
+    default: 300
+    type: int
 notes:
   - O(tags) accepts at most 1000 entries; keys must contain 1 to 128 characters
     and values at most 256 characters.
@@ -87,11 +106,11 @@ EXAMPLES = r"""
 - name: Ensure a Session Manager document is present
   linuxhq.aws.ssm_document:
     content:
-      schema_version: "1.0"
+      schemaVersion: "1.0"
       description: Document to hold regional settings for Session Manager
-      session_type: Standard_Stream
+      sessionType: Standard_Stream
       inputs:
-        idle_session_timeout: 60
+        idleSessionTimeout: "60"
     document_type: Session
     name: SSM-SessionManagerRunShell
     tags:
@@ -112,15 +131,7 @@ document:
   contains:
     content:
       description:
-        - Document content.
-        - Application configuration, application configuration schema, and CloudFormation content is preserved unchanged.
-        - Parsed JSON content uses snake_case schema fields while preserving
-          parameter, variable, and attachment names, defaults, and embedded payloads unchanged.
-        - Distributor package platform, release, and architecture keys are preserved unchanged.
-        - API-specific parameters of C(aws:executeAwsApi), C(aws:assertAwsResourceProperty),
-          and C(aws:waitForAwsResourceProperty) retain AWS native keys and values.
-        - Run Command parameters, composite document C(documentParameters), nested Automation runtime parameters and target maps
-          retain their original keys and values.
+        - Document content, parsed from JSON and returned exactly as AWS stores it.
       returned: always
       type: dict
     document_format:
@@ -142,6 +153,10 @@ document:
     status:
       description: Document status.
       returned: when available
+      type: str
+    status_information:
+      description: Details about the document status, such as why it failed.
+      returned: when returned by AWS
       type: str
     tags:
       description: Document tags.
@@ -181,14 +196,42 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.ssm_document import normalize_document_content
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_ssm_tags,
     require_valid_tags,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
+    run_waiter,
+)
 
 SSM_DOCUMENT_RESOURCE_TYPE = "Document"
+SSM_DOCUMENT_WAITER_MODEL_DATA = {
+    "document_active": {
+        "delay": 5,
+        "maxAttempts": 60,
+        "operation": "DescribeDocument",
+        "acceptors": [
+            {"argument": "Document.Status", "expected": "Active", "matcher": "path", "state": "success"},
+            # A failed document is inspected after the wait so its status information can be reported.
+            {"argument": "Document.Status", "expected": "Failed", "matcher": "path", "state": "success"},
+            {"argument": "Document.Status", "expected": "Creating", "matcher": "path", "state": "retry"},
+            {"argument": "Document.Status", "expected": "Updating", "matcher": "path", "state": "retry"},
+            {"argument": "Document.Status", "expected": "Deleting", "matcher": "path", "state": "failure"},
+        ],
+    },
+    "document_deleted": {
+        "delay": 5,
+        "maxAttempts": 60,
+        "operation": "DescribeDocument",
+        "acceptors": [
+            {"expected": "InvalidDocument", "matcher": "error", "state": "success"},
+            {"argument": "Document.Status", "expected": "Deleting", "matcher": "path", "state": "retry"},
+        ],
+    },
+}
+TRANSITIONAL_STATUSES = ("Creating", "Updating")
 
 
 def document_description_from_response(module, response, message):
@@ -203,29 +246,81 @@ def comparable_document(document):
         return None
 
     return {
-        "content": normalize_document_content(document_content(document), document_type=document.get("DocumentType")),
+        "content": document_content(document),
         "document_type": document.get("DocumentType"),
     }
+
+
+def fail_failed_document(module, document):
+    name = module.params["name"]
+    module.fail_json(
+        msg=(
+            f"AWS Systems Manager document {name} failed: "
+            f"{document.get('StatusInformation') or 'no status information was returned'}"
+        )
+    )
+
+
+def wait_for_document(client, module, state, document_version=None):
+    """Wait for a document version to settle, failing when it ends in the Failed status."""
+    name = module.params["name"]
+    request = {"Name": name}
+    if document_version:
+        request["DocumentVersion"] = document_version
+
+    # The waiter fails on terminal states as well as on timeouts, so the message names neither.
+    run_waiter(
+        module,
+        client,
+        SSM_DOCUMENT_WAITER_MODEL_DATA,
+        f"document_{state}",
+        f"Unable to wait for AWS Systems Manager document {name} to become {state}",
+        **request,
+    )
+
+    if state == "deleted":
+        return
+
+    try:
+        response = client.describe_document(**request, aws_retry=True)
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to describe AWS Systems Manager document {name}")
+
+    if not isinstance(response, dict) or not isinstance(response.get("Document"), dict):
+        module.fail_json(msg=f"Unexpected response while describing AWS Systems Manager document {name}")
+
+    if response["Document"].get("Status") == "Failed":
+        fail_failed_document(module, response["Document"])
 
 
 def ensure_absent(client, module):
     current = get_document(client, module)
     name = module.params["name"]
-    changed = current is not None
+    changed = current is not None and current.get("Status") != "Deleting"
 
-    if changed and not module.check_mode:
-        try:
-            client.delete_document(
-                Name=name,
-                aws_retry=True,
-            )
-        except is_boto3_error_code("InvalidDocument"):
-            pass
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to delete AWS Systems Manager document {name}",
-            )
+    if current is not None and not module.check_mode:
+        if changed:
+            request = {"Name": name}
+            if module.params["force"]:
+                request["Force"] = True
+
+            try:
+                client.delete_document(**request, aws_retry=True)
+            except is_boto3_error_code("InvalidDocument"):
+                pass
+            except is_boto3_error_code("AssociatedInstances") as e:
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        f"Unable to delete AWS Systems Manager document {name} because associations use it; "
+                        "delete the associations first"
+                    ),
+                )
+            except (BotoCoreError, ClientError) as e:
+                module.fail_json_aws(e, msg=f"Unable to delete AWS Systems Manager document {name}")
+
+        if module.params["wait"]:
+            wait_for_document(client, module, "deleted")
 
     module.exit_json(
         changed=changed,
@@ -234,32 +329,47 @@ def ensure_absent(client, module):
     )
 
 
+def current_document(client, module, include_tags):
+    """Read the document, settling transitional and deleting states outside check mode."""
+    current = get_document(client, module, include_tags=include_tags)
+    status = (current or {}).get("Status")
+
+    if status == "Deleting":
+        if module.check_mode:
+            return None
+
+        wait_for_document(client, module, "deleted")
+        return get_document(client, module, include_tags=include_tags)
+
+    if status in TRANSITIONAL_STATUSES and not module.check_mode:
+        wait_for_document(client, module, "active", current.get("DocumentVersion"))
+        return get_document(client, module, include_tags=include_tags)
+
+    return current
+
+
 def ensure_present(client, module):
     name = module.params["name"]
     tags = module.params["tags"]
     purge_tags = module.params["purge_tags"]
-    current = get_document(client, module, include_tags=tags is not None)
-    desired = {
+    current = current_document(client, module, include_tags=tags is not None)
+    desired_comparable = {
         "content": module.params["content"],
         "document_type": module.params["document_type"],
-        "name": name,
     }
     current_comparable = comparable_document(current)
-    desired_comparable = {
-        "content": normalize_document_content(desired["content"], document_type=desired["document_type"]),
-        "document_type": desired["document_type"],
-    }
-    desired.update(desired_comparable)
 
     if current is None:
         changed = True
         resource_changed = True
     else:
         if current_comparable["document_type"] != desired_comparable["document_type"]:
-            module.fail_json(msg=("Unable to update AWS Systems Manager document " f"{name}: immutable fields differ"))
+            module.fail_json(msg=f"Unable to update AWS Systems Manager document {name}: immutable fields differ")
 
         changed = current_comparable != desired_comparable
         resource_changed = changed
+        if not changed and current.get("Status") == "Failed":
+            fail_failed_document(module, current)
 
     default_version_to_promote = None
     if resource_changed and current is not None and module.params["document_version"] == "$DEFAULT":
@@ -268,10 +378,7 @@ def ensure_present(client, module):
             default_version_to_promote = (latest or {}).get("DocumentVersion")
             if not default_version_to_promote:
                 module.fail_json(
-                    msg=(
-                        "Unable to promote the latest AWS Systems Manager "
-                        f"document {name}: AWS returned no document version"
-                    )
+                    msg=f"Unable to promote the latest AWS Systems Manager document {name}: AWS returned no document version"
                 )
 
             resource_changed = False
@@ -300,30 +407,22 @@ def ensure_present(client, module):
 
     if changed and not module.check_mode:
         if resource_changed:
-            desired_content = json.dumps(
-                desired["content"],
-                separators=(",", ":"),
-                sort_keys=True,
-            )
+            desired_content = json.dumps(desired_comparable["content"], separators=(",", ":"), sort_keys=True)
 
         if current is None:
+            request = {
+                "Content": desired_content,
+                "DocumentFormat": "JSON",
+                "DocumentType": desired_comparable["document_type"],
+                "Name": name,
+            }
+            if tags:
+                request["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+
             try:
-                request = {
-                    "Content": desired_content,
-                    "DocumentFormat": "JSON",
-                    "DocumentType": desired["document_type"],
-                    "Name": desired["name"],
-                }
-
-                if tags:
-                    request["Tags"] = ansible_dict_to_boto3_tag_list(tags)
-
                 response = client.create_document(**request, aws_retry=True)
             except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to create AWS Systems Manager document {name}",
-                )
+                module.fail_json_aws(e, msg=f"Unable to create AWS Systems Manager document {name}")
 
             current = document_description_from_response(
                 module,
@@ -331,7 +430,10 @@ def ensure_present(client, module):
                 f"AWS Systems Manager did not return the created document {name}",
             )
             if not current.get("DocumentVersion"):
-                module.fail_json(msg=("AWS Systems Manager did not return the created document " f"{name}"))
+                module.fail_json(msg=f"AWS Systems Manager did not return the created document {name}")
+
+            if module.params["wait"]:
+                wait_for_document(client, module, "active", current["DocumentVersion"])
 
             current["Content"] = desired_content
             if tags:
@@ -352,14 +454,11 @@ def ensure_present(client, module):
                             if module.params["document_version"] == "$DEFAULT"
                             else module.params["document_version"]
                         ),
-                        Name=desired["name"],
+                        Name=name,
                         aws_retry=True,
                     )
                 except (BotoCoreError, ClientError) as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=f"Unable to update AWS Systems Manager document {name}",
-                    )
+                    module.fail_json_aws(e, msg=f"Unable to update AWS Systems Manager document {name}")
 
                 updated = document_description_from_response(
                     module,
@@ -369,25 +468,21 @@ def ensure_present(client, module):
                 new_version = updated.get("DocumentVersion")
                 if not new_version:
                     module.fail_json(
-                        msg=(
-                            "Unable to promote updated AWS Systems Manager "
-                            f"document {name}: AWS returned no document version"
-                        )
+                        msg=f"Unable to promote updated AWS Systems Manager document {name}: AWS returned no document version"
                     )
 
+                # A new version can be promoted only after AWS has validated it.
+                wait_for_document(client, module, "active", new_version)
                 current = dict(current or {}, **updated, Content=desired_content)
 
             try:
                 client.update_document_default_version(
                     DocumentVersion=new_version,
-                    Name=desired["name"],
+                    Name=name,
                     aws_retry=True,
                 )
             except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=("Unable to set the default version of AWS Systems " f"Manager document {name}"),
-                )
+                module.fail_json_aws(e, msg=f"Unable to set the default version of AWS Systems Manager document {name}")
 
         if resource_changed or default_version_to_promote:
             refreshed = get_document(client, module, include_tags=tags is not None)
@@ -416,8 +511,8 @@ def ensure_present(client, module):
         current = dict(current or {})
         current.update(
             {
-                "Content": desired["content"],
-                "DocumentType": desired["document_type"],
+                "Content": desired_comparable["content"],
+                "DocumentType": desired_comparable["document_type"],
                 "Name": name,
             }
         )
@@ -426,25 +521,19 @@ def ensure_present(client, module):
 
     document = current
     if (current or {}).get("Name") is not None:
-        content = document_content(current)
         document = boto3_resource_to_ansible_dict(
-            dict(current, Content=content),
+            dict(current, Content=document_content(current)),
             ignore_list=["Content"],
             transform_tags=True,
             force_tags=False,
         )
-        document["content"] = normalize_document_content(
-            content, document_type=current.get("DocumentType"), snake_case=True
-        )
 
-    result = {
-        "changed": changed,
-        "document": document,
-        "name": name,
-        "state": "present",
-    }
-
-    module.exit_json(**result)
+    module.exit_json(
+        changed=changed,
+        document=document,
+        name=name,
+        state="present",
+    )
 
 
 def get_document(client, module, include_tags=False, document_version=None):
@@ -460,10 +549,7 @@ def get_document(client, module, include_tags=False, document_version=None):
     except is_boto3_error_code("InvalidDocument"):
         return None
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS Systems Manager document {name}",
-        )
+        module.fail_json_aws(e, msg=f"Unable to get AWS Systems Manager document {name}")
 
     if not isinstance(document, dict):
         module.fail_json(msg=f"Unexpected response while getting AWS Systems Manager document {name}")
@@ -488,8 +574,7 @@ def get_document(client, module, include_tags=False, document_version=None):
             )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
-                e,
-                msg=("Unable to list tags for AWS Systems Manager " f"{SSM_DOCUMENT_RESOURCE_TYPE} {name}"),
+                e, msg=f"Unable to list tags for AWS Systems Manager {SSM_DOCUMENT_RESOURCE_TYPE} {name}"
             )
 
         tags = response.get("TagList", []) if isinstance(response, dict) else None
@@ -518,6 +603,7 @@ def main():
         "content": {"type": "dict"},
         "document_type": {"type": "str"},
         "document_version": {"default": "$LATEST", "type": "str"},
+        "force": {"default": False, "type": "bool"},
         "name": {"required": True, "type": "str"},
         "purge_tags": {"default": True, "type": "bool"},
         "state": {
@@ -526,6 +612,9 @@ def main():
             "type": "str",
         },
         "tags": {"aliases": ["resource_tags"], "type": "dict"},
+        "wait": {"default": True, "type": "bool"},
+        "wait_delay": {"default": 5, "type": "int"},
+        "wait_timeout": {"default": 300, "type": "int"},
     }
 
     module = AnsibleAWSModule(
@@ -536,6 +625,8 @@ def main():
     state = module.params["state"]
     tags = module.params["tags"]
     require_valid_tags(module, tags if state == "present" else None, 1000)
+    # Updated versions are always waited on before they are promoted.
+    require_positive_wait_bounds(module, always=state == "present")
     client = module.client(
         "ssm",
         retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["TooManyUpdates"]),
@@ -549,6 +640,7 @@ def main():
             "DocumentType",
             "Name",
         )
+        methods["describe_document"] = ("DocumentVersion", "Name")
         methods["update_document"] = (
             "Content",
             "DocumentFormat",
@@ -576,7 +668,9 @@ def main():
                 )
 
     if state == "absent":
-        methods["delete_document"] = ("Name",)
+        methods["delete_document"] = ("Name",) + (("Force",) if module.params["force"] else ())
+        if module.params["wait"]:
+            methods["describe_document"] = ("Name",)
 
     require_client_methods(module, client, "Systems Manager", methods)
 

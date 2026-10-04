@@ -2,6 +2,46 @@
 - name: Verify
   hosts: all
   pre_tasks:
+    - name: Ensure document info is gathered
+      ansible.builtin.include_role:
+        name: ssm_document_info
+      vars:
+        ssm_document_info_filters:
+          Owner: Self
+          Name: "{{ ssm_document_list_update | map(attribute='name') | list }}"
+
+    - name: Ensure updated documents are verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_document_info_dict[_document.name].content == _document.content
+          - _ssm_document_info_dict[_document.name].document_type == _document.document_type
+          - _ssm_document_info_dict[_document.name].status == 'Active'
+          - _ssm_document_info_dict[_document.name].tags.molecule == 'ssm_document'
+          - _ssm_document_info_dict[_document.name].tags.Name == _document.name
+      loop: "{{ ssm_document_list_update }}"
+      loop_control:
+        label: "{{ _document.name }}"
+        loop_var: _document
+
+    - name: Ensure default document versions are queried
+      linuxhq.aws.ssm_document_info:
+        document_version: $DEFAULT
+        name: "{{ _document.name }}"
+      register: __ssm_document_default
+      loop: "{{ ssm_document_list_update }}"
+      loop_control:
+        label: "{{ _document.name }}"
+        loop_var: _document
+
+    - name: Ensure updated versions are the default versions
+      ansible.builtin.assert:
+        that:
+          - _default.document.content == _default._document.content
+      loop: "{{ __ssm_document_default.results }}"
+      loop_control:
+        label: "{{ _default._document.name }}"
+        loop_var: _default
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ssm_document_list:
