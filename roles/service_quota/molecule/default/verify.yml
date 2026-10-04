@@ -1,5 +1,32 @@
 ---
 - name: Verify
   hosts: all
-  tasks: []
+  tasks:
+    - name: Ensure quotas are queried
+      linuxhq.aws.service_quota:
+        quota_code: "{{ _servicequota.1.quota_code }}"
+        region: "{{ _servicequota.1.region | d(omit) }}"
+        service_code: "{{ _servicequota.0.service_code }}"
+        value: "{{ _servicequota.1.value }}"
+      check_mode: true
+      register: __service_quota_query
+      loop:
+        "{{ q('ansible.builtin.subelements',
+              service_quota_list,
+              'quotas',
+              {'skip_missing': true}) }}"
+      loop_control:
+        label: "{{ _servicequota.1.quota_code }}"
+        loop_var: _servicequota
+
+    - name: Ensure quotas are verified
+      ansible.builtin.assert:
+        that:
+          - _query is not changed
+          - _query.current_quota.value >= _query._servicequota.1.value | float or
+            _query.pending_requests | length > 0
+      loop: "{{ __service_quota_query.results }}"
+      loop_control:
+        label: "{{ _query._servicequota.1.quota_code }}"
+        loop_var: _query
 ...

@@ -11,10 +11,19 @@ description:
   - Requests AWS service quota increases.
   - Only submits a quota increase request when the desired value is greater than the current applied quota
     and there is no existing open or pending request for the same quota.
-  - Falls back to the AWS default quota when the quota has no applied value.
+  - Falls back to the AWS default quota when the quota has no applied value
+    and no O(context_id) is provided.
+  - Fails before requesting an increase for a quota that is not adjustable.
+  - Warns when an open or pending request asks for less than O(value).
 author:
   - Taylor Kimball (@tkimball83)
 options:
+  context_id:
+    description:
+      - The context ID for a resource-level quota.
+      - This option requires AWS SDK support for the C(ContextId) request
+        parameter.
+    type: str
   quota_code:
     description:
       - The quota code to manage.
@@ -51,6 +60,13 @@ EXAMPLES = r"""
     service_code: ec2
     value: 10
 
+- name: Request a resource-level quota increase
+  linuxhq.aws.service_quota:
+    context_id: arn:aws:example:us-east-1:123456789012:resource/example
+    quota_code: L-0263D0A3
+    service_code: ec2
+    value: 10
+
 - name: Request an IAM quota increase in a specific region
   linuxhq.aws.service_quota:
     quota_code: L-0DA4ABF3
@@ -71,6 +87,62 @@ current_quota:
       description: The current quota value.
       returned: always
       type: float
+    adjustable:
+      description: Whether the quota can be increased.
+      returned: when returned by AWS
+      type: bool
+    description:
+      description: The quota description.
+      returned: when returned by AWS
+      type: str
+    error_reason:
+      description: The reason the quota value could not be retrieved.
+      returned: when returned by AWS
+      type: dict
+    global_quota:
+      description: Whether the quota is global.
+      returned: when returned by AWS
+      type: bool
+    period:
+      description: The period over which the quota is measured.
+      returned: when returned by AWS
+      type: dict
+    quota_applied_at_level:
+      description: Whether the quota applies to the account or to resources.
+      returned: when returned by AWS
+      type: str
+    quota_arn:
+      description: The quota ARN.
+      returned: when returned by AWS
+      type: str
+    quota_code:
+      description: The quota code.
+      returned: when returned by AWS
+      type: str
+    quota_context:
+      description: The resource-level context of the quota.
+      returned: when returned by AWS
+      type: dict
+    quota_name:
+      description: The quota name.
+      returned: when returned by AWS
+      type: str
+    service_code:
+      description: The service code.
+      returned: when returned by AWS
+      type: str
+    service_name:
+      description: The service name.
+      returned: when returned by AWS
+      type: str
+    unit:
+      description: The quota unit.
+      returned: when returned by AWS
+      type: str
+    usage_metric:
+      description: The CloudWatch metric that tracks usage of the quota.
+      returned: when returned by AWS
+      type: dict
 pending_requests:
   description:
     - Existing open or pending increase requests for the quota.
@@ -86,6 +158,58 @@ pending_requests:
       description: The request status.
       returned: always
       type: str
+    case_id:
+      description: The support case ID.
+      returned: when returned by AWS
+      type: str
+    created:
+      description: The date and time the request was created.
+      returned: when returned by AWS
+      type: str
+    id:
+      description: The request ID.
+      returned: when returned by AWS
+      type: str
+    last_updated:
+      description: The date and time the request was last updated.
+      returned: when returned by AWS
+      type: str
+    quota_arn:
+      description: The quota ARN.
+      returned: when returned by AWS
+      type: str
+    quota_code:
+      description: The quota code.
+      returned: when returned by AWS
+      type: str
+    quota_context:
+      description: The resource-level context of the request.
+      returned: when returned by AWS
+      type: dict
+    quota_name:
+      description: The quota name.
+      returned: when returned by AWS
+      type: str
+    quota_requested_at_level:
+      description: Whether the request applies to the account or to a resource.
+      returned: when returned by AWS
+      type: str
+    requester:
+      description: The IAM identity that made the request.
+      returned: when returned by AWS
+      type: str
+    service_code:
+      description: The service code.
+      returned: when returned by AWS
+      type: str
+    service_name:
+      description: The service name.
+      returned: when returned by AWS
+      type: str
+    unit:
+      description: The quota unit.
+      returned: when returned by AWS
+      type: str
 quota_code:
   description: The managed quota code.
   returned: always
@@ -100,6 +224,62 @@ requested_quota:
       description: The requested quota value.
       returned: always
       type: float
+    status:
+      description: The request status.
+      returned: always
+      type: str
+    case_id:
+      description: The support case ID.
+      returned: when returned by AWS
+      type: str
+    created:
+      description: The date and time the request was created.
+      returned: when returned by AWS
+      type: str
+    id:
+      description: The request ID.
+      returned: when returned by AWS
+      type: str
+    last_updated:
+      description: The date and time the request was last updated.
+      returned: when returned by AWS
+      type: str
+    quota_arn:
+      description: The quota ARN.
+      returned: when returned by AWS
+      type: str
+    quota_code:
+      description: The quota code.
+      returned: when returned by AWS
+      type: str
+    quota_context:
+      description: The resource-level context of the request.
+      returned: when returned by AWS
+      type: dict
+    quota_name:
+      description: The quota name.
+      returned: when returned by AWS
+      type: str
+    quota_requested_at_level:
+      description: Whether the request applies to the account or to a resource.
+      returned: when returned by AWS
+      type: str
+    requester:
+      description: The IAM identity that made the request.
+      returned: when returned by AWS
+      type: str
+    service_code:
+      description: The service code.
+      returned: when returned by AWS
+      type: str
+    service_name:
+      description: The service name.
+      returned: when returned by AWS
+      type: str
+    unit:
+      description: The quota unit.
+      returned: when returned by AWS
+      type: str
 service_code:
   description: The managed service code.
   returned: always
@@ -187,6 +367,7 @@ def validate_quota_request(module, request, service_code, quota_code, desired_va
 
 def main():
     argument_spec = {
+        "context_id": {"type": "str"},
         "quota_code": {"required": True, "type": "str"},
         "service_code": {"required": True, "type": "str"},
         "value": {"required": True, "type": "float"},
@@ -199,51 +380,55 @@ def main():
 
     client = module.client("service-quotas", retry_decorator=AWSRetry.jittered_backoff())
 
-    methods = {
-        "get_aws_default_service_quota": ("QuotaCode", "ServiceCode"),
-        "get_service_quota": ("QuotaCode", "ServiceCode"),
-        "list_requested_service_quota_change_history_by_quota": (
-            "MaxResults",
-            "NextToken",
-            "QuotaCode",
-            "ServiceCode",
-            "Status",
-        ),
-    }
-    if not module.check_mode:
-        methods["request_service_quota_increase"] = (
-            "DesiredValue",
-            "QuotaCode",
-            "ServiceCode",
-        )
-
-    require_client_methods(module, client, "Service Quotas", methods)
-
+    context_id = module.params.get("context_id") or None
     quota_code = module.params["quota_code"]
     service_code = module.params["service_code"]
     desired_value = module.params["value"]
+    identifier = f"{service_code}/{quota_code}" + (f" for {context_id}" if context_id else "")
     quota_request = {
         "QuotaCode": quota_code,
         "ServiceCode": service_code,
     }
+    if context_id:
+        quota_request["ContextId"] = context_id
+
+    history_request = {
+        "QuotaCode": quota_code,
+        "ServiceCode": service_code,
+    }
+    if context_id:
+        history_request["QuotaRequestedAtLevel"] = "RESOURCE"
+
+    methods = {
+        "get_service_quota": tuple(quota_request),
+        "list_requested_service_quota_change_history_by_quota": (
+            ("MaxResults", "NextToken", "Status") + tuple(history_request)
+        ),
+    }
+    if not context_id:
+        methods["get_aws_default_service_quota"] = ("QuotaCode", "ServiceCode")
+
+    if not module.check_mode:
+        methods["request_service_quota_increase"] = ("DesiredValue",) + tuple(quota_request)
+
+    require_client_methods(module, client, "Service Quotas", methods)
 
     try:
         response = client.get_service_quota(**quota_request, aws_retry=True)
         current_quota = response_resource(module, response, "Quota", "service quota")
-    except is_boto3_error_code("NoSuchResourceException"):
+    except is_boto3_error_code("NoSuchResourceException") as e:
+        if context_id:
+            module.fail_json_aws(e, msg=f"AWS service quota {identifier} does not exist")
+
         try:
-            response = client.get_aws_default_service_quota(**quota_request, aws_retry=True)
+            response = client.get_aws_default_service_quota(
+                QuotaCode=quota_code, ServiceCode=service_code, aws_retry=True
+            )
             current_quota = response_resource(module, response, "Quota", "default service quota")
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=("Unable to get AWS default service quota " f"{service_code}/{quota_code}"),
-            )
+            module.fail_json_aws(e, msg=f"Unable to get AWS default service quota {identifier}")
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS service quota {service_code}/{quota_code}",
-        )
+        module.fail_json_aws(e, msg=f"Unable to get AWS service quota {identifier}")
 
     validate_current_quota(module, current_quota, service_code, quota_code)
 
@@ -254,18 +439,23 @@ def main():
             response = paginated_query_with_retries(
                 client,
                 "list_requested_service_quota_change_history_by_quota",
-                **dict(quota_request, Status=status),
+                **dict(history_request, Status=status),
             )
             requests = response_resources(module, response, "RequestedQuotas", "quota change history")
             for request in requests:
                 validate_quota_request(module, request, service_code, quota_code, status=status)
 
+            if context_id:
+                # Resource-level history covers every resource, so keep only this context.
+                requests = [
+                    request
+                    for request in requests
+                    if (request.get("QuotaContext") or {}).get("ContextId") == context_id
+                ]
+
             pending_requests.extend(requests)
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e,
-            msg=("Unable to list AWS service quota change history for " f"{service_code}/{quota_code}"),
-        )
+        module.fail_json_aws(e, msg=f"Unable to list AWS service quota change history for {identifier}")
 
     current_quota_details = boto3_resource_to_ansible_dict(
         current_quota,
@@ -280,6 +470,22 @@ def main():
     has_pending_request = bool(pending_requests)
     changed = not has_pending_request and desired_value > current_value
 
+    if changed and current_quota.get("Adjustable") is False:
+        module.fail_json(
+            msg=f"AWS service quota {identifier} is not adjustable, so it cannot be increased to {desired_value}"
+        )
+
+    smaller_requests = [
+        request["DesiredValue"]
+        for request in pending_requests
+        if isinstance(request.get("DesiredValue"), (int, float)) and request["DesiredValue"] < desired_value
+    ]
+    if desired_value > current_value and smaller_requests:
+        module.warn(
+            f"AWS service quota {identifier} has an open request for {max(smaller_requests)}, "
+            f"so an increase to {desired_value} can be requested only after it is resolved"
+        )
+
     requested_quota = None
     if changed:
         if module.check_mode:
@@ -290,6 +496,7 @@ def main():
                         "global_quota": current_quota_details.get("global_quota"),
                         "quota_arn": current_quota_details.get("quota_arn"),
                         "quota_code": quota_code,
+                        "quota_context": {"context_id": context_id} if context_id else None,
                         "quota_name": current_quota_details.get("quota_name"),
                         "service_code": service_code,
                         "service_name": current_quota_details.get("service_name"),
@@ -314,12 +521,7 @@ def main():
                     desired_value=desired_value,
                 )
             except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=(
-                        "Unable to request AWS service quota increase for " f"{quota_code} for service {service_code}"
-                    ),
-                )
+                module.fail_json_aws(e, msg=f"Unable to request AWS service quota increase for {identifier}")
 
     result = {
         "changed": changed,

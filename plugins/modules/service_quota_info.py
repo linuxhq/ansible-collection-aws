@@ -76,6 +76,62 @@ quota:
       description: The quota value.
       returned: when the quota exists
       type: float
+    adjustable:
+      description: Whether the quota can be increased.
+      returned: when returned by AWS
+      type: bool
+    description:
+      description: The quota description.
+      returned: when returned by AWS
+      type: str
+    error_reason:
+      description: The reason the quota value could not be retrieved.
+      returned: when returned by AWS
+      type: dict
+    global_quota:
+      description: Whether the quota is global.
+      returned: when returned by AWS
+      type: bool
+    period:
+      description: The period over which the quota is measured.
+      returned: when returned by AWS
+      type: dict
+    quota_applied_at_level:
+      description: Whether the quota applies to the account or to resources.
+      returned: when returned by AWS
+      type: str
+    quota_arn:
+      description: The quota ARN.
+      returned: when returned by AWS
+      type: str
+    quota_code:
+      description: The quota code.
+      returned: when returned by AWS
+      type: str
+    quota_context:
+      description: The resource-level context of the quota.
+      returned: when returned by AWS
+      type: dict
+    quota_name:
+      description: The quota name.
+      returned: when returned by AWS
+      type: str
+    service_code:
+      description: The service code.
+      returned: when returned by AWS
+      type: str
+    service_name:
+      description: The service name.
+      returned: when returned by AWS
+      type: str
+    unit:
+      description: The quota unit.
+      returned: when returned by AWS
+      type: str
+    usage_metric:
+      description: The CloudWatch metric that tracks usage of the quota.
+      returned: when returned by AWS
+      type: dict
 quota_code:
   description: The gathered quota code.
   returned: always
@@ -168,7 +224,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to get AWS default service quota " f"{service_code}/{quota_code}"),
+                    msg=f"Unable to get AWS default service quota {service_code}/{quota_code}",
                 )
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(

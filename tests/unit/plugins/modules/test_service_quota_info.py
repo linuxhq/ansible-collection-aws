@@ -1,109 +1,78 @@
-from unittest import TestCase
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import service_quota_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
+    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    assert_module_contract,
+    ModuleInitialized,
 )
 
 
-class ServiceQuotaInfoTests(TestCase):
-    def test_missing_adjusted_and_default_quota_returns_empty(self):
-        missing = plugin.ClientError(
-            {"Error": {"Code": "NoSuchResourceException", "Message": "gone"}},
-            "GetServiceQuota",
-        )
-        client = Mock()
-        client.get_service_quota.side_effect = missing
-        client.get_aws_default_service_quota.side_effect = missing
-        module = FakeModule(
-            {"context_id": None, "quota_code": "L-1", "service_code": "ec2"},
-            client=client,
-        )
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleExit) as raised,
-        ):
-            plugin.main()
+def run(module):
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
 
-        self.assertEqual(raised.exception.values["quota"], {})
+    return raised.value.values
 
-    def test_module_contract(self):
-        options = assert_module_contract(self, plugin)
-        assert options["argument_spec"]["quota_code"]["required"] is True
 
-    def test_context_id_is_forwarded_to_service_quotas(self):
-        client = Mock(
-            get_service_quota=Mock(return_value={"Quota": {"Value": 5.0, "QuotaContext": {"ContextId": "arn:context"}}})
-        )
-        module = FakeModule(
-            {"context_id": "arn:context", "quota_code": "L-1", "service_code": "ec2"},
-            client=client,
-        )
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            self.assertRaises(ModuleExit),
-        ):
-            plugin.main()
+def test_module_contract():
+    captured = {}
 
-        self.assertEqual(client.get_service_quota.call_args.kwargs["ContextId"], "arn:context")
+    def initialize(**kwargs):
+        captured.update(kwargs)
+        raise ModuleInitialized
 
-    def test_quota_from_response_rejects_invalid_response(self):
-        module = FakeModule({})
-        with self.assertRaises(ModuleFail) as raised:
-            plugin.quota_from_response(module, [], "service quota", "ec2", "L-1")
+    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
+        plugin.main()
 
-        self.assertEqual(
-            raised.exception.values["msg"],
-            "AWS Service Quotas returned an invalid service quota response",
-        )
+    assert captured["supports_check_mode"]
+    assert captured["argument_spec"]["quota_code"]["required"] is True
+    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
-    def test_quota_from_response_rejects_mismatched_quota(self):
-        module = FakeModule({})
-        with self.assertRaises(ModuleFail) as raised:
-            plugin.quota_from_response(
-                module,
-                {"Quota": {"ServiceCode": "iam", "QuotaCode": "L-1"}},
-                "service quota",
-                "ec2",
-                "L-1",
-            )
 
-        self.assertIn("mismatched quota", raised.exception.values["msg"])
+def test_missing_adjusted_and_default_quota_returns_empty():
+    missing = ClientError({"Error": {"Code": "NoSuchResourceException", "Message": "gone"}}, "GetServiceQuota")
+    client = Mock()
+    client.get_service_quota.side_effect = missing
+    client.get_aws_default_service_quota.side_effect = missing
+    result = run(FakeModule({"context_id": None, "quota_code": "L-1", "service_code": "ec2"}, client=client))
 
-    def test_quota_from_response_rejects_mismatched_context(self):
-        module = FakeModule({})
-        with self.assertRaises(ModuleFail) as raised:
-            plugin.quota_from_response(
-                module,
-                {"Quota": {"Value": 5.0, "QuotaContext": {"ContextId": "wrong"}}},
-                "service quota",
-                "ec2",
-                "L-1",
-                "expected",
-            )
+    assert result["quota"] == {}
 
-        self.assertIn("mismatched quota context", raised.exception.values["msg"])
 
-    def test_quota_from_response_rejects_invalid_context(self):
-        module = FakeModule({})
-        with self.assertRaises(ModuleFail) as raised:
-            plugin.quota_from_response(
-                module,
-                {"Quota": {"Value": 5.0, "QuotaContext": "invalid"}},
-                "service quota",
-                "ec2",
-                "L-1",
-            )
+def test_context_id_is_forwarded_to_service_quotas():
+    client = Mock(
+        get_service_quota=Mock(return_value={"Quota": {"Value": 5.0, "QuotaContext": {"ContextId": "arn:context"}}})
+    )
+    run(FakeModule({"context_id": "arn:context", "quota_code": "L-1", "service_code": "ec2"}, client=client))
 
-        self.assertIn("invalid quota context", raised.exception.values["msg"])
+    assert client.get_service_quota.call_args.kwargs["ContextId"] == "arn:context"
+
+
+@pytest.mark.parametrize(
+    ("response", "context_id", "message"),
+    [
+        ([], None, "AWS Service Quotas returned an invalid service quota response"),
+        ({"Quota": {"ServiceCode": "iam", "QuotaCode": "L-1"}}, None, "mismatched quota"),
+        ({"Quota": {"Value": 5.0, "QuotaContext": {"ContextId": "wrong"}}}, "expected", "mismatched quota context"),
+        ({"Quota": {"Value": 5.0, "QuotaContext": "invalid"}}, None, "invalid quota context"),
+    ],
+)
+def test_quota_from_response_rejects_invalid_response(response, context_id, message):
+    with pytest.raises(ModuleFail) as raised:
+        plugin.quota_from_response(FakeModule({}), response, "service quota", "ec2", "L-1", context_id)
+
+    assert message in raised.value.values["msg"]
 
 
 def test_metric_dimension_identifiers_are_preserved():
@@ -115,15 +84,7 @@ def test_metric_dimension_identifiers_are_preserved():
         "UsageMetric": {"MetricNamespace": "AWS/Usage", "MetricName": "ResourceCount", "MetricDimensions": dimensions},
     }
     client = Mock(get_service_quota=Mock(return_value={"Quota": current}))
-    module = FakeModule(
-        {"quota_code": "L-example", "service_code": "ec2", "value": 10.0, "context_id": None}, client=client
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleExit) as result,
-    ):
-        plugin.main()
+    result = run(FakeModule({"quota_code": "L-example", "service_code": "ec2", "context_id": None}, client=client))
 
-    metric = result.value.values["quota"]["usage_metric"]
+    metric = result["quota"]["usage_metric"]
     assert metric == {"metric_namespace": "AWS/Usage", "metric_name": "ResourceCount", "metric_dimensions": dimensions}
