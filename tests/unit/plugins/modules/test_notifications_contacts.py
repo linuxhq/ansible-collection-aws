@@ -165,15 +165,11 @@ class NotificationsContactsTests(TestCase):
         cases = [
             (
                 dict(base, email_address="invalid", name="Operations"),
-                "email_address must be a valid email address of 6 to 254 characters",
+                "email_address must be 6 to 254 characters and contain @",
             ),
             (
-                dict(base, email_address="ops@@example.com", name="Operations"),
-                "email_address must be a valid email address of 6 to 254 characters",
-            ),
-            (
-                dict(base, email_address="ops @example.com", name="Operations"),
-                "email_address must be a valid email address of 6 to 254 characters",
+                dict(base, email_address="a@b.c", name="Operations"),
+                "email_address must be 6 to 254 characters and contain @",
             ),
             (
                 dict(base, email_address="ops@example.com", name=" "),
@@ -274,3 +270,18 @@ def test_name_change_preserves_contact(check_mode, tags):
 
     assert "name cannot be changed" in raised.value.values["msg"]
     assert not client.mock_calls
+
+    def test_email_address_follows_the_api_pattern(self):
+        for email_address in ("ops@@example.com", "ops @example.com"):
+            with self.subTest(email_address=email_address):
+                module = FakeModule(
+                    {"email_address": email_address, "name": "Operations", "state": "present", "tags": None}
+                )
+                with (
+                    patch.object(plugin, "AnsibleAWSModule", return_value=module),
+                    patch.object(plugin, "require_client_methods"),
+                    patch.object(plugin, "ensure_present") as ensure_present,
+                ):
+                    plugin.main()
+
+                ensure_present.assert_called_once()
