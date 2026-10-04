@@ -1,12 +1,39 @@
 ---
-- name: Ensure information about aws simple email service identity tokens is gathered
+- name: Ensure information about aws simple email service identity is gathered
   tags:
     - ses_identity
-  linuxhq.aws.ses_identity_tokens_info:
+  linuxhq.aws.ses_identity_info:
+    name: "{{ _identity.identity }}"
+    region: "{{ __ses_identity_region }}"
+    validate_certs: true
+  register: __ses_identity_info_query
+
+- name: Ensure aws simple email service identity is present
+  tags:
+    - ses_identity
+  community.aws.ses_identity:
+    bounce_notifications: "{{ _identity.bounce_notifications | d(omit) }}"
+    complaint_notifications: "{{ _identity.complaint_notifications | d(omit) }}"
+    delivery_notifications: "{{ _identity.delivery_notifications | d(omit) }}"
+    feedback_forwarding: "{{ _identity.feedback_forwarding | d(true) }}"
+    identity: "{{ _identity.identity }}"
+    state: present
+    validate_certs: true
+  when:
+    - _identity.state == 'present'
+
+- name: Ensure aws simple email service identity dkim is enabled
+  tags:
+    - ses_identity
+  linuxhq.aws.ses_identity_dkim:
     identity: "{{ _identity.identity }}"
     region: "{{ __ses_identity_region }}"
     validate_certs: true
-  register: __ses_identity_tokens_query
+  register: __ses_identity_dkim
+  when:
+    - _identity.state == 'present'
+    # In check mode a new identity is not created, so its DKIM cannot be predicted.
+    - not ansible_check_mode or __ses_identity_info_query.identities | length > 0
 
 - name: Ensure information about aws simple email service identity txt records is gathered
   tags:
@@ -18,25 +45,30 @@
     zone: "{{ _identity.zone }}"
   register: __ses_identity_txt_query
   check_mode: false
+  when:
+    - _identity.state == 'absent'
 
 - name: Ensure aws simple email service identity dns records are generated
   tags:
     - ses_identity
   ansible.builtin.set_fact:
     __ses_identity_value_dkim:
-      "{{ __ses_identity_tokens_query.dkim_tokens }}"
+      "{{ __ses_identity_dkim.dkim_attributes.tokens
+          if __ses_identity_dkim.dkim_attributes is defined else
+          __ses_identity_info_query.identities |
+          map(attribute='dkim_attributes', default={}) |
+          map(attribute='tokens', default=[]) |
+          first |
+          d([]) }}"
     __ses_identity_value_txt_absent:
       "{{ __ses_identity_txt_query.resource_record_sets.0.resource_records |
           d([]) |
           map(attribute='value') |
           map('from_json') |
-          reject('eq', __ses_identity_tokens_query.verification_token) }}"
-    __ses_identity_value_txt_present:
-      "{{ __ses_identity_txt_query.resource_record_sets.0.resource_records |
-          d([]) |
-          map(attribute='value') |
-          map('from_json') +
-          [__ses_identity_tokens_query.verification_token] }}"
+          reject('in', __ses_identity_info_query.identities |
+                       map(attribute='verification_token', default='') |
+                       list) |
+          list }}"
 
 - name: Ensure aws simple email service identity dmarc records are managed
   tags:
@@ -72,22 +104,6 @@
     value: '"v=spf1 include:amazonses.com -all"'
     zone: "{{ _identity.zone }}"
 
-- name: Ensure aws simple email service identity txt records are present
-  tags:
-    - ses_identity
-  amazon.aws.route53:
-    overwrite: true
-    record: "_amazonses.{{ _identity.identity }}"
-    state: present
-    type: TXT
-    value:
-      "{{ __ses_identity_value_txt_present |
-          map('to_json') |
-          unique }}"
-    zone: "{{ _identity.zone }}"
-  when:
-    - _identity.state == 'present'
-
 - name: Ensure aws simple email service identity txt records are absent
   tags:
     - ses_identity
@@ -103,16 +119,15 @@
     zone: "{{ _identity.zone }}"
   when:
     - _identity.state == 'absent'
+    - __ses_identity_txt_query.resource_record_sets | d([]) | length > 0
 
-- name: Ensure aws simple email service identity is managed
+- name: Ensure aws simple email service identity is absent
   tags:
     - ses_identity
   community.aws.ses_identity:
-    bounce_notifications: "{{ _identity.bounce_notifications | d(omit) }}"
-    complaint_notifications: "{{ _identity.complaint_notifications | d(omit) }}"
-    delivery_notifications: "{{ _identity.delivery_notifications | d(omit) }}"
-    feedback_forwarding: "{{ _identity.feedback_forwarding | d(true) }}"
     identity: "{{ _identity.identity }}"
-    state: "{{ _identity.state }}"
+    state: absent
     validate_certs: true
+  when:
+    - _identity.state == 'absent'
 ...

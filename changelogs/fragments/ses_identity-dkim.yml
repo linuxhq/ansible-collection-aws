@@ -1,0 +1,17 @@
+---
+removed_features:
+  - ses_identity_tokens_info - remove the module. It called ``VerifyDomainDkim`` and ``VerifyDomainIdentity``,
+    which create or re-verify the SES identity, while reporting no change.
+    Use ``linuxhq.aws.ses_identity_info`` to read DKIM tokens and ``linuxhq.aws.ses_identity_dkim`` to enable Easy DKIM.
+breaking_changes:
+  - ses_identity role - stop publishing the ``_amazonses`` TXT verification record; domains are verified by their
+    DKIM CNAME records. ``state=absent`` still removes this region's value from an existing TXT record.
+bugfixes:
+  - ses_identity role - stop recreating the identity when ``state=absent``; the identity is read with
+    ``ses_identity_info`` and deleted after its DNS records.
+major_changes:
+  - ses_identity_dkim - new module that enables Easy DKIM for an SES domain identity and returns its DKIM tokens.
+minor_changes:
+  - ses_identity_info - return each domain identity's SES v1 ``verification_token``, and document the DKIM
+    and verification fields.
+...

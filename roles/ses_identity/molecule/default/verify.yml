@@ -6,6 +6,76 @@
     - aws_caller_info
 
   post_tasks:
+    - name: Ensure identities are queried
+      linuxhq.aws.ses_identity_info:
+        name: "{{ _identity.identity }}"
+      register: __ses_identity_verify
+      loop: "{{ ses_identity_list }}"
+      loop_control:
+        label: "{{ _identity.identity }}"
+        loop_var: _identity
+
+    - name: Ensure identity dkim is verified
+      ansible.builtin.assert:
+        that:
+          - _query.identities | length == 1
+          - _query.identities.0.dkim_attributes.signing_attributes_origin == 'AWS_SES'
+          - _query.identities.0.dkim_attributes.signing_enabled | bool
+          - _query.identities.0.dkim_attributes.tokens | length == 3
+      loop: "{{ __ses_identity_verify.results }}"
+      loop_control:
+        label: "{{ _query._identity.identity }}"
+        loop_var: _query
+
+    - name: Ensure identity dkim record names are generated
+      ansible.builtin.set_fact:
+        __ses_identity_dkim_record_list: >-
+          {%- set records = [] -%}
+          {%- for _query in __ses_identity_verify.results -%}
+          {%- for _token in _query.identities.0.dkim_attributes.tokens -%}
+          {%- set _ = records.append({'name': _token ~ '._domainkey.' ~ _query._identity.identity,
+                                      'zone': _query._identity.zone}) -%}
+          {%- endfor -%}
+          {%- endfor -%}
+          {{ records }}
+
+    - name: Ensure identity dkim records are queried
+      amazon.aws.route53:
+        record: "{{ _record.name }}"
+        state: get
+        type: CNAME
+        zone: "{{ _record.zone }}"
+      register: __ses_identity_dkim_records
+      loop: "{{ __ses_identity_dkim_record_list }}"
+      loop_control:
+        label: "{{ _record.name }}"
+        loop_var: _record
+
+    - name: Ensure identity verification txt records are queried
+      amazon.aws.route53:
+        record: "_amazonses.{{ _identity.identity }}"
+        state: get
+        type: TXT
+        zone: "{{ _identity.zone }}"
+      register: __ses_identity_txt_records
+      loop: "{{ ses_identity_list }}"
+      loop_control:
+        label: "{{ _identity.identity }}"
+        loop_var: _identity
+
+    - name: Ensure identity dns records are verified
+      ansible.builtin.assert:
+        that:
+          - __ses_identity_dkim_records.results | length == ses_identity_list | length * 3
+          - __ses_identity_dkim_records.results |
+              map(attribute='resource_record_sets') |
+              map('length') |
+              min == 1
+          - __ses_identity_txt_records.results |
+              map(attribute='resource_record_sets') |
+              map('length') |
+              max == 0
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         route53_zone_list:
