@@ -75,6 +75,180 @@ accelerators:
   returned: always
   type: list
   elements: dict
+  contains:
+    accelerator_arn:
+      description: The accelerator ARN.
+      returned: always
+      type: str
+    created_time:
+      description: The time the accelerator was created.
+      returned: when returned by AWS
+      type: str
+    dns_name:
+      description: The IPv4 DNS name of the accelerator.
+      returned: when returned by AWS
+      type: str
+    dual_stack_dns_name:
+      description: The dual-stack DNS name of the accelerator.
+      returned: when the accelerator is dual-stack
+      type: str
+    enabled:
+      description: Whether the accelerator is enabled.
+      returned: always
+      type: bool
+    ip_address_type:
+      description: The accelerator IP address type.
+      returned: always
+      type: str
+      sample: IPV4
+    ip_sets:
+      description: The static IP addresses assigned to the accelerator.
+      returned: when returned by AWS
+      type: list
+      elements: dict
+      contains:
+        ip_address_family:
+          description: The IP address family.
+          returned: when returned by AWS
+          type: str
+        ip_addresses:
+          description: The IP addresses.
+          returned: always
+          type: list
+          elements: str
+    last_modified_time:
+      description: The time the accelerator was last modified.
+      returned: when returned by AWS
+      type: str
+    name:
+      description: The accelerator name.
+      returned: always
+      type: str
+    status:
+      description: The accelerator deployment status.
+      returned: when returned by AWS
+      type: str
+      sample: DEPLOYED
+    tags:
+      description: The accelerator tags with key case preserved.
+      returned: when tags are managed or gathered
+      type: dict
+    listeners:
+      description: The accelerator listeners.
+      returned: when O(include_listeners=true) or O(include_endpoint_groups=true)
+      type: list
+      elements: dict
+      contains:
+        accelerator_arn:
+          description: The accelerator ARN.
+          returned: always
+          type: str
+        client_affinity:
+          description: The listener client affinity.
+          returned: always
+          type: str
+          sample: NONE
+        endpoint_groups:
+          description: The listener endpoint groups.
+          returned: when O(include_endpoint_groups=true)
+          type: list
+          elements: dict
+          contains:
+            endpoint_descriptions:
+              description: The endpoints in the endpoint group.
+              returned: when returned by AWS
+              type: list
+              elements: dict
+              contains:
+                client_ip_preservation_enabled:
+                  description: Whether client IP address preservation is enabled.
+                  returned: when returned by AWS
+                  type: bool
+                endpoint_id:
+                  description: The endpoint ID.
+                  returned: always
+                  type: str
+                health_reason:
+                  description: The reason for the endpoint health state.
+                  returned: when returned by AWS
+                  type: str
+                health_state:
+                  description: The endpoint health state.
+                  returned: when returned by AWS
+                  type: str
+                weight:
+                  description: The endpoint weight.
+                  returned: when returned by AWS
+                  type: int
+            endpoint_group_arn:
+              description: The endpoint group ARN.
+              returned: when the endpoint group exists
+              type: str
+            endpoint_group_region:
+              description: The endpoint group region.
+              returned: always
+              type: str
+            health_check_interval_seconds:
+              description: The time in seconds between health checks.
+              returned: when returned by AWS
+              type: int
+            health_check_path:
+              description: The health check path.
+              returned: when returned by AWS
+              type: str
+            health_check_port:
+              description: The health check port.
+              returned: when returned by AWS
+              type: int
+            health_check_protocol:
+              description: The health check protocol.
+              returned: when returned by AWS
+              type: str
+            port_overrides:
+              description: The listener to endpoint port overrides.
+              returned: when returned by AWS
+              type: list
+              elements: dict
+              contains:
+                endpoint_port:
+                  description: The endpoint port.
+                  returned: always
+                  type: int
+                listener_port:
+                  description: The listener port.
+                  returned: always
+                  type: int
+            threshold_count:
+              description: The number of health checks required to change endpoint health.
+              returned: when returned by AWS
+              type: int
+            traffic_dial_percentage:
+              description: The percentage of traffic sent to the endpoint group.
+              returned: when returned by AWS
+              type: float
+        listener_arn:
+          description: The listener ARN.
+          returned: when the listener exists
+          type: str
+        port_ranges:
+          description: The listener port ranges.
+          returned: always
+          type: list
+          elements: dict
+          contains:
+            from_port:
+              description: The first port in the range.
+              returned: always
+              type: int
+            to_port:
+              description: The last port in the range.
+              returned: always
+              type: int
+        protocol:
+          description: The listener protocol.
+          returned: always
+          type: str
+          sample: TCP
 """
 
 try:
@@ -221,7 +395,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to list tags for AWS Global Accelerator " f"{accelerator_arn}"),
+                msg=f"Unable to list tags for AWS Global Accelerator {accelerator_arn}",
             )
 
         accelerator["Tags"] = validate_tags(
@@ -250,7 +424,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to list AWS Global Accelerator listeners for " f"{accelerator_arn}"),
+                msg=f"Unable to list AWS Global Accelerator listeners for {accelerator_arn}",
             )
 
         listeners = validate_resource_list(
@@ -293,7 +467,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to list AWS Global Accelerator endpoint " f"groups for {listener_arn}"),
+                    msg=f"Unable to list AWS Global Accelerator endpoint groups for {listener_arn}",
                 )
 
             listener["EndpointGroups"] = validate_resource_list(

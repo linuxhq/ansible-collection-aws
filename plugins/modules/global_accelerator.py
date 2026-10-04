@@ -39,7 +39,8 @@ options:
   enabled:
     description:
       - Whether the accelerator is enabled.
-    default: true
+      - When omitted while creating an accelerator, AWS enables it.
+      - When omitted while updating an accelerator, the existing value is left unchanged.
     type: bool
   idempotency_token:
     description:
@@ -61,10 +62,11 @@ options:
   ip_address_type:
     description:
       - IP address type for the accelerator.
+      - When omitted while creating an accelerator, AWS uses C(IPV4).
+      - When omitted while updating an accelerator, the existing value is left unchanged.
     choices:
       - DUAL_STACK
       - IPV4
-    default: IPV4
     type: str
   listeners:
     description:
@@ -78,10 +80,11 @@ options:
       client_affinity:
         description:
           - Client affinity setting for the listener.
+          - When omitted while creating a listener, AWS uses C(NONE).
+          - When omitted while updating a listener, the existing value is left unchanged.
         choices:
           - NONE
           - SOURCE_IP
-        default: NONE
         type: str
       endpoint_groups:
         description:
@@ -339,6 +342,176 @@ accelerator:
       provided.
   returned: when an accelerator exists after module execution
   type: dict
+  contains:
+    accelerator_arn:
+      description: The accelerator ARN.
+      returned: always
+      type: str
+    created_time:
+      description: The time the accelerator was created.
+      returned: when returned by AWS
+      type: str
+    dns_name:
+      description: The IPv4 DNS name of the accelerator.
+      returned: when returned by AWS
+      type: str
+    dual_stack_dns_name:
+      description: The dual-stack DNS name of the accelerator.
+      returned: when the accelerator is dual-stack
+      type: str
+    enabled:
+      description: Whether the accelerator is enabled.
+      returned: always
+      type: bool
+    ip_address_type:
+      description: The accelerator IP address type.
+      returned: always
+      type: str
+      sample: IPV4
+    ip_sets:
+      description: The static IP addresses assigned to the accelerator.
+      returned: when returned by AWS
+      type: list
+      elements: dict
+      contains:
+        ip_address_family:
+          description: The IP address family.
+          returned: when returned by AWS
+          type: str
+        ip_addresses:
+          description: The IP addresses.
+          returned: always
+          type: list
+          elements: str
+    last_modified_time:
+      description: The time the accelerator was last modified.
+      returned: when returned by AWS
+      type: str
+    name:
+      description: The accelerator name.
+      returned: always
+      type: str
+    status:
+      description: The accelerator deployment status.
+      returned: when returned by AWS
+      type: str
+      sample: DEPLOYED
+    tags:
+      description: The accelerator tags with key case preserved.
+      returned: when tags are managed or gathered
+      type: dict
+    listeners:
+      description: The accelerator listeners.
+      returned: when O(listeners) is provided
+      type: list
+      elements: dict
+      contains:
+        client_affinity:
+          description: The listener client affinity.
+          returned: always
+          type: str
+          sample: NONE
+        endpoint_groups:
+          description: The listener endpoint groups.
+          returned: when O(listeners[].endpoint_groups) is provided
+          type: list
+          elements: dict
+          contains:
+            endpoint_descriptions:
+              description: The endpoints in the endpoint group.
+              returned: when returned by AWS
+              type: list
+              elements: dict
+              contains:
+                client_ip_preservation_enabled:
+                  description: Whether client IP address preservation is enabled.
+                  returned: when returned by AWS
+                  type: bool
+                endpoint_id:
+                  description: The endpoint ID.
+                  returned: always
+                  type: str
+                health_reason:
+                  description: The reason for the endpoint health state.
+                  returned: when returned by AWS
+                  type: str
+                health_state:
+                  description: The endpoint health state.
+                  returned: when returned by AWS
+                  type: str
+                weight:
+                  description: The endpoint weight.
+                  returned: when returned by AWS
+                  type: int
+            endpoint_group_arn:
+              description: The endpoint group ARN.
+              returned: when the endpoint group exists
+              type: str
+            endpoint_group_region:
+              description: The endpoint group region.
+              returned: always
+              type: str
+            health_check_interval_seconds:
+              description: The time in seconds between health checks.
+              returned: when returned by AWS
+              type: int
+            health_check_path:
+              description: The health check path.
+              returned: when returned by AWS
+              type: str
+            health_check_port:
+              description: The health check port.
+              returned: when returned by AWS
+              type: int
+            health_check_protocol:
+              description: The health check protocol.
+              returned: when returned by AWS
+              type: str
+            port_overrides:
+              description: The listener to endpoint port overrides.
+              returned: when returned by AWS
+              type: list
+              elements: dict
+              contains:
+                endpoint_port:
+                  description: The endpoint port.
+                  returned: always
+                  type: int
+                listener_port:
+                  description: The listener port.
+                  returned: always
+                  type: int
+            threshold_count:
+              description: The number of health checks required to change endpoint health.
+              returned: when returned by AWS
+              type: int
+            traffic_dial_percentage:
+              description: The percentage of traffic sent to the endpoint group.
+              returned: when returned by AWS
+              type: float
+        listener_arn:
+          description: The listener ARN.
+          returned: when the listener exists
+          type: str
+        port_ranges:
+          description: The listener port ranges.
+          returned: always
+          type: list
+          elements: dict
+          contains:
+            from_port:
+              description: The first port in the range.
+              returned: always
+              type: int
+            to_port:
+              description: The last port in the range.
+              returned: always
+              type: int
+        protocol:
+          description: The listener protocol.
+          returned: always
+          type: str
+          sample: TCP
 accelerator_arn:
   description:
     - ARN of the accelerator.
@@ -636,7 +809,7 @@ def get_listeners(client, module, accelerator_arn):
         client,
         "list_listeners",
         "Listeners",
-        "Unable to list AWS Global Accelerator listeners for " f"{accelerator_arn}",
+        f"Unable to list AWS Global Accelerator listeners for {accelerator_arn}",
         AcceleratorArn=accelerator_arn,
     )
     if not isinstance(listeners, list):
@@ -697,7 +870,7 @@ def reconcile_listeners(module, current_listeners):
             continue
 
         remaining.remove(match)
-        if match["client_affinity"] != desired["client_affinity"]:
+        if desired["client_affinity"] is not None and match["client_affinity"] != desired["client_affinity"]:
             updates.append((match, desired))
         else:
             matched.append((match, desired))
@@ -726,13 +899,15 @@ def reconcile_listeners(module, current_listeners):
 
 
 def listener_request(desired):
-    return snake_dict_to_camel_dict(
-        {
-            "client_affinity": desired["client_affinity"],
-            "port_ranges": desired["port_ranges"],
-            "protocol": desired["protocol"],
-        },
-        capitalize_first=True,
+    return scrub_none_parameters(
+        snake_dict_to_camel_dict(
+            {
+                "client_affinity": desired["client_affinity"],
+                "port_ranges": desired["port_ranges"],
+                "protocol": desired["protocol"],
+            },
+            capitalize_first=True,
+        )
     )
 
 
@@ -787,7 +962,7 @@ def get_endpoint_groups(client, module, listener_arn):
         client,
         "list_endpoint_groups",
         "EndpointGroups",
-        "Unable to list AWS Global Accelerator endpoint groups for " f"{listener_arn}",
+        f"Unable to list AWS Global Accelerator endpoint groups for {listener_arn}",
         ListenerArn=listener_arn,
     )
     if not isinstance(endpoint_groups, list):
@@ -975,7 +1150,7 @@ def delete_endpoint_group(client, module, endpoint_group_arn):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=("Unable to delete AWS Global Accelerator endpoint group " f"{endpoint_group_arn}"),
+            msg=f"Unable to delete AWS Global Accelerator endpoint group {endpoint_group_arn}",
         )
 
 
@@ -1066,7 +1241,7 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to create AWS Global Accelerator endpoint " f"group {region} for {listener_arn}"),
+                    msg=f"Unable to create AWS Global Accelerator endpoint group {region} for {listener_arn}",
                 )
 
             endpoint_group = validate_endpoint_group(
@@ -1113,7 +1288,7 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to update AWS Global Accelerator endpoint " f"group {endpoint_group_arn}"),
+                    msg=f"Unable to update AWS Global Accelerator endpoint group {endpoint_group_arn}",
                 )
 
             endpoint_group = validate_endpoint_group(
@@ -1211,7 +1386,7 @@ def ensure_listeners(client, module, accelerator_arn):
     for current, desired in updates:
         listener_arn = current["listener_arn"]
         result = {
-            "client_affinity": desired["client_affinity"],
+            "client_affinity": desired["client_affinity"] or current["client_affinity"],
             "listener_arn": listener_arn,
             "port_ranges": desired["port_ranges"],
             "protocol": desired["protocol"],
@@ -1230,15 +1405,16 @@ def ensure_listeners(client, module, accelerator_arn):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to update AWS Global Accelerator listener " f"{listener_arn}"),
+                msg=f"Unable to update AWS Global Accelerator listener {listener_arn}",
             )
 
         if any(other is not desired and listeners_overlap(current, other) for other in desired_changes):
             wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed")
 
     for index, desired in enumerate(creates):
+        # Predict the AWS creation default when client_affinity is omitted.
         result = {
-            "client_affinity": desired["client_affinity"],
+            "client_affinity": desired["client_affinity"] or "NONE",
             "port_ranges": desired["port_ranges"],
             "protocol": desired["protocol"],
         }
@@ -1263,7 +1439,7 @@ def ensure_listeners(client, module, accelerator_arn):
                 if not deletes:
                     module.fail_json_aws(
                         e,
-                        msg=("Unable to create AWS Global Accelerator listener for " f"{accelerator_arn}"),
+                        msg=f"Unable to create AWS Global Accelerator listener for {accelerator_arn}",
                     )
 
                 current = deletes.pop(0)
@@ -1272,9 +1448,10 @@ def ensure_listeners(client, module, accelerator_arn):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to create AWS Global Accelerator listener for " f"{accelerator_arn}"),
+                    msg=f"Unable to create AWS Global Accelerator listener for {accelerator_arn}",
                 )
 
+        result["client_affinity"] = listener["ClientAffinity"]
         result["listener_arn"] = listener["ListenerArn"]
         result_listeners.append((result, desired))
 
@@ -1353,7 +1530,7 @@ def ensure_absent(client, module):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
-                    msg=("Unable to disable AWS Global Accelerator " f"{accelerator_arn}"),
+                    msg=f"Unable to disable AWS Global Accelerator {accelerator_arn}",
                 )
 
             wait_for_accelerator(
@@ -1396,11 +1573,13 @@ def ensure_absent(client, module):
 def ensure_present(client, module):
     tags = module.params["tags"]
     ip_addresses = module.params["ip_addresses"] or None
-    desired = {
-        "enabled": module.params["enabled"],
-        "ip_address_type": module.params["ip_address_type"],
-        "name": module.params["name"],
-    }
+    desired = scrub_none_parameters(
+        {
+            "enabled": module.params["enabled"],
+            "ip_address_type": module.params["ip_address_type"],
+            "name": module.params["name"],
+        }
+    )
 
     if ip_addresses is not None:
         desired["ip_addresses"] = sorted(ip_addresses)
@@ -1429,7 +1608,7 @@ def ensure_present(client, module):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to list tags for AWS Global Accelerator " f"{accelerator_arn}"),
+                msg=f"Unable to list tags for AWS Global Accelerator {accelerator_arn}",
             )
 
         current_tags = boto3_tag_list_to_ansible_dict(
@@ -1442,9 +1621,13 @@ def ensure_present(client, module):
     current = None
     if accelerator is not None:
         current = {
-            "enabled": accelerator.get("Enabled"),
-            "ip_address_type": accelerator.get("IpAddressType"),
-            "name": accelerator.get("Name"),
+            field: value
+            for field, value in (
+                ("enabled", accelerator.get("Enabled")),
+                ("ip_address_type", accelerator.get("IpAddressType")),
+                ("name", accelerator.get("Name")),
+            )
+            if field in desired
         }
 
         if ip_addresses is not None:
@@ -1487,7 +1670,7 @@ def ensure_present(client, module):
 
         if token is None:
             token_fields = {
-                "ip_address_type": desired["ip_address_type"],
+                "ip_address_type": desired.get("ip_address_type"),
                 "name": desired["name"],
             }
             if "ip_addresses" in desired:
@@ -1500,10 +1683,10 @@ def ensure_present(client, module):
         request = scrub_none_parameters(
             snake_dict_to_camel_dict(
                 {
-                    "enabled": desired["enabled"],
+                    "enabled": desired.get("enabled"),
                     "idempotency_token": token,
                     "ip_addresses": ip_addresses,
-                    "ip_address_type": desired["ip_address_type"],
+                    "ip_address_type": desired.get("ip_address_type"),
                     "name": desired["name"],
                     "tags": (ansible_dict_to_boto3_tag_list(tags) if tags else None),
                 },
@@ -1533,9 +1716,10 @@ def ensure_present(client, module):
             response.get("Accelerator") if isinstance(response, dict) else None,
         )
     elif created and module.check_mode:
+        # Predict the AWS creation defaults for omitted settings.
         accelerator = {
-            "Enabled": desired["enabled"],
-            "IpAddressType": desired["ip_address_type"],
+            "Enabled": desired.get("enabled", True),
+            "IpAddressType": desired.get("ip_address_type", "IPV4"),
             "Name": desired["name"],
             "Status": "IN_PROGRESS",
         }
@@ -1546,9 +1730,9 @@ def ensure_present(client, module):
             snake_dict_to_camel_dict(
                 {
                     "accelerator_arn": accelerator["AcceleratorArn"],
-                    "enabled": desired["enabled"],
+                    "enabled": desired.get("enabled"),
                     "ip_addresses": ip_addresses,
-                    "ip_address_type": desired["ip_address_type"],
+                    "ip_address_type": desired.get("ip_address_type"),
                     "name": desired["name"],
                 },
                 capitalize_first=True,
@@ -1569,7 +1753,7 @@ def ensure_present(client, module):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to update AWS Global Accelerator " f"{request['AcceleratorArn']}"),
+                msg=f"Unable to update AWS Global Accelerator {request['AcceleratorArn']}",
             )
 
         accelerator = validate_accelerator(
@@ -1579,9 +1763,13 @@ def ensure_present(client, module):
         )
     elif resource_changed and module.check_mode:
         accelerator = dict(accelerator)
-        accelerator["Enabled"] = desired["enabled"]
-        accelerator["IpAddressType"] = desired["ip_address_type"]
         accelerator["Name"] = desired["name"]
+        if "enabled" in desired:
+            accelerator["Enabled"] = desired["enabled"]
+
+        if "ip_address_type" in desired:
+            accelerator["IpAddressType"] = desired["ip_address_type"]
+
         if ip_addresses is not None and current["ip_addresses"] != desired["ip_addresses"]:
             accelerator["IpSets"] = [{"IpAddresses": ip_addresses}]
 
@@ -1673,12 +1861,11 @@ def main():
     module = AnsibleAWSModule(
         argument_spec={
             "arn": {"aliases": ["accelerator_arn"], "type": "str"},
-            "enabled": {"default": True, "type": "bool"},
+            "enabled": {"type": "bool"},
             "idempotency_token": {"no_log": False, "type": "str"},
             "ip_addresses": {"elements": "str", "type": "list"},
             "ip_address_type": {
                 "choices": ["DUAL_STACK", "IPV4"],
-                "default": "IPV4",
                 "type": "str",
             },
             "listeners": {
@@ -1686,7 +1873,6 @@ def main():
                 "options": {
                     "client_affinity": {
                         "choices": ["NONE", "SOURCE_IP"],
-                        "default": "NONE",
                         "type": "str",
                     },
                     "endpoint_groups": {
@@ -1816,7 +2002,7 @@ def main():
                 module.fail_json(msg="port_ranges entries must be between 1 and 65535")
 
             if port_range["from_port"] > port_range["to_port"]:
-                module.fail_json(msg=("port_ranges entries require from_port to be less " "than or equal to to_port"))
+                module.fail_json(msg="port_ranges entries require from_port to be less than or equal to to_port")
 
         ordered_port_ranges = normalized_port_ranges(listener["port_ranges"])
         protocol_port_ranges = listener_port_ranges.setdefault(listener.get("protocol"), [])
@@ -1842,33 +2028,31 @@ def main():
             regions.add(region)
 
             if len(endpoint_group.get("endpoint_configurations") or []) > 10:
-                module.fail_json(
-                    msg=(f"Endpoint group {region} endpoint_configurations " "must contain at most 10 entries")
-                )
+                module.fail_json(msg=f"Endpoint group {region} endpoint_configurations must contain at most 10 entries")
 
             if len(endpoint_group.get("port_overrides") or []) > 10:
-                module.fail_json(msg=(f"Endpoint group {region} port_overrides must contain " "at most 10 entries"))
+                module.fail_json(msg=f"Endpoint group {region} port_overrides must contain at most 10 entries")
 
             if endpoint_group.get("health_check_port") is not None and not (
                 1 <= endpoint_group["health_check_port"] <= 65535
             ):
-                module.fail_json(msg=(f"Endpoint group {region} health_check_port must be " "between 1 and 65535"))
+                module.fail_json(msg=f"Endpoint group {region} health_check_port must be between 1 and 65535")
 
             health_check_path = endpoint_group.get("health_check_path")
             if health_check_path is not None and (
                 len(health_check_path) > 255 or re.fullmatch(r"/[-a-zA-Z0-9@:%_+.~#?&/=]*", health_check_path) is None
             ):
                 module.fail_json(
-                    msg=(f"Endpoint group {region} health_check_path must be a valid " "path of at most 255 characters")
+                    msg=f"Endpoint group {region} health_check_path must be a valid path of at most 255 characters"
                 )
 
             if endpoint_group.get("threshold_count") is not None and not (1 <= endpoint_group["threshold_count"] <= 10):
-                module.fail_json(msg=(f"Endpoint group {region} threshold_count must be " "between 1 and 10"))
+                module.fail_json(msg=f"Endpoint group {region} threshold_count must be between 1 and 10")
 
             if endpoint_group.get("traffic_dial_percentage") is not None and not (
                 0 <= endpoint_group["traffic_dial_percentage"] <= 100
             ):
-                module.fail_json(msg=(f"Endpoint group {region} traffic_dial_percentage " "must be between 0 and 100"))
+                module.fail_json(msg=f"Endpoint group {region} traffic_dial_percentage must be between 0 and 100")
 
             endpoint_ids = set()
             for configuration in endpoint_group.get("endpoint_configurations") or []:
@@ -1883,27 +2067,23 @@ def main():
 
                 if endpoint_id in endpoint_ids:
                     module.fail_json(
-                        msg=(f"Duplicate endpoint {endpoint_id} in endpoint group " f"{region} endpoint_configurations")
+                        msg=f"Duplicate endpoint {endpoint_id} in endpoint group {region} endpoint_configurations"
                     )
 
                 endpoint_ids.add(endpoint_id)
 
                 if not 0 <= configuration["weight"] <= 255:
                     module.fail_json(
-                        msg=(f"Endpoint group {region} endpoint_configurations " "weight must be between 0 and 255")
+                        msg=f"Endpoint group {region} endpoint_configurations weight must be between 0 and 255"
                     )
 
             override_listener_ports = set()
             for port_override in endpoint_group.get("port_overrides") or []:
                 if not (1 <= port_override["listener_port"] <= 65535 and 1 <= port_override["endpoint_port"] <= 65535):
-                    module.fail_json(
-                        msg=(f"Endpoint group {region} port_overrides entries " "must be between 1 and 65535")
-                    )
+                    module.fail_json(msg=f"Endpoint group {region} port_overrides entries must be between 1 and 65535")
 
                 if port_override["listener_port"] in override_listener_ports:
-                    module.fail_json(
-                        msg=(f"Endpoint group {region} port_overrides listener_port " "values must be unique")
-                    )
+                    module.fail_json(msg=f"Endpoint group {region} port_overrides listener_port values must be unique")
 
                 override_listener_ports.add(port_override["listener_port"])
 
