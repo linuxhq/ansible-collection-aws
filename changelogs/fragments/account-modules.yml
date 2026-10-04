@@ -1,0 +1,8 @@
+---
+minor_changes:
+  - account_region - add the ``account_id`` option to manage region opt-in status for a member account in
+    the same organization.
+  - account_region role - pass ``account_id`` from each region entry.
+bugfixes:
+  - account_name - return the name that was set instead of re-reading the account, which can still report
+    the previous name immediately after the update.

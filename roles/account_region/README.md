@@ -34,3 +34,5 @@ None
             - name: af-south-1
             - name: ap-east-1
             - name: ca-west-1
+            - name: af-south-1
+              account_id: "123456789012"
