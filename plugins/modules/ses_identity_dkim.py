@@ -5,7 +5,7 @@
 DOCUMENTATION = r"""
 ---
 module: ses_identity_dkim
-version_added: '3.0.0'
+version_added: '2.6.0'
 short_description: Manage Easy DKIM for an AWS Simple Email Service domain identity
 description:
   - Manages Easy DKIM for an AWS SES domain identity.
