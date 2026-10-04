@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - wafv2_web_acl_logging - fail before calling AWS when ``resource_arn`` is not a WAFv2 web ACL ARN,
+    or when the web ACL is in another region or a CloudFront web ACL is used outside ``us-east-1``,
+    instead of reporting AWS's "The ARN isn't valid" error.
+  - wafv2_web_acl_logging - fail when the web ACL does not exist with ``state=present``, including in check mode,
+    instead of predicting a change that AWS rejects.
+...
