@@ -1,0 +1,4 @@
+---
+trivial:
+  - wafv2_ip_set_info and wafv2_web_acl_info - share one tag lookup helper in ``module_utils/wafv2.py``.
+...

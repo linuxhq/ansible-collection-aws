@@ -204,7 +204,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.tagging import boto3_tag_list_to_ansible_dict
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
@@ -213,6 +212,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import get_resource_tags
 
 
 def association_config(config):
@@ -225,31 +225,6 @@ def association_config(config):
         }
 
     return result
-
-
-def get_web_acl_tags(client, module, web_acl):
-    """Return the web ACL's tags, or None when it was deleted after it was listed."""
-    identifier = f"{web_acl.get('Name')}/{web_acl.get('Id')}"
-    request = {"ResourceARN": web_acl.get("ARN")}
-    tags = []
-    while True:
-        try:
-            response = client.list_tags_for_resource(**request, aws_retry=True)
-        except is_boto3_error_code("WAFNonexistentItemException"):
-            return None
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to list tags for AWS WAFv2 web ACL {identifier}")
-
-        tag_info = response.get("TagInfoForResource", {}) if isinstance(response, dict) else None
-        tag_list = tag_info.get("TagList", []) if isinstance(tag_info, dict) else None
-        if not isinstance(tag_list, list) or any(not isinstance(tag, dict) for tag in tag_list):
-            module.fail_json(msg=f"Unexpected response while listing tags for AWS WAFv2 web ACL {identifier}")
-
-        tags.extend(tag_list)
-        if not response.get("NextMarker"):
-            return boto3_tag_list_to_ansible_dict(tags)
-
-        request["NextMarker"] = response["NextMarker"]
 
 
 def main():
@@ -343,7 +318,7 @@ def main():
                 msg=f"Unexpected response while getting AWS WAFv2 web ACL {summary['Name']}/{summary['Id']}"
             )
 
-        tags = get_web_acl_tags(client, module, web_acl)
+        tags = get_resource_tags(client, module, web_acl, "web ACL")
         if tags is None:
             continue
 
