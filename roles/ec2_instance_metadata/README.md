@@ -14,6 +14,7 @@ None
     ec2_instance_metadata_http_endpoint: enabled
     ec2_instance_metadata_http_put_response_hop_limit: 2
     ec2_instance_metadata_http_tokens: required
+    ec2_instance_metadata_http_tokens_enforced: null
     ec2_instance_metadata_instance_metadata_tags: disabled
     ec2_instance_metadata_poll: 0
     ec2_instance_metadata_regions:

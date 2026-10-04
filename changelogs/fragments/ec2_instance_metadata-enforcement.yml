@@ -1,0 +1,10 @@
+---
+minor_changes:
+  - ec2_instance_metadata - add the ``http_tokens_enforced`` option to require IMDSv2 when instances launch
+    (requires botocore 1.42.56 or later).
+  - ec2_instance_metadata role - add ``ec2_instance_metadata_http_tokens_enforced``, which leaves the account
+    setting unchanged by default.
+bugfixes:
+  - ec2_instance_metadata - fail with the policy's message before calling EC2 when a declarative policy manages
+    the defaults that would change, including in check mode.
+  - ec2_instance_metadata - fail when EC2 does not confirm the defaults change instead of reporting success.
