@@ -28,7 +28,7 @@ def require_valid_tags(module, tags, max_tags, key_max=128):
         module.fail_json(msg=f"tags must contain at most {max_tags} entries")
 
     if any(not 1 <= len(key) <= key_max or len(value) > 256 for key, value in tags.items()):
-        module.fail_json(msg=(f"tag keys must contain 1 to {key_max} characters and values " "at most 256 characters"))
+        module.fail_json(msg=f"tag keys must contain 1 to {key_max} characters and values at most 256 characters")
 
 
 def apply_tag_deltas(resource, tags_to_set, tag_keys_to_unset):
