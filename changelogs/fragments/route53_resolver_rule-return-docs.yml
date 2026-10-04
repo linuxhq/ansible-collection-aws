@@ -1,0 +1,21 @@
+---
+bugfixes:
+  - route53_resolver_rule - send ``domain_name`` and ``target_ips`` as supplied instead of the forms used for comparison,
+    so omitted target ports and protocols are no longer sent as ``53`` and ``Do53`` and ``domain_name='.'`` is no longer sent empty.
+  - route53_resolver_rule - stop waiting for a rule to become complete once it starts deleting; waiting for deletion is unchanged.
+  - route53_resolver_rule - ignore rules shared from other accounts and rules owned by Route 53 Resolver when looking up a rule by name.
+  - route53_resolver_rule - repair a rule in ``FAILED`` status by sending the desired configuration again,
+    and fail with the AWS status message when a change leaves a rule ``FAILED``.
+  - route53_resolver_rule - report waits without calling every failure a timeout.
+  - route53_resolver_rule - explain that VPC associations must be removed when AWS rejects deleting a rule that is in use.
+  - route53_resolver_rule - reject duplicate ``target_ips`` entries instead of merging them.
+  - route53_resolver_rule_info - include only VPCs with a ``COMPLETE`` or ``OVERRIDDEN`` association in ``vpc_ids``.
+minor_changes:
+  - route53_resolver_rule - use the rule returned by ``ListResolverRules`` instead of calling ``GetResolverRule``,
+    and reuse the tags read at the start after an update.
+  - route53_resolver_rule_info - check SDK support for association and tag lookups only when rules are found.
+  - route53_resolver_rule role - add ``route53_resolver_rule_timeout`` and per-item ``wait_timeout``,
+    and raise ``route53_resolver_rule_async`` to ``1200`` and ``route53_resolver_rule_retries`` to ``400``.
+  - route53_resolver_rule - document the returned rule fields.
+  - route53_resolver_rule_info - document the returned rule and association fields.
+...

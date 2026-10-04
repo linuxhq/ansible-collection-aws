@@ -49,6 +49,119 @@ resolver_rules:
   returned: always
   type: list
   elements: dict
+  contains:
+    arn:
+      description: The rule ARN.
+      returned: always
+      type: str
+    creation_time:
+      description: The time the rule was created.
+      returned: when returned by AWS
+      type: str
+    domain_name:
+      description: The rule domain name.
+      returned: always
+      type: str
+    id:
+      description: The rule ID.
+      returned: always
+      type: str
+    name:
+      description: The rule name.
+      returned: when configured
+      type: str
+    owner_id:
+      description: The account that owns the rule.
+      returned: always
+      type: str
+    resolver_endpoint_id:
+      description: The outbound resolver endpoint ID.
+      returned: for forward rules
+      type: str
+    rule_type:
+      description: The rule type.
+      returned: always
+      type: str
+      sample: FORWARD
+    share_status:
+      description: Whether the rule is shared.
+      returned: always
+      type: str
+    status:
+      description: The rule status.
+      returned: always
+      type: str
+      sample: COMPLETE
+    status_message:
+      description: Details about the rule status.
+      returned: when returned by AWS
+      type: str
+    tags:
+      description: The rule tags with key case preserved.
+      returned: when gathered by the module
+      type: dict
+    target_ips:
+      description: The rule target IPs.
+      returned: for forward rules
+      type: list
+      elements: dict
+      contains:
+        ip:
+          description: The IPv4 target address.
+          returned: when configured
+          type: str
+        ipv6:
+          description: The IPv6 target address.
+          returned: when configured
+          type: str
+        port:
+          description: The target port.
+          returned: when returned by AWS
+          type: int
+        protocol:
+          description: The target protocol.
+          returned: when returned by AWS
+          type: str
+        server_name_indication:
+          description: The target server name indication.
+          returned: when configured
+          type: str
+    associations:
+      description: The VPC associations of the rule.
+      returned: always
+      type: list
+      elements: dict
+      contains:
+        id:
+          description: The association ID.
+          returned: always
+          type: str
+        name:
+          description: The association name.
+          returned: when configured
+          type: str
+        resolver_rule_id:
+          description: The resolver rule ID.
+          returned: always
+          type: str
+        status:
+          description: The association status.
+          returned: always
+          type: str
+          sample: COMPLETE
+        status_message:
+          description: Details about the association status.
+          returned: when returned by AWS
+          type: str
+        vpc_id:
+          description: The associated VPC ID.
+          returned: always
+          type: str
+    vpc_ids:
+      description: The VPC IDs whose association applies the rule, with a status of C(COMPLETE) or C(OVERRIDDEN).
+      returned: always
+      type: list
+      elements: str
 """
 
 try:
@@ -73,6 +186,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 
+ACTIVE_ASSOCIATION_STATUSES = ("COMPLETE", "OVERRIDDEN")
+
 
 def main():
     module = AnsibleAWSModule(
@@ -87,15 +202,7 @@ def main():
         module,
         client,
         "Route53 Resolver",
-        {
-            "list_resolver_rules": ("Filters", "MaxResults", "NextToken"),
-            "list_resolver_rule_associations": (
-                "Filters",
-                "MaxResults",
-                "NextToken",
-            ),
-            "list_tags_for_resource": ("MaxResults", "NextToken", "ResourceArn"),
-        },
+        {"list_resolver_rules": ("Filters", "MaxResults", "NextToken")},
     )
 
     filters = module.params["filters"]
@@ -116,6 +223,15 @@ def main():
     if not resolver_rules:
         associations = []
     else:
+        require_client_methods(
+            module,
+            client,
+            "Route53 Resolver",
+            {
+                "list_resolver_rule_associations": ("Filters", "MaxResults", "NextToken"),
+                "list_tags_for_resource": ("MaxResults", "NextToken", "ResourceArn"),
+            },
+        )
         association_request = {}
         if filters:
             association_request["Filters"] = ansible_dict_to_boto3_filter_list(
@@ -172,10 +288,11 @@ def main():
             force_tags=False,
         )
 
+        # Only associations that apply the rule count; failed and deleting ones stay in associations.
         normalized_rule["vpc_ids"] = [
             association["vpc_id"]
             for association in normalized_rule["associations"]
-            if association.get("vpc_id") is not None
+            if association.get("vpc_id") is not None and association.get("status") in ACTIVE_ASSOCIATION_STATUSES
         ]
         normalized_rules.append(normalized_rule)
 
