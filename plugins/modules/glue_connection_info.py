@@ -25,8 +25,10 @@ options:
     type: str
   filters:
     description:
-      - A dict of filters to apply when listing Glue connections.
-      - Filter keys and values are passed to the Glue C(GetConnections) API.
+      - The filter to apply when listing Glue connections.
+      - Passed unchanged to the Glue C(GetConnections) API as C(Filter), so keys
+        use the API field names C(ConnectionType), C(ConnectionSchemaVersion),
+        and C(MatchCriteria).
       - Mutually exclusive with O(name).
     type: dict
   hide_password:
@@ -40,6 +42,7 @@ options:
     description:
       - Glue connection name used to limit the result set.
       - When set, the module uses the Glue C(GetConnection) API.
+      - A connection that does not exist results in an empty list.
       - Mutually exclusive with O(filters).
     type: str
 extends_documentation_fragment:
@@ -66,7 +69,7 @@ EXAMPLES = r"""
 - name: Gather information about Glue connections using filters
   linuxhq.aws.glue_connection_info:
     filters:
-      connection_type: NETWORK
+      ConnectionType: NETWORK
 """
 
 RETURN = r"""
@@ -74,22 +77,132 @@ connections:
   description:
     - A list of AWS Glue connections.
     - Keys in C(connection_properties), C(spark_properties), C(athena_properties),
-      and C(python_properties) are returned as provided by the Glue API.
+      C(python_properties), and C(token_url_parameters_map) are returned as provided by the Glue API.
   returned: always
   type: list
   elements: dict
   contains:
-    name:
-      description: The connection name.
-      returned: always
-      type: str
+    athena_properties:
+      description: Athena compute environment properties.
+      returned: when configured
+      type: dict
+    authentication_configuration:
+      description: The connection authentication configuration.
+      returned: when configured
+      type: dict
+      contains:
+        authentication_type:
+          description: The authentication type.
+          returned: when configured
+          type: str
+        kms_key_arn:
+          description: The KMS key ARN used to encrypt the connection.
+          returned: when configured
+          type: str
+        o_auth2_properties:
+          description: The OAuth2 properties.
+          returned: when configured
+          type: dict
+          contains:
+            o_auth2_client_application:
+              description: The OAuth2 client application.
+              returned: when configured
+              type: dict
+            o_auth2_grant_type:
+              description: The OAuth2 grant type.
+              returned: when configured
+              type: str
+            token_url:
+              description: The OAuth2 token URL.
+              returned: when configured
+              type: str
+            token_url_parameters_map:
+              description: Parameters added to the token request, with keys as provided by the Glue API.
+              returned: when configured
+              type: dict
+        secret_arn:
+          description: The Secrets Manager secret ARN that stores the credentials.
+          returned: when configured
+          type: str
+    compatible_compute_environments:
+      description: The compute environments that support the connection.
+      returned: when returned by AWS
+      type: list
+      elements: str
     connection_properties:
       description: Connection configuration properties returned by AWS Glue.
       returned: when configured
       type: dict
+    connection_schema_version:
+      description: The connection schema version.
+      returned: when returned by AWS
+      type: int
     connection_type:
       description: The connection type.
       returned: when configured
+      type: str
+    creation_time:
+      description: The time the connection was created.
+      returned: when returned by AWS
+      type: str
+    description:
+      description: The connection description.
+      returned: when configured
+      type: str
+    last_connection_validation_time:
+      description: The time the connection was last validated.
+      returned: when returned by AWS
+      type: str
+    last_updated_by:
+      description: The user, group, or role that last updated the connection.
+      returned: when returned by AWS
+      type: str
+    last_updated_time:
+      description: The time the connection was last updated.
+      returned: when returned by AWS
+      type: str
+    match_criteria:
+      description: The criteria used to select the connection.
+      returned: when configured
+      type: list
+      elements: str
+    name:
+      description: The connection name.
+      returned: always
+      type: str
+    physical_connection_requirements:
+      description: The network requirements for the connection.
+      returned: when configured
+      type: dict
+      contains:
+        availability_zone:
+          description: The connection Availability Zone.
+          returned: when configured
+          type: str
+        security_group_id_list:
+          description: The connection security group IDs.
+          returned: when configured
+          type: list
+          elements: str
+        subnet_id:
+          description: The connection subnet ID.
+          returned: when configured
+          type: str
+    python_properties:
+      description: Python compute environment properties.
+      returned: when configured
+      type: dict
+    spark_properties:
+      description: Spark compute environment properties.
+      returned: when configured
+      type: dict
+    status:
+      description: The connection status.
+      returned: when returned by AWS
+      type: str
+    status_reason:
+      description: The reason for the connection status.
+      returned: when returned by AWS
       type: str
 """
 
@@ -98,7 +211,6 @@ try:
 except ImportError:
     pass
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
@@ -191,7 +303,7 @@ def main():
         connections = [connection] if connection else []
     else:
         if filters:
-            request["Filter"] = snake_dict_to_camel_dict(filters, capitalize_first=True)
+            request["Filter"] = filters
 
         connections = query_list(
             module,
@@ -204,15 +316,21 @@ def main():
 
     connections = validate_connections(module, connections)
 
-    module.exit_json(
-        changed=False,
-        connections=boto3_resource_list_to_ansible_dict(
-            connections,
-            ignore_list=["ConnectionProperties", "SparkProperties", "AthenaProperties", "PythonProperties"],
-            transform_tags=False,
-            force_tags=False,
-        ),
+    results = boto3_resource_list_to_ansible_dict(
+        connections,
+        ignore_list=["AthenaProperties", "ConnectionProperties", "PythonProperties", "SparkProperties"],
+        transform_tags=False,
+        force_tags=False,
     )
+    for result, connection in zip(results, connections):
+        # ignore_list only applies to top-level keys; keep these user-defined parameter names unchanged.
+        oauth2 = (connection.get("AuthenticationConfiguration") or {}).get("OAuth2Properties") or {}
+        if isinstance(oauth2.get("TokenUrlParametersMap"), dict):
+            result["authentication_configuration"]["o_auth2_properties"]["token_url_parameters_map"] = dict(
+                oauth2["TokenUrlParametersMap"]
+            )
+
+    module.exit_json(changed=False, connections=results)
 
 
 if __name__ == "__main__":
