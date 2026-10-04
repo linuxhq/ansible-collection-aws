@@ -63,14 +63,34 @@ dkim_attributes:
   returned: always
   type: dict
   contains:
+    current_signing_key_length:
+      description: The key length of the DKIM key pair currently in use, such as V(RSA_2048_BIT).
+      returned: when available
+      type: str
+    last_key_generation_timestamp:
+      description: When the DKIM key pair was last generated, in ISO 8601 format.
+      returned: when available
+      type: str
+    next_signing_key_length:
+      description: The key length of the next DKIM key pair to be generated, such as V(RSA_2048_BIT).
+      returned: when available
+      type: str
     signing_attributes_origin:
-      description: Whether DKIM uses Easy DKIM (C(AWS_SES)) or keys you supply.
+      description:
+        - How the DKIM keys were provided.
+        - V(AWS_SES) and the regional C(AWS_SES_<REGION>) values, such as
+          V(AWS_SES_US_EAST_1), indicate Easy DKIM; V(EXTERNAL) indicates keys
+          you supply.
       returned: when available
       type: str
     signing_enabled:
       description: Whether DKIM signing is enabled.
       returned: when available
       type: bool
+    signing_hosted_zone:
+      description: The hosted zone where SES publishes the DKIM public key.
+      returned: when available
+      type: str
     status:
       description: The DKIM verification status.
       returned: when available
@@ -152,10 +172,11 @@ def main():
     )
 
     current = get_dkim_attributes(client, module)
-    # Easy DKIM tokens exist only once AWS has generated them for the AWS_SES signing origin.
-    generate_tokens = signing_enabled and not (
-        current.get("SigningAttributesOrigin") == "AWS_SES" and current.get("Tokens")
-    )
+    # Easy DKIM tokens exist only once AWS has generated them; AWS_SES and the
+    # regional AWS_SES_<REGION> origins (deterministic Easy DKIM) are all Easy DKIM.
+    origin = current.get("SigningAttributesOrigin")
+    easy_dkim = isinstance(origin, str) and origin.startswith("AWS_SES")
+    generate_tokens = signing_enabled and not (easy_dkim and current.get("Tokens"))
     changed = generate_tokens or bool(current.get("SigningEnabled")) != signing_enabled
 
     if changed and module.check_mode:

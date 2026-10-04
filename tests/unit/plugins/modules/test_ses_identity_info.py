@@ -10,6 +10,8 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleExit,
     ModuleFail,
     ModuleInitialized,
+    assert_documents_shape,
+    documented_returns,
 )
 
 
@@ -151,3 +153,10 @@ def test_validate_identity_details_rejects_invalid_details(details, message):
         plugin.validate_identity_details(FakeModule({}), details, "example.com")
 
     assert message in raised.value.values["msg"]
+
+
+def test_return_documents_every_get_email_identity_field():
+    contains = documented_returns(plugin)["identities"]["contains"]
+
+    assert_documents_shape(contains, "sesv2", "GetEmailIdentityResponse")
+    assert {"name", "verification_token"} <= set(contains)

@@ -5,6 +5,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import yaml
+from botocore.session import get_session
+
+from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
 
 HEADER = [
     "#!/usr/bin/python",
@@ -82,3 +86,21 @@ def assert_module_rejects(plugin, params, message):
         plugin.main()
 
     assert raised.value.values["msg"] == message
+
+
+def documented_returns(plugin):
+    return yaml.safe_load(plugin.RETURN)
+
+
+def assert_documents_shape(contains, service, shape_name):
+    """Assert that documented return fields match an SDK structure shape, recursively."""
+    shape = get_session().get_service_model(service).shape_for(shape_name)
+    _assert_documents_shape(contains, shape, shape_name)
+
+
+def _assert_documents_shape(contains, shape, path):
+    members = {camel_dict_to_snake_dict({name: None}).popitem()[0]: member for name, member in shape.members.items()}
+    assert set(members) <= set(contains), f"{path} omits {sorted(set(members) - set(contains))}"
+    for name, member in members.items():
+        if member.type_name == "structure":
+            _assert_documents_shape(contains[name]["contains"], member, f"{path}.{name}")

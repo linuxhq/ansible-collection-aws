@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - acm_certificate_request - tolerate certificate tags without a value instead of failing, treating them as
+    empty values when comparing tags, and fail clearly when ACM returns malformed tags.
+  - ses_identity_dkim - treat the regional ``AWS_SES_<REGION>`` signing origins (deterministic Easy DKIM) as
+    Easy DKIM so existing tokens are no longer regenerated, which broke published DKIM CNAME records.
+  - ses_identity_dkim - document every returned DKIM attribute.
+  - ses_identity_info - document every returned identity field.

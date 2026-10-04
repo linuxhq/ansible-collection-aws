@@ -89,7 +89,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
-    boto3_tag_list_to_ansible_dict,
     compare_aws_tags,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -345,7 +344,17 @@ def main():
                 msg=f"Unable to list tags for AWS Certificate Manager certificate {certificate_arn}",
             )
 
-        current_tags = boto3_tag_list_to_ansible_dict(response.get("Tags", []))
+        current_tags = response.get("Tags", []) if isinstance(response, dict) else None
+        if not isinstance(current_tags, list) or any(
+            not isinstance(tag, dict)
+            or not isinstance(tag.get("Key"), str)
+            or not isinstance(tag.get("Value", ""), str)
+            for tag in current_tags
+        ):
+            module.fail_json(msg=f"AWS Certificate Manager returned invalid tags for certificate {certificate_arn}")
+
+        # ACM tags may omit Value, which is equivalent to an empty value.
+        current_tags = {tag["Key"]: tag.get("Value", "") for tag in current_tags}
 
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
             current_tags,
