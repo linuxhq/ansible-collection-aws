@@ -8,7 +8,6 @@ None
 
 ## Role Variables
 
-    eks_cluster_info_filters: {}
     eks_cluster_info_include: []
     eks_cluster_info_name: null
 
