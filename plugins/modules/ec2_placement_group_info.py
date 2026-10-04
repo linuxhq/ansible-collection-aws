@@ -20,11 +20,15 @@ options:
   group_ids:
     description:
       - EC2 placement group IDs used to limit the result set.
+      - An ID that does not exist results in no entry; no error is raised.
     elements: str
     type: list
   group_names:
     description:
       - EC2 placement group names used to limit the result set.
+      - This is sent as the C(group-name) filter and takes precedence over a
+        C(group-name) key in O(filters).
+      - A name that does not exist results in no entry; no error is raised.
     elements: str
     type: list
 extends_documentation_fragment:
@@ -62,6 +66,53 @@ placement_groups:
   returned: always
   type: list
   elements: dict
+  contains:
+    group_arn:
+      description: ARN of the placement group.
+      returned: when available
+      type: str
+    group_id:
+      description: ID of the placement group.
+      returned: always
+      type: str
+    group_name:
+      description: Name of the placement group.
+      returned: always
+      type: str
+    linked_group_id:
+      description: ID of the placement group linked to this one.
+      returned: when available
+      type: str
+    operator:
+      description: Details of the service that operates the placement group.
+      returned: when available
+      type: dict
+    parent_group_id:
+      description: ID of the parent placement group.
+      returned: when available
+      type: str
+    partition_count:
+      description: Number of partitions in a C(partition) placement group.
+      returned: when available
+      type: int
+    spread_level:
+      description: Spread level of a C(spread) placement group, C(host) or C(rack).
+      returned: when available
+      type: str
+    state:
+      description: State of the placement group.
+      returned: always
+      type: str
+    strategy:
+      description: Strategy of the placement group.
+      returned: always
+      type: str
+    tags:
+      description:
+        - Tags of the placement group.
+        - Tag keys keep their original case.
+      returned: when available
+      type: dict
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -87,17 +138,16 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    filters = module.params["filters"]
+    filters = dict(module.params["filters"] or {})
     group_ids = list(dict.fromkeys(module.params["group_ids"] or []))
     group_names = list(dict.fromkeys(module.params["group_names"] or []))
 
-    request = {}
-    if group_ids:
-        request["GroupIds"] = group_ids
-
+    # GroupNames and GroupIds fail for a group that does not exist, so names are
+    # filtered by the documented group-name filter and IDs are matched locally.
     if group_names:
-        request["GroupNames"] = group_names
+        filters["group-name"] = group_names
 
+    request = {}
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 
@@ -119,6 +169,11 @@ def main():
 
     if any(not isinstance(placement_group, dict) for placement_group in placement_groups):
         module.fail_json(msg="EC2 returned invalid placement group information")
+
+    if group_ids:
+        placement_groups = [
+            placement_group for placement_group in placement_groups if placement_group.get("GroupId") in group_ids
+        ]
 
     module.exit_json(
         changed=False,

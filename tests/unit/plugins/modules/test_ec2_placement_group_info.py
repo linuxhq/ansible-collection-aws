@@ -1,62 +1,104 @@
-from unittest import TestCase
+from pathlib import Path
 from unittest.mock import Mock, patch
+
+import pytest
 
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_placement_group_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
+    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    assert_module_contract,
+    ModuleInitialized,
 )
 
+GROUPS = [
+    {"GroupId": "pg-1", "GroupName": "first", "State": "available", "Strategy": "cluster"},
+    {
+        "GroupId": "pg-2",
+        "GroupName": "second",
+        "State": "available",
+        "Strategy": "spread",
+        "Tags": [{"Key": "Team", "Value": "A"}],
+    },
+]
 
-class Ec2PlacementGroupInfoTests(TestCase):
-    def test_module_contract(self):
-        options = assert_module_contract(self, plugin)
-        assert options["argument_spec"]["group_ids"]["elements"] == "str"
 
-    def test_group_ids_are_sent_with_retry(self):
-        client = Mock()
-        module = FakeModule(
-            {
-                "filters": None,
-                "group_ids": ["pg-1", "pg-1"],
-                "group_names": None,
-            },
-            client=client,
-        )
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods") as require,
-            patch.object(plugin, "query_list", return_value=[]) as query_list,
-            self.assertRaises(ModuleExit),
-        ):
-            plugin.main()
+def params(**overrides):
+    values = {"filters": None, "group_ids": None, "group_names": None}
+    values.update(overrides)
+    return values
 
-        self.assertEqual(
-            require.call_args.args[3],
-            {"describe_placement_groups": ("GroupIds",)},
-        )
-        query_list.assert_called_once_with(
-            module,
-            client,
-            "describe_placement_groups",
-            "PlacementGroups",
-            "Unable to describe EC2 placement groups",
-            GroupIds=["pg-1"],
-        )
 
-    def test_rejects_invalid_placement_group_response(self):
-        module = FakeModule(
-            {"filters": None, "group_ids": None, "group_names": None},
+def run(module, groups):
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require_client_methods,
+        patch.object(plugin, "query_list", return_value=groups) as query_list,
+        pytest.raises((ModuleExit, ModuleFail)) as raised,
+    ):
+        plugin.main()
+
+    return raised.value, require_client_methods, query_list
+
+
+def test_module_contract():
+    captured = {}
+
+    def initialize(**kwargs):
+        captured.update(kwargs)
+        raise ModuleInitialized
+
+    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
+        plugin.main()
+
+    assert captured["supports_check_mode"]
+    assert captured["argument_spec"]["group_ids"]["elements"] == "str"
+    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
+
+
+def test_group_names_are_sent_as_the_group_name_filter():
+    _result, require_client_methods, query_list = run(
+        FakeModule(
+            params(group_names=["first", "first"], filters={"group-name": "ignored", "strategy": "cluster"}),
             client=Mock(),
-        )
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            patch.object(plugin, "query_list", return_value=[None]),
-            self.assertRaises(ModuleFail) as raised,
-        ):
-            plugin.main()
+        ),
+        [],
+    )
 
-        self.assertIn("invalid placement group information", raised.exception.values["msg"])
+    assert require_client_methods.call_args.args[3] == {"describe_placement_groups": ("Filters",)}
+    assert sorted(query_list.call_args.kwargs["Filters"], key=lambda item: item["Name"]) == [
+        {"Name": "group-name", "Values": ["first"]},
+        {"Name": "strategy", "Values": ["cluster"]},
+    ]
+    assert "GroupNames" not in query_list.call_args.kwargs
+
+
+def test_group_ids_are_matched_locally():
+    result, require_client_methods, query_list = run(
+        FakeModule(params(group_ids=["pg-2", "pg-2"]), client=Mock()), GROUPS
+    )
+
+    assert [group["group_id"] for group in result.values["placement_groups"]] == ["pg-2"]
+    assert "GroupIds" not in query_list.call_args.kwargs
+    assert require_client_methods.call_args.args[3] == {"describe_placement_groups": ()}
+
+
+@pytest.mark.parametrize("overrides", [{"group_ids": ["pg-missing"]}, {"group_names": ["missing"]}])
+def test_missing_groups_return_an_empty_list(overrides):
+    groups = [] if "group_names" in overrides else GROUPS
+    result, _require, _query = run(FakeModule(params(**overrides), client=Mock()), groups)
+
+    assert result.values["placement_groups"] == []
+
+
+def test_tags_keep_their_case():
+    result, _require, _query = run(FakeModule(params(group_ids=["pg-2"]), client=Mock()), GROUPS)
+
+    assert result.values["placement_groups"][0]["tags"] == {"Team": "A"}
+
+
+def test_rejects_invalid_placement_group_response():
+    result, _require, _query = run(FakeModule(params(), client=Mock()), [None])
+
+    assert "invalid placement group information" in result.values["msg"]
