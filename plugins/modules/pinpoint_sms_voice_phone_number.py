@@ -11,8 +11,12 @@ description:
   - Requests and releases AWS End User Messaging SMS origination phone numbers.
   - Without O(phone_number_id), an existing phone number matching the requested
     attributes and tags is adopted; otherwise a new phone number is requested.
-  - With O(phone_number_id), tags are reconciled on that number; a missing number
-    or mismatched attributes fail without requesting a replacement.
+  - Matching uses the attributes fixed when a number is requested, O(iso_country_code),
+    O(message_type), O(number_capabilities), O(number_type), O(pool_id), and O(registration_id).
+  - O(deletion_protection_enabled), O(international_sending_enabled), and O(opt_out_list_name)
+    are updated in place on the matched number with C(UpdatePhoneNumber).
+  - With O(phone_number_id), that number is updated; a missing number or mismatched
+    request attributes fail without requesting a replacement.
   - This module maps to the Pinpoint SMS Voice V2 C(RequestPhoneNumber) API,
     the API behind C(aws pinpoint-sms-voice-v2 request-phone-number).
 author:
@@ -24,15 +28,15 @@ options:
       - When omitted, AWS generates an idempotency token for the request.
     type: str
   deletion_protection_enabled:
-    default: false
     description:
       - Whether deletion protection is enabled for the phone number.
+      - When omitted while requesting a number, AWS disables deletion protection.
+      - When omitted for an existing number, the current setting is left unchanged.
     type: bool
   international_sending_enabled:
     description:
       - Whether international sending is enabled for the phone number.
-      - This option is only used when requesting a new phone number; it is
-        not used when matching existing phone numbers.
+      - When omitted for an existing number, the current setting is left unchanged.
       - This option requires AWS SDK support for the
         C(InternationalSendingEnabled) request parameter.
     type: bool
@@ -76,11 +80,12 @@ options:
   opt_out_list_name:
     description:
       - The OptOutList name or ARN to associate with the phone number.
+      - When omitted for an existing number, the current OptOutList is left unchanged.
     type: str
   phone_number_id:
     description:
       - The phone number ID to manage or release.
-      - Set this with O(state=present) to update tags on a specific existing number.
+      - Set this with O(state=present) to update tags and settings on a specific existing number.
       - This is required when O(state=absent).
     type: str
   pool_id:
@@ -165,6 +170,81 @@ phone_number:
     - The requested or released phone number.
   returned: when available
   type: dict
+  contains:
+    created_timestamp:
+      description: The time the phone number was created.
+      returned: when returned by AWS
+      type: str
+    deletion_protection_enabled:
+      description: Whether deletion protection is enabled.
+      returned: when returned by AWS
+      type: bool
+    international_sending_enabled:
+      description: Whether international sending is enabled.
+      returned: when returned by AWS
+      type: bool
+    iso_country_code:
+      description: The two-character ISO country code.
+      returned: when returned by AWS
+      type: str
+    message_type:
+      description: The type of messages sent from the phone number.
+      returned: when returned by AWS
+      type: str
+    monthly_leasing_price:
+      description: The monthly price to lease the phone number.
+      returned: when returned by AWS
+      type: str
+    number_capabilities:
+      description: The phone number capabilities.
+      returned: when returned by AWS
+      type: list
+      elements: str
+    number_type:
+      description: The phone number type.
+      returned: when returned by AWS
+      type: str
+    opt_out_list_name:
+      description: The OptOutList associated with the phone number.
+      returned: when returned by AWS
+      type: str
+    phone_number:
+      description: The phone number in E.164 format.
+      returned: when returned by AWS
+      type: str
+    phone_number_arn:
+      description: The phone number ARN.
+      returned: when returned by AWS
+      type: str
+    phone_number_id:
+      description: The phone number ID.
+      returned: when returned by AWS
+      type: str
+    pool_id:
+      description: The pool the phone number is associated with.
+      returned: when associated with a pool
+      type: str
+    registration_id:
+      description: The registration associated with the phone number.
+      returned: when associated with a registration
+      type: str
+    self_managed_opt_outs_enabled:
+      description: Whether self-managed opt-outs are enabled.
+      returned: when returned by AWS
+      type: bool
+    status:
+      description: The phone number status.
+      returned: when returned by AWS
+      type: str
+      sample: ACTIVE
+    tags:
+      description: The phone number tags with key case preserved.
+      returned: when returned by AWS
+      type: dict
+    two_way_enabled:
+      description: Whether two-way messaging is enabled.
+      returned: when returned by AWS
+      type: bool
 phone_number_arn:
   description:
     - The ARN of the phone number.
@@ -304,7 +384,7 @@ def get_phone_number(client, module, phone_number_id):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
-            msg=("Unable to describe Pinpoint SMS Voice V2 phone number " f"{phone_number_id}"),
+            msg=f"Unable to describe Pinpoint SMS Voice V2 phone number {phone_number_id}",
         )
 
     phone_numbers = response.get("PhoneNumbers") if isinstance(response, dict) else None
@@ -352,9 +432,7 @@ def wait_for_phone_number_active(client, module, phone_number_id):
                 return phone_number
 
             module.fail_json(
-                msg=(
-                    "AWS End User Messaging SMS phone number " f"{phone_number_id} was deleted before becoming active"
-                ),
+                msg=f"AWS End User Messaging SMS phone number {phone_number_id} was deleted before becoming active",
                 phone_number=boto3_resource_to_ansible_dict(phone_number, transform_tags=False, force_tags=False),
                 phone_number_id=phone_number_id,
                 status=status,
@@ -363,11 +441,46 @@ def wait_for_phone_number_active(client, module, phone_number_id):
         time.sleep(min(wait_delay, max(0, deadline - time.monotonic())))
 
     module.fail_json(
-        msg=("Timed out waiting for AWS End User Messaging SMS phone number " f"{phone_number_id} to become active"),
+        msg=f"Timed out waiting for AWS End User Messaging SMS phone number {phone_number_id} to become active",
         phone_number=boto3_resource_to_ansible_dict(phone_number, transform_tags=False, force_tags=False),
         phone_number_id=phone_number_id,
         status=phone_number.get("Status"),
     )
+
+
+def updatable_settings_delta(module, current):
+    updates = {}
+    for option, field in (
+        ("deletion_protection_enabled", "DeletionProtectionEnabled"),
+        ("international_sending_enabled", "InternationalSendingEnabled"),
+    ):
+        if module.params[option] is not None and current.get(field) != module.params[option]:
+            updates[field] = module.params[option]
+
+    # OptOutListName accepts a name or ARN; DescribePhoneNumbers returns the name.
+    opt_out_list_name = module.params["opt_out_list_name"]
+    if opt_out_list_name is not None and current.get("OptOutListName") != opt_out_list_name.rsplit("/", 1)[-1]:
+        updates["OptOutListName"] = opt_out_list_name
+
+    return updates
+
+
+def update_phone_number(client, module, current, updates):
+    phone_number_id = current["PhoneNumberId"]
+    require_client_methods(
+        module,
+        client,
+        "Pinpoint SMS Voice V2",
+        {"update_phone_number": ("PhoneNumberId",) + tuple(updates)},
+    )
+    try:
+        response = client.update_phone_number(PhoneNumberId=phone_number_id, **updates, aws_retry=True)
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to update Pinpoint SMS Voice V2 phone number {phone_number_id}")
+
+    response = validate_phone_number(module, response, "updating a phone number")
+    response.pop("ResponseMetadata", None)
+    return dict(current, **response)
 
 
 def ensure_absent(client, module):
@@ -461,7 +574,7 @@ def ensure_absent(client, module):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=("Unable to release Pinpoint SMS Voice V2 phone number " f"{phone_number_id}"),
+                msg=f"Unable to release Pinpoint SMS Voice V2 phone number {phone_number_id}",
             )
 
         if response is not None:
@@ -487,10 +600,7 @@ def ensure_present(client, module):
         "message-type": message_type,
         "number-capability": number_capabilities,
         "number-type": number_type,
-        "deletion-protection-enabled": deletion_protection_enabled,
     }
-    if opt_out_list_name is not None:
-        filters["opt-out-list-name"] = opt_out_list_name.rsplit("/", 1)[-1]
 
     lookup = (
         {"PhoneNumberIds": [module.params["phone_number_id"]]}
@@ -506,19 +616,15 @@ def ensure_present(client, module):
         **lookup,
     )
 
+    # Match only attributes fixed by RequestPhoneNumber; updatable settings converge below.
     desired = {
-        "DeletionProtectionEnabled": deletion_protection_enabled,
         "IsoCountryCode": iso_country_code,
         "MessageType": message_type,
         "NumberCapabilities": sorted(set(number_capabilities or [])),
         "NumberType": number_type,
     }
-    for module_value, response_key in (
-        (opt_out_list_name, "OptOutListName"),
-        (pool_id, "PoolId"),
-    ):
-        if module_value is not None:
-            desired[response_key] = module_value.rsplit("/", 1)[-1]
+    if pool_id is not None:
+        desired["PoolId"] = pool_id.rsplit("/", 1)[-1]
 
     if registration_id is not None:
         desired["RegistrationId"] = registration_id
@@ -579,14 +685,23 @@ def ensure_present(client, module):
             current = wait_for_phone_number_active(client, module, current["PhoneNumberId"])
 
         changed = False
+        updates = updatable_settings_delta(module, current)
+        if updates:
+            changed = True
+            if module.check_mode:
+                current = dict(current, **updates)
+            else:
+                current = update_phone_number(client, module, current, updates)
+
         if tags is not None:
             current = dict(current)
             current["Tags"] = ansible_dict_to_boto3_tag_list(phone_number_tags(client, module, current))
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
                 boto3_tag_list_to_ansible_dict(current["Tags"]), tags, purge_tags=module.params["purge_tags"]
             )
-            changed = bool(tags_to_set or tag_keys_to_unset)
-            if changed and not module.check_mode:
+            tags_changed = bool(tags_to_set or tag_keys_to_unset)
+            changed = changed or tags_changed
+            if tags_changed and not module.check_mode:
                 arn = current.get("PhoneNumberArn")
                 if not arn:
                     module.fail_json(msg="AWS did not return the phone number ARN required for tagging")
@@ -658,7 +773,7 @@ def ensure_present(client, module):
 def main():
     argument_spec = {
         "client_token": {"no_log": False, "type": "str"},
-        "deletion_protection_enabled": {"default": False, "type": "bool"},
+        "deletion_protection_enabled": {"type": "bool"},
         "international_sending_enabled": {"type": "bool"},
         "iso_country_code": {"type": "str"},
         "message_type": {

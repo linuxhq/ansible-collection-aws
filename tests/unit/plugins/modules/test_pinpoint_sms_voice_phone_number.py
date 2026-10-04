@@ -122,6 +122,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
         module = FakeModule(
             {
                 "deletion_protection_enabled": False,
+                "international_sending_enabled": None,
                 "iso_country_code": "US",
                 "message_type": "TRANSACTIONAL",
                 "number_capabilities": ["SMS", "VOICE"],
@@ -159,6 +160,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
         module = FakeModule(
             {
                 "deletion_protection_enabled": False,
+                "international_sending_enabled": None,
                 "iso_country_code": "US",
                 "message_type": "TRANSACTIONAL",
                 "number_capabilities": ["SMS"],
@@ -186,6 +188,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
         module = FakeModule(
             {
                 "deletion_protection_enabled": False,
+                "international_sending_enabled": None,
                 "iso_country_code": "US",
                 "message_type": "TRANSACTIONAL",
                 "number_capabilities": ["SMS"],
@@ -217,7 +220,9 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
         ):
             plugin.ensure_present(client, module)
 
-        self.assertIn({"Name": "opt-out-list-name", "Values": ["list-1"]}, query.call_args.kwargs["Filters"])
+        filter_names = {item["Name"] for item in query.call_args.kwargs["Filters"]}
+        self.assertNotIn("opt-out-list-name", filter_names)
+        self.assertNotIn("deletion-protection-enabled", filter_names)
         self.assertFalse(raised.exception.values["changed"])
         client.request_phone_number.assert_not_called()
 
@@ -226,6 +231,7 @@ class PinpointSmsVoicePhoneNumberTests(TestCase):
         module = FakeModule(
             {
                 "deletion_protection_enabled": False,
+                "international_sending_enabled": None,
                 "iso_country_code": "US",
                 "message_type": "TRANSACTIONAL",
                 "number_capabilities": ["SMS"],
@@ -525,6 +531,7 @@ def test_explicit_number_tags_preserve_resource_identity():
                     "purge_tags": purge,
                     "tags": {"Keep": "updated"},
                     "deletion_protection_enabled": False,
+                    "international_sending_enabled": None,
                     "iso_country_code": "US",
                     "message_type": "TRANSACTIONAL",
                     "number_capabilities": ["SMS"],
@@ -557,3 +564,107 @@ def test_explicit_number_tags_preserve_resource_identity():
             assert client.untag_resource.call_count == (1 if purge and not check else 0)
             client.request_phone_number.assert_not_called()
             client.release_phone_number.assert_not_called()
+
+
+def phone_number_params(**overrides):
+    params = {
+        "client_token": None,
+        "deletion_protection_enabled": None,
+        "international_sending_enabled": None,
+        "iso_country_code": "US",
+        "message_type": "TRANSACTIONAL",
+        "number_capabilities": ["SMS"],
+        "number_type": "LONG_CODE",
+        "opt_out_list_name": None,
+        "pool_id": None,
+        "registration_id": None,
+        "phone_number_id": None,
+        "purge_tags": True,
+        "state": "present",
+        "tags": None,
+        "wait": False,
+    }
+    params.update(overrides)
+    return params
+
+
+def existing_number(**overrides):
+    number = {
+        "DeletionProtectionEnabled": True,
+        "InternationalSendingEnabled": False,
+        "IsoCountryCode": "US",
+        "MessageType": "TRANSACTIONAL",
+        "NumberCapabilities": ["SMS"],
+        "NumberType": "LONG_CODE",
+        "OptOutListName": "default",
+        "PhoneNumberId": "phone-1",
+        "Status": "ACTIVE",
+    }
+    number.update(overrides)
+    return number
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_changed_settings_update_the_matched_number_instead_of_requesting_another(check_mode):
+    client = Mock()
+    client.update_phone_number.return_value = existing_number(DeletionProtectionEnabled=False, OptOutListName="list-1")
+    module = FakeModule(
+        phone_number_params(
+            deletion_protection_enabled=False,
+            opt_out_list_name="arn:aws:sms-voice:us-east-1:1:opt-out-list/list-1",
+        ),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "query_list", return_value=[existing_number()]),
+        patch.object(plugin, "require_client_methods") as require_methods,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["phone_number"]["deletion_protection_enabled"] is False
+    client.request_phone_number.assert_not_called()
+    if check_mode:
+        client.update_phone_number.assert_not_called()
+    else:
+        client.update_phone_number.assert_called_once_with(
+            PhoneNumberId="phone-1",
+            DeletionProtectionEnabled=False,
+            OptOutListName="arn:aws:sms-voice:us-east-1:1:opt-out-list/list-1",
+            aws_retry=True,
+        )
+        assert require_methods.call_args.args[3] == {
+            "update_phone_number": ("PhoneNumberId", "DeletionProtectionEnabled", "OptOutListName")
+        }
+
+
+def test_omitted_settings_leave_the_matched_number_unchanged():
+    client = Mock()
+    module = FakeModule(phone_number_params())
+    with (
+        patch.object(plugin, "query_list", return_value=[existing_number()]),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is False
+    client.update_phone_number.assert_not_called()
+    client.request_phone_number.assert_not_called()
+
+
+def test_new_number_request_omits_unset_settings():
+    client = Mock()
+    client.request_phone_number.return_value = existing_number(DeletionProtectionEnabled=False, Status="PENDING")
+    module = FakeModule(phone_number_params())
+    with (
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
+
+    request = client.request_phone_number.call_args.kwargs
+    assert "DeletionProtectionEnabled" not in request
+    assert "InternationalSendingEnabled" not in request
+    assert "OptOutListName" not in request
