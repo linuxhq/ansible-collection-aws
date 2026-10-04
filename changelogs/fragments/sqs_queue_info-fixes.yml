@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - sqs_queue_info role - tag every task with ``sqs_queue_info`` instead of ``sqs_queue``,
+    so running with ``--tags sqs_queue_info`` gathers the queues before publishing them.
+minor_changes:
+  - sqs_queue_info - return each queue's ``tags`` from ``ListQueueTags``, keeping the tag keys' case.
+...
