@@ -69,21 +69,60 @@ def test_rejects_malformed_repository_response():
         plugin.main()
 
 
-def test_missing_repository_returns_an_empty_list():
-    module = FakeModule(
-        {"registry_id": None, "repository_names": ["app", "missing"]},
-        client=Mock(),
-    )
-    error = plugin.ClientError(
+def not_found():
+    return plugin.ClientError(
         {"Error": {"Code": "RepositoryNotFoundException", "Message": "missing"}},
         "DescribeRepositories",
+    )
+
+
+def repository(name):
+    return {"repositoryArn": f"arn:aws:ecr:us-east-1:123456789012:repository/{name}", "repositoryName": name}
+
+
+def test_missing_repository_keeps_the_repositories_that_exist():
+    module = FakeModule(
+        {"registry_id": None, "repository_names": ["app", "missing", "web"]},
+        client=Mock(),
     )
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", side_effect=error),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=[
+                not_found(),
+                {"repositories": [repository("app")]},
+                not_found(),
+                {"repositories": [repository("web")]},
+            ],
+        ) as query,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert [repo["repository_name"] for repo in raised.value.values["repositories"]] == ["app", "web"]
+    assert [describe.kwargs["repositoryNames"] for describe in query.call_args_list] == [
+        ["app", "missing", "web"],
+        ["app"],
+        ["missing"],
+        ["web"],
+    ]
+
+
+def test_single_missing_repository_returns_an_empty_list():
+    module = FakeModule(
+        {"registry_id": None, "repository_names": ["missing"]},
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "paginated_query_with_retries", side_effect=not_found()) as query,
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
 
     assert raised.value.values["repositories"] == []
+    query.assert_called_once()

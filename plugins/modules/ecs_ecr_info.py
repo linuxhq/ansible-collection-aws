@@ -19,7 +19,7 @@ options:
   repository_names:
     description:
       - ECR repository names used to limit the result set.
-      - An empty list is returned when any listed repository does not exist.
+      - A repository that does not exist results in no entry; no error is raised.
       - This must contain at most 100 unique entries.
     elements: str
     type: list
@@ -157,6 +157,21 @@ def validate_repositories(module, response):
     return repositories
 
 
+def describe_repositories(client, module, request, description):
+    try:
+        response = paginated_query_with_retries(
+            client,
+            "describe_repositories",
+            **request,
+        )
+    except is_boto3_error_code("RepositoryNotFoundException"):
+        return None
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to describe AWS ECR {description}")
+
+    return validate_repositories(module, response)
+
+
 def main():
     argument_spec = {
         "registry_id": {"type": "str"},
@@ -186,18 +201,23 @@ def main():
         {"describe_repositories": tuple(request) + ("maxResults", "nextToken")},
     )
 
-    try:
-        response = paginated_query_with_retries(
-            client,
-            "describe_repositories",
-            **request,
-        )
-    except is_boto3_error_code("RepositoryNotFoundException"):
+    repositories = describe_repositories(client, module, request, "repositories")
+
+    # DescribeRepositories fails the whole request when any listed repository does
+    # not exist, so each name is described separately to keep the ones that exist.
+    if repositories is None:
         repositories = []
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg="Unable to describe AWS ECR repositories")
-    else:
-        repositories = validate_repositories(module, response)
+        if len(repository_names) > 1:
+            for repository_name in repository_names:
+                repositories.extend(
+                    describe_repositories(
+                        client,
+                        module,
+                        dict(request, repositoryNames=[repository_name]),
+                        f"repository {repository_name}",
+                    )
+                    or []
+                )
 
     module.exit_json(
         changed=False,

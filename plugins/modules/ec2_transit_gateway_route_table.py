@@ -24,6 +24,7 @@ options:
     description:
       - The route table name.
       - This value is managed as the C(Name) tag.
+      - When O(tags) contains C(Name), its value must match this value.
       - Required when O(transit_gateway_route_table_id) is omitted.
     type: str
   purge_routes:
@@ -359,6 +360,25 @@ def current_tags(route_table):
     return boto3_tag_list_to_ansible_dict((route_table or {}).get("Tags", []))
 
 
+def reconcile_tags(client, module, resource_id, tags_to_set, tag_keys_to_unset):
+    tag_methods = {}
+    if tag_keys_to_unset:
+        tag_methods["delete_tags"] = ("Resources", "Tags")
+
+    if tags_to_set:
+        tag_methods["create_tags"] = ("Resources", "Tags")
+
+    require_client_methods(module, client, "EC2", tag_methods)
+    reconcile_ec2_tags(
+        module,
+        client,
+        [resource_id],
+        tags_to_set,
+        tag_keys_to_unset,
+        "EC2 transit gateway route table",
+    )
+
+
 def route_sort_key(route):
     return ROUTE_STATE_ORDER.get(route.get("State"), 99)
 
@@ -452,6 +472,7 @@ def wait_for_route_table(
 ):
     deadline = time.monotonic() + module.params["wait_timeout"]
     route_table = {}
+    target = " or ".join(sorted(desired_states))
 
     while time.monotonic() < deadline:
         route_table = get_route_table_by_id(client, module, transit_gateway_route_table_id)
@@ -472,7 +493,7 @@ def wait_for_route_table(
         )
 
     module.fail_json(
-        msg=f"Timed out waiting for EC2 transit gateway route table {transit_gateway_route_table_id}",
+        msg=f"Timed out waiting for EC2 transit gateway route table {transit_gateway_route_table_id} to become {target}",
         state=(route_table or {}).get("State"),
         transit_gateway_route_table=normalize_route_table(route_table),
         transit_gateway_route_table_id=transit_gateway_route_table_id,
@@ -587,6 +608,7 @@ def check_mode_route(desired):
 def wait_for_route(client, module, transit_gateway_route_table_id, desired):
     deadline = time.monotonic() + module.params["wait_timeout"]
     route = {}
+    target = "blackhole" if desired.get("blackhole") else "active"
 
     while time.monotonic() < deadline:
         route = get_route(
@@ -610,7 +632,7 @@ def wait_for_route(client, module, transit_gateway_route_table_id, desired):
         )
 
     module.fail_json(
-        msg=f"Timed out waiting for EC2 transit gateway route {desired['destination_cidr_block']}",
+        msg=f"Timed out waiting for EC2 transit gateway route {desired['destination_cidr_block']} to become {target}",
         route=normalize_routes([route])[0] if route else {},
         transit_gateway_route_table_id=transit_gateway_route_table_id,
     )
@@ -640,9 +662,9 @@ def wait_for_route_absent(client, module, transit_gateway_route_table_id, destin
     )
 
 
-def ensure_route_absent(client, module, transit_gateway_route_table_id, destination_cidr_block):
+def ensure_route_absent(client, module, transit_gateway_route_table_id, destination_cidr_block, route):
+    """Remove the static route; route is the current route as get_route() selects it, or None."""
     wait = module.params["wait"] and not module.check_mode
-    route = get_route(client, module, transit_gateway_route_table_id, destination_cidr_block)
 
     if not route_is_static(route):
         if wait and route and route.get("State") == "deleting":
@@ -766,38 +788,7 @@ def ensure_present(client, module):
 
         if tag_changed:
             if not module.check_mode:
-                resource_id = route_table_id(route_table)
-                if tag_keys_to_unset:
-                    require_client_methods(
-                        module,
-                        client,
-                        "EC2",
-                        {"delete_tags": ("Resources", "Tags")},
-                    )
-                    reconcile_ec2_tags(
-                        module,
-                        client,
-                        [resource_id],
-                        {},
-                        tag_keys_to_unset,
-                        "EC2 transit gateway route table",
-                    )
-
-                if tags_to_set:
-                    require_client_methods(
-                        module,
-                        client,
-                        "EC2",
-                        {"create_tags": ("Resources", "Tags")},
-                    )
-                    reconcile_ec2_tags(
-                        module,
-                        client,
-                        [resource_id],
-                        tags_to_set,
-                        [],
-                        "EC2 transit gateway route table",
-                    )
+                reconcile_tags(client, module, route_table_id(route_table), tags_to_set, tag_keys_to_unset)
 
             route_table = apply_tag_deltas(route_table, tags_to_set, tag_keys_to_unset)
 
@@ -825,6 +816,12 @@ def ensure_present(client, module):
                         module,
                         transit_gateway_route_table_id,
                         desired_route["destination_cidr_block"],
+                        get_route(
+                            client,
+                            module,
+                            transit_gateway_route_table_id,
+                            desired_route["destination_cidr_block"],
+                        ),
                     )
                 else:
                     destination_cidr_block = desired_route["destination_cidr_block"]
@@ -929,18 +926,27 @@ def ensure_present(client, module):
 
                     desired_destinations.add(desired_route["destination_cidr_block"])
 
+                # Select the route for each destination as get_route() does, so purging needs no further search.
+                purge_routes_by_destination = {}
                 for current_route in static_routes(client, module, transit_gateway_route_table_id):
-                    if not route_destination(current_route):
+                    destination = route_destination(current_route)
+                    if not destination or destination in desired_destinations:
                         continue
 
-                    if route_destination(current_route) in desired_destinations:
+                    if current_route.get("State") == "deleted":
                         continue
 
+                    selected_route = purge_routes_by_destination.get(destination)
+                    if selected_route is None or route_sort_key(current_route) < route_sort_key(selected_route):
+                        purge_routes_by_destination[destination] = current_route
+
+                for destination, current_route in sorted(purge_routes_by_destination.items()):
                     purged_route_changed = ensure_route_absent(
                         client,
                         module,
                         transit_gateway_route_table_id,
-                        route_destination(current_route),
+                        destination,
+                        current_route,
                     )[0]
                     route_changed = route_changed or purged_route_changed
 
@@ -1111,6 +1117,13 @@ def main():
             )
 
     if state == "present":
+        tags = module.params["tags"]
+        name = module.params["name"]
+        require_valid_tags(module, tags, 50, key_max=127)
+        if name and tags is not None and tags.get("Name", name) != name:
+            module.fail_json(msg="tags.Name must match name")
+
+        # The Name tag counts toward the EC2 tag limit.
         require_valid_tags(module, desired_tags(module), 50, key_max=127)
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())

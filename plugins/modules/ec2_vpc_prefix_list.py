@@ -352,6 +352,10 @@ EC2_WAITER_MODEL_DATA = {
 # EC2 accepts at most this many entries in each create, add, or remove request.
 MAX_ENTRIES_PER_REQUEST = 100
 IN_PROGRESS_STATES = {"create-in-progress", "modify-in-progress", "restore-in-progress"}
+WAITER_TARGET_STATES = {
+    "managed_prefix_list_deleted": "deleted",
+    "managed_prefix_list_ready": "ready",
+}
 
 
 def validate_prefix_list(module, prefix_list):
@@ -617,38 +621,7 @@ def ensure_present(client, module, owner_id):
                 prefix_list_id = current.get("PrefixListId")
 
                 if prefix_list_id:
-                    if tag_keys_to_unset:
-                        require_client_methods(
-                            module,
-                            client,
-                            "EC2",
-                            {"delete_tags": ("Resources", "Tags")},
-                        )
-                        reconcile_ec2_tags(
-                            module,
-                            client,
-                            [prefix_list_id],
-                            {},
-                            tag_keys_to_unset,
-                            "EC2 VPC managed prefix list",
-                        )
-
-                    if tags_to_set:
-                        require_client_methods(
-                            module,
-                            client,
-                            "EC2",
-                            {"create_tags": ("Resources", "Tags")},
-                        )
-                        reconcile_ec2_tags(
-                            module,
-                            client,
-                            [prefix_list_id],
-                            tags_to_set,
-                            [],
-                            "EC2 VPC managed prefix list",
-                        )
-
+                    reconcile_tags(client, module, prefix_list_id, tags_to_set, tag_keys_to_unset)
                     current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
         elif changed and module.check_mode:
             current = dict(current)
@@ -676,6 +649,25 @@ def ensure_present(client, module, owner_id):
         result["prefix_list_id"] = prefix_list_id
 
     module.exit_json(**result)
+
+
+def reconcile_tags(client, module, prefix_list_id, tags_to_set, tag_keys_to_unset):
+    tag_methods = {}
+    if tag_keys_to_unset:
+        tag_methods["delete_tags"] = ("Resources", "Tags")
+
+    if tags_to_set:
+        tag_methods["create_tags"] = ("Resources", "Tags")
+
+    require_client_methods(module, client, "EC2", tag_methods)
+    reconcile_ec2_tags(
+        module,
+        client,
+        [prefix_list_id],
+        tags_to_set,
+        tag_keys_to_unset,
+        "EC2 VPC managed prefix list",
+    )
 
 
 def get_current(client, module, owner_id):
@@ -816,6 +808,7 @@ def wait_for_ready_state(client, module, prefix_list_id):
 
 
 def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name):
+    target_state = WAITER_TARGET_STATES[waiter_name]
     require_client_methods(
         module,
         client,
@@ -827,7 +820,7 @@ def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name):
         client,
         EC2_WAITER_MODEL_DATA,
         waiter_name,
-        f"Unable to wait for EC2 VPC managed prefix list {prefix_list_id}",
+        f"Unable to wait for EC2 VPC managed prefix list {prefix_list_id} to become {target_state}",
         PrefixListIds=[prefix_list_id],
     )
 
@@ -847,12 +840,16 @@ def get_customer_managed_prefix_list_by_name(client, module, owner_id):
 
     matches = []
     for prefix_list in prefix_lists:
-        validate_prefix_list(module, prefix_list)
         # Skip AWS-managed lists and lists shared from other accounts, which cannot be modified.
-        if prefix_list.get("OwnerId") != owner_id or prefix_list.get("State") == "delete-complete":
+        # AWS-managed lists omit MaxEntries and Version, so they are skipped before validation.
+        if (
+            isinstance(prefix_list, dict)
+            and isinstance(prefix_list.get("OwnerId"), str)
+            and (prefix_list["OwnerId"] != owner_id or prefix_list.get("State") == "delete-complete")
+        ):
             continue
 
-        matches.append(prefix_list)
+        matches.append(validate_prefix_list(module, prefix_list))
 
     if len(matches) > 1:
         prefix_list_ids = [prefix_list.get("PrefixListId") for prefix_list in matches]

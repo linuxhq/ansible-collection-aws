@@ -22,15 +22,12 @@ def test_route_delete_tolerates_route_disappearing():
     )
     module = FakeModule({"wait": True})
     with (
-        patch.object(
-            plugin,
-            "get_route",
-            return_value={"State": "active", "Type": "static"},
-        ),
         patch.object(plugin, "wait_for_route_absent") as wait,
         patch.object(plugin, "require_client_methods"),
     ):
-        changed, route = plugin.ensure_route_absent(client, module, "tgw-rtb-1", "10.0.0.0/8")
+        changed, route = plugin.ensure_route_absent(
+            client, module, "tgw-rtb-1", "10.0.0.0/8", {"State": "active", "Type": "static"}
+        )
 
     assert changed
     assert route is None
@@ -207,8 +204,7 @@ def test_propagated_route_is_not_deleted():
     client = Mock()
     module = SimpleNamespace(params={"wait": False}, check_mode=False)
     route = {"State": "active", "Type": "propagated"}
-    with patch.object(plugin, "get_route", return_value=route):
-        changed, returned = plugin.ensure_route_absent(client, module, "tgw-rtb-1", "10.0.0.0/8")
+    changed, returned = plugin.ensure_route_absent(client, module, "tgw-rtb-1", "10.0.0.0/8", route)
 
     assert not changed
     assert returned is route
@@ -571,7 +567,7 @@ def test_purge_removes_only_undesired_static_routes():
         plugin.ensure_present(client, module)
 
     assert raised.value.values["changed"]
-    remove.assert_called_once_with(client, module, "tgw-rtb-1", "192.0.2.0/24")
+    remove.assert_called_once_with(client, module, "tgw-rtb-1", "192.0.2.0/24", stale_route)
     static_routes.assert_called_once()
     assert [route["destination_cidr_block"] for route in raised.value.values["routes"]] == ["10.0.0.0/8"]
 
@@ -648,11 +644,10 @@ def test_absent_check_mode_skips_deleting_table_wait():
 def test_absent_check_mode_skips_deleting_route_wait():
     module = FakeModule({"wait": True}, check_mode=True)
     client = Mock()
-    with (
-        patch.object(plugin, "get_route", return_value={"Type": "static", "State": "deleting"}),
-        patch.object(plugin, "wait_for_route_absent", side_effect=AssertionError("Unexpected route wait")),
-    ):
-        changed, _route = plugin.ensure_route_absent(client, module, "tgw-rtb-1", "10.0.0.0/8")
+    with patch.object(plugin, "wait_for_route_absent", side_effect=AssertionError("Unexpected route wait")):
+        changed, _route = plugin.ensure_route_absent(
+            client, module, "tgw-rtb-1", "10.0.0.0/8", {"Type": "static", "State": "deleting"}
+        )
 
     assert changed is False
     assert client.mock_calls == []
@@ -704,7 +699,7 @@ def test_empty_routes_purge_every_static_route():
 
     assert result.value.values["changed"] is True
     assert result.value.values["routes"] == []
-    remove.assert_called_once_with(ANY, module, "tgw-rtb-1", "192.0.2.0/24")
+    remove.assert_called_once_with(ANY, module, "tgw-rtb-1", "192.0.2.0/24", stale)
 
 
 def test_route_table_id_must_belong_to_transit_gateway():
@@ -755,6 +750,7 @@ def test_absent_only_routes_purge_other_static_routes_only_when_purging(purge_ro
     other = {"DestinationCidrBlock": "192.0.2.0/24", "State": "active", "Type": "static"}
     with (
         patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "get_route", return_value=None),
         patch.object(plugin, "static_routes", return_value=[other]),
         patch.object(plugin, "ensure_route_absent", return_value=(True, None)) as remove,
         pytest.raises(ModuleExit) as result,
@@ -793,3 +789,103 @@ def test_missing_route_is_created():
         aws_retry=True,
     )
     client.replace_transit_gateway_route.assert_not_called()
+
+
+def test_purge_passes_each_found_route_without_searching_again():
+    client = Mock()
+    module = FakeModule(present_params(routes=[]))
+    table = {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    deleting = {"DestinationCidrBlock": "192.0.2.0/24", "State": "deleting", "Type": "static"}
+    active = dict(deleting, State="active")
+    deleted = {"DestinationCidrBlock": "198.51.100.0/24", "State": "deleted", "Type": "static"}
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "static_routes", return_value=[deleting, active, deleted]),
+        patch.object(plugin, "get_route", side_effect=AssertionError("Unexpected route search")),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    client.delete_transit_gateway_route.assert_called_once_with(
+        DestinationCidrBlock="192.0.2.0/24",
+        TransitGatewayRouteTableId="tgw-rtb-1",
+        aws_retry=True,
+    )
+
+
+def test_integer_tag_keys_are_normalized_before_comparison():
+    client = Mock()
+    module = FakeModule(present_params(name="main", tags={1: 2}), client=client)
+    table = {
+        "State": "available",
+        "Tags": [{"Key": "1", "Value": "2"}, {"Key": "Name", "Value": "main"}],
+        "TransitGatewayRouteTableId": "tgw-rtb-1",
+    }
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_positive_wait_bounds"),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "find_route_table", return_value=table),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    assert module.params["tags"] == {"1": "2"}
+    assert result.value.values["changed"] is False
+    client.create_tags.assert_not_called()
+    client.delete_tags.assert_not_called()
+
+
+def test_name_tag_must_match_name():
+    module = FakeModule(present_params(name="main", tags={"Name": "other"}))
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_positive_wait_bounds"),
+        patch.object(module, "client", side_effect=AssertionError("Unexpected client")),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == "tags.Name must match name"
+
+
+@pytest.mark.parametrize(
+    ("tags_to_set", "tag_keys_to_unset", "methods"),
+    [
+        ({"Env": "prod"}, [], {"create_tags"}),
+        ({}, ["Old"], {"delete_tags"}),
+        ({"Env": "prod"}, ["Old"], {"create_tags", "delete_tags"}),
+    ],
+)
+def test_tag_changes_are_gated_and_reconciled_once(tags_to_set, tag_keys_to_unset, methods):
+    client = Mock()
+    module = FakeModule({})
+    with (
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(plugin, "reconcile_ec2_tags") as reconcile,
+    ):
+        plugin.reconcile_tags(client, module, "tgw-rtb-1", tags_to_set, tag_keys_to_unset)
+
+    require.assert_called_once()
+    assert set(require.call_args.args[3]) == methods
+    reconcile.assert_called_once_with(
+        module, client, ["tgw-rtb-1"], tags_to_set, tag_keys_to_unset, "EC2 transit gateway route table"
+    )
+
+
+def test_route_table_wait_timeout_names_target_state():
+    module = FakeModule({"wait_delay": 1, "wait_timeout": 1})
+    with (
+        patch.object(plugin, "get_route_table_by_id", return_value={"State": "deleting"}),
+        patch.object(plugin.time, "monotonic", side_effect=[0, 0, 0, 2]),
+        patch.object(plugin.time, "sleep"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.wait_for_route_table(Mock(), module, "tgw-rtb-1", {"deleted"}, absent_is_success=True)
+
+    assert (
+        raised.value.values["msg"]
+        == "Timed out waiting for EC2 transit gateway route table tgw-rtb-1 to become deleted"
+    )
