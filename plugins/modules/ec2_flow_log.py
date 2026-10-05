@@ -197,9 +197,95 @@ flow_log_ids:
 flow_logs:
   description:
     - The matching EC2 flow logs after module execution.
+    - A created flow log that EC2 has not returned yet contains only RV(flow_logs[].flow_log_id).
   returned: when O(state=present)
   type: list
   elements: dict
+  contains:
+    creation_time:
+      description: Date and time the flow log was created.
+      returned: when available
+      type: str
+    deliver_cross_account_role:
+      description: ARN of the IAM role that publishes flow logs across accounts.
+      returned: when available
+      type: str
+    deliver_logs_error_message:
+      description: Information about a log delivery error.
+      returned: when available
+      type: str
+    deliver_logs_permission_arn:
+      description: ARN of the IAM role that publishes logs to CloudWatch Logs.
+      returned: when available
+      type: str
+    deliver_logs_status:
+      description: Status of the log delivery, C(SUCCESS) or C(FAILED).
+      returned: when available
+      type: str
+    destination_options:
+      description: Destination options for flow logs delivered to Amazon S3.
+      returned: when available
+      type: dict
+      contains:
+        file_format:
+          description: Format of the flow log records.
+          returned: when available
+          type: str
+        hive_compatible_partitions:
+          description: Whether Hive-compatible prefixes are used.
+          returned: when available
+          type: bool
+        per_hour_partition:
+          description: Whether logs are partitioned per hour.
+          returned: when available
+          type: bool
+    flow_log_id:
+      description: ID of the flow log.
+      returned: except for flow logs that would be created in check mode
+      type: str
+    flow_log_status:
+      description: Status of the flow log.
+      returned: when available
+      type: str
+    log_destination:
+      description: ARN of the destination for the flow log data.
+      returned: when available
+      type: str
+    log_destination_type:
+      description: Type of destination for the flow log data.
+      returned: when available
+      type: str
+    log_format:
+      description: Format of the flow log records.
+      returned: when available
+      type: str
+    log_group_name:
+      description: Name of the CloudWatch Logs log group.
+      returned: when available
+      type: str
+    max_aggregation_interval:
+      description: Maximum interval, in seconds, during which packets are aggregated into a flow log record.
+      returned: when available
+      type: int
+    resource_id:
+      description: ID of the monitored resource.
+      returned: when available
+      type: str
+    tag_field_specifications:
+      description: Tag configuration for EC2 tag fields in a custom log format.
+      returned: when available
+      type: list
+      elements: dict
+    tags:
+      description:
+        - Tags of the flow log.
+        - Tag keys keep their original case.
+      returned: when available
+      type: dict
+    traffic_type:
+      description: Type of traffic captured by the flow log.
+      returned: when available
+      type: str
 resource_ids:
   description:
     - The requested resource IDs.
@@ -350,7 +436,8 @@ def get_flow_logs(client, module):
     )
 
 
-def delete_flow_logs(client, module, flow_log_ids):
+def delete_flow_logs(client, module, flow_log_ids, changed=False):
+    """Delete flow logs; changed reports whether resources were already modified, for failure results."""
     require_client_methods(
         module,
         client,
@@ -363,23 +450,26 @@ def delete_flow_logs(client, module, flow_log_ids):
             aws_retry=True,
         )
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to delete EC2 flow logs {', '.join(flow_log_ids)}")
+        module.fail_json_aws(e, changed=changed, msg=f"Unable to delete EC2 flow logs {', '.join(flow_log_ids)}")
 
+    failures = response.get("Unsuccessful", [])
     unsuccessful = [
-        failure
-        for failure in response.get("Unsuccessful", [])
-        if (failure.get("Error") or {}).get("Code") != "InvalidFlowLogId.NotFound"
+        failure for failure in failures if (failure.get("Error") or {}).get("Code") != "InvalidFlowLogId.NotFound"
     ]
 
     if unsuccessful:
         module.fail_json(
+            changed=changed or len(failures) < len(flow_log_ids),
             msg="Unable to delete one or more EC2 flow logs",
             unsuccessful=boto3_resource_list_to_ansible_dict(unsuccessful, transform_tags=False, force_tags=False),
         )
 
 
-def verified_purge(module, flow_logs, current, purge_flow_log_ids):
-    """Return the flow logs that are safe to delete because their replacements are working."""
+def verified_purge(module, flow_logs, current, purge_flow_log_ids, changed=False):
+    """Return the flow logs that are safe to delete because their replacements are working.
+
+    changed reports whether resources were already modified, for failure results.
+    """
     purge_resource_ids = {
         flow_log.get("ResourceId") for flow_log in flow_logs if flow_log.get("FlowLogId") in purge_flow_log_ids
     }
@@ -391,6 +481,7 @@ def verified_purge(module, flow_logs, current, purge_flow_log_ids):
     )
     if failed:
         module.fail_json(
+            changed=changed,
             msg=(
                 f"Replacement EC2 flow logs {', '.join(failed)} are not delivering logs; "
                 f"superseded flow logs {', '.join(purge_flow_log_ids)} were kept"
@@ -495,6 +586,23 @@ def ensure_present(client, module):
                 tags_changed.append((flow_log, tags_to_set, tag_keys_to_unset))
 
     changed = bool(missing_resource_ids or tags_changed or purge_flow_log_ids)
+    # Whether AWS was already modified, so failures after a mutation report changed=True.
+    modified = False
+
+    if changed and not module.check_mode:
+        # Check every later operation first so an SDK gap fails before AWS is modified.
+        later_methods = {}
+        if any(tag_keys_to_unset for _flow_log, _tags_to_set, tag_keys_to_unset in tags_changed):
+            later_methods["delete_tags"] = ("Resources", "Tags")
+
+        if any(tags_to_set for _flow_log, tags_to_set, _tag_keys_to_unset in tags_changed):
+            later_methods["create_tags"] = ("Resources", "Tags")
+
+        if purge_flow_log_ids:
+            later_methods["delete_flow_logs"] = ("FlowLogIds",)
+
+        if later_methods:
+            require_client_methods(module, client, "EC2", later_methods)
 
     if changed:
         if missing_resource_ids and not module.check_mode:
@@ -570,16 +678,19 @@ def ensure_present(client, module):
                 )
 
             unsuccessful = response.get("Unsuccessful", [])
+            created_flow_log_ids = response.get("FlowLogIds", [])
 
             if unsuccessful:
                 module.fail_json(
+                    changed=bool(created_flow_log_ids),
                     msg="Unable to create EC2 flow logs for one or more resources",
                     unsuccessful=boto3_resource_list_to_ansible_dict(
                         unsuccessful, transform_tags=False, force_tags=False
                     ),
                 )
 
-            created_flow_log_ids = response.get("FlowLogIds", [])
+            # The create request succeeded, so AWS may have created flow logs.
+            modified = True
 
             if (
                 not isinstance(created_flow_log_ids, list)
@@ -587,10 +698,11 @@ def ensure_present(client, module):
                 or any(not isinstance(flow_log_id, str) or not flow_log_id for flow_log_id in created_flow_log_ids)
             ):
                 module.fail_json(
+                    changed=modified,
                     msg=(
                         "AWS did not return valid created EC2 flow log IDs for resources "
                         f"{', '.join(missing_resource_ids)}"
-                    )
+                    ),
                 )
 
             created_flow_logs = query_list(
@@ -599,11 +711,12 @@ def ensure_present(client, module):
                 "describe_flow_logs",
                 "FlowLogs",
                 f"Unable to describe EC2 flow logs {', '.join(created_flow_log_ids)}",
+                changed=modified,
                 FlowLogIds=created_flow_log_ids,
             )
 
             if any(not isinstance(flow_log, dict) for flow_log in created_flow_logs):
-                module.fail_json(msg="AWS returned an invalid created EC2 flow log")
+                module.fail_json(changed=modified, msg="AWS returned an invalid created EC2 flow log")
 
             described_ids = {flow_log.get("FlowLogId") for flow_log in created_flow_logs}
             created_flow_logs.extend(
@@ -638,36 +751,26 @@ def ensure_present(client, module):
                     group = tuple(sorted(tags_to_set.items()))
                     create_groups.setdefault(group, []).append(flow_log["FlowLogId"])
 
-            if delete_groups:
-                require_client_methods(
-                    module,
-                    client,
-                    "EC2",
-                    {"delete_tags": ("Resources", "Tags")},
-                )
-
             for tag_keys_to_unset, delete_resources in delete_groups.items():
-                reconcile_ec2_tags(module, client, delete_resources, {}, tag_keys_to_unset, "EC2 flow logs")
-
-            if create_groups:
-                require_client_methods(
-                    module,
-                    client,
-                    "EC2",
-                    {"create_tags": ("Resources", "Tags")},
+                reconcile_ec2_tags(
+                    module, client, delete_resources, {}, tag_keys_to_unset, "EC2 flow logs", changed=modified
                 )
+                modified = True
 
             for tags_to_set, create_resources in create_groups.items():
-                reconcile_ec2_tags(module, client, create_resources, dict(tags_to_set), [], "EC2 flow logs")
+                reconcile_ec2_tags(
+                    module, client, create_resources, dict(tags_to_set), [], "EC2 flow logs", changed=modified
+                )
+                modified = True
 
         for flow_log, tags_to_set, tag_keys_to_unset in tags_changed:
             flow_log.update(apply_tag_deltas(flow_log, tags_to_set, tag_keys_to_unset))
 
         # Delete superseded flow logs only after their replacements exist and are delivering.
         if purge_flow_log_ids and not module.check_mode:
-            purge_flow_log_ids = verified_purge(module, flow_logs, current, purge_flow_log_ids)
+            purge_flow_log_ids = verified_purge(module, flow_logs, current, purge_flow_log_ids, changed=modified)
             if purge_flow_log_ids:
-                delete_flow_logs(client, module, purge_flow_log_ids)
+                delete_flow_logs(client, module, purge_flow_log_ids, changed=modified)
 
     flow_log_ids = [flow_log["FlowLogId"] for flow_log in current if flow_log.get("FlowLogId")]
 

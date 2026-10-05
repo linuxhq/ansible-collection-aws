@@ -16,6 +16,7 @@ options:
     description:
       - A dict of filters to apply when listing Route53 Resolver endpoints.
       - Filter names and values are passed to the Route53 Resolver C(ListResolverEndpoints) API.
+      - Boolean and numeric values, including list entries, are converted to strings.
     type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -147,10 +148,12 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
+    ansible_dict_to_string_filter_list,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
     response_items,
     validate_ip_addresses,
@@ -181,7 +184,7 @@ def main():
     filters = module.params["filters"]
     request = {}
     if filters:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
+        request["Filters"] = ansible_dict_to_string_filter_list(filters)
 
     resolver_endpoints = query_list(
         module,

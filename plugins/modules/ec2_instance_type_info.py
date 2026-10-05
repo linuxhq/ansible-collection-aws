@@ -31,6 +31,9 @@ options:
   instance_types:
     description:
       - EC2 instance type names used to limit the result set.
+      - This is sent as the C(instance-type) filter and takes precedence over an
+        C(instance-type) key in O(filters), so wildcards such as C(t3.*) are supported.
+      - An instance type that is not offered in the region results in no entry; no error is raised.
       - This must contain at most 100 unique entries.
     elements: str
     type: list
@@ -93,24 +96,128 @@ instance_types:
   returned: always
   type: list
   elements: dict
+  contains:
+    auto_recovery_supported:
+      description: Whether Amazon CloudWatch action based recovery is supported.
+      returned: when available
+      type: bool
+    bare_metal:
+      description: Whether the instance type is a bare metal instance type.
+      returned: when available
+      type: bool
+    burstable_performance_supported:
+      description: Whether the instance type is a burstable performance T instance type.
+      returned: when available
+      type: bool
+    current_generation:
+      description: Whether the instance type is current generation.
+      returned: when available
+      type: bool
+    dedicated_hosts_supported:
+      description: Whether Dedicated Hosts are supported on the instance type.
+      returned: when available
+      type: bool
+    ebs_info:
+      description: Amazon EBS settings for the instance type.
+      returned: when available
+      type: dict
+    free_tier_eligible:
+      description: Whether the instance type is eligible for the free tier.
+      returned: when available
+      type: bool
+    gpu_info:
+      description: GPU accelerator settings for the instance type.
+      returned: when available
+      type: dict
+    hibernation_supported:
+      description: Whether On-Demand hibernation is supported.
+      returned: when available
+      type: bool
+    hypervisor:
+      description: Hypervisor for the instance type.
+      returned: when available
+      type: str
+    instance_storage_info:
+      description: Instance storage for the instance type.
+      returned: when available
+      type: dict
+    instance_storage_supported:
+      description: Whether instance storage is supported.
+      returned: when available
+      type: bool
+    instance_type:
+      description: Name of the instance type.
+      returned: always
+      type: str
+    memory_info:
+      description:
+        - Memory for the instance type.
+        - The size in MiB is returned as C(size_in_mi_b).
+      returned: when available
+      type: dict
+    network_info:
+      description: Network settings for the instance type.
+      returned: when available
+      type: dict
+    nitro_enclaves_support:
+      description: Whether Nitro Enclaves is supported.
+      returned: when available
+      type: str
+    nitro_tpm_support:
+      description: Whether NitroTPM is supported.
+      returned: when available
+      type: str
+    placement_group_info:
+      description: Placement group settings for the instance type.
+      returned: when available
+      type: dict
+    processor_info:
+      description: Processor of the instance type.
+      returned: when available
+      type: dict
+    supported_boot_modes:
+      description: Supported boot modes.
+      returned: when available
+      type: list
+      elements: str
+    supported_in_region:
+      description: Whether the instance type is supported in the current region.
+      returned: when available
+      type: bool
+    supported_root_device_types:
+      description: Supported root device types.
+      returned: when available
+      type: list
+      elements: str
+    supported_usage_classes:
+      description: Whether the instance type is offered for Spot, On-Demand, or Capacity Blocks.
+      returned: when available
+      type: list
+      elements: str
+    supported_virtualization_types:
+      description: Supported virtualization types.
+      returned: when available
+      type: list
+      elements: str
+    v_cpu_info:
+      description: vCPU configurations for the instance type.
+      returned: when available
+      type: dict
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
+    ansible_dict_to_string_filter_list,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-
-
-def filter_value(value):
-    # EC2 filter values are strings, and boolean values only match in lowercase.
-    return str(value).lower() if isinstance(value, bool) else str(value)
 
 
 def main():
@@ -124,7 +231,7 @@ def main():
         argument_spec=argument_spec,
         supports_check_mode=True,
     )
-    filters = module.params["filters"]
+    filters = dict(module.params["filters"] or {})
     instance_types = list(dict.fromkeys(module.params["instance_types"] or []))
 
     if len(instance_types) > 100:
@@ -132,17 +239,14 @@ def main():
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    request = {}
+    # InstanceTypes fails for a type that is not offered in the region, so
+    # instance types are sent as the documented instance-type filter.
     if instance_types:
-        request["InstanceTypes"] = instance_types
+        filters["instance-type"] = instance_types
 
+    request = {}
     if filters:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(
-            {
-                name: [filter_value(item) for item in value] if isinstance(value, list) else filter_value(value)
-                for name, value in filters.items()
-            }
-        )
+        request["Filters"] = ansible_dict_to_string_filter_list(filters)
 
     if module.params.get("include_unsupported_in_region"):
         request["IncludeUnsupportedInRegion"] = True

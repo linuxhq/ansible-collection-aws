@@ -18,6 +18,10 @@ def require_valid_tags(module, tags, max_tags, key_max=128):
     if tags is None:
         return
 
+    # to_native would otherwise turn a null into the literal string "None".
+    if any(key is None or value is None for key, value in tags.items()):
+        module.fail_json(msg="tag keys and values must not be null")
+
     normalized = {to_native(key): to_native(value) for key, value in tags.items()}
     if len(normalized) != len(tags):
         module.fail_json(msg="tag keys must be unique after string normalization")
@@ -53,7 +57,8 @@ def apply_tag_deltas(resource, tags_to_set, tag_keys_to_unset):
     return updated
 
 
-def reconcile_arn_tags(module, client, resource_arn, tags_to_set, tag_keys_to_unset, description):
+def reconcile_arn_tags(module, client, resource_arn, tags_to_set, tag_keys_to_unset, description, changed=False):
+    """Reconcile ARN tags; changed reports whether the resource was already modified, for failure results."""
     if tag_keys_to_unset:
         try:
             client.untag_resource(
@@ -62,7 +67,9 @@ def reconcile_arn_tags(module, client, resource_arn, tags_to_set, tag_keys_to_un
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to remove tags from {description} {resource_arn}")
+            module.fail_json_aws(e, changed=changed, msg=f"Unable to remove tags from {description} {resource_arn}")
+
+        changed = True
 
     if tags_to_set:
         try:
@@ -72,7 +79,7 @@ def reconcile_arn_tags(module, client, resource_arn, tags_to_set, tag_keys_to_un
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to tag {description} {resource_arn}")
+            module.fail_json_aws(e, changed=changed, msg=f"Unable to tag {description} {resource_arn}")
 
 
 def reconcile_ssm_tags(
@@ -111,7 +118,8 @@ def reconcile_ssm_tags(
             module.fail_json_aws(e, changed=changed, msg=f"Unable to tag {description} {resource_id}")
 
 
-def reconcile_ec2_tags(module, client, resource_ids, tags_to_set, tag_keys_to_unset, description):
+def reconcile_ec2_tags(module, client, resource_ids, tags_to_set, tag_keys_to_unset, description, changed=False):
+    """Reconcile EC2 tags; changed reports whether the resources were already modified, for failure results."""
     identifier = ", ".join(resource_ids)
 
     if tag_keys_to_unset:
@@ -122,7 +130,9 @@ def reconcile_ec2_tags(module, client, resource_ids, tags_to_set, tag_keys_to_un
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to remove tags from {description} {identifier}")
+            module.fail_json_aws(e, changed=changed, msg=f"Unable to remove tags from {description} {identifier}")
+
+        changed = True
 
     if tags_to_set:
         try:
@@ -132,4 +142,4 @@ def reconcile_ec2_tags(module, client, resource_ids, tags_to_set, tag_keys_to_un
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to tag {description} {identifier}")
+            module.fail_json_aws(e, changed=changed, msg=f"Unable to tag {description} {identifier}")

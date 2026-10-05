@@ -1,0 +1,17 @@
+---
+bugfixes:
+  - acm_certificate_request, ec2_flow_log, ec2_transit_gateway_route_table, ec2_vpc_prefix_list, ec2_vpc_vpn,
+    eks_cluster, global_accelerator, iam_oidc_provider, notifications_contacts, pinpoint_sms_voice_phone_number,
+    pinpoint_sms_voice_phone_pool, route53_resolver, route53_resolver_rule, ssm_association, ssm_document - fail
+    with a clear message when a tag key or value is null instead of applying the literal string ``None``.
+  - ec2_instance_type_info - send ``instance_types`` as the ``instance-type`` filter so instance types not
+    offered in the region return no entry instead of failing with ``InvalidInstanceType``; ``instance_types``
+    takes precedence over an ``instance-type`` key in ``filters``.
+  - ec2_flow_log_info, ec2_placement_group_info, pinpoint_sms_voice_phone_number_info,
+    pinpoint_sms_voice_phone_pool_info, route53_resolver_info, route53_resolver_rule_info - convert Boolean and
+    numeric entries in ``filters`` lists to strings instead of failing SDK parameter validation.
+  - ec2_flow_log - report ``changed=true`` when a failure follows a successful mutation, including partial
+    create or delete failures, describing created flow logs, tag updates, and replacement delivery checks.
+  - ec2_flow_log - check SDK support for later tag and delete operations before creating flow logs.
+  - ec2_flow_log, ec2_flow_log_info, ec2_instance_metadata, ec2_instance_metadata_info, ec2_instance_type_info -
+    document the fields of nested return values.

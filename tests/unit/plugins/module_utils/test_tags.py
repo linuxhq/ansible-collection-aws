@@ -37,6 +37,20 @@ def test_tag_keys_and_values_are_normalized_for_map_apis():
     assert tags == {"1": "True", "count": "2"}
 
 
+@pytest.mark.parametrize("tags", [{"Name": None}, {None: "value"}])
+def test_null_tag_keys_and_values_are_rejected(tags):
+    with pytest.raises(ModuleFail) as raised:
+        require_valid_tags(FakeModule({}), tags, 50)
+
+    assert raised.value.values["msg"] == "tag keys and values must not be null"
+
+
+def test_empty_tag_values_are_kept():
+    tags = {"Name": ""}
+    require_valid_tags(FakeModule({}), tags, 50)
+    assert tags == {"Name": ""}
+
+
 def test_colliding_normalized_tag_keys_are_rejected():
     with pytest.raises(ModuleFail) as raised:
         require_valid_tags(FakeModule({}), {1: "numeric", "1": "string"}, 50)
@@ -152,5 +166,41 @@ def test_reconcile_ssm_tags_reports_the_supplied_changed_state(changed):
     )
     with pytest.raises(ModuleFail) as raised:
         reconcile_ssm_tags(FakeModule({}), client, "Document", "doc", {}, ["old"], "document", changed=changed)
+
+    assert raised.value.values["changed"] is changed
+
+
+@pytest.mark.parametrize(
+    ("reconcile", "resource", "remove_method", "tag_method"),
+    (
+        (reconcile_ec2_tags, ["fl-1"], "delete_tags", "create_tags"),
+        (reconcile_arn_tags, "arn:resource", "untag_resource", "tag_resource"),
+    ),
+)
+def test_reconcile_tags_report_changed_after_removing_tags(reconcile, resource, remove_method, tag_method):
+    client = Mock()
+    getattr(client, tag_method).side_effect = ClientError({"Error": {"Code": "Throttling", "Message": "no"}}, "Tag")
+    with pytest.raises(ModuleFail) as raised:
+        reconcile(FakeModule({}), client, resource, {"new": "value"}, ["old"], "resource")
+
+    getattr(client, remove_method).assert_called_once()
+    assert raised.value.values["changed"] is True
+
+
+@pytest.mark.parametrize("changed", [False, True])
+@pytest.mark.parametrize(
+    ("reconcile", "resource", "remove_method"),
+    (
+        (reconcile_ec2_tags, ["fl-1"], "delete_tags"),
+        (reconcile_arn_tags, "arn:resource", "untag_resource"),
+    ),
+)
+def test_reconcile_tags_report_the_supplied_changed_state(reconcile, resource, remove_method, changed):
+    client = Mock()
+    getattr(client, remove_method).side_effect = ClientError(
+        {"Error": {"Code": "Throttling", "Message": "no"}}, "Untag"
+    )
+    with pytest.raises(ModuleFail) as raised:
+        reconcile(FakeModule({}), client, resource, {}, ["old"], "resource", changed=changed)
 
     assert raised.value.values["changed"] is changed
