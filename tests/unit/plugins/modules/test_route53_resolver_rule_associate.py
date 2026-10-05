@@ -140,7 +140,7 @@ def test_failed_association_is_replaced(name):
     client.disassociate_resolver_rule.assert_called_once_with(
         ResolverRuleId="rslvr-rr-1", VPCId="vpc-1", aws_retry=True
     )
-    wait_for_status.assert_called_once_with(client, module, "rslvr-rrassoc-1", "deleted")
+    wait_for_status.assert_called_once_with(client, module, "rslvr-rrassoc-1", "deleted", changed=True)
     # An omitted name keeps the failed association's name.
     client.associate_resolver_rule.assert_called_once_with(
         Name="main", ResolverRuleId="rslvr-rr-1", VPCId="vpc-1", aws_retry=True
@@ -284,7 +284,7 @@ def test_absent_waits_for_deleting_association_without_disassociating():
 
     assert not raised.value.values["changed"]
     client.disassociate_resolver_rule.assert_not_called()
-    wait_for_status.assert_called_once_with(client, module, "rslvr-rrassoc-1", "deleted")
+    wait_for_status.assert_called_once_with(client, module, "rslvr-rrassoc-1", "deleted", changed=False)
 
 
 def test_omitted_name_keeps_an_existing_association():
@@ -329,7 +329,7 @@ def test_replacement_waits_for_deletion_when_final_wait_is_disabled():
     ):
         plugin.ensure_present(client, module)
 
-    wait_for_status.assert_called_once_with(client, module, "old-association", "deleted")
+    wait_for_status.assert_called_once_with(client, module, "old-association", "deleted", changed=True)
 
 
 def test_deleting_association_waits_before_recreation():
@@ -362,3 +362,41 @@ def test_present_rejects_invalid_name_before_api_calls():
         plugin.main()
 
     assert "valid resolver rule association name" in raised.value.values["msg"]
+
+
+def test_association_that_fails_after_creation_reports_changed():
+    client = Mock()
+    client.associate_resolver_rule.return_value = {"ResolverRuleAssociation": dict(ASSOCIATION, Status="CREATING")}
+    client.get_resolver_rule_association.return_value = {
+        "ResolverRuleAssociation": dict(ASSOCIATION, Status="FAILED", StatusMessage="VPC is gone")
+    }
+    with (
+        patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=None),
+        patch.object(plugin, "run_waiter"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params(wait=True)))
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"] == "AWS Route53 Resolver rule association main failed: VPC is gone"
+
+
+@pytest.mark.parametrize("state", ["absent", "present"])
+def test_disassociation_wait_failure_reports_changed(state):
+    def failing_waiter(module, client, model_data, waiter_name, error_msg, changed=False, **kwargs):
+        module.fail_json(changed=changed, msg=error_msg)
+
+    ensure = plugin.ensure_absent if state == "absent" else plugin.ensure_present
+    with (
+        patch.object(
+            plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=dict(ASSOCIATION, Status="FAILED")
+        ),
+        patch.object(plugin, "run_waiter", side_effect=failing_waiter),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        ensure(Mock(), FakeModule(params(state=state, wait=True)))
+
+    assert raised.value.values["changed"] is True
+    assert (
+        raised.value.values["msg"] == "Unable to wait for AWS Route53 Resolver rule association main to become deleted"
+    )

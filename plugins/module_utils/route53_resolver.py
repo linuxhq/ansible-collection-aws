@@ -1,7 +1,44 @@
 # Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
+import ipaddress
+import re
+
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import boto3_resource_to_ansible_dict
+
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
+
+
+def comparable_ip_fields(item, fields):
+    """Return the set fields of an AWS or module IP entry, with IP addresses in canonical form."""
+    normalized = boto3_resource_to_ansible_dict(item, transform_tags=False, force_tags=False)
+    for field in ("ip", "ipv6"):
+        if normalized.get(field) is not None:
+            try:
+                normalized[field] = str(ipaddress.ip_address(normalized[field]))
+            except ValueError:
+                pass
+
+    return {field: normalized[field] for field in fields if normalized.get(field) is not None}
+
+
+def require_ip_versions(module, entry, option):
+    for field, version in (("ip", 4), ("ipv6", 6)):
+        value = entry.get(field)
+        if value is None:
+            continue
+
+        try:
+            valid = ipaddress.ip_address(value).version == version
+        except ValueError:
+            valid = False
+
+        if not valid:
+            module.fail_json(msg=f"{option}[].{field} must be a valid IPv{version} address")
+
+
+def valid_resolver_name(name):
+    return len(name) <= 64 and not name.isdigit() and re.fullmatch(r"[a-zA-Z0-9\-_ ']+", name) is not None
 
 
 def response_items(module, response, key, operation):

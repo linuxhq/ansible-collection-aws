@@ -127,7 +127,7 @@ def test_delete_waits_when_requested():
     with patch.object(plugin, "wait_for_resolver_rule_status") as wait:
         plugin.delete_resolver_rule(client, module, {"Id": "rslvr-rr-1"})
 
-    wait.assert_called_once_with(client, module, "rslvr-rr-1", "deleted")
+    wait.assert_called_once_with(client, module, "rslvr-rr-1", "deleted", changed=True)
 
 
 def test_delete_tolerates_rule_disappearing():
@@ -451,7 +451,7 @@ def test_update_rereads_rule_when_response_is_lean():
     ):
         plugin.ensure_present(client, module)
 
-    get.assert_called_once_with(client, module, "rslvr-rr-1")
+    get.assert_called_once_with(client, module, "rslvr-rr-1", changed=True)
 
 
 def test_tag_change_rejects_rule_without_arn():
@@ -752,3 +752,46 @@ def test_check_mode_tag_change_keeps_the_stored_target_values():
     assert result.value.values["changed"] is True
     assert result.value.values["resolver_rule"]["target_ips"] == [{"ip": "192.0.2.1", "port": 53, "protocol": "Do53"}]
     assert result.value.values["resolver_rule"]["tags"] == {"Env": "test"}
+
+
+def failing_waiter(module, client, model_data, waiter_name, error_msg, changed=False, **kwargs):
+    module.fail_json(changed=changed, msg=error_msg)
+
+
+def test_rule_that_fails_after_an_update_reports_changed():
+    client = Mock()
+    client.update_resolver_rule.return_value = {"ResolverRule": existing_rule(Status="UPDATING")}
+    failed = existing_rule(Status="FAILED", StatusMessage="Target is unreachable")
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=existing_rule(TargetIps=[{"Ip": "192.0.2.9"}])),
+        patch.object(plugin, "run_waiter"),
+        patch.object(plugin, "get_resolver_rule", return_value=failed),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(rule_params(wait=True)))
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"] == "AWS Route53 Resolver rule main failed: Target is unreachable"
+
+
+def test_create_wait_failure_reports_changed():
+    client = Mock(create_resolver_rule=Mock(return_value={"ResolverRule": existing_rule(Status="UPDATING")}))
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=None),
+        patch.object(plugin, "run_waiter", side_effect=failing_waiter),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(rule_params(wait=True)))
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"] == "Unable to wait for AWS Route53 Resolver rule main to become complete"
+
+
+def test_delete_wait_failure_reports_changed():
+    with (
+        patch.object(plugin, "run_waiter", side_effect=failing_waiter),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.delete_resolver_rule(Mock(), FakeModule(rule_params(wait=True)), existing_rule())
+
+    assert raised.value.values["changed"] is True

@@ -151,7 +151,7 @@ resolver_rule:
   contains:
     arn:
       description: The rule ARN.
-      returned: always
+      returned: except when check mode predicts creation
       type: str
     creation_time:
       description: The time the rule was created.
@@ -163,7 +163,7 @@ resolver_rule:
       type: str
     id:
       description: The rule ID.
-      returned: always
+      returned: except when check mode predicts creation
       type: str
     name:
       description: The rule name.
@@ -171,7 +171,7 @@ resolver_rule:
       type: str
     owner_id:
       description: The account that owns the rule.
-      returned: always
+      returned: except when check mode predicts creation
       type: str
     resolver_endpoint_id:
       description: The outbound resolver endpoint ID.
@@ -184,11 +184,11 @@ resolver_rule:
       sample: FORWARD
     share_status:
       description: Whether the rule is shared.
-      returned: always
+      returned: except when check mode predicts creation
       type: str
     status:
       description: The rule status.
-      returned: always
+      returned: except when check mode predicts creation
       type: str
       sample: COMPLETE
     status_message:
@@ -238,9 +238,7 @@ state:
 """
 
 import hashlib
-import ipaddress
 import json
-import re
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -266,6 +264,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
+    comparable_ip_fields,
+    require_ip_versions,
+    valid_resolver_name,
     validate_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
@@ -380,12 +381,12 @@ def create_resolver_rule(client, module, request):
         rule = get_resolver_rule_by_name(client, module)
 
     if rule is None:
-        module.fail_json(msg=f"AWS Route53 Resolver did not return the created rule {request['Name']}")
+        module.fail_json(changed=True, msg=f"AWS Route53 Resolver did not return the created rule {request['Name']}")
 
-    rule = validate_resolver_rule(module, rule, "create_resolver_rule")
+    rule = validate_resolver_rule(module, rule, "create_resolver_rule", changed=True)
 
     if module.params["wait"]:
-        return wait_for_resolver_rule_status(client, module, rule["Id"], "complete")
+        return wait_for_resolver_rule_status(client, module, rule["Id"], "complete", changed=True)
 
     rule = dict(rule)
     for field, value in request.items():
@@ -419,7 +420,7 @@ def delete_resolver_rule(client, module, rule):
         )
 
     if module.params["wait"]:
-        wait_for_resolver_rule_status(client, module, resolver_rule_id, "deleted")
+        wait_for_resolver_rule_status(client, module, resolver_rule_id, "deleted", changed=True)
 
 
 def ensure_absent(client, module):
@@ -516,16 +517,21 @@ def ensure_present(client, module):
 
             rule = response.get("ResolverRule") if isinstance(response, dict) else None
             if isinstance(rule, dict) and rule.get("Id"):
-                rule = validate_resolver_rule(module, rule, "update_resolver_rule", expected_id=resolver_rule_id)
+                rule = validate_resolver_rule(
+                    module, rule, "update_resolver_rule", expected_id=resolver_rule_id, changed=True
+                )
 
             if not resolver_rule_has_details(rule):
-                rule = get_resolver_rule(client, module, resolver_rule_id)
+                rule = get_resolver_rule(client, module, resolver_rule_id, changed=True)
 
             if rule is None:
-                module.fail_json(msg=f"AWS Route53 Resolver did not return the updated rule {request['Name']}")
+                module.fail_json(
+                    changed=True,
+                    msg=f"AWS Route53 Resolver did not return the updated rule {request['Name']}",
+                )
 
             if module.params["wait"]:
-                rule = wait_for_resolver_rule_status(client, module, resolver_rule_id, "complete")
+                rule = wait_for_resolver_rule_status(client, module, resolver_rule_id, "complete", changed=True)
 
             if not rules_match(comparable_rule(rule), desired):
                 module.fail_json(
@@ -533,6 +539,7 @@ def ensure_present(client, module):
                         "AWS Route53 Resolver rule does not match the requested configuration after updating. "
                         "The rule has not been deleted; inspect the current configuration before retrying."
                     ),
+                    changed=True,
                     current=comparable_rule(rule),
                     desired=desired,
                 )
@@ -543,10 +550,11 @@ def ensure_present(client, module):
                 resource_arn = rule.get("Arn")
                 if not isinstance(resource_arn, str) or not resource_arn:
                     module.fail_json(
+                        changed=resource_changed,
                         msg=(
                             "Unable to reconcile tags for AWS Route53 Resolver rule "
                             f"{request['Name']}: AWS returned an invalid rule ARN"
-                        )
+                        ),
                     )
 
                 reconcile_arn_tags(
@@ -575,7 +583,8 @@ def ensure_present(client, module):
     module.exit_json(**result)
 
 
-def wait_for_resolver_rule_status(client, module, resolver_rule_id, state, allow_failed=False):
+def wait_for_resolver_rule_status(client, module, resolver_rule_id, state, allow_failed=False, changed=False):
+    """Wait for a rule status; changed reports whether the rule was already modified."""
     # The waiter fails on terminal states as well as on timeouts, so the message names neither.
     run_waiter(
         module,
@@ -583,15 +592,17 @@ def wait_for_resolver_rule_status(client, module, resolver_rule_id, state, allow
         ROUTE53_RESOLVER_RULE_WAITER_MODEL_DATA,
         f"resolver_rule_{state}",
         f"Unable to wait for AWS Route53 Resolver rule {module.params['name']} to become {state}",
+        changed=changed,
         ResolverRuleId=resolver_rule_id,
     )
 
     if state == "deleted":
         return None
 
-    rule = get_resolver_rule(client, module, resolver_rule_id)
+    rule = get_resolver_rule(client, module, resolver_rule_id, changed=changed)
     if rule is not None and rule.get("Status") == "FAILED" and not allow_failed:
         module.fail_json(
+            changed=changed,
             msg=(
                 f"AWS Route53 Resolver rule {module.params['name']} failed: "
                 f"{rule.get('StatusMessage') or 'no status message was returned'}"
@@ -603,15 +614,7 @@ def wait_for_resolver_rule_status(client, module, resolver_rule_id, state, allow
 
 
 def comparable_target_ip(target_ip):
-    normalized = boto3_resource_to_ansible_dict(target_ip, transform_tags=False, force_tags=False)
-    for field in ("ip", "ipv6"):
-        if normalized.get(field) is not None:
-            try:
-                normalized[field] = str(ipaddress.ip_address(normalized[field]))
-            except ValueError:
-                pass
-
-    return {field: normalized[field] for field in TARGET_IP_FIELDS if normalized.get(field) is not None}
+    return comparable_ip_fields(target_ip, TARGET_IP_FIELDS)
 
 
 def comparable_rule(rule):
@@ -660,7 +663,7 @@ def rules_match(current, desired):
     ) and target_ips_match(current["target_ips"], desired["target_ips"])
 
 
-def get_resolver_rule(client, module, resolver_rule_id):
+def get_resolver_rule(client, module, resolver_rule_id, changed=False):
     try:
         response = client.get_resolver_rule(
             ResolverRuleId=resolver_rule_id,
@@ -671,6 +674,7 @@ def get_resolver_rule(client, module, resolver_rule_id):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
+            changed=changed,
             msg=f"Unable to get AWS Route53 Resolver rule {resolver_rule_id}",
         )
 
@@ -681,6 +685,7 @@ def get_resolver_rule(client, module, resolver_rule_id):
         "get_resolver_rule",
         expected_id=resolver_rule_id,
         require_details=True,
+        changed=changed,
     )
 
 
@@ -751,50 +756,51 @@ def validate_resolver_rule(
     expected_id=None,
     expected_name=None,
     require_details=False,
+    changed=False,
 ):
     if not isinstance(rule, dict):
-        module.fail_json(msg=f"{operation}: AWS returned an invalid resolver rule")
+        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid resolver rule")
 
     rule_id = rule.get("Id")
     if not isinstance(rule_id, str) or not rule_id:
-        module.fail_json(msg=f"{operation}: AWS returned a resolver rule without a valid ID")
+        module.fail_json(changed=changed, msg=f"{operation}: AWS returned a resolver rule without a valid ID")
 
     if expected_id is not None and rule_id != expected_id:
-        module.fail_json(msg=f"{operation}: AWS returned an unexpected resolver rule ID {rule_id}")
+        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an unexpected resolver rule ID {rule_id}")
 
     if expected_name is not None and rule.get("Name") != expected_name:
-        module.fail_json(msg=f"{operation}: AWS returned an unexpected resolver rule name")
+        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an unexpected resolver rule name")
 
     for field in ("Arn", "DomainName", "Name", "ResolverEndpointId", "RuleType", "Status"):
         if field in rule and not isinstance(rule[field], str):
-            module.fail_json(msg=f"{operation}: AWS returned an invalid resolver rule {field}")
+            module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid resolver rule {field}")
 
     if require_details and not resolver_rule_has_details(rule):
-        module.fail_json(msg=f"{operation}: AWS returned an incomplete resolver rule")
+        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an incomplete resolver rule")
 
     if "TargetIps" in rule:
-        validate_target_ips(module, rule["TargetIps"], operation)
+        validate_target_ips(module, rule["TargetIps"], operation, changed=changed)
 
     return rule
 
 
-def validate_target_ips(module, target_ips, operation):
+def validate_target_ips(module, target_ips, operation, changed=False):
     if not isinstance(target_ips, list):
-        module.fail_json(msg=f"{operation}: AWS returned an invalid resolver rule TargetIps")
+        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid resolver rule TargetIps")
 
     for target_ip in target_ips:
         if not isinstance(target_ip, dict):
-            module.fail_json(msg=f"{operation}: AWS returned an invalid target IP")
+            module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid target IP")
 
         if not any(isinstance(target_ip.get(field), str) and target_ip[field] for field in ("Ip", "Ipv6")):
-            module.fail_json(msg=f"{operation}: AWS returned a target IP without an IP address")
+            module.fail_json(changed=changed, msg=f"{operation}: AWS returned a target IP without an IP address")
 
         for field in ("Ip", "Ipv6", "Protocol", "ServerNameIndication"):
             if field in target_ip and not isinstance(target_ip[field], str):
-                module.fail_json(msg=f"{operation}: AWS returned an invalid target IP {field}")
+                module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid target IP {field}")
 
         if "Port" in target_ip and (not isinstance(target_ip["Port"], int) or isinstance(target_ip["Port"], bool)):
-            module.fail_json(msg=f"{operation}: AWS returned an invalid target IP Port")
+            module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid target IP Port")
 
     return target_ips
 
@@ -846,7 +852,7 @@ def main():
     tags = module.params["tags"]
     name = module.params["name"]
 
-    if len(name) > 64 or name.isdigit() or re.fullmatch(r"[a-zA-Z0-9\-_ ']+", name) is None:
+    if not valid_resolver_name(name):
         module.fail_json(msg="name must be a valid resolver rule name of at most 64 characters")
 
     if state == "present":
@@ -875,18 +881,7 @@ def main():
         if target_ip["port"] is not None and not 0 <= target_ip["port"] <= 65535:
             module.fail_json(msg="target_ips[].port must be between 0 and 65535")
 
-        for field, version in (("ip", 4), ("ipv6", 6)):
-            value = target_ip.get(field)
-            if value is None:
-                continue
-
-            try:
-                valid = ipaddress.ip_address(value).version == version
-            except ValueError:
-                valid = False
-
-            if not valid:
-                module.fail_json(msg=f"target_ips[].{field} must be a valid IPv{version} address")
+        require_ip_versions(module, target_ip, "target_ips")
 
         if len(target_ip.get("server_name_indication") or "") > 255:
             module.fail_json(msg="target_ips[].server_name_indication must contain at most 255 characters")

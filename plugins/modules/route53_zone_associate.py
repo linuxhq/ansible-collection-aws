@@ -97,7 +97,7 @@ EXAMPLES = r"""
 RETURN = r"""
 hosted_zone_id:
   description:
-    - The requested hosted zone ID.
+    - The requested hosted zone ID without the C(/hostedzone/) prefix.
   returned: always
   type: str
 state:
@@ -324,12 +324,13 @@ def last_vpc_association_message(module, hosted_zone_id):
 
 
 def wait_for_change(client, module, response, hosted_zone_id):
+    # This runs only after an association change, so failures report changed=True.
     if not module.params["wait"] or not isinstance(response, dict):
         return
 
     change_id = (response.get("ChangeInfo") or {}).get("Id")
     if not isinstance(change_id, str) or not change_id:
-        module.fail_json(msg=f"AWS Route53 did not return a change ID for hosted zone {hosted_zone_id}")
+        module.fail_json(changed=True, msg=f"AWS Route53 did not return a change ID for hosted zone {hosted_zone_id}")
 
     try:
         client.get_waiter("resource_record_sets_changed").wait(
@@ -339,6 +340,7 @@ def wait_for_change(client, module, response, hosted_zone_id):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
+            changed=True,
             msg=f"Unable to wait for AWS Route53 change {change_id} for hosted zone {hosted_zone_id} to become INSYNC",
         )
 

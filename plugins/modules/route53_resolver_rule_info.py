@@ -99,7 +99,7 @@ resolver_rules:
       type: str
     tags:
       description: The rule tags with key case preserved.
-      returned: when gathered by the module
+      returned: always
       type: dict
     target_ips:
       description: The rule target IPs.

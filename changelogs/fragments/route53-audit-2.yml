@@ -1,0 +1,19 @@
+---
+bugfixes:
+  - route53_resolver - remove failed endpoint IP addresses that are no longer requested, so an endpoint
+    in the ``ACTION_NEEDED`` status is repaired; check mode now predicts this change.
+  - route53_resolver - report ``changed`` when a failure follows a successful create, update,
+    IP address change, or delete, including an endpoint that needs action after an update.
+  - route53_resolver_rule - report ``changed`` when a failure follows a successful create, update, or delete,
+    including a rule that ends in the ``FAILED`` status.
+  - route53_resolver_rule_associate - report ``changed`` when a failure follows a successful association
+    or disassociation, including an association that ends in the ``FAILED`` status.
+  - route53_zone_associate - report ``changed`` when waiting for an association change fails.
+  - route53_delegation_set - report ``changed`` when the created reusable delegation set cannot be read back.
+  - route53_resolver - document that ``arn``, ``host_vpc_id``, ``id``, ``ip_address_count``, and ``status``
+    in ``resolver_endpoint`` are not returned when check mode predicts creation.
+  - route53_resolver_rule - document that ``arn``, ``id``, ``owner_id``, ``share_status``, and ``status``
+    in ``resolver_rule`` are not returned when check mode predicts creation.
+  - route53_resolver_rule_info - document ``tags`` as always returned.
+  - route53_zone_associate - document that ``hosted_zone_id`` is returned without the ``/hostedzone/`` prefix.
+...
