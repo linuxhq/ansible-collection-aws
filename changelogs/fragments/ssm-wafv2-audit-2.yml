@@ -1,0 +1,19 @@
+---
+bugfixes:
+  - ssm_document - with ``document_version=$DEFAULT``, wait for a ``$LATEST`` version that is being created or updated
+    before promoting it, and fail with the AWS status information when the matching ``$LATEST`` version is ``Failed``.
+  - ssm_document - with ``document_version=$DEFAULT``, keep the document tags when promoting a matching ``$LATEST`` version
+    so that tags are still purged when the refreshed default version is stale.
+  - ssm_association, ssm_association_info, ssm_document - name the resource consistently as an AWS Systems Manager
+    association or document in tag listing failures.
+  - ssm_association_info - document the ``association_name``, ``association_version``, ``document_version``,
+    ``duration``, ``instance_id``, ``last_execution_date``, ``schedule_offset``, and ``target_maps`` return values.
+  - ssm_association - remove the leading parameter-name sentence from the module description; the ``parameters``
+    return value documents it.
+minor_changes:
+  - ssm_association - reuse the tags read before an update instead of listing them again after ``UpdateAssociation``.
+  - ssm_document - reuse the tags read before an update or promotion instead of listing them again.
+  - ssm_association, ssm_association_info, ssm_document, ssm_document_info - read SSM tags through a shared
+    ``list_ssm_tags`` helper in ``module_utils/ssm.py``.
+  - ssm_instance_info - use the shared ``association_overview`` helper in ``module_utils/ssm.py``.
+  - wafv2_ip_set_info, wafv2_web_acl_info - share option validation and summary lookup in ``module_utils/wafv2.py``.

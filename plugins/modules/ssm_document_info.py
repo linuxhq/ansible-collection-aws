@@ -174,6 +174,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import list_ssm_tags
 
 SSM_DOCUMENT_RESOURCE_TYPE = "Document"
 
@@ -290,25 +291,16 @@ def main():
 
         document.pop("ResponseMetadata", None)
 
-        try:
-            response = client.list_tags_for_resource(
-                ResourceType=SSM_DOCUMENT_RESOURCE_TYPE,
-                ResourceId=document_name,
-                aws_retry=True,
-            )
-        except is_boto3_error_code("InvalidResourceId"):
+        tags = list_ssm_tags(
+            module,
+            client,
+            SSM_DOCUMENT_RESOURCE_TYPE,
+            document_name,
+            "AWS Systems Manager document",
+            missing_ok=True,
+        )
+        if tags is None:
             continue
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to list tags for AWS Systems Manager document {document_name}",
-            )
-
-        tags = response.get("TagList", []) if isinstance(response, dict) else None
-        if not isinstance(tags, list) or any(not isinstance(tag, dict) for tag in tags):
-            module.fail_json(
-                msg=f"Unexpected response while listing tags for AWS Systems Manager document {document_name}"
-            )
 
         document["Tags"] = tags
 

@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 import pytest
 from botocore.exceptions import ClientError
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import wafv2 as wafv2_utils
 from ansible_collections.linuxhq.aws.plugins.modules import wafv2_ip_set_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     HEADER,
@@ -33,7 +34,7 @@ def run(module, summaries=None):
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods") as require_client_methods,
-        patch.object(plugin, "query_list", return_value=summaries) as query_list,
+        patch.object(wafv2_utils, "query_list", return_value=summaries) as query_list,
         pytest.raises((ModuleExit, ModuleFail)) as raised,
     ):
         plugin.main()

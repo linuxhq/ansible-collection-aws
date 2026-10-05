@@ -375,6 +375,28 @@ def test_tag_failure_after_update_reports_changed():
     assert result.values["msg"] == "Unable to tag AWS Systems Manager association association-1"
 
 
+def test_update_reuses_tags_read_before_the_update():
+    client = Mock(
+        list_tags_for_resource=Mock(return_value={"TagList": [{"Key": "Old", "Value": "1"}]}),
+        update_association=Mock(return_value={"AssociationDescription": current_association(AssociationVersion="2")}),
+    )
+    module = FakeModule(params(schedule_expression="rate(2 hours)", tags={"Name": "example"}))
+    result = run_present(client, module, current_association())
+
+    assert result.values["changed"] is True
+    assert result.values["association"]["tags"] == {"Name": "example"}
+    client.list_tags_for_resource.assert_called_once()
+    client.remove_tags_from_resource.assert_called_once_with(
+        ResourceType="Association", ResourceId="association-1", TagKeys=["Old"], aws_retry=True
+    )
+    client.add_tags_to_resource.assert_called_once_with(
+        ResourceType="Association",
+        ResourceId="association-1",
+        Tags=[{"Key": "Name", "Value": "example"}],
+        aws_retry=True,
+    )
+
+
 def test_tag_failure_without_update_reports_unchanged():
     client = Mock(list_tags_for_resource=Mock(return_value={"TagList": []}))
     client.add_tags_to_resource.side_effect = ClientError(

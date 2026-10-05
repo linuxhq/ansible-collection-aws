@@ -212,11 +212,12 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    query_list,
-    require_client_methods,
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
+from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
+    get_resource_tags,
+    list_resource_summaries,
+    require_lookup_params,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import get_resource_tags
 
 
 def association_config(config):
@@ -231,42 +232,6 @@ def association_config(config):
     return result
 
 
-def list_web_acl_summaries(client, module, scope, target_id, target_name):
-    response_summaries = query_list(
-        module,
-        client,
-        "list_web_acls",
-        "WebACLs",
-        f"Unable to list AWS WAFv2 web ACLs for {scope}",
-        Scope=scope,
-        Limit=100,
-    )
-    if not isinstance(response_summaries, list):
-        module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 web ACLs for {scope}")
-
-    summaries = []
-    for summary in response_summaries:
-        summary_id = summary.get("Id") if isinstance(summary, dict) else None
-        summary_name = summary.get("Name") if isinstance(summary, dict) else None
-        if target_id and summary_id != target_id:
-            continue
-
-        if target_name and summary_name != target_name:
-            continue
-
-        if not isinstance(summary_id, str) or not summary_id:
-            module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 web ACLs for {scope}; invalid ID")
-
-        if not isinstance(summary_name, str) or not summary_name:
-            module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 web ACLs for {scope}; invalid name")
-
-        summaries.append(summary)
-        if target_id or target_name:
-            break
-
-    return summaries
-
-
 def main():
     argument_spec = {
         "id": {"type": "str"},
@@ -279,16 +244,7 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    target_id = module.params["id"]
-    target_name = module.params["name"]
-    if target_id == "":
-        module.fail_json(msg="id must not be empty")
-
-    if target_name == "":
-        module.fail_json(msg="name must not be empty")
-
-    if module.params["scope"] == "cloudfront" and module.region != "us-east-1":
-        module.fail_json(msg=f"scope cloudfront requires the us-east-1 region, not {module.region}")
+    require_lookup_params(module)
 
     client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
     require_client_methods(
@@ -303,10 +259,7 @@ def main():
     )
 
     scope = module.params["scope"].upper()
-    if target_id and target_name:
-        summaries = [{"Id": target_id, "Name": target_name}]
-    else:
-        summaries = list_web_acl_summaries(client, module, scope, target_id, target_name)
+    summaries = list_resource_summaries(client, module, "list_web_acls", "WebACLs", "web ACLs", scope)
 
     web_acls = []
     for summary in summaries:
