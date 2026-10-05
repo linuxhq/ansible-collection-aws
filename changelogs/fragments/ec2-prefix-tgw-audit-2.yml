@@ -1,0 +1,22 @@
+---
+breaking_changes:
+  - ec2_transit_gateway_route_table - fail with ``tags.Name must match name`` before calling AWS when ``tags`` contains
+    a ``Name`` tag that differs from ``name``, like ``ec2_vpc_vpn``, instead of silently using ``name``.
+bugfixes:
+  - ec2_transit_gateway_route_table - normalize ``tags`` keys and values to strings before comparing them with the
+    current tags, so non-string tag keys or values no longer re-tag the route table on every run.
+  - ec2_transit_gateway_route_table - remove purged static routes using the routes already found, without searching
+    for each route again.
+  - ec2_transit_gateway_route_table - name the target state in route table and route wait timeout messages.
+  - ec2_vpc_prefix_list - skip AWS-managed prefix lists and prefix lists owned by other accounts before validating the
+    name lookup result, instead of failing because AWS-managed prefix lists have no ``MaxEntries`` or ``Version``.
+  - ec2_vpc_prefix_list - name the target state in waiter failure messages.
+  - ec2_vpc_prefix_list_info - omit ``TargetVersion`` for AWS-managed prefix lists, which EC2 rejects with
+    ``UnsupportedOperation``, and return their current entries.
+  - ecs_ecr_info - describe each name in ``repository_names`` separately when any of them does not exist, returning
+    the repositories that exist instead of an empty list.
+minor_changes:
+  - ec2_vpc_prefix_list_info - document that AWS-managed prefix lists do not return ``max_entries`` or ``version``.
+trivial:
+  - ec2_transit_gateway_route_table, ec2_vpc_prefix_list - gate and reconcile tag changes with one call each.
+...

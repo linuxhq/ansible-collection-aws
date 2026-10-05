@@ -29,6 +29,8 @@ options:
     description:
       - The version of the managed prefix list for which to return entries.
       - When omitted, the current version entries are returned.
+      - AWS-managed prefix lists are not versioned, so their current entries are
+        returned regardless of this option.
       - This must be 1 or greater.
     type: int
 extends_documentation_fragment:
@@ -102,7 +104,9 @@ prefix_lists:
       returned: when returned by EC2
       type: str
     max_entries:
-      description: The maximum number of entries for the prefix list.
+      description:
+        - The maximum number of entries for the prefix list.
+        - AWS-managed prefix lists do not return this field.
       returned: when returned by EC2
       type: int
       sample: 10
@@ -140,7 +144,9 @@ prefix_lists:
       returned: when returned by EC2
       type: dict
     version:
-      description: The version of the prefix list.
+      description:
+        - The version of the prefix list.
+        - AWS-managed prefix lists do not return this field.
       returned: when returned by EC2
       type: int
       sample: 1
@@ -273,7 +279,8 @@ def main():
     result_prefix_lists = []
     for prefix_list in prefix_lists:
         entry_request = {"PrefixListId": prefix_list["PrefixListId"]}
-        if target_version is not None:
+        # EC2 rejects TargetVersion for AWS-managed prefix lists, which are not versioned.
+        if target_version is not None and prefix_list.get("OwnerId") != "AWS":
             entry_request["TargetVersion"] = target_version
 
         try:

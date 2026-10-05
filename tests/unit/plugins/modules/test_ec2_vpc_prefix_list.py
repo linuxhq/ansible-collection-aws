@@ -789,3 +789,68 @@ def test_lookup_ignores_prefix_lists_owned_by_other_accounts():
 
     with patch.object(plugin, "query_list", return_value=[shared]):
         assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": "main"}), OWNER) is None
+
+
+def test_lookup_skips_unversioned_aws_managed_prefix_lists_before_validation():
+    own = prefix_list()
+    aws_managed = {
+        "AddressFamily": "IPv4",
+        "OwnerId": "AWS",
+        "PrefixListId": "pl-02cd2c6b",
+        "PrefixListName": "main",
+        "State": "create-complete",
+        "Tags": [],
+    }
+    with patch.object(plugin, "query_list", return_value=[aws_managed, own]):
+        assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": "main"}), OWNER) == own
+
+
+def test_lookup_validates_owned_prefix_lists():
+    with (
+        patch.object(plugin, "query_list", return_value=[prefix_list(Version=None)]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": "main"}), OWNER)
+
+    assert raised.value.values["msg"] == "EC2 returned an invalid managed prefix list"
+
+
+@pytest.mark.parametrize(
+    ("waiter_name", "target_state"),
+    [("managed_prefix_list_ready", "ready"), ("managed_prefix_list_deleted", "deleted")],
+)
+def test_wait_failure_names_target_state(waiter_name, target_state):
+    module = FakeModule({})
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "run_waiter") as run_waiter,
+    ):
+        plugin.wait_for_prefix_list_state(Mock(), module, "pl-1", waiter_name)
+
+    assert (
+        run_waiter.call_args.args[4] == f"Unable to wait for EC2 VPC managed prefix list pl-1 to become {target_state}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("tags_to_set", "tag_keys_to_unset", "methods"),
+    [
+        ({"Env": "prod"}, [], {"create_tags"}),
+        ({}, ["Old"], {"delete_tags"}),
+        ({"Env": "prod"}, ["Old"], {"create_tags", "delete_tags"}),
+    ],
+)
+def test_tag_changes_are_gated_and_reconciled_once(tags_to_set, tag_keys_to_unset, methods):
+    client = Mock()
+    module = FakeModule({})
+    with (
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(plugin, "reconcile_ec2_tags") as reconcile,
+    ):
+        plugin.reconcile_tags(client, module, "pl-1", tags_to_set, tag_keys_to_unset)
+
+    require.assert_called_once()
+    assert set(require.call_args.args[3]) == methods
+    reconcile.assert_called_once_with(
+        module, client, ["pl-1"], tags_to_set, tag_keys_to_unset, "EC2 VPC managed prefix list"
+    )

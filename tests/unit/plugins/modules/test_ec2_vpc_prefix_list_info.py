@@ -205,3 +205,38 @@ def test_missing_prefix_list_id_returns_an_empty_list():
     assert raised.value.values["prefix_lists"] == []
     assert "PrefixListIds" not in query.call_args.kwargs
     entries.assert_not_called()
+
+
+def test_target_version_is_omitted_for_aws_managed_prefix_lists():
+    module = FakeModule(
+        {"filters": None, "prefix_list_ids": None, "target_version": 1},
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "query_list",
+            return_value=[
+                {"OwnerId": "AWS", "PrefixListId": "pl-02cd2c6b"},
+                {"OwnerId": "123456789012", "PrefixListId": "pl-1"},
+            ],
+        ),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            return_value={"Entries": [{"Cidr": "10.0.0.0/8"}]},
+        ) as entries,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert [entry_call.kwargs for entry_call in entries.call_args_list] == [
+        {"PrefixListId": "pl-02cd2c6b"},
+        {"PrefixListId": "pl-1", "TargetVersion": 1},
+    ]
+    assert [prefix_list["entries"] for prefix_list in raised.value.values["prefix_lists"]] == [
+        [{"cidr": "10.0.0.0/8"}],
+        [{"cidr": "10.0.0.0/8"}],
+    ]
