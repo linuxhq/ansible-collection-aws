@@ -1068,7 +1068,7 @@ def test_unchanged_accelerator_waits_for_requested_readiness(wait, check_mode):
 
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("family", ["IPV4", "DUAL_STACK"])
-@pytest.mark.parametrize("addresses", [["192.0.2.1"], ["192.0.2.1", "192.0.2.2"], ["192.0.2.3"]])
+@pytest.mark.parametrize("addresses", [["192.0.2.1"], ["192.0.2.1", "192.0.2.2"]])
 def test_requested_addresses_ignore_additional_assigned_addresses(check_mode, family, addresses):
     module = FakeModule(
         {
@@ -1103,26 +1103,159 @@ def test_requested_addresses_ignore_additional_assigned_addresses(check_mode, fa
     ):
         plugin.ensure_present(client, module)
 
-    changed = addresses == ["192.0.2.3"]
-    assert result.value.values["changed"] is changed
-    if not changed:
-        assert [item["ip_addresses"] for item in result.value.values["accelerator"]["ip_sets"]] == [
-            item["IpAddresses"] for item in ip_sets
-        ]
-
-    if changed and not check_mode:
-        client.update_accelerator.assert_called_once_with(
-            AcceleratorArn="arn:accelerator",
-            Enabled=True,
-            IpAddresses=addresses,
-            IpAddressType=family,
-            Name="example",
-            aws_retry=True,
-        )
-    else:
-        client.update_accelerator.assert_not_called()
-
+    assert result.value.values["changed"] is False
+    assert [item["ip_addresses"] for item in result.value.values["accelerator"]["ip_sets"]] == [
+        item["IpAddresses"] for item in ip_sets
+    ]
+    client.update_accelerator.assert_not_called()
     client.create_accelerator.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("status", ["DEPLOYED", "IN_PROGRESS"])
+@pytest.mark.parametrize("addresses", [["192.0.2.3"], ["192.0.2.1", "192.0.2.3"]])
+def test_changed_ip_addresses_fail_before_modifying_an_existing_accelerator(check_mode, status, addresses):
+    module = FakeModule(
+        {
+            "enabled": False,
+            "ip_address_type": "IPV4",
+            "ip_addresses": addresses,
+            "listeners": [],
+            "name": "renamed",
+            "purge_tags": True,
+            "tags": {"Environment": "test"},
+            "wait": True,
+        },
+        check_mode=check_mode,
+    )
+    current = {
+        "AcceleratorArn": "arn:accelerator",
+        "Enabled": True,
+        "IpAddressType": "IPV4",
+        "IpSets": [{"IpFamily": "IPv4", "IpAddresses": ["192.0.2.1", "192.0.2.2"]}],
+        "Name": "example",
+        "Status": status,
+    }
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"Tags": []}
+    with (
+        patch.object(plugin, "get_accelerator", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_accelerator") as waiter,
+        patch.object(plugin, "ensure_listeners") as listeners,
+        patch.object(plugin, "reconcile_arn_tags") as tagger,
+        pytest.raises(ModuleFail) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["msg"] == (
+        "ip_addresses cannot be changed for existing AWS Global Accelerator arn:accelerator. "
+        "The existing accelerator has not been modified."
+    )
+    waiter.assert_not_called()
+    listeners.assert_not_called()
+    tagger.assert_not_called()
+    client.update_accelerator.assert_not_called()
+    client.create_accelerator.assert_not_called()
+    client.tag_resource.assert_not_called()
+    client.untag_resource.assert_not_called()
+
+
+def test_update_never_sends_ip_addresses():
+    module = FakeModule(
+        {
+            "enabled": False,
+            "ip_address_type": "IPV4",
+            "ip_addresses": ["192.0.2.1"],
+            "listeners": None,
+            "name": "example",
+            "tags": None,
+            "wait": False,
+        }
+    )
+    current = {
+        "AcceleratorArn": "arn:accelerator",
+        "Enabled": True,
+        "IpAddressType": "IPV4",
+        "IpSets": [{"IpFamily": "IPv4", "IpAddresses": ["192.0.2.1", "192.0.2.2"]}],
+        "Name": "example",
+        "Status": "DEPLOYED",
+    }
+    client = Mock()
+    client.update_accelerator.return_value = {"Accelerator": dict(current, Enabled=False)}
+    with (
+        patch.object(plugin, "get_accelerator", return_value=current),
+        patch.object(plugin, "require_client_methods") as require,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    client.update_accelerator.assert_called_once_with(
+        AcceleratorArn="arn:accelerator",
+        Enabled=False,
+        IpAddressType="IPV4",
+        Name="example",
+        aws_retry=True,
+    )
+    require.assert_called_once_with(
+        module,
+        client,
+        "Global Accelerator",
+        {"update_accelerator": ("AcceleratorArn", "Enabled", "IpAddressType", "Name")},
+    )
+
+
+def test_create_sends_ip_addresses():
+    module = FakeModule(
+        {
+            "enabled": None,
+            "idempotency_token": "token",
+            "ip_address_type": None,
+            "ip_addresses": ["192.0.2.1"],
+            "listeners": None,
+            "name": "example",
+            "tags": None,
+            "wait": False,
+        }
+    )
+    created = {
+        "AcceleratorArn": "arn:accelerator",
+        "Enabled": True,
+        "IpAddressType": "IPV4",
+        "IpSets": [{"IpFamily": "IPv4", "IpAddresses": ["192.0.2.1", "198.51.100.1"]}],
+        "Name": "example",
+        "Status": "IN_PROGRESS",
+    }
+    client = Mock()
+    client.create_accelerator.return_value = {"Accelerator": created}
+    with (
+        patch.object(plugin, "get_accelerator", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    client.create_accelerator.assert_called_once_with(
+        IdempotencyToken="token",
+        IpAddresses=["192.0.2.1"],
+        Name="example",
+        aws_retry=True,
+    )
+
+
+def test_client_retries_only_transient_accelerator_transactions():
+    module = Mock(params={"name": "example", "state": "absent", "tags": None})
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "AWSRetry") as retry,
+        patch.object(plugin, "ensure_absent"),
+        patch.object(plugin, "require_positive_wait_bounds"),
+    ):
+        plugin.main()
+
+    retry.jittered_backoff.assert_called_once_with(catch_extra_error_codes=["TransactionInProgressException"])
 
 
 @pytest.mark.parametrize("family", ["IPV4", "DUAL_STACK"])

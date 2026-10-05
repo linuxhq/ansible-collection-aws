@@ -56,6 +56,8 @@ options:
       - This must contain at most 2 entries.
       - When omitted, AWS assigns IP addresses.
       - Additional AWS-assigned addresses do not cause updates when all requested addresses are present.
+      - This can only be set when creating an accelerator.
+      - When an existing accelerator does not have all requested addresses, the module fails without modifying it.
       - An empty list is treated as omitted. Assigned static addresses cannot be cleared from an existing accelerator.
     elements: str
     type: list
@@ -1637,6 +1639,13 @@ def ensure_present(client, module):
 
             current_ip_addresses = [address for address in current_ip_addresses if address in ip_addresses]
             current["ip_addresses"] = sorted(current_ip_addresses)
+            if current["ip_addresses"] != desired["ip_addresses"]:
+                module.fail_json(
+                    msg=(
+                        "ip_addresses cannot be changed for existing AWS Global Accelerator "
+                        f"{accelerator['AcceleratorArn']}. The existing accelerator has not been modified."
+                    )
+                )
 
     resource_changed = current != desired
 
@@ -1731,7 +1740,6 @@ def ensure_present(client, module):
                 {
                     "accelerator_arn": accelerator["AcceleratorArn"],
                     "enabled": desired.get("enabled"),
-                    "ip_addresses": ip_addresses,
                     "ip_address_type": desired.get("ip_address_type"),
                     "name": desired["name"],
                 },
@@ -1769,9 +1777,6 @@ def ensure_present(client, module):
 
         if "ip_address_type" in desired:
             accelerator["IpAddressType"] = desired["ip_address_type"]
-
-        if ip_addresses is not None and current["ip_addresses"] != desired["ip_addresses"]:
-            accelerator["IpSets"] = [{"IpAddresses": ip_addresses}]
 
     listeners = None
     listeners_changed = False
@@ -2091,7 +2096,7 @@ def main():
     client = module.client(
         "globalaccelerator",
         region="us-west-2",
-        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConflictException"]),
+        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["TransactionInProgressException"]),
     )
 
     if state == "present":
