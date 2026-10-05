@@ -378,7 +378,7 @@ def create_resolver_rule(client, module, request):
 
     rule = response.get("ResolverRule") if isinstance(response, dict) else None
     if not isinstance(rule, dict) or not rule.get("Id"):
-        rule = get_resolver_rule_by_name(client, module)
+        rule = get_resolver_rule_by_name(client, module, changed=True)
 
     if rule is None:
         module.fail_json(changed=True, msg=f"AWS Route53 Resolver did not return the created rule {request['Name']}")
@@ -499,7 +499,7 @@ def ensure_present(client, module):
     elif current is None:
         rule = create_resolver_rule(client, module, request)
         if module.params["wait"]:
-            rule = resolver_rule_with_tags(client, module, rule)
+            rule = resolver_rule_with_tags(client, module, rule, changed=True)
         elif tags is not None:
             rule["Tags"] = ansible_dict_to_boto3_tag_list(tags)
     elif changed:
@@ -564,6 +564,7 @@ def ensure_present(client, module):
                     tags_to_set,
                     tag_keys_to_unset,
                     "AWS Route53 Resolver rule",
+                    changed=resource_changed,
                 )
 
             rule = apply_tag_deltas(rule, tags_to_set, tag_keys_to_unset)
@@ -689,7 +690,8 @@ def get_resolver_rule(client, module, resolver_rule_id, changed=False):
     )
 
 
-def get_resolver_rule_by_name(client, module):
+def get_resolver_rule_by_name(client, module, changed=False):
+    """Find the rule by name; changed reports whether the rule was already modified, for failure results."""
     name = module.params["name"]
 
     rules = query_list(
@@ -698,10 +700,14 @@ def get_resolver_rule_by_name(client, module):
         "list_resolver_rules",
         "ResolverRules",
         "Unable to list AWS Route53 Resolver rules",
+        changed=changed,
         Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
     )
 
-    rules = [validate_resolver_rule(module, rule, "list_resolver_rules", expected_name=name) for rule in rules]
+    rules = [
+        validate_resolver_rule(module, rule, "list_resolver_rules", expected_name=name, changed=changed)
+        for rule in rules
+    ]
     # Only rules this account owns can be managed; skip rules shared from other accounts and AWS-owned rules.
     rules = [
         rule
@@ -711,7 +717,9 @@ def get_resolver_rule_by_name(client, module):
 
     if len(rules) > 1:
         rule_ids = sorted(rule["Id"] for rule in rules)
-        module.fail_json(msg=f"Multiple AWS Route53 Resolver rules are named {name}: {', '.join(rule_ids)}")
+        module.fail_json(
+            changed=changed, msg=f"Multiple AWS Route53 Resolver rules are named {name}: {', '.join(rule_ids)}"
+        )
 
     if not rules:
         return None
@@ -720,11 +728,12 @@ def get_resolver_rule_by_name(client, module):
         return rules[0]
 
     # ListResolverRules returns the full rule, so only the tags need another call.
-    rule = validate_resolver_rule(module, rules[0], "list_resolver_rules", require_details=True)
-    return resolver_rule_with_tags(client, module, rule)
+    rule = validate_resolver_rule(module, rules[0], "list_resolver_rules", require_details=True, changed=changed)
+    return resolver_rule_with_tags(client, module, rule, changed=changed)
 
 
-def resolver_rule_with_tags(client, module, rule):
+def resolver_rule_with_tags(client, module, rule, changed=False):
+    """Add listed tags; changed reports whether the rule was already modified, for failure results."""
     if not rule or not rule.get("Arn"):
         return rule
 
@@ -736,9 +745,10 @@ def resolver_rule_with_tags(client, module, rule):
         "list_tags_for_resource",
         "Tags",
         f"Unable to list tags for AWS Route53 Resolver rule {rule['Arn']}",
+        changed=changed,
         ResourceArn=rule["Arn"],
     )
-    rule["Tags"] = validate_tags(module, tags)
+    rule["Tags"] = validate_tags(module, tags, changed=changed)
 
     return rule
 

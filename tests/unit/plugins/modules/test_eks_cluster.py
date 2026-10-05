@@ -310,6 +310,7 @@ def test_vpc_endpoint_and_network_changes_use_separate_updates():
                 )
             },
         ),
+        call(module, client, "EKS", {"describe_update": ("name", "updateId")}),
     ]
     assert nested.call_count == 2
     wait_for_update.assert_called_once_with(client, module, "update-1", changed=True)
@@ -502,6 +503,7 @@ def test_failed_update_stops_waiting_with_update_details():
         client,
         "EKS",
         {"describe_update": ("name", "updateId")},
+        changed=False,
     )
     assert raised.value.values["update"]["status"] == "Failed"
 
@@ -1203,6 +1205,27 @@ def test_sdk_requirements_are_checked_before_the_first_update():
     ):
         plugin.ensure_present(client, module)
 
+    client.update_cluster_config.assert_not_called()
+
+
+def test_update_wait_support_is_checked_before_the_first_update():
+    current = {"name": "example", "arn": "arn:example", "status": "ACTIVE", "deletionProtection": False}
+    client = Mock()
+    module = FakeModule(eks_params(deletion_protection=True, wait=True))
+
+    def require(module, client, service, methods, changed=False):
+        if "describe_update" in methods:
+            module.fail_json(changed=changed, msg="unsupported")
+
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods", side_effect=require),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
     client.update_cluster_config.assert_not_called()
 
 

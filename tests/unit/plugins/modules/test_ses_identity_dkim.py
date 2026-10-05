@@ -173,3 +173,32 @@ def test_regional_easy_dkim_without_tokens_is_generated():
 
 def test_return_documents_every_dkim_attribute():
     assert_documents_shape(documented_returns(plugin)["dkim_attributes"]["contains"], "sesv2", "DkimAttributes")
+
+
+def test_reread_failure_after_generating_tokens_reports_changed():
+    client = Mock(
+        get_email_identity=Mock(
+            side_effect=[
+                {"DkimAttributes": {"Status": "NOT_STARTED"}},
+                ClientError({"Error": {"Code": "TooManyRequestsException", "Message": "failed"}}, "GetEmailIdentity"),
+            ]
+        )
+    )
+    result, _require = run(FakeModule(params(), client=client))
+
+    assert result.values["msg"] == "Unable to get AWS SES identity example.com"
+    assert result.values["changed"] is True
+
+
+@pytest.mark.parametrize(
+    ("current", "changed"), [({"Status": "NOT_STARTED"}, True), (dict(EASY, SigningEnabled=False), False)]
+)
+def test_signing_failure_reports_whether_tokens_were_generated(current, changed):
+    client = client_with(current, dict(EASY, SigningEnabled=False))
+    client.put_email_identity_dkim_attributes.side_effect = ClientError(
+        {"Error": {"Code": "TooManyRequestsException", "Message": "failed"}}, "PutEmailIdentityDkimAttributes"
+    )
+    result, _require = run(FakeModule(params(), client=client))
+
+    assert result.values["msg"] == "Unable to update DKIM signing for AWS SES identity example.com"
+    assert result.values["changed"] is changed

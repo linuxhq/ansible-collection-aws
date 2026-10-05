@@ -68,7 +68,7 @@ def test_create_rereads_rule_when_response_is_lean():
     with patch.object(plugin, "get_resolver_rule_by_name", return_value=rule) as get:
         result = plugin.create_resolver_rule(client, module, request)
 
-    get.assert_called_once_with(client, module)
+    get.assert_called_once_with(client, module, changed=True)
     assert result["DomainName"] == "example.com"
     assert result["Id"] == "rslvr-rr-1"
 
@@ -650,7 +650,9 @@ def test_lookup_skips_shared_and_aws_owned_rules():
     aws_owned = existing_rule(Id="rslvr-autodefined-rr-1", OwnerId="Route 53 Resolver")
     with (
         patch.object(plugin, "query_list", return_value=[shared, owned, aws_owned]),
-        patch.object(plugin, "resolver_rule_with_tags", side_effect=lambda client, module, rule: rule) as with_tags,
+        patch.object(
+            plugin, "resolver_rule_with_tags", side_effect=lambda client, module, rule, changed=False: rule
+        ) as with_tags,
     ):
         assert plugin.get_resolver_rule_by_name(Mock(), FakeModule(rule_params()))["Id"] == "rslvr-rr-1"
 
@@ -661,7 +663,7 @@ def test_present_lookup_uses_the_listed_rule_without_get_resolver_rule():
     client = Mock()
     with (
         patch.object(plugin, "query_list", return_value=[existing_rule()]),
-        patch.object(plugin, "resolver_rule_with_tags", side_effect=lambda client, module, rule: rule),
+        patch.object(plugin, "resolver_rule_with_tags", side_effect=lambda client, module, rule, changed=False: rule),
     ):
         plugin.get_resolver_rule_by_name(client, FakeModule(rule_params()))
 
@@ -795,3 +797,52 @@ def test_delete_wait_failure_reports_changed():
         plugin.delete_resolver_rule(Mock(), FakeModule(rule_params(wait=True)), existing_rule())
 
     assert raised.value.values["changed"] is True
+
+
+def client_error(operation):
+    return plugin.ClientError({"Error": {"Code": "InternalError", "Message": "failed"}}, operation)
+
+
+@pytest.mark.parametrize(("endpoint", "changed"), [("rslvr-out-2", True), ("rslvr-out-1", False)])
+def test_tag_failure_reports_whether_the_rule_was_updated(endpoint, changed):
+    client = Mock(tag_resource=Mock(side_effect=client_error("TagResource")))
+    client.update_resolver_rule.return_value = {"ResolverRule": existing_rule(ResolverEndpointId=endpoint)}
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=existing_rule()),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(rule_params(resolver_endpoint_id=endpoint, tags={"Env": "test"})))
+
+    assert raised.value.values["changed"] is changed
+    assert client.update_resolver_rule.called is changed
+
+
+def failing_query(module, client, method_name, result_key, error_msg, changed=False, **kwargs):
+    module.fail_json(changed=changed, msg=error_msg)
+
+
+def test_tag_listing_failure_after_create_reports_changed():
+    client = Mock(create_resolver_rule=Mock(return_value={"ResolverRule": existing_rule(Status="UPDATING")}))
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=None),
+        patch.object(plugin, "run_waiter"),
+        patch.object(plugin, "get_resolver_rule", return_value=existing_rule()),
+        patch.object(plugin, "query_list", side_effect=failing_query),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(rule_params(wait=True)))
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"] == "Unable to list tags for AWS Route53 Resolver rule arn:rule"
+
+
+def test_lookup_failure_before_create_reports_unchanged():
+    client = Mock()
+    with (
+        patch.object(plugin, "query_list", side_effect=failing_query),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(rule_params()))
+
+    assert raised.value.values["changed"] is False
+    client.create_resolver_rule.assert_not_called()

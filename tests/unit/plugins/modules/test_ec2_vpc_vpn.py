@@ -282,7 +282,7 @@ def test_purge_routes_with_explicit_empty_routes_removes_existing_routes(params,
     with patch.object(plugin, "wait_for_route_deleted") as waiter:
         assert ensure(client, FakeModule(params), connection)["changed"]
 
-    waiter.assert_called_once_with(client, waiter.call_args.args[1], "vpn-123", "10.0.0.0/8")
+    waiter.assert_called_once_with(client, waiter.call_args.args[1], "vpn-123", "10.0.0.0/8", changed=True)
     client.delete_vpn_connection_route.assert_called_once_with(
         VpnConnectionId="vpn-123", DestinationCidrBlock="10.0.0.0/8", aws_retry=True
     )
@@ -688,7 +688,7 @@ def test_creation_tags_atomically_and_adds_routes(params, connection):
     with patch.object(plugin, "wait_for_route_available") as waiter:
         assert ensure(client, FakeModule(params), None)["changed"]
 
-    waiter.assert_called_once_with(client, waiter.call_args.args[1], "vpn-123", "10.20.0.0/16")
+    waiter.assert_called_once_with(client, waiter.call_args.args[1], "vpn-123", "10.20.0.0/16", changed=True)
     request = dict(client.create_vpn_connection.call_args.kwargs)
     assert request.pop("aws_retry") is True
     assert request["TagSpecifications"] == [
@@ -950,7 +950,7 @@ def test_requested_deleting_route_is_recreated_after_deletion(params, connection
             "wait_available",
             "describe_vpn_connections",
         ]
-        waiter.assert_called_once_with(client, waiter.call_args.args[1], "vpn-123", "10.0.0.0/8")
+        waiter.assert_called_once_with(client, waiter.call_args.args[1], "vpn-123", "10.0.0.0/8", changed=False)
         client.create_vpn_connection_route.assert_called_once_with(
             VpnConnectionId="vpn-123", DestinationCidrBlock="10.0.0.0/8", aws_retry=True
         )
@@ -1212,7 +1212,7 @@ def test_requested_pending_route_waits_without_recreation(params, connection, ch
         waiter.assert_not_called()
         assert client.mock_calls == []
     else:
-        waiter.assert_called_once_with(client, waiter.call_args.args[1], "vpn-123", "10.0.0.0/8")
+        waiter.assert_called_once_with(client, waiter.call_args.args[1], "vpn-123", "10.0.0.0/8", changed=False)
         assert result["vpn_connection"]["routes"][0]["state"] == "available"
 
 
@@ -1233,7 +1233,7 @@ def test_purged_route_already_deleting_waits_without_another_delete(params, conn
     assert result["changed"] is False
     client.delete_vpn_connection_route.assert_not_called()
     if routes is not None and purge and not check_mode:
-        waiter.assert_called_once_with(client, module, "vpn-123", "10.0.0.0/8")
+        waiter.assert_called_once_with(client, module, "vpn-123", "10.0.0.0/8", changed=False)
         assert result["vpn_connection"]["routes"] == []
     else:
         waiter.assert_not_called()
@@ -1328,3 +1328,71 @@ def test_create_checks_the_submitted_request(params, sdk_checks):
     assert set(checked["create_vpn_connection"]) == set(client.create_vpn_connection.call_args.kwargs) - {"aws_retry"}
     real_client = Session().create_client("ec2", region_name="us-east-1")
     sdk.require_client_methods(FakeModule({}), real_client, "EC2", checked)
+
+
+@pytest.mark.parametrize(("local_cidr", "changed"), [("10.0.0.0/8", True), (None, False)])
+def test_tunnel_failure_reports_whether_options_were_modified(params, connection, local_cidr, changed):
+    params.update(
+        local_ipv4_network_cidr=local_cidr,
+        tunnel_options=[{"outside_ip_address": "203.0.113.2", "phase1_encryption_algorithms": ["AES256"]}],
+    )
+    client = Mock()
+    client.modify_vpn_tunnel_options.side_effect = ClientError(
+        {"Error": {"Code": "InternalError", "Message": "failed"}}, "ModifyVpnTunnelOptions"
+    )
+    with (
+        patch.object(plugin, "wait_for_connection"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params), connection)
+
+    assert raised.value.values["msg"] == "Unable to modify VPN connection vpn-123 tunnel 203.0.113.2"
+    assert raised.value.values["changed"] is changed
+    assert client.modify_vpn_connection_options.called is changed
+
+
+def test_route_failure_after_tunnel_changes_reports_changed(params, connection):
+    params.update(
+        routes=["10.0.0.0/8", "10.20.0.0/16"],
+        tunnel_options=[{"outside_ip_address": "203.0.113.2", "phase1_encryption_algorithms": ["AES256"]}],
+    )
+    client = Mock()
+    client.create_vpn_connection_route.side_effect = ClientError(
+        {"Error": {"Code": "InternalError", "Message": "failed"}}, "CreateVpnConnectionRoute"
+    )
+    with (
+        patch.object(plugin, "wait_for_connection"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params), connection)
+
+    assert raised.value.values["msg"] == "Unable to create route 10.20.0.0/16 on VPN connection vpn-123"
+    assert raised.value.values["changed"] is True
+
+
+def test_unsupported_tagging_fails_before_modifying_options(params, connection, sdk_checks):
+    params.update(local_ipv4_network_cidr="10.0.0.0/8", tags={"Env": "test"})
+
+    def require(module, client, service, methods, changed=False):
+        if "create_tags" in methods:
+            module.fail_json(changed=changed, msg="Unsupported tagging")
+
+    sdk_checks.side_effect = require
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params), connection)
+
+    assert raised.value.values["changed"] is False
+    client.modify_vpn_connection_options.assert_not_called()
+
+
+def test_wait_failure_after_create_reports_changed(params, connection):
+    params.update(customer_gateway_id="cgw-123", vpn_gateway_id="vgw-123")
+    client = Mock()
+    client.create_vpn_connection.return_value = {"VpnConnection": dict(connection, State="pending")}
+    client.get_waiter.return_value.wait.side_effect = WaiterError("VpnConnectionAvailable", "failed", {})
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params), None)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"] == "Unable to wait for VPN connection vpn-123 to become available"

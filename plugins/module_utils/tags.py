@@ -35,12 +35,13 @@ def require_valid_tags(module, tags, max_tags, key_max=128):
         module.fail_json(msg=f"tag keys must contain 1 to {key_max} characters and values at most 256 characters")
 
 
-def require_valid_tag_list(module, tags, msg):
+def require_valid_tag_list(module, tags, msg, changed=False):
+    """Validate an AWS tag list; changed reports whether the resource was already modified, for failure results."""
     if not isinstance(tags, list) or any(
         not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str)
         for tag in tags
     ):
-        module.fail_json(msg=msg)
+        module.fail_json(changed=changed, msg=msg)
 
     return tags
 

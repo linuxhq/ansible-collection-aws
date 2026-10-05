@@ -136,6 +136,7 @@ def test_create_rejects_invalid_response():
         raised.value.values["msg"]
         == "Unable to create AWS Notifications contact ops@example.com: AWS returned an invalid response"
     )
+    assert raised.value.values["changed"] is True
 
 
 def test_create_rejects_post_create_response_without_contact():
@@ -161,6 +162,7 @@ def test_create_rejects_post_create_response_without_contact():
         raised.value.values["msg"]
         == "Unable to get AWS Notifications contact arn:new: AWS returned an invalid response"
     )
+    assert raised.value.values["changed"] is True
 
 
 def test_contact_address_and_name_are_validated_before_api_calls():
@@ -289,3 +291,31 @@ def test_email_address_follows_the_api_pattern():
             plugin.main()
 
         ensure_present.assert_called_once()
+
+
+@pytest.mark.parametrize(("current_tags", "changed"), [({"remove": "yes"}, True), ({}, False)])
+def test_tag_failure_reports_whether_tags_were_removed(current_tags, changed):
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"tags": current_tags}
+    client.tag_resource.side_effect = plugin.ClientError(
+        {"Error": {"Code": "InternalServerException", "Message": "failed"}}, "TagResource"
+    )
+    module = FakeModule(
+        {
+            "email_address": "ops@example.com",
+            "name": "Operations",
+            "purge_tags": True,
+            "tags": {"keep": "new"},
+        }
+    )
+    contact = {"address": "ops@example.com", "arn": "arn:contact", "name": "Operations"}
+    with (
+        patch.object(plugin, "get_contact_by_address", return_value=contact),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "Unable to tag AWS Notifications contact arn:contact"
+    assert raised.value.values["changed"] is changed
+    assert client.untag_resource.called is changed

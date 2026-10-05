@@ -477,8 +477,8 @@ def test_absent_removes_pool_and_deletion_protection_before_release():
         aws_retry=True,
     )
     assert wait_for_phone_number_active.call_args_list == [
-        call(client, module, "phone-1"),
-        call(client, module, "phone-1"),
+        call(client, module, "phone-1", changed=True),
+        call(client, module, "phone-1", changed=True),
     ]
     client.release_phone_number.assert_called_once_with(PhoneNumberId="phone-1", aws_retry=True)
     assert raised.value.values["changed"]
@@ -831,3 +831,115 @@ def test_tag_matched_number_lists_tags_once(status):
     list_tags.assert_called_once()
     assert raised.value.values["changed"] is False
     assert raised.value.values["phone_number"]["tags"] == {"Name": "x"}
+
+
+def client_error(operation):
+    return plugin.ClientError({"Error": {"Code": "InternalServerException", "Message": "failed"}}, operation)
+
+
+@pytest.mark.parametrize(("deletion_protection_enabled", "changed"), [(False, True), (None, False)])
+def test_tag_failure_reports_whether_the_number_was_updated(deletion_protection_enabled, changed):
+    number = existing_number(PhoneNumberArn="arn:phone")
+    client = Mock()
+    client.update_phone_number.return_value = existing_number(DeletionProtectionEnabled=False)
+    client.tag_resource.side_effect = client_error("TagResource")
+    module = FakeModule(
+        phone_number_params(
+            deletion_protection_enabled=deletion_protection_enabled,
+            phone_number_id="phone-1",
+            tags={"Env": "test"},
+        )
+    )
+    with (
+        patch.object(plugin, "get_phone_number", return_value=number),
+        patch.object(plugin, "phone_number_tags", return_value={}),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "Unable to tag phone number arn:phone"
+    assert raised.value.values["changed"] is changed
+    assert client.update_phone_number.called is changed
+
+
+def test_unsupported_tagging_fails_before_updating_settings():
+    client = Mock()
+
+    def require(module, client, service, methods, changed=False):
+        if "tag_resource" in methods:
+            module.fail_json(changed=changed, msg="Unsupported tagging")
+
+    module = FakeModule(
+        phone_number_params(deletion_protection_enabled=False, phone_number_id="phone-1", tags={"Env": "test"})
+    )
+    with (
+        patch.object(plugin, "get_phone_number", return_value=existing_number(PhoneNumberArn="arn:phone")),
+        patch.object(plugin, "phone_number_tags", return_value={}),
+        patch.object(plugin, "require_client_methods", side_effect=require),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+    client.update_phone_number.assert_not_called()
+
+
+def test_wait_timeout_after_request_reports_changed():
+    client = Mock()
+    client.request_phone_number.return_value = existing_number(Status="PENDING")
+    module = FakeModule(phone_number_params(wait=True, wait_delay=1, wait_timeout=1))
+    with (
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_phone_number", return_value=existing_number(Status="PENDING")),
+        patch.object(plugin.time, "sleep"),
+        patch.object(plugin.time, "monotonic", side_effect=[0, 0, 0, 2]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"].startswith(
+        "Timed out waiting for AWS End User Messaging SMS phone number phone-1"
+    )
+
+
+@pytest.mark.parametrize(("pool_id", "changed"), [("pool-1", True), (None, False)])
+def test_release_failure_reports_whether_the_number_was_disassociated(pool_id, changed):
+    client = Mock()
+    client.release_phone_number.side_effect = client_error("ReleasePhoneNumber")
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
+    with (
+        patch.object(
+            plugin, "get_phone_number", return_value=existing_number(DeletionProtectionEnabled=False, PoolId=pool_id)
+        ),
+        patch.object(
+            plugin, "wait_for_phone_number_active", return_value=existing_number(DeletionProtectionEnabled=False)
+        ),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is changed
+    assert client.disassociate_origination_identity.called is changed
+
+
+def test_unsupported_release_fails_before_disassociating():
+    client = Mock()
+
+    def require(module, client, service, methods, changed=False):
+        if "release_phone_number" in methods:
+            module.fail_json(changed=changed, msg="Unsupported release")
+
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
+    with (
+        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(plugin, "require_client_methods", side_effect=require),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is False
+    client.disassociate_origination_identity.assert_not_called()

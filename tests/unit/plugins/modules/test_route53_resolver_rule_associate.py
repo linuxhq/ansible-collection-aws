@@ -217,6 +217,20 @@ def test_list_rejects_malformed_and_ambiguous_associations(associations, message
         plugin.get_resolver_rule_association_by_rule_and_vpc(Mock(), FakeModule(params()))
 
     assert message in raised.value.values["msg"]
+    assert raised.value.values["changed"] is False
+
+
+def test_ambiguous_lookup_after_create_reports_changed():
+    client = Mock(associate_resolver_rule=Mock(return_value={}))
+    duplicates = [dict(ASSOCIATION, Id="rslvr-rrassoc-1"), dict(ASSOCIATION, Id="rslvr-rrassoc-2")]
+    with (
+        patch.object(plugin, "query_list", side_effect=[[], duplicates]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params()))
+
+    assert "Multiple AWS Route53 Resolver rule associations" in raised.value.values["msg"]
+    assert raised.value.values["changed"] is True
 
 
 def test_check_mode_replacement_does_not_return_stale_id():

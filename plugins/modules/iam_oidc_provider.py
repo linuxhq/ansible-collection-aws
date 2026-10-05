@@ -289,11 +289,15 @@ def ensure_present(client, module):
             if tags:
                 request["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
+            # The provider is read back after creation, so that call is checked before creating anything.
             require_client_methods(
                 module,
                 client,
                 "IAM",
-                {"create_open_id_connect_provider": tuple(request)},
+                {
+                    "create_open_id_connect_provider": tuple(request),
+                    "get_open_id_connect_provider": ("OpenIDConnectProviderArn",),
+                },
             )
             try:
                 response = client.create_open_id_connect_provider(
@@ -311,43 +315,67 @@ def ensure_present(client, module):
                 or not isinstance(response.get("OpenIDConnectProviderArn"), str)
                 or not response["OpenIDConnectProviderArn"]
             ):
-                module.fail_json(msg=f"Unable to create AWS IAM OIDC provider {url}: AWS returned an invalid response")
+                module.fail_json(
+                    changed=True,
+                    msg=f"Unable to create AWS IAM OIDC provider {url}: AWS returned an invalid response",
+                )
 
             arn = response["OpenIDConnectProviderArn"]
 
-            require_client_methods(
-                module,
-                client,
-                "IAM",
-                {"get_open_id_connect_provider": ("OpenIDConnectProviderArn",)},
-            )
-            current = get_provider_by_arn(client, module, arn) or dict(
+            current = get_provider_by_arn(client, module, arn, changed=True) or dict(
                 request, OpenIDConnectProviderArn=arn, Url=desired["url"]
             )
         else:
             arn = current["OpenIDConnectProviderArn"]
             provider_changed = False
-            if "client_id_list" in desired and current_comparable["client_id_list"] != desired["client_id_list"]:
-                current_client_ids = set(current.get("ClientIDList") or [])
+            client_ids_changed = (
+                "client_id_list" in desired and current_comparable["client_id_list"] != desired["client_id_list"]
+            )
+            thumbprints_changed = (
+                "thumbprint_list" in desired and current_comparable["thumbprint_list"] != desired["thumbprint_list"]
+            )
+            current_client_ids = set(current.get("ClientIDList") or [])
+            removed_client_ids, added_client_ids = [], []
+            if client_ids_changed:
                 desired_client_ids = set(desired["client_id_list"])
-
                 removed_client_ids = sorted(current_client_ids - desired_client_ids)
                 added_client_ids = sorted(desired_client_ids - current_client_ids)
-                methods = {}
-                if removed_client_ids:
-                    methods["remove_client_id_from_open_id_connect_provider"] = (
-                        "ClientID",
-                        "OpenIDConnectProviderArn",
-                    )
 
-                if added_client_ids:
-                    methods["add_client_id_to_open_id_connect_provider"] = (
-                        "ClientID",
-                        "OpenIDConnectProviderArn",
-                    )
+            # Every write is checked before the first one, so an older botocore fails without modifying anything.
+            methods = {}
+            if removed_client_ids:
+                methods["remove_client_id_from_open_id_connect_provider"] = (
+                    "ClientID",
+                    "OpenIDConnectProviderArn",
+                )
 
-                require_client_methods(module, client, "IAM", methods)
+            if added_client_ids:
+                methods["add_client_id_to_open_id_connect_provider"] = (
+                    "ClientID",
+                    "OpenIDConnectProviderArn",
+                )
 
+            if thumbprints_changed:
+                methods["update_open_id_connect_provider_thumbprint"] = (
+                    "OpenIDConnectProviderArn",
+                    "ThumbprintList",
+                )
+
+            if tag_keys_to_unset:
+                methods["untag_open_id_connect_provider"] = (
+                    "OpenIDConnectProviderArn",
+                    "TagKeys",
+                )
+
+            if tags_to_set:
+                methods["tag_open_id_connect_provider"] = (
+                    "OpenIDConnectProviderArn",
+                    "Tags",
+                )
+
+            require_client_methods(module, client, "IAM", methods)
+
+            if client_ids_changed:
                 # Free only the capacity needed before adding replacement audiences.
                 remove_first = max(0, len(current_client_ids) + len(added_client_ids) - 100)
                 operations = (
@@ -370,23 +398,15 @@ def ensure_present(client, module):
                     except (BotoCoreError, ClientError) as e:
                         module.fail_json_aws(
                             e,
+                            changed=provider_changed,
                             msg=f"Unable to {action} client ID for AWS IAM OIDC provider {url}",
                         )
 
+                    provider_changed = True
+
                 provider_changed = True
 
-            if "thumbprint_list" in desired and current_comparable["thumbprint_list"] != desired["thumbprint_list"]:
-                require_client_methods(
-                    module,
-                    client,
-                    "IAM",
-                    {
-                        "update_open_id_connect_provider_thumbprint": (
-                            "OpenIDConnectProviderArn",
-                            "ThumbprintList",
-                        )
-                    },
-                )
+            if thumbprints_changed:
                 try:
                     client.update_open_id_connect_provider_thumbprint(
                         OpenIDConnectProviderArn=arn,
@@ -396,23 +416,13 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
+                        changed=provider_changed,
                         msg=f"Unable to update thumbprints for AWS IAM OIDC provider {url}",
                     )
 
                 provider_changed = True
 
             if tag_keys_to_unset:
-                require_client_methods(
-                    module,
-                    client,
-                    "IAM",
-                    {
-                        "untag_open_id_connect_provider": (
-                            "OpenIDConnectProviderArn",
-                            "TagKeys",
-                        )
-                    },
-                )
                 try:
                     client.untag_open_id_connect_provider(
                         OpenIDConnectProviderArn=arn,
@@ -422,21 +432,11 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(
                         e,
+                        changed=provider_changed,
                         msg=f"Unable to remove tags from AWS IAM OIDC provider {url}",
                     )
 
             if tags_to_set:
-                require_client_methods(
-                    module,
-                    client,
-                    "IAM",
-                    {
-                        "tag_open_id_connect_provider": (
-                            "OpenIDConnectProviderArn",
-                            "Tags",
-                        )
-                    },
-                )
                 try:
                     client.tag_open_id_connect_provider(
                         OpenIDConnectProviderArn=arn,
@@ -444,7 +444,11 @@ def ensure_present(client, module):
                         aws_retry=True,
                     )
                 except (BotoCoreError, ClientError) as e:
-                    module.fail_json_aws(e, msg=f"Unable to tag AWS IAM OIDC provider {url}")
+                    module.fail_json_aws(
+                        e,
+                        changed=provider_changed or bool(tag_keys_to_unset),
+                        msg=f"Unable to tag AWS IAM OIDC provider {url}",
+                    )
 
             if provider_changed:
                 current = dict(current)

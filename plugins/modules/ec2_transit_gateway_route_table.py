@@ -308,21 +308,21 @@ def route_table_id(route_table):
     return route_table.get("TransitGatewayRouteTableId") if isinstance(route_table, dict) else None
 
 
-def validated_route_table(module, route_table):
+def validated_route_table(module, route_table, changed=False):
     if (
         not isinstance(route_table, dict)
         or not isinstance(route_table_id(route_table), str)
         or not route_table_id(route_table)
         or not isinstance(route_table.get("State"), str)
     ):
-        module.fail_json(msg="EC2 returned an invalid transit gateway route table")
+        module.fail_json(changed=changed, msg="EC2 returned an invalid transit gateway route table")
 
     return route_table
 
 
-def validated_routes(module, routes):
+def validated_routes(module, routes, changed=False):
     if not isinstance(routes, list):
-        module.fail_json(msg="EC2 returned invalid transit gateway routes")
+        module.fail_json(changed=changed, msg="EC2 returned invalid transit gateway routes")
 
     for route in routes:
         attachments = route.get("TransitGatewayAttachments") if isinstance(route, dict) else None
@@ -333,7 +333,7 @@ def validated_routes(module, routes):
             or (attachments is not None and not isinstance(attachments, list))
             or (isinstance(attachments, list) and any(not isinstance(attachment, dict) for attachment in attachments))
         ):
-            module.fail_json(msg="EC2 returned invalid transit gateway routes")
+            module.fail_json(changed=changed, msg="EC2 returned invalid transit gateway routes")
 
     return routes
 
@@ -360,7 +360,8 @@ def current_tags(route_table):
     return boto3_tag_list_to_ansible_dict((route_table or {}).get("Tags", []))
 
 
-def reconcile_tags(client, module, resource_id, tags_to_set, tag_keys_to_unset):
+def reconcile_tags(client, module, resource_id, tags_to_set, tag_keys_to_unset, changed=False):
+    """Reconcile tags; changed reports whether the route table was already modified, for failure results."""
     tag_methods = {}
     if tag_keys_to_unset:
         tag_methods["delete_tags"] = ("Resources", "Tags")
@@ -368,7 +369,7 @@ def reconcile_tags(client, module, resource_id, tags_to_set, tag_keys_to_unset):
     if tags_to_set:
         tag_methods["create_tags"] = ("Resources", "Tags")
 
-    require_client_methods(module, client, "EC2", tag_methods)
+    require_client_methods(module, client, "EC2", tag_methods, changed=changed)
     reconcile_ec2_tags(
         module,
         client,
@@ -376,6 +377,7 @@ def reconcile_tags(client, module, resource_id, tags_to_set, tag_keys_to_unset):
         tags_to_set,
         tag_keys_to_unset,
         "EC2 transit gateway route table",
+        changed=changed,
     )
 
 
@@ -387,7 +389,8 @@ def route_destination(route):
     return route.get("DestinationCidrBlock")
 
 
-def get_route_table_by_id(client, module, transit_gateway_route_table_id):
+def get_route_table_by_id(client, module, transit_gateway_route_table_id, changed=False):
+    """Describe a route table; changed reports earlier modifications, for failure results."""
     if not transit_gateway_route_table_id:
         return None
 
@@ -402,15 +405,16 @@ def get_route_table_by_id(client, module, transit_gateway_route_table_id):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
+            changed=changed,
             msg=f"Unable to describe EC2 transit gateway route table {transit_gateway_route_table_id}",
         )
 
     route_tables = response.get("TransitGatewayRouteTables") if isinstance(response, dict) else None
     if not isinstance(route_tables, list) or len(route_tables) > 1:
-        module.fail_json(msg="EC2 returned invalid transit gateway route tables")
+        module.fail_json(changed=changed, msg="EC2 returned invalid transit gateway route tables")
 
     if route_tables:
-        return validated_route_table(module, route_tables[0])
+        return validated_route_table(module, route_tables[0], changed=changed)
 
     return None
 
@@ -469,13 +473,15 @@ def wait_for_route_table(
     transit_gateway_route_table_id,
     desired_states,
     absent_is_success=False,
+    changed=False,
 ):
+    """Wait for a route table state; changed reports earlier modifications, for failure results."""
     deadline = time.monotonic() + module.params["wait_timeout"]
     route_table = {}
     target = " or ".join(sorted(desired_states))
 
     while time.monotonic() < deadline:
-        route_table = get_route_table_by_id(client, module, transit_gateway_route_table_id)
+        route_table = get_route_table_by_id(client, module, transit_gateway_route_table_id, changed=changed)
 
         if route_table is None and absent_is_success:
             return None
@@ -493,6 +499,7 @@ def wait_for_route_table(
         )
 
     module.fail_json(
+        changed=changed,
         msg=f"Timed out waiting for EC2 transit gateway route table {transit_gateway_route_table_id} to become {target}",
         state=(route_table or {}).get("State"),
         transit_gateway_route_table=normalize_route_table(route_table),
@@ -500,7 +507,8 @@ def wait_for_route_table(
     )
 
 
-def search_routes(client, module, transit_gateway_route_table_id, filters):
+def search_routes(client, module, transit_gateway_route_table_id, filters, changed=False):
+    """Search routes; changed reports earlier modifications, for failure results."""
     require_client_methods(
         module,
         client,
@@ -513,6 +521,7 @@ def search_routes(client, module, transit_gateway_route_table_id, filters):
                 "TransitGatewayRouteTableId",
             )
         },
+        changed=changed,
     )
     routes = query_list(
         module,
@@ -520,19 +529,21 @@ def search_routes(client, module, transit_gateway_route_table_id, filters):
         "search_transit_gateway_routes",
         "Routes",
         f"Unable to search EC2 transit gateway routes in route table {transit_gateway_route_table_id}",
+        changed=changed,
         TransitGatewayRouteTableId=transit_gateway_route_table_id,
         Filters=ansible_dict_to_boto3_filter_list(filters),
         MaxResults=1000,
     )
-    return validated_routes(module, routes)
+    return validated_routes(module, routes, changed=changed)
 
 
-def get_route(client, module, transit_gateway_route_table_id, destination_cidr_block):
+def get_route(client, module, transit_gateway_route_table_id, destination_cidr_block, changed=False):
     routes = search_routes(
         client,
         module,
         transit_gateway_route_table_id,
         {"route-search.exact-match": destination_cidr_block},
+        changed=changed,
     )
 
     matching_routes = []
@@ -550,13 +561,14 @@ def get_route(client, module, transit_gateway_route_table_id, destination_cidr_b
     return routes[0] if routes else None
 
 
-def static_routes(client, module, transit_gateway_route_table_id):
+def static_routes(client, module, transit_gateway_route_table_id, changed=False):
     return sorted(
         search_routes(
             client,
             module,
             transit_gateway_route_table_id,
             {"type": "static"},
+            changed=changed,
         ),
         key=lambda route: route_destination(route) or "",
     )
@@ -605,7 +617,8 @@ def check_mode_route(desired):
     return route
 
 
-def wait_for_route(client, module, transit_gateway_route_table_id, desired):
+def wait_for_route(client, module, transit_gateway_route_table_id, desired, changed=False):
+    """Wait for a route; changed reports earlier modifications, for failure results."""
     deadline = time.monotonic() + module.params["wait_timeout"]
     route = {}
     target = "blackhole" if desired.get("blackhole") else "active"
@@ -616,6 +629,7 @@ def wait_for_route(client, module, transit_gateway_route_table_id, desired):
             module,
             transit_gateway_route_table_id,
             desired["destination_cidr_block"],
+            changed=changed,
         )
 
         if desired_route_matches(route, desired) and route.get("State") in (
@@ -632,18 +646,20 @@ def wait_for_route(client, module, transit_gateway_route_table_id, desired):
         )
 
     module.fail_json(
+        changed=changed,
         msg=f"Timed out waiting for EC2 transit gateway route {desired['destination_cidr_block']} to become {target}",
         route=normalize_routes([route])[0] if route else {},
         transit_gateway_route_table_id=transit_gateway_route_table_id,
     )
 
 
-def wait_for_route_absent(client, module, transit_gateway_route_table_id, destination_cidr_block):
+def wait_for_route_absent(client, module, transit_gateway_route_table_id, destination_cidr_block, changed=False):
+    """Wait for a route to be removed; changed reports earlier modifications, for failure results."""
     deadline = time.monotonic() + module.params["wait_timeout"]
     route = {}
 
     while time.monotonic() < deadline:
-        route = get_route(client, module, transit_gateway_route_table_id, destination_cidr_block)
+        route = get_route(client, module, transit_gateway_route_table_id, destination_cidr_block, changed=changed)
 
         if route is None or route.get("Type") != "static" or route.get("State") == "deleted":
             return route
@@ -656,19 +672,25 @@ def wait_for_route_absent(client, module, transit_gateway_route_table_id, destin
         )
 
     module.fail_json(
+        changed=changed,
         msg=f"Timed out waiting for EC2 transit gateway route {destination_cidr_block} to be removed",
         route=normalize_routes([route])[0] if route else {},
         transit_gateway_route_table_id=transit_gateway_route_table_id,
     )
 
 
-def ensure_route_absent(client, module, transit_gateway_route_table_id, destination_cidr_block, route):
-    """Remove the static route; route is the current route as get_route() selects it, or None."""
+def ensure_route_absent(client, module, transit_gateway_route_table_id, destination_cidr_block, route, changed=False):
+    """Remove the static route; route is the current route as get_route() selects it, or None.
+
+    changed reports earlier modifications, for failure results.
+    """
     wait = module.params["wait"] and not module.check_mode
 
     if not route_is_static(route):
         if wait and route and route.get("State") == "deleting":
-            route = wait_for_route_absent(client, module, transit_gateway_route_table_id, destination_cidr_block)
+            route = wait_for_route_absent(
+                client, module, transit_gateway_route_table_id, destination_cidr_block, changed=changed
+            )
 
         return False, route
 
@@ -685,6 +707,7 @@ def ensure_route_absent(client, module, transit_gateway_route_table_id, destinat
                 "TransitGatewayRouteTableId",
             )
         },
+        changed=changed,
     )
     try:
         client.delete_transit_gateway_route(
@@ -699,11 +722,14 @@ def ensure_route_absent(client, module, transit_gateway_route_table_id, destinat
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
+            changed=changed,
             msg=f"Unable to delete EC2 transit gateway route {destination_cidr_block}",
         )
 
     if wait:
-        route = wait_for_route_absent(client, module, transit_gateway_route_table_id, destination_cidr_block)
+        route = wait_for_route_absent(
+            client, module, transit_gateway_route_table_id, destination_cidr_block, changed=True
+        )
 
     return True, route
 
@@ -754,10 +780,13 @@ def ensure_present(client, module):
             route_table = validated_route_table(
                 module,
                 response.get("TransitGatewayRouteTable") if isinstance(response, dict) else None,
+                changed=True,
             )
 
             if wait or manage_routes:
-                route_table = wait_for_route_table(client, module, route_table_id(route_table), {"available"})
+                route_table = wait_for_route_table(
+                    client, module, route_table_id(route_table), {"available"}, changed=True
+                )
     elif route_table.get("State") == "deleted":
         module.fail_json(
             msg=f"EC2 transit gateway route table {route_table_id(route_table)} is deleted",
@@ -773,6 +802,8 @@ def ensure_present(client, module):
     elif not module.check_mode and route_table.get("State") == "pending" and (wait or manage_routes):
         route_table = wait_for_route_table(client, module, route_table_id(route_table), {"available"})
 
+    # Failures after the first modification report changed=True.
+    mutated = changed and not module.check_mode
     tags = module.params["tags"]
     desired_route_table_tags = desired_tags(module)
 
@@ -788,7 +819,15 @@ def ensure_present(client, module):
 
         if tag_changed:
             if not module.check_mode:
-                reconcile_tags(client, module, route_table_id(route_table), tags_to_set, tag_keys_to_unset)
+                reconcile_tags(
+                    client,
+                    module,
+                    route_table_id(route_table),
+                    tags_to_set,
+                    tag_keys_to_unset,
+                    changed=mutated,
+                )
+                mutated = True
 
             route_table = apply_tag_deltas(route_table, tags_to_set, tag_keys_to_unset)
 
@@ -821,7 +860,9 @@ def ensure_present(client, module):
                             module,
                             transit_gateway_route_table_id,
                             desired_route["destination_cidr_block"],
+                            changed=mutated,
                         ),
+                        changed=mutated,
                     )
                 else:
                     destination_cidr_block = desired_route["destination_cidr_block"]
@@ -830,6 +871,7 @@ def ensure_present(client, module):
                         module,
                         transit_gateway_route_table_id,
                         destination_cidr_block,
+                        changed=mutated,
                     )
                     if current_route and current_route.get("State") == "deleting":
                         if not module.check_mode:
@@ -838,6 +880,7 @@ def ensure_present(client, module):
                                 module,
                                 transit_gateway_route_table_id,
                                 destination_cidr_block,
+                                changed=mutated,
                             )
 
                         current_route = None
@@ -850,6 +893,7 @@ def ensure_present(client, module):
                                 module,
                                 transit_gateway_route_table_id,
                                 desired_route,
+                                changed=mutated,
                             )
                     elif module.check_mode:
                         current_route_changed = True
@@ -871,6 +915,7 @@ def ensure_present(client, module):
                                 client,
                                 "EC2",
                                 {"create_transit_gateway_route": tuple(request)},
+                                changed=mutated,
                             )
                             try:
                                 response = client.create_transit_gateway_route(
@@ -880,6 +925,7 @@ def ensure_present(client, module):
                             except (BotoCoreError, ClientError) as e:
                                 module.fail_json_aws(
                                     e,
+                                    changed=mutated,
                                     msg=f"Unable to create EC2 transit gateway route {destination_cidr_block}",
                                 )
 
@@ -889,6 +935,7 @@ def ensure_present(client, module):
                                 client,
                                 "EC2",
                                 {"replace_transit_gateway_route": tuple(request)},
+                                changed=mutated,
                             )
                             try:
                                 response = client.replace_transit_gateway_route(
@@ -898,12 +945,15 @@ def ensure_present(client, module):
                             except (BotoCoreError, ClientError) as e:
                                 module.fail_json_aws(
                                     e,
+                                    changed=mutated,
                                     msg=f"Unable to replace EC2 transit gateway route {destination_cidr_block}",
                                 )
 
+                        mutated = True
                         current_route = validated_routes(
                             module,
                             [response.get("Route") if isinstance(response, dict) else None],
+                            changed=True,
                         )[0]
 
                         if wait:
@@ -912,9 +962,11 @@ def ensure_present(client, module):
                                 module,
                                 transit_gateway_route_table_id,
                                 desired_route,
+                                changed=True,
                             )
 
                 route_changed = route_changed or current_route_changed
+                mutated = mutated or (current_route_changed and not module.check_mode)
                 if current_route:
                     routes.append(current_route)
 
@@ -928,7 +980,7 @@ def ensure_present(client, module):
 
                 # Select the route for each destination as get_route() does, so purging needs no further search.
                 purge_routes_by_destination = {}
-                for current_route in static_routes(client, module, transit_gateway_route_table_id):
+                for current_route in static_routes(client, module, transit_gateway_route_table_id, changed=mutated):
                     destination = route_destination(current_route)
                     if not destination or destination in desired_destinations:
                         continue
@@ -947,8 +999,10 @@ def ensure_present(client, module):
                         transit_gateway_route_table_id,
                         destination,
                         current_route,
+                        changed=mutated,
                     )[0]
                     route_changed = route_changed or purged_route_changed
+                    mutated = mutated or (purged_route_changed and not module.check_mode)
 
     changed = changed or route_changed
 
@@ -996,6 +1050,7 @@ def ensure_absent(client, module):
         route_table = validated_route_table(
             module,
             response.get("TransitGatewayRouteTable") if isinstance(response, dict) else None,
+            changed=True,
         )
     except is_boto3_error_code("InvalidRouteTableID.NotFound"):
         route_table = None
@@ -1012,6 +1067,7 @@ def ensure_absent(client, module):
             transit_gateway_route_table_id,
             {"deleted"},
             absent_is_success=True,
+            changed=True,
         )
 
     exit_module(module, changed, route_table)

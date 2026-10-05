@@ -188,3 +188,23 @@ def test_reports_missing_client_operation():
         sdk.require_client_methods(module, Mock(), "Example", {"missing": ()})
 
     assert raised.value.values["msg"] == "Installed botocore does not support Example missing"
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_unsupported_client_methods_report_earlier_changes(changed):
+    module = FakeModule({})
+    with (
+        patch.object(sdk, "get_boto3_client_method_parameters", return_value=["Name"]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        sdk.require_client_methods(module, Mock(), "Example", {"get_item": ("Unsupported",)}, changed=changed)
+
+    assert raised.value.values["changed"] is changed
+
+    with (
+        patch.object(sdk, "get_boto3_client_method_parameters", side_effect=AttributeError),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        sdk.require_client_methods(module, Mock(), "Example", {"missing": ()}, changed=changed)
+
+    assert raised.value.values["changed"] is changed

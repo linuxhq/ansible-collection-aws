@@ -320,7 +320,10 @@ def main():
 
         certificate_arn = response.get("CertificateArn")
         if not certificate_arn:
-            module.fail_json(msg=f"AWS Certificate Manager did not return an ARN for certificate {domain_name}")
+            module.fail_json(
+                changed=True,
+                msg=f"AWS Certificate Manager did not return an ARN for certificate {domain_name}",
+            )
     else:
         certificate_arn = matched["CertificateArn"]
 
@@ -402,6 +405,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
+                    changed=bool(tag_keys_to_unset),
                     msg=f"Unable to tag AWS Certificate Manager certificate {certificate_arn}",
                 )
 

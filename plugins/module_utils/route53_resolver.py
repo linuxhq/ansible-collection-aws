@@ -52,20 +52,29 @@ def response_items(module, response, key, operation):
     return items
 
 
-def validate_ip_addresses(module, ip_addresses):
+def validate_ip_addresses(module, ip_addresses, changed=False):
+    """Validate listed IP addresses; changed reports whether the endpoint was already modified, for failure results."""
     for ip_address in ip_addresses:
         if not isinstance(ip_address, dict):
-            module.fail_json(msg="list_resolver_endpoint_ip_addresses: AWS returned an invalid IP address")
+            module.fail_json(
+                changed=changed, msg="list_resolver_endpoint_ip_addresses: AWS returned an invalid IP address"
+            )
 
         if not isinstance(ip_address.get("SubnetId"), str) or not ip_address["SubnetId"]:
-            module.fail_json(msg="list_resolver_endpoint_ip_addresses: AWS returned an IP address without a subnet ID")
+            module.fail_json(
+                changed=changed,
+                msg="list_resolver_endpoint_ip_addresses: AWS returned an IP address without a subnet ID",
+            )
 
         for field in ("Ip", "IpId", "Ipv6"):
             if field in ip_address and not isinstance(ip_address[field], str):
-                module.fail_json(msg=f"list_resolver_endpoint_ip_addresses: AWS returned an invalid {field}")
+                module.fail_json(
+                    changed=changed, msg=f"list_resolver_endpoint_ip_addresses: AWS returned an invalid {field}"
+                )
 
     return ip_addresses
 
 
-def validate_tags(module, tags):
-    return require_valid_tag_list(module, tags, "list_tags_for_resource: AWS returned an invalid tag")
+def validate_tags(module, tags, changed=False):
+    """Validate listed tags; changed reports whether the resource was already modified, for failure results."""
+    return require_valid_tag_list(module, tags, "list_tags_for_resource: AWS returned an invalid tag", changed=changed)

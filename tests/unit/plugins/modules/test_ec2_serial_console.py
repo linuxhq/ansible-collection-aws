@@ -131,3 +131,36 @@ def test_declarative_policy_without_change_reports_current_state():
         "serial_console_access_enabled": True,
     }
     client.enable_serial_console_access.assert_not_called()
+
+
+def test_invalid_mutation_response_reports_changed():
+    client = Mock()
+    client.get_serial_console_access_status.return_value = {"SerialConsoleAccessEnabled": False}
+    client.enable_serial_console_access.return_value = {}
+    module = FakeModule({"state": "present"}, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(helper, "require_client_methods"),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"] == "EC2 returned an invalid serial console access status"
+
+
+def test_invalid_status_before_a_change_reports_unchanged():
+    client = Mock()
+    client.get_serial_console_access_status.return_value = {}
+    module = FakeModule({"state": "present"}, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(helper, "require_client_methods"),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is False
+    client.enable_serial_console_access.assert_not_called()

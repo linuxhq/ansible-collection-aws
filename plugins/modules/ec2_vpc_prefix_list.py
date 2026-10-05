@@ -358,7 +358,7 @@ WAITER_TARGET_STATES = {
 }
 
 
-def validate_prefix_list(module, prefix_list):
+def validate_prefix_list(module, prefix_list, changed=False):
     tags = prefix_list.get("Tags") if isinstance(prefix_list, dict) else None
     if (
         not isinstance(prefix_list, dict)
@@ -383,12 +383,12 @@ def validate_prefix_list(module, prefix_list):
             )
         )
     ):
-        module.fail_json(msg="EC2 returned an invalid managed prefix list")
+        module.fail_json(changed=changed, msg="EC2 returned an invalid managed prefix list")
 
     return prefix_list
 
 
-def validate_prefix_list_entries(module, entries):
+def validate_prefix_list_entries(module, entries, changed=False):
     for entry in entries:
         if (
             not isinstance(entry, dict)
@@ -396,7 +396,7 @@ def validate_prefix_list_entries(module, entries):
             or not entry["Cidr"]
             or (entry.get("Description") is not None and not isinstance(entry.get("Description"), str))
         ):
-            module.fail_json(msg="EC2 returned invalid managed prefix list entries")
+            module.fail_json(changed=changed, msg="EC2 returned invalid managed prefix list entries")
 
     return entries
 
@@ -435,17 +435,18 @@ def create_prefix_list(client, module, owner_id, desired_prefix_list, desired_en
     prefix_list = validate_prefix_list(
         module,
         response.get("PrefixList") if isinstance(response, dict) else None,
+        changed=True,
     )
 
     # EC2 creates at most one request's worth of entries; add the rest once creation completes.
     for batch in chunks(desired_entries[MAX_ENTRIES_PER_REQUEST:], MAX_ENTRIES_PER_REQUEST):
-        wait_for_ready_state(client, module, prefix_list["PrefixListId"])
-        prefix_list = describe_prefix_list(client, module, prefix_list["PrefixListId"])
-        prefix_list = modify_prefix_list(client, module, prefix_list, add_entries=batch)
+        wait_for_ready_state(client, module, prefix_list["PrefixListId"], changed=True)
+        prefix_list = describe_prefix_list(client, module, prefix_list["PrefixListId"], changed=True)
+        prefix_list = modify_prefix_list(client, module, prefix_list, changed=True, add_entries=batch)
 
     if module.params["wait"]:
-        wait_for_ready_state(client, module, prefix_list["PrefixListId"])
-        return get_current(client, module, owner_id)
+        wait_for_ready_state(client, module, prefix_list["PrefixListId"], changed=True)
+        return get_current(client, module, owner_id, changed=True)
 
     return prefix_list, desired_entries
 
@@ -476,6 +477,7 @@ def delete_prefix_list(client, module, prefix_list_id):
             module,
             prefix_list_id,
             "managed_prefix_list_deleted",
+            changed=True,
         )
 
 
@@ -604,6 +606,7 @@ def ensure_present(client, module, owner_id):
                 current_prefix_list = comparable_prefix_list(current)
                 if wait and current_prefix_list != desired_prefix_list:
                     module.fail_json(
+                        changed=True,
                         msg=(
                             "EC2 VPC managed prefix list does not match the requested configuration after updating. "
                             "The prefix list has not been deleted; inspect the current configuration before retrying."
@@ -621,7 +624,14 @@ def ensure_present(client, module, owner_id):
                 prefix_list_id = current.get("PrefixListId")
 
                 if prefix_list_id:
-                    reconcile_tags(client, module, prefix_list_id, tags_to_set, tag_keys_to_unset)
+                    reconcile_tags(
+                        client,
+                        module,
+                        prefix_list_id,
+                        tags_to_set,
+                        tag_keys_to_unset,
+                        changed=entries_changed or resource_changed,
+                    )
                     current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
         elif changed and module.check_mode:
             current = dict(current)
@@ -651,7 +661,8 @@ def ensure_present(client, module, owner_id):
     module.exit_json(**result)
 
 
-def reconcile_tags(client, module, prefix_list_id, tags_to_set, tag_keys_to_unset):
+def reconcile_tags(client, module, prefix_list_id, tags_to_set, tag_keys_to_unset, changed=False):
+    """Reconcile tags; changed reports whether the prefix list was already modified, for failure results."""
     tag_methods = {}
     if tag_keys_to_unset:
         tag_methods["delete_tags"] = ("Resources", "Tags")
@@ -659,7 +670,7 @@ def reconcile_tags(client, module, prefix_list_id, tags_to_set, tag_keys_to_unse
     if tags_to_set:
         tag_methods["create_tags"] = ("Resources", "Tags")
 
-    require_client_methods(module, client, "EC2", tag_methods)
+    require_client_methods(module, client, "EC2", tag_methods, changed=changed)
     reconcile_ec2_tags(
         module,
         client,
@@ -667,11 +678,13 @@ def reconcile_tags(client, module, prefix_list_id, tags_to_set, tag_keys_to_unse
         tags_to_set,
         tag_keys_to_unset,
         "EC2 VPC managed prefix list",
+        changed=changed,
     )
 
 
-def get_current(client, module, owner_id):
-    prefix_list = get_customer_managed_prefix_list_by_name(client, module, owner_id)
+def get_current(client, module, owner_id, changed=False):
+    """Read the prefix list and entries; changed reports earlier modifications, for failure results."""
+    prefix_list = get_customer_managed_prefix_list_by_name(client, module, owner_id, changed=changed)
 
     if prefix_list is None:
         return None, None
@@ -692,6 +705,7 @@ def get_current(client, module, owner_id):
                 "PrefixListId",
             )
         },
+        changed=changed,
     )
     entries = validate_prefix_list_entries(
         module,
@@ -701,8 +715,10 @@ def get_current(client, module, owner_id):
             "get_managed_prefix_list_entries",
             "Entries",
             f"Unable to get EC2 VPC managed prefix list entries for {prefix_list_id}",
+            changed=changed,
             PrefixListId=prefix_list_id,
         ),
+        changed=changed,
     )
 
     return prefix_list, entries
@@ -737,35 +753,39 @@ def update_prefix_list(client, module, owner_id, current, current_entries, desir
     if size != max_entries:
         steps.append({"max_entries": max_entries})
 
-    for step in steps[:-1]:
-        modify_prefix_list(client, module, current, **step)
-        wait_for_ready_state(client, module, current["PrefixListId"])
-        current = describe_prefix_list(client, module, current["PrefixListId"])
+    # Failures after the first modification report changed=True.
+    for index, step in enumerate(steps):
+        if index:
+            wait_for_ready_state(client, module, current["PrefixListId"], changed=True)
+            current = describe_prefix_list(client, module, current["PrefixListId"], changed=True)
 
-    current = modify_prefix_list(client, module, current, **steps[-1])
+        current = modify_prefix_list(client, module, current, changed=index > 0, **step)
+
     if not module.params["wait"]:
         return current, desired_entries
 
-    wait_for_ready_state(client, module, current["PrefixListId"])
-    return get_current(client, module, owner_id)
+    wait_for_ready_state(client, module, current["PrefixListId"], changed=True)
+    return get_current(client, module, owner_id, changed=True)
 
 
-def describe_prefix_list(client, module, prefix_list_id):
+def describe_prefix_list(client, module, prefix_list_id, changed=False):
     prefix_lists = query_list(
         module,
         client,
         "describe_managed_prefix_lists",
         "PrefixLists",
         f"Unable to describe EC2 VPC managed prefix list {prefix_list_id}",
+        changed=changed,
         PrefixListIds=[prefix_list_id],
     )
     if len(prefix_lists) != 1:
-        module.fail_json(msg=f"EC2 did not return managed prefix list {prefix_list_id}")
+        module.fail_json(changed=changed, msg=f"EC2 did not return managed prefix list {prefix_list_id}")
 
-    return validate_prefix_list(module, prefix_lists[0])
+    return validate_prefix_list(module, prefix_lists[0], changed=changed)
 
 
-def modify_prefix_list(client, module, current, **kwargs):
+def modify_prefix_list(client, module, current, changed=False, **kwargs):
+    """Modify the prefix list; changed reports earlier modifications, for failure results."""
     request = {
         "prefix_list_id": current.get("PrefixListId"),
     }
@@ -780,6 +800,7 @@ def modify_prefix_list(client, module, current, **kwargs):
         client,
         "EC2",
         {"modify_managed_prefix_list": tuple(request)},
+        changed=changed,
     )
     try:
         response = client.modify_managed_prefix_list(
@@ -789,31 +810,36 @@ def modify_prefix_list(client, module, current, **kwargs):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
+            changed=changed,
             msg=f"Unable to modify EC2 VPC managed prefix list {module.params['name']}",
         )
 
     return validate_prefix_list(
         module,
         response.get("PrefixList") if isinstance(response, dict) else None,
+        changed=True,
     )
 
 
-def wait_for_ready_state(client, module, prefix_list_id):
+def wait_for_ready_state(client, module, prefix_list_id, changed=False):
     wait_for_prefix_list_state(
         client,
         module,
         prefix_list_id,
         "managed_prefix_list_ready",
+        changed=changed,
     )
 
 
-def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name):
+def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name, changed=False):
+    """Wait for a prefix list state; changed reports earlier modifications, for failure results."""
     target_state = WAITER_TARGET_STATES[waiter_name]
     require_client_methods(
         module,
         client,
         "EC2",
         {"describe_managed_prefix_lists": ("PrefixListIds",)},
+        changed=changed,
     )
     run_waiter(
         module,
@@ -821,11 +847,12 @@ def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name):
         EC2_WAITER_MODEL_DATA,
         waiter_name,
         f"Unable to wait for EC2 VPC managed prefix list {prefix_list_id} to become {target_state}",
+        changed=changed,
         PrefixListIds=[prefix_list_id],
     )
 
 
-def get_customer_managed_prefix_list_by_name(client, module, owner_id):
+def get_customer_managed_prefix_list_by_name(client, module, owner_id, changed=False):
     name = module.params["name"]
     filters = ansible_dict_to_boto3_filter_list({"prefix-list-name": name})
 
@@ -835,6 +862,7 @@ def get_customer_managed_prefix_list_by_name(client, module, owner_id):
         "describe_managed_prefix_lists",
         "PrefixLists",
         f"Unable to describe EC2 VPC managed prefix list {name}",
+        changed=changed,
         Filters=filters,
     )
 
@@ -849,12 +877,13 @@ def get_customer_managed_prefix_list_by_name(client, module, owner_id):
         ):
             continue
 
-        matches.append(validate_prefix_list(module, prefix_list))
+        matches.append(validate_prefix_list(module, prefix_list, changed=changed))
 
     if len(matches) > 1:
         prefix_list_ids = [prefix_list.get("PrefixListId") for prefix_list in matches]
 
         module.fail_json(
+            changed=changed,
             msg=f"More than one EC2 VPC managed prefix list matched name {name}",
             prefix_list_ids=prefix_list_ids,
         )

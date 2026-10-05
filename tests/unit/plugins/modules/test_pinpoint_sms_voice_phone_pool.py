@@ -487,7 +487,7 @@ def test_absent_disables_deletion_protection_before_deleting():
         DeletionProtectionEnabled=False,
         aws_retry=True,
     )
-    wait_for_pool_active.assert_called_once_with(client, module, "pool-1")
+    wait_for_pool_active.assert_called_once_with(client, module, "pool-1", changed=True)
     client.delete_pool.assert_called_once_with(PoolId="pool-1", aws_retry=True)
     assert raised.value.values["changed"]
 
@@ -576,8 +576,8 @@ def test_wait_reuses_the_described_pool_after_update():
     ):
         plugin.ensure_present(client, module)
 
-    wait_for_pool_active.assert_called_once_with(client, module, "pool-1")
-    pool_with_details.assert_called_once_with(client, module, active)
+    wait_for_pool_active.assert_called_once_with(client, module, "pool-1", changed=True)
+    pool_with_details.assert_called_once_with(client, module, active, changed=True)
     get_pool_by_id.assert_not_called()
     assert raised.value.values["changed"]
     assert raised.value.values["pool"]["deletion_protection_enabled"] is True
@@ -592,7 +592,7 @@ def test_get_pool_by_id_adds_details_to_the_described_pool():
     ):
         assert plugin.get_pool_by_id("client", "module", "pool-1") == "detailed"
 
-    pool_with_details.assert_called_once_with("client", "module", pool)
+    pool_with_details.assert_called_once_with("client", "module", pool, changed=False)
 
 
 def test_explicit_pool_id_does_not_require_origination_identity():
@@ -627,3 +627,115 @@ def test_explicit_pool_id_does_not_require_origination_identity():
     assert raised.value.values["changed"] is False
     assert raised.value.values["pool_id"] == "pool-1"
     client.create_pool.assert_not_called()
+
+
+def active_pool(**overrides):
+    pool = {
+        "DeletionProtectionEnabled": False,
+        "MessageType": "TRANSACTIONAL",
+        "OriginationIdentities": [],
+        "PoolArn": "arn:pool",
+        "PoolId": "pool-1",
+        "Status": "ACTIVE",
+        "Tags": [{"Key": "Name", "Value": "primary"}],
+    }
+    pool.update(overrides)
+    return pool
+
+
+def present_params(**overrides):
+    params = {
+        "deletion_protection_enabled": None,
+        "message_type": "TRANSACTIONAL",
+        "name": "primary",
+        "purge_tags": True,
+        "state": "present",
+        "tags": {"Env": "test"},
+        "wait": False,
+        "wait_delay": 1,
+        "wait_timeout": 1,
+    }
+    params.update(overrides)
+    return params
+
+
+@pytest.mark.parametrize(("deletion_protection_enabled", "changed"), [(True, True), (None, False)])
+def test_tag_failure_reports_whether_the_pool_was_updated(deletion_protection_enabled, changed):
+    client = Mock()
+    client.update_pool.return_value = active_pool(DeletionProtectionEnabled=True)
+    client.tag_resource.side_effect = plugin.ClientError(
+        {"Error": {"Code": "InternalServerException", "Message": "failed"}}, "TagResource"
+    )
+    module = FakeModule(present_params(deletion_protection_enabled=deletion_protection_enabled))
+    with (
+        patch.object(plugin, "find_pool", return_value=active_pool()),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "Unable to tag Pinpoint SMS Voice V2 pool arn:pool"
+    assert raised.value.values["changed"] is changed
+    assert client.update_pool.called is changed
+
+
+def test_wait_timeout_after_create_reports_changed():
+    client = Mock()
+    client.create_pool.return_value = active_pool(Status="CREATING")
+    module = FakeModule(present_params(origination_identity="+15555550100", iso_country_code="US", wait=True))
+    module.params["client_token"] = None
+    with (
+        patch.object(plugin, "find_pool", return_value=None),
+        patch.object(plugin, "describe_pools", return_value=[active_pool(Status="CREATING")]),
+        patch.object(plugin.time, "sleep"),
+        patch.object(plugin.time, "monotonic", side_effect=[0, 0, 0, 2]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"].startswith("Timed out waiting for AWS End User Messaging SMS phone pool pool-1")
+
+
+def test_wait_timeout_before_any_change_reports_unchanged():
+    module = FakeModule(present_params(tags=None, wait=True))
+    with (
+        patch.object(plugin, "describe_pools", return_value=[active_pool(Status="CREATING")]),
+        patch.object(plugin.time, "sleep"),
+        patch.object(plugin.time, "monotonic", side_effect=[0, 0, 0, 2]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.wait_for_pool_active(Mock(), module, "pool-1")
+
+    assert raised.value.values["changed"] is False
+
+
+def test_delete_failure_after_disabling_deletion_protection_reports_changed():
+    client = Mock()
+    client.update_pool.return_value = active_pool(DeletionProtectionEnabled=False)
+    client.delete_pool.side_effect = plugin.ClientError(
+        {"Error": {"Code": "InternalServerException", "Message": "failed"}}, "DeletePool"
+    )
+    module = FakeModule({"pool_id": "pool-1", "state": "absent", "wait_delay": 1, "wait_timeout": 1})
+    with (
+        patch.object(plugin, "describe_pools", return_value=[active_pool(DeletionProtectionEnabled=True)]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+
+
+def test_delete_failure_without_earlier_changes_reports_unchanged():
+    client = Mock()
+    client.delete_pool.side_effect = plugin.ClientError(
+        {"Error": {"Code": "InternalServerException", "Message": "failed"}}, "DeletePool"
+    )
+    module = FakeModule({"pool_id": "pool-1", "state": "absent", "wait_delay": 1, "wait_timeout": 1})
+    with (
+        patch.object(plugin, "describe_pools", return_value=[active_pool()]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is False
+    client.update_pool.assert_not_called()

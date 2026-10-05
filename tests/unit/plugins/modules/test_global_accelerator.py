@@ -729,24 +729,9 @@ def test_endpoint_group_weight_update_sends_attachment():
         "endpoint_group_arn": "arn:group",
         "endpoint_group_region": "us-east-1",
     }
-    with (
-        patch.object(plugin, "get_endpoint_groups", return_value=[current]),
-        patch.object(plugin, "require_client_methods") as require,
-        patch.object(plugin, "require_endpoint_configuration_parameters"),
-    ):
+    with patch.object(plugin, "get_endpoint_groups", return_value=[current]):
         changed, groups = plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired])
 
-    require.assert_called_once_with(
-        module,
-        client,
-        "Global Accelerator",
-        {
-            "update_endpoint_group": (
-                "EndpointConfigurations",
-                "EndpointGroupArn",
-            )
-        },
-    )
     assert changed
     assert groups[0]["endpoint_group_arn"] == "arn:group"
     assert client.update_endpoint_group.call_args.kwargs["EndpointConfigurations"] == [
@@ -814,6 +799,7 @@ def test_listener_deletion_waits_for_endpoint_group_deletion():
         client,
         "Global Accelerator",
         {"delete_listener": ("ListenerArn",)},
+        changed=False,
     )
 
 
@@ -914,7 +900,7 @@ def test_accelerator_creation_waits_before_listeners():
             "idempotency_token": None,
             "ip_addresses": None,
             "ip_address_type": "IPV4",
-            "listeners": [{}],
+            "listeners": [{"endpoint_groups": None}],
             "name": "example",
             "purge_tags": True,
             "tags": None,
@@ -1019,7 +1005,7 @@ def test_listener_preflight_failure_does_not_delete_or_write(operation):
     module = FakeModule({"purge_listeners": True})
     client = Mock()
 
-    def require(module, client, service, methods):
+    def require(module, client, service, methods, changed=False):
         if operation in methods:
             module.fail_json(msg="Unsupported listener write")
 
@@ -1652,3 +1638,102 @@ def test_deployment_wait_failure_after_create_reports_changed():
         plugin.ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
+
+
+def accelerator_params(**overrides):
+    params = {
+        "enabled": None,
+        "idempotency_token": None,
+        "ip_address_type": None,
+        "ip_addresses": None,
+        "listeners": None,
+        "name": "example",
+        "purge_endpoint_groups": True,
+        "purge_listeners": True,
+        "purge_tags": True,
+        "tags": None,
+        "wait": False,
+    }
+    params.update(overrides)
+    return params
+
+
+def deployed_accelerator(**overrides):
+    accelerator = {
+        "AcceleratorArn": "arn:accelerator",
+        "Enabled": True,
+        "IpAddressType": "IPV4",
+        "Name": "example",
+        "Status": "DEPLOYED",
+    }
+    accelerator.update(overrides)
+    return accelerator
+
+
+@pytest.mark.parametrize("listeners_changed", [True, False])
+def test_tag_failure_reports_whether_listeners_were_changed(listeners_changed):
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"Tags": []}
+    client.tag_resource.side_effect = plugin.ClientError(
+        {"Error": {"Code": "InternalServiceErrorException", "Message": "failed"}}, "TagResource"
+    )
+    module = FakeModule(accelerator_params(listeners=[], tags={"Env": "test"}))
+    with (
+        patch.object(plugin, "get_accelerator", return_value=deployed_accelerator()),
+        patch.object(plugin, "ensure_listeners", return_value=(listeners_changed, [])),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "Unable to tag AWS Global Accelerator arn:accelerator"
+    assert raised.value.values["changed"] is listeners_changed
+
+
+def test_unsupported_endpoint_group_write_fails_before_updating_the_accelerator():
+    endpoint_group = {
+        "endpoint_configurations": None,
+        "endpoint_group_region": "us-east-1",
+        "health_check_interval_seconds": None,
+        "health_check_path": None,
+        "health_check_port": None,
+        "health_check_protocol": None,
+        "port_overrides": [{"endpoint_port": 8443, "listener_port": 443}],
+        "threshold_count": None,
+        "traffic_dial_percentage": None,
+    }
+    listener = {"client_affinity": None, "endpoint_groups": [endpoint_group]}
+    module = FakeModule(accelerator_params(enabled=False, listeners=[listener]))
+    client = Mock()
+
+    def require(module, client, service, methods, changed=False):
+        if "create_endpoint_group" in methods:
+            assert "PortOverrides" in methods["create_endpoint_group"]
+            module.fail_json(changed=changed, msg="Unsupported endpoint group write")
+
+    with (
+        patch.object(plugin, "get_accelerator", return_value=deployed_accelerator()),
+        patch.object(plugin, "require_client_methods", side_effect=require),
+        patch.object(plugin, "ensure_listeners") as ensure_listeners,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+    client.update_accelerator.assert_not_called()
+    ensure_listeners.assert_not_called()
+
+
+@pytest.mark.parametrize("mutated", [True, False])
+def test_endpoint_group_listing_failure_reports_earlier_changes(mutated):
+    def failing_query(module, client, method_name, result_key, error_msg, changed=False, **kwargs):
+        module.fail_json(changed=changed, msg=error_msg)
+
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", side_effect=failing_query),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_endpoint_groups(Mock(), FakeModule({}), "arn:listener", [], mutated=mutated)
+
+    assert raised.value.values["changed"] is mutated

@@ -554,3 +554,41 @@ def test_rejects_invalid_certificate_tags(response):
 
     assert result["msg"] == "AWS Certificate Manager returned invalid tags for certificate arn:match"
     client.add_tags_to_certificate.assert_not_called()
+
+
+@pytest.mark.parametrize(("current_tags", "changed"), [([{"Key": "Old", "Value": "x"}], True), ([], False)])
+def test_tag_failure_reports_whether_tags_were_removed(current_tags, changed):
+    client = Mock()
+    client.list_tags_for_certificate.return_value = {"Tags": current_tags}
+    client.add_tags_to_certificate.side_effect = plugin.ClientError(
+        {"Error": {"Code": "ThrottlingException", "Message": "failed"}}, "AddTagsToCertificate"
+    )
+
+    result = run_tagged_request(client, {"Name": "web"})
+
+    assert result["msg"] == "Unable to tag AWS Certificate Manager certificate arn:match"
+    assert result["changed"] is changed
+    assert client.remove_tags_from_certificate.called is changed
+
+
+def test_request_without_an_arn_reports_changed():
+    client = Mock(request_certificate=Mock(return_value={}))
+    module = FakeModule(
+        {
+            "domain_name": "example.com",
+            "idempotency_token": None,
+            "purge_tags": True,
+            "subject_alternative_names": None,
+            "tags": None,
+        },
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is True

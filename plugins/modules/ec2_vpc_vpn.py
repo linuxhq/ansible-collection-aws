@@ -534,31 +534,32 @@ def normalize_connection(connection):
     return result
 
 
-def validate_connection(module, connection):
+def validate_connection(module, connection, changed=False):
     if (
         not isinstance(connection, dict)
         or not connection.get("VpnConnectionId")
         or not connection.get("State")
         or not isinstance(connection.get("Options"), dict)
     ):
-        module.fail_json(msg="EC2 returned an invalid VPN connection")
+        module.fail_json(changed=changed, msg="EC2 returned an invalid VPN connection")
 
     routes = connection.get("Routes", [])
     if not isinstance(routes, list) or any(
         not isinstance(route, dict) or not route.get("DestinationCidrBlock") for route in routes
     ):
-        module.fail_json(msg="EC2 returned invalid VPN connection routes")
+        module.fail_json(changed=changed, msg="EC2 returned invalid VPN connection routes")
 
     tunnels = connection["Options"].get("TunnelOptions")
     if tunnels is not None and (
         not isinstance(tunnels, list) or any(not isinstance(tunnel, dict) for tunnel in tunnels)
     ):
-        module.fail_json(msg="EC2 returned invalid VPN connection tunnel options")
+        module.fail_json(changed=changed, msg="EC2 returned invalid VPN connection tunnel options")
 
     return connection
 
 
-def find_connection(client, module, connection_id=None):
+def find_connection(client, module, connection_id=None, changed=False):
+    """Describe the connection; changed reports whether it was already modified, for failure results."""
     connection_id = connection_id or module.params["vpn_connection_id"]
     filters = module.params["filters"]
 
@@ -571,7 +572,7 @@ def find_connection(client, module, connection_id=None):
         else {"Filters": ansible_dict_to_boto3_filter_list(filters)}
     )
 
-    require_client_methods(module, client, "EC2", {"describe_vpn_connections": tuple(request)})
+    require_client_methods(module, client, "EC2", {"describe_vpn_connections": tuple(request)}, changed=changed)
     try:
         # DescribeVpnConnections has no pagination in the EC2 API.
         response = client.describe_vpn_connections(**request, aws_retry=True)
@@ -579,34 +580,39 @@ def find_connection(client, module, connection_id=None):
         return None
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
-            e, msg=f"Unable to describe VPN connection {connection_id or module.params['name'] or filters}"
+            e,
+            changed=changed,
+            msg=f"Unable to describe VPN connection {connection_id or module.params['name'] or filters}",
         )
 
     connections = response.get("VpnConnections")
     if not isinstance(connections, list):
-        module.fail_json(msg="EC2 returned an invalid VPN connection list")
+        module.fail_json(changed=changed, msg="EC2 returned an invalid VPN connection list")
 
     matches = []
     for item in connections:
         if isinstance(item, dict) and item.get("State") == "deleted":
             continue
 
-        matches.append(validate_connection(module, item))
+        matches.append(validate_connection(module, item, changed=changed))
 
     if len(matches) > 1:
-        module.fail_json(msg="Multiple VPN connections matched; select a unique name, ID, or filters")
+        module.fail_json(changed=changed, msg="Multiple VPN connections matched; select a unique name, ID, or filters")
 
     return matches[0] if matches else None
 
 
-def wait_for_connection(client, module, connection_id, state="available"):
+def wait_for_connection(client, module, connection_id, state="available", changed=False):
+    """Wait for the connection; changed reports whether it was already modified, for failure results."""
     try:
         client.get_waiter(f"vpn_connection_{state}").wait(
             VpnConnectionIds=[connection_id],
             WaiterConfig=custom_waiter_config(module.params["wait_timeout"], default_pause=module.params["wait_delay"]),
         )
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to wait for VPN connection {connection_id} to become {state}")
+        module.fail_json_aws(
+            e, changed=changed, msg=f"Unable to wait for VPN connection {connection_id} to become {state}"
+        )
 
 
 def tunnel_request(options):
@@ -851,7 +857,7 @@ def desired_tags(module, current):
     return compare_aws_tags(boto3_tag_list_to_ansible_dict(current.get("Tags") or []), tags, purge)
 
 
-def validate_configuration(module, connection=None):
+def validate_configuration(module, connection=None, changed=False):
     options = connection["Options"] if connection is not None else {}
     static_only = (
         (options.get("StaticRoutesOnly") or False)
@@ -868,17 +874,20 @@ def validate_configuration(module, connection=None):
     )
 
     if module.params["routes"] and (not static_only or transit_gateway):
-        module.fail_json(msg="Static routes require static_only=true and a virtual private gateway connection")
+        module.fail_json(
+            changed=changed,
+            msg="Static routes require static_only=true and a virtual private gateway connection",
+        )
 
     if family == "ipv6" and not transit_gateway:
-        module.fail_json(msg="IPv6 VPN connections require a transit gateway")
+        module.fail_json(changed=changed, msg="IPv6 VPN connections require a transit gateway")
 
     for tunnel in module.params["tunnel_options"] or []:
         if tunnel.get("tunnel_inside_cidr") is not None and family != "ipv4":
-            module.fail_json(msg="tunnel_inside_cidr requires tunnel_inside_ip_version=ipv4")
+            module.fail_json(changed=changed, msg="tunnel_inside_cidr requires tunnel_inside_ip_version=ipv4")
 
         if tunnel.get("tunnel_inside_ipv6_cidr") is not None and family != "ipv6":
-            module.fail_json(msg="tunnel_inside_ipv6_cidr requires tunnel_inside_ip_version=ipv6")
+            module.fail_json(changed=changed, msg="tunnel_inside_ipv6_cidr requires tunnel_inside_ip_version=ipv6")
 
     if connection is not None:
         immutable = {
@@ -891,7 +900,9 @@ def validate_configuration(module, connection=None):
 
         for name, actual in immutable.items():
             if module.params[name] is not None and module.params[name] != actual:
-                module.fail_json(msg=f"Cannot change {name} on an existing VPN connection with this module")
+                module.fail_json(
+                    changed=changed, msg=f"Cannot change {name} on an existing VPN connection with this module"
+                )
 
 
 def create_connection(client, module):
@@ -943,22 +954,27 @@ def create_connection(client, module):
     if module.check_mode:
         module.exit_json(changed=True, vpn_connection={})
 
-    require_client_methods(module, client, "EC2", {"create_vpn_connection": tuple(request)})
+    methods = {"create_vpn_connection": tuple(request)}
+    if module.params["routes"]:
+        # Routes are added after creation, so their support is checked before creating anything.
+        methods["create_vpn_connection_route"] = ("DestinationCidrBlock", "VpnConnectionId")
+
+    require_client_methods(module, client, "EC2", methods)
     try:
         response = client.create_vpn_connection(**request, aws_retry=True)
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to create VPN connection {module.params['name']}")
 
-    connection = validate_connection(module, response.get("VpnConnection"))
-    wait_for_connection(client, module, connection["VpnConnectionId"])
+    connection = validate_connection(module, response.get("VpnConnection"), changed=True)
+    wait_for_connection(client, module, connection["VpnConnectionId"], changed=True)
 
-    return read_connection(client, module, connection["VpnConnectionId"])
+    return read_connection(client, module, connection["VpnConnectionId"], changed=True)
 
 
-def read_connection(client, module, connection_id):
-    connection = find_connection(client, module, connection_id)
+def read_connection(client, module, connection_id, changed=False):
+    connection = find_connection(client, module, connection_id, changed=changed)
     if connection is None:
-        module.fail_json(msg=f"VPN connection {connection_id} disappeared while being managed")
+        module.fail_json(changed=changed, msg=f"VPN connection {connection_id} disappeared while being managed")
 
     return connection
 
@@ -968,17 +984,20 @@ def ensure_present(client, module, connection):
     if connection is None:
         connection = create_connection(client, module)
 
+    # Failures after the first modification report changed=True.
+    mutated = changed and not module.check_mode
     connection_id = connection["VpnConnectionId"]
     if connection["State"] == "deleting":
         module.fail_json(
-            msg=f"VPN connection {connection_id} is deleting; wait for deletion before creating a replacement"
+            changed=mutated,
+            msg=f"VPN connection {connection_id} is deleting; wait for deletion before creating a replacement",
         )
 
     if connection["State"] != "available" and not module.check_mode:
-        wait_for_connection(client, module, connection_id)
-        connection = read_connection(client, module, connection_id)
+        wait_for_connection(client, module, connection_id, changed=mutated)
+        connection = read_connection(client, module, connection_id, changed=mutated)
 
-    validate_configuration(module, connection)
+    validate_configuration(module, connection, changed=mutated)
 
     # Creation already submitted tunnel options before EC2 allocated their outside IPs.
     tunnels = [] if changed else tunnel_deltas(module, connection)
@@ -1011,35 +1030,47 @@ def ensure_present(client, module, connection):
     if module.check_mode:
         module.exit_json(changed=changed, vpn_connection=normalize_connection(connection))
 
+    # Every write is checked before the first one, so an older botocore fails without modifying anything.
+    methods = {}
+    if options:
+        methods["modify_vpn_connection_options"] = ("VpnConnectionId",) + tuple(options)
+
+    if tunnels:
+        methods["modify_vpn_tunnel_options"] = ("TunnelOptions", "VpnConnectionId", "VpnTunnelOutsideIpAddress")
+
+    if remove_routes:
+        methods["delete_vpn_connection_route"] = ("DestinationCidrBlock", "VpnConnectionId")
+
+    if add_routes:
+        methods["create_vpn_connection_route"] = ("DestinationCidrBlock", "VpnConnectionId")
+
+    if tags_to_remove:
+        methods["delete_tags"] = ("Resources", "Tags")
+
+    if tags_to_set:
+        methods["create_tags"] = ("Resources", "Tags")
+
+    require_client_methods(module, client, "EC2", methods, changed=mutated)
+
     pending_routes = {
         route["DestinationCidrBlock"]
         for route in connection.get("Routes", [])
         if route.get("State") == "pending" and route["DestinationCidrBlock"] in (routes or [])
     }
     for route in sorted(pending_routes):
-        wait_for_route_available(client, module, connection_id, route)
+        wait_for_route_available(client, module, connection_id, route, changed=mutated)
 
     for route in sorted((add_routes & deleting_routes) | pending_removals):
-        wait_for_route_deleted(client, module, connection_id, route)
+        wait_for_route_deleted(client, module, connection_id, route, changed=mutated)
 
     if options:
-        require_client_methods(
-            module, client, "EC2", {"modify_vpn_connection_options": ("VpnConnectionId",) + tuple(options)}
-        )
         try:
             client.modify_vpn_connection_options(VpnConnectionId=connection_id, **options, aws_retry=True)
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to modify options for VPN connection {connection_id}")
+            module.fail_json_aws(e, changed=mutated, msg=f"Unable to modify options for VPN connection {connection_id}")
 
-        wait_for_connection(client, module, connection_id)
-
-    if tunnels:
-        require_client_methods(
-            module,
-            client,
-            "EC2",
-            {"modify_vpn_tunnel_options": ("TunnelOptions", "VpnConnectionId", "VpnTunnelOutsideIpAddress")},
-        )
+        mutated = True
+        wait_for_connection(client, module, connection_id, changed=True)
 
     for outside_ip, delta in tunnels:
         try:
@@ -1050,28 +1081,34 @@ def ensure_present(client, module, connection):
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to modify VPN connection {connection_id} tunnel {outside_ip}")
+            module.fail_json_aws(
+                e, changed=mutated, msg=f"Unable to modify VPN connection {connection_id} tunnel {outside_ip}"
+            )
 
-        wait_for_connection(client, module, connection_id)
+        mutated = True
+        wait_for_connection(client, module, connection_id, changed=True)
 
-    reconcile_routes(client, module, connection_id, add_routes, remove_routes)
-    reconcile_tags(client, module, connection_id, tags_to_set, tags_to_remove)
+    reconcile_routes(client, module, connection_id, add_routes, remove_routes, changed=mutated)
+    mutated = mutated or bool(add_routes or remove_routes)
+    reconcile_ec2_tags(module, client, [connection_id], tags_to_set, tags_to_remove, "VPN connection", changed=mutated)
+    mutated = mutated or bool(tags_to_set or tags_to_remove)
 
     if updated or pending_routes or pending_removals:
-        connection = read_connection(client, module, connection_id)
+        connection = read_connection(client, module, connection_id, changed=mutated)
 
     module.exit_json(changed=changed, vpn_connection=normalize_connection(connection))
 
 
-def wait_for_route_deleted(client, module, connection_id, route):
-    wait_for_route_state(client, module, connection_id, route, "deleted")
+def wait_for_route_deleted(client, module, connection_id, route, changed=False):
+    wait_for_route_state(client, module, connection_id, route, "deleted", changed=changed)
 
 
-def wait_for_route_available(client, module, connection_id, route):
-    wait_for_route_state(client, module, connection_id, route, "available")
+def wait_for_route_available(client, module, connection_id, route, changed=False):
+    wait_for_route_state(client, module, connection_id, route, "available", changed=changed)
 
 
-def wait_for_route_state(client, module, connection_id, route, state):
+def wait_for_route_state(client, module, connection_id, route, state, changed=False):
+    """Wait for a route state; changed reports whether the connection was already modified, for failure results."""
     route = str(validate_network(module, route, "EC2 route destination", 4))
     if state == "deleted":
         argument = f"length(VpnConnections[].Routes[?DestinationCidrBlock == '{route}' && State != 'deleted'][])"
@@ -1123,29 +1160,25 @@ def wait_for_route_state(client, module, connection_id, route, state):
         model,
         waiter_name,
         f"Unable to wait for route {route} to become {state} on VPN connection {connection_id}",
+        changed=changed,
         VpnConnectionIds=[connection_id],
     )
 
 
-def reconcile_routes(client, module, connection_id, additions, removals):
-    route_methods = {}
-    if removals:
-        route_methods["delete_vpn_connection_route"] = ("DestinationCidrBlock", "VpnConnectionId")
-
-    if additions:
-        route_methods["create_vpn_connection_route"] = ("DestinationCidrBlock", "VpnConnectionId")
-
-    require_client_methods(module, client, "EC2", route_methods)
-
+def reconcile_routes(client, module, connection_id, additions, removals, changed=False):
+    """Apply route changes; changed reports whether the connection was already modified, for failure results."""
     for route in sorted(removals):
         try:
             client.delete_vpn_connection_route(
                 VpnConnectionId=connection_id, DestinationCidrBlock=route, aws_retry=True
             )
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to delete route {route} from VPN connection {connection_id}")
+            module.fail_json_aws(
+                e, changed=changed, msg=f"Unable to delete route {route} from VPN connection {connection_id}"
+            )
 
-        wait_for_route_deleted(client, module, connection_id, route)
+        changed = True
+        wait_for_route_deleted(client, module, connection_id, route, changed=True)
 
     for route in sorted(additions):
         try:
@@ -1153,21 +1186,12 @@ def reconcile_routes(client, module, connection_id, additions, removals):
                 VpnConnectionId=connection_id, DestinationCidrBlock=route, aws_retry=True
             )
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to create route {route} on VPN connection {connection_id}")
+            module.fail_json_aws(
+                e, changed=changed, msg=f"Unable to create route {route} on VPN connection {connection_id}"
+            )
 
-        wait_for_route_available(client, module, connection_id, route)
-
-
-def reconcile_tags(client, module, connection_id, additions, removals):
-    tag_methods = {}
-    if removals:
-        tag_methods["delete_tags"] = ("Resources", "Tags")
-
-    if additions:
-        tag_methods["create_tags"] = ("Resources", "Tags")
-
-    require_client_methods(module, client, "EC2", tag_methods)
-    reconcile_ec2_tags(module, client, [connection_id], additions, removals, "VPN connection")
+        changed = True
+        wait_for_route_available(client, module, connection_id, route, changed=True)
 
 
 def ensure_absent(client, module, connection):
@@ -1188,7 +1212,7 @@ def ensure_absent(client, module, connection):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to delete VPN connection {connection_id}")
 
-    wait_for_connection(client, module, connection_id, "deleted")
+    wait_for_connection(client, module, connection_id, "deleted", changed=changed)
     module.exit_json(changed=changed, vpn_connection={})
 
 

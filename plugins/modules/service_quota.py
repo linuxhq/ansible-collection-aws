@@ -331,9 +331,9 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.service_quotas import 
 )
 
 
-def response_resource(module, response, key, description):
+def response_resource(module, response, key, description, changed=False):
     if not isinstance(response, dict) or not isinstance(response.get(key), dict):
-        module.fail_json(msg=f"AWS Service Quotas returned an invalid {description} response")
+        module.fail_json(changed=changed, msg=f"AWS Service Quotas returned an invalid {description} response")
 
     return response[key]
 
@@ -360,9 +360,11 @@ def validate_current_quota(module, quota, service_code, quota_code):
         module.fail_json(msg=f"AWS service quota {service_code}/{quota_code} did not return a valid value")
 
 
-def validate_quota_request(module, request, service_code, quota_code, desired_value=None, status=None):
+def validate_quota_request(module, request, service_code, quota_code, desired_value=None, status=None, changed=False):
+    """Validate a quota request; changed reports whether an increase was already requested, for failure results."""
+    msg = f"AWS Service Quotas returned an invalid request for {service_code}/{quota_code}"
     if not request:
-        module.fail_json(msg=f"AWS Service Quotas returned an invalid request for {service_code}/{quota_code}")
+        module.fail_json(changed=changed, msg=msg)
 
     expected_values = {
         "ServiceCode": service_code,
@@ -374,10 +376,13 @@ def validate_quota_request(module, request, service_code, quota_code, desired_va
         key in request and expected is not None and request[key] != expected
         for key, expected in expected_values.items()
     ):
-        module.fail_json(msg=f"AWS Service Quotas returned a mismatched request for {service_code}/{quota_code}")
+        module.fail_json(
+            changed=changed,
+            msg=f"AWS Service Quotas returned a mismatched request for {service_code}/{quota_code}",
+        )
 
     if status is not None and request.get("Status") != status:
-        module.fail_json(msg=f"AWS Service Quotas returned an invalid request for {service_code}/{quota_code}")
+        module.fail_json(changed=changed, msg=msg)
 
 
 def main():
@@ -508,13 +513,14 @@ def main():
                     **dict(quota_request, DesiredValue=desired_value),
                     aws_retry=True,
                 )
-                requested_quota = response_resource(module, response, "RequestedQuota", "quota increase")
+                requested_quota = response_resource(module, response, "RequestedQuota", "quota increase", changed=True)
                 validate_quota_request(
                     module,
                     requested_quota,
                     service_code,
                     quota_code,
                     desired_value=desired_value,
+                    changed=True,
                 )
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(e, msg=f"Unable to request AWS service quota increase for {identifier}")

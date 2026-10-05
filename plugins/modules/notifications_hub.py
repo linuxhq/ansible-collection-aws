@@ -117,13 +117,13 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 HUB_STATUSES = ("ACTIVE", "DEREGISTERING", "INACTIVE", "REGISTERING")
 
 
-def validate_hub(module, hub, operation, require_status=True):
+def validate_hub(module, hub, operation, require_status=True, changed=False):
     if (
         not isinstance(hub, dict)
         or not isinstance(hub.get("notificationHubRegion"), str)
         or not hub["notificationHubRegion"]
     ):
-        module.fail_json(msg=f"{operation}: AWS returned an invalid hub")
+        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid hub")
 
     status_summary = hub.get("statusSummary")
     if (require_status or status_summary is not None) and (
@@ -131,7 +131,7 @@ def validate_hub(module, hub, operation, require_status=True):
         or status_summary.get("status") not in HUB_STATUSES
         or not isinstance(status_summary.get("reason"), str)
     ):
-        module.fail_json(msg=f"{operation}: AWS returned an invalid hub")
+        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid hub")
 
     return hub
 
@@ -214,10 +214,13 @@ def ensure_present(client, module):
                 msg=f"Unable to create AWS Notifications hub {region}",
             )
 
-        validate_hub(module, hub, f"Unable to create AWS Notifications hub {region}", require_status=False)
+        validate_hub(
+            module, hub, f"Unable to create AWS Notifications hub {region}", require_status=False, changed=True
+        )
         if hub["notificationHubRegion"] != region:
             module.fail_json(
-                msg=f"Unable to create AWS Notifications hub {region}: AWS returned a hub for a different region"
+                changed=True,
+                msg=f"Unable to create AWS Notifications hub {region}: AWS returned a hub for a different region",
             )
 
         hub.pop("ResponseMetadata", None)
