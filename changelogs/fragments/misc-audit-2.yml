@@ -1,0 +1,20 @@
+---
+minor_changes:
+  - pinpoint_sms_voice_phone_pool - require ``origination_identity`` with ``state=present`` only when ``pool_id`` is not provided,
+    because ``origination_identity`` and ``iso_country_code`` are used only to find or create a pool.
+bugfixes:
+  - iam_policy_info - accept any ``path_prefix`` allowed by the IAM API, such as ``/aws-serv``,
+    instead of requiring it to end with a slash.
+  - iam_policy_info - describe ``policy_names`` as all inline policy names when ``policy_name`` is omitted.
+  - pinpoint_sms_voice_phone_pool_associate - fail with a clear message, including in check mode,
+    when ``pool_id`` does not exist and ``state=present``.
+  - pinpoint_sms_voice_phone_number - list the tags of a matched phone number once instead of up to three times.
+  - account_region - report ``changed`` when waiting or reading the region status fails after the region
+    was enabled or disabled.
+  - ses_sandbox - keep the stored ``use_case_description`` in the check mode result instead of the requested value,
+    and document that ``review_details`` is not predicted in check mode.
+  - ses_sandbox - report ``changed`` when reading the account fails after the account details were submitted.
+  - ses_identity_info - request SES verification tokens only for domain identities.
+  - sns_sms_attributes - compare unset SMS attributes as empty strings so an empty string option converges.
+  - sns_topic_attributes - document the topic attributes returned in ``attributes``.
+  - sqs_queue_info - document the queue attributes returned in ``queues``.

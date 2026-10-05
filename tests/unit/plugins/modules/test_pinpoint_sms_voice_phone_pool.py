@@ -13,7 +13,11 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 
 def test_module_contract():
     options = assert_module_contract(plugin)
-    assert len(options["required_if"]) == 2
+    assert options["required_if"] == [
+        ("state", "present", ["message_type", "name"]),
+        ("state", "absent", ["pool_id"]),
+    ]
+    assert options["required_one_of"] == [("origination_identity", "pool_id")]
 
 
 def test_optional_create_parameters_are_not_gated_when_omitted():
@@ -589,3 +593,37 @@ def test_get_pool_by_id_adds_details_to_the_described_pool():
         assert plugin.get_pool_by_id("client", "module", "pool-1") == "detailed"
 
     pool_with_details.assert_called_once_with("client", "module", pool)
+
+
+def test_explicit_pool_id_does_not_require_origination_identity():
+    client = Mock()
+    module = FakeModule(
+        {
+            "deletion_protection_enabled": None,
+            "iso_country_code": None,
+            "message_type": "TRANSACTIONAL",
+            "name": "primary",
+            "origination_identity": None,
+            "pool_id": "pool-1",
+            "purge_tags": True,
+            "state": "present",
+            "tags": None,
+            "wait": False,
+        }
+    )
+    current = {
+        "MessageType": "TRANSACTIONAL",
+        "PoolId": "pool-1",
+        "Status": "ACTIVE",
+        "Tags": [{"Key": "Name", "Value": "primary"}],
+    }
+    with (
+        patch.object(plugin, "get_pool_by_id", return_value=current) as get_pool,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    get_pool.assert_called_once_with(client, module, "pool-1")
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["pool_id"] == "pool-1"
+    client.create_pool.assert_not_called()

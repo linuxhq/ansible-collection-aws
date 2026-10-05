@@ -158,3 +158,54 @@ def test_rejects_lowercase_country_code():
         plugin.main()
 
     assert "uppercase" in raised.value.values["msg"]
+
+
+def pool_not_found():
+    return plugin.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},
+        "ListPoolOriginationIdentities",
+    )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_present_fails_when_pool_does_not_exist(check_mode):
+    client = Mock()
+    module = FakeModule(
+        {
+            "client_token": None,
+            "iso_country_code": None,
+            "origination_identity": "sender-1",
+            "pool_id": "pool-missing",
+            "state": "present",
+        },
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "paginated_query_with_retries", side_effect=pool_not_found()),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "Pinpoint SMS Voice V2 pool pool-missing does not exist"
+    client.associate_origination_identity.assert_not_called()
+
+
+def test_absent_reports_no_change_when_pool_does_not_exist():
+    client = Mock()
+    module = FakeModule(
+        {
+            "client_token": None,
+            "iso_country_code": None,
+            "origination_identity": "sender-1",
+            "pool_id": "pool-missing",
+            "state": "absent",
+        }
+    )
+    with (
+        patch.object(plugin, "paginated_query_with_retries", side_effect=pool_not_found()),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is False
+    client.disassociate_origination_identity.assert_not_called()

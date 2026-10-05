@@ -133,11 +133,12 @@ def test_policy_document_rejects_invalid_response():
     )
 
 
-def test_invalid_path_prefix_is_rejected_before_api_calls():
+@pytest.mark.parametrize("path_prefix", ["service", "/service prefix/", "/" + "a" * 512])
+def test_invalid_path_prefix_is_rejected_before_api_calls(path_prefix):
     module = FakeModule(
         {
             "group_name": None,
-            "path_prefix": "service",
+            "path_prefix": path_prefix,
             "policy_name": None,
             "role_name": None,
             "user_name": None,
@@ -149,7 +150,30 @@ def test_invalid_path_prefix_is_rejected_before_api_calls():
     ):
         plugin.main()
 
-    assert raised.value.values["msg"] == "path_prefix must begin and end with / and contain at most 512 characters"
+    assert raised.value.values["msg"] == (
+        "path_prefix must begin with /, contain only printable ASCII characters, and contain at most 512 characters"
+    )
+
+
+@pytest.mark.parametrize("path_prefix", ["/", "/aws-serv", "/service/", "/" + "a" * 511])
+def test_api_valid_path_prefix_is_accepted(path_prefix):
+    module = FakeModule(
+        {
+            "group_name": None,
+            "path_prefix": path_prefix,
+            "policy_name": None,
+            "role_name": None,
+            "user_name": None,
+        },
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "entity_names", return_value=[]),
+        patch.object(plugin, "build_entity_policies", return_value=[]),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()
 
 
 def test_empty_entity_names_require_no_policy_operations():

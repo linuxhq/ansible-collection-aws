@@ -192,6 +192,7 @@ identities:
       description:
         - The SES v1 domain verification token for the C(_amazonses) TXT
           record, the alternative to DKIM verification.
+        - This is requested only for identities whose C(identity_type) is V(DOMAIN).
       returned: when AWS returns it for a domain identity
       type: str
     verified_for_sending_status:
@@ -342,8 +343,10 @@ def main():
         identity["name"] = identity_name
         identities.append(identity)
 
-    if identities:
-        verification_tokens = get_verification_tokens(module, ses_client, [identity["name"] for identity in identities])
+    # Only domain identities have an SES v1 verification token.
+    domain_names = [identity["name"] for identity in identities if identity.get("identity_type") == "DOMAIN"]
+    if domain_names:
+        verification_tokens = get_verification_tokens(module, ses_client, domain_names)
         for identity in identities:
             if identity["name"] in verification_tokens:
                 identity["verification_token"] = verification_tokens[identity["name"]]

@@ -38,6 +38,8 @@ options:
   pool_id:
     description:
       - The pool ID or ARN.
+      - When O(state=present), the module fails if the pool does not exist.
+      - When O(state=absent), a missing pool reports no change.
     required: true
     type: str
   state:
@@ -153,6 +155,9 @@ def current_associations(client, module):
             PoolId=module.params["pool_id"],
         )
     except is_boto3_error_code("ResourceNotFoundException"):
+        if module.params["state"] == "present":
+            module.fail_json(msg=f"Pinpoint SMS Voice V2 pool {module.params['pool_id']} does not exist")
+
         return []
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(

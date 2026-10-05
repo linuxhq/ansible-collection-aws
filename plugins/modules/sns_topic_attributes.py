@@ -51,12 +51,78 @@ attributes:
     - The current AWS Simple Notification Service topic attributes after module execution.
     - Attribute names are returned in snake case, for example
       C(kms_master_key_id).
+    - All attributes returned by C(GetTopicAttributes) are included, and
+      attribute values are returned as strings as AWS returns them.
   returned: always
   type: dict
   contains:
+    archive_policy:
+      description: JSON message archive policy of a FIFO topic.
+      returned: when returned by AWS
+      type: str
+    beginning_archive_time:
+      description: Earliest time from which archived FIFO topic messages can be replayed.
+      returned: when returned by AWS
+      type: str
+    content_based_deduplication:
+      description: Whether content-based deduplication is enabled for a FIFO topic, as V(true) or V(false).
+      returned: when returned by AWS
+      type: str
+    delivery_policy:
+      description: JSON delivery policy of the topic.
+      returned: when returned by AWS
+      type: str
+    display_name:
+      description: Display name used in the C(From) field for email notifications.
+      returned: when returned by AWS
+      type: str
+    effective_delivery_policy:
+      description: JSON effective delivery policy, including system defaults.
+      returned: when returned by AWS
+      type: str
+    fifo_topic:
+      description: Whether the topic is a FIFO topic, as V(true) or V(false).
+      returned: when returned by AWS
+      type: str
     kms_master_key_id:
       description: AWS KMS key identifier used for topic encryption.
-      returned: when configured
+      returned: when returned by AWS
+      type: str
+    maximum_message_size:
+      description: Maximum message size in bytes, returned only when explicitly set.
+      returned: when returned by AWS
+      type: str
+    owner:
+      description: AWS account ID of the topic owner.
+      returned: when returned by AWS
+      type: str
+    policy:
+      description: JSON access control policy of the topic.
+      returned: when returned by AWS
+      type: str
+    signature_version:
+      description: Signature version used to sign notifications.
+      returned: when returned by AWS
+      type: str
+    subscriptions_confirmed:
+      description: Number of confirmed subscriptions.
+      returned: when returned by AWS
+      type: str
+    subscriptions_deleted:
+      description: Number of deleted subscriptions.
+      returned: when returned by AWS
+      type: str
+    subscriptions_pending:
+      description: Number of subscriptions pending confirmation.
+      returned: when returned by AWS
+      type: str
+    topic_arn:
+      description: ARN of the topic.
+      returned: when returned by AWS
+      type: str
+    tracing_config:
+      description: Tracing mode of the topic, such as V(PassThrough) or V(Active).
+      returned: when returned by AWS
       type: str
 topic_arn:
   description: The ARN of the managed topic.

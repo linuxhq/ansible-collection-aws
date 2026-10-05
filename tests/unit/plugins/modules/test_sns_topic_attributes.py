@@ -11,6 +11,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleExit,
     ModuleFail,
     ModuleInitialized,
+    documented_returns,
 )
 
 
@@ -100,3 +101,33 @@ def test_rejects_malformed_get_response():
     result, _require = run(FakeModule({"kms_master_key_id": None, "topic_arn": "arn:topic"}, client=client))
 
     assert result.values["msg"] == "Unexpected response while getting topic attributes for arn:topic"
+
+
+def test_return_documents_main_topic_attributes():
+    contains = documented_returns(plugin)["attributes"]["contains"]
+    expected = {
+        "delivery_policy",
+        "display_name",
+        "effective_delivery_policy",
+        "kms_master_key_id",
+        "owner",
+        "policy",
+        "subscriptions_confirmed",
+        "subscriptions_deleted",
+        "subscriptions_pending",
+        "topic_arn",
+    }
+
+    assert expected <= set(contains)
+    assert all(field["type"] == "str" for field in contains.values())
+
+
+def test_all_topic_attributes_are_returned_snake_cased():
+    client = client_with({"DisplayName": "Example", "SubscriptionsConfirmed": "1", "TopicArn": "arn:topic"})
+    result, _require = run(FakeModule({"kms_master_key_id": None, "topic_arn": "arn:topic"}, client=client))
+
+    assert result.values["attributes"] == {
+        "display_name": "Example",
+        "subscriptions_confirmed": "1",
+        "topic_arn": "arn:topic",
+    }

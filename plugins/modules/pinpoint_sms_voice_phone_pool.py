@@ -31,6 +31,8 @@ options:
       - When provided, this must be exactly two uppercase letters.
       - This field is optional for origination identities that are not
         country-specific.
+      - This is used only to find or create a pool when O(pool_id) is not
+        provided, and is ignored when O(pool_id) is provided.
     type: str
   message_type:
     description:
@@ -52,7 +54,9 @@ options:
       - The origination identity to associate with the pool.
       - This can be a phone number ID, phone number ARN, sender ID, or sender
         ID ARN.
-      - This is required when O(state=present).
+      - This is required when O(state=present) and O(pool_id) is not provided.
+      - This is used only to find or create a pool when O(pool_id) is not
+        provided, and is ignored when O(pool_id) is provided.
       - This option is ignored when O(state=absent).
     type: str
   pool_id:
@@ -739,9 +743,10 @@ def main():
     module = AnsibleAWSModule(
         argument_spec=argument_spec,
         required_if=[
-            ("state", "present", ["message_type", "name", "origination_identity"]),
+            ("state", "present", ["message_type", "name"]),
             ("state", "absent", ["pool_id"]),
         ],
+        required_one_of=[("origination_identity", "pool_id")],
         supports_check_mode=True,
     )
     state = module.params["state"]

@@ -24,7 +24,7 @@ options:
     description:
       - IAM path prefix used when listing groups, roles, and users.
       - Only used when none of O(group_name), O(role_name), or O(user_name) is provided.
-      - Must begin and end with C(/) and contain at most 512 characters.
+      - Must begin with C(/), contain only printable ASCII characters, and contain at most 512 characters.
     type: str
   policy_name:
     description:
@@ -112,7 +112,9 @@ group_policies:
           returned: always
           type: str
     policy_names:
-      description: Inline policy names selected by O(policy_name).
+      description:
+        - Inline policy names matching O(policy_name).
+        - All inline policy names when O(policy_name) is not provided.
       returned: always
       type: list
       elements: str
@@ -150,7 +152,9 @@ role_policies:
           returned: always
           type: str
     policy_names:
-      description: Inline policy names selected by O(policy_name).
+      description:
+        - Inline policy names matching O(policy_name).
+        - All inline policy names when O(policy_name) is not provided.
       returned: always
       type: list
       elements: str
@@ -188,11 +192,15 @@ user_policies:
           returned: always
           type: str
     policy_names:
-      description: Inline policy names selected by O(policy_name).
+      description:
+        - Inline policy names matching O(policy_name).
+        - All inline policy names when O(policy_name) is not provided.
       returned: always
       type: list
       elements: str
 """
+
+import re
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -212,6 +220,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 ENTITY_TYPES = ("Group", "Role", "User")
+PATH_PREFIX_PATTERN = re.compile(r"/[\x21-\x7f]*")
 
 
 def validate_policy_names(module, response, entity_type, name):
@@ -377,8 +386,10 @@ def main():
         supports_check_mode=True,
     )
     path_prefix = module.params["path_prefix"]
-    if path_prefix and (not path_prefix.startswith("/") or not path_prefix.endswith("/") or len(path_prefix) > 512):
-        module.fail_json(msg="path_prefix must begin and end with / and contain at most 512 characters")
+    if path_prefix and (not PATH_PREFIX_PATTERN.fullmatch(path_prefix) or len(path_prefix) > 512):
+        module.fail_json(
+            msg="path_prefix must begin with /, contain only printable ASCII characters, and contain at most 512 characters"
+        )
 
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
 

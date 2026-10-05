@@ -186,9 +186,10 @@ def main():
 
     current_attributes = response.get("attributes", {})
 
+    # GetSMSAttributes omits unset attributes, so they compare as empty strings.
     current = {}
     for attribute_name in desired:
-        current[attribute_name] = current_attributes.get(attribute_name)
+        current[attribute_name] = current_attributes.get(attribute_name) or ""
 
     changed = current != desired
 

@@ -218,7 +218,7 @@ def region_target(module):
     return f"{name} in account {account_id}" if account_id else name
 
 
-def get_region_opt_status(client, module):
+def get_region_opt_status(client, module, changed=False):
     region_name = region_target(module)
 
     try:
@@ -229,12 +229,14 @@ def get_region_opt_status(client, module):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
+            changed=changed,
             msg=f"Unable to get AWS account region opt-in status for {region_name}",
         )
 
     region_status = response.get("RegionOptStatus")
     if region_status not in REGION_OPT_STATUSES:
         module.fail_json(
+            changed=changed,
             msg=(
                 f"Unable to get AWS account region opt-in status for {region_name}: "
                 f"unexpected status {region_status!r}"
@@ -244,7 +246,7 @@ def get_region_opt_status(client, module):
     return region_status
 
 
-def wait_for_status(client, module, waiter_name, statuses):
+def wait_for_status(client, module, waiter_name, statuses, changed=False):
     region_name = region_target(module)
 
     run_waiter(
@@ -253,10 +255,11 @@ def wait_for_status(client, module, waiter_name, statuses):
         ACCOUNT_REGION_WAITER_MODEL_DATA,
         waiter_name,
         f"Timed out waiting for AWS account region {region_name} to reach one of {sorted(statuses)}",
+        changed=changed,
         **region_request(module),
     )
 
-    return get_region_opt_status(client, module)
+    return get_region_opt_status(client, module, changed=changed)
 
 
 def exit_region(module, previous_status, current_status, changed):
@@ -305,9 +308,10 @@ def ensure_present(client, module):
             module,
             "region_enabled",
             PRESENT_STEADY_STATUSES,
+            changed=changed,
         )
     elif changed:
-        current_status = get_region_opt_status(client, module)
+        current_status = get_region_opt_status(client, module, changed=True)
     else:
         current_status = previous_status
 
@@ -354,9 +358,10 @@ def ensure_absent(client, module):
             module,
             "region_disabled",
             ABSENT_STEADY_STATUSES,
+            changed=changed,
         )
     elif changed:
-        current_status = get_region_opt_status(client, module)
+        current_status = get_region_opt_status(client, module, changed=True)
     else:
         current_status = previous_status
 

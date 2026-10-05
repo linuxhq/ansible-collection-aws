@@ -4,7 +4,10 @@ from unittest.mock import Mock, patch
 import boto3
 import pytest
 from botocore.exceptions import ClientError
+from botocore.session import get_session
 from botocore.stub import Stubber
+
+from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
 
 from ansible_collections.linuxhq.aws.plugins.modules import sqs_queue_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -13,6 +16,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleExit,
     ModuleFail,
     ModuleInitialized,
+    documented_returns,
 )
 
 NOT_FOUND_CODES = ("AWS.SimpleQueueService.NonExistentQueue", "QueueDoesNotExist")
@@ -177,3 +181,12 @@ def test_sqs_pagination_supplies_page_size():
         stubber.assert_no_pending_responses()
 
     assert [queue["queue_url"] for queue in result.value.values["queues"]] == queue_urls
+
+
+def test_return_documents_every_queue_attribute():
+    names = get_session().get_service_model("sqs").shape_for("QueueAttributeName").enum
+    expected = set(camel_dict_to_snake_dict(dict.fromkeys(name for name in names if name != "All")))
+    contains = documented_returns(plugin)["queues"]["contains"]
+
+    assert expected <= set(contains), sorted(expected - set(contains))
+    assert all(contains[name]["type"] == "str" for name in expected)
