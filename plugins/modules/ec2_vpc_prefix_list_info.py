@@ -20,6 +20,9 @@ options:
   prefix_list_ids:
     description:
       - EC2 VPC managed prefix list IDs used to limit the result set.
+      - This is sent as the C(prefix-list-id) filter and takes precedence over
+        a C(prefix-list-id) key in O(filters).
+      - An ID that does not exist results in no entry; no error is raised.
     elements: str
     type: list
   target_version:
@@ -69,6 +72,78 @@ prefix_lists:
   returned: always
   type: list
   elements: dict
+  contains:
+    address_family:
+      description: The IP address version of the prefix list.
+      returned: always
+      type: str
+      sample: IPv4
+    entries:
+      description: The prefix list entries.
+      returned: always
+      type: list
+      elements: dict
+      contains:
+        cidr:
+          description: The CIDR block.
+          returned: always
+          type: str
+          sample: 10.0.0.0/16
+        description:
+          description: The entry description.
+          returned: when the entry has a description
+          type: str
+    ipam_prefix_list_resolver_sync_enabled:
+      description: Whether synchronization with an IPAM prefix list resolver is enabled.
+      returned: when returned by EC2
+      type: bool
+    ipam_prefix_list_resolver_target_id:
+      description: The ID of the IPAM prefix list resolver target associated with the prefix list.
+      returned: when returned by EC2
+      type: str
+    max_entries:
+      description: The maximum number of entries for the prefix list.
+      returned: when returned by EC2
+      type: int
+      sample: 10
+    owner_id:
+      description: The ID of the owner of the prefix list.
+      returned: always
+      type: str
+      sample: "123456789012"
+    prefix_list_arn:
+      description: The ARN of the prefix list.
+      returned: always
+      type: str
+      sample: arn:aws:ec2:us-east-1:123456789012:prefix-list/pl-0123456789abcdef0
+    prefix_list_id:
+      description: The ID of the prefix list.
+      returned: always
+      type: str
+      sample: pl-0123456789abcdef0
+    prefix_list_name:
+      description: The name of the prefix list.
+      returned: always
+      type: str
+      sample: example
+    state:
+      description: The current state of the prefix list.
+      returned: always
+      type: str
+      sample: create-complete
+    state_message:
+      description: The state message.
+      returned: when returned by EC2
+      type: str
+    tags:
+      description: The prefix list tags.
+      returned: when returned by EC2
+      type: dict
+    version:
+      description: The version of the prefix list.
+      returned: when returned by EC2
+      type: int
+      sample: 1
 """
 
 try:
@@ -142,7 +217,7 @@ def main():
         },
         supports_check_mode=True,
     )
-    filters = module.params["filters"]
+    filters = dict(module.params["filters"] or {})
     prefix_list_ids = list(dict.fromkeys(module.params["prefix_list_ids"] or []))
     target_version = module.params["target_version"]
     if target_version is not None and target_version < 1:
@@ -150,10 +225,12 @@ def main():
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    request = {}
+    # PrefixListIds fails for a prefix list that does not exist, so IDs are sent
+    # as the documented prefix-list-id filter.
     if prefix_list_ids:
-        request["PrefixListIds"] = prefix_list_ids
+        filters["prefix-list-id"] = prefix_list_ids
 
+    request = {}
     if filters:
         request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
 

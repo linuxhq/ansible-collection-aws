@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import ANY, Mock, patch
 
 import pytest
+import yaml
 
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_transit_gateway_route_table as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -725,3 +726,70 @@ def test_route_table_id_matching_transit_gateway_is_returned():
     table = {"State": "available", "TransitGatewayId": "tgw-1", "TransitGatewayRouteTableId": "tgw-rtb-1"}
     with patch.object(plugin, "get_route_table_by_id", return_value=table):
         assert plugin.find_route_table(Mock(), module) is table
+
+
+def test_absent_route_example_disables_purge():
+    examples = yaml.safe_load(plugin.EXAMPLES)
+    task = next(task for task in examples if task["name"] == "Ensure a static route is absent")
+    params = task["linuxhq.aws.ec2_transit_gateway_route_table"]
+
+    assert params["purge_routes"] is False
+    assert all(route["state"] == "absent" for route in params["routes"])
+
+
+@pytest.mark.parametrize(
+    ("purge_routes", "removed"),
+    [
+        (False, ["10.10.0.0/16"]),
+        (True, ["10.10.0.0/16", "192.0.2.0/24"]),
+    ],
+)
+def test_absent_only_routes_purge_other_static_routes_only_when_purging(purge_routes, removed):
+    module = FakeModule(
+        present_params(
+            purge_routes=purge_routes,
+            routes=[{"destination_cidr_block": "10.10.0.0/16", "state": "absent"}],
+        )
+    )
+    table = {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    other = {"DestinationCidrBlock": "192.0.2.0/24", "State": "active", "Type": "static"}
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "static_routes", return_value=[other]),
+        patch.object(plugin, "ensure_route_absent", return_value=(True, None)) as remove,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    assert result.value.values["changed"] is True
+    assert [call.args[3] for call in remove.call_args_list] == removed
+
+
+def test_missing_route_is_created():
+    client = Mock()
+    client.create_transit_gateway_route.return_value = {
+        "Route": {"DestinationCidrBlock": "10.0.0.0/8", "State": "blackhole", "Type": "static"}
+    }
+    module = FakeModule(
+        present_params(
+            purge_routes=False,
+            routes=[{"blackhole": True, "destination_cidr_block": "10.0.0.0/8"}],
+        )
+    )
+    table = {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "get_route", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    client.create_transit_gateway_route.assert_called_once_with(
+        DestinationCidrBlock="10.0.0.0/8",
+        TransitGatewayRouteTableId="tgw-rtb-1",
+        Blackhole=True,
+        aws_retry=True,
+    )
+    client.replace_transit_gateway_route.assert_not_called()

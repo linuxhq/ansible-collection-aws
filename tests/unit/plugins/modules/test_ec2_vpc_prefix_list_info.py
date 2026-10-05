@@ -49,7 +49,7 @@ def test_prefix_list_disappearing_during_entry_lookup_is_omitted():
         "EC2",
         {
             "describe_managed_prefix_lists": (
-                "PrefixListIds",
+                "Filters",
                 "MaxResults",
                 "NextToken",
             ),
@@ -131,7 +131,7 @@ def test_target_version_is_used_for_entries():
     ):
         plugin.main()
 
-    assert query.call_args.kwargs["PrefixListIds"] == ["pl-1"]
+    assert query.call_args.kwargs == {"Filters": [{"Name": "prefix-list-id", "Values": ["pl-1"]}]}
     assert entries.call_args.kwargs["TargetVersion"] == 2
 
 
@@ -162,3 +162,46 @@ def test_rejects_malformed_entry_response():
         pytest.raises(ModuleFail),
     ):
         plugin.main()
+
+
+def test_prefix_list_ids_take_precedence_over_the_id_filter():
+    module = FakeModule(
+        {
+            "filters": {"prefix-list-id": "ignored", "prefix-list-name": "main"},
+            "prefix_list_ids": ["pl-1"],
+            "target_version": None,
+        },
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]) as query,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()
+
+    assert sorted(query.call_args.kwargs["Filters"], key=lambda item: item["Name"]) == [
+        {"Name": "prefix-list-id", "Values": ["pl-1"]},
+        {"Name": "prefix-list-name", "Values": ["main"]},
+    ]
+    assert module.params["filters"]["prefix-list-id"] == "ignored"
+
+
+def test_missing_prefix_list_id_returns_an_empty_list():
+    module = FakeModule(
+        {"filters": None, "prefix_list_ids": ["pl-missing"], "target_version": None},
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]) as query,
+        patch.object(plugin, "paginated_query_with_retries") as entries,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["prefix_lists"] == []
+    assert "PrefixListIds" not in query.call_args.kwargs
+    entries.assert_not_called()
