@@ -67,6 +67,20 @@ def test_validate_tags_uses_the_list_tags_message():
         validate_tags(FakeModule({}), [{"Key": "Name"}])
 
     assert raised.value.values["msg"] == "list_tags_for_resource: AWS returned an invalid tag"
+    assert raised.value.values["changed"] is False
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_listing_validation_reports_earlier_changes(changed):
+    with pytest.raises(ModuleFail) as raised:
+        validate_tags(FakeModule({}), [{"Key": "Name"}], changed=changed)
+
+    assert raised.value.values["changed"] is changed
+
+    with pytest.raises(ModuleFail) as raised:
+        validate_ip_addresses(FakeModule({}), ["192.0.2.1"], changed=changed)
+
+    assert raised.value.values["changed"] is changed
 
 
 @pytest.mark.parametrize(

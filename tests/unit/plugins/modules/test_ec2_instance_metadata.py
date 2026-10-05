@@ -174,3 +174,23 @@ def test_unconfirmed_modification_fails():
 
     assert result.type is ModuleFail
     assert "did not confirm" in result.value.values["msg"]
+
+
+def test_unconfirmed_modification_reports_changed():
+    client = Mock()
+    client.modify_instance_metadata_defaults.return_value = {"Return": False}
+    result, _require = run_metadata(client, metadata_params(http_tokens="required"), {"managed_by": "account"})
+
+    assert result.type is ModuleFail
+    assert result.value.values["changed"] is True
+
+
+def test_modification_failure_reports_unchanged():
+    client = Mock()
+    client.modify_instance_metadata_defaults.side_effect = plugin.ClientError(
+        {"Error": {"Code": "InternalError", "Message": "failed"}}, "ModifyInstanceMetadataDefaults"
+    )
+    result, _require = run_metadata(client, metadata_params(http_tokens="required"), {"managed_by": "account"})
+
+    assert result.type is ModuleFail
+    assert "changed" not in result.value.values

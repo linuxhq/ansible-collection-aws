@@ -39,7 +39,8 @@ def validate_provider_summaries(module, providers):
     return providers
 
 
-def get_provider_by_arn(client, module, arn):
+def get_provider_by_arn(client, module, arn, changed=False):
+    """Describe a provider; changed reports whether it was already modified, for failure results."""
     try:
         provider = client.get_open_id_connect_provider(
             OpenIDConnectProviderArn=arn,
@@ -48,7 +49,7 @@ def get_provider_by_arn(client, module, arn):
     except is_boto3_error_code("NoSuchEntity"):
         return None
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to get AWS IAM OIDC provider {arn}")
+        module.fail_json_aws(e, changed=changed, msg=f"Unable to get AWS IAM OIDC provider {arn}")
 
     valid_provider = (
         isinstance(provider, dict)
@@ -69,7 +70,9 @@ def get_provider_by_arn(client, module, arn):
         )
     )
     if not valid_provider:
-        module.fail_json(msg=f"Unable to get AWS IAM OIDC provider {arn}: AWS returned an invalid response")
+        module.fail_json(
+            changed=changed, msg=f"Unable to get AWS IAM OIDC provider {arn}: AWS returned an invalid response"
+        )
 
     provider.pop("ResponseMetadata", None)
     provider["OpenIDConnectProviderArn"] = arn

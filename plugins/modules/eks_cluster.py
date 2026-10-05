@@ -829,6 +829,7 @@ def wait_for_update(client, module, update_id, changed=False):
         client,
         "EKS",
         {"describe_update": ("name", "updateId")},
+        changed=changed,
     )
     while time.monotonic() < deadline:
         last_update = describe_update(client, module, update_id, changed=changed)
@@ -1156,6 +1157,15 @@ def ensure_present(client, module):
             client,
             "EKS",
             {"update_cluster_version": ("name", "version")},
+        )
+
+    if (update_requests and (wait or version_changed or len(update_requests) > 1)) or (version_changed and wait):
+        # Updates are waited on between and after these calls.
+        require_client_methods(
+            module,
+            client,
+            "EKS",
+            {"describe_update": ("name", "updateId")},
         )
 
     if tag_keys_to_unset:

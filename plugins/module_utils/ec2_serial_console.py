@@ -15,9 +15,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
-def normalized_serial_console_access(module, response):
+def normalized_serial_console_access(module, response, changed=False):
+    """Normalize the access status; changed reports whether it was already modified, for failure results."""
     if not isinstance(response, dict) or not isinstance(response.get("SerialConsoleAccessEnabled"), bool):
-        module.fail_json(msg="EC2 returned an invalid serial console access status")
+        module.fail_json(changed=changed, msg="EC2 returned an invalid serial console access status")
 
     return boto3_resource_to_ansible_dict(
         {key: value for key, value in response.items() if key != "ResponseMetadata"},

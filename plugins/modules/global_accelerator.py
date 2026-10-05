@@ -713,6 +713,7 @@ def get_accelerator_by_arn(client, module, accelerator_arn, changed=False):
         client,
         "Global Accelerator",
         {"describe_accelerator": ("AcceleratorArn",)},
+        changed=changed,
     )
     try:
         response = client.describe_accelerator(
@@ -774,11 +775,13 @@ def get_accelerator(client, module):
 
 
 def wait_for_accelerator(client, module, accelerator_arn, waiter_name, changed=False):
+    """Wait for an accelerator; changed reports whether it was already modified, for failure results."""
     require_client_methods(
         module,
         client,
         "Global Accelerator",
         {"describe_accelerator": ("AcceleratorArn",)},
+        changed=changed,
     )
     run_waiter(
         module,
@@ -805,12 +808,14 @@ def listener_identity(listener):
     )
 
 
-def get_listeners(client, module, accelerator_arn):
+def get_listeners(client, module, accelerator_arn, changed=False):
+    """List listeners; changed reports whether the accelerator was already modified, for failure results."""
     require_client_methods(
         module,
         client,
         "Global Accelerator",
         {"list_listeners": ("AcceleratorArn", "MaxResults", "NextToken")},
+        changed=changed,
     )
     listeners = query_list(
         module,
@@ -818,12 +823,13 @@ def get_listeners(client, module, accelerator_arn):
         "list_listeners",
         "Listeners",
         f"Unable to list AWS Global Accelerator listeners for {accelerator_arn}",
+        changed=changed,
         AcceleratorArn=accelerator_arn,
     )
     if not isinstance(listeners, list):
-        module.fail_json(msg="Global Accelerator returned an invalid listener list")
+        module.fail_json(changed=changed, msg="Global Accelerator returned an invalid listener list")
 
-    listeners = [validate_listener(module, listener) for listener in listeners]
+    listeners = [validate_listener(module, listener, changed=changed) for listener in listeners]
 
     normalized = []
     for listener in listeners:
@@ -927,7 +933,8 @@ def listeners_overlap(first, second):
     )
 
 
-def ordered_listener_updates(module, updates):
+def ordered_listener_updates(module, updates, changed=False):
+    """Order listener updates; changed reports earlier modifications, for failure results."""
     pending = list(updates)
     ordered = []
     while pending:
@@ -938,8 +945,9 @@ def ordered_listener_updates(module, updates):
                 break
         else:
             module.fail_json(
+                changed=changed,
                 msg="Unable to update AWS Global Accelerator listeners: circular port dependencies; "
-                "apply an intermediate configuration that releases the conflicting ports first"
+                "apply an intermediate configuration that releases the conflicting ports first",
             )
 
     return ordered
@@ -958,12 +966,14 @@ def normalized_port_overrides(port_overrides):
     )
 
 
-def get_endpoint_groups(client, module, listener_arn):
+def get_endpoint_groups(client, module, listener_arn, changed=False):
+    """List endpoint groups; changed reports whether the accelerator was already modified, for failure results."""
     require_client_methods(
         module,
         client,
         "Global Accelerator",
         {"list_endpoint_groups": ("ListenerArn", "MaxResults", "NextToken")},
+        changed=changed,
     )
     endpoint_groups = query_list(
         module,
@@ -971,12 +981,15 @@ def get_endpoint_groups(client, module, listener_arn):
         "list_endpoint_groups",
         "EndpointGroups",
         f"Unable to list AWS Global Accelerator endpoint groups for {listener_arn}",
+        changed=changed,
         ListenerArn=listener_arn,
     )
     if not isinstance(endpoint_groups, list):
-        module.fail_json(msg="Global Accelerator returned an invalid endpoint group list")
+        module.fail_json(changed=changed, msg="Global Accelerator returned an invalid endpoint group list")
 
-    endpoint_groups = [validate_endpoint_group(module, endpoint_group) for endpoint_group in endpoint_groups]
+    endpoint_groups = [
+        validate_endpoint_group(module, endpoint_group, changed=changed) for endpoint_group in endpoint_groups
+    ]
 
     normalized = [
         boto3_resource_to_ansible_dict(
@@ -1103,6 +1116,40 @@ def require_endpoint_configuration_parameters(module, client, method_name, opera
             )
 
 
+def require_endpoint_group_writes(module, client):
+    """Check every endpoint group write the requested listeners can need, before the first change."""
+    if all(listener["endpoint_groups"] is None for listener in module.params["listeners"]):
+        return
+
+    requests = [
+        endpoint_group_request(desired)
+        for listener in module.params["listeners"]
+        for desired in listener["endpoint_groups"] or []
+    ]
+
+    # Whether a group is created or updated is known only after listing it, so both writes are checked.
+    parameters = {parameter for request in requests for parameter in request}
+    methods = {}
+    if requests:
+        methods["create_endpoint_group"] = tuple(
+            sorted(parameters | {"EndpointGroupRegion", "IdempotencyToken", "ListenerArn"})
+        )
+        methods["update_endpoint_group"] = tuple(sorted(parameters | {"EndpointGroupArn"}))
+
+    if module.params["purge_endpoint_groups"]:
+        methods["delete_endpoint_group"] = ("EndpointGroupArn",)
+
+    if methods:
+        require_client_methods(module, client, "Global Accelerator", methods)
+
+    for request in requests:
+        for method_name, operation_name in (
+            ("create_endpoint_group", "CreateEndpointGroup"),
+            ("update_endpoint_group", "UpdateEndpointGroup"),
+        ):
+            require_endpoint_configuration_parameters(module, client, method_name, operation_name, request)
+
+
 def predicted_endpoint_group(current, desired):
     predicted = dict(current or {})
     predicted["endpoint_group_region"] = desired["endpoint_group_region"]
@@ -1139,11 +1186,13 @@ def predicted_endpoint_group(current, desired):
 
 
 def delete_endpoint_group(client, module, endpoint_group_arn, changed=False):
+    """Delete an endpoint group; changed reports earlier modifications, for failure results."""
     require_client_methods(
         module,
         client,
         "Global Accelerator",
         {"delete_endpoint_group": ("EndpointGroupArn",)},
+        changed=changed,
     )
     try:
         client.delete_endpoint_group(
@@ -1162,7 +1211,14 @@ def delete_endpoint_group(client, module, endpoint_group_arn, changed=False):
 
 def delete_listener(client, module, accelerator_arn, listener_arn, changed=False):
     """Delete a listener and its endpoint groups; changed reports earlier modifications, for failure results."""
-    endpoint_groups = get_endpoint_groups(client, module, listener_arn)
+    require_client_methods(
+        module,
+        client,
+        "Global Accelerator",
+        {"delete_listener": ("ListenerArn",)},
+        changed=changed,
+    )
+    endpoint_groups = get_endpoint_groups(client, module, listener_arn, changed=changed)
     for endpoint_group in endpoint_groups:
         delete_endpoint_group(client, module, endpoint_group["endpoint_group_arn"], changed=changed)
         changed = True
@@ -1170,12 +1226,6 @@ def delete_listener(client, module, accelerator_arn, listener_arn, changed=False
     if endpoint_groups:
         wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True)
 
-    require_client_methods(
-        module,
-        client,
-        "Global Accelerator",
-        {"delete_listener": ("ListenerArn",)},
-    )
     try:
         client.delete_listener(
             ListenerArn=listener_arn,
@@ -1195,7 +1245,7 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups, mutate
     """Reconcile endpoint groups; mutated reports earlier modifications, for failure results."""
     current_by_region = {}
     if listener_arn is not None:
-        for endpoint_group in get_endpoint_groups(client, module, listener_arn):
+        for endpoint_group in get_endpoint_groups(client, module, listener_arn, changed=mutated):
             current_by_region[endpoint_group["endpoint_group_region"]] = endpoint_group
 
     changed = False
@@ -1230,19 +1280,6 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups, mutate
             request["IdempotencyToken"] = token
             request["ListenerArn"] = listener_arn
 
-            require_client_methods(
-                module,
-                client,
-                "Global Accelerator",
-                {"create_endpoint_group": tuple(request)},
-            )
-            require_endpoint_configuration_parameters(
-                module,
-                client,
-                "create_endpoint_group",
-                "CreateEndpointGroup",
-                request,
-            )
             try:
                 response = client.create_endpoint_group(
                     **request,
@@ -1280,19 +1317,6 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups, mutate
             request = endpoint_group_request(desired)
             request["EndpointGroupArn"] = endpoint_group_arn
 
-            require_client_methods(
-                module,
-                client,
-                "Global Accelerator",
-                {"update_endpoint_group": tuple(request)},
-            )
-            require_endpoint_configuration_parameters(
-                module,
-                client,
-                "update_endpoint_group",
-                "UpdateEndpointGroup",
-                request,
-            )
             try:
                 response = client.update_endpoint_group(
                     **request,
@@ -1343,18 +1367,19 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False):
     """Reconcile listeners; mutated reports earlier modifications, for failure results."""
     current_listeners = []
     if accelerator_arn is not None:
-        current_listeners = get_listeners(client, module, accelerator_arn)
+        current_listeners = get_listeners(client, module, accelerator_arn, changed=mutated)
 
     matched, updates, creates, deletes = reconcile_listeners(module, current_listeners)
     changed = bool(updates or creates or deletes)
     result_listeners = []
 
-    updates = ordered_listener_updates(module, updates)
+    updates = ordered_listener_updates(module, updates, changed=mutated)
     desired_changes = [desired for current, desired in updates] + creates
     for current, unused_desired in matched:
         if any(listeners_overlap(current, desired) for desired in desired_changes):
             module.fail_json(
-                msg="Unable to update AWS Global Accelerator listeners: desired ports overlap a retained listener"
+                changed=mutated,
+                msg="Unable to update AWS Global Accelerator listeners: desired ports overlap a retained listener",
             )
 
     # Build and validate every listener write before releasing any ports.
@@ -1367,7 +1392,9 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False):
                 dict(desired, client_affinity=desired["client_affinity"] or current["client_affinity"])
             )
             request["ListenerArn"] = current["listener_arn"]
-            require_client_methods(module, client, "Global Accelerator", {"update_listener": tuple(request)})
+            require_client_methods(
+                module, client, "Global Accelerator", {"update_listener": tuple(request)}, changed=mutated
+            )
             update_requests[current["listener_arn"]] = request
 
         for desired in creates:
@@ -1387,7 +1414,9 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False):
                     )
                 )
             ).hexdigest()
-            require_client_methods(module, client, "Global Accelerator", {"create_listener": tuple(request)})
+            require_client_methods(
+                module, client, "Global Accelerator", {"create_listener": tuple(request)}, changed=mutated
+            )
             create_requests.append(request)
 
     # Release only obsolete listeners that block the validated writes.
@@ -1538,6 +1567,12 @@ def ensure_absent(client, module):
 
         listeners = get_listeners(client, module, accelerator_arn)
 
+        accelerator_methods = {"delete_accelerator": ("AcceleratorArn",)}
+        if accelerator.get("Enabled"):
+            accelerator_methods["update_accelerator"] = ("AcceleratorArn", "Enabled")
+
+        require_client_methods(module, client, "Global Accelerator", accelerator_methods)
+
         # Failures after the first deletion report changed=True.
         mutated = False
         for listener in listeners:
@@ -1554,17 +1589,6 @@ def ensure_absent(client, module):
             )
 
         if accelerator.get("Enabled"):
-            require_client_methods(
-                module,
-                client,
-                "Global Accelerator",
-                {
-                    "update_accelerator": (
-                        "AcceleratorArn",
-                        "Enabled",
-                    )
-                },
-            )
             try:
                 client.update_accelerator(
                     AcceleratorArn=accelerator_arn,
@@ -1587,12 +1611,6 @@ def ensure_absent(client, module):
                 changed=True,
             )
 
-        require_client_methods(
-            module,
-            client,
-            "Global Accelerator",
-            {"delete_accelerator": ("AcceleratorArn",)},
-        )
         try:
             client.delete_accelerator(
                 AcceleratorArn=accelerator_arn,
@@ -1719,6 +1737,21 @@ def ensure_present(client, module):
             "accelerator_deployed",
         )
         return ensure_present(client, module)
+
+    if not module.check_mode:
+        # Later writes are checked before the first change, so an older botocore fails without modifying anything.
+        tag_methods = {}
+        if not created and tag_keys_to_unset:
+            tag_methods["untag_resource"] = ("ResourceArn", "TagKeys")
+
+        if not created and tags_to_set:
+            tag_methods["tag_resource"] = ("ResourceArn", "Tags")
+
+        if tag_methods:
+            require_client_methods(module, client, "Global Accelerator", tag_methods)
+
+        if module.params["listeners"] is not None:
+            require_endpoint_group_writes(module, client)
 
     if created and not module.check_mode:
         token = module.params["idempotency_token"]
@@ -1866,29 +1899,14 @@ def ensure_present(client, module):
 
     if accelerator is not None and tags is not None:
         if not created and not module.check_mode:
-            accelerator_arn = accelerator["AcceleratorArn"]
-            tag_methods = {}
-            if tag_keys_to_unset:
-                tag_methods["untag_resource"] = ("ResourceArn", "TagKeys")
-
-            if tags_to_set:
-                tag_methods["tag_resource"] = ("ResourceArn", "Tags")
-
-            if tag_methods:
-                require_client_methods(
-                    module,
-                    client,
-                    "Global Accelerator",
-                    tag_methods,
-                )
-
             reconcile_arn_tags(
                 module,
                 client,
-                accelerator_arn,
+                accelerator["AcceleratorArn"],
                 tags_to_set,
                 tag_keys_to_unset,
                 "AWS Global Accelerator",
+                changed=mutated,
             )
 
         accelerator = dict(accelerator)

@@ -454,3 +454,80 @@ def test_oidc_can_replace_audience_at_capacity(current_count, new_count):
         plugin.ensure_present(client, module)
 
     assert audiences == set(desired)
+
+
+def oidc_params(**overrides):
+    params = {
+        "client_id_list": None,
+        "purge_tags": True,
+        "tags": None,
+        "thumbprint_list": None,
+        "url": "https://example.com/id",
+    }
+    params.update(overrides)
+    return params
+
+
+def oidc_provider(**overrides):
+    provider = {
+        "ClientIDList": ["keep"],
+        "OpenIDConnectProviderArn": "arn:provider",
+        "ThumbprintList": ["old-thumbprint"],
+        "Url": "example.com/id",
+    }
+    provider.update(overrides)
+    return provider
+
+
+@pytest.mark.parametrize(("client_id_list", "changed"), [(["keep", "new"], True), (None, False)])
+def test_thumbprint_failure_reports_whether_client_ids_were_changed(client_id_list, changed):
+    client = Mock()
+    client.update_open_id_connect_provider_thumbprint.side_effect = ClientError(
+        {"Error": {"Code": "ServiceFailure", "Message": "failed"}}, "UpdateOpenIDConnectProviderThumbprint"
+    )
+    module = FakeModule(oidc_params(client_id_list=client_id_list, thumbprint_list=["new-thumbprint"]))
+    with (
+        patch.object(plugin, "get_provider_by_url", return_value=oidc_provider()),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "Unable to update thumbprints for AWS IAM OIDC provider https://example.com/id"
+    assert raised.value.values["changed"] is changed
+
+
+def test_unsupported_tagging_fails_before_changing_client_ids():
+    client = Mock()
+
+    def require(module, client, service, methods, changed=False):
+        if "tag_open_id_connect_provider" in methods:
+            module.fail_json(changed=changed, msg="Unsupported tagging")
+
+    module = FakeModule(oidc_params(client_id_list=["keep", "new"], tags={"Env": "test"}))
+    with (
+        patch.object(plugin, "get_provider_by_url", return_value=oidc_provider(Tags=[])),
+        patch.object(plugin, "require_client_methods", side_effect=require),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+    client.add_client_id_to_open_id_connect_provider.assert_not_called()
+
+
+def test_read_failure_after_create_reports_changed():
+    client = Mock()
+    client.create_open_id_connect_provider.return_value = {"OpenIDConnectProviderArn": "arn:provider"}
+    client.get_open_id_connect_provider.side_effect = ClientError(
+        {"Error": {"Code": "ServiceFailure", "Message": "failed"}}, "GetOpenIDConnectProvider"
+    )
+    with (
+        patch.object(plugin, "get_provider_by_url", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(oidc_params(client_id_list=["keep"])))
+
+    assert raised.value.values["msg"] == "Unable to get AWS IAM OIDC provider arn:provider"
+    assert raised.value.values["changed"] is True

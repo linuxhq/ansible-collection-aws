@@ -1,0 +1,33 @@
+---
+bugfixes:
+  - acm_certificate_request - report ``changed`` when the requested certificate returns no ARN or tagging
+    fails after tags were removed.
+  - ec2_instance_metadata - report ``changed`` when EC2 does not confirm a submitted defaults change.
+  - ec2_serial_console - report ``changed`` when EC2 returns an invalid status after enabling or disabling access.
+  - ec2_transit_gateway_route_table - report ``changed`` when a wait, read, route, or tag failure follows
+    a successful create, tag, or route change.
+  - ec2_vpc_prefix_list - report ``changed`` when a wait, read, comparison, or tag failure follows
+    a successful create, modify, or delete.
+  - ec2_vpc_vpn - check every write before the first change, and report ``changed`` when a wait, read,
+    tunnel, route, or tag failure follows a successful create or modification.
+  - eks_cluster - check update wait support before the first update.
+  - global_accelerator - check endpoint group and tag writes before the first change, and report ``changed``
+    when a listing, listener, endpoint group, or tag failure follows a successful change.
+  - iam_oidc_provider - check every write before the first change, and report ``changed`` when a read,
+    client ID, thumbprint, or tag failure follows a successful change.
+  - notifications_contacts - check the read-back and tag writes before the first change, and report
+    ``changed`` when a read or tag failure follows a successful create or untag.
+  - notifications_hub - report ``changed`` when AWS returns an invalid hub after registering it.
+  - pinpoint_sms_voice_phone_number - check every release and tag write before the first change, and report
+    ``changed`` when a wait, read, or tag failure follows a successful request, update, or disassociation.
+  - pinpoint_sms_voice_phone_pool - report ``changed`` when a wait, read, or tag failure follows
+    a successful create or update, or deletion fails after deletion protection was disabled.
+  - pinpoint_sms_voice_phone_pool_associate - report ``changed`` when AWS returns an invalid association
+    after associating or disassociating.
+  - route53_resolver - report ``changed`` when listing addresses or tags, or tagging, fails after
+    a successful create or update.
+  - route53_resolver_rule - report ``changed`` when listing or tagging fails after a successful create or update.
+  - route53_resolver_rule_associate - report ``changed`` when the lookup after a successful association fails.
+  - service_quota - report ``changed`` when AWS returns an invalid response to a submitted increase request.
+  - ses_identity_dkim - report ``changed`` when reading or updating DKIM signing fails after tokens were generated.
+...

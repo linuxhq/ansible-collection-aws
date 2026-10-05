@@ -125,19 +125,20 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
-def get_dkim_attributes(client, module):
+def get_dkim_attributes(client, module, changed=False):
+    """Read DKIM attributes; changed reports whether they were already modified, for failure results."""
     identity = module.params["identity"]
 
     try:
         response = client.get_email_identity(EmailIdentity=identity, aws_retry=True)
     except is_boto3_error_code("NotFoundException"):
-        module.fail_json(msg=f"AWS SES identity {identity} does not exist")
+        module.fail_json(changed=changed, msg=f"AWS SES identity {identity} does not exist")
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to get AWS SES identity {identity}")
+        module.fail_json_aws(e, changed=changed, msg=f"Unable to get AWS SES identity {identity}")
 
     attributes = response.get("DkimAttributes", {}) if isinstance(response, dict) else None
     if not isinstance(attributes, dict):
-        module.fail_json(msg=f"AWS SES returned invalid DKIM attributes for identity {identity}")
+        module.fail_json(changed=changed, msg=f"AWS SES returned invalid DKIM attributes for identity {identity}")
 
     return attributes
 
@@ -194,7 +195,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(e, msg=f"Unable to generate Easy DKIM tokens for AWS SES identity {identity}")
 
-            current = get_dkim_attributes(client, module)
+            current = get_dkim_attributes(client, module, changed=True)
 
         if bool(current.get("SigningEnabled")) != signing_enabled:
             try:
@@ -204,9 +205,13 @@ def main():
                     aws_retry=True,
                 )
             except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(e, msg=f"Unable to update DKIM signing for AWS SES identity {identity}")
+                module.fail_json_aws(
+                    e,
+                    changed=generate_tokens,
+                    msg=f"Unable to update DKIM signing for AWS SES identity {identity}",
+                )
 
-            current = get_dkim_attributes(client, module)
+            current = get_dkim_attributes(client, module, changed=True)
 
     module.exit_json(
         changed=changed,

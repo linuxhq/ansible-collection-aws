@@ -45,5 +45,5 @@ def test_provider_rejects_invalid_response():
         get_provider_by_arn(client, module, "arn:provider")
 
     module.fail_json.assert_called_once_with(
-        msg="Unable to get AWS IAM OIDC provider arn:provider: AWS returned an invalid response"
+        changed=False, msg="Unable to get AWS IAM OIDC provider arn:provider: AWS returned an invalid response"
     )

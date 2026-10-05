@@ -267,7 +267,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
 )
 
 
-def describe_pools(client, module, **request):
+def describe_pools(client, module, changed=False, **request):
+    """Describe pools; changed reports whether a pool was already modified, for failure results."""
     try:
         response = paginated_query_with_retries(
             client,
@@ -277,19 +278,19 @@ def describe_pools(client, module, **request):
     except is_boto3_error_code("ResourceNotFoundException"):
         return []
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg="Unable to describe Pinpoint SMS Voice V2 pools")
+        module.fail_json_aws(e, changed=changed, msg="Unable to describe Pinpoint SMS Voice V2 pools")
 
     pools = response.get("Pools") if isinstance(response, dict) else None
     if not isinstance(pools, list):
-        module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 pool data")
+        module.fail_json(changed=changed, msg="AWS returned malformed Pinpoint SMS Voice V2 pool data")
 
     for pool in pools:
-        validate_pool(module, pool, "describing pools")
+        validate_pool(module, pool, "describing pools", changed=changed)
 
     return pools
 
 
-def validate_pool(module, pool, context):
+def validate_pool(module, pool, context, changed=False):
     if (
         not isinstance(pool, dict)
         or not isinstance(pool.get("PoolId"), str)
@@ -298,12 +299,13 @@ def validate_pool(module, pool, context):
         or ("DeletionProtectionEnabled" in pool and not isinstance(pool["DeletionProtectionEnabled"], bool))
         or ("MessageType" in pool and not isinstance(pool["MessageType"], str))
     ):
-        module.fail_json(msg=f"AWS returned a malformed Pinpoint SMS Voice V2 pool while {context}")
+        module.fail_json(changed=changed, msg=f"AWS returned a malformed Pinpoint SMS Voice V2 pool while {context}")
 
     return pool
 
 
-def pool_with_origination_identities(client, module, pool):
+def pool_with_origination_identities(client, module, pool, changed=False):
+    """Add origination identities; changed reports whether the pool was already modified, for failure results."""
     pool = dict(pool)
     pool_id = pool.get("PoolId")
 
@@ -314,6 +316,7 @@ def pool_with_origination_identities(client, module, pool):
             "list_pool_origination_identities",
             "OriginationIdentities",
             f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}",
+            changed=changed,
             PoolId=pool_id,
         )
         if any(
@@ -322,7 +325,8 @@ def pool_with_origination_identities(client, module, pool):
             for identity in pool["OriginationIdentities"]
         ):
             module.fail_json(
-                msg=f"AWS returned malformed origination identities for Pinpoint SMS Voice V2 pool {pool_id}"
+                changed=changed,
+                msg=f"AWS returned malformed origination identities for Pinpoint SMS Voice V2 pool {pool_id}",
             )
 
     else:
@@ -331,7 +335,8 @@ def pool_with_origination_identities(client, module, pool):
     return pool
 
 
-def pool_with_tags(client, module, pool):
+def pool_with_tags(client, module, pool, changed=False):
+    """Add tags; changed reports whether the pool was already modified, for failure results."""
     pool = dict(pool)
     arn = pool.get("PoolArn")
     tags = {}
@@ -343,14 +348,14 @@ def pool_with_tags(client, module, pool):
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to list tags for Pinpoint SMS Voice V2 pool {arn}")
+            module.fail_json_aws(e, changed=changed, msg=f"Unable to list tags for Pinpoint SMS Voice V2 pool {arn}")
 
         tag_list = response.get("Tags", []) if isinstance(response, dict) else None
         if not isinstance(tag_list, list) or any(
             not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str)
             for tag in tag_list
         ):
-            module.fail_json(msg=f"AWS returned malformed tags for Pinpoint SMS Voice V2 pool {arn}")
+            module.fail_json(changed=changed, msg=f"AWS returned malformed tags for Pinpoint SMS Voice V2 pool {arn}")
 
         tags = boto3_tag_list_to_ansible_dict(tag_list)
 
@@ -358,39 +363,43 @@ def pool_with_tags(client, module, pool):
     return pool
 
 
-def select_pool_by_id(module, pools, pool_id):
+def select_pool_by_id(module, pools, pool_id, changed=False):
     if not pools:
         return None
 
     expected_pool_id = pool_id.rsplit("/", 1)[-1]
     if pools[0]["PoolId"] != expected_pool_id:
-        module.fail_json(msg=f"AWS returned the wrong Pinpoint SMS Voice V2 pool while describing {pool_id}")
+        module.fail_json(
+            changed=changed,
+            msg=f"AWS returned the wrong Pinpoint SMS Voice V2 pool while describing {pool_id}",
+        )
 
     return pools[0]
 
 
-def pool_with_details(client, module, pool):
-    pool = pool_with_origination_identities(client, module, pool)
+def pool_with_details(client, module, pool, changed=False):
+    pool = pool_with_origination_identities(client, module, pool, changed=changed)
 
-    return pool_with_tags(client, module, pool)
+    return pool_with_tags(client, module, pool, changed=changed)
 
 
-def get_pool_by_id(client, module, pool_id):
-    pools = describe_pools(client, module, PoolIds=[pool_id])
-    pool = select_pool_by_id(module, pools, pool_id)
+def get_pool_by_id(client, module, pool_id, changed=False):
+    pools = describe_pools(client, module, changed=changed, PoolIds=[pool_id])
+    pool = select_pool_by_id(module, pools, pool_id, changed=changed)
     if pool is None:
         return None
 
-    return pool_with_details(client, module, pool)
+    return pool_with_details(client, module, pool, changed=changed)
 
 
-def wait_for_pool_active(client, module, pool_id):
+def wait_for_pool_active(client, module, pool_id, changed=False):
+    """Wait for a pool; changed reports whether the pool was already modified, for failure results."""
     deadline = time.monotonic() + module.params["wait_timeout"]
     pool = {}
 
     while time.monotonic() < deadline:
-        pools = describe_pools(client, module, PoolIds=[pool_id])
-        pool = select_pool_by_id(module, pools, pool_id)
+        pools = describe_pools(client, module, changed=changed, PoolIds=[pool_id])
+        pool = select_pool_by_id(module, pools, pool_id, changed=changed)
         if pool is None and module.params.get("state") == "absent":
             return {}
 
@@ -405,6 +414,7 @@ def wait_for_pool_active(client, module, pool_id):
                 return pool
 
             module.fail_json(
+                changed=changed,
                 msg=f"AWS End User Messaging SMS phone pool {pool_id} was deleted before becoming active",
                 pool=boto3_resource_to_ansible_dict(pool, transform_tags=False, force_tags=False),
                 pool_id=pool_id,
@@ -419,6 +429,7 @@ def wait_for_pool_active(client, module, pool_id):
         )
 
     module.fail_json(
+        changed=changed,
         msg=f"Timed out waiting for AWS End User Messaging SMS phone pool {pool_id} to become active",
         pool=boto3_resource_to_ansible_dict(pool, transform_tags=False, force_tags=False),
         pool_id=pool_id,
@@ -496,6 +507,8 @@ def ensure_absent(client, module):
     response = current
 
     if changed and not module.check_mode:
+        # Failures after deletion protection is disabled report changed=True.
+        mutated = False
         if current.get("Status") != "ACTIVE":
             current = wait_for_pool_active(client, module, pool_id)
             if current.get("Status") == "DELETING":
@@ -516,10 +529,11 @@ def ensure_absent(client, module):
                     msg=f"Unable to disable deletion protection for Pinpoint SMS Voice V2 pool {pool_id}",
                 )
 
-            validate_pool(module, current, "disabling deletion protection")
+            mutated = True
+            validate_pool(module, current, "disabling deletion protection", changed=True)
 
         if current.get("Status") != "ACTIVE" or current.get("DeletionProtectionEnabled"):
-            current = wait_for_pool_active(client, module, pool_id)
+            current = wait_for_pool_active(client, module, pool_id, changed=mutated)
             if current.get("Status") == "DELETING":
                 exit_result(module, True, current)
 
@@ -531,10 +545,10 @@ def ensure_absent(client, module):
         except is_boto3_error_code("ResourceNotFoundException"):
             response = None
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to delete Pinpoint SMS Voice V2 pool {pool_id}")
+            module.fail_json_aws(e, changed=mutated, msg=f"Unable to delete Pinpoint SMS Voice V2 pool {pool_id}")
 
         if response is not None:
-            validate_pool(module, response, "deleting a pool")
+            validate_pool(module, response, "deleting a pool", changed=True)
             response.pop("ResponseMetadata", None)
 
     exit_result(module, changed, response)
@@ -627,7 +641,7 @@ def ensure_present(client, module):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(e, msg="Unable to create Pinpoint SMS Voice V2 pool")
 
-            validate_pool(module, current, "creating a pool")
+            validate_pool(module, current, "creating a pool", changed=True)
             current.pop("ResponseMetadata", None)
             current["OriginationIdentities"] = [
                 scrub_none_parameters(
@@ -654,13 +668,13 @@ def ensure_present(client, module):
                         msg=f"Unable to update Pinpoint SMS Voice V2 pool {current['PoolId']}",
                     )
 
-                validate_pool(module, current, "updating a pool")
+                validate_pool(module, current, "updating a pool", changed=True)
                 current.pop("ResponseMetadata", None)
                 current["OriginationIdentities"] = previous.get("OriginationIdentities", [])
                 current["Tags"] = previous.get("Tags", [])
 
                 if (tags_to_set or tag_keys_to_unset) and current.get("Status") != "ACTIVE":
-                    active = wait_for_pool_active(client, module, current["PoolId"])
+                    active = wait_for_pool_active(client, module, current["PoolId"], changed=True)
                     active["OriginationIdentities"] = current["OriginationIdentities"]
                     active["Tags"] = current["Tags"]
                     current = active
@@ -668,7 +682,7 @@ def ensure_present(client, module):
             arn = current.get("PoolArn")
 
             if (tags_to_set or tag_keys_to_unset) and not arn:
-                module.fail_json(msg="Unable to tag Pinpoint SMS Voice V2 pool")
+                module.fail_json(changed=pool_changed, msg="Unable to tag Pinpoint SMS Voice V2 pool")
 
             reconcile_arn_tags(
                 module,
@@ -677,15 +691,21 @@ def ensure_present(client, module):
                 tags_to_set,
                 tag_keys_to_unset,
                 "Pinpoint SMS Voice V2 pool",
+                changed=pool_changed,
             )
 
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
 
         if wait and pool_changed and current.get("PoolId"):
             if current.get("Status") != "ACTIVE":
-                current = pool_with_details(client, module, wait_for_pool_active(client, module, current["PoolId"]))
+                current = pool_with_details(
+                    client,
+                    module,
+                    wait_for_pool_active(client, module, current["PoolId"], changed=True),
+                    changed=True,
+                )
             else:
-                current = get_pool_by_id(client, module, current["PoolId"]) or current
+                current = get_pool_by_id(client, module, current["PoolId"], changed=True) or current
     elif changed and module.check_mode:
         new_pool = current is None
         current = dict(current or {})

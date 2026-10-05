@@ -256,3 +256,24 @@ def test_metric_dimension_identifiers_are_preserved():
 
     metric = result.values["current_quota"]["usage_metric"]
     assert metric == {"metric_namespace": "AWS/Usage", "metric_name": "ResourceCount", "metric_dimensions": dimensions}
+
+
+@pytest.mark.parametrize(
+    "response",
+    [{}, {"RequestedQuota": {"DesiredValue": 20.0}}],
+)
+def test_invalid_request_response_reports_changed(response):
+    client = Mock()
+    client.get_service_quota.return_value = {"Quota": {"Value": 5.0}}
+    client.request_service_quota_increase.return_value = response
+    result, _query, _require = run(FakeModule(params(), client=client))
+
+    assert isinstance(result, ModuleFail)
+    assert result.values["changed"] is True
+
+
+def test_invalid_listed_request_reports_unchanged():
+    with pytest.raises(ModuleFail) as raised:
+        plugin.validate_quota_request(FakeModule({}), {}, "ec2", "L-1", status="PENDING")
+
+    assert raised.value.values["changed"] is False

@@ -354,7 +354,7 @@ def ensure_present(client, module):
 
         association = response.get("ResolverRuleAssociation") if isinstance(response, dict) else None
         if not isinstance(association, dict) or not association.get("Id"):
-            association = get_resolver_rule_association_by_rule_and_vpc(client, module)
+            association = get_resolver_rule_association_by_rule_and_vpc(client, module, changed=True)
 
         if association is None:
             module.fail_json(
@@ -462,7 +462,8 @@ def wait_for_resolver_rule_association_status(
     return association
 
 
-def get_resolver_rule_association_by_rule_and_vpc(client, module):
+def get_resolver_rule_association_by_rule_and_vpc(client, module, changed=False):
+    """Find the association; changed reports whether it was already modified, for failure results."""
     resolver_rule_id = module.params["resolver_rule_id"]
     vpc_id = module.params["vpc_id"]
 
@@ -472,6 +473,7 @@ def get_resolver_rule_association_by_rule_and_vpc(client, module):
         "list_resolver_rule_associations",
         "ResolverRuleAssociations",
         f"Unable to list AWS Route53 Resolver rule associations for {resolver_rule_id}/{vpc_id}",
+        changed=changed,
         Filters=ansible_dict_to_boto3_filter_list(
             {
                 "ResolverRuleId": resolver_rule_id,
@@ -487,6 +489,7 @@ def get_resolver_rule_association_by_rule_and_vpc(client, module):
             "list_resolver_rule_associations",
             expected_resolver_rule_id=resolver_rule_id,
             expected_vpc_id=vpc_id,
+            changed=changed,
         )
         for association in associations
     ]
@@ -494,10 +497,11 @@ def get_resolver_rule_association_by_rule_and_vpc(client, module):
     if len(associations) > 1:
         association_ids = sorted(association["Id"] for association in associations)
         module.fail_json(
+            changed=changed,
             msg=(
                 "Multiple AWS Route53 Resolver rule associations exist for "
                 f"{resolver_rule_id}/{vpc_id}: {', '.join(association_ids)}"
-            )
+            ),
         )
 
     return associations[0] if associations else None

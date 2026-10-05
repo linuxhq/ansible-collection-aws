@@ -309,7 +309,7 @@ def test_new_table_waits_before_routes_when_final_wait_is_disabled():
     ):
         plugin.ensure_present(client, module)
 
-    wait.assert_called_once_with(client, module, "tgw-rtb-1", {"available"})
+    wait.assert_called_once_with(client, module, "tgw-rtb-1", {"available"}, changed=True)
 
 
 def test_absent_waits_for_pending_table_when_final_wait_is_disabled():
@@ -388,7 +388,7 @@ def test_deleting_route_waits_before_recreation_when_final_wait_is_disabled():
     ):
         plugin.ensure_present(client, module)
 
-    wait.assert_called_once_with(client, module, "tgw-rtb-1", "10.0.0.0/8")
+    wait.assert_called_once_with(client, module, "tgw-rtb-1", "10.0.0.0/8", changed=False)
     client.create_transit_gateway_route.assert_called_once()
 
 
@@ -567,7 +567,7 @@ def test_purge_removes_only_undesired_static_routes():
         plugin.ensure_present(client, module)
 
     assert raised.value.values["changed"]
-    remove.assert_called_once_with(client, module, "tgw-rtb-1", "192.0.2.0/24", stale_route)
+    remove.assert_called_once_with(client, module, "tgw-rtb-1", "192.0.2.0/24", stale_route, changed=False)
     static_routes.assert_called_once()
     assert [route["destination_cidr_block"] for route in raised.value.values["routes"]] == ["10.0.0.0/8"]
 
@@ -699,7 +699,7 @@ def test_empty_routes_purge_every_static_route():
 
     assert result.value.values["changed"] is True
     assert result.value.values["routes"] == []
-    remove.assert_called_once_with(ANY, module, "tgw-rtb-1", "192.0.2.0/24", stale)
+    remove.assert_called_once_with(ANY, module, "tgw-rtb-1", "192.0.2.0/24", stale, changed=False)
 
 
 def test_route_table_id_must_belong_to_transit_gateway():
@@ -871,7 +871,7 @@ def test_tag_changes_are_gated_and_reconciled_once(tags_to_set, tag_keys_to_unse
     require.assert_called_once()
     assert set(require.call_args.args[3]) == methods
     reconcile.assert_called_once_with(
-        module, client, ["tgw-rtb-1"], tags_to_set, tag_keys_to_unset, "EC2 transit gateway route table"
+        module, client, ["tgw-rtb-1"], tags_to_set, tag_keys_to_unset, "EC2 transit gateway route table", changed=False
     )
 
 
@@ -889,3 +889,77 @@ def test_route_table_wait_timeout_names_target_state():
         raised.value.values["msg"]
         == "Timed out waiting for EC2 transit gateway route table tgw-rtb-1 to become deleted"
     )
+
+
+def client_error(operation):
+    return plugin.ClientError({"Error": {"Code": "InternalError", "Message": "failed"}}, operation)
+
+
+@pytest.mark.parametrize(("tags", "changed"), [({"Env": "test"}, True), (None, False)])
+def test_route_failure_reports_whether_tags_were_changed(tags, changed):
+    client = Mock()
+    client.create_transit_gateway_route.side_effect = client_error("CreateTransitGatewayRoute")
+    module = FakeModule(
+        present_params(
+            purge_routes=False,
+            routes=[{"blackhole": True, "destination_cidr_block": "10.0.0.0/8"}],
+            tags=tags,
+        )
+    )
+    table = {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "get_route", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "Unable to create EC2 transit gateway route 10.0.0.0/8"
+    assert raised.value.values["changed"] is changed
+    assert client.create_tags.called is changed
+
+
+def test_wait_timeout_after_create_reports_changed():
+    client = Mock()
+    client.create_transit_gateway_route_table.return_value = {
+        "TransitGatewayRouteTable": {"State": "pending", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    }
+    module = FakeModule(
+        dict(
+            present_params(transit_gateway_id="tgw-1", transit_gateway_route_table_id=None, wait=True),
+            wait_delay=1,
+            wait_timeout=1,
+        )
+    )
+    with (
+        patch.object(plugin, "find_route_table", return_value=None),
+        patch.object(
+            plugin,
+            "get_route_table_by_id",
+            return_value={"State": "pending", "TransitGatewayRouteTableId": "tgw-rtb-1"},
+        ),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin.time, "sleep"),
+        patch.object(plugin.time, "monotonic", side_effect=[0, 0, 0, 2]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"].startswith("Timed out waiting for EC2 transit gateway route table tgw-rtb-1")
+
+
+@pytest.mark.parametrize("changed", [True, False])
+def test_route_wait_timeout_reports_earlier_changes(changed):
+    module = FakeModule({"wait_delay": 1, "wait_timeout": 1})
+    desired = {"blackhole": True, "destination_cidr_block": "10.0.0.0/8"}
+    with (
+        patch.object(plugin, "get_route", return_value=None),
+        patch.object(plugin.time, "sleep"),
+        patch.object(plugin.time, "monotonic", side_effect=[0, 0, 0, 2]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.wait_for_route(Mock(), module, "tgw-rtb-1", desired, changed=changed)
+
+    assert raised.value.values["changed"] is changed

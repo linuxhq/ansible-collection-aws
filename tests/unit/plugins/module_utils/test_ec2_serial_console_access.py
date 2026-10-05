@@ -7,6 +7,14 @@ from ansible_collections.linuxhq.aws.plugins.module_utils import ec2_serial_cons
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule, ModuleFail
 
 
+@pytest.mark.parametrize("changed", [False, True])
+def test_invalid_status_reports_earlier_changes(changed):
+    with pytest.raises(ModuleFail) as raised:
+        helper.normalized_serial_console_access(FakeModule({}), {}, changed=changed)
+
+    assert raised.value.values["changed"] is changed
+
+
 def test_gets_and_normalizes_serial_console_access():
     client = Mock(
         get_serial_console_access_status=Mock(

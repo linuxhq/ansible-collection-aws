@@ -76,17 +76,19 @@ def query_list(module, client, method_name, result_key, error_msg, changed=False
         module.fail_json_aws(e, changed=changed, msg=error_msg)
 
 
-def require_client_methods(module, client, service, methods):
+def require_client_methods(module, client, service, methods, changed=False):
+    """Check SDK support; changed reports whether a resource was already modified, for failure results."""
     for method_name in methods:
         try:
             available_parameters = get_boto3_client_method_parameters(client, method_name)
         except (AttributeError, OperationNotFoundError):
-            module.fail_json(msg=f"Installed botocore does not support {service} {method_name}")
+            module.fail_json(changed=changed, msg=f"Installed botocore does not support {service} {method_name}")
 
         for parameter_name in sorted(methods[method_name]):
             if parameter_name in available_parameters:
                 continue
 
             module.fail_json(
-                msg=f"Installed botocore does not support {service} {method_name} parameter {parameter_name}"
+                changed=changed,
+                msg=f"Installed botocore does not support {service} {method_name} parameter {parameter_name}",
             )

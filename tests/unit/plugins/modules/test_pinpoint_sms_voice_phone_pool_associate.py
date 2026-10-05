@@ -119,6 +119,37 @@ def test_present_rejects_wrong_association_response():
         plugin.ensure_present(client, module)
 
     assert "wrong" in raised.value.values["msg"]
+    assert raised.value.values["changed"] is True
+
+
+def test_malformed_listed_association_reports_unchanged():
+    module = FakeModule({"origination_identity": "sender-1", "pool_id": "pool-1"})
+    with pytest.raises(ModuleFail) as raised:
+        plugin.validate_association(module, {"PoolId": "pool-1"}, require_pool=False)
+
+    assert raised.value.values["changed"] is False
+
+
+def test_malformed_disassociate_response_reports_changed():
+    client = Mock(disassociate_origination_identity=Mock(return_value={"PoolId": "pool-1"}))
+    module = FakeModule(
+        {
+            "client_token": None,
+            "iso_country_code": None,
+            "origination_identity": "sender-1",
+            "pool_id": "pool-1",
+            "state": "absent",
+        }
+    )
+    with (
+        patch.object(
+            plugin, "current_associations", return_value=[{"OriginationIdentity": "sender-1", "PoolId": "pool-1"}]
+        ),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
 
 
 def test_absent_does_not_return_association_that_disappeared():

@@ -147,6 +147,14 @@ def test_invalid_tag_list_fails_with_caller_message(tags):
         require_valid_tag_list(FakeModule({}), tags, "invalid tags")
 
     assert raised.value.values["msg"] == "invalid tags"
+    assert raised.value.values["changed"] is False
+
+
+def test_invalid_tag_list_after_a_change_reports_changed():
+    with pytest.raises(ModuleFail) as raised:
+        require_valid_tag_list(FakeModule({}), None, "invalid tags", changed=True)
+
+    assert raised.value.values["changed"] is True
 
 
 def test_reconcile_ssm_tags_reports_changed_after_removing_tags():

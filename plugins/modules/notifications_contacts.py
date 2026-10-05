@@ -140,11 +140,11 @@ def apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset):
     return updated
 
 
-def validate_contact(module, contact, operation):
+def validate_contact(module, contact, operation, changed=False):
     if not isinstance(contact, dict) or not all(
         isinstance(contact.get(key), str) and contact[key] for key in ("address", "arn", "name")
     ):
-        module.fail_json(msg=f"{operation}: AWS returned an invalid contact")
+        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid contact")
 
     return contact
 
@@ -275,11 +275,12 @@ def ensure_present(client, module):
             if tags:
                 request["tags"] = tags
 
+            # The contact is read back after creation, so that call is checked before creating anything.
             require_client_methods(
                 module,
                 client,
                 "NotificationsContacts",
-                {"create_email_contact": tuple(request)},
+                {"create_email_contact": tuple(request), "get_email_contact": ("arn",)},
             )
             try:
                 create_response = client.create_email_contact(**request, aws_retry=True)
@@ -295,19 +296,14 @@ def ensure_present(client, module):
                 or not create_response["arn"]
             ):
                 module.fail_json(
+                    changed=True,
                     msg=(
                         f"Unable to create AWS Notifications contact {email_address}: AWS returned an invalid response"
-                    )
+                    ),
                 )
 
             contact_arn = create_response["arn"]
 
-            require_client_methods(
-                module,
-                client,
-                "NotificationsContacts",
-                {"get_email_contact": ("arn",)},
-            )
             try:
                 get_response = client.get_email_contact(
                     arn=contact_arn,
@@ -318,12 +314,14 @@ def ensure_present(client, module):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
+                    changed=True,
                     msg=f"Unable to get AWS Notifications contact {contact_arn}",
                 )
 
             if not isinstance(get_response, dict) or "emailContact" not in get_response:
                 module.fail_json(
-                    msg=f"Unable to get AWS Notifications contact {contact_arn}: AWS returned an invalid response"
+                    changed=True,
+                    msg=f"Unable to get AWS Notifications contact {contact_arn}: AWS returned an invalid response",
                 )
 
             contact = get_response.get("emailContact")
@@ -331,19 +329,23 @@ def ensure_present(client, module):
             if contact is None:
                 contact = dict(desired_contact, arn=contact_arn)
             else:
-                validate_contact(module, contact, f"Unable to get AWS Notifications contact {contact_arn}")
+                validate_contact(
+                    module, contact, f"Unable to get AWS Notifications contact {contact_arn}", changed=True
+                )
 
             if tags is not None:
                 contact["tags"] = tags
         else:
             contact_arn = contact["arn"]
+            tag_methods = {}
             if tag_keys_to_unset:
-                require_client_methods(
-                    module,
-                    client,
-                    "NotificationsContacts",
-                    {"untag_resource": ("arn", "tagKeys")},
-                )
+                tag_methods["untag_resource"] = ("arn", "tagKeys")
+
+            if tags_to_set:
+                tag_methods["tag_resource"] = ("arn", "tags")
+
+            require_client_methods(module, client, "NotificationsContacts", tag_methods)
+            if tag_keys_to_unset:
                 try:
                     client.untag_resource(
                         arn=contact_arn,
@@ -357,12 +359,6 @@ def ensure_present(client, module):
                     )
 
             if tags_to_set:
-                require_client_methods(
-                    module,
-                    client,
-                    "NotificationsContacts",
-                    {"tag_resource": ("arn", "tags")},
-                )
                 try:
                     client.tag_resource(
                         arn=contact_arn,
@@ -370,7 +366,11 @@ def ensure_present(client, module):
                         aws_retry=True,
                     )
                 except (BotoCoreError, ClientError) as e:
-                    module.fail_json_aws(e, msg=f"Unable to tag AWS Notifications contact {contact_arn}")
+                    module.fail_json_aws(
+                        e,
+                        changed=bool(tag_keys_to_unset),
+                        msg=f"Unable to tag AWS Notifications contact {contact_arn}",
+                    )
 
             contact = apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:

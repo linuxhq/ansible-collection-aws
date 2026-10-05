@@ -126,6 +126,7 @@ def test_entry_changes_include_current_prefix_list_version():
                 "AddEntries",
             )
         },
+        changed=False,
     )
     client.modify_managed_prefix_list.assert_called_once_with(
         AddEntries=[{"Cidr": "192.0.2.0/24"}],
@@ -289,12 +290,13 @@ def test_entry_replacement_is_one_request_before_shrinking():
             client,
             module,
             initial,
+            changed=False,
             add_entries=[{"cidr": "192.0.2.0/24"}],
             remove_entries=[{"cidr": "10.0.0.0/8"}, {"cidr": "172.16.0.0/12"}],
         ),
-        call(client, module, replaced, max_entries=1),
+        call(client, module, replaced, changed=True, max_entries=1),
     ]
-    wait_for_ready_state.assert_called_once_with(client, module, "pl-1")
+    wait_for_ready_state.assert_called_once_with(client, module, "pl-1", changed=True)
     assert raised.value.values["prefix_list"]["entries"] == [{"cidr": "192.0.2.0/24"}]
 
 
@@ -525,8 +527,8 @@ def test_update_mismatch_preserves_prefix_list():
 
     assert "has not been deleted" in raised.value.values["msg"]
     assert modify.call_args_list == [
-        call(client, module, current, max_entries=2),
-        call(client, module, grown, add_entries=[{"cidr": "192.0.2.0/24"}], remove_entries=None),
+        call(client, module, current, changed=False, max_entries=2),
+        call(client, module, grown, changed=True, add_entries=[{"cidr": "192.0.2.0/24"}], remove_entries=None),
     ]
     delete.assert_not_called()
     create.assert_not_called()
@@ -671,7 +673,12 @@ def test_description_change_is_one_addition_without_removal():
 
     assert result.value.values["changed"] is True
     modify.assert_called_once_with(
-        client, module, current, add_entries=[{"cidr": "10.0.0.0/8", "description": "new"}], remove_entries=None
+        client,
+        module,
+        current,
+        changed=False,
+        add_entries=[{"cidr": "10.0.0.0/8", "description": "new"}],
+        remove_entries=None,
     )
     wait.assert_not_called()
 
@@ -687,7 +694,9 @@ def test_max_entries_headroom_avoids_resizing():
     ):
         plugin.ensure_present(client, module, OWNER)
 
-    modify.assert_called_once_with(client, module, current, add_entries=[{"cidr": "192.0.2.0/24"}], remove_entries=None)
+    modify.assert_called_once_with(
+        client, module, current, changed=False, add_entries=[{"cidr": "192.0.2.0/24"}], remove_entries=None
+    )
 
 
 @pytest.mark.parametrize("max_entries", [None, 400])
@@ -744,7 +753,8 @@ def test_create_adds_entries_beyond_one_request_in_batches():
 
     assert len(client.create_managed_prefix_list.call_args.kwargs["Entries"]) == 100
     assert len(modify.call_args.kwargs["add_entries"]) == 50
-    wait.assert_called_once_with(client, module, "pl-1")
+    assert modify.call_args.kwargs["changed"] is True
+    wait.assert_called_once_with(client, module, "pl-1", changed=True)
 
 
 @pytest.mark.parametrize(
@@ -852,5 +862,59 @@ def test_tag_changes_are_gated_and_reconciled_once(tags_to_set, tag_keys_to_unse
     require.assert_called_once()
     assert set(require.call_args.args[3]) == methods
     reconcile.assert_called_once_with(
-        module, client, ["pl-1"], tags_to_set, tag_keys_to_unset, "EC2 VPC managed prefix list"
+        module, client, ["pl-1"], tags_to_set, tag_keys_to_unset, "EC2 VPC managed prefix list", changed=False
     )
+
+
+@pytest.mark.parametrize(("description", "changed"), [("new", True), ("old", False)])
+def test_tag_failure_reports_whether_entries_were_modified(description, changed):
+    client = Mock()
+    client.create_tags.side_effect = plugin.ClientError(
+        {"Error": {"Code": "InternalError", "Message": "failed"}}, "CreateTags"
+    )
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8", "description": description}], tags={"Env": "test"}))
+    with (
+        patch.object(
+            plugin, "get_current", return_value=(prefix_list(), [{"Cidr": "10.0.0.0/8", "Description": "old"}])
+        ),
+        patch.object(plugin, "modify_prefix_list", return_value=prefix_list(Version=2)) as modify,
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert raised.value.values["msg"] == "Unable to tag EC2 VPC managed prefix list pl-1"
+    assert raised.value.values["changed"] is changed
+    assert modify.called is changed
+
+
+def failing_waiter(module, client, model_data, waiter_name, error_msg, changed=False, **kwargs):
+    module.fail_json(changed=changed, msg=error_msg)
+
+
+def test_wait_failure_after_create_reports_changed():
+    client = Mock(create_managed_prefix_list=Mock(return_value={"PrefixList": prefix_list(State="create-in-progress")}))
+    module = FakeModule(dict(present_params([{"cidr": "10.0.0.0/8"}], wait=True), wait_delay=1, wait_timeout=60))
+    with (
+        patch.object(plugin, "get_current", return_value=(None, None)),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "run_waiter", side_effect=failing_waiter),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"] == "Unable to wait for EC2 VPC managed prefix list pl-1 to become ready"
+
+
+def test_wait_failure_before_any_change_reports_unchanged():
+    module = FakeModule(dict(present_params([{"cidr": "10.0.0.0/8"}], wait=True), wait_delay=1, wait_timeout=60))
+    with (
+        patch.object(plugin, "get_current", return_value=(prefix_list(State="modify-in-progress"), [])),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "run_waiter", side_effect=failing_waiter),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(Mock(), module, OWNER)
+
+    assert raised.value.values["changed"] is False

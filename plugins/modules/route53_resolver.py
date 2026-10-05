@@ -463,7 +463,7 @@ def create_resolver_endpoint(client, module, desired):
 
     endpoint = response.get("ResolverEndpoint") if isinstance(response, dict) else None
     if not isinstance(endpoint, dict) or not endpoint.get("Id"):
-        endpoint = get_resolver_endpoint_by_name(client, module)
+        endpoint = get_resolver_endpoint_by_name(client, module, changed=True)
 
     if endpoint is None:
         module.fail_json(
@@ -695,8 +695,8 @@ def ensure_present(client, module):
     elif current is None:
         endpoint = create_resolver_endpoint(client, module, desired)
         if module.params["wait"]:
-            endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
-            endpoint = resolver_endpoint_with_tags(client, module, endpoint)
+            endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint, changed=True)
+            endpoint = resolver_endpoint_with_tags(client, module, endpoint, changed=True)
     elif changed:
         if resource_changed:
             changed_optional_fields = [
@@ -761,7 +761,7 @@ def ensure_present(client, module):
 
                 # The endpoint can be deleted elsewhere while waiting; the comparison below then fails.
                 if endpoint is not None:
-                    endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
+                    endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint, changed=True)
                     endpoint = reconcile_resolver_endpoint_ip_addresses(
                         client,
                         module,
@@ -819,6 +819,7 @@ def ensure_present(client, module):
                     tags_to_set,
                     tag_keys_to_unset,
                     "AWS Route53 Resolver endpoint",
+                    changed=resource_changed,
                 )
 
             endpoint = apply_tag_deltas(endpoint, tags_to_set, tag_keys_to_unset)
@@ -947,6 +948,7 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
         client,
         module,
         get_resolver_endpoint(client, module, resolver_endpoint_id, changed=True),
+        changed=True,
     )
 
 
@@ -1090,7 +1092,8 @@ def get_resolver_endpoint(client, module, resolver_endpoint_id, changed=False):
     )
 
 
-def get_resolver_endpoint_by_name(client, module):
+def get_resolver_endpoint_by_name(client, module, changed=False):
+    """Find the endpoint by name; changed reports whether the endpoint was already modified, for failure results."""
     name = module.params["name"]
 
     endpoints = query_list(
@@ -1099,22 +1102,26 @@ def get_resolver_endpoint_by_name(client, module):
         "list_resolver_endpoints",
         "ResolverEndpoints",
         "Unable to list AWS Route53 Resolver endpoints",
+        changed=changed,
         Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
     )
 
     endpoints = [
-        validate_resolver_endpoint(module, endpoint, "list_resolver_endpoints", expected_name=name)
+        validate_resolver_endpoint(module, endpoint, "list_resolver_endpoints", expected_name=name, changed=changed)
         for endpoint in endpoints
     ]
 
     if len(endpoints) > 1:
         endpoint_ids = sorted(endpoint["Id"] for endpoint in endpoints)
-        module.fail_json(msg=f"Multiple AWS Route53 Resolver endpoints are named {name}: {', '.join(endpoint_ids)}")
+        module.fail_json(
+            changed=changed, msg=f"Multiple AWS Route53 Resolver endpoints are named {name}: {', '.join(endpoint_ids)}"
+        )
 
     return endpoints[0] if endpoints else None
 
 
-def resolver_endpoint_with_ip_addresses(client, module, endpoint):
+def resolver_endpoint_with_ip_addresses(client, module, endpoint, changed=False):
+    """Add listed IP addresses; changed reports whether the endpoint was already modified, for failure results."""
     if not endpoint:
         return endpoint
 
@@ -1126,14 +1133,16 @@ def resolver_endpoint_with_ip_addresses(client, module, endpoint):
         "list_resolver_endpoint_ip_addresses",
         "IpAddresses",
         f"Unable to list AWS Route53 Resolver endpoint IP addresses for {endpoint['Id']}",
+        changed=changed,
         ResolverEndpointId=endpoint["Id"],
     )
-    endpoint["IpAddresses"] = validate_ip_addresses(module, ip_addresses)
+    endpoint["IpAddresses"] = validate_ip_addresses(module, ip_addresses, changed=changed)
 
     return endpoint
 
 
-def resolver_endpoint_with_tags(client, module, endpoint):
+def resolver_endpoint_with_tags(client, module, endpoint, changed=False):
+    """Add listed tags; changed reports whether the endpoint was already modified, for failure results."""
     if not endpoint or not endpoint.get("Arn"):
         return endpoint
 
@@ -1145,9 +1154,10 @@ def resolver_endpoint_with_tags(client, module, endpoint):
         "list_tags_for_resource",
         "Tags",
         f"Unable to list tags for AWS Route53 Resolver endpoint {endpoint['Arn']}",
+        changed=changed,
         ResourceArn=endpoint["Arn"],
     )
-    endpoint["Tags"] = validate_tags(module, tags)
+    endpoint["Tags"] = validate_tags(module, tags, changed=changed)
 
     return endpoint
 

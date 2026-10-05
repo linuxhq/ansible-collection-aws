@@ -267,7 +267,8 @@ def main():
 
             if not isinstance(response, dict) or response.get("Return") is not True:
                 module.fail_json(
-                    msg=f"EC2 did not confirm the instance metadata defaults change in region {module.region}"
+                    changed=True,
+                    msg=f"EC2 did not confirm the instance metadata defaults change in region {module.region}",
                 )
 
         current_account_level = dict(current_account_level)

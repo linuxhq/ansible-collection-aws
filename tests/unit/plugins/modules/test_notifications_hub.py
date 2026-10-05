@@ -110,6 +110,26 @@ def test_register_rejects_hub_for_different_region():
         raised.value.values["msg"]
         == "Unable to create AWS Notifications hub us-east-1: AWS returned a hub for a different region"
     )
+    assert raised.value.values["changed"] is True
+
+
+def test_invalid_register_response_reports_changed():
+    client = Mock(register_notification_hub=Mock(return_value={}))
+    with (
+        patch.object(plugin, "get_notification_hub", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule({"region": "us-east-1"}))
+
+    assert raised.value.values["changed"] is True
+
+
+def test_invalid_listed_hub_reports_unchanged():
+    with pytest.raises(ModuleFail) as raised:
+        plugin.validate_hub(FakeModule({}), {}, "Unable to list AWS Notifications hubs")
+
+    assert raised.value.values["changed"] is False
 
 
 def test_inactive_hub_is_registered_again():

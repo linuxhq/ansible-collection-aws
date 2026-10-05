@@ -175,14 +175,17 @@ def current_associations(client, module):
     return associations
 
 
-def validate_association(module, association, require_pool=True):
+def validate_association(module, association, require_pool=True, changed=False):
     if (
         not isinstance(association, dict)
         or not isinstance(association.get("OriginationIdentity"), str)
         or ("OriginationIdentityArn" in association and not isinstance(association["OriginationIdentityArn"], str))
         or (require_pool and not isinstance(association.get("PoolId"), str))
     ):
-        module.fail_json(msg="AWS returned a malformed Pinpoint SMS Voice V2 origination identity association")
+        module.fail_json(
+            changed=changed,
+            msg="AWS returned a malformed Pinpoint SMS Voice V2 origination identity association",
+        )
 
     if require_pool:
         expected_pool_id = module.params["pool_id"].rsplit("/", 1)[-1]
@@ -190,7 +193,10 @@ def validate_association(module, association, require_pool=True):
             association["OriginationIdentity"],
             association.get("OriginationIdentityArn"),
         ):
-            module.fail_json(msg="AWS returned the wrong Pinpoint SMS Voice V2 origination identity association")
+            module.fail_json(
+                changed=changed,
+                msg="AWS returned the wrong Pinpoint SMS Voice V2 origination identity association",
+            )
 
     return association
 
@@ -261,7 +267,7 @@ def ensure_present(client, module):
                 ),
             )
 
-        validate_association(module, association)
+        validate_association(module, association, changed=True)
         association.pop("ResponseMetadata", None)
     elif changed and module.check_mode:
         association = scrub_none_parameters(
@@ -302,7 +308,7 @@ def ensure_absent(client, module):
             )
 
         if response is not None:
-            validate_association(module, response)
+            validate_association(module, response, changed=True)
             response.pop("ResponseMetadata", None)
             association = response
 
