@@ -131,7 +131,7 @@ accelerators:
       sample: DEPLOYED
     tags:
       description: The accelerator tags with key case preserved.
-      returned: when tags are managed or gathered
+      returned: always
       type: dict
     listeners:
       description: The accelerator listeners.

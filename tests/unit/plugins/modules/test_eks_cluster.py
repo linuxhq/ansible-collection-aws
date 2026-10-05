@@ -312,7 +312,7 @@ def test_vpc_endpoint_and_network_changes_use_separate_updates():
         ),
     ]
     assert nested.call_count == 2
-    wait_for_update.assert_called_once_with(client, module, "update-1")
+    wait_for_update.assert_called_once_with(client, module, "update-1", changed=True)
     assert raised.value.values["cluster"]["resources_vpc_config"] == {
         "endpoint_public_access": False,
         "subnet_ids": ["subnet-new"],
@@ -953,11 +953,13 @@ def test_auto_mode_load_balancing_updates_with_matching_create_only_network_sett
         "name": "example",
         "arn": "arn:example",
         "status": "ACTIVE",
+        "computeConfig": {"enabled": True, "nodePools": ["system"]},
         "kubernetesNetworkConfig": {
             "ipFamily": "ipv4",
             "serviceIpv4Cidr": "10.100.0.0/16",
             "elasticLoadBalancing": {"enabled": False},
         },
+        "storageConfig": {"blockStorage": {"enabled": True}},
     }
     client = Mock()
     client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
@@ -981,8 +983,236 @@ def test_auto_mode_load_balancing_updates_with_matching_create_only_network_sett
     client.update_cluster_config.assert_called_once_with(
         name="example",
         aws_retry=True,
+        computeConfig={"enabled": True},
         kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
+        storageConfig={"blockStorage": {"enabled": True}},
     )
+
+
+def test_auto_mode_node_pool_change_sends_every_capability_together():
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "computeConfig": {"enabled": True, "nodePools": ["system"], "nodeRoleArn": "arn:node"},
+        "kubernetesNetworkConfig": {"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": True}},
+        "storageConfig": {"blockStorage": {"enabled": True}},
+    }
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    module = FakeModule(
+        eks_params(
+            compute_config={"enabled": True, "node_pools": ["general-purpose", "system"], "node_role_arn": "arn:node"},
+            kubernetes_network_config={"elastic_load_balancing": {"enabled": True}},
+            storage_config={"block_storage": {"enabled": True}},
+        )
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    client.update_cluster_config.assert_called_once_with(
+        name="example",
+        aws_retry=True,
+        computeConfig={"enabled": True, "nodePools": ["general-purpose", "system"], "nodeRoleArn": "arn:node"},
+        kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
+        storageConfig={"blockStorage": {"enabled": True}},
+    )
+
+
+def test_auto_mode_request_fills_omitted_enabled_flags_from_the_cluster():
+    current = {
+        "computeConfig": {"enabled": True, "nodePools": ["system"], "nodeRoleArn": "arn:node"},
+        "kubernetesNetworkConfig": {"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": True}},
+        "storageConfig": {"blockStorage": {"enabled": True}},
+    }
+
+    assert plugin.auto_mode_request(current, {"computeConfig": {"nodePools": ["general-purpose"]}}) == {
+        "computeConfig": {"enabled": True, "nodePools": ["general-purpose"]},
+        "kubernetesNetworkConfig": {"elasticLoadBalancing": {"enabled": True}},
+        "storageConfig": {"blockStorage": {"enabled": True}},
+    }
+
+
+def test_auto_mode_request_never_sends_create_only_network_settings():
+    request = plugin.auto_mode_request(
+        {"kubernetesNetworkConfig": {"ipFamily": "ipv4", "serviceIpv4Cidr": "10.100.0.0/16"}},
+        {
+            "kubernetesNetworkConfig": {
+                "elasticLoadBalancing": {"enabled": False},
+                "ipFamily": "ipv4",
+                "serviceIpv4Cidr": "10.100.0.0/16",
+            }
+        },
+    )
+
+    assert request == {"kubernetesNetworkConfig": {"elasticLoadBalancing": {"enabled": False}}}
+
+
+@pytest.mark.parametrize("status", ["CREATING", "UPDATING"])
+def test_absent_deletes_a_cluster_that_fails_while_waiting(status):
+    client = eks_client()
+    client.delete_cluster = Mock()
+    module = FakeModule({"name": "example", "wait": False, "wait_delay": 15, "wait_timeout": 1200})
+    cluster = {"name": "example", "arn": "arn:example"}
+    with (
+        Stubber(client) as stubber,
+        patch.object(
+            plugin,
+            "describe_cluster",
+            side_effect=[dict(cluster, status=status), dict(cluster, status="FAILED")],
+        ),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_cluster_updates"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        # The native waiter stops as soon as the cluster reports FAILED.
+        stubber.add_response("describe_cluster", {"cluster": dict(cluster, status="FAILED")}, {"name": "example"})
+        plugin.ensure_absent(client, module)
+
+    stubber.assert_no_pending_responses()
+    client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
+    assert raised.value.values["changed"] is True
+
+
+def test_absent_still_fails_when_a_waited_cluster_is_not_failed():
+    client = eks_client()
+    module = FakeModule({"name": "example", "wait": False, "wait_delay": 15, "wait_timeout": 1200})
+    cluster = {"name": "example", "arn": "arn:example"}
+    with (
+        Stubber(client) as stubber,
+        patch.object(
+            plugin,
+            "describe_cluster",
+            side_effect=[dict(cluster, status="CREATING"), dict(cluster, status="DELETING")],
+        ),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        stubber.add_response("describe_cluster", {"cluster": dict(cluster, status="DELETING")}, {"name": "example"})
+        plugin.ensure_absent(client, module)
+
+    stubber.assert_no_pending_responses()
+    assert raised.value.values["msg"] == "Unable to wait for AWS EKS cluster example to become active"
+    assert raised.value.values["changed"] is False
+
+
+def test_check_mode_create_omits_unreturned_bootstrap_setting():
+    module = FakeModule(
+        eks_params(
+            bootstrap_self_managed_addons=True,
+            resources_vpc_config={"subnet_ids": ["subnet-1"]},
+            role_arn="arn:role",
+        ),
+        check_mode=True,
+    )
+    with patch.object(plugin, "describe_cluster", return_value=None), pytest.raises(ModuleExit) as raised:
+        plugin.ensure_present(Mock(), module)
+
+    assert "bootstrap_self_managed_addons" not in raised.value.values["cluster"]
+    assert raised.value.values["cluster"]["role_arn"] == "arn:role"
+
+
+def test_failure_after_create_reports_changed():
+    waiter = Mock()
+    waiter.wait.side_effect = WaiterError("cluster_active", "terminal failure state", {})
+    client = Mock(get_waiter=Mock(return_value=waiter))
+    client.create_cluster.return_value = {"cluster": {"arn": "arn:example", "name": "example", "status": "CREATING"}}
+    module = FakeModule(
+        eks_params(
+            resources_vpc_config={"subnet_ids": ["subnet-1"]},
+            role_arn="arn:role",
+            wait=True,
+            wait_delay=15,
+            wait_timeout=1200,
+        ),
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+
+
+def test_failure_after_an_update_reports_changed():
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "deletionProtection": False,
+        "tags": {"Old": "value"},
+    }
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    client.untag_resource.side_effect = plugin.ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "UntagResource"
+    )
+    module = FakeModule(eks_params(deletion_protection=True, tags={}))
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"] == "Unable to remove tags from EKS cluster example"
+
+
+def test_first_update_failure_reports_unchanged():
+    current = {"name": "example", "arn": "arn:example", "status": "ACTIVE", "deletionProtection": False}
+    client = Mock()
+    client.update_cluster_config.side_effect = plugin.ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "UpdateClusterConfig"
+    )
+    module = FakeModule(eks_params(deletion_protection=True))
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+
+
+def test_sdk_requirements_are_checked_before_the_first_update():
+    current = {"name": "example", "arn": "arn:example", "status": "ACTIVE", "deletionProtection": False}
+    client = Mock()
+    module = FakeModule(eks_params(deletion_protection=True, tags={"New": "value"}))
+
+    def require(module, client, service, methods):
+        if "tag_resource" in methods:
+            module.fail_json(msg="unsupported")
+
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods", side_effect=require),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleFail),
+    ):
+        plugin.ensure_present(client, module)
+
+    client.update_cluster_config.assert_not_called()
+
+
+def test_failed_update_wait_reports_changed():
+    client = Mock(describe_update=Mock(return_value={"update": {"id": "update-1", "status": "Failed"}}))
+    module = FakeModule({"name": "example", "wait_delay": 1, "wait_timeout": 10})
+    with patch.object(plugin, "require_client_methods"), pytest.raises(ModuleFail) as raised:
+        plugin.wait_for_update(client, module, "update-1", changed=True)
+
+    assert raised.value.values["changed"] is True
 
 
 def test_cluster_updates_describe_history_once_and_poll_only_in_progress_updates():

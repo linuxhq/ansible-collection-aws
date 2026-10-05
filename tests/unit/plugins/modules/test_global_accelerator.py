@@ -1,6 +1,7 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.exceptions import WaiterError
 
 from ansible_collections.linuxhq.aws.plugins.modules import global_accelerator as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -34,7 +35,7 @@ def test_listener_consolidation_releases_conflicting_ports_first(check_mode):
     remaining = {item["listener_arn"]: item["port_ranges"] for item in current}
     operations = []
 
-    def delete(c, m, accelerator_arn, arn):
+    def delete(c, m, accelerator_arn, arn, changed=False):
         remaining.pop(arn)
         operations.append(("delete", arn))
 
@@ -48,13 +49,23 @@ def test_listener_consolidation_releases_conflicting_ports_first(check_mode):
                     assert new["ToPort"] < old["from_port"] or new["FromPort"] > old["to_port"]
 
         operations.append(("update", request["ListenerArn"]))
+        return {
+            "Listener": {
+                "ClientAffinity": request["ClientAffinity"],
+                "ListenerArn": request["ListenerArn"],
+                "PortRanges": request["PortRanges"],
+                "Protocol": request["Protocol"],
+            }
+        }
 
     client.update_listener.side_effect = update
     with (
         patch.object(plugin, "get_listeners", return_value=current),
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "delete_listener", side_effect=delete),
-        patch.object(plugin, "wait_for_accelerator", side_effect=lambda *args: operations.append(("wait", None))),
+        patch.object(
+            plugin, "wait_for_accelerator", side_effect=lambda *args, **kwargs: operations.append(("wait", None))
+        ),
     ):
         changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
 
@@ -407,7 +418,10 @@ def test_endpoint_group_attachment_does_not_require_update():
         "traffic_dial_percentage": None,
     }
     assert not plugin.endpoint_group_requires_update(current, desired)
-    assert plugin.predicted_endpoint_group(current, desired)["endpoint_descriptions"][0]["attachment_arn"] == "arn:new"
+    # AWS endpoint descriptions never return the attachment ARN, so check mode does not predict it.
+    assert plugin.predicted_endpoint_group(current, desired)["endpoint_descriptions"] == [
+        {"endpoint_id": "endpoint-1", "weight": 128}
+    ]
 
 
 def test_listener_reconciliation_reuses_protocol_listener_for_update():
@@ -766,10 +780,11 @@ def test_absent_waits_for_prerequisites_when_wait_is_disabled():
     ):
         plugin.ensure_absent(client, module)
 
-    delete_listener.assert_called_once_with(client, module, "arn:accelerator", "arn:listener")
+    delete_listener.assert_called_once_with(client, module, "arn:accelerator", "arn:listener", changed=False)
     assert wait_for_accelerator.call_count == 2
     for call in wait_for_accelerator.call_args_list:
         assert call.args == (client, module, "arn:accelerator", "accelerator_deployed")
+        assert call.kwargs == {"changed": True}
 
     client.delete_accelerator.assert_called_once_with(AcceleratorArn="arn:accelerator", aws_retry=True)
 
@@ -789,8 +804,10 @@ def test_listener_deletion_waits_for_endpoint_group_deletion():
     ):
         plugin.delete_listener(client, module, "arn:accelerator", "arn:listener")
 
-    delete_endpoint_group.assert_called_once_with(client, module, "arn:group")
-    wait_for_accelerator.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed")
+    delete_endpoint_group.assert_called_once_with(client, module, "arn:group", changed=False)
+    wait_for_accelerator.assert_called_once_with(
+        client, module, "arn:accelerator", "accelerator_deployed", changed=True
+    )
     client.delete_listener.assert_called_once_with(ListenerArn="arn:listener", aws_retry=True)
     require.assert_called_once_with(
         module,
@@ -830,7 +847,9 @@ def test_listener_creation_waits_before_endpoint_groups():
     ):
         plugin.ensure_listeners(client, module, "arn:accelerator")
 
-    wait_for_accelerator.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed")
+    wait_for_accelerator.assert_called_once_with(
+        client, module, "arn:accelerator", "accelerator_deployed", changed=True
+    )
 
 
 def test_listener_replacement_retries_after_freeing_quota():
@@ -873,8 +892,10 @@ def test_listener_replacement_retries_after_freeing_quota():
     assert changed
     assert listeners[0]["listener_arn"] == "arn:new"
     assert client.create_listener.call_count == 2
-    delete_listener.assert_called_once_with(client, module, "arn:accelerator", "arn:old")
-    wait_for_accelerator.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed")
+    delete_listener.assert_called_once_with(client, module, "arn:accelerator", "arn:old", changed=False)
+    wait_for_accelerator.assert_called_once_with(
+        client, module, "arn:accelerator", "accelerator_deployed", changed=True
+    )
 
 
 def test_accelerator_creation_waits_before_listeners():
@@ -909,7 +930,9 @@ def test_accelerator_creation_waits_before_listeners():
     ):
         plugin.ensure_present(client, module)
 
-    wait_for_accelerator.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed")
+    wait_for_accelerator.assert_called_once_with(
+        client, module, "arn:accelerator", "accelerator_deployed", changed=True
+    )
     assert require.call_args.args[3] == {
         "create_accelerator": (
             "Enabled",
@@ -954,8 +977,16 @@ def test_listener_updates_release_ports_before_dependent_expansion(check_mode):
         assert not any(plugin.listeners_overlap(target, other) for key, other in active.items() if key != arn)
         pending[arn] = target
         events.append(arn)
+        return {
+            "Listener": {
+                "ClientAffinity": request["ClientAffinity"],
+                "ListenerArn": arn,
+                "PortRanges": request["PortRanges"],
+                "Protocol": request["Protocol"],
+            }
+        }
 
-    def wait(*args):
+    def wait(*args, **kwargs):
         active.update(pending)
         pending.clear()
         events.append("wait")
@@ -1440,6 +1471,184 @@ def test_omitted_client_affinity_keeps_the_existing_listener_setting():
     assert [item[0] for item in matched] == current
     assert updates == creates == deletes == []
 
-    module.params["listeners"] = [dict(desired, port_ranges=[{"from_port": 443, "to_port": 443}])]
-    matched, updates, creates, deletes = plugin.reconcile_listeners(module, current)
-    assert "ClientAffinity" not in plugin.listener_request(updates[0][1])
+
+def test_listener_update_keeps_current_client_affinity_and_returns_the_response():
+    current = {
+        "client_affinity": "SOURCE_IP",
+        "listener_arn": "arn:listener",
+        "port_ranges": [{"from_port": 80, "to_port": 80}],
+        "protocol": "TCP",
+    }
+    desired = {
+        "client_affinity": None,
+        "endpoint_groups": None,
+        "port_ranges": [{"from_port": 443, "to_port": 443}],
+        "protocol": "TCP",
+    }
+    client = Mock()
+    client.update_listener.return_value = {
+        "Listener": {
+            "ClientAffinity": "SOURCE_IP",
+            "ListenerArn": "arn:listener",
+            "PortRanges": [{"FromPort": 443, "ToPort": 443}],
+            "Protocol": "TCP",
+        }
+    }
+    module = FakeModule({"listeners": [desired], "purge_listeners": True})
+    with (
+        patch.object(plugin, "get_listeners", return_value=[current]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_accelerator"),
+    ):
+        changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    assert changed
+    client.update_listener.assert_called_once_with(
+        ClientAffinity="SOURCE_IP",
+        ListenerArn="arn:listener",
+        PortRanges=[{"FromPort": 443, "ToPort": 443}],
+        Protocol="TCP",
+        aws_retry=True,
+    )
+    assert listeners == [
+        {
+            "client_affinity": "SOURCE_IP",
+            "listener_arn": "arn:listener",
+            "port_ranges": [{"from_port": 443, "to_port": 443}],
+            "protocol": "TCP",
+        }
+    ]
+
+
+def test_listener_update_rejects_a_malformed_response_as_changed():
+    current = review_listener("arn:a", 80, 80)
+    client = Mock()
+    client.update_listener.return_value = {}
+    module = FakeModule({"listeners": [review_desired(443, 443)], "purge_listeners": True})
+    with (
+        patch.object(plugin, "get_listeners", return_value=[current]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    assert raised.value.values == {"changed": True, "msg": "Global Accelerator returned an invalid listener"}
+
+
+@pytest.mark.parametrize("mutated", [False, True])
+def test_listener_update_failure_reports_earlier_changes(mutated):
+    current = review_listener("arn:a", 80, 80)
+    client = Mock()
+    client.update_listener.side_effect = plugin.ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "UpdateListener"
+    )
+    module = FakeModule({"listeners": [review_desired(443, 443)], "purge_listeners": True})
+    with (
+        patch.object(plugin, "get_listeners", return_value=[current]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_listeners(client, module, "arn:accelerator", mutated=mutated)
+
+    assert raised.value.values["changed"] is mutated
+
+
+def test_absent_disable_failure_after_listener_deletion_reports_changed():
+    client = Mock()
+    client.update_accelerator.side_effect = plugin.ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "UpdateAccelerator"
+    )
+    module = FakeModule({"wait": False})
+    with (
+        patch.object(
+            plugin,
+            "get_accelerator",
+            return_value={"AcceleratorArn": "arn:accelerator", "Enabled": True},
+        ),
+        patch.object(plugin, "get_listeners", return_value=[{"listener_arn": "arn:listener"}]),
+        patch.object(plugin, "delete_listener"),
+        patch.object(plugin, "wait_for_accelerator"),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+
+
+def test_absent_disable_failure_without_earlier_changes_reports_unchanged():
+    client = Mock()
+    client.update_accelerator.side_effect = plugin.ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "UpdateAccelerator"
+    )
+    module = FakeModule({"wait": False})
+    with (
+        patch.object(
+            plugin,
+            "get_accelerator",
+            return_value={"AcceleratorArn": "arn:accelerator", "Enabled": True},
+        ),
+        patch.object(plugin, "get_listeners", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is False
+
+
+def test_listener_deletion_failure_after_endpoint_group_deletion_reports_changed():
+    client = Mock()
+    client.delete_listener.side_effect = plugin.ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "DeleteListener"
+    )
+    module = FakeModule({})
+    with (
+        patch.object(plugin, "get_endpoint_groups", return_value=[{"endpoint_group_arn": "arn:group"}]),
+        patch.object(plugin, "delete_endpoint_group"),
+        patch.object(plugin, "wait_for_accelerator"),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.delete_listener(client, module, "arn:accelerator", "arn:listener")
+
+    assert raised.value.values["changed"] is True
+
+
+def test_deployment_wait_failure_after_create_reports_changed():
+    client = Mock()
+    client.create_accelerator.return_value = {
+        "Accelerator": {
+            "AcceleratorArn": "arn:accelerator",
+            "Enabled": True,
+            "IpAddressType": "IPV4",
+            "Name": "example",
+        }
+    }
+    module = FakeModule(
+        {
+            "enabled": True,
+            "idempotency_token": None,
+            "ip_addresses": None,
+            "ip_address_type": "IPV4",
+            "listeners": None,
+            "name": "example",
+            "purge_tags": True,
+            "tags": None,
+            "wait": True,
+            "wait_delay": 1,
+            "wait_timeout": 1,
+        }
+    )
+    waiter = Mock()
+    waiter.wait.side_effect = WaiterError("accelerator_deployed", "timeout", {})
+    with (
+        patch.object(plugin, "get_accelerator", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        patch("ansible_collections.linuxhq.aws.plugins.module_utils.wait.build_waiter_factory") as factory,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        factory.return_value.get_waiter.return_value = waiter
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True

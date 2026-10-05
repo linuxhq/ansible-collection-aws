@@ -271,8 +271,11 @@ options:
   wait:
     description:
       - Whether to wait for the accelerator to finish deploying after changes
-        are applied, and for disable and delete operations to complete when
+        are applied, and for the accelerator deletion to complete when
         O(state=absent).
+      - When O(state=absent), the module always waits for listener and
+        endpoint group deletions and for the accelerator to be disabled,
+        because AWS deletes an accelerator only after these deploy.
       - Accelerator, listener, and endpoint group changes are applied first
         and share a single deployment wait.
     default: true
@@ -608,7 +611,7 @@ GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
 }
 
 
-def validate_accelerator(module, accelerator, expected_arn=None):
+def validate_accelerator(module, accelerator, expected_arn=None, changed=False):
     ip_sets = accelerator.get("IpSets") if isinstance(accelerator, dict) else None
     if (
         not isinstance(accelerator, dict)
@@ -630,12 +633,12 @@ def validate_accelerator(module, accelerator, expected_arn=None):
             )
         )
     ):
-        module.fail_json(msg="Global Accelerator returned an invalid accelerator")
+        module.fail_json(changed=changed, msg="Global Accelerator returned an invalid accelerator")
 
     return accelerator
 
 
-def validate_listener(module, listener):
+def validate_listener(module, listener, changed=False):
     port_ranges = listener.get("PortRanges") if isinstance(listener, dict) else None
     if (
         not isinstance(listener, dict)
@@ -651,12 +654,12 @@ def validate_listener(module, listener):
             for port_range in port_ranges or []
         )
     ):
-        module.fail_json(msg="Global Accelerator returned an invalid listener")
+        module.fail_json(changed=changed, msg="Global Accelerator returned an invalid listener")
 
     return listener
 
 
-def validate_endpoint_group(module, endpoint_group, expected_arn=None, expected_region=None):
+def validate_endpoint_group(module, endpoint_group, expected_arn=None, expected_region=None, changed=False):
     endpoint_descriptions = endpoint_group.get("EndpointDescriptions") if isinstance(endpoint_group, dict) else None
     port_overrides = endpoint_group.get("PortOverrides") if isinstance(endpoint_group, dict) else None
     if (
@@ -685,7 +688,7 @@ def validate_endpoint_group(module, endpoint_group, expected_arn=None, expected_
             )
         )
     ):
-        module.fail_json(msg="Global Accelerator returned an invalid endpoint group")
+        module.fail_json(changed=changed, msg="Global Accelerator returned an invalid endpoint group")
 
     return endpoint_group
 
@@ -703,7 +706,8 @@ def validate_tag_list(module, tags):
     return tags
 
 
-def get_accelerator_by_arn(client, module, accelerator_arn):
+def get_accelerator_by_arn(client, module, accelerator_arn, changed=False):
+    """Describe an accelerator; changed reports whether it was already modified, for failure results."""
     require_client_methods(
         module,
         client,
@@ -718,12 +722,13 @@ def get_accelerator_by_arn(client, module, accelerator_arn):
     except is_boto3_error_code("AcceleratorNotFoundException"):
         return None
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to describe AWS Global Accelerator {accelerator_arn}")
+        module.fail_json_aws(e, changed=changed, msg=f"Unable to describe AWS Global Accelerator {accelerator_arn}")
 
     return validate_accelerator(
         module,
         response.get("Accelerator") if isinstance(response, dict) else None,
         expected_arn=accelerator_arn,
+        changed=changed,
     )
 
 
@@ -768,7 +773,7 @@ def get_accelerator(client, module):
     return matches[0]
 
 
-def wait_for_accelerator(client, module, accelerator_arn, waiter_name):
+def wait_for_accelerator(client, module, accelerator_arn, waiter_name, changed=False):
     require_client_methods(
         module,
         client,
@@ -781,6 +786,7 @@ def wait_for_accelerator(client, module, accelerator_arn, waiter_name):
         GLOBAL_ACCELERATOR_WAITER_MODEL_DATA,
         waiter_name,
         f"Timed out waiting for AWS Global Accelerator {accelerator_arn}",
+        changed=changed,
         AcceleratorArn=accelerator_arn,
     )
 
@@ -1125,9 +1131,6 @@ def predicted_endpoint_group(current, desired):
             if configuration["client_ip_preservation_enabled"] is not None:
                 endpoint["client_ip_preservation_enabled"] = configuration["client_ip_preservation_enabled"]
 
-            if configuration.get("attachment_arn") is not None:
-                endpoint["attachment_arn"] = configuration["attachment_arn"]
-
             endpoint_descriptions.append(endpoint)
 
         predicted["endpoint_descriptions"] = endpoint_descriptions
@@ -1135,7 +1138,7 @@ def predicted_endpoint_group(current, desired):
     return predicted
 
 
-def delete_endpoint_group(client, module, endpoint_group_arn):
+def delete_endpoint_group(client, module, endpoint_group_arn, changed=False):
     require_client_methods(
         module,
         client,
@@ -1152,17 +1155,20 @@ def delete_endpoint_group(client, module, endpoint_group_arn):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
+            changed=changed,
             msg=f"Unable to delete AWS Global Accelerator endpoint group {endpoint_group_arn}",
         )
 
 
-def delete_listener(client, module, accelerator_arn, listener_arn):
+def delete_listener(client, module, accelerator_arn, listener_arn, changed=False):
+    """Delete a listener and its endpoint groups; changed reports earlier modifications, for failure results."""
     endpoint_groups = get_endpoint_groups(client, module, listener_arn)
     for endpoint_group in endpoint_groups:
-        delete_endpoint_group(client, module, endpoint_group["endpoint_group_arn"])
+        delete_endpoint_group(client, module, endpoint_group["endpoint_group_arn"], changed=changed)
+        changed = True
 
     if endpoint_groups:
-        wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed")
+        wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True)
 
     require_client_methods(
         module,
@@ -1180,11 +1186,13 @@ def delete_listener(client, module, accelerator_arn, listener_arn):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
+            changed=changed,
             msg=f"Unable to delete AWS Global Accelerator listener {listener_arn}",
         )
 
 
-def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups):
+def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups, mutated=False):
+    """Reconcile endpoint groups; mutated reports earlier modifications, for failure results."""
     current_by_region = {}
     if listener_arn is not None:
         for endpoint_group in get_endpoint_groups(client, module, listener_arn):
@@ -1243,13 +1251,16 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
+                    changed=mutated,
                     msg=f"Unable to create AWS Global Accelerator endpoint group {region} for {listener_arn}",
                 )
 
+            mutated = True
             endpoint_group = validate_endpoint_group(
                 module,
                 response.get("EndpointGroup") if isinstance(response, dict) else None,
                 expected_region=region,
+                changed=True,
             )
 
             results.append(
@@ -1290,13 +1301,16 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
+                    changed=mutated,
                     msg=f"Unable to update AWS Global Accelerator endpoint group {endpoint_group_arn}",
                 )
 
+            mutated = True
             endpoint_group = validate_endpoint_group(
                 module,
                 response.get("EndpointGroup") if isinstance(response, dict) else None,
                 expected_arn=endpoint_group_arn,
+                changed=True,
             )
 
             results.append(
@@ -1316,7 +1330,8 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups):
 
         if not module.check_mode:
             for endpoint_group in remaining:
-                delete_endpoint_group(client, module, endpoint_group["endpoint_group_arn"])
+                delete_endpoint_group(client, module, endpoint_group["endpoint_group_arn"], changed=mutated)
+                mutated = True
     else:
         results.extend(remaining)
 
@@ -1324,7 +1339,8 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups):
     return changed, results
 
 
-def ensure_listeners(client, module, accelerator_arn):
+def ensure_listeners(client, module, accelerator_arn, mutated=False):
+    """Reconcile listeners; mutated reports earlier modifications, for failure results."""
     current_listeners = []
     if accelerator_arn is not None:
         current_listeners = get_listeners(client, module, accelerator_arn)
@@ -1346,7 +1362,10 @@ def ensure_listeners(client, module, accelerator_arn):
     create_requests = []
     if not module.check_mode:
         for current, desired in updates:
-            request = listener_request(desired)
+            # UpdateListener documents NONE as the ClientAffinity default, so the current value is kept explicitly.
+            request = listener_request(
+                dict(desired, client_affinity=desired["client_affinity"] or current["client_affinity"])
+            )
             request["ListenerArn"] = current["listener_arn"]
             require_client_methods(module, client, "Global Accelerator", {"update_listener": tuple(request)})
             update_requests[current["listener_arn"]] = request
@@ -1377,10 +1396,11 @@ def ensure_listeners(client, module, accelerator_arn):
     ]
     if conflicting_deletes and not module.check_mode:
         for current in conflicting_deletes:
-            delete_listener(client, module, accelerator_arn, current["listener_arn"])
+            delete_listener(client, module, accelerator_arn, current["listener_arn"], changed=mutated)
+            mutated = True
             deletes.remove(current)
 
-        wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed")
+        wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True)
 
     for current, desired in matched:
         result_listeners.append((dict(current), desired))
@@ -1400,18 +1420,28 @@ def ensure_listeners(client, module, accelerator_arn):
 
         request = update_requests[listener_arn]
         try:
-            client.update_listener(
+            response = client.update_listener(
                 **request,
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
+                changed=mutated,
                 msg=f"Unable to update AWS Global Accelerator listener {listener_arn}",
             )
 
+        mutated = True
+        listener = validate_listener(
+            module,
+            response.get("Listener") if isinstance(response, dict) else None,
+            changed=True,
+        )
+        result["client_affinity"] = listener["ClientAffinity"]
+        result["listener_arn"] = listener["ListenerArn"]
+
         if any(other is not desired and listeners_overlap(current, other) for other in desired_changes):
-            wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed")
+            wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True)
 
     for index, desired in enumerate(creates):
         # Predict the AWS creation default when client_affinity is omitted.
@@ -1435,38 +1465,44 @@ def ensure_listeners(client, module, accelerator_arn):
                 listener = validate_listener(
                     module,
                     response.get("Listener") if isinstance(response, dict) else None,
+                    changed=True,
                 )
                 break
             except is_boto3_error_code("LimitExceededException") as e:
                 if not deletes:
                     module.fail_json_aws(
                         e,
+                        changed=mutated,
                         msg=f"Unable to create AWS Global Accelerator listener for {accelerator_arn}",
                     )
 
                 current = deletes.pop(0)
-                delete_listener(client, module, accelerator_arn, current["listener_arn"])
-                wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed")
+                delete_listener(client, module, accelerator_arn, current["listener_arn"], changed=mutated)
+                mutated = True
+                wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True)
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
+                    changed=mutated,
                     msg=f"Unable to create AWS Global Accelerator listener for {accelerator_arn}",
                 )
 
+        mutated = True
         result["client_affinity"] = listener["ClientAffinity"]
         result["listener_arn"] = listener["ListenerArn"]
         result_listeners.append((result, desired))
 
     if not module.check_mode:
         for current in deletes:
-            delete_listener(client, module, accelerator_arn, current["listener_arn"])
+            delete_listener(client, module, accelerator_arn, current["listener_arn"], changed=mutated)
+            mutated = True
 
     if (
         changed
         and not module.check_mode
         and any(item[1] and item[1]["endpoint_groups"] is not None for item in result_listeners)
     ):
-        wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed")
+        wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True)
 
     results = []
     for result, desired in result_listeners:
@@ -1476,8 +1512,10 @@ def ensure_listeners(client, module, accelerator_arn):
                 module,
                 result.get("listener_arn"),
                 desired["endpoint_groups"],
+                mutated=mutated,
             )
             changed = changed or endpoint_groups_changed
+            mutated = mutated or (endpoint_groups_changed and not module.check_mode)
             result["endpoint_groups"] = endpoint_groups
 
         results.append(result)
@@ -1500,8 +1538,11 @@ def ensure_absent(client, module):
 
         listeners = get_listeners(client, module, accelerator_arn)
 
+        # Failures after the first deletion report changed=True.
+        mutated = False
         for listener in listeners:
-            delete_listener(client, module, accelerator_arn, listener["listener_arn"])
+            delete_listener(client, module, accelerator_arn, listener["listener_arn"], changed=mutated)
+            mutated = True
 
         if listeners:
             wait_for_accelerator(
@@ -1509,6 +1550,7 @@ def ensure_absent(client, module):
                 module,
                 accelerator_arn,
                 "accelerator_deployed",
+                changed=True,
             )
 
         if accelerator.get("Enabled"):
@@ -1532,14 +1574,17 @@ def ensure_absent(client, module):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
+                    changed=mutated,
                     msg=f"Unable to disable AWS Global Accelerator {accelerator_arn}",
                 )
 
+            mutated = True
             wait_for_accelerator(
                 client,
                 module,
                 accelerator_arn,
                 "accelerator_deployed",
+                changed=True,
             )
 
         require_client_methods(
@@ -1556,7 +1601,7 @@ def ensure_absent(client, module):
         except is_boto3_error_code("AcceleratorNotFoundException"):
             pass
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to delete AWS Global Accelerator {accelerator_arn}")
+            module.fail_json_aws(e, changed=mutated, msg=f"Unable to delete AWS Global Accelerator {accelerator_arn}")
 
         if module.params["wait"]:
             wait_for_accelerator(
@@ -1564,6 +1609,7 @@ def ensure_absent(client, module):
                 module,
                 accelerator_arn,
                 "accelerator_deleted",
+                changed=True,
             )
 
     module.exit_json(
@@ -1723,6 +1769,7 @@ def ensure_present(client, module):
         accelerator = validate_accelerator(
             module,
             response.get("Accelerator") if isinstance(response, dict) else None,
+            changed=True,
         )
     elif created and module.check_mode:
         # Predict the AWS creation defaults for omitted settings.
@@ -1768,6 +1815,7 @@ def ensure_present(client, module):
             module,
             response.get("Accelerator") if isinstance(response, dict) else None,
             expected_arn=request["AcceleratorArn"],
+            changed=True,
         )
     elif resource_changed and module.check_mode:
         accelerator = dict(accelerator)
@@ -1778,6 +1826,8 @@ def ensure_present(client, module):
         if "ip_address_type" in desired:
             accelerator["IpAddressType"] = desired["ip_address_type"]
 
+    # Failures after the accelerator was created or updated report changed=True.
+    mutated = not module.check_mode and (created or resource_changed)
     listeners = None
     listeners_changed = False
     if module.params["listeners"] is not None:
@@ -1787,16 +1837,19 @@ def ensure_present(client, module):
                 module,
                 accelerator["AcceleratorArn"],
                 "accelerator_deployed",
+                changed=True,
             )
 
         listeners_changed, listeners = ensure_listeners(
             client,
             module,
             (accelerator or {}).get("AcceleratorArn"),
+            mutated=mutated,
         )
         changed = changed or listeners_changed
+        mutated = mutated or (listeners_changed and not module.check_mode)
 
-    if module.params["wait"] and not module.check_mode and (created or resource_changed or listeners_changed):
+    if module.params["wait"] and not module.check_mode and mutated:
         accelerator_arn = (accelerator or {}).get("AcceleratorArn")
 
         if accelerator_arn:
@@ -1805,10 +1858,11 @@ def ensure_present(client, module):
                 module,
                 accelerator_arn,
                 "accelerator_deployed",
+                changed=True,
             )
-            accelerator = get_accelerator_by_arn(client, module, accelerator_arn)
+            accelerator = get_accelerator_by_arn(client, module, accelerator_arn, changed=True)
             if accelerator is None:
-                module.fail_json(msg=f"AWS Global Accelerator {accelerator_arn} disappeared after update")
+                module.fail_json(changed=True, msg=f"AWS Global Accelerator {accelerator_arn} disappeared after update")
 
     if accelerator is not None and tags is not None:
         if not created and not module.check_mode:
