@@ -1,0 +1,10 @@
+---
+minor_changes:
+  - eks_cluster - check the cluster's update history once before deleting it, polling only in-progress updates
+    under a single ``wait_timeout`` instead of waiting on every historical update with its own timeout.
+bugfixes:
+  - eks_cluster - stop waiting as soon as a cluster reaches a state that rules out the requested one, such as
+    ``FAILED`` while waiting for ``ACTIVE``, instead of waiting until ``wait_timeout`` expires.
+  - eks_cluster - fail with a clear message before making any change when ``kubernetes_network_config.ip_family``
+    or ``kubernetes_network_config.service_ipv4_cidr`` differs from an existing cluster, since EKS only accepts
+    them at creation.
