@@ -106,7 +106,7 @@ provisioner:
                   "{{ ec2_vpc_net_list.0.cidr_block |
                       ansible.utils.ipsubnet(25, 0) }}"
               - name: molecule-b
-                az: us-east-1b
+                az: us-east-1a
                 cidr:
                   "{{ ec2_vpc_net_list.0.cidr_block |
                       ansible.utils.ipsubnet(25, 1) }}"
