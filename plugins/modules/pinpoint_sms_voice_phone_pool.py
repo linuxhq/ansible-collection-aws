@@ -365,15 +365,19 @@ def select_pool_by_id(module, pools, pool_id):
     return pools[0]
 
 
+def pool_with_details(client, module, pool):
+    pool = pool_with_origination_identities(client, module, pool)
+
+    return pool_with_tags(client, module, pool)
+
+
 def get_pool_by_id(client, module, pool_id):
     pools = describe_pools(client, module, PoolIds=[pool_id])
     pool = select_pool_by_id(module, pools, pool_id)
     if pool is None:
         return None
 
-    pool = pool_with_origination_identities(client, module, pool)
-
-    return pool_with_tags(client, module, pool)
+    return pool_with_details(client, module, pool)
 
 
 def wait_for_pool_active(client, module, pool_id):
@@ -552,8 +556,7 @@ def ensure_present(client, module):
         and current.get("Status") != "ACTIVE"
         and current.get("PoolId")
     ):
-        wait_for_pool_active(client, module, current["PoolId"])
-        current = get_pool_by_id(client, module, current["PoolId"]) or current
+        current = pool_with_details(client, module, wait_for_pool_active(client, module, current["PoolId"]))
 
     update_request = {}
     if (
@@ -582,8 +585,7 @@ def ensure_present(client, module):
         and current.get("Status") != "ACTIVE"
         and current.get("PoolId")
     ):
-        wait_for_pool_active(client, module, current["PoolId"])
-        current = get_pool_by_id(client, module, current["PoolId"]) or current
+        current = pool_with_details(client, module, wait_for_pool_active(client, module, current["PoolId"]))
         update_request = {}
         if (
             deletion_protection_enabled is not None
@@ -677,9 +679,9 @@ def ensure_present(client, module):
 
         if wait and pool_changed and current.get("PoolId"):
             if current.get("Status") != "ACTIVE":
-                wait_for_pool_active(client, module, current["PoolId"])
-
-            current = get_pool_by_id(client, module, current["PoolId"]) or current
+                current = pool_with_details(client, module, wait_for_pool_active(client, module, current["PoolId"]))
+            else:
+                current = get_pool_by_id(client, module, current["PoolId"]) or current
     elif changed and module.check_mode:
         new_pool = current is None
         current = dict(current or {})

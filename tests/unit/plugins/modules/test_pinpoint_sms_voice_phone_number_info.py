@@ -29,12 +29,97 @@ def test_ids_do_not_send_the_implicit_owner():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[]) as query,
+        patch.object(plugin, "paginated_query_with_retries", return_value={"PhoneNumbers": []}) as query,
+        patch.object(plugin, "query_list") as query_list,
         pytest.raises(ModuleExit),
     ):
         plugin.main()
 
     assert query.call_args.kwargs == {"PhoneNumberIds": ["phone-1"]}
+    query_list.assert_not_called()
+
+
+def test_missing_ids_are_omitted_from_results():
+    missing = plugin.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},
+        "DescribePhoneNumbers",
+    )
+    client = Mock()
+    module = FakeModule(
+        {
+            "filters": {"status": "ACTIVE"},
+            "max_results": 10,
+            "owner": None,
+            "phone_number_ids": ["phone-missing", "phone-1"],
+        },
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=[missing, {"PhoneNumbers": [{"PhoneNumberId": "phone-1"}]}],
+        ) as query,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert [item.kwargs["PhoneNumberIds"] for item in query.call_args_list] == [["phone-missing"], ["phone-1"]]
+    assert query.call_args.kwargs["MaxResults"] == 10
+    assert query.call_args.kwargs["Filters"] == [{"Name": "status", "Values": ["ACTIVE"]}]
+    assert raised.value.values["phone_number_ids"] == ["phone-1"]
+    assert raised.value.values["changed"] is False
+
+
+def test_only_missing_ids_return_empty_results():
+    missing = plugin.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},
+        "DescribePhoneNumbers",
+    )
+    module = FakeModule(
+        {
+            "filters": None,
+            "max_results": None,
+            "owner": None,
+            "phone_number_ids": ["phone-missing"],
+        }
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "paginated_query_with_retries", side_effect=missing),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["phone_number_ids"] == []
+    assert raised.value.values["phone_numbers"] == []
+
+
+def test_id_lookup_fails_on_other_errors():
+    denied = plugin.ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
+        "DescribePhoneNumbers",
+    )
+    module = FakeModule(
+        {
+            "filters": None,
+            "max_results": None,
+            "owner": None,
+            "phone_number_ids": ["phone-1"],
+        }
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "paginated_query_with_retries", side_effect=denied),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == "Unable to describe Pinpoint SMS Voice V2 phone number phone-1"
 
 
 def test_empty_result_does_not_require_tag_operations():

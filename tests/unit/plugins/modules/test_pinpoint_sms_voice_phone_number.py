@@ -1,4 +1,4 @@
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 import pytest
 
@@ -452,7 +452,15 @@ def test_absent_removes_pool_and_deletion_protection_before_release():
                 "Status": "ACTIVE",
             },
         ),
-        patch.object(plugin, "wait_for_phone_number_active") as wait_for_phone_number_active,
+        patch.object(
+            plugin,
+            "wait_for_phone_number_active",
+            return_value={
+                "DeletionProtectionEnabled": True,
+                "PhoneNumberId": "phone-1",
+                "Status": "ACTIVE",
+            },
+        ) as wait_for_phone_number_active,
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -468,7 +476,10 @@ def test_absent_removes_pool_and_deletion_protection_before_release():
         DeletionProtectionEnabled=False,
         aws_retry=True,
     )
-    wait_for_phone_number_active.assert_called_once_with(client, module, "phone-1")
+    assert wait_for_phone_number_active.call_args_list == [
+        call(client, module, "phone-1"),
+        call(client, module, "phone-1"),
+    ]
     client.release_phone_number.assert_called_once_with(PhoneNumberId="phone-1", aws_retry=True)
     assert raised.value.values["changed"]
 
@@ -561,7 +572,7 @@ def test_explicit_number_tags_preserve_resource_identity():
                 check_mode=check,
             )
             with (
-                patch.object(plugin, "query_list", return_value=[current]),
+                patch.object(plugin, "get_phone_number", return_value=current),
                 patch.object(plugin, "phone_number_tags", return_value={"Keep": "old", "Extra": "preserved"}),
                 patch.object(plugin, "require_client_methods"),
                 pytest.raises(ModuleExit) as raised,
@@ -684,3 +695,106 @@ def test_new_number_request_omits_unset_settings():
     assert "DeletionProtectionEnabled" not in request
     assert "InternationalSendingEnabled" not in request
     assert "OptOutListName" not in request
+
+
+def test_absent_waits_for_disassociation_before_release():
+    client = Mock()
+    client.release_phone_number.return_value = {"PhoneNumberId": "phone-1", "Status": "DELETED"}
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
+    events = Mock()
+    events.attach_mock(client.disassociate_origination_identity, "disassociate")
+    events.attach_mock(client.release_phone_number, "release")
+    events.wait.return_value = {"PhoneNumberId": "phone-1", "Status": "ACTIVE"}
+
+    with (
+        patch.object(
+            plugin,
+            "get_phone_number",
+            return_value={"PhoneNumberId": "phone-1", "PoolId": "pool-1", "Status": "ACTIVE"},
+        ),
+        patch.object(plugin, "wait_for_phone_number_active", events.wait),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert [name for name, args, kwargs in events.mock_calls] == ["disassociate", "wait", "release"]
+    client.update_phone_number.assert_not_called()
+    assert raised.value.values["changed"]
+
+
+def test_absent_stops_when_number_disappears_after_disassociation():
+    client = Mock()
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
+
+    with (
+        patch.object(
+            plugin,
+            "get_phone_number",
+            return_value={"PhoneNumberId": "phone-1", "PoolId": "pool-1", "Status": "ACTIVE"},
+        ),
+        patch.object(plugin, "wait_for_phone_number_active", return_value={}),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"]
+    assert "phone_number" not in raised.value.values
+    client.release_phone_number.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_pooled_number_setting_changes_fail_before_mutation(check_mode):
+    client = Mock()
+    module = FakeModule(
+        phone_number_params(deletion_protection_enabled=False, opt_out_list_name="list-1", tags={"Name": "x"}),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "query_list", return_value=[existing_number(PoolId="pool-1")]),
+        patch.object(plugin, "phone_number_tags", return_value={"Name": "x"}),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    message = "Unable to update deletion_protection_enabled, opt_out_list_name for Pinpoint SMS Voice V2 phone number phone-1 in pool pool-1"
+    assert raised.value.values["msg"] == message
+    client.update_phone_number.assert_not_called()
+    client.tag_resource.assert_not_called()
+    client.untag_resource.assert_not_called()
+
+
+def test_pooled_number_without_setting_changes_is_unchanged():
+    client = Mock()
+    module = FakeModule(phone_number_params(deletion_protection_enabled=True))
+    with (
+        patch.object(plugin, "query_list", return_value=[existing_number(PoolId="pool-1")]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+    client.update_phone_number.assert_not_called()
+
+
+def test_missing_explicit_number_reports_the_module_message():
+    missing = plugin.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},
+        "DescribePhoneNumbers",
+    )
+    client = Mock()
+    module = FakeModule(phone_number_params(phone_number_id="phone-missing"))
+    with (
+        patch.object(plugin, "paginated_query_with_retries", side_effect=missing) as query,
+        patch.object(plugin, "query_list") as query_list,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == (
+        "The specified phone number was not found or does not match the requested attributes"
+    )
+    assert query.call_args.kwargs == {"PhoneNumberIds": ["phone-missing"]}
+    query_list.assert_not_called()
+    client.request_phone_number.assert_not_called()

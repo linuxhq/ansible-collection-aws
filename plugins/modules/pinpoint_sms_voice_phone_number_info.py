@@ -39,6 +39,7 @@ options:
   phone_number_ids:
     description:
       - Phone number IDs used to limit the result set.
+      - IDs that do not exist are omitted from the results.
       - This must contain at most 5 entries.
       - Mutually exclusive with O(owner).
     elements: str
@@ -171,6 +172,7 @@ except ImportError:
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
+    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -183,6 +185,25 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+
+
+def describe_phone_numbers_by_id(module, client, request):
+    phone_numbers = []
+    for phone_number_id in request["PhoneNumberIds"]:
+        try:
+            response = paginated_query_with_retries(
+                client,
+                "describe_phone_numbers",
+                **dict(request, PhoneNumberIds=[phone_number_id]),
+            )
+        except is_boto3_error_code("ResourceNotFoundException"):
+            continue
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, msg=f"Unable to describe Pinpoint SMS Voice V2 phone number {phone_number_id}")
+
+        phone_numbers.extend(response.get("PhoneNumbers", []))
+
+    return phone_numbers
 
 
 def validate_phone_number(module, phone_number):
@@ -244,14 +265,17 @@ def main():
         },
     )
 
-    phone_numbers = query_list(
-        module,
-        client,
-        "describe_phone_numbers",
-        "PhoneNumbers",
-        "Unable to describe Pinpoint SMS Voice V2 phone numbers",
-        **request,
-    )
+    if phone_number_ids:
+        phone_numbers = describe_phone_numbers_by_id(module, client, request)
+    else:
+        phone_numbers = query_list(
+            module,
+            client,
+            "describe_phone_numbers",
+            "PhoneNumbers",
+            "Unable to describe Pinpoint SMS Voice V2 phone numbers",
+            **request,
+        )
 
     for phone_number in phone_numbers:
         validate_phone_number(module, phone_number)

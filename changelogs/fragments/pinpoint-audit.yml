@@ -1,0 +1,20 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number_info - omit ``phone_number_ids`` entries that do not exist instead of failing,
+    and still return the IDs that do exist.
+  - pinpoint_sms_voice_phone_pool_info - omit ``pool_ids`` entries that do not exist instead of failing, and still
+    return the IDs that do exist.
+  - pinpoint_sms_voice_phone_pool_info - require the origination identity and tag operations only when pools are
+    returned.
+  - pinpoint_sms_voice_phone_number - fail before any change, including in check mode, when
+    ``deletion_protection_enabled``, ``international_sending_enabled``, or ``opt_out_list_name`` would change on a
+    number associated with a pool, since AWS rejects ``UpdatePhoneNumber`` for pooled numbers.
+  - pinpoint_sms_voice_phone_number - wait for the number to become active after removing it from its pool and
+    before disabling deletion protection or releasing it.
+  - pinpoint_sms_voice_phone_number - report the module's not-found message when ``phone_number_id`` does not exist
+    with ``state=present``, instead of a generic describe failure.
+  - pinpoint_sms_voice_phone_number - document that the ``tags`` return value is returned only when ``tags`` is
+    provided with ``state=present``.
+trivial:
+  - pinpoint_sms_voice_phone_pool - reuse the pool returned by the activation wait instead of describing it again.
+...
