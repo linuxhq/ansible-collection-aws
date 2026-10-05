@@ -490,3 +490,67 @@ def test_service_managed_certificate_is_not_reused():
 
     assert result["changed"] is True
     assert result["certificate_arn"] == "arn:new"
+
+
+def run_tagged_request(client, tags, check_mode=False):
+    client.describe_certificate.return_value = issued_certificate("arn:match")
+    module = FakeModule(
+        {
+            "domain_name": "example.com",
+            "idempotency_token": None,
+            "purge_tags": True,
+            "subject_alternative_names": None,
+            "tags": tags,
+        },
+        check_mode=check_mode,
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[{"CertificateArn": "arn:match", "DomainName": "example.com"}]),
+        pytest.raises((ModuleExit, ModuleFail)) as result,
+    ):
+        plugin.main()
+
+    return result.value.values
+
+
+def test_key_only_tags_match_empty_desired_values():
+    client = Mock()
+    client.list_tags_for_certificate.return_value = {"Tags": [{"Key": "Flag"}, {"Key": "Name", "Value": "web"}]}
+
+    result = run_tagged_request(client, {"Flag": "", "Name": "web"})
+
+    assert result["changed"] is False
+    client.add_tags_to_certificate.assert_not_called()
+    client.remove_tags_from_certificate.assert_not_called()
+
+
+def test_key_only_tags_are_updated_and_purged():
+    client = Mock()
+    client.list_tags_for_certificate.return_value = {"Tags": [{"Key": "Flag"}, {"Key": "Old"}]}
+
+    result = run_tagged_request(client, {"Flag": "on"})
+
+    assert result["changed"] is True
+    client.remove_tags_from_certificate.assert_called_once_with(
+        CertificateArn="arn:match", Tags=[{"Key": "Old"}], aws_retry=True
+    )
+    client.add_tags_to_certificate.assert_called_once_with(
+        CertificateArn="arn:match", Tags=[{"Key": "Flag", "Value": "on"}], aws_retry=True
+    )
+
+
+@pytest.mark.parametrize(
+    "response",
+    [None, {"Tags": None}, {"Tags": ["Name"]}, {"Tags": [{"Value": "web"}]}, {"Tags": [{"Key": "Name", "Value": 1}]}],
+)
+def test_rejects_invalid_certificate_tags(response):
+    client = Mock()
+    client.list_tags_for_certificate.return_value = response
+
+    result = run_tagged_request(client, {"Name": "web"})
+
+    assert result["msg"] == "AWS Certificate Manager returned invalid tags for certificate arn:match"
+    client.add_tags_to_certificate.assert_not_called()

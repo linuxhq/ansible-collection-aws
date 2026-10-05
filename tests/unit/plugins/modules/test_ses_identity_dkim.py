@@ -11,6 +11,8 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleExit,
     ModuleFail,
     ModuleInitialized,
+    assert_documents_shape,
+    documented_returns,
 )
 
 EASY = {"SigningAttributesOrigin": "AWS_SES", "SigningEnabled": True, "Status": "SUCCESS", "Tokens": ["a", "b", "c"]}
@@ -145,3 +147,29 @@ def test_rejects_invalid_dkim_attributes():
     result, _require = run(FakeModule(params(), client=client))
 
     assert result.values["msg"] == "AWS SES returned invalid DKIM attributes for identity example.com"
+
+
+def test_regional_easy_dkim_with_tokens_is_not_regenerated():
+    regional = dict(EASY, SigningAttributesOrigin="AWS_SES_US_EAST_1")
+    client = client_with(regional)
+    result, _require = run(FakeModule(params(), client=client))
+
+    assert not result.values["changed"]
+    assert result.values["dkim_attributes"]["signing_attributes_origin"] == "AWS_SES_US_EAST_1"
+    assert result.values["dkim_attributes"]["tokens"] == ["a", "b", "c"]
+    client.put_email_identity_dkim_signing_attributes.assert_not_called()
+    client.put_email_identity_dkim_attributes.assert_not_called()
+
+
+def test_regional_easy_dkim_without_tokens_is_generated():
+    client = client_with({"SigningAttributesOrigin": "AWS_SES_US_EAST_1", "SigningEnabled": True, "Tokens": []}, EASY)
+    result, _require = run(FakeModule(params(), client=client))
+
+    assert result.values["changed"]
+    client.put_email_identity_dkim_signing_attributes.assert_called_once_with(
+        EmailIdentity="example.com", SigningAttributesOrigin="AWS_SES", aws_retry=True
+    )
+
+
+def test_return_documents_every_dkim_attribute():
+    assert_documents_shape(documented_returns(plugin)["dkim_attributes"]["contains"], "sesv2", "DkimAttributes")

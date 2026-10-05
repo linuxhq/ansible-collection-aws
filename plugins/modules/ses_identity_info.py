@@ -67,19 +67,43 @@ identities:
   type: list
   elements: dict
   contains:
+    configuration_set_name:
+      description: The configuration set used by default when sending from the identity.
+      returned: when available
+      type: str
     dkim_attributes:
       description: The identity's DKIM settings.
       returned: when available
       type: dict
       contains:
+        current_signing_key_length:
+          description: The key length of the DKIM key pair currently in use, such as V(RSA_2048_BIT).
+          returned: when available
+          type: str
+        last_key_generation_timestamp:
+          description: When the DKIM key pair was last generated, in ISO 8601 format.
+          returned: when available
+          type: str
+        next_signing_key_length:
+          description: The key length of the next DKIM key pair to be generated, such as V(RSA_2048_BIT).
+          returned: when available
+          type: str
         signing_attributes_origin:
-          description: Whether DKIM uses Easy DKIM (C(AWS_SES)) or keys you supply.
+          description:
+            - How the DKIM keys were provided.
+            - V(AWS_SES) and the regional C(AWS_SES_<REGION>) values, such as
+              V(AWS_SES_US_EAST_1), indicate Easy DKIM; V(EXTERNAL) indicates keys
+              you supply.
           returned: when available
           type: str
         signing_enabled:
           description: Whether DKIM signing is enabled.
           returned: when available
           type: bool
+        signing_hosted_zone:
+          description: The hosted zone where SES publishes the DKIM public key.
+          returned: when available
+          type: str
         status:
           description: The DKIM verification status.
           returned: when available
@@ -89,10 +113,77 @@ identities:
           returned: when available
           type: list
           elements: str
+    feedback_forwarding_status:
+      description: Whether bounce and complaint notifications are forwarded by email.
+      returned: when available
+      type: bool
+    identity_type:
+      description: The SES v2 identity type, such as V(DOMAIN), V(EMAIL_ADDRESS), or V(MANAGED_DOMAIN).
+      returned: when available
+      type: str
+    mail_from_attributes:
+      description: The identity's custom MAIL FROM domain settings.
+      returned: when available
+      type: dict
+      contains:
+        behavior_on_mx_failure:
+          description: The action SES takes when the MAIL FROM domain MX record is not found.
+          returned: when available
+          type: str
+        mail_from_domain:
+          description: The custom MAIL FROM domain.
+          returned: when available
+          type: str
+        mail_from_domain_status:
+          description: The custom MAIL FROM domain verification status.
+          returned: when available
+          type: str
     name:
       description: The SES identity name.
       returned: always
       type: str
+    policies:
+      description: The identity's sending authorization policy documents as JSON strings, keyed by policy name.
+      returned: when available
+      type: dict
+    tags:
+      description: The identity's tags; tag keys keep their case.
+      returned: when available
+      type: dict
+    verification_info:
+      description: Details about the identity's most recent verification attempts.
+      returned: when available
+      type: dict
+      contains:
+        error_type:
+          description: The reason the most recent verification attempt failed.
+          returned: when available
+          type: str
+        last_checked_timestamp:
+          description: When SES last checked the identity's verification, in ISO 8601 format.
+          returned: when available
+          type: str
+        last_success_timestamp:
+          description: When the identity was last successfully verified, in ISO 8601 format.
+          returned: when available
+          type: str
+        soa_record:
+          description: The SOA record SES found for the domain during verification.
+          returned: when available
+          type: dict
+          contains:
+            admin_email:
+              description: The administrative contact email address.
+              returned: when available
+              type: str
+            primary_name_server:
+              description: The primary name server.
+              returned: when available
+              type: str
+            serial_number:
+              description: The SOA serial number.
+              returned: when available
+              type: int
     verification_status:
       description: The identity's verification status.
       returned: when available
