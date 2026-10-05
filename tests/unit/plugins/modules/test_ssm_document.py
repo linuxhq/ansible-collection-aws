@@ -167,6 +167,62 @@ def test_default_version_promotes_matching_latest_without_duplicate_update():
     client.update_document_default_version.assert_called_once_with(DocumentVersion="2", Name="example", aws_retry=True)
 
 
+def test_default_version_waits_for_a_transitional_latest_before_promoting():
+    client = Mock()
+    current = document({"schemaVersion": "1.2"})
+    creating = document({"schemaVersion": "2.2"}, DocumentVersion="2", Status="Creating")
+    active = dict(creating, Status="Active")
+    module = FakeModule(params(document_version="$DEFAULT"))
+    _result, wait_for_document, get_document = run_present(client, module, [current, creating, active, active])
+
+    wait_for_document.assert_called_once_with(client, module, "active", "2", fail_on_failed=False)
+    assert get_document.call_args_list[2].kwargs["document_version"] == "$LATEST"
+    client.update_document.assert_not_called()
+    client.update_document_default_version.assert_called_once_with(DocumentVersion="2", Name="example", aws_retry=True)
+
+
+def test_default_version_fails_on_a_failed_latest_with_the_requested_content():
+    client = Mock()
+    current = document({"schemaVersion": "1.2"})
+    failed = document({"schemaVersion": "2.2"}, DocumentVersion="2", Status="Failed", StatusInformation="bad step")
+    result, _wait, _get = run_present(client, FakeModule(params(document_version="$DEFAULT")), [current, failed])
+
+    assert result.values["msg"] == "AWS Systems Manager document example failed: bad step"
+    assert result.values["changed"] is False
+    client.update_document.assert_not_called()
+    client.update_document_default_version.assert_not_called()
+
+
+def test_default_version_promotion_purges_tags_after_a_stale_refresh():
+    client = Mock()
+    current = document({"schemaVersion": "1.2"}, Tags=[{"Key": "Old", "Value": "1"}])
+    latest = document({"schemaVersion": "2.2"}, DocumentVersion="2")
+    result, _wait, _get = run_present(
+        client,
+        FakeModule(params(document_version="$DEFAULT", tags={"Name": "example"})),
+        [current, latest, current],
+    )
+
+    client.update_document_default_version.assert_called_once_with(DocumentVersion="2", Name="example", aws_retry=True)
+    client.remove_tags_from_resource.assert_called_once_with(
+        ResourceType="Document", ResourceId="example", TagKeys=["Old"], aws_retry=True
+    )
+    assert result.values["document"]["tags"] == {"Name": "example"}
+
+
+def test_update_refresh_reuses_tags_read_before_the_update():
+    client = Mock()
+    client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2"}}
+    current = document({"schemaVersion": "1.2"}, Tags=[{"Key": "Name", "Value": "example"}])
+    updated = document({"schemaVersion": "2.2"}, DocumentVersion="2")
+    result, _wait, get_document = run_present(client, FakeModule(params(tags={"Name": "example"})), [current, updated])
+
+    assert not get_document.call_args_list[1].kwargs.get("include_tags")
+    assert result.values["document"]["tags"] == {"Name": "example"}
+    client.add_tags_to_resource.assert_not_called()
+    client.remove_tags_from_resource.assert_not_called()
+
+
 def test_update_result_ignores_stale_default_version_refresh():
     client = Mock()
     client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2", "Name": "example"}}

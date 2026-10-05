@@ -8,7 +8,6 @@ module: ssm_association
 version_added: '1.9.0'
 short_description: Manage AWS Systems Manager associations
 description:
-  - Parameter names in the returned association are preserved unchanged.
   - Manages AWS Systems Manager associations.
   - Manages the schedule expression, targets, and tags of an association
     keyed by its document name, or by O(association_name) when it is set.
@@ -246,7 +245,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import association_overview
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    association_overview,
+    list_ssm_tags,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_ssm_tags,
@@ -481,7 +483,8 @@ def ensure_present(client, module, current):
 
         if association_id and tags is not None:
             if resource_changed and current is not None:
-                association = association_with_tags(client, module, association, changed=True)
+                # UpdateAssociation cannot change tags, so the tags read before the update still apply.
+                association = dict(association, Tags=current.get("Tags", []))
 
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
                 boto3_tag_list_to_ansible_dict(association.get("Tags", [])),
@@ -524,38 +527,21 @@ def ensure_present(client, module, current):
     module.exit_json(**result)
 
 
-def association_with_tags(client, module, association, changed=False):
-    """Add the association tags; changed reports whether it was already modified, for failure results."""
+def association_with_tags(client, module, association):
     association_id = (association or {}).get("AssociationId")
 
     if not association_id:
         return association
 
-    association = dict(association)
+    tags = list_ssm_tags(
+        module,
+        client,
+        SSM_ASSOCIATION_RESOURCE_TYPE,
+        association_id,
+        "AWS Systems Manager association",
+    )
 
-    try:
-        response = client.list_tags_for_resource(
-            ResourceType=SSM_ASSOCIATION_RESOURCE_TYPE,
-            ResourceId=association_id,
-            aws_retry=True,
-        )
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e,
-            changed=changed,
-            msg=f"Unable to list tags for AWS Systems Manager {SSM_ASSOCIATION_RESOURCE_TYPE} {association_id}",
-        )
-
-    tags = response.get("TagList", []) if isinstance(response, dict) else None
-    if not isinstance(tags, list) or any(not isinstance(tag, dict) for tag in tags):
-        module.fail_json(
-            changed=changed,
-            msg=f"Unexpected response while listing tags for AWS Systems Manager association {association_id}",
-        )
-
-    association["Tags"] = tags
-
-    return association
+    return dict(association, Tags=tags)
 
 
 def main():

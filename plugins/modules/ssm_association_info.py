@@ -54,6 +54,30 @@ associations:
       description: Association identifier.
       returned: always
       type: str
+    association_name:
+      description: Association name.
+      returned: when configured
+      type: str
+    association_version:
+      description: Association version.
+      returned: when available
+      type: str
+    document_version:
+      description: The document version the association uses.
+      returned: when available
+      type: str
+    duration:
+      description: The number of hours the association can run on its targets.
+      returned: when configured
+      type: int
+    instance_id:
+      description: The managed node ID.
+      returned: when available
+      type: str
+    last_execution_date:
+      description: The date the association last ran.
+      returned: when available
+      type: str
     name:
       description: SSM document name.
       returned: always
@@ -82,6 +106,10 @@ associations:
       description: Association schedule expression.
       returned: when configured
       type: str
+    schedule_offset:
+      description: The number of days to wait after the scheduled day to run the association.
+      returned: when configured
+      type: int
     tags:
       description: Association tags.
       returned: always
@@ -100,16 +128,15 @@ associations:
           description: Target key.
           returned: always
           type: str
+    target_maps:
+      description:
+        - Mappings of document parameters to target resources.
+        - Parameter names and target values are returned as AWS returns them.
+      returned: when configured
+      type: list
+      elements: dict
 """
 
-try:
-    from botocore.exceptions import BotoCoreError, ClientError
-except ImportError:
-    pass
-
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -120,7 +147,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import association_overview
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    association_overview,
+    list_ssm_tags,
+)
 
 SSM_ASSOCIATION_RESOURCE_TYPE = "Association"
 
@@ -171,31 +201,20 @@ def main():
         if not isinstance(association_id, str) or not association_id:
             module.fail_json(msg="Unexpected response while listing AWS Systems Manager associations")
 
-        association = dict(association)
-
-        try:
-            response = client.list_tags_for_resource(
-                ResourceType=SSM_ASSOCIATION_RESOURCE_TYPE,
-                ResourceId=association_id,
-                aws_retry=True,
-            )
-        except is_boto3_error_code("InvalidResourceId"):
+        tags = list_ssm_tags(
+            module,
+            client,
+            SSM_ASSOCIATION_RESOURCE_TYPE,
+            association_id,
+            "AWS Systems Manager association",
+            missing_ok=True,
+        )
+        if tags is None:
             continue
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to list tags for AWS Systems Manager association {association_id}",
-            )
-
-        tags = response.get("TagList", []) if isinstance(response, dict) else None
-        if not isinstance(tags, list) or any(not isinstance(tag, dict) for tag in tags):
-            module.fail_json(msg=f"Unexpected response while listing tags for association {association_id}")
-
-        association["Tags"] = tags
 
         normalized_associations.append(
             boto3_resource_to_ansible_dict(
-                association,
+                dict(association, Tags=tags),
                 ignore_list=["TargetMaps"],
                 transform_tags=True,
                 force_tags=False,

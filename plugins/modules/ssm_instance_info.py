@@ -192,8 +192,6 @@ instances:
       type: str
 """
 
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -204,14 +202,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-
-
-def association_overview(overview):
-    # The aggregated count is keyed by association status names, which are data rather than field names.
-    if not isinstance(overview, dict):
-        return overview
-
-    return camel_dict_to_snake_dict(overview, ignore_list=["InstanceAssociationStatusAggregatedCount"])
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import association_overview
 
 
 def main():
@@ -305,7 +296,11 @@ def main():
             instances,
             transform_tags=False,
             force_tags=False,
-            nested_transforms={"AssociationOverview": association_overview},
+            nested_transforms={
+                "AssociationOverview": lambda overview: association_overview(
+                    overview, "InstanceAssociationStatusAggregatedCount"
+                )
+            },
         ),
     )
 

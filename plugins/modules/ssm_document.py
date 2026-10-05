@@ -197,6 +197,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import list_ssm_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_ssm_tags,
@@ -339,9 +340,9 @@ def ensure_absent(client, module):
     )
 
 
-def current_document(client, module, include_tags):
-    """Read the document, settling transitional and deleting states outside check mode."""
-    current = get_document(client, module, include_tags=include_tags)
+def current_document(client, module, include_tags, document_version=None):
+    """Read the document version, settling transitional and deleting states outside check mode."""
+    current = get_document(client, module, include_tags=include_tags, document_version=document_version)
     status = (current or {}).get("Status")
 
     if status == "Deleting":
@@ -349,12 +350,12 @@ def current_document(client, module, include_tags):
             return None
 
         wait_for_document(client, module, "deleted")
-        return get_document(client, module, include_tags=include_tags)
+        return get_document(client, module, include_tags=include_tags, document_version=document_version)
 
     if status in TRANSITIONAL_STATUSES and not module.check_mode:
         # A version that ends Failed is re-read so ensure_present can replace it or report the failure.
         wait_for_document(client, module, "active", current.get("DocumentVersion"), fail_on_failed=False)
-        return get_document(client, module, include_tags=include_tags)
+        return get_document(client, module, include_tags=include_tags, document_version=document_version)
 
     return current
 
@@ -384,13 +385,20 @@ def ensure_present(client, module):
 
     default_version_to_promote = None
     if resource_changed and current is not None and module.params["document_version"] == "$DEFAULT":
-        latest = get_document(client, module, document_version="$LATEST")
+        latest = current_document(client, module, include_tags=False, document_version="$LATEST")
         if comparable_document(latest) == desired_comparable:
-            default_version_to_promote = (latest or {}).get("DocumentVersion")
+            if latest.get("Status") == "Failed":
+                fail_failed_document(module, latest)
+
+            default_version_to_promote = latest.get("DocumentVersion")
             if not default_version_to_promote:
                 module.fail_json(
                     msg=f"Unable to promote the latest AWS Systems Manager document {name}: AWS returned no document version"
                 )
+
+            if "Tags" in current:
+                # Tags belong to the document rather than a version, so the tags read with the default version apply.
+                latest["Tags"] = current["Tags"]
 
             resource_changed = False
 
@@ -501,8 +509,12 @@ def ensure_present(client, module):
                 )
 
         if resource_changed or default_version_to_promote:
-            refreshed = get_document(client, module, include_tags=tags is not None, changed=True)
+            refreshed = get_document(client, module, changed=True)
             if refreshed and comparable_document(refreshed) == desired_comparable:
+                if "Tags" in current:
+                    # Document updates and promotions cannot change tags, so the tags already read still apply.
+                    refreshed["Tags"] = current["Tags"]
+
                 current = refreshed
 
         if current is not None and tags is not None:
@@ -584,27 +596,14 @@ def get_document(client, module, include_tags=False, document_version=None, chan
     document.pop("ResponseMetadata", None)
 
     if include_tags:
-        try:
-            response = client.list_tags_for_resource(
-                ResourceType=SSM_DOCUMENT_RESOURCE_TYPE,
-                ResourceId=name,
-                aws_retry=True,
-            )
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                changed=changed,
-                msg=f"Unable to list tags for AWS Systems Manager {SSM_DOCUMENT_RESOURCE_TYPE} {name}",
-            )
-
-        tags = response.get("TagList", []) if isinstance(response, dict) else None
-        if not isinstance(tags, list) or any(not isinstance(tag, dict) for tag in tags):
-            module.fail_json(
-                changed=changed,
-                msg=f"Unexpected response while listing tags for AWS Systems Manager document {name}",
-            )
-
-        document["Tags"] = tags
+        document["Tags"] = list_ssm_tags(
+            module,
+            client,
+            SSM_DOCUMENT_RESOURCE_TYPE,
+            name,
+            "AWS Systems Manager document",
+            changed=changed,
+        )
 
     return document
 
