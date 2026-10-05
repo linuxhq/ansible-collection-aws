@@ -242,6 +242,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
+    reconcile_ec2_tags,
     require_valid_tags,
 )
 
@@ -646,17 +647,7 @@ def ensure_present(client, module):
                 )
 
             for tag_keys_to_unset, delete_resources in delete_groups.items():
-                try:
-                    client.delete_tags(
-                        Resources=delete_resources,
-                        Tags=[{"Key": key} for key in tag_keys_to_unset],
-                        aws_retry=True,
-                    )
-                except (BotoCoreError, ClientError) as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=f"Unable to remove tags from EC2 flow logs {', '.join(delete_resources)}",
-                    )
+                reconcile_ec2_tags(module, client, delete_resources, {}, tag_keys_to_unset, "EC2 flow logs")
 
             if create_groups:
                 require_client_methods(
@@ -667,17 +658,7 @@ def ensure_present(client, module):
                 )
 
             for tags_to_set, create_resources in create_groups.items():
-                try:
-                    client.create_tags(
-                        Resources=create_resources,
-                        Tags=ansible_dict_to_boto3_tag_list(dict(tags_to_set)),
-                        aws_retry=True,
-                    )
-                except (BotoCoreError, ClientError) as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=f"Unable to tag EC2 flow logs {', '.join(create_resources)}",
-                    )
+                reconcile_ec2_tags(module, client, create_resources, dict(tags_to_set), [], "EC2 flow logs")
 
         for flow_log, tags_to_set, tag_keys_to_unset in tags_changed:
             flow_log.update(apply_tag_deltas(flow_log, tags_to_set, tag_keys_to_unset))

@@ -480,7 +480,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.amazon.aws.plugins.module_utils.waiter import custom_waiter_config
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tags
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import reconcile_ec2_tags, require_valid_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import require_positive_wait_bounds, run_waiter
 
 CONNECTION_FIELDS = {
@@ -1167,20 +1167,7 @@ def reconcile_tags(client, module, connection_id, additions, removals):
         tag_methods["create_tags"] = ("Resources", "Tags")
 
     require_client_methods(module, client, "EC2", tag_methods)
-
-    if removals:
-        try:
-            client.delete_tags(Resources=[connection_id], Tags=[{"Key": key} for key in removals], aws_retry=True)
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to remove tags from VPN connection {connection_id}")
-
-    if additions:
-        try:
-            client.create_tags(
-                Resources=[connection_id], Tags=ansible_dict_to_boto3_tag_list(additions), aws_retry=True
-            )
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to tag VPN connection {connection_id}")
+    reconcile_ec2_tags(module, client, [connection_id], additions, removals, "VPN connection")
 
 
 def ensure_absent(client, module, connection):

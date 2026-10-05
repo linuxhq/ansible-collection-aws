@@ -284,6 +284,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
+    reconcile_ec2_tags,
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
@@ -773,17 +774,14 @@ def ensure_present(client, module):
                         "EC2",
                         {"delete_tags": ("Resources", "Tags")},
                     )
-                    try:
-                        client.delete_tags(
-                            Resources=[resource_id],
-                            Tags=[{"Key": key} for key in tag_keys_to_unset],
-                            aws_retry=True,
-                        )
-                    except (BotoCoreError, ClientError) as e:
-                        module.fail_json_aws(
-                            e,
-                            msg=f"Unable to remove tags from EC2 transit gateway route table {resource_id}",
-                        )
+                    reconcile_ec2_tags(
+                        module,
+                        client,
+                        [resource_id],
+                        {},
+                        tag_keys_to_unset,
+                        "EC2 transit gateway route table",
+                    )
 
                 if tags_to_set:
                     require_client_methods(
@@ -792,17 +790,14 @@ def ensure_present(client, module):
                         "EC2",
                         {"create_tags": ("Resources", "Tags")},
                     )
-                    try:
-                        client.create_tags(
-                            Resources=[resource_id],
-                            Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                            aws_retry=True,
-                        )
-                    except (BotoCoreError, ClientError) as e:
-                        module.fail_json_aws(
-                            e,
-                            msg=f"Unable to tag EC2 transit gateway route table {resource_id}",
-                        )
+                    reconcile_ec2_tags(
+                        module,
+                        client,
+                        [resource_id],
+                        tags_to_set,
+                        [],
+                        "EC2 transit gateway route table",
+                    )
 
             route_table = apply_tag_deltas(route_table, tags_to_set, tag_keys_to_unset)
 

@@ -1,0 +1,5 @@
+---
+trivial:
+  - ec2_flow_log, ec2_transit_gateway_route_table, ec2_vpc_prefix_list, ec2_vpc_vpn - share EC2 tag reconciliation
+    through a reconcile_ec2_tags helper in module_utils.
+...
