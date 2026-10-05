@@ -24,3 +24,13 @@ def test_invalid_account_response_is_rejected():
         get_account(client, FakeModule({}))
 
     assert raised.value.values["msg"] == "AWS Simple Email Service returned an invalid account response"
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_account_failures_report_changed(changed):
+    client = Mock(get_account=Mock(return_value=[]))
+
+    with pytest.raises(ModuleFail) as raised:
+        get_account(client, FakeModule({}), changed=changed)
+
+    assert raised.value.values["changed"] is changed

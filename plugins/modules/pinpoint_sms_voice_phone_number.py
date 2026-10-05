@@ -412,7 +412,7 @@ def get_phone_number(client, module, phone_number_id):
     return phone_number
 
 
-def wait_for_phone_number_active(client, module, phone_number_id):
+def wait_for_phone_number_active(client, module, phone_number_id, tags=None):
     wait_delay = module.params["wait_delay"]
     deadline = time.monotonic() + module.params["wait_timeout"]
     phone_number = {}
@@ -432,7 +432,10 @@ def wait_for_phone_number_active(client, module, phone_number_id):
                 and phone_number.get("PhoneNumberArn")
             ):
                 phone_number = dict(phone_number)
-                phone_number["Tags"] = ansible_dict_to_boto3_tag_list(phone_number_tags(client, module, phone_number))
+                if tags is None:
+                    tags = ansible_dict_to_boto3_tag_list(phone_number_tags(client, module, phone_number))
+
+                phone_number["Tags"] = tags
 
             return phone_number
 
@@ -695,7 +698,7 @@ def ensure_present(client, module):
 
     if current is not None:
         if wait and not module.check_mode and current.get("Status") != "ACTIVE":
-            current = wait_for_phone_number_active(client, module, current["PhoneNumberId"])
+            current = wait_for_phone_number_active(client, module, current["PhoneNumberId"], tags=current.get("Tags"))
 
         changed = False
         updates = updatable_settings_delta(module, current)
@@ -714,7 +717,9 @@ def ensure_present(client, module):
 
         if tags is not None:
             current = dict(current)
-            current["Tags"] = ansible_dict_to_boto3_tag_list(phone_number_tags(client, module, current))
+            if "Tags" not in current:
+                current["Tags"] = ansible_dict_to_boto3_tag_list(phone_number_tags(client, module, current))
+
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
                 boto3_tag_list_to_ansible_dict(current["Tags"]), tags, purge_tags=module.params["purge_tags"]
             )

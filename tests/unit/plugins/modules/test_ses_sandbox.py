@@ -153,6 +153,8 @@ def test_successful_request_returns_refreshed_account_status():
     assert result.values["changed"]
     assert result.values["account"] == refreshed
     assert get_account.call_count == 2
+    assert get_account.call_args_list[0].kwargs == {}
+    assert get_account.call_args_list[1].kwargs == {"changed": True}
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -248,3 +250,36 @@ def test_check_mode_preserves_observed_production_access():
     assert result.values["account"]["production_access_enabled"] is False
     assert result.values["account"]["details"]["website_url"] == "https://example.com"
     client.put_account_details.assert_not_called()
+
+
+def test_check_mode_keeps_stored_use_case_description_and_review_status():
+    client = Mock()
+    account = {
+        "details": {
+            "contact_language": "EN",
+            "mail_type": "TRANSACTIONAL",
+            "review_details": {"case_id": "1", "status": "DENIED"},
+            "use_case_description": '"Old use case"',
+            "website_url": "https://old.example.com",
+        },
+        "production_access_enabled": False,
+    }
+    result, _require, _get = run(
+        FakeModule(params(use_case_description="  New use case  "), client=client, check_mode=True),
+        account,
+    )
+
+    details = result.values["account"]["details"]
+    assert result.values["changed"] is True
+    assert details["website_url"] == "https://example.com"
+    assert details["use_case_description"] == '"Old use case"'
+    assert details["review_details"] == {"case_id": "1", "status": "DENIED"}
+    client.put_account_details.assert_not_called()
+
+
+def test_check_mode_does_not_invent_use_case_description():
+    client = Mock()
+    account = {"details": {}, "production_access_enabled": False}
+    result, _require, _get = run(FakeModule(params(), client=client, check_mode=True), account)
+
+    assert "use_case_description" not in result.values["account"]["details"]

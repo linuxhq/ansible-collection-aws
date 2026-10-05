@@ -63,7 +63,11 @@ extends_documentation_fragment:
   - amazon.aws.boto3
 attributes:
   check_mode:
-    description: The module reports the account state that would result from submitting the request.
+    description:
+      - The module reports the account state that would result from submitting the request.
+      - In check mode, RV(account.details.use_case_description) and RV(account.details.review_details)
+        keep their current values because AWS transforms the submitted use case description and
+        assigns the review status after submission.
     support: full
   diff_mode:
     description: This module does not return diff output.
@@ -119,11 +123,17 @@ account:
               returned: when available
               type: str
             status:
-              description: Status of the review.
+              description:
+                - Status of the review.
+                - In check mode, this is the status of the current review and is not
+                  predicted for a new request.
               returned: when available
               type: str
         use_case_description:
-          description: Description of the intended SES use case.
+          description:
+            - Description of the intended SES use case as stored by AWS.
+            - AWS may return this in a different form than submitted, for example wrapped in quotes.
+            - In check mode, this is the current value and is not predicted from O(use_case_description).
           returned: when available
           type: str
         website_url:
@@ -372,10 +382,10 @@ def main():
             module.fail_json_aws(e, msg="Unable to manage AWS Simple Email Service account details")
 
         if changed:
-            current_account = get_account(client, module)
+            current_account = get_account(client, module, changed=True)
     elif changed and module.check_mode:
         current_account = dict(current_account)
-        current_account["details"] = dict(current_account.get("details") or {}, **desired_details)
+        current_account["details"] = dict(current_account.get("details") or {}, **desired_compared)
 
     result = {
         "changed": changed,

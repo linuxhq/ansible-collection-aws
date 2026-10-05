@@ -151,7 +151,7 @@ def test_account_id_is_sent_to_the_waiter():
     with patch.object(plugin, "run_waiter") as run_waiter:
         plugin.wait_for_status(client, module, "region_enabled", plugin.PRESENT_STEADY_STATUSES)
 
-    assert run_waiter.call_args.kwargs == {"AccountId": "123456789012", "RegionName": "af-south-1"}
+    assert run_waiter.call_args.kwargs == {"AccountId": "123456789012", "RegionName": "af-south-1", "changed": False}
     assert "af-south-1 in account 123456789012" in run_waiter.call_args.args[4]
 
 
@@ -175,3 +175,54 @@ def test_invalid_account_id_is_rejected_before_api_calls(account_id):
         plugin.main()
 
     module._client.get_region_opt_status.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("state", "previous", "mutation"),
+    [("present", "DISABLED", "enable_region"), ("absent", "ENABLED", "disable_region")],
+)
+def test_waiter_failure_after_mutation_reports_changed(state, previous, mutation):
+    module = FakeModule({"name": "af-south-1", "state": state, "wait": True, "wait_delay": 1, "wait_timeout": 1})
+    client = Mock()
+    with (
+        patch.object(plugin, "get_region_opt_status", return_value=previous),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "run_waiter", side_effect=ModuleFail({"msg": "timed out"})) as run_waiter,
+        pytest.raises(ModuleFail),
+    ):
+        getattr(plugin, f"ensure_{state}")(client, module)
+
+    getattr(client, mutation).assert_called_once_with(RegionName="af-south-1", aws_retry=True)
+    assert run_waiter.call_args.kwargs["changed"] is True
+
+
+@pytest.mark.parametrize(
+    ("state", "previous", "mutation"),
+    [("present", "DISABLED", "enable_region"), ("absent", "ENABLED", "disable_region")],
+)
+def test_status_failure_after_mutation_reports_changed(state, previous, mutation):
+    module = FakeModule({"name": "af-south-1", "state": state, "wait": False})
+    client = Mock()
+    client.get_region_opt_status.side_effect = [
+        {"RegionOptStatus": previous},
+        plugin.ClientError({"Error": {"Code": "InternalServerException", "Message": "boom"}}, "GetRegionOptStatus"),
+    ]
+    with (
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        getattr(plugin, f"ensure_{state}")(client, module)
+
+    getattr(client, mutation).assert_called_once_with(RegionName="af-south-1", aws_retry=True)
+    assert raised.value.values["changed"] is True
+
+
+def test_status_failure_before_mutation_reports_unchanged():
+    module = FakeModule({"name": "af-south-1"})
+    client = Mock()
+    client.get_region_opt_status.return_value = {"RegionOptStatus": "UNKNOWN"}
+
+    with pytest.raises(ModuleFail) as raised:
+        plugin.get_region_opt_status(client, module)
+
+    assert raised.value.values["changed"] is False

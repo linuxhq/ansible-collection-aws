@@ -61,22 +61,100 @@ queues:
     - A list of AWS Simple Queue Service queues.
     - Each queue includes C(name) and C(queue_url) added by the module, and
       C(tags) from C(ListQueueTags).
-    - Attribute values are returned as AWS returns them.
+    - All attributes returned by C(GetQueueAttributes) are included with
+      snake case names, and attribute values are returned as strings as AWS
+      returns them.
   returned: always
   type: list
   elements: dict
   contains:
+    approximate_number_of_messages:
+      description: Approximate number of messages available for retrieval.
+      returned: when returned by AWS
+      type: str
+    approximate_number_of_messages_delayed:
+      description: Approximate number of delayed messages.
+      returned: when returned by AWS
+      type: str
+    approximate_number_of_messages_not_visible:
+      description: Approximate number of in-flight messages.
+      returned: when returned by AWS
+      type: str
+    content_based_deduplication:
+      description: Whether content-based deduplication is enabled for a FIFO queue, as V(true) or V(false).
+      returned: when returned by AWS
+      type: str
+    created_timestamp:
+      description: Queue creation time in seconds since the epoch.
+      returned: when returned by AWS
+      type: str
+    deduplication_scope:
+      description: Deduplication scope of a FIFO queue, V(messageGroup) or V(queue).
+      returned: when returned by AWS
+      type: str
+    delay_seconds:
+      description: Default delivery delay in seconds.
+      returned: when returned by AWS
+      type: str
+    fifo_queue:
+      description: Whether the queue is a FIFO queue, as V(true) or V(false).
+      returned: when returned by AWS
+      type: str
+    fifo_throughput_limit:
+      description: FIFO throughput quota scope, V(perQueue) or V(perMessageGroupId).
+      returned: when returned by AWS
+      type: str
+    kms_data_key_reuse_period_seconds:
+      description: Seconds a data key is reused before calling AWS KMS again.
+      returned: when returned by AWS
+      type: str
+    kms_master_key_id:
+      description: AWS KMS key identifier used for queue encryption.
+      returned: when returned by AWS
+      type: str
+    last_modified_timestamp:
+      description: Last queue attribute change time in seconds since the epoch.
+      returned: when returned by AWS
+      type: str
+    maximum_message_size:
+      description: Maximum message size in bytes.
+      returned: when returned by AWS
+      type: str
+    message_retention_period:
+      description: Message retention period in seconds.
+      returned: when returned by AWS
+      type: str
     name:
       description: Queue name.
       returned: always
       type: str
+    policy:
+      description: JSON access policy of the queue.
+      returned: when returned by AWS
+      type: str
     queue_arn:
       description: Queue ARN.
-      returned: when available
+      returned: when returned by AWS
       type: str
     queue_url:
       description: Queue URL.
       returned: always
+      type: str
+    receive_message_wait_time_seconds:
+      description: Long polling wait time in seconds.
+      returned: when returned by AWS
+      type: str
+    redrive_allow_policy:
+      description: JSON policy that controls which source queues can use this queue as a dead-letter queue.
+      returned: when returned by AWS
+      type: str
+    redrive_policy:
+      description: JSON dead-letter queue redrive policy.
+      returned: when returned by AWS
+      type: str
+    sqs_managed_sse_enabled:
+      description: Whether SQS-managed server-side encryption is enabled, as V(true) or V(false).
+      returned: when returned by AWS
       type: str
     tags:
       description:
@@ -84,6 +162,10 @@ queues:
         - Tag keys keep their original case.
       returned: always
       type: dict
+    visibility_timeout:
+      description: Visibility timeout in seconds.
+      returned: when returned by AWS
+      type: str
 """
 
 try:

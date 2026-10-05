@@ -121,3 +121,21 @@ def test_rejects_malformed_get_response():
     result, _require = run(FakeModule(params(), client=client))
 
     assert "Unexpected response" in result.values["msg"]
+
+
+def test_empty_string_matches_omitted_attribute():
+    client = Mock()
+    client.get_sms_attributes.return_value = {"attributes": {"MonthlySpendLimit": "1"}}
+    result, _require = run(FakeModule(params(default_sender_id="", usage_report_s3_bucket=""), client=client))
+
+    assert result.values["changed"] is False
+    client.set_sms_attributes.assert_not_called()
+
+
+def test_empty_string_clears_configured_attribute():
+    client = Mock()
+    client.get_sms_attributes.return_value = {"attributes": {"DefaultSenderID": "old"}}
+    result, _require = run(FakeModule(params(default_sender_id=""), client=client))
+
+    assert result.values["changed"] is True
+    client.set_sms_attributes.assert_called_once_with(attributes={"DefaultSenderID": ""}, aws_retry=True)

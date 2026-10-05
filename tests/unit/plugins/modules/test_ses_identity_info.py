@@ -53,7 +53,13 @@ def test_module_contract():
 
 def test_named_identity_skips_listing_and_returns_dkim_and_verification_token():
     ses, sesv2 = clients(
-        {"example.com": {"DkimAttributes": {"Tokens": ["a", "b", "c"]}, "VerifiedForSendingStatus": True}},
+        {
+            "example.com": {
+                "DkimAttributes": {"Tokens": ["a", "b", "c"]},
+                "IdentityType": "DOMAIN",
+                "VerifiedForSendingStatus": True,
+            }
+        },
         {"example.com": {"VerificationStatus": "Success", "VerificationToken": "txt-token"}},
     )
     module = FakeModule({"identity_type": None, "name": "example.com"})
@@ -72,8 +78,10 @@ def test_named_identity_skips_listing_and_returns_dkim_and_verification_token():
 
 
 def test_identity_without_verification_token_omits_it():
-    ses, sesv2 = clients({"user@example.com": {}}, {"user@example.com": {"VerificationStatus": "Success"}})
-    result, _require, _query = run(FakeModule({"identity_type": None, "name": "user@example.com"}), ses, sesv2)
+    ses, sesv2 = clients(
+        {"example.com": {"IdentityType": "DOMAIN"}}, {"example.com": {"VerificationStatus": "Success"}}
+    )
+    result, _require, _query = run(FakeModule({"identity_type": None, "name": "example.com"}), ses, sesv2)
 
     assert "verification_token" not in result.values["identities"][0]
 
@@ -95,7 +103,7 @@ def test_missing_named_identity_returns_empty_list_without_token_lookup():
 
 def test_verification_tokens_are_requested_in_batches_of_one_hundred():
     names = [f"d{index}.com" for index in range(150)]
-    ses, sesv2 = clients({name: {} for name in names})
+    ses, sesv2 = clients({name: {"IdentityType": "DOMAIN"} for name in names})
     module = FakeModule({"identity_type": "Domain", "name": None})
     _result, require_client_methods, _query = run(module, ses, sesv2, names)
 
@@ -115,11 +123,32 @@ def test_verification_tokens_are_requested_in_batches_of_one_hundred():
 
 
 def test_rejects_invalid_verification_attributes():
-    ses, sesv2 = clients({"example.com": {}})
+    ses, sesv2 = clients({"example.com": {"IdentityType": "DOMAIN"}})
     ses.get_identity_verification_attributes.return_value = {"VerificationAttributes": []}
     result, _require, _query = run(FakeModule({"identity_type": None, "name": "example.com"}), ses, sesv2)
 
     assert result.values["msg"] == "AWS SES returned invalid identity verification attributes"
+
+
+def test_verification_tokens_are_requested_only_for_domains():
+    identities = {
+        "example.com": {"IdentityType": "DOMAIN"},
+        "managed.example.com": {"IdentityType": "MANAGED_DOMAIN"},
+        "user@example.com": {"IdentityType": "EMAIL_ADDRESS"},
+    }
+    ses, sesv2 = clients(identities, {"example.com": {"VerificationToken": "txt-token"}})
+    result, _require, _query = run(FakeModule({"identity_type": None, "name": None}), ses, sesv2, list(identities))
+
+    ses.get_identity_verification_attributes.assert_called_once_with(Identities=["example.com"], aws_retry=True)
+    assert [identity.get("verification_token") for identity in result.values["identities"]] == ["txt-token", None, None]
+
+
+def test_email_identities_skip_verification_token_lookup():
+    ses, sesv2 = clients({"user@example.com": {"IdentityType": "EMAIL_ADDRESS"}})
+    result, _require, _query = run(FakeModule({"identity_type": None, "name": "user@example.com"}), ses, sesv2)
+
+    assert result.values["identities"][0]["name"] == "user@example.com"
+    ses.get_identity_verification_attributes.assert_not_called()
 
 
 def test_empty_name_is_rejected():

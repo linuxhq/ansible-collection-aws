@@ -798,3 +798,36 @@ def test_missing_explicit_number_reports_the_module_message():
     assert query.call_args.kwargs == {"PhoneNumberIds": ["phone-missing"]}
     query_list.assert_not_called()
     client.request_phone_number.assert_not_called()
+
+
+@pytest.mark.parametrize("status", ["ACTIVE", "PENDING"])
+def test_tag_matched_number_lists_tags_once(status):
+    client = Mock()
+    module = FakeModule(
+        phone_number_params(
+            tags={"Name": "x"},
+            wait=True,
+            wait_delay=1,
+            wait_timeout=10,
+        )
+    )
+    with (
+        patch.object(
+            plugin,
+            "query_list",
+            return_value=[existing_number(PhoneNumberArn="arn:phone-1", Status=status)],
+        ),
+        patch.object(
+            plugin,
+            "get_phone_number",
+            return_value=existing_number(PhoneNumberArn="arn:phone-1"),
+        ),
+        patch.object(plugin.time, "monotonic", side_effect=[0, 1]),
+        patch.object(plugin, "phone_number_tags", return_value={"Name": "x"}) as list_tags,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    list_tags.assert_called_once()
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["phone_number"]["tags"] == {"Name": "x"}
