@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_document_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -122,3 +123,28 @@ def test_rejects_malformed_tags():
     result, _require, _query = run(FakeModule(params(name="example"), client=client))
 
     assert result.values["msg"] == "Unexpected response while listing tags for AWS Systems Manager document example"
+
+
+def missing_version_error():
+    return ClientError({"Error": {"Code": "InvalidDocumentVersion", "Message": "no"}}, "GetDocument")
+
+
+@pytest.mark.parametrize("version", [{"document_version": "3"}, {"version_name": "production"}])
+def test_listed_documents_without_the_requested_version_are_omitted(version):
+    client = Mock(
+        get_document=Mock(side_effect=[missing_version_error(), {"Content": "{}", "Name": "second"}]),
+        list_tags_for_resource=Mock(return_value={"TagList": []}),
+    )
+    module = FakeModule(params(**version), client=client)
+    result, _require, _query = run(module, [{"Name": "first"}, {"Name": "second"}])
+
+    assert [document["name"] for document in result.values["documents"]] == ["second"]
+
+
+def test_named_document_without_the_requested_version_returns_empty():
+    client = Mock(get_document=Mock(side_effect=missing_version_error()))
+    result, _require, _query = run(FakeModule(params(name="example", version_name="production"), client=client))
+
+    assert result.values["document"] == {}
+    assert result.values["documents"] == []
+    client.list_tags_for_resource.assert_not_called()

@@ -185,8 +185,7 @@ instances:
     source_location:
       description: Source location details for the managed instance.
       returned: when available
-      type: list
-      elements: dict
+      type: str
     source_type:
       description: Source resource type for the managed instance.
       returned: when available

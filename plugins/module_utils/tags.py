@@ -83,7 +83,9 @@ def reconcile_ssm_tags(
     tags_to_set,
     tag_keys_to_unset,
     description,
+    changed=False,
 ):
+    """Reconcile SSM tags; changed reports whether the resource was already modified, for failure results."""
     if tag_keys_to_unset:
         try:
             client.remove_tags_from_resource(
@@ -93,7 +95,9 @@ def reconcile_ssm_tags(
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to remove tags from {description} {resource_id}")
+            module.fail_json_aws(e, changed=changed, msg=f"Unable to remove tags from {description} {resource_id}")
+
+        changed = True
 
     if tags_to_set:
         try:
@@ -104,7 +108,7 @@ def reconcile_ssm_tags(
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to tag {description} {resource_id}")
+            module.fail_json_aws(e, changed=changed, msg=f"Unable to tag {description} {resource_id}")
 
 
 def reconcile_ec2_tags(module, client, resource_ids, tags_to_set, tag_keys_to_unset, description):

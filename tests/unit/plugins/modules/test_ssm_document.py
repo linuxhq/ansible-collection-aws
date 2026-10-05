@@ -132,7 +132,7 @@ def test_content_update_waits_for_the_new_version_before_promoting():
             "get_document",
             side_effect=[document({"schemaVersion": "1.2"}), document({"schemaVersion": "2.2"}, DocumentVersion="2")],
         ),
-        patch.object(plugin, "wait_for_document", side_effect=lambda *args: calls.wait(*args[2:])),
+        patch.object(plugin, "wait_for_document", side_effect=lambda *args, **kwargs: calls.wait(*args[2:])),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -335,7 +335,7 @@ def test_retry_recovers_failed_default_promotion(check_mode):
 
     module.check_mode = check_mode
 
-    def read_document(client, module, include_tags=False, document_version=None):
+    def read_document(client, module, include_tags=False, document_version=None, changed=False):
         return old if document_version == "$DEFAULT" else latest
 
     result, _wait, _get = run_present(client, module, read_document)
@@ -437,3 +437,98 @@ def test_present_validates_bounds_for_internal_promotion_wait():
         plugin.main()
 
     assert "wait_delay" in raised.value.values["msg"]
+
+
+def test_transitional_document_that_ends_failed_is_replaced_with_new_content():
+    client = Mock()
+    client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2"}}
+    creating = document({"schemaVersion": "1.2"}, Status="Creating")
+    failed = document({"schemaVersion": "1.2"}, Status="Failed", StatusInformation="Invalid step")
+    updated = document({"schemaVersion": "2.2"}, DocumentVersion="2")
+    result, wait_for_document, _get = run_present(client, FakeModule(params()), [creating, failed, updated])
+
+    assert result.values["changed"]
+    assert wait_for_document.call_args_list[0].args[2:] == ("active", "1")
+    assert wait_for_document.call_args_list[0].kwargs["fail_on_failed"] is False
+    client.update_document.assert_called_once()
+
+
+def test_wait_without_fail_on_failed_does_not_inspect_the_status():
+    client = Mock()
+    with patch.object(plugin, "run_waiter"):
+        plugin.wait_for_document(client, FakeModule(params()), "active", "2", fail_on_failed=False)
+
+    client.describe_document.assert_not_called()
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_wait_failures_report_whether_the_document_changed(changed):
+    client = Mock(describe_document=Mock(return_value={"Document": {"Status": "Failed"}}))
+    with patch.object(plugin, "run_waiter") as run_waiter, pytest.raises(ModuleFail) as raised:
+        plugin.wait_for_document(client, FakeModule(params()), "active", "2", changed=changed)
+
+    assert run_waiter.call_args.kwargs["changed"] is changed
+    assert raised.value.values["changed"] is changed
+
+
+def test_failure_after_create_reports_changed():
+    client = Mock()
+    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1"}}
+    with (
+        patch.object(plugin, "get_document", return_value=None),
+        patch.object(plugin, "run_waiter", side_effect=ModuleFail({})) as run_waiter,
+        pytest.raises(ModuleFail),
+    ):
+        plugin.ensure_present(client, FakeModule(params()))
+
+    assert run_waiter.call_args.kwargs["changed"] is True
+
+
+def test_promotion_failure_after_update_reports_changed():
+    client = Mock()
+    client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2"}}
+    client.update_document_default_version.side_effect = ClientError(
+        {"Error": {"Code": "InvalidDocumentOperation", "Message": "no"}}, "UpdateDocumentDefaultVersion"
+    )
+    result, _wait, _get = run_present(client, FakeModule(params()), [document({"schemaVersion": "1.2"})])
+
+    assert result.values["changed"] is True
+    assert result.values["msg"] == "Unable to set the default version of AWS Systems Manager document example"
+
+
+def test_promotion_failure_without_update_reports_unchanged():
+    client = Mock()
+    client.update_document_default_version.side_effect = ClientError(
+        {"Error": {"Code": "InvalidDocumentOperation", "Message": "no"}}, "UpdateDocumentDefaultVersion"
+    )
+    latest = document({"schemaVersion": "2.2"}, DocumentVersion="2")
+    result, _wait, _get = run_present(client, FakeModule(params()), [latest, document({"schemaVersion": "1.2"})])
+
+    assert result.values["changed"] is False
+    client.update_document.assert_not_called()
+
+
+def test_tag_failure_after_update_reports_changed():
+    client = Mock()
+    client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2"}}
+    client.add_tags_to_resource.side_effect = ClientError(
+        {"Error": {"Code": "InvalidResourceId", "Message": "no"}}, "AddTagsToResource"
+    )
+    current = document({"schemaVersion": "1.2"}, Tags=[])
+    updated = document({"schemaVersion": "2.2"}, DocumentVersion="2", Tags=[])
+    result, _wait, _get = run_present(client, FakeModule(params(tags={"Name": "example"})), [current, updated])
+
+    assert result.values["changed"] is True
+    assert result.values["msg"] == "Unable to tag AWS Systems Manager document example"
+
+
+def test_absent_wait_failure_after_delete_reports_changed():
+    client = Mock()
+    with (
+        patch.object(plugin, "get_document", return_value={"Name": "example"}),
+        patch.object(plugin, "run_waiter", side_effect=ModuleFail({})) as run_waiter,
+        pytest.raises(ModuleFail),
+    ):
+        plugin.ensure_absent(client, FakeModule(params(state="absent")))
+
+    assert run_waiter.call_args.kwargs["changed"] is True

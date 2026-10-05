@@ -350,3 +350,48 @@ def test_association_result_preserves_parameter_names(check_mode):
 
     assert result.values["changed"] is False
     assert result.values["association"]["parameters"] == parameters
+
+
+def test_failure_after_create_reports_changed():
+    client = Mock(create_association=Mock(return_value={"AssociationDescription": {}}))
+    result = run_present(client, FakeModule(params()), None)
+
+    assert result.values["changed"] is True
+    assert result.values["msg"] == "AWS Systems Manager did not return the created association document"
+
+
+def test_tag_failure_after_update_reports_changed():
+    client = Mock(
+        list_tags_for_resource=Mock(return_value={"TagList": []}),
+        update_association=Mock(return_value={"AssociationDescription": current_association(AssociationVersion="2")}),
+    )
+    client.add_tags_to_resource.side_effect = ClientError(
+        {"Error": {"Code": "InvalidResourceId", "Message": "no"}}, "AddTagsToResource"
+    )
+    module = FakeModule(params(schedule_expression="rate(2 hours)", tags={"Name": "example"}))
+    result = run_present(client, module, current_association())
+
+    assert result.values["changed"] is True
+    assert result.values["msg"] == "Unable to tag AWS Systems Manager association association-1"
+
+
+def test_tag_failure_without_update_reports_unchanged():
+    client = Mock(list_tags_for_resource=Mock(return_value={"TagList": []}))
+    client.add_tags_to_resource.side_effect = ClientError(
+        {"Error": {"Code": "InvalidResourceId", "Message": "no"}}, "AddTagsToResource"
+    )
+    result = run_present(client, FakeModule(params(tags={"Name": "example"})), current_association())
+
+    assert result.values["changed"] is False
+    client.update_association.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_association_status_names_are_preserved(check_mode):
+    overview = {"AssociationStatusAggregatedCount": {"InProgress": 1, "Success": 2}, "DetailedStatus": "Success"}
+    result = run_present(Mock(), FakeModule(params(), check_mode=check_mode), current_association(Overview=overview))
+
+    assert result.values["association"]["overview"] == {
+        "association_status_aggregated_count": {"InProgress": 1, "Success": 2},
+        "detailed_status": "Success",
+    }

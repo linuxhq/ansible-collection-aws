@@ -1,0 +1,18 @@
+---
+bugfixes:
+  - ssm_association - return the association status names in ``association.overview.association_status_aggregated_count``
+    as AWS returns them, such as ``Success`` and ``InProgress``, instead of converting them to snake_case.
+  - ssm_association_info - return the association status names in ``overview.association_status_aggregated_count``
+    as AWS returns them, such as ``Success`` and ``InProgress``, instead of converting them to snake_case.
+  - ssm_association - report ``changed`` when a failure follows a successful create, update, or tag change.
+  - ssm_document - report ``changed`` when a failure follows a successful create, update, promotion, tag change, or delete.
+  - ssm_document - update a document that was being created or updated and ended in the ``Failed`` status
+    when the requested content differs, instead of failing with the AWS status information.
+  - ssm_document_info - omit documents that do not have the requested ``document_version`` or ``version_name``
+    instead of failing, and return an empty result for a named document without that version.
+  - ssm_instance_info - document ``source_location`` as a string, as AWS returns it.
+  - ssm_association - describe the top-level ``name`` return value as the SSM document name,
+    and document the ``values`` list of each returned association target.
+  - ssm_association_info - document ``overview`` and the ``values`` list of each target in the returned associations.
+  - ssm_send_command - document that each ``parameters`` value must be a list of strings.
+...

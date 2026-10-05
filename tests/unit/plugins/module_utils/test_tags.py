@@ -133,3 +133,24 @@ def test_invalid_tag_list_fails_with_caller_message(tags):
         require_valid_tag_list(FakeModule({}), tags, "invalid tags")
 
     assert raised.value.values["msg"] == "invalid tags"
+
+
+def test_reconcile_ssm_tags_reports_changed_after_removing_tags():
+    client = Mock()
+    client.add_tags_to_resource.side_effect = ClientError({"Error": {"Code": "Throttling", "Message": "no"}}, "Tag")
+    with pytest.raises(ModuleFail) as raised:
+        reconcile_ssm_tags(FakeModule({}), client, "Document", "doc", {"new": "value"}, ["old"], "document")
+
+    assert raised.value.values["changed"] is True
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_reconcile_ssm_tags_reports_the_supplied_changed_state(changed):
+    client = Mock()
+    client.remove_tags_from_resource.side_effect = ClientError(
+        {"Error": {"Code": "Throttling", "Message": "no"}}, "Untag"
+    )
+    with pytest.raises(ModuleFail) as raised:
+        reconcile_ssm_tags(FakeModule({}), client, "Document", "doc", {}, ["old"], "document", changed=changed)
+
+    assert raised.value.values["changed"] is changed

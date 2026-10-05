@@ -30,7 +30,8 @@ def build_waiter_factory(model_data):
     return _WaiterFactory()
 
 
-def run_waiter(module, client, model_data, waiter_name, error_msg, **wait_kwargs):
+def run_waiter(module, client, model_data, waiter_name, error_msg, changed=False, **wait_kwargs):
+    """Run a custom waiter; changed reports whether the resource was already modified, for failure results."""
     try:
         build_waiter_factory(model_data).get_waiter(client, waiter_name).wait(
             **wait_kwargs,
@@ -40,4 +41,4 @@ def run_waiter(module, client, model_data, waiter_name, error_msg, **wait_kwargs
             ),
         )
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=error_msg)
+        module.fail_json_aws(e, changed=changed, msg=error_msg)
