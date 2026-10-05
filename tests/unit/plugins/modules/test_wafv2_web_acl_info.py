@@ -207,3 +207,26 @@ def test_rejects_malformed_web_acl_response():
     result, _require, _query = run(FakeModule(params(), client=client), [SUMMARY])
 
     assert result.values["msg"] == "Unexpected response while getting AWS WAFv2 web ACL main/acl-1"
+
+
+def test_id_and_name_get_the_web_acl_without_listing():
+    acl = {"ARN": "arn:web-acl", "DefaultAction": {"Allow": {}}, "Id": "acl-1", "Name": "main"}
+    client = acl_client(acl)
+    result, _require, query_list = run(FakeModule(params(id="acl-1", name="main"), client=client), [])
+
+    query_list.assert_not_called()
+    client.get_web_acl.assert_called_once_with(Id="acl-1", Name="main", Scope="REGIONAL", aws_retry=True)
+    assert result.values["web_acls"] == [
+        {"arn": "arn:web-acl", "default_action": {"allow": {}}, "id": "acl-1", "name": "main", "tags": {}}
+    ]
+
+
+def test_id_and_name_for_missing_web_acl_return_empty_list():
+    client = Mock()
+    client.get_web_acl.side_effect = ClientError(
+        {"Error": {"Code": "WAFNonexistentItemException", "Message": "gone"}}, "GetWebACL"
+    )
+    result, _require, query_list = run(FakeModule(params(id="acl-1", name="missing"), client=client), [])
+
+    query_list.assert_not_called()
+    assert result.values["web_acls"] == []

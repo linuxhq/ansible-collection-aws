@@ -28,5 +28,5 @@ None
       roles:
         - role: linuxhq.aws.ec2_flow_log_info
           ec2_flow_log_info_filters:
-            flow-log-status:
-              - ACTIVE
+            deliver-log-status:
+              - SUCCESS

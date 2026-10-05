@@ -20,6 +20,8 @@ options:
       - This must not be empty when specified.
       - The module lists IP set summaries for the selected O(scope), filters by
         ID, and then gathers each full IP set definition.
+      - When both O(id) and O(name) are specified, the module gets the IP set
+        directly without listing summaries.
     type: str
   name:
     description:
@@ -27,6 +29,8 @@ options:
       - This must not be empty when specified.
       - The module lists IP set summaries for the selected O(scope), filters by
         name, and then gathers each full IP set definition.
+      - When both O(id) and O(name) are specified, the module gets the IP set
+        directly without listing summaries.
       - An IP set that does not exist results in an empty list.
     type: str
   scope:
@@ -133,6 +137,42 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import get_resource_tags
 
 
+def list_ip_set_summaries(client, module, scope, target_id, target_name):
+    response_summaries = query_list(
+        module,
+        client,
+        "list_ip_sets",
+        "IPSets",
+        f"Unable to list AWS WAFv2 IP sets for {scope}",
+        Scope=scope,
+        Limit=100,
+    )
+    if not isinstance(response_summaries, list):
+        module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 IP sets for {scope}")
+
+    summaries = []
+    for summary in response_summaries:
+        summary_id = summary.get("Id") if isinstance(summary, dict) else None
+        summary_name = summary.get("Name") if isinstance(summary, dict) else None
+        if target_id and summary_id != target_id:
+            continue
+
+        if target_name and summary_name != target_name:
+            continue
+
+        if not isinstance(summary_id, str) or not summary_id:
+            module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 IP sets for {scope}; invalid ID")
+
+        if not isinstance(summary_name, str) or not summary_name:
+            module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 IP sets for {scope}; invalid name")
+
+        summaries.append(summary)
+        if target_id or target_name:
+            break
+
+    return summaries
+
+
 def main():
     argument_spec = {
         "id": {"type": "str"},
@@ -169,37 +209,10 @@ def main():
     )
 
     scope = module.params["scope"].upper()
-    response_summaries = query_list(
-        module,
-        client,
-        "list_ip_sets",
-        "IPSets",
-        f"Unable to list AWS WAFv2 IP sets for {scope}",
-        Scope=scope,
-        Limit=100,
-    )
-    if not isinstance(response_summaries, list):
-        module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 IP sets for {scope}")
-
-    summaries = []
-    for summary in response_summaries:
-        summary_id = summary.get("Id") if isinstance(summary, dict) else None
-        summary_name = summary.get("Name") if isinstance(summary, dict) else None
-        if target_id and summary_id != target_id:
-            continue
-
-        if target_name and summary_name != target_name:
-            continue
-
-        if not isinstance(summary_id, str) or not summary_id:
-            module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 IP sets for {scope}; invalid ID")
-
-        if not isinstance(summary_name, str) or not summary_name:
-            module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 IP sets for {scope}; invalid name")
-
-        summaries.append(summary)
-        if target_id or target_name:
-            break
+    if target_id and target_name:
+        summaries = [{"Id": target_id, "Name": target_name}]
+    else:
+        summaries = list_ip_set_summaries(client, module, scope, target_id, target_name)
 
     ip_sets = []
     for summary in summaries:

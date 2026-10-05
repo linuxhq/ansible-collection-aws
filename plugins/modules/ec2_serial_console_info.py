@@ -54,19 +54,11 @@ serial_console_access:
       type: bool
 """
 
-try:
-    from botocore.exceptions import BotoCoreError, ClientError
-except ImportError:
-    pass
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.ec2_serial_console import (
-    normalized_serial_console_access,
-)
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    require_client_methods,
+    get_serial_console_access,
 )
 
 
@@ -74,25 +66,10 @@ def main():
     module = AnsibleAWSModule(argument_spec={}, supports_check_mode=True)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    require_client_methods(
-        module,
-        client,
-        "EC2",
-        {"get_serial_console_access_status": ()},
-    )
-
-    try:
-        serial_console_access = client.get_serial_console_access_status(aws_retry=True)
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get EC2 serial console access in region {module.region}",
-        )
-
     module.exit_json(
         changed=False,
         region=module.region,
-        serial_console_access=normalized_serial_console_access(module, serial_console_access),
+        serial_console_access=get_serial_console_access(client, module),
     )
 
 

@@ -41,17 +41,22 @@ options:
   wait:
     description:
       - Wait for the region status to reach the desired steady state.
+      - Even when O(wait=false), a pending opposite transition is always awaited before the region is
+        enabled or disabled, C(DISABLING) when O(state=present) and C(ENABLING) when O(state=absent).
+        This wait uses O(wait_delay) and is bounded by O(wait_timeout).
     default: true
     type: bool
   wait_delay:
     description:
-      - Delay in seconds between status checks when O(wait=true).
+      - Delay in seconds between status checks when O(wait=true) or while a pending opposite
+        transition is awaited.
       - This must be 1 or greater.
     default: 30
     type: int
   wait_timeout:
     description:
       - Maximum number of seconds to wait when O(wait=true).
+      - Also bounds the wait for a pending opposite transition, which happens even when O(wait=false).
       - This must be 1 or greater.
     default: 1800
     type: int

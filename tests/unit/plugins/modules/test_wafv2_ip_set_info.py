@@ -156,3 +156,32 @@ def test_rejects_malformed_responses(client, message):
     result, _require, _query = run(FakeModule(params(), client=client), [{"Id": "wanted", "Name": "target"}])
 
     assert result.values["msg"] == message
+
+
+def test_id_and_name_get_the_ip_set_without_listing():
+    client = ip_set_client()
+    result, _require, query_list = run(FakeModule(params(id="wanted", name="target"), client=client), [])
+
+    query_list.assert_not_called()
+    client.get_ip_set.assert_called_once_with(Id="wanted", Name="target", Scope="REGIONAL", aws_retry=True)
+    assert result.values["ip_sets"] == [
+        {
+            "addresses": [],
+            "arn": "arn:ip-set",
+            "id": "wanted",
+            "ip_address_version": "IPV4",
+            "name": "target",
+            "tags": {},
+        }
+    ]
+
+
+def test_id_and_name_for_missing_ip_set_return_empty_list():
+    client = ip_set_client()
+    client.get_ip_set.side_effect = ClientError(
+        {"Error": {"Code": "WAFNonexistentItemException", "Message": "gone"}}, "GetIPSet"
+    )
+    result, _require, query_list = run(FakeModule(params(id="wanted", name="missing"), client=client), [])
+
+    query_list.assert_not_called()
+    assert result.values["ip_sets"] == []

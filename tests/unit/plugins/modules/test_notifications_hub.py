@@ -7,6 +7,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
+    ModuleInitialized,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -44,6 +45,26 @@ def test_invalid_region_is_rejected():
     assert_module_rejects(
         plugin,
         {"region": "not-a-region", "state": "present"},
+        "region must be a valid AWS region name",
+    )
+
+
+@pytest.mark.parametrize("region", ["us-east-1", "us-gov-west-1", "eusc-de-east-1", "ap-southeast-7"])
+def test_valid_region_names_are_accepted(region):
+    module = FakeModule({"region": region, "state": "present"})
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
+
+
+@pytest.mark.parametrize("region", ["abcde-east-1", "us-east", "US-EAST-1", "us-east-1-"])
+def test_region_names_outside_the_api_pattern_are_rejected(region):
+    assert_module_rejects(
+        plugin,
+        {"region": region, "state": "present"},
         "region must be a valid AWS region name",
     )
 
