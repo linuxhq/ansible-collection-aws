@@ -19,7 +19,8 @@ def get_client_method_output_members(client, method_name):
     return list(output_shape.members) if output_shape else []
 
 
-def query_list(module, client, method_name, result_key, error_msg, **kwargs):
+def query_list(module, client, method_name, result_key, error_msg, changed=False, **kwargs):
+    """List every result; changed reports whether a resource was already modified, for failure results."""
     try:
         if client.can_paginate(method_name):
             return paginated_query_with_retries(client, method_name, **kwargs).get(result_key, [])
@@ -59,20 +60,20 @@ def query_list(module, client, method_name, result_key, error_msg, **kwargs):
             marker = next((response[name] for name in response_marker_names if response.get(name)), None)
             if not marker:
                 if response.get("IsTruncated") or response.get("isTruncated"):
-                    module.fail_json(msg=f"{error_msg}: truncated response without a marker")
+                    module.fail_json(changed=changed, msg=f"{error_msg}: truncated response without a marker")
 
                 return items
 
             if marker in markers:
-                module.fail_json(msg=f"{error_msg}: repeated pagination marker")
+                module.fail_json(changed=changed, msg=f"{error_msg}: repeated pagination marker")
 
             if marker_name is None:
-                module.fail_json(msg=f"{error_msg}: pagination marker has no request parameter")
+                module.fail_json(changed=changed, msg=f"{error_msg}: pagination marker has no request parameter")
 
             markers.add(marker)
             kwargs[marker_name] = marker
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=error_msg)
+        module.fail_json_aws(e, changed=changed, msg=error_msg)
 
 
 def require_client_methods(module, client, service, methods):

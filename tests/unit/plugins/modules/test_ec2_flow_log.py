@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_flow_log as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -254,6 +255,7 @@ def test_partial_create_failure_is_not_reported_as_success():
 
     assert "one or more resources" in raised.value.values["msg"]
     assert raised.value.values["unsuccessful"][0]["error"]["code"] == "LimitExceeded"
+    assert raised.value.values["changed"] is False
 
 
 def test_create_rejects_invalid_flow_log_ids():
@@ -461,6 +463,7 @@ def test_purge_keeps_old_flow_logs_when_a_replacement_fails_delivery():
 
     assert "fl-new" in raised.value.values["msg"]
     assert raised.value.values["replacement_errors"] == {"fl-new": "Access error"}
+    assert raised.value.values["changed"] is True
     client.delete_flow_logs.assert_not_called()
 
 
@@ -480,3 +483,84 @@ def test_purge_waits_for_a_later_run_when_a_replacement_is_not_described_yet():
     assert result.value.values["deleted_flow_log_ids"] == []
     assert "will be purged on a later run" in module.warnings[0]
     client.delete_flow_logs.assert_not_called()
+
+
+def test_partial_create_failure_reports_changed_when_other_flow_logs_were_created():
+    client = Mock()
+    client.create_flow_logs.return_value = {
+        "FlowLogIds": ["fl-1"],
+        "Unsuccessful": [{"Error": {"Code": "LimitExceeded"}, "ResourceId": "vpc-2"}],
+    }
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(present_params(resource_ids=["vpc-1", "vpc-2"])))
+
+    assert raised.value.values["changed"] is True
+
+
+def test_describe_after_create_reports_changed_on_failure():
+    client = Mock()
+    client.create_flow_logs.return_value = {"FlowLogIds": ["fl-new"]}
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[]),
+        patch.object(plugin, "query_list", side_effect=ModuleFail({"changed": True})) as query,
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail),
+    ):
+        plugin.ensure_present(client, FakeModule(present_params()))
+
+    assert query.call_args.kwargs["changed"] is True
+    assert query.call_args.kwargs["FlowLogIds"] == ["fl-new"]
+
+
+@pytest.mark.parametrize(("missing_resource_ids", "changed"), [([], False), (["vpc-2"], True)])
+def test_tag_failure_reports_whether_flow_logs_were_created(missing_resource_ids, changed):
+    client = Mock()
+    client.create_flow_logs.return_value = {"FlowLogIds": ["fl-new"]}
+    client.create_tags.side_effect = ClientError({"Error": {"Code": "Throttling", "Message": "no"}}, "CreateTags")
+    existing = dict(OLD_FLOW_LOG, LogDestination="arn:aws:s3:::new-bucket", Tags=[])
+    module = FakeModule(present_params(resource_ids=["vpc-1"] + missing_resource_ids, tags={"Name": "logs"}))
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[existing]),
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is changed
+    assert client.create_flow_logs.called is changed
+
+
+def test_later_sdk_operations_are_checked_before_creating_flow_logs():
+    client = Mock()
+    existing = dict(OLD_FLOW_LOG, LogDestination="arn:aws:s3:::new-bucket", Tags=[])
+
+    def require(_module, _client, _service, methods):
+        if "create_tags" in methods:
+            raise ModuleFail({"msg": "Installed botocore does not support EC2 create_tags"})
+
+    module = FakeModule(present_params(resource_ids=["vpc-1", "vpc-2"], tags={"Name": "logs"}))
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[existing]),
+        patch.object(plugin, "require_client_methods", side_effect=require),
+        pytest.raises(ModuleFail),
+    ):
+        plugin.ensure_present(client, module)
+
+    client.create_flow_logs.assert_not_called()
+
+
+def test_partial_delete_failure_reports_changed_when_other_flow_logs_were_deleted():
+    client = Mock()
+    client.delete_flow_logs.return_value = {"Unsuccessful": [{"Error": {"Code": "Failed"}, "ResourceId": "fl-2"}]}
+    with (
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.delete_flow_logs(client, FakeModule({}), ["fl-1", "fl-2"])
+
+    assert raised.value.values["changed"] is True

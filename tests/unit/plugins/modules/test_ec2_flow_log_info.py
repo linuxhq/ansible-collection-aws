@@ -55,3 +55,27 @@ def test_rejects_invalid_flow_log_response():
         plugin.main()
 
     assert "invalid EC2 flow log" in raised.value.values["msg"]
+
+
+def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings():
+    module = FakeModule(
+        {
+            "filters": {"max-aggregation-interval": [60], "x-flag": [True]},
+            "flow_log_ids": None,
+            "resource_ids": ["vpc-1"],
+        },
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]) as query,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()
+
+    assert query.call_args.kwargs["Filter"] == [
+        {"Name": "max-aggregation-interval", "Values": ["60"]},
+        {"Name": "x-flag", "Values": ["true"]},
+        {"Name": "resource-id", "Values": ["vpc-1"]},
+    ]

@@ -16,6 +16,7 @@ options:
     description:
       - A dict of filters to apply when describing EC2 placement groups.
       - Filter names and values are passed to the EC2 C(DescribePlacementGroups) API.
+      - Boolean and numeric values, including list entries, are converted to strings.
     type: dict
   group_ids:
     description:
@@ -118,10 +119,12 @@ placement_groups:
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
+    ansible_dict_to_string_filter_list,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -149,7 +152,7 @@ def main():
 
     request = {}
     if filters:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
+        request["Filters"] = ansible_dict_to_string_filter_list(filters)
 
     require_client_methods(
         module,

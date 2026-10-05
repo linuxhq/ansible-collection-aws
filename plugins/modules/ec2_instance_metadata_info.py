@@ -37,6 +37,35 @@ account_level:
     - Options without an account-level default are omitted.
   returned: always
   type: dict
+  contains:
+    http_endpoint:
+      description: Whether the instance metadata service endpoint is enabled or disabled.
+      returned: when set
+      type: str
+    http_put_response_hop_limit:
+      description: Maximum number of hops that the metadata token can travel.
+      returned: when set
+      type: int
+    http_tokens:
+      description: Whether IMDSv2 is C(optional) or C(required).
+      returned: when set
+      type: str
+    http_tokens_enforced:
+      description: Whether IMDSv2 is enforced when an instance launches.
+      returned: when set
+      type: str
+    instance_metadata_tags:
+      description: Whether access to instance tags from the instance metadata service is enabled or disabled.
+      returned: when set
+      type: str
+    managed_by:
+      description: Entity that manages the defaults, such as C(account) or C(declarative-policy).
+      returned: when available
+      type: str
+    managed_exception_message:
+      description: Customized exception message specified in the declarative policy.
+      returned: when available
+      type: str
 region:
   description: The AWS region where the defaults were gathered.
   returned: always

@@ -22,6 +22,21 @@ def test_query_list_returns_requested_envelope():
     query.assert_called_once_with(client, "list_items", Limit=2)
 
 
+@pytest.mark.parametrize("changed", [False, True])
+def test_query_list_failures_report_the_supplied_changed_state(changed):
+    client = Mock()
+    client.can_paginate.return_value = True
+    error = ClientError({"Error": {"Code": "Throttling", "Message": "no"}}, "ListItems")
+    with (
+        patch.object(sdk, "paginated_query_with_retries", side_effect=error) as query,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        sdk.query_list(FakeModule({}), client, "list_items", "Items", "failed", changed=changed, Limit=2)
+
+    assert raised.value.values["changed"] is changed
+    query.assert_called_once_with(client, "list_items", Limit=2)
+
+
 def test_query_list_falls_back_for_non_pageable_marker_operations():
     for marker_name, response_marker_name in (
         ("Marker", "Marker"),

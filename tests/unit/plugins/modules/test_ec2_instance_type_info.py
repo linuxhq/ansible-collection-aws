@@ -32,12 +32,28 @@ def test_instance_type_filter_is_forwarded():
 
     assert require.call_args.args[3] == {
         "describe_instance_types": (
-            "InstanceTypes",
+            "Filters",
             "MaxResults",
             "NextToken",
         )
     }
-    assert query.call_args.kwargs["InstanceTypes"] == ["t3.micro"]
+    # InstanceTypes fails for types not offered in the region; the filter returns no entry.
+    assert "InstanceTypes" not in query.call_args.kwargs
+    assert query.call_args.kwargs["Filters"] == [{"Name": "instance-type", "Values": ["t3.micro"]}]
+
+
+def test_instance_types_take_precedence_over_the_instance_type_filter():
+    _methods, request = run_info(
+        {
+            "filters": {"current-generation": True, "instance-type": ["m5.*"]},
+            "instance_types": ["hpc7g.16xlarge"],
+        }
+    )
+
+    assert request["Filters"] == [
+        {"Name": "current-generation", "Values": ["true"]},
+        {"Name": "instance-type", "Values": ["hpc7g.16xlarge"]},
+    ]
 
 
 def test_instance_type_limit_is_rejected():

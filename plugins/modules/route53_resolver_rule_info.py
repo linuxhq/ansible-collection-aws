@@ -16,6 +16,7 @@ options:
     description:
       - A dict of filters to apply when listing Route53 Resolver rules.
       - Filter names and values are passed to the Route53 Resolver C(ListResolverRules) API.
+      - Boolean and numeric values, including list entries, are converted to strings.
     type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -176,11 +177,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
+    ansible_dict_to_string_filter_list,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
     response_items,
     validate_tags,
@@ -212,7 +215,7 @@ def main():
     filters = module.params["filters"]
     request = {}
     if filters:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
+        request["Filters"] = ansible_dict_to_string_filter_list(filters)
 
     resolver_rules = query_list(
         module,
@@ -238,7 +241,7 @@ def main():
         )
         association_request = {}
         if filters:
-            association_request["Filters"] = ansible_dict_to_boto3_filter_list(
+            association_request["Filters"] = ansible_dict_to_string_filter_list(
                 {"ResolverRuleId": [rule["Id"] for rule in resolver_rules]}
             )
 

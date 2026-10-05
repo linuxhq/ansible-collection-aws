@@ -16,6 +16,7 @@ options:
     description:
       - A dict of filters to apply when describing EC2 flow logs.
       - Filter names and values are passed to the EC2 C(DescribeFlowLogs) API.
+      - Boolean and numeric values, including list entries, are converted to strings.
     type: dict
   flow_log_ids:
     description:
@@ -70,15 +71,102 @@ flow_logs:
   returned: always
   type: list
   elements: dict
+  contains:
+    creation_time:
+      description: Date and time the flow log was created.
+      returned: when available
+      type: str
+    deliver_cross_account_role:
+      description: ARN of the IAM role that publishes flow logs across accounts.
+      returned: when available
+      type: str
+    deliver_logs_error_message:
+      description: Information about a log delivery error.
+      returned: when available
+      type: str
+    deliver_logs_permission_arn:
+      description: ARN of the IAM role that publishes logs to CloudWatch Logs.
+      returned: when available
+      type: str
+    deliver_logs_status:
+      description: Status of the log delivery, C(SUCCESS) or C(FAILED).
+      returned: when available
+      type: str
+    destination_options:
+      description: Destination options for flow logs delivered to Amazon S3.
+      returned: when available
+      type: dict
+      contains:
+        file_format:
+          description: Format of the flow log records.
+          returned: when available
+          type: str
+        hive_compatible_partitions:
+          description: Whether Hive-compatible prefixes are used.
+          returned: when available
+          type: bool
+        per_hour_partition:
+          description: Whether logs are partitioned per hour.
+          returned: when available
+          type: bool
+    flow_log_id:
+      description: ID of the flow log.
+      returned: always
+      type: str
+    flow_log_status:
+      description: Status of the flow log.
+      returned: when available
+      type: str
+    log_destination:
+      description: ARN of the destination for the flow log data.
+      returned: when available
+      type: str
+    log_destination_type:
+      description: Type of destination for the flow log data.
+      returned: when available
+      type: str
+    log_format:
+      description: Format of the flow log records.
+      returned: when available
+      type: str
+    log_group_name:
+      description: Name of the CloudWatch Logs log group.
+      returned: when available
+      type: str
+    max_aggregation_interval:
+      description: Maximum interval, in seconds, during which packets are aggregated into a flow log record.
+      returned: when available
+      type: int
+    resource_id:
+      description: ID of the monitored resource.
+      returned: when available
+      type: str
+    tag_field_specifications:
+      description: Tag configuration for EC2 tag fields in a custom log format.
+      returned: when available
+      type: list
+      elements: dict
+    tags:
+      description:
+        - Tags of the flow log.
+        - Tag keys keep their original case.
+      returned: when available
+      type: dict
+    traffic_type:
+      description: Type of traffic captured by the flow log.
+      returned: when available
+      type: str
 """
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    ansible_dict_to_boto3_filter_list,
     boto3_resource_list_to_ansible_dict,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
+    ansible_dict_to_string_filter_list,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -110,7 +198,7 @@ def main():
         filters["resource-id"] = resource_ids
 
     if filters:
-        request["Filter"] = ansible_dict_to_boto3_filter_list(filters)
+        request["Filter"] = ansible_dict_to_string_filter_list(filters)
 
     require_client_methods(
         module,
