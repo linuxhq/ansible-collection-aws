@@ -198,7 +198,7 @@ resolver_endpoint:
           type: str
         ip_id:
           description: The IP address ID.
-          returned: always
+          returned: when read from AWS, which is skipped after a create or IP address change without waiting
           type: str
         ipv6:
           description: The IPv6 address.
@@ -206,7 +206,7 @@ resolver_endpoint:
           type: str
         status:
           description: The IP address status.
-          returned: when returned by AWS
+          returned: when read from AWS, which is skipped after a create or IP address change without waiting
           type: str
         subnet_id:
           description: The subnet ID.
@@ -284,6 +284,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
+    validate_ip_addresses,
+    validate_tags,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -625,18 +629,27 @@ def ensure_present(client, module):
             # UpdateResolverEndpoint only converts between IPV4 and DUALSTACK.
             immutable_changes.append("resolver_endpoint_type to or from ipv6")
 
-        if (
-            current["direction"] == "INBOUND"
-            and desired_comparable["protocols"] is not None
-            and current["protocols"] != desired_comparable["protocols"]
-        ):
-            immutable_changes.append("protocols of an inbound endpoint")
-
         if immutable_changes:
             module.fail_json(
                 msg=(
                     "Cannot update AWS Route53 Resolver endpoint "
                     f"{module.params['name']} in place: {', '.join(immutable_changes)} cannot be changed. "
+                    "The existing endpoint has not been modified."
+                ),
+            )
+
+        if (
+            current["direction"] == "INBOUND"
+            and current["protocols"] == ["Do53"]
+            and desired_comparable["protocols"] in (["DoH"], ["DoH-FIPS"])
+        ):
+            # UpdateResolverEndpoint rejects this switch to avoid disrupting inbound Do53 traffic.
+            module.fail_json(
+                msg=(
+                    "Cannot update AWS Route53 Resolver endpoint "
+                    f"{module.params['name']} protocols directly from do53 to "
+                    f"{desired_comparable['protocols'][0].lower()} on an inbound endpoint. "
+                    "Add the new protocol alongside do53 first, then remove do53. "
                     "The existing endpoint has not been modified."
                 ),
             )
@@ -709,7 +722,9 @@ def ensure_present(client, module):
                     expected_id=update_params["resolver_endpoint_id"],
                 )
 
-                ip_addresses_changed = current["ip_addresses"] != desired_comparable["ip_addresses"]
+                ip_addresses_changed = not comparable_ip_addresses_match(
+                    current["ip_addresses"], desired_comparable["ip_addresses"]
+                )
                 if endpoint is not None and (module.params["wait"] or ip_addresses_changed):
                     # Address changes follow, and they repair an endpoint that needs action.
                     endpoint = wait_for_resolver_endpoint_status(
@@ -1128,29 +1143,6 @@ def validate_resolver_endpoint(module, endpoint, operation, expected_id=None, ex
             module.fail_json(msg=f"{operation}: AWS returned an invalid resolver endpoint {field}")
 
     return endpoint
-
-
-def validate_ip_addresses(module, ip_addresses):
-    for ip_address in ip_addresses:
-        if not isinstance(ip_address, dict):
-            module.fail_json(msg="list_resolver_endpoint_ip_addresses: AWS returned an invalid IP address")
-
-        if not isinstance(ip_address.get("SubnetId"), str) or not ip_address["SubnetId"]:
-            module.fail_json(msg="list_resolver_endpoint_ip_addresses: AWS returned an IP address without a subnet ID")
-
-        for field in ("Ip", "IpId", "Ipv6"):
-            if field in ip_address and not isinstance(ip_address[field], str):
-                module.fail_json(msg=f"list_resolver_endpoint_ip_addresses: AWS returned an invalid {field}")
-
-    return ip_addresses
-
-
-def validate_tags(module, tags):
-    for tag in tags:
-        if not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str):
-            module.fail_json(msg="list_tags_for_resource: AWS returned an invalid tag")
-
-    return tags
 
 
 def main():

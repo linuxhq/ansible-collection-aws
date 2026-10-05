@@ -1115,9 +1115,14 @@ def test_dual_stack_conversion_sends_requested_ipv6_addresses():
             "resolver_endpoint_type to or from ipv6",
         ),
         (
-            {"direction": "inbound", "protocols": ["do53", "doh"]},
+            {"direction": "inbound", "protocols": ["doh"]},
             {"Direction": "INBOUND"},
-            "protocols of an inbound endpoint",
+            "directly from do53 to doh on an inbound endpoint",
+        ),
+        (
+            {"direction": "inbound", "protocols": ["doh-fips"]},
+            {"Direction": "INBOUND"},
+            "Add the new protocol alongside do53 first",
         ),
     ],
 )
@@ -1133,6 +1138,63 @@ def test_changes_aws_does_not_support_fail_before_modifying(overrides, current_o
 
     assert message_part in result.value.values["msg"]
     client.update_resolver_endpoint.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "current_protocols, requested_protocols, expected_protocols",
+    [
+        (["Do53"], ["do53", "doh"], ["Do53", "DoH"]),
+        (["Do53", "DoH"], ["doh"], ["DoH"]),
+        (["DoH"], ["do53"], ["Do53"]),
+    ],
+)
+def test_inbound_endpoint_protocols_are_updated(current_protocols, requested_protocols, expected_protocols):
+    client = Mock()
+    updated = existing_endpoint(Direction="INBOUND", Protocols=expected_protocols)
+    client.update_resolver_endpoint.return_value = {"ResolverEndpoint": updated}
+    with (
+        patch.object(
+            plugin,
+            "get_resolver_endpoint_by_name",
+            return_value=existing_endpoint(Direction="INBOUND", Protocols=current_protocols),
+        ),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args: args[2]),
+        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+        patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(endpoint_params(direction="inbound", protocols=requested_protocols)))
+
+    assert raised.value.values["changed"]
+    assert raised.value.values["resolver_endpoint"]["protocols"] == expected_protocols
+    client.update_resolver_endpoint.assert_called_once_with(
+        ResolverEndpointId="rslvr-1",
+        Protocols=expected_protocols,
+        aws_retry=True,
+    )
+    wait.assert_not_called()
+
+
+def test_no_wait_update_with_matching_subnet_only_addresses_does_not_wait():
+    client = Mock()
+    client.update_resolver_endpoint.return_value = {"ResolverEndpoint": existing_endpoint(Protocols=["DoH"])}
+    params = endpoint_params(
+        ip_addresses=[{"subnet_id": "subnet-1"}, {"subnet_id": "subnet-2"}],
+        protocols=["doh"],
+    )
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint()),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args: args[2]),
+        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args: args[2]),
+        patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params))
+
+    assert raised.value.values["changed"]
+    wait.assert_not_called()
+    client.associate_resolver_endpoint_ip_address.assert_not_called()
+    client.disassociate_resolver_endpoint_ip_address.assert_not_called()
 
 
 def test_endpoint_needing_action_fails_with_the_aws_status_message():

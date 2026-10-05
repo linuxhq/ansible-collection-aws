@@ -31,6 +31,16 @@ def require_valid_tags(module, tags, max_tags, key_max=128):
         module.fail_json(msg=f"tag keys must contain 1 to {key_max} characters and values at most 256 characters")
 
 
+def require_valid_tag_list(module, tags, msg):
+    if not isinstance(tags, list) or any(
+        not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str)
+        for tag in tags
+    ):
+        module.fail_json(msg=msg)
+
+    return tags
+
+
 def apply_tag_deltas(resource, tags_to_set, tag_keys_to_unset):
     updated = dict(resource)
     tags = boto3_tag_list_to_ansible_dict(updated.get("Tags", []))

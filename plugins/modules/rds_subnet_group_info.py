@@ -123,6 +123,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
 
 
 def subnet_group_tags(client, module, subnet_group):
@@ -136,13 +137,11 @@ def subnet_group_tags(client, module, subnet_group):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to list tags for AWS RDS DB subnet group {arn}")
 
-    tags = response.get("TagList") if isinstance(response, dict) else None
-    if not isinstance(tags, list) or any(
-        not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str)
-        for tag in tags
-    ):
-        module.fail_json(msg=f"Unable to list tags for AWS RDS DB subnet group {arn}: AWS returned an invalid response")
-
+    tags = require_valid_tag_list(
+        module,
+        response.get("TagList") if isinstance(response, dict) else None,
+        f"Unable to list tags for AWS RDS DB subnet group {arn}: AWS returned an invalid response",
+    )
     return boto3_tag_list_to_ansible_dict(tags)
 
 
