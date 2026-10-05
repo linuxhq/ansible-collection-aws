@@ -148,3 +148,26 @@ def test_reused_caller_reference_fails_with_an_explanation():
         "Unable to create AWS Route53 reusable delegation set main: the name was already used "
         "by a deleted delegation set and cannot be reused; choose a new name"
     )
+
+
+def test_created_set_missing_from_the_response_and_listing_reports_changed():
+    client = Mock(create_reusable_delegation_set=Mock(return_value={}))
+    with (
+        patch.object(plugin, "get_reusable_delegation_set", return_value=None) as get,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule({"name": "main"}))
+
+    assert raised.value.values["changed"] is True
+    assert get.call_args_list[-1].kwargs == {"changed": True}
+
+
+def test_invalid_listing_after_a_create_reports_changed():
+    module = FakeModule({"name": "main"})
+    with (
+        patch.object(plugin, "query_list", return_value=[{"CallerReference": 1}]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.get_reusable_delegation_set(Mock(), module, changed=True)
+
+    assert raised.value.values["changed"] is True

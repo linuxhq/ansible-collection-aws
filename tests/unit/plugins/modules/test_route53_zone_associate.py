@@ -272,3 +272,32 @@ def test_no_wait_by_default():
         plugin.ensure_present(client, FakeModule(params()), "Z1")
 
     client.get_waiter.assert_not_called()
+
+
+@pytest.mark.parametrize("state", ["absent", "present"])
+def test_wait_failure_after_a_change_reports_changed(state):
+    client = Mock()
+    response = {"ChangeInfo": {"Id": "/change/C1"}}
+    client.associate_vpc_with_hosted_zone.return_value = response
+    client.disassociate_vpc_from_hosted_zone.return_value = response
+    client.get_waiter.return_value.wait.side_effect = client_error("Throttling", "GetChange")
+    ensure = plugin.ensure_absent if state == "absent" else plugin.ensure_present
+    vpcs = [VPC_1, VPC_2] if state == "absent" else [VPC_2]
+    with (
+        patch.object(plugin, "get_hosted_zone", return_value=zone(vpcs)),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        ensure(client, FakeModule(params(state=state, wait=True)), "Z1")
+
+    assert raised.value.values["changed"] is True
+
+
+def test_missing_change_id_after_a_change_reports_changed():
+    client = Mock(associate_vpc_with_hosted_zone=Mock(return_value={}))
+    with (
+        patch.object(plugin, "get_hosted_zone", return_value=zone([VPC_2])),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params(wait=True)), "Z1")
+
+    assert raised.value.values["changed"] is True
