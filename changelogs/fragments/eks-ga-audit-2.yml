@@ -1,0 +1,21 @@
+---
+bugfixes:
+  - eks_cluster - send the compute, load balancing, and block storage Auto Mode settings together whenever any
+    Auto Mode setting changes, filling omitted enabled flags from the cluster, instead of only the changed values.
+  - eks_cluster - delete a cluster with ``state=absent`` when it becomes ``FAILED`` while the module waits for it to
+    finish creating or updating, instead of failing.
+  - eks_cluster - stop predicting ``bootstrap_self_managed_addons`` in the check mode result for a new cluster,
+    because AWS never returns it.
+  - eks_cluster - report ``changed=true`` when a failure follows a successful create, update, tag, or delete call,
+    and check every required SDK method before the first update so an unsupported later call cannot fail midway.
+  - eks_cluster - document that ``wait_delay`` also sets the cluster status polling delay and applies when
+    ``wait=false``.
+  - global_accelerator - send the current ``ClientAffinity`` when updating a listener without ``client_affinity``,
+    because AWS documents ``NONE`` as its default, and return the listener from the update response.
+  - global_accelerator - stop predicting ``attachment_arn`` in check mode endpoint descriptions, because AWS never
+    returns it.
+  - global_accelerator - report ``changed=true`` when a failure follows a successful accelerator, listener, or
+    endpoint group change.
+  - global_accelerator - document that ``wait`` controls only the final accelerator deletion wait when
+    ``state=absent``; listener and endpoint group deletions and disabling the accelerator are always waited on.
+  - global_accelerator_info - document that ``accelerators[].tags`` is always returned.

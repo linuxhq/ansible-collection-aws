@@ -277,7 +277,10 @@ options:
   wait_delay:
     default: 15
     description:
-      - The delay in seconds between update polling attempts when O(wait=true).
+      - The delay in seconds between cluster status and update polling attempts.
+      - This also applies when O(wait=false), because the module still waits for a deleting cluster
+        before recreating it, for a cluster to become active before changing or deleting it, for
+        in-progress updates before deleting it, and between dependent updates.
       - This must be 1 or greater.
     type: int
   wait_timeout:
@@ -566,6 +569,13 @@ UPDATE_CONFIG_FIELDS = [
     "zonal_shift_config",
 ]
 
+# Auto Mode capability settings and the path to each within its update parameter.
+AUTO_MODE_FIELDS = {
+    "computeConfig": (),
+    "kubernetesNetworkConfig": ("elasticLoadBalancing",),
+    "storageConfig": ("blockStorage",),
+}
+
 CREATE_ONLY_FIELDS = [
     "encryption_config",
     "role_arn",
@@ -600,7 +610,7 @@ CLUSTER_MAPPING_FIELDS = (
 )
 
 
-def validate_cluster(module, cluster):
+def validate_cluster(module, cluster, changed=False):
     tags = cluster.get("tags") if isinstance(cluster, dict) else None
     if (
         not isinstance(cluster, dict)
@@ -617,12 +627,12 @@ def validate_cluster(module, cluster):
             and any(not isinstance(key, str) or not isinstance(value, str) for key, value in tags.items())
         )
     ):
-        module.fail_json(msg="EKS returned an invalid cluster")
+        module.fail_json(changed=changed, msg="EKS returned an invalid cluster")
 
     return cluster
 
 
-def validate_update(module, update, expected_id=None):
+def validate_update(module, update, expected_id=None, changed=False):
     if (
         not isinstance(update, dict)
         or not isinstance(update.get("id"), str)
@@ -630,7 +640,7 @@ def validate_update(module, update, expected_id=None):
         or (expected_id is not None and update["id"] != expected_id)
         or not isinstance(update.get("status"), str)
     ):
-        module.fail_json(msg="EKS returned an invalid cluster update")
+        module.fail_json(changed=changed, msg="EKS returned an invalid cluster update")
 
     return update
 
@@ -672,6 +682,28 @@ def changed_request(current, desired):
 
     if changed(current, desired):
         return desired
+
+
+def auto_mode_request(current, config_request):
+    request = {}
+    for field, path in AUTO_MODE_FIELDS.items():
+        current_config = current.get(field) or {}
+        desired_config = config_request.get(field) or {}
+        for key in path:
+            current_config = current_config.get(key) or {}
+            desired_config = desired_config.get(key) or {}
+
+        config = dict(desired_config)
+        if "enabled" not in config and "enabled" in current_config:
+            config["enabled"] = current_config["enabled"]
+
+        if config:
+            for key in reversed(path):
+                config = {key: config}
+
+            request[field] = config
+
+    return request
 
 
 def require_nested_request_parameters(module, client, operation_name, request):
@@ -718,7 +750,8 @@ def enabled_log_types(logging_config):
     }
 
 
-def describe_cluster(client, module):
+def describe_cluster(client, module, changed=False):
+    """Describe the cluster; changed reports whether it was already modified, for failure results."""
     name = module.params["name"]
 
     try:
@@ -729,15 +762,17 @@ def describe_cluster(client, module):
     except is_boto3_error_code("ResourceNotFoundException"):
         return None
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to describe AWS EKS cluster {name}")
+        module.fail_json_aws(e, changed=changed, msg=f"Unable to describe AWS EKS cluster {name}")
 
     return validate_cluster(
         module,
         response.get("cluster") if isinstance(response, dict) else None,
+        changed=changed,
     )
 
 
-def wait_for_cluster(client, module, waiter_name):
+def wait_for_cluster(client, module, waiter_name, changed=False, accept_failed=False):
+    """Wait for the cluster; accept_failed ends the wait without failing when the cluster is FAILED or gone."""
     name = module.params["name"]
     waiter = client.get_waiter(waiter_name)
     wait_delay = module.params["wait_delay"]
@@ -749,13 +784,18 @@ def wait_for_cluster(client, module, waiter_name):
             WaiterConfig={"Delay": wait_delay, "MaxAttempts": attempts},
         )
     except (BotoCoreError, ClientError) as e:
+        if accept_failed:
+            cluster = describe_cluster(client, module, changed=changed)
+            if cluster is None or cluster["status"] == "FAILED":
+                return
+
         # Botocore's waiters stop on a terminal state that rules out the target state (such as FAILED or
         # DELETING while waiting for ACTIVE) as well as on timeouts, so the message names neither.
         state = waiter_name.replace("cluster_", "")
-        module.fail_json_aws(e, msg=f"Unable to wait for AWS EKS cluster {name} to become {state}")
+        module.fail_json_aws(e, changed=changed, msg=f"Unable to wait for AWS EKS cluster {name} to become {state}")
 
 
-def describe_update(client, module, update_id):
+def describe_update(client, module, update_id, changed=False):
     name = module.params["name"]
 
     try:
@@ -767,6 +807,7 @@ def describe_update(client, module, update_id):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
+            changed=changed,
             msg=f"Unable to describe AWS EKS cluster update {update_id} for {name}",
         )
 
@@ -774,10 +815,11 @@ def describe_update(client, module, update_id):
         module,
         response.get("update") if isinstance(response, dict) else None,
         expected_id=update_id,
+        changed=changed,
     )
 
 
-def wait_for_update(client, module, update_id):
+def wait_for_update(client, module, update_id, changed=False):
     name = module.params["name"]
     wait_delay = module.params["wait_delay"]
     deadline = time.monotonic() + module.params["wait_timeout"]
@@ -789,7 +831,7 @@ def wait_for_update(client, module, update_id):
         {"describe_update": ("name", "updateId")},
     )
     while time.monotonic() < deadline:
-        last_update = describe_update(client, module, update_id)
+        last_update = describe_update(client, module, update_id, changed=changed)
         status = last_update.get("status")
 
         if status == "Successful":
@@ -797,6 +839,7 @@ def wait_for_update(client, module, update_id):
 
         if status in ("Cancelled", "Failed"):
             module.fail_json(
+                changed=changed,
                 msg=f"AWS EKS cluster update {update_id} for {name} {status.lower()}",
                 update=boto3_resource_to_ansible_dict(last_update, transform_tags=False, force_tags=False),
             )
@@ -804,6 +847,7 @@ def wait_for_update(client, module, update_id):
         time.sleep(min(wait_delay, max(0, deadline - time.monotonic())))
 
     module.fail_json(
+        changed=changed,
         msg=f"Timed out waiting for AWS EKS cluster update {update_id} for {name}",
         update=boto3_resource_to_ansible_dict(last_update, transform_tags=False, force_tags=False),
     )
@@ -874,10 +918,10 @@ def check_mode_cluster(module, current):
     tags = module.params.get("tags")
     cluster = dict(current or {})
     desired = snake_dict_to_camel_dict(desired_cluster(module), capitalize_first=False)
-    if current is not None:
-        desired.pop("bootstrapSelfManagedAddons", None)
-        if "accessConfig" in desired:
-            desired["accessConfig"].pop("bootstrapClusterCreatorAdminPermissions", None)
+    # EKS never returns bootstrapSelfManagedAddons.
+    desired.pop("bootstrapSelfManagedAddons", None)
+    if current is not None and "accessConfig" in desired:
+        desired["accessConfig"].pop("bootstrapClusterCreatorAdminPermissions", None)
 
     cluster = merge_cluster_configuration(cluster, desired)
     desired_logging = (desired.get("logging") or {}).get("clusterLogging")
@@ -960,13 +1004,14 @@ def ensure_present(client, module):
         cluster = validate_cluster(
             module,
             response.get("cluster") if isinstance(response, dict) else None,
+            changed=True,
         )
 
         if wait:
-            wait_for_cluster(client, module, "cluster_active")
-            cluster = describe_cluster(client, module)
+            wait_for_cluster(client, module, "cluster_active", changed=True)
+            cluster = describe_cluster(client, module, changed=True)
             if cluster is None:
-                module.fail_json(msg=f"EKS cluster {name} disappeared after creation")
+                module.fail_json(changed=True, msg=f"EKS cluster {name} disappeared after creation")
 
         exit_result(module, True, cluster, "present")
 
@@ -1014,8 +1059,7 @@ def ensure_present(client, module):
         config_request = scrub_none_parameters(snake_dict_to_camel_dict(config_request, capitalize_first=False))
 
     update_requests = []
-    auto_mode_fields = ("computeConfig", "kubernetesNetworkConfig", "storageConfig")
-    auto_mode_request = {}
+    auto_mode_changed = False
     for field, value in config_request.items():
         field_request = {field: value}
         update_request = changed_request(current, field_request)
@@ -1023,8 +1067,8 @@ def ensure_present(client, module):
         if update_request is None:
             continue
 
-        if field in auto_mode_fields:
-            auto_mode_request.update(update_request)
+        if field in AUTO_MODE_FIELDS:
+            auto_mode_changed = True
             continue
 
         if field == "remoteNetworkConfig":
@@ -1059,9 +1103,9 @@ def ensure_present(client, module):
         else:
             update_requests.append(update_request)
 
-    if auto_mode_request:
+    if auto_mode_changed:
         # EKS requires compute, load balancing, and storage enablement in one request.
-        update_requests.append(auto_mode_request)
+        update_requests.append(auto_mode_request(current, config_request))
 
     config_changed = bool(update_requests)
     version_changed = version is not None and version != current.get("version")
@@ -1091,36 +1135,20 @@ def ensure_present(client, module):
     if resource_changed and module.check_mode:
         exit_result(module, True, check_mode_cluster(module, current), "present")
 
-    if config_changed:
-        for index, update_request in enumerate(update_requests):
-            update_request = dict(update_request)
-            update_request["name"] = name
+    arn = current.get("arn")
+    if tags_changed and not arn:
+        module.fail_json(msg=f"Unable to tag EKS cluster {name}")
 
-            require_client_methods(
-                module,
-                client,
-                "EKS",
-                {"update_cluster_config": tuple(update_request)},
-            )
-            require_nested_request_parameters(module, client, "UpdateClusterConfig", update_request)
-            try:
-                response = client.update_cluster_config(
-                    **update_request,
-                    aws_retry=True,
-                )
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(e, msg=f"Unable to update EKS cluster {name}")
-
-            update = validate_update(
-                module,
-                response.get("update") if isinstance(response, dict) else None,
-            )
-            update_id = update["id"]
-            wait_for_next_update = index < len(update_requests) - 1
-
-            if wait or version_changed or wait_for_next_update:
-                wait_for_update(client, module, update_id)
-                wait_for_cluster(client, module, "cluster_active")
+    # Check every SDK requirement first so an unsupported later call cannot fail after an earlier change.
+    update_requests = [dict(update_request, name=name) for update_request in update_requests]
+    for update_request in update_requests:
+        require_client_methods(
+            module,
+            client,
+            "EKS",
+            {"update_cluster_config": tuple(update_request)},
+        )
+        require_nested_request_parameters(module, client, "UpdateClusterConfig", update_request)
 
     if version_changed:
         require_client_methods(
@@ -1129,6 +1157,48 @@ def ensure_present(client, module):
             "EKS",
             {"update_cluster_version": ("name", "version")},
         )
+
+    if tag_keys_to_unset:
+        require_client_methods(
+            module,
+            client,
+            "EKS",
+            {"untag_resource": ("resourceArn", "tagKeys")},
+        )
+
+    if tags_to_set:
+        require_client_methods(
+            module,
+            client,
+            "EKS",
+            {"tag_resource": ("resourceArn", "tags")},
+        )
+
+    # Failures after the first successful change report changed=True.
+    mutated = False
+    for index, update_request in enumerate(update_requests):
+        try:
+            response = client.update_cluster_config(
+                **update_request,
+                aws_retry=True,
+            )
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, changed=mutated, msg=f"Unable to update EKS cluster {name}")
+
+        mutated = True
+        update = validate_update(
+            module,
+            response.get("update") if isinstance(response, dict) else None,
+            changed=True,
+        )
+        update_id = update["id"]
+        wait_for_next_update = index < len(update_requests) - 1
+
+        if wait or version_changed or wait_for_next_update:
+            wait_for_update(client, module, update_id, changed=True)
+            wait_for_cluster(client, module, "cluster_active", changed=True)
+
+    if version_changed:
         try:
             response = client.update_cluster_version(
                 name=name,
@@ -1136,61 +1206,47 @@ def ensure_present(client, module):
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to update EKS cluster {name} version")
+            module.fail_json_aws(e, changed=mutated, msg=f"Unable to update EKS cluster {name} version")
 
+        mutated = True
         update = validate_update(
             module,
             response.get("update") if isinstance(response, dict) else None,
+            changed=True,
         )
         update_id = update["id"]
 
         if wait:
-            wait_for_update(client, module, update_id)
-            wait_for_cluster(client, module, "cluster_active")
+            wait_for_update(client, module, update_id, changed=True)
+            wait_for_cluster(client, module, "cluster_active", changed=True)
 
-    if tags_changed:
-        arn = current.get("arn")
-
-        if not arn:
-            module.fail_json(msg=f"Unable to tag EKS cluster {name}")
-
-        if tag_keys_to_unset:
-            require_client_methods(
-                module,
-                client,
-                "EKS",
-                {"untag_resource": ("resourceArn", "tagKeys")},
+    if tag_keys_to_unset:
+        try:
+            client.untag_resource(
+                resourceArn=arn,
+                tagKeys=tag_keys_to_unset,
+                aws_retry=True,
             )
-            try:
-                client.untag_resource(
-                    resourceArn=arn,
-                    tagKeys=tag_keys_to_unset,
-                    aws_retry=True,
-                )
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(e, msg=f"Unable to remove tags from EKS cluster {name}")
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, changed=mutated, msg=f"Unable to remove tags from EKS cluster {name}")
 
-        if tags_to_set:
-            require_client_methods(
-                module,
-                client,
-                "EKS",
-                {"tag_resource": ("resourceArn", "tags")},
+        mutated = True
+
+    if tags_to_set:
+        try:
+            client.tag_resource(
+                resourceArn=arn,
+                tags=tags_to_set,
+                aws_retry=True,
             )
-            try:
-                client.tag_resource(
-                    resourceArn=arn,
-                    tags=tags_to_set,
-                    aws_retry=True,
-                )
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(e, msg=f"Unable to tag EKS cluster {name}")
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, changed=mutated, msg=f"Unable to tag EKS cluster {name}")
 
     if cluster_changed:
         if wait:
-            current = describe_cluster(client, module)
+            current = describe_cluster(client, module, changed=True)
             if current is None:
-                module.fail_json(msg=f"EKS cluster {name} disappeared after update")
+                module.fail_json(changed=True, msg=f"EKS cluster {name} disappeared after update")
         else:
             current = check_mode_cluster(module, current)
     elif tags_changed:
@@ -1223,7 +1279,8 @@ def ensure_absent(client, module):
         exit_result(module, True, current, "absent")
 
     if current.get("status") in {"CREATING", "PENDING", "UPDATING"}:
-        wait_for_cluster(client, module, "cluster_active")
+        # A cluster that fails to create or update can still be deleted.
+        wait_for_cluster(client, module, "cluster_active", accept_failed=True)
 
     wait_for_cluster_updates(client, module)
 
@@ -1241,7 +1298,7 @@ def ensure_absent(client, module):
         module.fail_json_aws(e, msg=f"Unable to delete EKS cluster {name}")
 
     if module.params["wait"]:
-        wait_for_cluster(client, module, "cluster_deleted")
+        wait_for_cluster(client, module, "cluster_deleted", changed=True)
 
     exit_result(module, True, current, "absent")
 
