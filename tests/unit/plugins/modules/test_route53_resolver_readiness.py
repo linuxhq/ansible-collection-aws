@@ -19,9 +19,9 @@ def test_matching_in_progress_resource_readiness(kind, wait_enabled, check_mode)
         plugin = endpoint
         params = dict(
             common,
-            direction="outbound",
-            resolver_endpoint_type="ipv4",
-            protocols=["do53"],
+            direction="OUTBOUND",
+            resolver_endpoint_type="IPV4",
+            protocols=["Do53"],
             security_group_ids=["sg-1"],
             ip_addresses=[{"subnet_id": "subnet-1"}, {"subnet_id": "subnet-2"}],
         )

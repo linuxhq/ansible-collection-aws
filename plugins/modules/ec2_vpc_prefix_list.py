@@ -51,7 +51,9 @@ options:
   max_entries:
     description:
       - The maximum number of entries the managed prefix list can hold.
-      - Defaults to the number of O(entries).
+      - When omitted, a new prefix list holds exactly the number of O(entries), and an
+        existing prefix list grows to fit O(entries) but never shrinks.
+      - When set, the prefix list is resized to this value, including shrinking it.
       - Set this above the number of O(entries) to leave headroom, so entry changes do not
         resize the prefix list.
       - This must be at least the number of O(entries).
@@ -541,9 +543,15 @@ def ensure_present(client, module, owner_id):
 
     changed = current is None
 
+    max_entries = module.params.get("max_entries")
+    if max_entries is None:
+        max_entries = len(desired_entries)
+        if current is not None:
+            max_entries = max(current["MaxEntries"], max_entries)
+
     desired_prefix_list = {
         "address_family": module.params["address_family"],
-        "max_entries": module.params.get("max_entries") or len(desired_entries),
+        "max_entries": max_entries,
         "prefix_list_name": name,
     }
 
