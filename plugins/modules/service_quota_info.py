@@ -142,44 +142,16 @@ service_code:
   type: str
 """
 
-try:
-    from botocore.exceptions import BotoCoreError, ClientError
-except ImportError:
-    pass
-
-from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
-
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
-)
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
-
-
-def quota_from_response(module, response, description, service_code, quota_code, context_id=None):
-    if not isinstance(response, dict) or not isinstance(response.get("Quota"), dict) or not response["Quota"]:
-        module.fail_json(msg=f"AWS Service Quotas returned an invalid {description} response")
-
-    quota = response["Quota"]
-    for key, expected in (("ServiceCode", service_code), ("QuotaCode", quota_code)):
-        if key in quota and quota[key] != expected:
-            module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota for {service_code}/{quota_code}")
-
-    quota_context = quota.get("QuotaContext")
-    if quota_context is not None and not isinstance(quota_context, dict):
-        module.fail_json(msg=f"AWS Service Quotas returned an invalid quota context for {service_code}/{quota_code}")
-
-    if context_id and (quota_context is None or quota_context.get("ContextId") != context_id):
-        module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota context for {service_code}/{quota_code}")
-
-    return quota
+from ansible_collections.linuxhq.aws.plugins.module_utils.service_quotas import (
+    get_quota,
+    quota_to_ansible_dict,
+)
 
 
 def main():
@@ -203,45 +175,11 @@ def main():
 
     require_client_methods(module, client, "Service Quotas", methods)
 
-    request = {
-        "QuotaCode": quota_code,
-        "ServiceCode": service_code,
-    }
-    if context_id:
-        request["ContextId"] = context_id
-
-    try:
-        response = client.get_service_quota(**request, aws_retry=True)
-        quota = quota_from_response(module, response, "service quota", service_code, quota_code, context_id)
-    except is_boto3_error_code("NoSuchResourceException"):
-        quota = {}
-        if not context_id:
-            try:
-                response = client.get_aws_default_service_quota(**request, aws_retry=True)
-                quota = quota_from_response(module, response, "default service quota", service_code, quota_code)
-            except is_boto3_error_code("NoSuchResourceException"):
-                pass
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to get AWS default service quota {service_code}/{quota_code}",
-                )
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS service quota {service_code}/{quota_code}",
-        )
+    quota = get_quota(client, module, service_code, quota_code, context_id) or {}
 
     module.exit_json(
         changed=False,
-        quota=boto3_resource_to_ansible_dict(
-            quota,
-            transform_tags=False,
-            force_tags=False,
-            nested_transforms={
-                "UsageMetric": lambda metric: camel_dict_to_snake_dict(metric, ignore_list=["MetricDimensions"]),
-            },
-        ),
+        quota=quota_to_ansible_dict(quota),
         quota_code=quota_code,
         service_code=service_code,
     )

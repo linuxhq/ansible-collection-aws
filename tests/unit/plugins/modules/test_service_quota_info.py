@@ -59,20 +59,27 @@ def test_context_id_is_forwarded_to_service_quotas():
     assert client.get_service_quota.call_args.kwargs["ContextId"] == "arn:context"
 
 
-@pytest.mark.parametrize(
-    ("response", "context_id", "message"),
-    [
-        ([], None, "AWS Service Quotas returned an invalid service quota response"),
-        ({"Quota": {"ServiceCode": "iam", "QuotaCode": "L-1"}}, None, "mismatched quota"),
-        ({"Quota": {"Value": 5.0, "QuotaContext": {"ContextId": "wrong"}}}, "expected", "mismatched quota context"),
-        ({"Quota": {"Value": 5.0, "QuotaContext": "invalid"}}, None, "invalid quota context"),
-    ],
-)
-def test_quota_from_response_rejects_invalid_response(response, context_id, message):
-    with pytest.raises(ModuleFail) as raised:
-        plugin.quota_from_response(FakeModule({}), response, "service quota", "ec2", "L-1", context_id)
+def test_mismatched_quota_context_fails():
+    client = Mock(get_service_quota=Mock(return_value={"Quota": {"Value": 5.0, "QuotaContext": {"ContextId": "x"}}}))
+    module = FakeModule({"context_id": "arn:context", "quota_code": "L-1", "service_code": "ec2"}, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
 
-    assert message in raised.value.values["msg"]
+    assert raised.value.values["msg"] == "AWS Service Quotas returned a mismatched quota context for ec2/L-1"
+
+
+def test_missing_resource_level_quota_returns_empty_without_default_fallback():
+    missing = ClientError({"Error": {"Code": "NoSuchResourceException", "Message": "gone"}}, "GetServiceQuota")
+    client = Mock()
+    client.get_service_quota.side_effect = missing
+    result = run(FakeModule({"context_id": "arn:context", "quota_code": "L-1", "service_code": "ec2"}, client=client))
+
+    assert result["quota"] == {}
+    client.get_aws_default_service_quota.assert_not_called()
 
 
 def test_metric_dimension_identifiers_are_preserved():

@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - service_quota - fail when AWS returns a quota for a different ``context_id``, matching ``service_quota_info``.
+  - service_quota - predict ``quota_requested_at_level`` in check mode so the result matches a submitted request.
+  - service_quota - document the ``global_quota`` and ``request_type`` request fields.
+  - service_quota - report a quota with neither an applied nor a default value as missing.
+...
