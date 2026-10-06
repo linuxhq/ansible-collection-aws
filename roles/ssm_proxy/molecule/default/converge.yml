@@ -66,5 +66,7 @@
       tags:
         - molecule-idempotence-notest
 
+    - ec2_instance_info
+
     - ssm_proxy
 ...
