@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - service_quota - with ``context_id`` for a resource that has no applied value of its own, compare ``value``
+    with the quota that applies to every resource in the scope, or the AWS default quota, and request the
+    increase for ``context_id`` instead of failing because the quota does not exist.
+  - service_quota_info - with ``context_id`` for a resource that has no applied value of its own, return the
+    quota that applies to every resource in the scope (``quota_context.context_id`` is ``*``), or the AWS
+    default quota, instead of an empty ``quota``. ``quota`` is still empty when the quota has neither an
+    applied nor a default value.

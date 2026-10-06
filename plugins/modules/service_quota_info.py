@@ -9,16 +9,18 @@ version_added: '1.9.0'
 short_description: Gather information about AWS service quotas
 description:
   - Gathers information about an AWS service quota.
-  - Falls back to the AWS default quota when the quota has no applied value
-    and no O(context_id) is provided.
+  - Falls back to the AWS default quota when the quota has no applied value.
+  - Returns an empty RV(quota) when the quota has neither an applied value
+    nor an AWS default value.
 author:
   - Taylor Kimball (@tkimball83)
 options:
   context_id:
     description:
       - The context ID for a resource-level quota.
-      - A resource-level quota that does not exist results in an empty
-        RV(quota).
+      - When the resource has no applied value of its own, RV(quota) is the
+        quota that applies to every resource in the scope, or the AWS default
+        quota, so its C(quota_context.context_id) is C(*) or absent.
       - This option requires AWS SDK support for the C(ContextId) request
         parameter.
     type: str
@@ -74,7 +76,7 @@ quota:
   contains:
     value:
       description: The quota value.
-      returned: when the quota exists
+      returned: when the quota has an applied or AWS default value
       type: float
     adjustable:
       description: Whether the quota can be increased.
@@ -109,7 +111,10 @@ quota:
       returned: when returned by AWS
       type: str
     quota_context:
-      description: The resource-level context of the quota.
+      description:
+        - The resource-level context of the quota.
+        - The C(context_id) is C(*) for the value that applies to every
+          resource in the scope.
       returned: when returned by AWS
       type: dict
     quota_name:
@@ -167,11 +172,12 @@ def main():
     quota_code = module.params["quota_code"]
     service_code = module.params["service_code"]
 
-    methods = {"get_service_quota": ("QuotaCode", "ServiceCode")}
+    methods = {
+        "get_aws_default_service_quota": ("QuotaCode", "ServiceCode"),
+        "get_service_quota": ("QuotaCode", "ServiceCode"),
+    }
     if context_id:
         methods["get_service_quota"] += ("ContextId",)
-    else:
-        methods["get_aws_default_service_quota"] = ("QuotaCode", "ServiceCode")
 
     require_client_methods(module, client, "Service Quotas", methods)
 
