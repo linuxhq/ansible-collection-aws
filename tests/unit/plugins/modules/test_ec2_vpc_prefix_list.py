@@ -1,6 +1,7 @@
 from unittest.mock import Mock, call, patch
 
 import pytest
+from botocore.loaders import Loader
 from botocore.waiter import Waiter, WaiterModel
 
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_vpc_prefix_list as plugin
@@ -844,6 +845,9 @@ def test_create_adds_entries_beyond_one_request_in_batches():
         ("managed_prefix_list_ready", "create-failed"),
         ("managed_prefix_list_ready", "modify-failed"),
         ("managed_prefix_list_ready", "restore-failed"),
+        ("managed_prefix_list_ready", "delete-in-progress"),
+        ("managed_prefix_list_ready", "delete-complete"),
+        ("managed_prefix_list_ready", "delete-failed"),
         ("managed_prefix_list_deleted", "delete-failed"),
     ],
 )
@@ -855,6 +859,41 @@ def test_prefix_list_waiter_stops_on_failed_state(name, state):
         waiter.wait(PrefixListIds=["pl-1"], WaiterConfig={"Delay": 0, "MaxAttempts": 5})
 
     operation.assert_called_once()
+
+
+def test_ready_waiter_handles_every_prefix_list_state():
+    shapes = Loader().load_service_model("ec2", "service-2")["shapes"]
+    acceptors = plugin.EC2_WAITER_MODEL_DATA["managed_prefix_list_ready"]["acceptors"]
+
+    assert {acceptor["expected"] for acceptor in acceptors} == set(shapes["PrefixListState"]["enum"])
+
+
+def test_ready_wait_fails_immediately_when_the_prefix_list_is_deleting():
+    module = FakeModule({"wait_delay": 1, "wait_timeout": 600})
+    client = Mock()
+    client.describe_managed_prefix_lists.return_value = {
+        "PrefixLists": [{"PrefixListId": "pl-1", "State": "delete-in-progress"}]
+    }
+    waiter = Waiter(
+        "managed_prefix_list_ready",
+        WaiterModel({"version": 2, "waiters": plugin.EC2_WAITER_MODEL_DATA}).get_waiter("managed_prefix_list_ready"),
+        client.describe_managed_prefix_lists,
+    )
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch("botocore.waiter.time.sleep") as sleep,
+        patch(
+            "ansible_collections.linuxhq.aws.plugins.module_utils.wait.BaseWaiterFactory.get_waiter",
+            return_value=waiter,
+        ),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.wait_for_ready_state(client, module, "pl-1", changed=True)
+
+    client.describe_managed_prefix_lists.assert_called_once_with(PrefixListIds=["pl-1"])
+    sleep.assert_not_called()
+    assert raised.value.values["msg"] == "Unable to wait for EC2 VPC managed prefix list pl-1 to become ready"
+    assert raised.value.values["changed"] is True
 
 
 def test_create_failed_prefix_list_is_not_modified():

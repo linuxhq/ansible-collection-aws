@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from botocore.exceptions import ClientError
+from botocore.loaders import Loader
 
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_flow_log as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -447,8 +448,8 @@ def test_create_sends_a_client_token():
     assert isinstance(token, str) and 0 < len(token) <= 64
 
 
-@pytest.mark.parametrize("traffic_type", [None, "REJECT"])
-def test_regional_nat_gateway_sends_traffic_type_only_when_set(traffic_type):
+@pytest.mark.parametrize("traffic_type,expected", [(None, "ALL"), ("REJECT", "REJECT")])
+def test_regional_nat_gateway_sends_traffic_type_defaulting_to_all(traffic_type, expected):
     client = Mock()
     module = FakeModule(
         present_params(resource_ids=["nat-1"], resource_type="RegionalNatGateway", traffic_type=traffic_type)
@@ -457,7 +458,24 @@ def test_regional_nat_gateway_sends_traffic_type_only_when_set(traffic_type):
 
     request = client.create_flow_logs.call_args.kwargs
     assert request["ResourceType"] == "RegionalNatGateway"
-    assert request.get("TrafficType") == traffic_type
+    assert request["TrafficType"] == expected
+
+
+def test_regional_nat_gateway_without_traffic_type_does_not_match_a_reject_flow_log():
+    flow_log = dict(OLD_FLOW_LOG, LogDestination="arn:aws:s3:::new-bucket", ResourceId="nat-1", TrafficType="REJECT")
+    client = Mock()
+    module = FakeModule(present_params(resource_ids=["nat-1"], resource_type="RegionalNatGateway"))
+    run_present(client, module, [flow_log])
+
+    assert client.create_flow_logs.call_args.kwargs["TrafficType"] == "ALL"
+
+
+def test_traffic_type_is_handled_for_every_resource_type():
+    shapes = Loader().load_service_model("ec2", "service-2")["shapes"]
+    resource_types = set(shapes["FlowLogsResourceType"]["enum"])
+
+    assert set(plugin.TRAFFIC_TYPE_RESOURCE_TYPES) | set(plugin.TRANSIT_GATEWAY_RESOURCE_TYPES) == resource_types
+    assert not set(plugin.TRAFFIC_TYPE_RESOURCE_TYPES) & set(plugin.TRANSIT_GATEWAY_RESOURCE_TYPES)
 
 
 def test_purge_keeps_old_flow_logs_when_a_replacement_fails_delivery():

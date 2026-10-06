@@ -317,6 +317,25 @@ EC2_WAITER_MODEL_DATA = {
                 "matcher": "path",
                 "state": "failure",
             },
+            # A prefix list deleted while it is awaited can never become ready.
+            {
+                "argument": "PrefixLists[0].State",
+                "expected": "delete-in-progress",
+                "matcher": "path",
+                "state": "failure",
+            },
+            {
+                "argument": "PrefixLists[0].State",
+                "expected": "delete-complete",
+                "matcher": "path",
+                "state": "failure",
+            },
+            {
+                "argument": "PrefixLists[0].State",
+                "expected": "delete-failed",
+                "matcher": "path",
+                "state": "failure",
+            },
         ],
     },
     "managed_prefix_list_deleted": {

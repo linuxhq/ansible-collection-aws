@@ -2,6 +2,8 @@
 bugfixes:
   - ec2_flow_log - omit ``resource_type`` from flow logs predicted in check mode, since EC2 flow logs never
     return it.
+  - ec2_flow_log - default ``traffic_type`` to ``ALL`` for the ``RegionalNatGateway`` resource type, as for
+    every other resource type that EC2 requires it for, instead of omitting ``TrafficType`` from the request.
   - ec2_instance_type_info - allow up to 200 values across ``instance_types`` and ``filters``, the EC2 limit
     per call, instead of capping ``instance_types`` at 100 and letting larger combined filters fail with
     ``FilterLimitExceeded``.
@@ -17,6 +19,8 @@ bugfixes:
   - ec2_vpc_prefix_list - apply the tag changes computed from the described prefix list after an update with
     ``wait=false``, and keep its tags in the result, instead of recomputing them from the modify response,
     which may omit tags.
+  - ec2_vpc_prefix_list - fail immediately when a prefix list being waited on to become ready is being
+    deleted, has been deleted, or failed to delete, instead of waiting until the timeout.
   - ec2_vpc_prefix_list_info - convert Boolean and numeric ``filters`` values, including list entries, to
     strings instead of failing parameter validation.
   - ec2_vpc_vpn - convert Boolean and numeric ``filters`` values, including list entries, to strings instead

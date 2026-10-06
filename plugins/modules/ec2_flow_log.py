@@ -127,9 +127,8 @@ options:
     description:
       - The type of traffic to log.
       - This is not supported when O(resource_type) is C(TransitGateway) or C(TransitGatewayAttachment).
-      - Defaults to C(ALL) when O(state=present) and O(resource_type) is C(VPC), C(Subnet), or
-        C(NetworkInterface).
-      - For C(RegionalNatGateway), this is sent only when provided.
+      - Defaults to C(ALL) when O(state=present) and O(resource_type) is C(VPC), C(Subnet),
+        C(NetworkInterface), or C(RegionalNatGateway).
     choices:
       - ACCEPT
       - REJECT
@@ -367,10 +366,12 @@ PRESENT_MATCH_FIELDS = (
     "max_aggregation_interval",
 )
 
+# EC2 requires TrafficType for every resource type except the transit gateway types.
 TRAFFIC_TYPE_RESOURCE_TYPES = (
     "VPC",
     "Subnet",
     "NetworkInterface",
+    "RegionalNatGateway",
 )
 
 TRANSIT_GATEWAY_RESOURCE_TYPES = (
@@ -543,8 +544,6 @@ def ensure_present(client, module):
     }
     if resource_type in TRAFFIC_TYPE_RESOURCE_TYPES:
         desired["traffic_type"] = module.params["traffic_type"] or "ALL"
-    elif module.params["traffic_type"] is not None:
-        desired["traffic_type"] = module.params["traffic_type"]
 
     for field in PRESENT_MATCH_FIELDS:
         if module.params[field] is not None:
