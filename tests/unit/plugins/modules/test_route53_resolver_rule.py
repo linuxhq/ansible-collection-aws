@@ -1,6 +1,9 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.session import get_session
+
+from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import route53_resolver as route53_resolver_utils
 from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver_rule as plugin
@@ -21,7 +24,7 @@ def test_equivalent_ipv6_target_is_idempotent(check_mode):
             "name": "main",
             "purge_tags": True,
             "resolver_endpoint_id": "rslvr-out-1",
-            "rule_type": "forward",
+            "rule_type": "FORWARD",
             "tags": None,
             "target_ips": [{"ipv6": "2001:0DB8:0000:0000:0000:0000:0000:0010"}],
             "wait": False,
@@ -146,8 +149,25 @@ def test_delete_tolerates_rule_disappearing():
 
 def test_module_contract():
     options = assert_module_contract(plugin)
-    assert options["argument_spec"]["rule_type"]["choices"] == ["forward"]
+    assert options["argument_spec"]["rule_type"]["choices"] == ["FORWARD"]
     assert options["argument_spec"]["target_ips"]["required_one_of"] == [["ip", "ipv6"]]
+
+
+def test_rule_type_choices_are_sdk_values():
+    spec = assert_module_contract(plugin)["argument_spec"]
+    model = get_session().get_service_model("route53resolver")
+
+    assert set(spec["rule_type"]["choices"]) <= set(model.shape_for("RuleTypeOption").enum)
+
+
+@pytest.mark.parametrize("rule_type", ["forward", "Forward"])
+def test_lowercase_rule_type_is_rejected(rule_type):
+    spec = assert_module_contract(plugin)
+    spec.pop("supports_check_mode")
+
+    result = ArgumentSpecValidator(**spec).validate(rule_params(rule_type=rule_type))
+
+    assert any("rule_type" in message for message in result.error_messages)
 
 
 def test_empty_tags_do_not_gate_tag_resource():
@@ -158,7 +178,7 @@ def test_empty_tags_do_not_gate_tag_resource():
             "name": "rule",
             "purge_tags": True,
             "resolver_endpoint_id": "rslvr-out-1",
-            "rule_type": "forward",
+            "rule_type": "FORWARD",
             "state": "present",
             "tags": {},
             "target_ips": [{"ip": "192.0.2.1", "port": 53}],
@@ -187,7 +207,7 @@ def test_omitted_tags_do_not_gate_create_tags_parameter():
             "name": "rule",
             "purge_tags": True,
             "resolver_endpoint_id": "rslvr-out-1",
-            "rule_type": "forward",
+            "rule_type": "FORWARD",
             "state": "present",
             "tags": None,
             "target_ips": [{"ip": "192.0.2.1", "port": 53}],
@@ -397,7 +417,7 @@ def test_deleting_rule_waits_before_recreation_with_final_wait_disabled():
             "name": "main",
             "purge_tags": True,
             "resolver_endpoint_id": "rslvr-out-1",
-            "rule_type": "forward",
+            "rule_type": "FORWARD",
             "tags": None,
             "target_ips": [{"ip": "192.0.2.1"}],
             "wait": False,
@@ -431,7 +451,7 @@ def test_update_rereads_rule_when_response_is_lean():
             "name": "main",
             "purge_tags": True,
             "resolver_endpoint_id": "rslvr-out-2",
-            "rule_type": "forward",
+            "rule_type": "FORWARD",
             "tags": None,
             "target_ips": [{"ip": "192.0.2.1"}],
             "wait": False,
@@ -462,7 +482,7 @@ def test_tag_change_rejects_rule_without_arn():
             "name": "main",
             "purge_tags": True,
             "resolver_endpoint_id": "rslvr-out-1",
-            "rule_type": "forward",
+            "rule_type": "FORWARD",
             "tags": {"Name": "main"},
             "target_ips": [{"ip": "192.0.2.1"}],
             "wait": False,
@@ -485,14 +505,14 @@ def test_tag_change_rejects_rule_without_arn():
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("field,value", [("domain_name", "new.example.com"), ("rule_type", "system")])
+@pytest.mark.parametrize("field,value", [("domain_name", "new.example.com"), ("rule_type", "SYSTEM")])
 def test_immutable_changes_preserve_rule(check_mode, field, value):
     params = {
         "domain_name": "example.com",
         "name": "main",
         "purge_tags": True,
         "resolver_endpoint_id": "rslvr-out-1",
-        "rule_type": "forward",
+        "rule_type": "FORWARD",
         "tags": {"new": "value"},
         "target_ips": [{"ip": "192.0.2.1"}],
         "wait": False,
@@ -528,7 +548,7 @@ def test_update_mismatch_preserves_rule(wait):
             "name": "main",
             "purge_tags": True,
             "resolver_endpoint_id": "rslvr-out-2",
-            "rule_type": "forward",
+            "rule_type": "FORWARD",
             "tags": None,
             "target_ips": [{"ip": "192.0.2.1"}],
             "wait": wait,
@@ -564,7 +584,7 @@ def rule_params(**overrides):
         "name": "main",
         "purge_tags": True,
         "resolver_endpoint_id": "rslvr-out-1",
-        "rule_type": "forward",
+        "rule_type": "FORWARD",
         "state": "present",
         "tags": None,
         "target_ips": [

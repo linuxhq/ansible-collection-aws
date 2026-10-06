@@ -33,11 +33,11 @@ options:
   rule_type:
     description:
       - The resolver rule type.
-      - Only V(forward) rules can be managed by this module; C(SYSTEM) and
-        C(RECURSIVE) rules do not accept target IPs or resolver endpoints.
+      - Only V(FORWARD) rules can be managed by this module; C(SYSTEM),
+        C(RECURSIVE), and C(DELEGATE) rules are not supported.
       - This is required when O(state=present).
     choices:
-      - forward
+      - FORWARD
     type: str
   state:
     description:
@@ -122,7 +122,7 @@ EXAMPLES = r"""
     domain_name: cloudflare.com
     name: molecule-cloudflare
     resolver_endpoint_id: rslvr-out-0123456789abcdef0
-    rule_type: forward
+    rule_type: FORWARD
     tags:
       Name: molecule-cloudflare
     target_ips:
@@ -355,7 +355,7 @@ def desired_request(module):
         "DomainName": module.params["domain_name"],
         "Name": module.params["name"],
         "ResolverEndpointId": module.params["resolver_endpoint_id"],
-        "RuleType": module.params["rule_type"].upper(),
+        "RuleType": module.params["rule_type"],
         "TargetIps": [
             snake_dict_to_camel_dict(scrub_none_parameters(target_ip), capitalize_first=True)
             for target_ip in module.params["target_ips"]
@@ -721,7 +721,7 @@ def main():
             "name": {"required": True, "type": "str"},
             "purge_tags": {"default": True, "type": "bool"},
             "resolver_endpoint_id": {"type": "str"},
-            "rule_type": {"choices": ["forward"], "type": "str"},
+            "rule_type": {"choices": ["FORWARD"], "type": "str"},
             "state": {
                 "choices": ["absent", "present"],
                 "default": "present",
