@@ -16,3 +16,5 @@ bugfixes:
     helper.
   - iam_oidc_provider and iam_oidc_provider_info - accept a provider without client IDs or thumbprints
     when AWS omits the lists, and validate provider tags with the shared tag list helper.
+trivial:
+  - eks_cluster and eks_cluster_info - validate cluster tags with a shared helper.

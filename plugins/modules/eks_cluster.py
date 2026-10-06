@@ -533,6 +533,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.eks import has_valid_cluster_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -614,7 +615,6 @@ CLUSTER_MAPPING_FIELDS = (
 
 
 def validate_cluster(module, cluster, changed=False):
-    tags = cluster.get("tags") if isinstance(cluster, dict) else None
     if (
         not isinstance(cluster, dict)
         or not isinstance(cluster.get("arn"), str)
@@ -624,11 +624,7 @@ def validate_cluster(module, cluster, changed=False):
         or any(field in cluster and not isinstance(cluster[field], dict) for field in CLUSTER_MAPPING_FIELDS)
         or ("encryptionConfig" in cluster and not isinstance(cluster["encryptionConfig"], list))
         or ("version" in cluster and not isinstance(cluster["version"], str))
-        or (tags is not None and not isinstance(tags, dict))
-        or (
-            isinstance(tags, dict)
-            and any(not isinstance(key, str) or not isinstance(value, str) for key, value in tags.items())
-        )
+        or not has_valid_cluster_tags(cluster)
     ):
         module.fail_json(changed=changed, msg="EKS returned an invalid cluster")
 
