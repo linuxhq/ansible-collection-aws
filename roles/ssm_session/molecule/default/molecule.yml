@@ -23,7 +23,6 @@ provisioner:
     ANSIBLE_ACTION_WARNINGS: false
     ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
     ANSIBLE_DEPRECATION_WARNINGS: false
-    # macOS crashes forked workers that use the aws_ssm connection without this.
     OBJC_DISABLE_INITIALIZE_FORK_SAFETY: 'YES'
   log: true
   options:

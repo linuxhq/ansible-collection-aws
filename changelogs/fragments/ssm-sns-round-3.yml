@@ -16,3 +16,6 @@ bugfixes:
 minor_changes:
   - ssm_association, ssm_association_info, ssm_document, ssm_document_info, ssm_instance_info - share the SSM resource
     type constants and filter list construction in ``module_utils/ssm.py``.
+trivial:
+  - molecule - set OBJC_DISABLE_INITIALIZE_FORK_SAFETY in every scenario's provisioner environment so forked
+    workers do not crash on macOS, and run the ssm_session and ssm_proxy subnets in us-east-1a.
