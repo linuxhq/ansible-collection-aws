@@ -12,6 +12,25 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
 
+SSM_ASSOCIATION_RESOURCE_TYPE = "Association"
+SSM_DOCUMENT_RESOURCE_TYPE = "Document"
+
+
+def ssm_filter_list(filters, key_name="Key", values_name="Values", split_values=False):
+    """Build an SSM filter list from a dict, stringifying values.
+
+    Each filter holds a list of values under values_name, or with split_values one value per filter.
+    """
+    filter_list = []
+    for key, value in filters.items():
+        values = [str(item) for item in (value if isinstance(value, list) else [value])]
+        if split_values:
+            filter_list.extend({key_name: key, values_name: item} for item in values)
+        else:
+            filter_list.append({key_name: key, values_name: values})
+
+    return filter_list
+
 
 def association_overview(overview, count_key="AssociationStatusAggregatedCount"):
     # The aggregated count is keyed by association status names, which are data rather than field names.

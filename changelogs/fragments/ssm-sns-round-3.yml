@@ -1,0 +1,18 @@
+---
+bugfixes:
+  - ssm_document - compare a numbered ``document_version`` without updating it, and fail before any change when its
+    content differs because AWS document versions are immutable; previously every run after the first update failed
+    with ``InvalidDocumentVersion``.
+  - ssm_document - ignore ``document_version`` when ``state=absent`` and read the ``$LATEST`` version, so a missing
+    numbered version no longer fails the deletion.
+  - ssm_document - with ``document_version=$DEFAULT``, return the promoted ``$LATEST`` version in check mode, as a real
+    run does.
+  - ssm_association - omit empty lists copied from the current association, and omit ``TargetMaps`` when ``Targets``
+    is sent, so that ``UpdateAssociation`` no longer rejects the request.
+  - ssm_document_info - describe that documents are retrieved in ``document_format`` and parsed as JSON when possible.
+  - sns_topic_attributes - read the topic attributes again after ``SetTopicAttributes`` and report ``changed=true``
+    when that read fails.
+  - sns_topic_attributes - name the topic before the reason in the missing topic failure message.
+minor_changes:
+  - ssm_association, ssm_association_info, ssm_document, ssm_document_info, ssm_instance_info - share the SSM resource
+    type constants and filter list construction in ``module_utils/ssm.py``.

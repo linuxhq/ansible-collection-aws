@@ -202,7 +202,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import association_overview
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    association_overview,
+    ssm_filter_list,
+)
 
 
 def main():
@@ -240,11 +243,7 @@ def main():
         filters["PingStatus"] = ping_status
 
     if filters:
-        request["Filters"] = []
-        for key, value in filters.items():
-            values = value if isinstance(value, list) else [value]
-
-            request["Filters"].append({"Key": key, "Values": [str(item) for item in values]})
+        request["Filters"] = ssm_filter_list(filters)
 
     require_client_methods(
         module,
