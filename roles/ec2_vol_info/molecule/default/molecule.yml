@@ -53,7 +53,7 @@ provisioner:
             exact_count: 1
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t2.medium
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
 
         ec2_vol_list:
           - instance: "{{ _ec2_instance_info_dict['molecule-a'].instance_id }}"
