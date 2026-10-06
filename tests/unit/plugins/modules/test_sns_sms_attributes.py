@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import sns_sms_attributes as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -139,3 +140,60 @@ def test_empty_string_clears_configured_attribute():
 
     assert result.values["changed"] is True
     client.set_sms_attributes.assert_called_once_with(attributes={"DefaultSenderID": ""}, aws_retry=True)
+
+
+def test_result_is_read_again_after_setting_attributes():
+    client = Mock(
+        get_sms_attributes=Mock(
+            side_effect=[
+                {"attributes": {"MonthlySpendLimit": "1"}},
+                {"attributes": {"MonthlySpendLimit": "25.00"}},
+            ]
+        )
+    )
+    result, _require = run(FakeModule(params(monthly_spend_limit="25"), client=client))
+
+    assert result.values == {"attributes": {"monthly_spend_limit": "25.00"}, "changed": True}
+    client.set_sms_attributes.assert_called_once_with(attributes={"MonthlySpendLimit": "25"}, aws_retry=True)
+    assert client.get_sms_attributes.call_count == 2
+
+
+def test_check_mode_predicts_attributes_without_reading_again():
+    client = Mock()
+    client.get_sms_attributes.return_value = {"attributes": {"MonthlySpendLimit": "1"}}
+    result, _require = run(FakeModule(params(default_sms_type="Transactional"), client=client, check_mode=True))
+
+    assert result.values["attributes"] == {"default_sms_type": "Transactional", "monthly_spend_limit": "1"}
+    assert client.get_sms_attributes.call_count == 1
+
+
+def test_read_failure_after_setting_attributes_reports_changed():
+    error = ClientError({"Error": {"Code": "InternalError", "Message": "failed"}}, "GetSMSAttributes")
+    client = Mock(get_sms_attributes=Mock(side_effect=[{"attributes": {}}, error]))
+    result, _require = run(FakeModule(params(default_sms_type="Transactional"), client=client))
+
+    assert isinstance(result, ModuleFail)
+    assert result.values["changed"] is True
+    assert result.values["msg"] == "Unable to get AWS Simple Notification Service SMS attributes"
+    client.set_sms_attributes.assert_called_once()
+
+
+def test_malformed_read_after_setting_attributes_reports_changed():
+    client = Mock(get_sms_attributes=Mock(side_effect=[{"attributes": {}}, {"attributes": []}]))
+    result, _require = run(FakeModule(params(default_sms_type="Transactional"), client=client))
+
+    assert isinstance(result, ModuleFail)
+    assert result.values["changed"] is True
+    assert "Unexpected response" in result.values["msg"]
+
+
+def test_set_failure_reports_unchanged():
+    error = ClientError({"Error": {"Code": "InvalidParameter", "Message": "bad"}}, "SetSMSAttributes")
+    client = Mock()
+    client.get_sms_attributes.return_value = {"attributes": {}}
+    client.set_sms_attributes.side_effect = error
+    result, _require = run(FakeModule(params(default_sms_type="Transactional"), client=client))
+
+    assert isinstance(result, ModuleFail)
+    assert not result.values.get("changed")
+    assert client.get_sms_attributes.call_count == 1
