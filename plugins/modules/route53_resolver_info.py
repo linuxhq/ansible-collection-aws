@@ -157,6 +157,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
     response_items,
     validate_ip_addresses,
+    validate_resolver_endpoint,
     validate_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
@@ -208,7 +209,7 @@ def main():
 
     normalized_endpoints = []
     for endpoint in resolver_endpoints:
-        endpoint = validate_endpoint(module, endpoint)
+        endpoint = validate_resolver_endpoint(module, endpoint, "list_resolver_endpoints")
         endpoint_id = endpoint["Id"]
         try:
             response = paginated_query_with_retries(
@@ -260,20 +261,6 @@ def main():
         changed=False,
         resolver_endpoints=normalized_endpoints,
     )
-
-
-def validate_endpoint(module, endpoint):
-    if not isinstance(endpoint, dict):
-        module.fail_json(msg="list_resolver_endpoints: AWS returned an invalid resolver endpoint")
-
-    endpoint_id = endpoint.get("Id")
-    if not isinstance(endpoint_id, str) or not endpoint_id:
-        module.fail_json(msg="list_resolver_endpoints: AWS returned a resolver endpoint without a valid ID")
-
-    if "Arn" in endpoint and not isinstance(endpoint["Arn"], str):
-        module.fail_json(msg="list_resolver_endpoints: AWS returned an invalid resolver endpoint ARN")
-
-    return endpoint
 
 
 if __name__ == "__main__":

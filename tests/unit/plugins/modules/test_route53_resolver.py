@@ -5,6 +5,7 @@ from botocore.session import get_session
 
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import route53_resolver as route53_resolver_utils
 from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -39,7 +40,7 @@ def test_mixed_explicit_and_automatic_addresses_match_without_replacement(
     if explicit_first:
         addresses.reverse()
 
-    assert plugin.comparable_ip_addresses_match(
+    assert plugin.comparable_ips_match(
         plugin.comparable_ip_addresses(endpoint["IpAddresses"]), plugin.comparable_ip_addresses(addresses)
     )
     with (
@@ -238,10 +239,10 @@ def test_ip_and_tag_enrichment_reject_malformed_entries():
     assert "without a subnet ID" in ip_raised.value.values["msg"]
 
     with (
-        patch.object(plugin, "query_list", return_value=[{"Key": "Name"}]),
+        patch.object(route53_resolver_utils, "query_list", return_value=[{"Key": "Name"}]),
         pytest.raises(ModuleFail) as tag_raised,
     ):
-        plugin.resolver_endpoint_with_tags(Mock(), module, endpoint)
+        plugin.resolver_resource_with_tags(Mock(), module, endpoint, "endpoint")
 
     assert "invalid tag" in tag_raised.value.values["msg"]
 
@@ -355,8 +356,8 @@ def test_endpoint_list_limits_are_rejected():
             dict(
                 base,
                 ip_addresses=[
-                    {"subnet_id": "subnet-1"},
-                    {"subnet_id": "subnet-1"},
+                    {"ip": "192.0.2.1", "subnet_id": "subnet-1"},
+                    {"ip": "192.0.2.1", "subnet_id": "subnet-1"},
                 ],
             ),
             "ip_addresses entries must be unique",
@@ -407,6 +408,31 @@ def test_endpoint_list_limits_are_rejected():
     ]
     for params, message in cases:
         assert_module_rejects(plugin, params, message)
+
+
+def test_subnet_only_entries_may_share_a_subnet():
+    module = FakeModule(
+        endpoint_params(
+            ip_addresses=[{"subnet_id": "subnet-1"}, {"subnet_id": "subnet-1"}],
+            state="present",
+        )
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once()
+
+
+def test_subnet_only_entries_match_endpoint_addresses_in_one_subnet():
+    current = plugin.comparable_ip_addresses([{"SubnetId": "subnet-1"}, {"SubnetId": "subnet-1", "Ip": "192.0.2.1"}])
+    desired = plugin.comparable_ip_addresses([{"subnet_id": "subnet-1"}, {"subnet_id": "subnet-1"}])
+
+    assert plugin.comparable_ips_match(current, desired)
+    assert not plugin.comparable_ips_match(current[:1], desired)
 
 
 def test_endpoint_comparison_ignores_order_and_response_fields():
@@ -471,7 +497,7 @@ def test_omitted_protocols_and_type_leave_an_existing_endpoint_unchanged():
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -543,7 +569,7 @@ def test_auto_assigned_ip_addresses_are_idempotent():
             "resolver_endpoint_with_ip_addresses",
             side_effect=lambda *args, **kwargs: args[2],
         ),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -589,7 +615,7 @@ def test_check_mode_preserves_unchanged_auto_assigned_addresses():
             "resolver_endpoint_with_ip_addresses",
             side_effect=lambda *args, **kwargs: args[2],
         ),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(Mock(), module)
@@ -717,7 +743,7 @@ def test_direction_change_preserves_the_endpoint():
             "resolver_endpoint_with_ip_addresses",
             side_effect=lambda *args, **kwargs: args[2],
         ),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         patch.object(
             plugin,
             "reconcile_resolver_endpoint_ip_addresses",
@@ -777,7 +803,7 @@ def test_no_wait_change_waits_for_operational_endpoint_and_rechecks():
             "resolver_endpoint_with_ip_addresses",
             side_effect=lambda *args, **kwargs: args[2],
         ),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         patch.object(plugin, "wait_for_resolver_endpoint_status") as wait_for_status,
         pytest.raises(ModuleExit) as raised,
     ):
@@ -822,7 +848,7 @@ def test_waited_endpoint_is_enriched_before_ip_reconciliation():
     client.update_resolver_endpoint.return_value = {"ResolverEndpoint": updated}
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=waited),
         patch.object(
             plugin,
@@ -875,7 +901,7 @@ def test_update_rereads_endpoint_when_response_is_lean():
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
         patch.object(plugin, "get_resolver_endpoint", return_value=updated) as get,
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
         patch.object(plugin, "reconcile_resolver_endpoint_ip_addresses", return_value=updated),
         pytest.raises(ModuleExit),
@@ -917,7 +943,7 @@ def test_tag_change_rejects_endpoint_without_arn():
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -954,7 +980,7 @@ def test_immutable_changes_never_mutate_endpoint(check_mode, field, value):
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", return_value=endpoint),
-        patch.object(plugin, "resolver_endpoint_with_tags", return_value=endpoint),
+        patch.object(plugin, "resolver_resource_with_tags", return_value=endpoint),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -991,7 +1017,7 @@ def test_unresolved_update_never_replaces_endpoint(wait):
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", return_value=endpoint),
-        patch.object(plugin, "resolver_endpoint_with_tags", return_value=endpoint),
+        patch.object(plugin, "resolver_resource_with_tags", return_value=endpoint),
         patch.object(plugin, "validate_resolver_endpoint", return_value=endpoint),
         patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=endpoint),
         patch.object(plugin, "reconcile_resolver_endpoint_ip_addresses", return_value=endpoint),
@@ -1141,7 +1167,7 @@ def test_unchanged_addresses_do_not_reread_the_endpoint():
 
 def test_get_resolver_endpoint_does_not_list_tags():
     client = Mock(get_resolver_endpoint=Mock(return_value={"ResolverEndpoint": existing_endpoint()}))
-    with patch.object(plugin, "resolver_endpoint_with_tags") as with_tags:
+    with patch.object(plugin, "resolver_resource_with_tags") as with_tags:
         plugin.get_resolver_endpoint(client, FakeModule(endpoint_params()), "rslvr-1")
 
     with_tags.assert_not_called()
@@ -1162,7 +1188,7 @@ def test_dual_stack_conversion_sends_requested_ipv6_addresses():
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint()),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         patch.object(
             plugin,
             "wait_for_resolver_endpoint_status",
@@ -1208,7 +1234,7 @@ def test_changes_aws_does_not_support_fail_before_modifying(overrides, current_o
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint(**current_overrides)),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         pytest.raises(ModuleFail) as result,
     ):
         plugin.ensure_present(client, FakeModule(endpoint_params(**overrides)))
@@ -1236,7 +1262,7 @@ def test_inbound_endpoint_protocols_are_updated(current_protocols, requested_pro
             return_value=existing_endpoint(Direction="INBOUND", Protocols=current_protocols),
         ),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
         pytest.raises(ModuleExit) as raised,
     ):
@@ -1262,7 +1288,7 @@ def test_no_wait_update_with_matching_subnet_only_addresses_does_not_wait():
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint()),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
         pytest.raises(ModuleExit) as raised,
     ):
@@ -1279,7 +1305,7 @@ def test_endpoint_needing_action_fails_with_the_aws_status_message():
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
         pytest.raises(ModuleFail) as result,
     ):
@@ -1315,7 +1341,7 @@ def test_update_reuses_tags_read_at_the_start():
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=start),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]) as with_tags,
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]) as with_tags,
         patch.object(plugin, "reconcile_resolver_endpoint_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
         pytest.raises(ModuleExit) as result,
     ):
@@ -1347,7 +1373,7 @@ def test_failed_address_dropped_from_the_request_is_removed():
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint_with_failed_address()),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
         pytest.raises(ModuleExit) as raised,
     ):
@@ -1369,7 +1395,7 @@ def test_check_mode_predicts_removing_a_failed_address_dropped_from_the_request(
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint_with_failed_address()),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, FakeModule(endpoint_params(), check_mode=True))
@@ -1411,7 +1437,7 @@ def test_endpoint_that_needs_action_after_an_update_reports_changed():
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint()),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         patch.object(
             plugin,
             "wait_for_resolver_endpoint_status",
@@ -1435,7 +1461,7 @@ def test_tag_failure_reports_whether_the_endpoint_was_updated(protocols, changed
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint()),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_endpoint_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
         patch.object(plugin, "reconcile_resolver_endpoint_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
         pytest.raises(ModuleFail) as raised,
     ):

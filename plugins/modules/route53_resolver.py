@@ -286,10 +286,12 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
     comparable_ip_fields,
+    comparable_ips_match,
     require_ip_versions,
+    resolver_resource_with_tags,
     valid_resolver_name,
     validate_ip_addresses,
-    validate_tags,
+    validate_resolver_endpoint,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
@@ -564,7 +566,7 @@ def ensure_present(client, module):
                 return ensure_present(client, module)
         else:
             endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
-            endpoint = resolver_endpoint_with_tags(client, module, endpoint)
+            endpoint = resolver_resource_with_tags(client, module, endpoint, "endpoint")
 
     # Updates and IP address changes do not change tags, so later reads reuse these.
     current_tags = (endpoint or {}).get("Tags", [])
@@ -663,7 +665,7 @@ def ensure_present(client, module):
                 else:
                     projected_desired.pop(field)
 
-        keep_ip_addresses = current is not None and comparable_ip_addresses_match(
+        keep_ip_addresses = current is not None and comparable_ips_match(
             current["ip_addresses"], desired_comparable["ip_addresses"]
         )
         if keep_ip_addresses:
@@ -685,7 +687,7 @@ def ensure_present(client, module):
         endpoint = create_resolver_endpoint(client, module, desired)
         if module.params["wait"]:
             endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint, changed=True)
-            endpoint = resolver_endpoint_with_tags(client, module, endpoint, changed=True)
+            endpoint = resolver_resource_with_tags(client, module, endpoint, "endpoint", changed=True)
     elif changed:
         if resource_changed:
             changed_optional_fields = [
@@ -735,7 +737,7 @@ def ensure_present(client, module):
                     changed=True,
                 )
 
-                ip_addresses_changed = has_failed_ip_addresses or not comparable_ip_addresses_match(
+                ip_addresses_changed = has_failed_ip_addresses or not comparable_ips_match(
                     current["ip_addresses"], desired_comparable["ip_addresses"]
                 )
                 if module.params["wait"] or ip_addresses_changed:
@@ -1034,26 +1036,7 @@ def comparable_endpoints_match(current, desired):
     ):
         return False
 
-    return comparable_ip_addresses_match(current["ip_addresses"], desired["ip_addresses"])
-
-
-def comparable_ip_addresses_match(current, desired):
-    remaining = list(current)
-    for desired_ip_address in sorted(desired, key=len, reverse=True):
-        match = next(
-            (
-                index
-                for index, current_ip_address in enumerate(remaining)
-                if ip_address_matches(current_ip_address, desired_ip_address)
-            ),
-            None,
-        )
-        if match is None:
-            return False
-
-        remaining.pop(match)
-
-    return not remaining
+    return comparable_ips_match(current["ip_addresses"], desired["ip_addresses"])
 
 
 def get_resolver_endpoint(client, module, resolver_endpoint_id, changed=False):
@@ -1130,50 +1113,6 @@ def resolver_endpoint_with_ip_addresses(client, module, endpoint, changed=False)
     return endpoint
 
 
-def resolver_endpoint_with_tags(client, module, endpoint, changed=False):
-    """Add listed tags; changed reports whether the endpoint was already modified, for failure results."""
-    if not endpoint or not endpoint.get("Arn"):
-        return endpoint
-
-    endpoint = dict(endpoint)
-
-    tags = query_list(
-        module,
-        client,
-        "list_tags_for_resource",
-        "Tags",
-        f"Unable to list tags for AWS Route53 Resolver endpoint {endpoint['Arn']}",
-        changed=changed,
-        ResourceArn=endpoint["Arn"],
-    )
-    endpoint["Tags"] = validate_tags(module, tags, changed=changed)
-
-    return endpoint
-
-
-def validate_resolver_endpoint(module, endpoint, operation, expected_id=None, expected_name=None, changed=False):
-    if not isinstance(endpoint, dict):
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid resolver endpoint")
-
-    endpoint_id = endpoint.get("Id")
-    if not isinstance(endpoint_id, str) or not endpoint_id:
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned a resolver endpoint without a valid ID")
-
-    if expected_id is not None and endpoint_id != expected_id:
-        module.fail_json(
-            changed=changed, msg=f"{operation}: AWS returned an unexpected resolver endpoint ID {endpoint_id}"
-        )
-
-    if expected_name is not None and endpoint.get("Name") != expected_name:
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an unexpected resolver endpoint name")
-
-    for field in ("Arn", "Name", "Status"):
-        if field in endpoint and not isinstance(endpoint[field], str):
-            module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid resolver endpoint {field}")
-
-    return endpoint
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -1231,7 +1170,10 @@ def main():
         if not 2 <= len(module.params["ip_addresses"] or []) <= 20:
             module.fail_json(msg="ip_addresses must contain 2 to 20 entries")
 
-        comparable_ip_address_values = comparable_ip_addresses(module.params["ip_addresses"])
+        # Several subnet-only entries may request addresses in the same subnet.
+        comparable_ip_address_values = comparable_ip_addresses(
+            entry for entry in module.params["ip_addresses"] if entry.get("ip") or entry.get("ipv6")
+        )
         if len({json.dumps(item, sort_keys=True) for item in comparable_ip_address_values}) != len(
             comparable_ip_address_values
         ):

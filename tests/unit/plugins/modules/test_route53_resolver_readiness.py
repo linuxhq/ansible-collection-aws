@@ -89,7 +89,9 @@ def test_matching_in_progress_resource_readiness(kind, wait_enabled, check_mode)
             )
             stack.enter_context(
                 patch.object(
-                    plugin, "resolver_endpoint_with_tags", side_effect=lambda client, module, resource: resource
+                    plugin,
+                    "resolver_resource_with_tags",
+                    side_effect=lambda client, module, resource, resource_type: resource,
                 )
             )
 

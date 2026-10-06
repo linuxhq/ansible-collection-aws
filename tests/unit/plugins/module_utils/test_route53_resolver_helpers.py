@@ -1,13 +1,21 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
+from unittest.mock import Mock, patch
+
 import pytest
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import route53_resolver as route53_resolver_utils
 from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
+    AWS_OWNED_RULE_OWNER,
     comparable_ip_fields,
+    comparable_ips_match,
     require_ip_versions,
+    resolver_resource_with_tags,
     response_items,
     valid_resolver_name,
     validate_ip_addresses,
+    validate_resolver_endpoint,
+    validate_resolver_rule,
     validate_tags,
 )
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -149,3 +157,83 @@ def test_require_ip_versions_rejects_wrong_versions(entry, message):
 )
 def test_valid_resolver_name(name, valid):
     assert valid_resolver_name(name) is valid
+
+
+@pytest.mark.parametrize(
+    "current, desired, expected",
+    [
+        ([{"subnet_id": "a"}, {"subnet_id": "a"}], [{"subnet_id": "a"}, {"subnet_id": "a"}], True),
+        ([{"ip": "192.0.2.1", "subnet_id": "a"}], [{"subnet_id": "a"}], True),
+        ([{"ip": "192.0.2.1", "subnet_id": "a"}, {"ip": "192.0.2.2", "subnet_id": "a"}], [{"subnet_id": "a"}], False),
+        ([{"ip": "192.0.2.1", "port": 53}], [{"ip": "192.0.2.1", "port": 5353}], False),
+        # The explicit entry is matched first so the broader one takes the remaining address.
+        (
+            [{"ip": "192.0.2.1", "subnet_id": "a"}, {"ip": "192.0.2.2", "subnet_id": "a"}],
+            [{"subnet_id": "a"}, {"ip": "192.0.2.1", "subnet_id": "a"}],
+            True,
+        ),
+    ],
+)
+def test_comparable_ips_match_pairs_each_entry_once(current, desired, expected):
+    assert comparable_ips_match(current, desired) is expected
+
+
+@pytest.mark.parametrize("resource_type", ["endpoint", "rule"])
+def test_resolver_resource_with_tags_adds_tags_and_keeps_the_message(resource_type):
+    def failing_query(module, client, method_name, result_key, error_msg, changed=False, **kwargs):
+        module.fail_json(changed=changed, msg=error_msg)
+
+    resource = {"Arn": "arn:resource", "Id": "rslvr-1"}
+    with patch.object(route53_resolver_utils, "query_list", return_value=[{"Key": "Name", "Value": "main"}]):
+        tagged = resolver_resource_with_tags(Mock(), FakeModule({}), resource, resource_type)
+
+    assert tagged == dict(resource, Tags=[{"Key": "Name", "Value": "main"}])
+    assert "Tags" not in resource
+
+    with (
+        patch.object(route53_resolver_utils, "query_list", side_effect=failing_query),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        resolver_resource_with_tags(Mock(), FakeModule({}), resource, resource_type, changed=True)
+
+    assert raised.value.values == {
+        "changed": True,
+        "msg": f"Unable to list tags for AWS Route53 Resolver {resource_type} arn:resource",
+    }
+
+
+def test_resolver_resource_with_tags_skips_resources_without_an_arn():
+    with patch.object(route53_resolver_utils, "query_list") as query:
+        assert resolver_resource_with_tags(Mock(), FakeModule({}), {"Id": "rslvr-1"}, "rule") == {"Id": "rslvr-1"}
+        assert resolver_resource_with_tags(Mock(), FakeModule({}), None, "rule") is None
+
+    query.assert_not_called()
+
+
+def test_validate_resolver_rule_accepts_the_aws_owned_rule():
+    rule = {
+        "Arn": "arn:aws:route53resolver:us-east-1::autodefined-rule/rslvr-autodefined-rr-internet-resolver",
+        "DomainName": ".",
+        "Id": "rslvr-autodefined-rr-internet-resolver",
+        "Name": "Internet Resolver",
+        "OwnerId": AWS_OWNED_RULE_OWNER,
+        "RuleType": "RECURSIVE",
+        "Status": "COMPLETE",
+    }
+
+    assert validate_resolver_rule(FakeModule({}), rule, "list_resolver_rules") is rule
+
+
+@pytest.mark.parametrize(
+    "endpoint, message",
+    [
+        ("endpoint", "list_resolver_endpoints: AWS returned an invalid resolver endpoint"),
+        ({"Id": ""}, "list_resolver_endpoints: AWS returned a resolver endpoint without a valid ID"),
+        ({"Arn": 1, "Id": "rslvr-1"}, "list_resolver_endpoints: AWS returned an invalid resolver endpoint Arn"),
+    ],
+)
+def test_validate_resolver_endpoint_rejects_malformed_endpoints(endpoint, message):
+    with pytest.raises(ModuleFail) as raised:
+        validate_resolver_endpoint(FakeModule({}), endpoint, "list_resolver_endpoints", changed=True)
+
+    assert raised.value.values == {"changed": True, "msg": message}

@@ -98,7 +98,9 @@ resolver_rules:
       returned: when returned by AWS
       type: str
     tags:
-      description: The rule tags with key case preserved.
+      description:
+        - The rule tags with key case preserved.
+        - AWS-owned rules, such as the Internet Resolver rule, cannot be tagged and return an empty dictionary.
       returned: always
       type: dict
     target_ips:
@@ -185,7 +187,9 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
     ansible_dict_to_string_filter_list,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
+    AWS_OWNED_RULE_OWNER,
     response_items,
+    validate_resolver_rule,
     validate_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
@@ -225,7 +229,7 @@ def main():
         "Unable to list AWS Route53 Resolver rules",
         **request,
     )
-    resolver_rules = [validate_resolver_rule(module, rule) for rule in resolver_rules]
+    resolver_rules = [validate_resolver_rule(module, rule, "list_resolver_rules") for rule in resolver_rules]
 
     if not resolver_rules:
         associations = []
@@ -264,15 +268,14 @@ def main():
     for rule in resolver_rules:
         resolver_rule_id = rule.get("Id")
         tags = []
-        if rule.get("Arn"):
+        # AWS-owned rules, such as the Internet Resolver rule, cannot be tagged.
+        if rule.get("Arn") and rule.get("OwnerId") != AWS_OWNED_RULE_OWNER:
             try:
                 response = paginated_query_with_retries(
                     client,
                     "list_tags_for_resource",
                     ResourceArn=rule["Arn"],
                 )
-            except is_boto3_error_code("InvalidRequestException"):
-                tags = []
             except is_boto3_error_code("ResourceNotFoundException"):
                 continue
             except (BotoCoreError, ClientError) as e:
@@ -307,20 +310,6 @@ def main():
         changed=False,
         resolver_rules=normalized_rules,
     )
-
-
-def validate_resolver_rule(module, rule):
-    if not isinstance(rule, dict):
-        module.fail_json(msg="list_resolver_rules: AWS returned an invalid resolver rule")
-
-    rule_id = rule.get("Id")
-    if not isinstance(rule_id, str) or not rule_id:
-        module.fail_json(msg="list_resolver_rules: AWS returned a resolver rule without a valid ID")
-
-    if "Arn" in rule and not isinstance(rule["Arn"], str):
-        module.fail_json(msg="list_resolver_rules: AWS returned an invalid resolver rule ARN")
-
-    return rule
 
 
 def validate_association(module, association):

@@ -2,6 +2,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import route53_resolver as route53_resolver_utils
 from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver_rule as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -99,7 +100,7 @@ def test_rule_and_tag_validation_rejects_malformed_entries():
     assert "without an IP address" in target_raised.value.values["msg"]
 
     with pytest.raises(ModuleFail) as tag_raised:
-        plugin.validate_tags(module, [{"Key": "Name"}])
+        route53_resolver_utils.validate_tags(module, [{"Key": "Name"}])
 
     assert "invalid tag" in tag_raised.value.values["msg"]
 
@@ -651,7 +652,9 @@ def test_lookup_skips_shared_and_aws_owned_rules():
     with (
         patch.object(plugin, "query_list", return_value=[shared, owned, aws_owned]),
         patch.object(
-            plugin, "resolver_rule_with_tags", side_effect=lambda client, module, rule, changed=False: rule
+            plugin,
+            "resolver_resource_with_tags",
+            side_effect=lambda client, module, rule, resource_type, changed=False: rule,
         ) as with_tags,
     ):
         assert plugin.get_resolver_rule_by_name(Mock(), FakeModule(rule_params()))["Id"] == "rslvr-rr-1"
@@ -663,7 +666,11 @@ def test_present_lookup_uses_the_listed_rule_without_get_resolver_rule():
     client = Mock()
     with (
         patch.object(plugin, "query_list", return_value=[existing_rule()]),
-        patch.object(plugin, "resolver_rule_with_tags", side_effect=lambda client, module, rule, changed=False: rule),
+        patch.object(
+            plugin,
+            "resolver_resource_with_tags",
+            side_effect=lambda client, module, rule, resource_type, changed=False: rule,
+        ),
     ):
         plugin.get_resolver_rule_by_name(client, FakeModule(rule_params()))
 
@@ -731,7 +738,7 @@ def test_update_reuses_tags_read_at_the_start():
     start = existing_rule(Tags=[{"Key": "Name", "Value": "main"}])
     with (
         patch.object(plugin, "get_resolver_rule_by_name", return_value=start),
-        patch.object(plugin, "resolver_rule_with_tags") as with_tags,
+        patch.object(plugin, "resolver_resource_with_tags") as with_tags,
         pytest.raises(ModuleExit) as result,
     ):
         plugin.ensure_present(
@@ -827,7 +834,7 @@ def test_tag_listing_failure_after_create_reports_changed():
         patch.object(plugin, "get_resolver_rule_by_name", return_value=None),
         patch.object(plugin, "run_waiter"),
         patch.object(plugin, "get_resolver_rule", return_value=existing_rule()),
-        patch.object(plugin, "query_list", side_effect=failing_query),
+        patch.object(route53_resolver_utils, "query_list", side_effect=failing_query),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, FakeModule(rule_params(wait=True)))
