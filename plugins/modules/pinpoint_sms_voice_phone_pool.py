@@ -78,19 +78,23 @@ options:
   wait:
     default: true
     description:
-      - Whether to wait for the phone pool status to become C(ACTIVE).
+      - Whether to wait for a created, updated, or matched phone pool status to become C(ACTIVE).
+      - Even when O(wait=false), the module waits for a matched pool that is not C(ACTIVE)
+        before updating its settings or tags.
+      - When O(state=absent), the module always waits for the pool to become C(ACTIVE)
+        before disabling deletion protection and before deleting it.
     type: bool
   wait_delay:
     default: 5
     description:
-      - The delay between polling attempts when O(wait=true).
-      - This must be 1 or greater.
+      - The delay in seconds between polling attempts whenever the module waits.
+      - This must be 1 or greater and is validated even when O(wait=false).
     type: int
   wait_timeout:
     default: 300
     description:
-      - The maximum number of seconds to wait when O(wait=true).
-      - This must be 1 or greater.
+      - The maximum number of seconds for each wait the module performs.
+      - This must be 1 or greater and is validated even when O(wait=false).
     type: int
 notes:
   - O(tags) accepts at most 200 entries; keys must contain 1 to 128 characters
@@ -260,6 +264,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_arn_tags,
+    require_valid_tag_list,
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
@@ -350,12 +355,12 @@ def pool_with_tags(client, module, pool, changed=False):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, changed=changed, msg=f"Unable to list tags for Pinpoint SMS Voice V2 pool {arn}")
 
-        tag_list = response.get("Tags", []) if isinstance(response, dict) else None
-        if not isinstance(tag_list, list) or any(
-            not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str)
-            for tag in tag_list
-        ):
-            module.fail_json(changed=changed, msg=f"AWS returned malformed tags for Pinpoint SMS Voice V2 pool {arn}")
+        tag_list = require_valid_tag_list(
+            module,
+            response.get("Tags", []) if isinstance(response, dict) else None,
+            f"AWS returned malformed tags for Pinpoint SMS Voice V2 pool {arn}",
+            changed=changed,
+        )
 
         tags = boto3_tag_list_to_ansible_dict(tag_list)
 
@@ -786,9 +791,11 @@ def main():
     require_positive_wait_bounds(module, always=True)
 
     client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())
-    describe_parameters = (
-        ("PoolIds",) if state == "absent" or module.params["pool_id"] is not None else ("Filters", "Owner")
-    ) + ("MaxResults", "NextToken")
+    # Waits and re-reads describe by PoolIds on every path.
+    describe_parameters = ("PoolIds", "MaxResults", "NextToken")
+    if state == "present" and module.params["pool_id"] is None:
+        describe_parameters += ("Filters", "Owner")
+
     methods = {"describe_pools": describe_parameters}
     if state == "present":
         create_parameters = (

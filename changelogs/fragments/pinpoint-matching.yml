@@ -1,0 +1,25 @@
+---
+breaking_changes:
+  - pinpoint_sms_voice_phone_number - without ``phone_number_id``, an existing number is now matched on its fixed
+    request attributes and only the ``Name`` tag from ``tags``, and the remaining tags are converged on it according
+    to ``purge_tags``. Previously every requested tag had to match, so changing or adding a tag requested and leased
+    another number and left the original unmanaged. Numbers whose ``Name`` tag matches but whose other tags differ
+    are now adopted and retagged, multiple numbers matching the same ``Name`` now fail, and when ``tags`` has no
+    ``Name`` key the first number matching the fixed attributes is adopted and retagged.
+  - pinpoint_sms_voice_phone_number - ``wait_delay`` and ``wait_timeout`` are now validated when ``wait=false``
+    with ``state=present``, because changes to a matched number that is not ``ACTIVE`` always wait.
+bugfixes:
+  - pinpoint_sms_voice_phone_number - check that the SDK supports describing phone numbers by ``PhoneNumberIds``
+    before searching, since the later waits and re-reads describe by ID.
+  - pinpoint_sms_voice_phone_number - project the ``OptOutListName`` name rather than the supplied ARN in check mode,
+    matching the value returned after a real update.
+  - pinpoint_sms_voice_phone_number - wait for a matched number that is ``PENDING``, ``ASSOCIATING``,
+    or ``DISASSOCIATING`` to become ``ACTIVE`` before updating its settings or tags, even when ``wait=false``.
+  - pinpoint_sms_voice_phone_pool - check that the SDK supports describing pools by ``PoolIds`` before searching,
+    since the later waits and re-reads describe by ID.
+minor_changes:
+  - pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_pool - document when the modules wait regardless of
+    ``wait`` and that ``wait_delay`` and ``wait_timeout`` are always validated.
+  - pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_number_info, pinpoint_sms_voice_phone_pool,
+    pinpoint_sms_voice_phone_pool_info - validate listed tags with the shared tag list helper.
+...
