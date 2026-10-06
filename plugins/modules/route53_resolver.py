@@ -428,6 +428,10 @@ FAILED_IP_ADDRESS_STATUSES = {
 }
 # Addresses already being removed; they neither satisfy nor count toward the desired addresses.
 DEPARTING_IP_ADDRESS_STATUSES = {"DELETING", "DETACHING"}
+# Every other status keeps the address. CREATING, ATTACHING, REMAP_ATTACHING, REMAP_DETACHING, and UPDATING
+# are in progress while the endpoint is CREATING, UPDATING, or AUTO_RECOVERING, which the endpoint waiters
+# wait out. UPDATE_FAILED, DELETE_FAILED_FAS_EXPIRED, and ISOLATED are not documented as unusable, so the
+# address is compared as is and only disassociated again when it is no longer wanted.
 
 
 def create_resolver_endpoint(client, module, desired):

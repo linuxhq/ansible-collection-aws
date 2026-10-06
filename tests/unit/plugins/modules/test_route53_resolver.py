@@ -1074,6 +1074,78 @@ def existing_endpoint(**overrides):
     return endpoint
 
 
+IP_ADDRESS_STATUS_CLASSES = {
+    "ATTACHED": "kept",
+    "ATTACHING": "kept",
+    "CREATING": "kept",
+    "DELETE_FAILED_FAS_EXPIRED": "kept",
+    "DELETING": "departing",
+    "DETACHING": "departing",
+    "FAILED_CREATION": "failed",
+    "FAILED_CREATION_INSUFFICIENT_EC2_CAPACITY_IN_OUTPOST": "failed",
+    "FAILED_RESOURCE_GONE": "failed",
+    "ISOLATED": "kept",
+    "REMAP_ATTACHING": "kept",
+    "REMAP_DETACHING": "kept",
+    "UPDATE_FAILED": "kept",
+    "UPDATING": "kept",
+}
+
+
+def test_every_sdk_ip_address_status_is_classified():
+    model = get_session().get_service_model("route53resolver")
+
+    assert set(IP_ADDRESS_STATUS_CLASSES) == set(model.shape_for("IpAddressStatus").enum)
+
+
+@pytest.mark.parametrize("status", sorted(IP_ADDRESS_STATUS_CLASSES))
+def test_ip_address_status_classification(status):
+    ip_address = {"Ip": "192.0.2.3", "IpId": "rni-3", "SubnetId": "subnet-3", "Status": status}
+    expected = IP_ADDRESS_STATUS_CLASSES[status]
+
+    assert (status in plugin.FAILED_IP_ADDRESS_STATUSES) is (expected == "failed")
+    assert (status in plugin.DEPARTING_IP_ADDRESS_STATUSES) is (expected == "departing")
+    assert (plugin.usable_ip_addresses([ip_address]) == [ip_address]) is (expected == "kept")
+
+
+@pytest.mark.parametrize("status", ["DELETE_FAILED_FAS_EXPIRED", "ISOLATED", "REMAP_DETACHING", "UPDATE_FAILED"])
+def test_kept_address_satisfies_its_request_without_replacement(status):
+    client = Mock()
+    endpoint = existing_endpoint(
+        IpAddresses=[
+            {"Ip": "192.0.2.1", "IpId": "rni-1", "SubnetId": "subnet-1", "Status": "ATTACHED"},
+            {"Ip": "192.0.2.2", "IpId": "rni-2", "SubnetId": "subnet-2", "Status": status},
+        ]
+    )
+    desired = {"name": "main", "ip_addresses": plugin.comparable_ip_addresses(endpoint_params()["ip_addresses"])}
+    module = FakeModule(endpoint_params())
+
+    assert plugin.reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired) is endpoint
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("status", ["DELETE_FAILED_FAS_EXPIRED", "UPDATE_FAILED"])
+def test_unwanted_kept_address_is_disassociated_again(status):
+    client = Mock()
+    endpoint = existing_endpoint(
+        IpAddresses=[
+            {"Ip": "192.0.2.1", "IpId": "rni-1", "SubnetId": "subnet-1", "Status": "ATTACHED"},
+            {"Ip": "192.0.2.2", "IpId": "rni-2", "SubnetId": "subnet-2", "Status": "ATTACHED"},
+            {"Ip": "192.0.2.3", "IpId": "rni-3", "SubnetId": "subnet-3", "Status": status},
+        ]
+    )
+    desired = {"name": "main", "ip_addresses": plugin.comparable_ip_addresses(endpoint_params()["ip_addresses"])}
+    with patch.object(plugin, "wait_for_resolver_endpoint_status"):
+        plugin.reconcile_resolver_endpoint_ip_addresses(client, FakeModule(endpoint_params()), endpoint, desired)
+
+    client.associate_resolver_endpoint_ip_address.assert_not_called()
+    client.disassociate_resolver_endpoint_ip_address.assert_called_once_with(
+        IpAddress={"Ip": "192.0.2.3", "IpId": "rni-3", "SubnetId": "subnet-3"},
+        ResolverEndpointId="rslvr-1",
+        aws_retry=True,
+    )
+
+
 def acceptor_states(waiter_name):
     model = plugin.ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA[waiter_name]
     return {acceptor["expected"]: acceptor["state"] for acceptor in model["acceptors"]}
