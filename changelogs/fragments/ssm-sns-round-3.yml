@@ -14,8 +14,10 @@ bugfixes:
     when that read fails.
   - sns_topic_attributes - name the topic before the reason in the missing topic failure message.
 minor_changes:
+  - ssm_proxy - depend on the ``ec2_instance_info`` role so its instance facts are available to the proxy.
   - ssm_association, ssm_association_info, ssm_document, ssm_document_info, ssm_instance_info - share the SSM resource
     type constants and filter list construction in ``module_utils/ssm.py``.
 trivial:
   - molecule - set OBJC_DISABLE_INITIALIZE_FORK_SAFETY in every scenario's provisioner environment so forked
-    workers do not crash on macOS, and run the ssm_session and ssm_proxy subnets in us-east-1a.
+    workers do not crash on macOS, run the ssm_session and ssm_proxy subnets in us-east-1a, and forward the
+    ssm_proxy scenario to the instance private IP because SSM Agent now rejects loopback targets.
