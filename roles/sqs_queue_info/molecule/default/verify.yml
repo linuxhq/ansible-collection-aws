@@ -19,6 +19,18 @@
             selectattr('queue_arn', 'defined') |
             length == 3
 
+    - name: Ensure aws simple queue service queues are listed without name
+      linuxhq.aws.sqs_queue_info:
+        region: "{{ _aws_az_info_list_l.0[:-1] }}"
+      register: __sqs_queue_info_verify_unfiltered
+      retries: 30
+      delay: 1
+      until:
+        - __sqs_queue_info_verify_unfiltered.queues |
+            selectattr('name', 'match', 'molecule-info-') |
+            selectattr('queue_arn', 'defined') |
+            length == 3
+
     - name: Ensure role is included without name
       ansible.builtin.include_role:
         name: sqs_queue_info

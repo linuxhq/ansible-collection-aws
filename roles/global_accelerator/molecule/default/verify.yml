@@ -45,6 +45,28 @@
         label: "{{ _verify }}"
         loop_var: _verify
 
+    - name: Ensure information about leftover aws virtual private cloud nat gateways is gathered
+      amazon.aws.ec2_vpc_nat_gateway_info:
+        filters:
+          state:
+            - available
+            - pending
+          vpc-id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+        validate_certs: true
+      register: __global_accelerator_nat_gateway_info
+
+    - name: Ensure leftover aws virtual private cloud nat gateways are absent
+      amazon.aws.ec2_vpc_nat_gateway:
+        nat_gateway_id: "{{ _nat.nat_gateway_id }}"
+        release_eip: true
+        state: absent
+        validate_certs: true
+        wait: true
+      loop: "{{ __global_accelerator_nat_gateway_info.result }}"
+      loop_control:
+        label: "{{ _nat.nat_gateway_id }}"
+        loop_var: _nat
+
     - name: Ensure aws network interfaces are released
       amazon.aws.ec2_eni_info:
         filters:

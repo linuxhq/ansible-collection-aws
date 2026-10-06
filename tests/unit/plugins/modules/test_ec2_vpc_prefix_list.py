@@ -256,6 +256,7 @@ def test_entry_replacement_is_one_request_before_shrinking():
         {
             "address_family": "IPv4",
             "entries": [{"cidr": "192.0.2.0/24"}],
+            "max_entries": 1,
             "name": "main",
             "purge_tags": True,
             "tags": None,
@@ -344,6 +345,7 @@ def test_present_waits_for_an_existing_modification_and_rechecks():
         {
             "address_family": "IPv4",
             "entries": [{"cidr": "10.0.0.0/8"}],
+            "max_entries": 1,
             "name": "main",
             "purge_tags": True,
             "tags": None,
@@ -697,6 +699,85 @@ def test_max_entries_headroom_avoids_resizing():
     modify.assert_called_once_with(
         client, module, current, changed=False, add_entries=[{"cidr": "192.0.2.0/24"}], remove_entries=None
     )
+
+
+def test_omitted_max_entries_never_shrinks_an_existing_prefix_list():
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}]))
+    current = prefix_list(MaxEntries=10)
+    with (
+        patch.object(plugin, "get_current", return_value=(current, [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(plugin, "modify_prefix_list") as modify,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert result.value.values["changed"] is False
+    assert result.value.values["prefix_list"]["max_entries"] == 10
+    modify.assert_not_called()
+
+
+def test_omitted_max_entries_keeps_headroom_when_entries_change():
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}, {"cidr": "192.0.2.0/24"}]))
+    current = prefix_list(MaxEntries=10)
+    with (
+        patch.object(plugin, "get_current", return_value=(current, [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(plugin, "modify_prefix_list", return_value=prefix_list(MaxEntries=10, Version=2)) as modify,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    modify.assert_called_once_with(
+        client, module, current, changed=False, add_entries=[{"cidr": "192.0.2.0/24"}], remove_entries=None
+    )
+
+
+def test_omitted_max_entries_grows_an_existing_prefix_list_to_fit_entries():
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}, {"cidr": "192.0.2.0/24"}]))
+    current = prefix_list(MaxEntries=1)
+    grown = prefix_list(MaxEntries=2, Version=2)
+    with (
+        patch.object(plugin, "get_current", return_value=(current, [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(plugin, "describe_prefix_list", return_value=grown),
+        patch.object(plugin, "modify_prefix_list", side_effect=[grown, prefix_list(MaxEntries=2, Version=3)]) as modify,
+        patch.object(plugin, "wait_for_ready_state"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert result.value.values["changed"] is True
+    assert modify.call_args_list[0] == call(client, module, current, changed=False, max_entries=2)
+
+
+def test_explicit_max_entries_shrinks_an_existing_prefix_list():
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}], max_entries=1))
+    current = prefix_list(MaxEntries=10)
+    with (
+        patch.object(plugin, "get_current", return_value=(current, [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(plugin, "modify_prefix_list", return_value=prefix_list(MaxEntries=1, Version=2)) as modify,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert result.value.values["changed"] is True
+    modify.assert_called_once_with(client, module, current, changed=False, max_entries=1)
+
+
+def test_omitted_max_entries_creates_with_the_number_of_entries():
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}, {"cidr": "192.0.2.0/24"}]))
+    created = prefix_list(MaxEntries=2)
+    with (
+        patch.object(plugin, "get_current", return_value=(None, None)),
+        patch.object(plugin, "create_prefix_list", return_value=(created, [])) as create,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert create.call_args.args[3]["max_entries"] == 2
 
 
 @pytest.mark.parametrize("max_entries", [None, 400])

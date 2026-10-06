@@ -1,6 +1,7 @@
 from unittest.mock import ANY, Mock, patch
 
 import pytest
+from botocore.session import get_session
 
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 
@@ -56,13 +57,13 @@ def test_mixed_explicit_and_automatic_addresses_match_without_replacement(
     wait.assert_not_called()
 
 
-@pytest.mark.parametrize("endpoint_type", ["dualstack", "ipv4", "ipv6"])
+@pytest.mark.parametrize("endpoint_type", ["DUALSTACK", "IPV4", "IPV6"])
 def test_explicit_address_pair_uses_real_argument_validation(endpoint_type):
     client = Mock()
     client.create_resolver_endpoint.return_value = {"ResolverEndpoint": {"Id": "rslvr-endpt-1"}}
     arguments = {
         "name": "example",
-        "direction": "inbound",
+        "direction": "INBOUND",
         "resolver_endpoint_type": endpoint_type,
         "security_group_ids": ["sg-example"],
         "wait": False,
@@ -82,19 +83,95 @@ def test_explicit_address_pair_uses_real_argument_validation(endpoint_type):
         patch.object(plugin, "AnsibleAWSModule", side_effect=initialize),
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
-        pytest.raises(ModuleExit if endpoint_type == "dualstack" else ModuleFail) as raised,
+        pytest.raises(ModuleExit if endpoint_type == "DUALSTACK" else ModuleFail) as raised,
     ):
         plugin.main()
 
-    if endpoint_type == "dualstack":
+    if endpoint_type == "DUALSTACK":
         assert raised.value.values["changed"]
         assert client.create_resolver_endpoint.call_args.kwargs["IpAddresses"] == [
             {"SubnetId": entry["subnet_id"], "Ip": entry["ip"], "Ipv6": entry["ipv6"]}
             for entry in arguments["ip_addresses"]
         ]
     else:
-        assert "require resolver_endpoint_type=dualstack" in raised.value.values["msg"]
+        assert "require resolver_endpoint_type=DUALSTACK" in raised.value.values["msg"]
         client.create_resolver_endpoint.assert_not_called()
+
+
+def test_enum_choices_match_the_sdk_model():
+    spec = assert_module_contract(plugin)["argument_spec"]
+    model = get_session().get_service_model("route53resolver")
+
+    assert sorted(spec["direction"]["choices"]) == sorted(model.shape_for("ResolverEndpointDirection").enum)
+    assert sorted(spec["protocols"]["choices"]) == sorted(model.shape_for("Protocol").enum)
+    assert sorted(spec["resolver_endpoint_type"]["choices"]) == sorted(model.shape_for("ResolverEndpointType").enum)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"direction": "inbound"},
+        {"protocols": ["do53"]},
+        {"protocols": ["doh-fips"]},
+        {"resolver_endpoint_type": "dualstack"},
+    ],
+)
+def test_lowercase_enum_values_are_rejected(overrides):
+    spec = assert_module_contract(plugin)
+    spec.pop("supports_check_mode")
+    arguments = dict(
+        {
+            "direction": "INBOUND",
+            "ip_addresses": [{"subnet_id": "subnet-a"}, {"subnet_id": "subnet-b"}],
+            "name": "example",
+            "security_group_ids": ["sg-example"],
+        },
+        **overrides,
+    )
+
+    result = ArgumentSpecValidator(**spec).validate(arguments)
+
+    assert any("value of" in message for message in result.error_messages)
+
+
+@pytest.mark.parametrize("direction", ["INBOUND", "INBOUND_DELEGATION", "OUTBOUND"])
+def test_provider_enum_values_are_sent_unchanged(direction):
+    client = Mock()
+    client.create_resolver_endpoint.return_value = {"ResolverEndpoint": {"Id": "rslvr-endpt-1", "Name": "main"}}
+    module = FakeModule(
+        endpoint_params(direction=direction, protocols=["DoH", "Do53"], resolver_endpoint_type="DUALSTACK"),
+        client=client,
+    )
+
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    request = client.create_resolver_endpoint.call_args.kwargs
+    assert request["Direction"] == direction
+    assert request["Protocols"] == ["Do53", "DoH"]
+    assert request["ResolverEndpointType"] == "DUALSTACK"
+    assert raised.value.values["changed"]
+
+
+@pytest.mark.parametrize("direction, gated", [("INBOUND_DELEGATION", True), ("OUTBOUND", False)])
+def test_inbound_delegation_requires_a_supporting_botocore(direction, gated):
+    module = FakeModule(endpoint_params(direction=direction, state="present"))
+    module.require_botocore_at_least = Mock(side_effect=ModuleFail({"msg": "botocore"}))
+
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods", side_effect=ModuleExit({})),
+        pytest.raises(ModuleFail if gated else ModuleExit),
+    ):
+        plugin.main()
+
+    if gated:
+        module.require_botocore_at_least.assert_called_once_with("1.38.43", reason="for direction=INBOUND_DELEGATION")
+    else:
+        module.require_botocore_at_least.assert_not_called()
 
 
 def test_get_rejects_malformed_response():
@@ -224,15 +301,15 @@ def test_empty_tags_do_not_gate_tag_resource():
     client = Mock()
     module = FakeModule(
         {
-            "direction": "outbound",
+            "direction": "OUTBOUND",
             "ip_addresses": [
                 {"subnet_id": "subnet-1"},
                 {"subnet_id": "subnet-2"},
             ],
             "name": "endpoint",
-            "protocols": ["do53"],
+            "protocols": ["Do53"],
             "purge_tags": True,
-            "resolver_endpoint_type": "ipv4",
+            "resolver_endpoint_type": "IPV4",
             "security_group_ids": ["sg-1"],
             "state": "present",
             "tags": {},
@@ -366,7 +443,7 @@ def test_omitted_protocols_and_type_leave_an_existing_endpoint_unchanged():
     client = Mock()
     module = FakeModule(
         {
-            "direction": "outbound",
+            "direction": "OUTBOUND",
             "ip_addresses": [
                 {"ip": "192.0.2.1", "subnet_id": "subnet-1"},
                 {"ip": "192.0.2.2", "subnet_id": "subnet-2"},
@@ -407,7 +484,7 @@ def test_omitted_protocols_and_type_leave_an_existing_endpoint_unchanged():
 def test_check_mode_predicts_aws_defaults_for_a_new_endpoint():
     module = FakeModule(
         {
-            "direction": "outbound",
+            "direction": "OUTBOUND",
             "ip_addresses": [{"subnet_id": "subnet-1"}, {"subnet_id": "subnet-2"}],
             "name": "main",
             "protocols": None,
@@ -434,15 +511,15 @@ def test_auto_assigned_ip_addresses_are_idempotent():
     client = Mock()
     module = FakeModule(
         {
-            "direction": "outbound",
+            "direction": "OUTBOUND",
             "ip_addresses": [
                 {"subnet_id": "subnet-1"},
                 {"subnet_id": "subnet-2"},
             ],
             "name": "main",
-            "protocols": ["do53"],
+            "protocols": ["Do53"],
             "purge_tags": True,
-            "resolver_endpoint_type": "ipv4",
+            "resolver_endpoint_type": "IPV4",
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": False,
@@ -479,15 +556,15 @@ def test_auto_assigned_ip_addresses_are_idempotent():
 def test_check_mode_preserves_unchanged_auto_assigned_addresses():
     module = FakeModule(
         {
-            "direction": "outbound",
+            "direction": "OUTBOUND",
             "ip_addresses": [
                 {"subnet_id": "subnet-1"},
                 {"subnet_id": "subnet-2"},
             ],
             "name": "main",
-            "protocols": ["doh"],
+            "protocols": ["DoH"],
             "purge_tags": True,
-            "resolver_endpoint_type": "ipv4",
+            "resolver_endpoint_type": "IPV4",
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": False,
@@ -608,15 +685,15 @@ def test_direction_change_preserves_the_endpoint():
     client = Mock()
     module = FakeModule(
         {
-            "direction": "outbound",
+            "direction": "OUTBOUND",
             "ip_addresses": [
                 {"subnet_id": "subnet-1"},
                 {"subnet_id": "subnet-2"},
             ],
             "name": "main",
-            "protocols": ["do53"],
+            "protocols": ["Do53"],
             "purge_tags": True,
-            "resolver_endpoint_type": "ipv4",
+            "resolver_endpoint_type": "IPV4",
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": False,
@@ -662,15 +739,15 @@ def test_no_wait_change_waits_for_operational_endpoint_and_rechecks():
     client = Mock()
     module = FakeModule(
         {
-            "direction": "outbound",
+            "direction": "OUTBOUND",
             "ip_addresses": [
                 {"subnet_id": "subnet-1"},
                 {"subnet_id": "subnet-2"},
             ],
             "name": "main",
-            "protocols": ["do53"],
+            "protocols": ["Do53"],
             "purge_tags": True,
-            "resolver_endpoint_type": "ipv4",
+            "resolver_endpoint_type": "IPV4",
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": False,
@@ -715,15 +792,15 @@ def test_waited_endpoint_is_enriched_before_ip_reconciliation():
     client = Mock()
     module = FakeModule(
         {
-            "direction": "outbound",
+            "direction": "OUTBOUND",
             "ip_addresses": [
                 {"subnet_id": "subnet-1"},
                 {"subnet_id": "subnet-2"},
             ],
             "name": "main",
-            "protocols": ["doh"],
+            "protocols": ["DoH"],
             "purge_tags": True,
-            "resolver_endpoint_type": "ipv4",
+            "resolver_endpoint_type": "IPV4",
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": True,
@@ -769,15 +846,15 @@ def test_update_rereads_endpoint_when_response_is_lean():
     client = Mock(update_resolver_endpoint=Mock(return_value={}))
     module = FakeModule(
         {
-            "direction": "outbound",
+            "direction": "OUTBOUND",
             "ip_addresses": [
                 {"subnet_id": "subnet-1"},
                 {"subnet_id": "subnet-2"},
             ],
             "name": "main",
-            "protocols": ["doh"],
+            "protocols": ["DoH"],
             "purge_tags": True,
-            "resolver_endpoint_type": "ipv4",
+            "resolver_endpoint_type": "IPV4",
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": False,
@@ -812,15 +889,15 @@ def test_tag_change_rejects_endpoint_without_arn():
     client = Mock()
     module = FakeModule(
         {
-            "direction": "outbound",
+            "direction": "OUTBOUND",
             "ip_addresses": [
                 {"subnet_id": "subnet-1"},
                 {"subnet_id": "subnet-2"},
             ],
             "name": "main",
-            "protocols": ["do53"],
+            "protocols": ["Do53"],
             "purge_tags": True,
-            "resolver_endpoint_type": "ipv4",
+            "resolver_endpoint_type": "IPV4",
             "security_group_ids": ["sg-1"],
             "tags": {"Name": "main"},
             "wait": False,
@@ -850,15 +927,15 @@ def test_tag_change_rejects_endpoint_without_arn():
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("field,value", [("direction", "inbound"), ("security_group_ids", ["sg-2"])])
+@pytest.mark.parametrize("field,value", [("direction", "INBOUND"), ("security_group_ids", ["sg-2"])])
 def test_immutable_changes_never_mutate_endpoint(check_mode, field, value):
     params = {
-        "direction": "outbound",
+        "direction": "OUTBOUND",
         "ip_addresses": [{"subnet_id": "subnet-1"}, {"subnet_id": "subnet-2"}],
         "name": "main",
-        "protocols": ["do53"],
+        "protocols": ["Do53"],
         "purge_tags": True,
-        "resolver_endpoint_type": "ipv4",
+        "resolver_endpoint_type": "IPV4",
         "security_group_ids": ["sg-1"],
         "tags": None,
         "wait": True,
@@ -890,12 +967,12 @@ def test_immutable_changes_never_mutate_endpoint(check_mode, field, value):
 def test_unresolved_update_never_replaces_endpoint(wait):
     module = FakeModule(
         {
-            "direction": "outbound",
+            "direction": "OUTBOUND",
             "ip_addresses": [{"subnet_id": "subnet-1"}, {"subnet_id": "subnet-2"}],
             "name": "main",
-            "protocols": ["doh"],
+            "protocols": ["DoH"],
             "purge_tags": True,
-            "resolver_endpoint_type": "ipv4",
+            "resolver_endpoint_type": "IPV4",
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": wait,
@@ -933,7 +1010,7 @@ def test_unresolved_update_never_replaces_endpoint(wait):
 
 def endpoint_params(**overrides):
     params = {
-        "direction": "outbound",
+        "direction": "OUTBOUND",
         "ip_addresses": [
             {"ip": "192.0.2.1", "subnet_id": "subnet-1"},
             {"ip": "192.0.2.2", "subnet_id": "subnet-2"},
@@ -1076,7 +1153,7 @@ def test_dual_stack_conversion_sends_requested_ipv6_addresses():
         "ResolverEndpoint": existing_endpoint(ResolverEndpointType="DUALSTACK", Status="UPDATING")
     }
     params = endpoint_params(
-        resolver_endpoint_type="dualstack",
+        resolver_endpoint_type="DUALSTACK",
         ip_addresses=[
             {"ip": "192.0.2.1", "ipv6": "2001:db8::1", "subnet_id": "subnet-1"},
             {"ip": "192.0.2.2", "ipv6": "2001:db8::2", "subnet_id": "subnet-2"},
@@ -1108,21 +1185,21 @@ def test_dual_stack_conversion_sends_requested_ipv6_addresses():
 @pytest.mark.parametrize(
     "overrides, current_overrides, message_part",
     [
-        ({"resolver_endpoint_type": "ipv6"}, {}, "resolver_endpoint_type to or from ipv6"),
+        ({"resolver_endpoint_type": "IPV6"}, {}, "resolver_endpoint_type to or from IPV6"),
         (
-            {"resolver_endpoint_type": "ipv4"},
+            {"resolver_endpoint_type": "IPV4"},
             {"ResolverEndpointType": "IPV6"},
-            "resolver_endpoint_type to or from ipv6",
+            "resolver_endpoint_type to or from IPV6",
         ),
         (
-            {"direction": "inbound", "protocols": ["doh"]},
+            {"direction": "INBOUND", "protocols": ["DoH"]},
             {"Direction": "INBOUND"},
-            "directly from do53 to doh on an inbound endpoint",
+            "directly from Do53 to DoH on an INBOUND endpoint",
         ),
         (
-            {"direction": "inbound", "protocols": ["doh-fips"]},
+            {"direction": "INBOUND", "protocols": ["DoH-FIPS"]},
             {"Direction": "INBOUND"},
-            "Add the new protocol alongside do53 first",
+            "Add the new protocol alongside Do53 first",
         ),
     ],
 )
@@ -1143,9 +1220,9 @@ def test_changes_aws_does_not_support_fail_before_modifying(overrides, current_o
 @pytest.mark.parametrize(
     "current_protocols, requested_protocols, expected_protocols",
     [
-        (["Do53"], ["do53", "doh"], ["Do53", "DoH"]),
-        (["Do53", "DoH"], ["doh"], ["DoH"]),
-        (["DoH"], ["do53"], ["Do53"]),
+        (["Do53"], ["Do53", "DoH"], ["Do53", "DoH"]),
+        (["Do53", "DoH"], ["DoH"], ["DoH"]),
+        (["DoH"], ["Do53"], ["Do53"]),
     ],
 )
 def test_inbound_endpoint_protocols_are_updated(current_protocols, requested_protocols, expected_protocols):
@@ -1163,7 +1240,7 @@ def test_inbound_endpoint_protocols_are_updated(current_protocols, requested_pro
         patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, FakeModule(endpoint_params(direction="inbound", protocols=requested_protocols)))
+        plugin.ensure_present(client, FakeModule(endpoint_params(direction="INBOUND", protocols=requested_protocols)))
 
     assert raised.value.values["changed"]
     assert raised.value.values["resolver_endpoint"]["protocols"] == expected_protocols
@@ -1180,7 +1257,7 @@ def test_no_wait_update_with_matching_subnet_only_addresses_does_not_wait():
     client.update_resolver_endpoint.return_value = {"ResolverEndpoint": existing_endpoint(Protocols=["DoH"])}
     params = endpoint_params(
         ip_addresses=[{"subnet_id": "subnet-1"}, {"subnet_id": "subnet-2"}],
-        protocols=["doh"],
+        protocols=["DoH"],
     )
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint()),
@@ -1242,7 +1319,7 @@ def test_update_reuses_tags_read_at_the_start():
         patch.object(plugin, "reconcile_resolver_endpoint_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
         pytest.raises(ModuleExit) as result,
     ):
-        plugin.ensure_present(client, FakeModule(endpoint_params(protocols=["do53", "doh"], tags={"Name": "main"})))
+        plugin.ensure_present(client, FakeModule(endpoint_params(protocols=["Do53", "DoH"], tags={"Name": "main"})))
 
     assert with_tags.call_count == 1
     assert result.value.values["resolver_endpoint"]["tags"] == {"Name": "main"}
@@ -1342,13 +1419,13 @@ def test_endpoint_that_needs_action_after_an_update_reports_changed():
         ),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, FakeModule(endpoint_params(protocols=["doh"], wait=True)))
+        plugin.ensure_present(client, FakeModule(endpoint_params(protocols=["DoH"], wait=True)))
 
     assert raised.value.values["changed"] is True
     assert raised.value.values["msg"].startswith("AWS Route53 Resolver endpoint main needs action")
 
 
-@pytest.mark.parametrize(("protocols", "changed"), [(["do53", "doh"], True), (None, False)])
+@pytest.mark.parametrize(("protocols", "changed"), [(["Do53", "DoH"], True), (None, False)])
 def test_tag_failure_reports_whether_the_endpoint_was_updated(protocols, changed):
     client = Mock()
     client.update_resolver_endpoint.return_value = {"ResolverEndpoint": existing_endpoint(Protocols=["Do53", "DoH"])}

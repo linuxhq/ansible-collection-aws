@@ -1,0 +1,19 @@
+---
+breaking_changes:
+  - ec2_vpc_prefix_list - when ``max_entries`` is omitted, an existing prefix list now grows to fit ``entries`` but
+    never shrinks, instead of being resized to the number of ``entries`` on every entry-count change. New prefix
+    lists still hold exactly the number of ``entries``, and an explicit ``max_entries`` still resizes the prefix
+    list in either direction.
+  - route53_resolver - ``direction``, ``protocols``, and ``resolver_endpoint_type`` now accept the AWS values
+    ``INBOUND``, ``OUTBOUND``, ``Do53``, ``DoH``, ``DoH-FIPS``, ``DUALSTACK``, ``IPV4``, and ``IPV6`` and send them
+    unchanged, matching ``route53_resolver_rule``; the lowercase values are no longer accepted.
+  - route53_resolver role - list items in ``route53_resolver_list`` must use the AWS values for ``direction``,
+    ``protocols``, and ``resolver_endpoint_type``, such as ``OUTBOUND`` and ``Do53``.
+minor_changes:
+  - route53_resolver - accept ``INBOUND_DELEGATION`` for ``direction``, which requires botocore 1.38.43 or later.
+trivial:
+  - global_accelerator and global_accelerator_info molecule - delete NAT gateways left in the shared ``molecule`` VPC
+    before waiting for its network interfaces to be released.
+  - sqs_queue_info molecule - wait until an unfiltered queue listing returns the test queues before verifying the
+    role without a name.
+...

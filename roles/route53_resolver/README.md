@@ -33,27 +33,27 @@ None
         - role: linuxhq.aws.route53_resolver
           route53_resolver_list:
             - name: molecule-cloudflare
-              direction: outbound
+              direction: OUTBOUND
               ip_addresses:
                 - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
                   ip: 192.168.0.125
                 - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
                   ip: 192.168.0.253
               protocols:
-                - do53
-                - doh
+                - Do53
+                - DoH
               security_group_ids:
                 - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
             - name: molecule-google
-              direction: outbound
+              direction: OUTBOUND
               ip_addresses:
                 - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
                   ip: 192.168.0.126
                 - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
                   ip: 192.168.0.254
               protocols:
-                - do53
-                - doh
+                - Do53
+                - DoH
               security_group_ids:
                 - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"

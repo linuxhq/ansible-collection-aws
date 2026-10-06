@@ -19,9 +19,11 @@ options:
     description:
       - The resolver endpoint direction.
       - This is required when O(state=present).
+      - V(INBOUND_DELEGATION) requires botocore 1.38.43 or later.
     choices:
-      - inbound
-      - outbound
+      - INBOUND
+      - INBOUND_DELEGATION
+      - OUTBOUND
     type: str
   ip_addresses:
     description:
@@ -33,12 +35,12 @@ options:
       ip:
         description:
           - The IPv4 address for the endpoint.
-          - Can be supplied together with O(ip_addresses[].ipv6) for O(resolver_endpoint_type=dualstack).
+          - Can be supplied together with O(ip_addresses[].ipv6) for O(resolver_endpoint_type=DUALSTACK).
         type: str
       ipv6:
         description:
           - The IPv6 address for the endpoint.
-          - Can be supplied together with O(ip_addresses[].ip) for O(resolver_endpoint_type=dualstack).
+          - Can be supplied together with O(ip_addresses[].ip) for O(resolver_endpoint_type=DUALSTACK).
         type: str
       subnet_id:
         description:
@@ -61,9 +63,9 @@ options:
       - When omitted while creating an endpoint, AWS uses C(Do53).
       - When omitted for an existing endpoint, the current protocols are left unchanged.
     choices:
-      - do53
-      - doh
-      - doh-fips
+      - Do53
+      - DoH
+      - DoH-FIPS
     elements: str
     type: list
   resolver_endpoint_type:
@@ -72,9 +74,9 @@ options:
       - When omitted while creating an endpoint, AWS uses C(IPV4).
       - When omitted for an existing endpoint, the current type is left unchanged.
     choices:
-      - dualstack
-      - ipv4
-      - ipv6
+      - DUALSTACK
+      - IPV4
+      - IPV6
     type: str
   security_group_ids:
     description:
@@ -128,7 +130,7 @@ attributes:
 EXAMPLES = r"""
 - name: Ensure a Route53 Resolver endpoint is present
   linuxhq.aws.route53_resolver:
-    direction: outbound
+    direction: OUTBOUND
     ip_addresses:
       - ip: 192.168.0.125
         subnet_id: subnet-0123456789abcdef0
@@ -136,8 +138,8 @@ EXAMPLES = r"""
         subnet_id: subnet-0123456789abcdef1
     name: molecule
     protocols:
-      - do53
-      - doh
+      - Do53
+      - DoH
     security_group_ids:
       - sg-0123456789abcdef0
     tags:
@@ -424,11 +426,6 @@ FAILED_IP_ADDRESS_STATUSES = {
 }
 # Addresses already being removed; they neither satisfy nor count toward the desired addresses.
 DEPARTING_IP_ADDRESS_STATUSES = {"DELETING", "DETACHING"}
-PROTOCOLS = {
-    "do53": "Do53",
-    "doh": "DoH",
-    "doh-fips": "DoH-FIPS",
-}
 
 
 def create_resolver_endpoint(client, module, desired):
@@ -549,19 +546,11 @@ def ensure_present(client, module):
     tags = module.params["tags"]
     purge_tags = module.params["purge_tags"]
     desired = {
-        "direction": module.params["direction"].upper(),
+        "direction": module.params["direction"],
         "ip_addresses": module.params["ip_addresses"],
         "name": module.params["name"],
-        "protocols": (
-            sorted({PROTOCOLS[protocol.lower()] for protocol in module.params["protocols"]})
-            if module.params["protocols"] is not None
-            else None
-        ),
-        "resolver_endpoint_type": (
-            module.params["resolver_endpoint_type"].upper()
-            if module.params["resolver_endpoint_type"] is not None
-            else None
-        ),
+        "protocols": (sorted(set(module.params["protocols"])) if module.params["protocols"] is not None else None),
+        "resolver_endpoint_type": module.params["resolver_endpoint_type"],
         "security_group_ids": sorted(set(module.params["security_group_ids"])),
     }
     endpoint = get_resolver_endpoint_by_name(client, module)
@@ -638,7 +627,7 @@ def ensure_present(client, module):
             )
         ):
             # UpdateResolverEndpoint only converts between IPV4 and DUALSTACK.
-            immutable_changes.append("resolver_endpoint_type to or from ipv6")
+            immutable_changes.append("resolver_endpoint_type to or from IPV6")
 
         if immutable_changes:
             module.fail_json(
@@ -658,9 +647,9 @@ def ensure_present(client, module):
             module.fail_json(
                 msg=(
                     "Cannot update AWS Route53 Resolver endpoint "
-                    f"{module.params['name']} protocols directly from do53 to "
-                    f"{desired_comparable['protocols'][0].lower()} on an inbound endpoint. "
-                    "Add the new protocol alongside do53 first, then remove do53. "
+                    f"{module.params['name']} protocols directly from Do53 to "
+                    f"{desired_comparable['protocols'][0]} on an INBOUND endpoint. "
+                    "Add the new protocol alongside Do53 first, then remove Do53. "
                     "The existing endpoint has not been modified."
                 ),
             )
@@ -1189,7 +1178,7 @@ def main():
     module = AnsibleAWSModule(
         argument_spec={
             "direction": {
-                "choices": ["inbound", "outbound"],
+                "choices": ["INBOUND", "INBOUND_DELEGATION", "OUTBOUND"],
                 "type": "str",
             },
             "ip_addresses": {
@@ -1203,13 +1192,13 @@ def main():
             },
             "name": {"required": True, "type": "str"},
             "protocols": {
-                "choices": ["do53", "doh", "doh-fips"],
+                "choices": ["Do53", "DoH", "DoH-FIPS"],
                 "elements": "str",
                 "type": "list",
             },
             "purge_tags": {"default": True, "type": "bool"},
             "resolver_endpoint_type": {
-                "choices": ["dualstack", "ipv4", "ipv6"],
+                "choices": ["DUALSTACK", "IPV4", "IPV6"],
                 "type": "str",
             },
             "security_group_ids": {
@@ -1261,10 +1250,10 @@ def main():
             if (
                 entry.get("ip") is not None
                 and entry.get("ipv6") is not None
-                and module.params["resolver_endpoint_type"] not in (None, "dualstack")
+                and module.params["resolver_endpoint_type"] not in (None, "DUALSTACK")
             ):
                 module.fail_json(
-                    msg="ip_addresses entries with both ip and ipv6 require resolver_endpoint_type=dualstack"
+                    msg="ip_addresses entries with both ip and ipv6 require resolver_endpoint_type=DUALSTACK"
                 )
 
             if not 1 <= len(entry["subnet_id"]) <= 32:
@@ -1275,6 +1264,9 @@ def main():
         require_valid_tags(module, tags, 200)
 
     require_positive_wait_bounds(module, always=state == "present")
+
+    if module.params["direction"] == "INBOUND_DELEGATION":
+        module.require_botocore_at_least("1.38.43", reason="for direction=INBOUND_DELEGATION")
 
     client = module.client("route53resolver", retry_decorator=AWSRetry.jittered_backoff())
     method_names = {"list_resolver_endpoints"}
@@ -1340,7 +1332,7 @@ def main():
     if tags is None:
         required_method_parameters["create_resolver_endpoint"].discard("Tags")
 
-    if module.params["resolver_endpoint_type"] == "dualstack":
+    if module.params["resolver_endpoint_type"] == "DUALSTACK":
         required_method_parameters["update_resolver_endpoint"].add("UpdateIpAddresses")
 
     require_client_methods(
