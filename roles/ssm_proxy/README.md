@@ -19,6 +19,7 @@ None
 
 ## Dependencies
 
+* [ec2\_instance\_info](../ec2_instance_info)
 * [eks\_cluster\_info](../eks_cluster_info)
 
 ## Example Playbook
