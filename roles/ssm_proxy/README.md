@@ -28,6 +28,6 @@ None
       connection: local
       roles:
         - role: linuxhq.aws.ssm_proxy
-          ssm_proxy_host: localhost
+          ssm_proxy_host: "{{ _ec2_instance_info_dict['molecule'].private_ip_address }}"
           ssm_proxy_instance: molecule
           ssm_proxy_port: 22
