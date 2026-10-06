@@ -422,6 +422,23 @@ def test_purge_keeps_matching_flow_logs_and_predicts_in_check_mode():
     client.delete_flow_logs.assert_not_called()
 
 
+def test_check_mode_predicts_only_fields_ec2_returns():
+    client = Mock()
+    result = run_present(client, FakeModule(present_params(), check_mode=True), [])
+
+    # EC2 flow logs carry no resource type, so the prediction omits it as real runs do.
+    assert result["flow_logs"] == [
+        {
+            "flow_log_status": "ACTIVE",
+            "log_destination": "arn:aws:s3:::new-bucket",
+            "log_destination_type": "s3",
+            "resource_id": "vpc-1",
+            "traffic_type": "ALL",
+        }
+    ]
+    client.create_flow_logs.assert_not_called()
+
+
 def test_create_sends_a_client_token():
     client = Mock()
     run_present(client, FakeModule(present_params()), [])

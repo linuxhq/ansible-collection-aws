@@ -240,3 +240,22 @@ def test_target_version_is_omitted_for_aws_managed_prefix_lists():
         [{"cidr": "10.0.0.0/8"}],
         [{"cidr": "10.0.0.0/8"}],
     ]
+
+
+def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings():
+    module = FakeModule(
+        {"filters": {"owner-id": [123456789012], "x-flag": [True]}, "prefix_list_ids": None, "target_version": None},
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]) as query,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()
+
+    assert query.call_args.kwargs["Filters"] == [
+        {"Name": "owner-id", "Values": ["123456789012"]},
+        {"Name": "x-flag", "Values": ["true"]},
+    ]

@@ -999,3 +999,62 @@ def test_wait_failure_before_any_change_reports_unchanged():
         plugin.ensure_present(Mock(), module, OWNER)
 
     assert raised.value.values["changed"] is False
+
+
+def test_tag_deltas_after_update_without_wait_use_the_described_tags():
+    client = Mock()
+    tags = [{"Key": "Env", "Value": "test"}, {"Key": "Old", "Value": "x"}]
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}], tags={"Env": "test", "Team": "net"}))
+    with (
+        patch.object(plugin, "get_current", return_value=(prefix_list(Tags=tags), [{"Cidr": "192.0.2.0/24"}])),
+        # ModifyManagedPrefixList may return the prefix list without its tags.
+        patch.object(
+            plugin, "modify_prefix_list", return_value=prefix_list(State="modify-in-progress", Tags=[], Version=2)
+        ),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "reconcile_ec2_tags") as reconcile,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    reconcile.assert_called_once_with(
+        module, client, ["pl-1"], {"Team": "net"}, ["Old"], "EC2 VPC managed prefix list", changed=True
+    )
+    assert result.value.values["prefix_list"]["tags"] == {"Env": "test", "Team": "net"}
+
+
+def test_untagged_update_without_wait_keeps_the_described_tags():
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}]))
+    with (
+        patch.object(
+            plugin,
+            "get_current",
+            return_value=(prefix_list(Tags=[{"Key": "Env", "Value": "test"}]), [{"Cidr": "192.0.2.0/24"}]),
+        ),
+        patch.object(plugin, "modify_prefix_list", return_value=prefix_list(Version=2)),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "reconcile_ec2_tags") as reconcile,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    reconcile.assert_not_called()
+    assert result.value.values["prefix_list"]["tags"] == {"Env": "test"}
+
+
+@pytest.mark.parametrize("state", sorted(plugin.IN_PROGRESS_STATES))
+def test_absent_waits_for_an_in_progress_prefix_list_before_deleting(state):
+    client = Mock()
+    module = FakeModule({"name": "main", "wait": False})
+    with (
+        patch.object(plugin, "get_customer_managed_prefix_list_by_name", return_value=prefix_list(State=state)),
+        patch.object(plugin, "wait_for_ready_state") as wait,
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module, OWNER)
+
+    assert raised.value.values["changed"] is True
+    wait.assert_called_once_with(client, module, "pl-1")
+    client.delete_managed_prefix_list.assert_called_once_with(PrefixListId="pl-1", aws_retry=True)

@@ -730,7 +730,6 @@ def ensure_present(client, module):
                     desired,
                     flow_log_status="ACTIVE",
                     resource_id=resource_id,
-                    resource_type=resource_type,
                 )
                 flow_log = snake_dict_to_camel_dict(flow_log, capitalize_first=True)
 

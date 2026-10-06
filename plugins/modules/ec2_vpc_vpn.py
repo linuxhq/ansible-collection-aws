@@ -27,6 +27,7 @@ options:
     description:
       - EC2 filter names mapped to strings or lists of strings. Must uniquely identify a connection.
       - Uses native EC2 names such as C(tag:Name). A missing match cannot create a connection.
+      - Boolean and numeric values, including list entries, are converted to strings.
       - Supply one of O(name), O(vpn_connection_id), or O(filters).
       - Mutually exclusive with O(name) and O(vpn_connection_id).
     type: dict
@@ -473,12 +474,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     boto3_tag_list_to_ansible_dict,
     compare_aws_tags,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    ansible_dict_to_boto3_filter_list,
-    scrub_none_parameters,
-)
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import scrub_none_parameters
 from ansible_collections.amazon.aws.plugins.module_utils.waiter import custom_waiter_config
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.filters import ansible_dict_to_string_filter_list
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import reconcile_ec2_tags, require_valid_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import require_positive_wait_bounds, run_waiter
@@ -569,7 +568,7 @@ def find_connection(client, module, connection_id=None, changed=False):
     request = (
         {"VpnConnectionIds": [connection_id]}
         if connection_id
-        else {"Filters": ansible_dict_to_boto3_filter_list(filters)}
+        else {"Filters": ansible_dict_to_string_filter_list(filters)}
     )
 
     require_client_methods(module, client, "EC2", {"describe_vpn_connections": tuple(request)}, changed=changed)
@@ -1204,6 +1203,10 @@ def ensure_absent(client, module, connection):
 
     connection_id = connection["VpnConnectionId"]
     if changed:
+        # The VpnConnectionDeleted waiter fails while a connection is pending, so let creation finish first.
+        if connection["State"] == "pending":
+            wait_for_connection(client, module, connection_id)
+
         require_client_methods(module, client, "EC2", {"delete_vpn_connection": ("VpnConnectionId",)})
         try:
             client.delete_vpn_connection(VpnConnectionId=connection_id, aws_retry=True)

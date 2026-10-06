@@ -34,7 +34,8 @@ options:
       - This is sent as the C(instance-type) filter and takes precedence over an
         C(instance-type) key in O(filters), so wildcards such as C(t3.*) are supported.
       - An instance type that is not offered in the region results in no entry; no error is raised.
-      - This must contain at most 100 unique entries.
+      - EC2 accepts at most 200 filter values in each call, so the unique entries in this list
+        and the values in O(filters) must total at most 200.
     elements: str
     type: list
 extends_documentation_fragment:
@@ -219,6 +220,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 
+MAX_FILTER_VALUES = 200
+
 
 def main():
     argument_spec = {
@@ -234,15 +237,16 @@ def main():
     filters = dict(module.params["filters"] or {})
     instance_types = list(dict.fromkeys(module.params["instance_types"] or []))
 
-    if len(instance_types) > 100:
-        module.fail_json(msg="instance_types must contain at most 100 unique entries")
-
-    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
-
     # InstanceTypes fails for a type that is not offered in the region, so
     # instance types are sent as the documented instance-type filter.
     if instance_types:
         filters["instance-type"] = instance_types
+
+    # EC2 rejects a call with more than 200 values across all of its filters.
+    if sum(len(value) if isinstance(value, list) else 1 for value in filters.values()) > MAX_FILTER_VALUES:
+        module.fail_json(msg=f"filters and instance_types must contain at most {MAX_FILTER_VALUES} values in total")
+
+    client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     request = {}
     if filters:

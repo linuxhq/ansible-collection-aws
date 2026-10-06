@@ -56,15 +56,32 @@ def test_instance_types_take_precedence_over_the_instance_type_filter():
     ]
 
 
-def test_instance_type_limit_is_rejected():
+@pytest.mark.parametrize(
+    "filters, instance_types",
+    [
+        (None, [f"type-{index}" for index in range(201)]),
+        ({"vcpu-info.default-vcpus": [2, 4], "current-generation": True}, [f"type-{index}" for index in range(198)]),
+        ({"instance-type": [f"type-{index}" for index in range(201)]}, None),
+    ],
+)
+def test_filter_value_limit_is_rejected_before_any_aws_call(filters, instance_types):
+    # EC2 rejects more than 200 values across all filters in one call with FilterLimitExceeded.
     assert_module_rejects(
         plugin,
-        {
-            "filters": None,
-            "instance_types": [f"type-{index}" for index in range(101)],
-        },
-        "instance_types must contain at most 100 unique entries",
+        {"filters": filters, "instance_types": instance_types},
+        "filters and instance_types must contain at most 200 values in total",
     )
+
+
+def test_filter_value_limit_counts_unique_instance_types_after_precedence():
+    _methods, request = run_info(
+        {
+            "filters": {"current-generation": True, "instance-type": [f"ignored-{index}" for index in range(10)]},
+            "instance_types": [f"type-{index}" for index in range(199)] + ["type-0"],
+        }
+    )
+
+    assert sum(len(item["Values"]) for item in request["Filters"]) == 200
 
 
 def test_rejects_invalid_instance_type_response():
