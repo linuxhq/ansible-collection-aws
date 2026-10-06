@@ -3,19 +3,28 @@
   hosts: all
 
   pre_tasks:
-    - name: Ensure aws session manager proxy processes are identified
-      ansible.builtin.command:
-        cmd: pgrep -f session-manager-plugin
-      register: __ssm_proxy_pid
-      changed_when: false
-      failed_when: false
+    - name: Ensure aws session manager proxy instances are identified
+      amazon.aws.ec2_instance_info:
+        filters:
+          instance-state-name:
+            - pending
+            - running
+            - stopping
+            - stopped
+          'tag:Name': "{{ ssm_proxy_instance }}"
+        validate_certs: true
+      register: __ssm_proxy_instances
 
     - name: Ensure aws session manager proxy processes are terminated
       ansible.builtin.command:
         cmd: >
-          kill -SIGTERM {{ __ssm_proxy_pid.stdout_lines | map('int') | join(' ') }}
+          pkill -TERM -f "session-manager-plugin.*({{ __ssm_proxy_instances.instances |
+            map(attribute='instance_id') | join('|') }})"
+      register: __ssm_proxy_kill
+      changed_when: __ssm_proxy_kill.rc == 0
+      failed_when: __ssm_proxy_kill.rc > 1
       when:
-        - __ssm_proxy_pid.stdout_lines | length > 0
+        - __ssm_proxy_instances.instances | length > 0
 
   roles:
     - aws_az_info
