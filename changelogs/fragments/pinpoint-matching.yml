@@ -4,8 +4,9 @@ breaking_changes:
     request attributes and only the ``Name`` tag from ``tags``, and the remaining tags are converged on it according
     to ``purge_tags``. Previously every requested tag had to match, so changing or adding a tag requested and leased
     another number and left the original unmanaged. Numbers whose ``Name`` tag matches but whose other tags differ
-    are now adopted and retagged, multiple numbers matching the same ``Name`` now fail, and when ``tags`` has no
-    ``Name`` key the first number matching the fixed attributes is adopted and retagged.
+    are now adopted and retagged, and multiple numbers matching the same ``Name`` now fail. When ``tags`` has no
+    ``Name`` key, a single number matching the fixed attributes is adopted and retagged, and several matching
+    numbers fail instead of an arbitrary one being retagged.
   - pinpoint_sms_voice_phone_number - ``wait_delay`` and ``wait_timeout`` are now validated when ``wait=false``
     with ``state=present``, because changes to a matched number that is not ``ACTIVE`` always wait.
 bugfixes:

@@ -1035,9 +1035,25 @@ def test_ambiguous_name_match_fails_before_mutation():
     client.untag_resource.assert_not_called()
 
 
-def test_tags_without_name_adopt_the_first_fixed_attribute_match():
+def test_tags_without_name_adopt_the_only_fixed_attribute_match():
     client = Mock()
     module = FakeModule(phone_number_params(tags={"Env": "new"}), check_mode=True)
+    with (
+        patch.object(plugin, "query_list", return_value=[existing_number(PhoneNumberArn="arn:phone-1")]),
+        patch.object(plugin, "phone_number_tags", side_effect=lambda client, module, number: named_tags(number)),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["phone_number_id"] == "phone-1"
+    assert raised.value.values["phone_number"]["tags"] == {"Env": "new"}
+    client.request_phone_number.assert_not_called()
+
+
+def test_tags_without_name_fail_when_several_numbers_match():
+    client = Mock()
+    module = FakeModule(phone_number_params(tags={"Env": "new"}))
     with (
         patch.object(
             plugin,
@@ -1048,14 +1064,13 @@ def test_tags_without_name_adopt_the_first_fixed_attribute_match():
             ],
         ),
         patch.object(plugin, "phone_number_tags", side_effect=lambda client, module, number: named_tags(number)),
-        pytest.raises(ModuleExit) as raised,
+        pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module)
 
-    assert raised.value.values["changed"] is True
-    assert raised.value.values["phone_number_id"] == "phone-1"
-    assert raised.value.values["phone_number"]["tags"] == {"Env": "new"}
-    client.request_phone_number.assert_not_called()
+    assert raised.value.values["msg"].startswith("Multiple Pinpoint SMS Voice V2 phone numbers matched the requested")
+    assert raised.value.values["msg"].endswith("phone-1, phone-2")
+    assert client.mock_calls == []
 
 
 def test_check_mode_projects_the_opt_out_list_name_from_an_arn():

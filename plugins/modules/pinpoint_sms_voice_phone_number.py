@@ -15,8 +15,10 @@ description:
     O(message_type), O(number_capabilities), O(number_type), O(pool_id), and O(registration_id).
   - When O(tags) contains a C(Name) key, matching also requires an equal C(Name) tag, and the
     module fails if more than one phone number matches. Other tags are not used for matching.
-  - When O(tags) is omitted or has no C(Name) key, the first phone number matching the fixed
-    attributes is adopted. Set a C(Name) tag to identify a specific number.
+  - When O(tags) is omitted, the first phone number matching the fixed attributes is adopted.
+  - When O(tags) has no C(Name) key, the module fails if more than one phone number matches the
+    fixed attributes, instead of retagging an arbitrary number. Set a C(Name) tag to identify a
+    specific number.
   - O(tags) other than C(Name) are converged on the matched number according to O(purge_tags).
   - O(deletion_protection_enabled), O(international_sending_enabled), and O(opt_out_list_name)
     are updated in place on the matched number with C(UpdatePhoneNumber).
@@ -714,11 +716,24 @@ def ensure_present(client, module):
 
         if name is None:
             matches.append(phone_number)
-            break
+            if tags is None:
+                break
+
+            continue
 
         current_tags = phone_number_tags(client, module, phone_number)
         if current_tags.get("Name") == name:
             matches.append(dict(phone_number, Tags=ansible_dict_to_boto3_tag_list(current_tags)))
+
+    if name is None and len(matches) > 1:
+        # Retagging needs one unambiguous number when no Name tag identifies it.
+        module.fail_json(
+            msg=(
+                "Multiple Pinpoint SMS Voice V2 phone numbers matched the requested attributes; "
+                "set a Name tag or phone_number_id to choose one: "
+                + ", ".join(sorted(phone_number["PhoneNumberId"] for phone_number in matches))
+            )
+        )
 
     if len(matches) > 1:
         module.fail_json(
