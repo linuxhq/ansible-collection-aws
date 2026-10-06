@@ -10,6 +10,8 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
+
 
 def normalize_provider_url(url):
     if url is None:
@@ -51,28 +53,18 @@ def get_provider_by_arn(client, module, arn, changed=False):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg=f"Unable to get AWS IAM OIDC provider {arn}")
 
-    valid_provider = (
-        isinstance(provider, dict)
-        and isinstance(provider.get("Url"), str)
-        and isinstance(provider.get("ClientIDList"), list)
-        and all(isinstance(client_id, str) for client_id in provider["ClientIDList"])
-        and isinstance(provider.get("ThumbprintList"), list)
-        and all(isinstance(thumbprint, str) for thumbprint in provider["ThumbprintList"])
-        and (
-            "Tags" not in provider
-            or (
-                isinstance(provider["Tags"], list)
-                and all(
-                    isinstance(tag, dict) and isinstance(tag.get("Key"), str) and isinstance(tag.get("Value"), str)
-                    for tag in provider["Tags"]
-                )
-            )
-        )
-    )
-    if not valid_provider:
-        module.fail_json(
-            changed=changed, msg=f"Unable to get AWS IAM OIDC provider {arn}: AWS returned an invalid response"
-        )
+    msg = f"Unable to get AWS IAM OIDC provider {arn}: AWS returned an invalid response"
+    if not isinstance(provider, dict) or not isinstance(provider.get("Url"), str):
+        module.fail_json(changed=changed, msg=msg)
+
+    # A provider can have no client IDs or thumbprints, so a missing list is empty.
+    for field in ("ClientIDList", "ThumbprintList"):
+        values = provider.setdefault(field, [])
+        if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
+            module.fail_json(changed=changed, msg=msg)
+
+    if "Tags" in provider:
+        require_valid_tag_list(module, provider["Tags"], msg, changed=changed)
 
     provider.pop("ResponseMetadata", None)
     provider["OpenIDConnectProviderArn"] = arn

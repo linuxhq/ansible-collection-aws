@@ -1,0 +1,18 @@
+---
+bugfixes:
+  - eks_cluster - report the cluster as absent without changes when it disappears while ``state=absent``
+    waits for a creating or updating cluster, instead of failing to list its updates.
+  - eks_cluster - document that ``encryption_config`` and ``role_arn`` can only be set when creating a
+    cluster and that the module fails if they differ from the existing cluster.
+  - eks_cluster - remove an unreachable tagging check and a repeated update support check; update support
+    is still checked before the first update.
+  - global_accelerator - check listener create, update, and delete support before the first change, so an
+    older botocore fails without modifying the accelerator.
+  - global_accelerator - document that ``wait_delay`` and ``wait_timeout`` also apply when ``wait=false``.
+  - global_accelerator - report no change when the accelerator disappears while ``state=absent`` waits for
+    it to finish deploying.
+  - global_accelerator and global_accelerator_info - validate listed tags with the shared tag list helper.
+  - notifications_contacts and notifications_contacts_info - validate listed contact tags with a shared
+    helper.
+  - iam_oidc_provider and iam_oidc_provider_info - accept a provider without client IDs or thumbprints
+    when AWS omits the lists, and validate provider tags with the shared tag list helper.

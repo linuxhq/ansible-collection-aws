@@ -147,7 +147,7 @@ def test_absent_tolerates_accelerator_disappearing_while_waiting():
     ):
         plugin.ensure_absent(client, module)
 
-    assert raised.value.values == {"changed": True, "state": "absent"}
+    assert raised.value.values == {"changed": False, "state": "absent"}
     client.delete_accelerator.assert_not_called()
 
 
@@ -900,8 +900,9 @@ def test_accelerator_creation_waits_before_listeners():
             "idempotency_token": None,
             "ip_addresses": None,
             "ip_address_type": "IPV4",
-            "listeners": [{"endpoint_groups": None}],
+            "listeners": [{"client_affinity": None, "endpoint_groups": None}],
             "name": "example",
+            "purge_listeners": True,
             "purge_tags": True,
             "tags": None,
             "wait": False,
@@ -992,35 +993,63 @@ def test_listener_updates_release_ports_before_dependent_expansion(check_mode):
     delete.assert_not_called()
 
 
-@pytest.mark.parametrize("operation", ["update_listener", "create_listener"])
-def test_listener_preflight_failure_does_not_delete_or_write(operation):
-    current = review_listener("arn:a", 80, 80)
-    obsolete = review_listener("arn:b", 81, 81)
-    desired = review_desired(80, 81)
-    plan = (
-        ([], [(current, desired)], [], [obsolete])
-        if operation == "update_listener"
-        else ([], [], [desired], [current, obsolete])
-    )
-    module = FakeModule({"purge_listeners": True})
+@pytest.mark.parametrize("operation", ["update_listener", "create_listener", "delete_listener"])
+def test_listener_preflight_failure_does_not_update_the_accelerator(operation):
+    listener = {"client_affinity": None, "endpoint_groups": None}
+    module = FakeModule(accelerator_params(enabled=False, listeners=[listener]))
     client = Mock()
 
     def require(module, client, service, methods, changed=False):
         if operation in methods:
-            module.fail_json(msg="Unsupported listener write")
+            module.fail_json(changed=changed, msg="Unsupported listener write")
 
     with (
-        patch.object(plugin, "get_listeners", return_value=[current, obsolete]),
-        patch.object(plugin, "reconcile_listeners", return_value=plan),
+        patch.object(plugin, "get_accelerator", return_value=deployed_accelerator()),
         patch.object(plugin, "require_client_methods", side_effect=require),
-        patch.object(plugin, "delete_listener") as delete,
-        pytest.raises(ModuleFail, match="Unsupported listener write"),
+        patch.object(plugin, "ensure_listeners") as ensure_listeners,
+        pytest.raises(ModuleFail, match="Unsupported listener write") as raised,
     ):
-        plugin.ensure_listeners(client, module, "arn:accelerator")
+        plugin.ensure_present(client, module)
 
-    delete.assert_not_called()
-    client.update_listener.assert_not_called()
-    client.create_listener.assert_not_called()
+    assert raised.value.values["changed"] is False
+    client.update_accelerator.assert_not_called()
+    ensure_listeners.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("listeners", "purge_listeners", "expected"),
+    [
+        ([], False, {}),
+        (
+            [{"client_affinity": None}],
+            False,
+            {
+                "create_listener": ("AcceleratorArn", "IdempotencyToken", "PortRanges", "Protocol"),
+                "update_listener": ("ClientAffinity", "ListenerArn", "PortRanges", "Protocol"),
+            },
+        ),
+        (
+            [{"client_affinity": "SOURCE_IP"}],
+            True,
+            {
+                "create_listener": ("AcceleratorArn", "ClientAffinity", "IdempotencyToken", "PortRanges", "Protocol"),
+                "delete_endpoint_group": ("EndpointGroupArn",),
+                "delete_listener": ("ListenerArn",),
+                "update_listener": ("ClientAffinity", "ListenerArn", "PortRanges", "Protocol"),
+            },
+        ),
+    ],
+)
+def test_listener_writes_are_checked_for_every_possible_change(listeners, purge_listeners, expected):
+    module = FakeModule({"listeners": listeners, "purge_listeners": purge_listeners})
+    client = Mock()
+    with patch.object(plugin, "require_client_methods") as require:
+        plugin.require_listener_writes(module, client)
+
+    if expected:
+        require.assert_called_once_with(module, client, "Global Accelerator", expected)
+    else:
+        require.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -1737,3 +1766,20 @@ def test_endpoint_group_listing_failure_reports_earlier_changes(mutated):
         plugin.ensure_endpoint_groups(Mock(), FakeModule({}), "arn:listener", [], mutated=mutated)
 
     assert raised.value.values["changed"] is mutated
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [None, [None], [{"Key": "Name"}], [{"Key": 1, "Value": "value"}], [{"Key": "", "Value": "value"}]],
+)
+def test_invalid_tag_lists_are_rejected(tags):
+    with pytest.raises(ModuleFail) as raised:
+        plugin.validate_tag_list(FakeModule({}), tags)
+
+    assert raised.value.values["msg"] == "Global Accelerator returned invalid tags"
+    assert not raised.value.values.get("changed")
+
+
+def test_valid_tag_lists_are_returned():
+    tags = [{"Key": "Name", "Value": ""}]
+    assert plugin.validate_tag_list(FakeModule({}), tags) is tags
