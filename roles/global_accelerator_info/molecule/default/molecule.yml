@@ -54,8 +54,8 @@ provisioner:
               - name: molecule-a
                 az: us-east-1a
                 cidr: 192.168.0.0/25
-              - name: molecule-b
-                az: us-east-1b
+              - name: molecule-c
+                az: us-east-1c
                 cidr: 192.168.0.128/25
 
         elb_application_lb_list:
@@ -64,7 +64,7 @@ provisioner:
               - "{{ _ec2_security_group_info_dict['molecule-http-80'].group_id }}"
             subnets:
               - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
             listeners:
               - Protocol: HTTP
                 Port: 80

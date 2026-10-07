@@ -41,23 +41,23 @@ None
                       gateway_id: igw
                   subnets:
                     - "{{ _ec2_vpc_subnet_info_dict['molecule-pub-a'].id }}"
-                    - "{{ _ec2_vpc_subnet_info_dict['molecule-pub-b'].id }}"
                     - "{{ _ec2_vpc_subnet_info_dict['molecule-pub-c'].id }}"
+                    - "{{ _ec2_vpc_subnet_info_dict['molecule-pub-d'].id }}"
                 - name: molecule-pvt-a
                   routes:
                     - dest: 0.0.0.0/0
                       gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub-a'].nat_gateway_id }}"
                   subnets:
                     - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-a'].id }}"
-                - name: molecule-pvt-b
-                  routes:
-                    - dest: 0.0.0.0/0
-                      gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub-b'].nat_gateway_id }}"
-                  subnets:
-                    - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-b'].id }}"
                 - name: molecule-pvt-c
                   routes:
                     - dest: 0.0.0.0/0
                       gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub-c'].nat_gateway_id }}"
                   subnets:
                     - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-c'].id }}"
+                - name: molecule-pvt-d
+                  routes:
+                    - dest: 0.0.0.0/0
+                      gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub-d'].nat_gateway_id }}"
+                  subnets:
+                    - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-d'].id }}"

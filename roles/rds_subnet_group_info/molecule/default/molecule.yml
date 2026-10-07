@@ -40,15 +40,15 @@ provisioner:
               - name: molecule-a
                 az: us-east-1a
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(25,0) }}"
-              - name: molecule-b
-                az: us-east-1b
+              - name: molecule-c
+                az: us-east-1c
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(25,1) }}"
 
         rds_subnet_group_list:
           - name: molecule
             subnets:
               - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
 
 scenario:
   test_sequence:

@@ -49,9 +49,9 @@ None
                 - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
                   security_groups:
                     - "{{ _ec2_security_group_info_dict['molecule-efs1'].group_id }}"
-                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
                   security_groups:
                     - "{{ _ec2_security_group_info_dict['molecule-efs1'].group_id }}"
-                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
                   security_groups:
                     - "{{ _ec2_security_group_info_dict['molecule-efs1'].group_id }}"
