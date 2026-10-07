@@ -67,8 +67,4 @@
         - molecule-idempotence-notest
 
     - ssm_proxy
-
-    - role: ssm_proxy
-      ssm_proxy_host: localhost
-      ssm_proxy_port: 22
 ...

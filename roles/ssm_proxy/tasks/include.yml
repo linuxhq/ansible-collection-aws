@@ -33,20 +33,10 @@
   tags:
     - ssm_proxy
   ansible.builtin.set_fact:
-    __ssm_proxy_document:
-      "{{ 'AWS-StartPortForwardingSession'
-          if __ssm_proxy_loopback | bool else
-          'AWS-StartPortForwardingSessionToRemoteHost' }}"
     __ssm_proxy_parameters:
-      "{{ ({} if __ssm_proxy_loopback | bool else {'host': [ssm_proxy_host]}) |
-          ansible.builtin.combine({'portNumber': [ssm_proxy_port | string],
-                                   'localPortNumber': [__ssm_proxy_port_local | string]}) }}"
-  vars:
-    # SSM Agent forbids remote host forwarding to loopback targets.
-    __ssm_proxy_loopback:
-      "{{ ssm_proxy_host | string | trim is ansible.builtin.match(__ssm_proxy_loopback_regex, ignorecase=true) }}"
-    __ssm_proxy_loopback_regex:
-      '^(localhost([.]localdomain)?|127([.][0-9]{1,3}){3}|(0{0,4}:){2,7}0{0,3}1)$'
+      host: "{{ [ssm_proxy_host] }}"
+      portNumber: "{{ [ssm_proxy_port | string] }}"
+      localPortNumber: "{{ [__ssm_proxy_port_local | string] }}"
 
 - name: Ensure aws session manager proxy is present
   tags:
@@ -54,7 +44,7 @@
   ansible.builtin.command:
     cmd: >
       aws ssm start-session
-        --document-name "{{ __ssm_proxy_document }}"
+        --document-name AWS-StartPortForwardingSessionToRemoteHost
         --parameters '{{ __ssm_proxy_parameters | to_json }}'
         --target "{{ __ssm_proxy_instance.instances.0.instance_id }}"
   changed_when: false
