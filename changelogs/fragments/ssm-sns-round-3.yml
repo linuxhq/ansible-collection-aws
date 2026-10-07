@@ -18,7 +18,14 @@ bugfixes:
   - ssm_proxy - start sessions to a loopback ``ssm_proxy_host`` such as ``localhost`` with the
     ``AWS-StartPortForwardingSession`` document, because SSM Agent now forbids loopback targets for
     ``AWS-StartPortForwardingSessionToRemoteHost``.
+  - ssm_proxy - wait until the instance's Session Manager connection status is ``connected`` instead of waiting only
+    for an ``Online`` ping status, because SSM Agent reports ``Online`` before it accepts sessions and the session
+    could fail with ``TargetNotConnected``.
 minor_changes:
+  - ssm_instance_info - add the ``connection_status`` option to return each instance's Session Manager connection
+    status from ``GetConnectionStatus``.
+  - ssm_instance_info role - add the ``ssm_instance_info_connection_status`` variable to pass ``connection_status`` to
+    the module.
   - ssm_proxy - depend on the ``ec2_instance_info`` role so its instance facts are available to the proxy.
   - ssm_association, ssm_association_info, ssm_document, ssm_document_info, ssm_instance_info - share the SSM resource
     type constants and filter list construction in ``module_utils/ssm.py``.
