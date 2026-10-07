@@ -14,6 +14,18 @@ description:
 author:
   - Taylor Kimball (@tkimball83)
 options:
+  connection_status:
+    default: false
+    description:
+      - Whether to add the Session Manager connection status of each returned
+        instance.
+      - When V(true), the C(GetConnectionStatus) API is called once for each
+        returned instance with a valid instance ID.
+      - SSM Agent can report a C(ping_status) of C(Online) before the instance
+        accepts Session Manager connections, so use this connection status to
+        wait for a session to be accepted.
+    type: bool
+    version_added: '2.6.0'
   filters:
     description:
       - A dict of filters to apply when describing Systems Manager instances.
@@ -64,6 +76,12 @@ EXAMPLES = r"""
 - name: Gather information about online Systems Manager managed instances
   linuxhq.aws.ssm_instance_info:
     ping_status: Online
+
+- name: Gather Session Manager connection status for selected instances
+  linuxhq.aws.ssm_instance_info:
+    connection_status: true
+    instance_ids:
+      - i-0123456789abcdef0
 
 - name: Gather information using Systems Manager filters
   linuxhq.aws.ssm_instance_info:
@@ -122,6 +140,15 @@ instances:
       description: Fully qualified host name of the managed instance.
       returned: when available
       type: str
+    connection_status:
+      description:
+        - Whether the managed instance is ready to receive Session Manager
+          connections.
+        - Values, such as C(connected) and C(notconnected), are returned as AWS
+          returns them.
+      returned: when O(connection_status=true) and the record has a valid instance ID
+      type: str
+      version_added: '2.6.0'
     iam_role:
       description: IAM role assigned to the managed instance.
       returned: when available
@@ -192,6 +219,11 @@ instances:
       type: str
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
+
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -208,8 +240,27 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
 )
 
 
+def get_connection_status(module, client, instance_id):
+    try:
+        response = client.get_connection_status(Target=instance_id, aws_retry=True)
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to get AWS Systems Manager connection status for {instance_id}")
+
+    status = response.get("Status") if isinstance(response, dict) else None
+    if not isinstance(status, str):
+        module.fail_json(
+            msg=(
+                "Unexpected response while getting AWS Systems Manager connection status "
+                f"for {instance_id}; status was not a string"
+            )
+        )
+
+    return status
+
+
 def main():
     argument_spec = {
+        "connection_status": {"default": False, "type": "bool"},
         "filters": {"type": "dict"},
         "instance_ids": {"elements": "str", "type": "list"},
         "ping_status": {
@@ -222,6 +273,7 @@ def main():
         argument_spec=argument_spec,
         supports_check_mode=True,
     )
+    connection_status = module.params["connection_status"]
     instance_ids = list(dict.fromkeys(module.params["instance_ids"] or []))
     ping_status = module.params["ping_status"]
 
@@ -245,12 +297,11 @@ def main():
     if filters:
         request["Filters"] = ssm_filter_list(filters)
 
-    require_client_methods(
-        module,
-        client,
-        "Systems Manager",
-        {"describe_instance_information": tuple(request)},
-    )
+    methods = {"describe_instance_information": tuple(request)}
+    if connection_status:
+        methods["get_connection_status"] = ("Target",)
+
+    require_client_methods(module, client, "Systems Manager", methods)
 
     instances = query_list(
         module,
@@ -266,6 +317,7 @@ def main():
         )
 
     matching_instance_ids = []
+    connection_statuses = {}
     for index, instance in enumerate(instances):
         if not isinstance(instance, dict):
             module.fail_json(
@@ -287,20 +339,26 @@ def main():
             continue
 
         matching_instance_ids.append(instance_id)
+        if connection_status:
+            connection_statuses[index] = get_connection_status(module, client, instance_id)
+
+    results = boto3_resource_list_to_ansible_dict(
+        instances,
+        transform_tags=False,
+        force_tags=False,
+        nested_transforms={
+            "AssociationOverview": lambda overview: association_overview(
+                overview, "InstanceAssociationStatusAggregatedCount"
+            )
+        },
+    )
+    for index, status in connection_statuses.items():
+        results[index]["connection_status"] = status
 
     module.exit_json(
         changed=False,
         instance_ids=matching_instance_ids,
-        instances=boto3_resource_list_to_ansible_dict(
-            instances,
-            transform_tags=False,
-            force_tags=False,
-            nested_transforms={
-                "AssociationOverview": lambda overview: association_overview(
-                    overview, "InstanceAssociationStatusAggregatedCount"
-                )
-            },
-        ),
+        instances=results,
     )
 
 

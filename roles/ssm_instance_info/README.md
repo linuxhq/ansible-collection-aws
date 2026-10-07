@@ -8,6 +8,7 @@ None
 
 ## Role Variables
 
+    ssm_instance_info_connection_status: false
     ssm_instance_info_filters: {}
     ssm_instance_info_instance_ids: []
     ssm_instance_info_ping_status: null
