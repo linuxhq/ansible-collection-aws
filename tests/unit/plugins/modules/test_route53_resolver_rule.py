@@ -708,7 +708,11 @@ def test_failed_rule_is_repaired_by_sending_the_desired_configuration():
 
     assert result.value.values["changed"] is True
     client.update_resolver_rule.assert_called_once_with(
-        Config={"Name": "main", "ResolverEndpointId": "rslvr-out-1", "TargetIps": [{"Ip": "192.0.2.1"}]},
+        Config={
+            "Name": "main",
+            "ResolverEndpointId": "rslvr-out-1",
+            "TargetIps": [{"Ip": "192.0.2.1", "Port": 53, "Protocol": "Do53"}],
+        },
         ResolverRuleId="rslvr-rr-1",
         aws_retry=True,
     )
@@ -873,3 +877,46 @@ def test_lookup_failure_before_create_reports_unchanged():
 
     assert raised.value.values["changed"] is False
     client.create_resolver_rule.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_update_keeps_the_current_values_of_omitted_target_fields(check_mode):
+    client = Mock()
+    current = existing_rule(TargetIps=[{"Ip": "192.0.2.1", "Port": 5353, "Protocol": "DoH"}])
+    client.update_resolver_rule.return_value = {
+        "ResolverRule": dict(current, ResolverEndpointId="rslvr-out-2"),
+    }
+    module = FakeModule(rule_params(resolver_endpoint_id="rslvr-out-2"), check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["resolver_rule"]["target_ips"] == [{"ip": "192.0.2.1", "port": 5353, "protocol": "DoH"}]
+    if check_mode:
+        client.update_resolver_rule.assert_not_called()
+    else:
+        client.update_resolver_rule.assert_called_once_with(
+            Config={
+                "Name": "main",
+                "ResolverEndpointId": "rslvr-out-2",
+                "TargetIps": [{"Ip": "192.0.2.1", "Port": 5353, "Protocol": "DoH"}],
+            },
+            ResolverRuleId="rslvr-rr-1",
+            aws_retry=True,
+        )
+
+
+def test_target_fields_are_filled_only_from_the_matched_target():
+    current = [
+        {"Ip": "192.0.2.1", "Port": 5353, "Protocol": "DoH", "ServerNameIndication": "dns.example.com"},
+        {"Ip": "192.0.2.2", "Port": 53, "Protocol": "Do53"},
+    ]
+    desired = [{"Ip": "192.0.2.2", "Port": 8053}, {"Ip": "192.0.2.1"}, {"Ip": "192.0.2.3"}]
+    assert plugin.target_ips_with_current_fields(current, desired) == [
+        {"Ip": "192.0.2.2", "Port": 8053},
+        {"Ip": "192.0.2.1", "Port": 5353, "Protocol": "DoH", "ServerNameIndication": "dns.example.com"},
+        {"Ip": "192.0.2.3"},
+    ]

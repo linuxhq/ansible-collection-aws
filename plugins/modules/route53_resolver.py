@@ -11,7 +11,10 @@ description:
   - Manages AWS Route53 Resolver endpoints.
   - Compares the desired endpoint settings against the current endpoint fetched by name.
   - Existing endpoints are updated in place and are deleted only with O(state=absent).
-  - Changes to direction or security groups fail without modifying the endpoint.
+  - Changes to direction, security groups, or O(resolver_endpoint_type) to or from
+    V(IPV6) fail without modifying the endpoint.
+  - Changing the O(protocols) of an V(INBOUND) endpoint directly from only V(Do53)
+    to only V(DoH) or only V(DoH-FIPS) fails without modifying the endpoint.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -101,12 +104,18 @@ options:
   wait_delay:
     description:
       - The delay between polling attempts when O(wait=true).
+      - When O(state=present), this also applies regardless of O(wait) before
+        an endpoint that is still changing is updated, after an update that is
+        followed by IP address changes, and between IP address changes.
       - This must be 1 or greater.
     default: 5
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait when O(wait=true).
+      - When O(state=present), this also applies regardless of O(wait) before
+        an endpoint that is still changing is updated, after an update that is
+        followed by IP address changes, and between IP address changes.
       - This must be 1 or greater.
     default: 300
     type: int
