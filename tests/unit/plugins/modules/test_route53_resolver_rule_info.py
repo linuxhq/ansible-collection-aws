@@ -1,6 +1,7 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver_rule_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -154,3 +155,56 @@ def test_detail_methods_are_checked_only_when_rules_exist():
         ["list_resolver_rules"],
         ["list_resolver_rule_associations", "list_tags_for_resource"],
     ]
+
+
+def test_aws_owned_rule_skips_the_tag_lookup():
+    module = FakeModule({"filters": None}, client=Mock())
+    rule = {
+        "Arn": "arn:aws:route53resolver:us-east-1::autodefined-rule/rslvr-autodefined-rr-internet-resolver",
+        "DomainName": ".",
+        "Id": "rslvr-autodefined-rr-internet-resolver",
+        "OwnerId": "Route 53 Resolver",
+        "RuleType": "RECURSIVE",
+    }
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", side_effect=[[rule], []]),
+        patch.object(plugin, "paginated_query_with_retries") as list_tags,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    list_tags.assert_not_called()
+    assert raised.value.values["resolver_rules"][0]["tags"] == {}
+
+
+def test_invalid_tag_request_fails():
+    module = FakeModule({"filters": None}, client=Mock())
+    error = ClientError(
+        {"Error": {"Code": "InvalidRequestException", "Message": "invalid"}},
+        "ListTagsForResource",
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", side_effect=[[{"Arn": "arn:rule", "Id": "rule-1"}], []]),
+        patch.object(plugin, "paginated_query_with_retries", side_effect=error),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == "Unable to list tags for AWS Route53 Resolver rule arn:rule"
+
+
+def test_rule_with_malformed_target_ips_is_rejected():
+    module = FakeModule({"filters": None}, client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[{"Id": "rule-1", "TargetIps": [{"Port": 53}]}]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == "list_resolver_rules: AWS returned a target IP without an IP address"

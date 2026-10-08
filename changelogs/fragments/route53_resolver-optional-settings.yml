@@ -1,6 +1,6 @@
 ---
 bugfixes:
-  - route53_resolver - ``protocols`` and ``resolver_endpoint_type`` no longer default to ``do53`` and ``ipv4``;
+  - route53_resolver - ``protocols`` and ``resolver_endpoint_type`` no longer default to ``Do53`` and ``IPV4``;
     omitting them leaves an existing endpoint unchanged instead of reverting DoH or dual-stack settings,
     and uses the AWS defaults when creating an endpoint.
   - route53_resolver - stop waiting as soon as an endpoint that should become operational starts deleting.
@@ -9,7 +9,7 @@ bugfixes:
   - route53_resolver - send the requested IPv6 addresses with ``UpdateResolverEndpoint`` when converting an endpoint to dual-stack
     instead of replacing its IP addresses afterward.
   - route53_resolver - fail before modifying an endpoint when a change AWS does not support is requested,
-    such as converting to or from ``ipv6`` or changing an inbound endpoint directly from only ``do53`` to only ``doh`` or ``doh-fips``.
+    such as converting to or from ``IPV6`` or changing an inbound endpoint directly from only ``Do53`` to only ``DoH`` or ``DoH-FIPS``.
   - route53_resolver - report waits that end in a failure state without calling them timeouts,
     and fail with the AWS status message when an endpoint still needs action after a run that waits.
   - route53_resolver - explain that resolver rules may still use an endpoint when AWS rejects its deletion.

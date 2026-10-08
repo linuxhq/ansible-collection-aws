@@ -114,3 +114,16 @@ def test_endpoints_are_enriched_with_ip_addresses_and_tags():
     endpoint = raised.value.values["resolver_endpoints"][0]
     assert endpoint["ip_addresses"][0]["ip"] == "192.0.2.1"
     assert endpoint["tags"] == {"Name": "main"}
+
+
+def test_endpoint_with_a_malformed_name_is_rejected():
+    module = FakeModule({"filters": None}, client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[{"Id": "rslvr-1", "Name": 1}]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == "list_resolver_endpoints: AWS returned an invalid resolver endpoint Name"

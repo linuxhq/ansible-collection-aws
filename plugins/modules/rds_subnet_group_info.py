@@ -29,7 +29,7 @@ attributes:
     description: This module does not modify AWS resources.
     support: full
   diff_mode:
-    description: This module does not modify AWS resources.
+    description: This module does not return diff output.
     support: none
 """
 

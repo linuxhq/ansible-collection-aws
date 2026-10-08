@@ -34,7 +34,7 @@ None
             - name: molecule-cloudflare
               domain_name: cloudflare.com
               resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].id }}"
-              rule_type: forward
+              rule_type: FORWARD
               target_ips:
                 - ip: 1.1.1.1
                   port: 53
@@ -44,7 +44,7 @@ None
             - name: molecule-google
               domain_name: google.com
               resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-google'].id }}"
-              rule_type: forward
+              rule_type: FORWARD
               target_ips:
                 - ip: 8.8.8.8
                   port: 53

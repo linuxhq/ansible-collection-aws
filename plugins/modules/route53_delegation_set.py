@@ -200,6 +200,7 @@ def get_reusable_delegation_set(client, module, changed=False):
         "list_reusable_delegation_sets",
         "DelegationSets",
         "Unable to list AWS Route53 reusable delegation sets",
+        changed=changed,
     )
     for delegation_set in delegation_sets:
         if not isinstance(delegation_set, dict) or not isinstance(delegation_set.get("CallerReference"), str):
