@@ -8,10 +8,10 @@ module: global_accelerator
 version_added: "1.9.0"
 short_description: Manage AWS Global Accelerator accelerators
 description:
-  - Listener updates release conflicting ports before dependent updates.
-  - Circular listener port dependencies fail before listener changes and require an intermediate configuration.
   - Manages AWS Global Accelerator accelerators, their listeners, and their
     endpoint groups as one resource tree.
+  - Listener updates release conflicting ports before dependent updates.
+  - Circular listener port dependencies fail before listener changes and require an intermediate configuration.
   - Listener entries in O(listeners) that exactly match an existing listener's
     protocol and port ranges keep that listener, remaining entries update
     existing listeners with the same protocol in place, and new listeners are
@@ -282,13 +282,16 @@ options:
     type: bool
   wait_delay:
     description:
-      - The delay between polling attempts when O(wait=true).
+      - The delay in seconds between accelerator status polling attempts.
+      - This also applies when O(wait=false), because the module still waits for an accelerator to
+        finish deploying before changing it, between dependent listener changes, before endpoint
+        group changes, and for listener deletions and disabling the accelerator before deleting it.
       - This must be 1 or greater.
     default: 10
     type: int
   wait_timeout:
     description:
-      - The maximum number of seconds to wait when O(wait=true).
+      - The maximum number of seconds to wait.
       - This must be 1 or greater.
     default: 600
     type: int
@@ -563,6 +566,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     reconcile_arn_tags,
+    require_valid_tag_list,
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
@@ -694,14 +698,10 @@ def validate_endpoint_group(module, endpoint_group, expected_arn=None, expected_
 
 
 def validate_tag_list(module, tags):
-    if not isinstance(tags, list) or any(
-        not isinstance(tag, dict)
-        or not isinstance(tag.get("Key"), str)
-        or not tag["Key"]
-        or not isinstance(tag.get("Value"), str)
-        for tag in tags
-    ):
-        module.fail_json(msg="Global Accelerator returned invalid tags")
+    msg = "Global Accelerator returned invalid tags"
+    require_valid_tag_list(module, tags, msg)
+    if any(not tag["Key"] for tag in tags):
+        module.fail_json(msg=msg)
 
     return tags
 
@@ -1116,6 +1116,30 @@ def require_endpoint_configuration_parameters(module, client, method_name, opera
             )
 
 
+def require_listener_writes(module, client):
+    """Check every listener write the requested listeners can need, before the first change."""
+    listeners = module.params["listeners"]
+
+    # Whether a listener is updated or created is known only after listing it, so both writes are checked.
+    methods = {}
+    if listeners:
+        parameters = {"AcceleratorArn", "IdempotencyToken", "PortRanges", "Protocol"}
+        if any(listener["client_affinity"] is not None for listener in listeners):
+            parameters.add("ClientAffinity")
+
+        methods["create_listener"] = tuple(sorted(parameters))
+        # Updates always send the current ClientAffinity when it is omitted.
+        methods["update_listener"] = ("ClientAffinity", "ListenerArn", "PortRanges", "Protocol")
+
+    if module.params["purge_listeners"]:
+        # Deleting a listener deletes its endpoint groups first.
+        methods["delete_endpoint_group"] = ("EndpointGroupArn",)
+        methods["delete_listener"] = ("ListenerArn",)
+
+    if methods:
+        require_client_methods(module, client, "Global Accelerator", methods)
+
+
 def require_endpoint_group_writes(module, client):
     """Check every endpoint group write the requested listeners can need, before the first change."""
     if all(listener["endpoint_groups"] is None for listener in module.params["listeners"]):
@@ -1382,7 +1406,7 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False):
                 msg="Unable to update AWS Global Accelerator listeners: desired ports overlap a retained listener",
             )
 
-    # Build and validate every listener write before releasing any ports.
+    # Build every listener write before releasing any ports.
     update_requests = {}
     create_requests = []
     if not module.check_mode:
@@ -1392,9 +1416,6 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False):
                 dict(desired, client_affinity=desired["client_affinity"] or current["client_affinity"])
             )
             request["ListenerArn"] = current["listener_arn"]
-            require_client_methods(
-                module, client, "Global Accelerator", {"update_listener": tuple(request)}, changed=mutated
-            )
             update_requests[current["listener_arn"]] = request
 
         for desired in creates:
@@ -1414,9 +1435,6 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False):
                     )
                 )
             ).hexdigest()
-            require_client_methods(
-                module, client, "Global Accelerator", {"create_listener": tuple(request)}, changed=mutated
-            )
             create_requests.append(request)
 
     # Release only obsolete listeners that block the validated writes.
@@ -1563,7 +1581,8 @@ def ensure_absent(client, module):
             wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed")
             accelerator = get_accelerator_by_arn(client, module, accelerator_arn)
             if accelerator is None:
-                module.exit_json(changed=True, state="absent")
+                # The accelerator disappeared before this module modified anything.
+                module.exit_json(changed=False, state="absent")
 
         listeners = get_listeners(client, module, accelerator_arn)
 
@@ -1751,6 +1770,7 @@ def ensure_present(client, module):
             require_client_methods(module, client, "Global Accelerator", tag_methods)
 
         if module.params["listeners"] is not None:
+            require_listener_writes(module, client)
             require_endpoint_group_writes(module, client)
 
     if created and not module.check_mode:

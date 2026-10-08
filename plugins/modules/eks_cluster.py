@@ -73,7 +73,8 @@ options:
   encryption_config:
     description:
       - The cluster encryption configuration.
-      - This setting is only used when creating a cluster.
+      - This can only be set when creating a cluster.
+      - The module fails if this differs from the existing cluster.
       - This must contain at most one entry.
       - An empty list is treated the same as omitting this option.
     elements: dict
@@ -225,6 +226,8 @@ options:
     description:
       - ARN of the IAM role used by the EKS cluster.
       - Required when creating a cluster.
+      - This can only be set when creating a cluster.
+      - The module fails if this differs from the existing cluster.
     type: str
   state:
     choices:
@@ -530,6 +533,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.eks import has_valid_cluster_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -611,7 +615,6 @@ CLUSTER_MAPPING_FIELDS = (
 
 
 def validate_cluster(module, cluster, changed=False):
-    tags = cluster.get("tags") if isinstance(cluster, dict) else None
     if (
         not isinstance(cluster, dict)
         or not isinstance(cluster.get("arn"), str)
@@ -621,11 +624,7 @@ def validate_cluster(module, cluster, changed=False):
         or any(field in cluster and not isinstance(cluster[field], dict) for field in CLUSTER_MAPPING_FIELDS)
         or ("encryptionConfig" in cluster and not isinstance(cluster["encryptionConfig"], list))
         or ("version" in cluster and not isinstance(cluster["version"], str))
-        or (tags is not None and not isinstance(tags, dict))
-        or (
-            isinstance(tags, dict)
-            and any(not isinstance(key, str) or not isinstance(value, str) for key, value in tags.items())
-        )
+        or not has_valid_cluster_tags(cluster)
     ):
         module.fail_json(changed=changed, msg="EKS returned an invalid cluster")
 
@@ -824,13 +823,6 @@ def wait_for_update(client, module, update_id, changed=False):
     wait_delay = module.params["wait_delay"]
     deadline = time.monotonic() + module.params["wait_timeout"]
     last_update = {}
-    require_client_methods(
-        module,
-        client,
-        "EKS",
-        {"describe_update": ("name", "updateId")},
-        changed=changed,
-    )
     while time.monotonic() < deadline:
         last_update = describe_update(client, module, update_id, changed=changed)
         status = last_update.get("status")
@@ -1136,9 +1128,7 @@ def ensure_present(client, module):
     if resource_changed and module.check_mode:
         exit_result(module, True, check_mode_cluster(module, current), "present")
 
-    arn = current.get("arn")
-    if tags_changed and not arn:
-        module.fail_json(msg=f"Unable to tag EKS cluster {name}")
+    arn = current["arn"]
 
     # Check every SDK requirement first so an unsupported later call cannot fail after an earlier change.
     update_requests = [dict(update_request, name=name) for update_request in update_requests]
@@ -1291,6 +1281,10 @@ def ensure_absent(client, module):
     if current.get("status") in {"CREATING", "PENDING", "UPDATING"}:
         # A cluster that fails to create or update can still be deleted.
         wait_for_cluster(client, module, "cluster_active", accept_failed=True)
+        # The cluster can disappear during the wait, and ListUpdates rejects a missing cluster.
+        current = describe_cluster(client, module)
+        if current is None:
+            exit_result(module, False, {}, "absent")
 
     wait_for_cluster_updates(client, module)
 

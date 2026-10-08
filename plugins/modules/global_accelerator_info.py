@@ -270,6 +270,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
 
 
 def validate_accelerator(module, accelerator, expected_arn=None):
@@ -295,14 +296,10 @@ def validate_resource_list(module, resources, resource_name, arn_key):
 
 
 def validate_tags(module, tags):
-    if not isinstance(tags, list) or any(
-        not isinstance(tag, dict)
-        or not isinstance(tag.get("Key"), str)
-        or not tag["Key"]
-        or not isinstance(tag.get("Value"), str)
-        for tag in tags
-    ):
-        module.fail_json(msg="Global Accelerator returned invalid tags")
+    msg = "Global Accelerator returned invalid tags"
+    require_valid_tag_list(module, tags, msg)
+    if any(not tag["Key"] for tag in tags):
+        module.fail_json(msg=msg)
 
     return tags
 
