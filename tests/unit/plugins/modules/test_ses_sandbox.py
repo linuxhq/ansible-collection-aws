@@ -176,6 +176,47 @@ def test_reviewed_request_with_same_details_is_not_resubmitted(status, check_mod
         )
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_review_details_with_only_a_case_id_are_not_resubmitted(check_mode):
+    client = Mock()
+    details = dict(DETAILS, review_details={"case_id": "177395777700734"})
+    account = {"details": details, "production_access_enabled": False}
+    module = FakeModule(params(), client=client, check_mode=check_mode)
+    result, _require, _get = run(module, account)
+
+    assert not result.values["changed"]
+    assert result.values["account"] == account
+    client.put_account_details.assert_not_called()
+    module.warn.assert_not_called()
+
+
+@pytest.mark.parametrize("review_details", [None, {}])
+def test_matching_details_without_review_details_are_submitted(review_details):
+    client = Mock()
+    details = dict(DETAILS, review_details=review_details)
+    result, _require, _get = run(
+        FakeModule(params(), client=client),
+        {"details": details, "production_access_enabled": False},
+        {"details": dict(DETAILS, review_details={"status": "PENDING"}), "production_access_enabled": False},
+    )
+
+    assert result.values["changed"]
+    client.put_account_details.assert_called_once()
+
+
+def test_changed_details_with_a_case_id_are_submitted():
+    client = Mock()
+    details = dict(DETAILS, review_details={"case_id": "177395777700734"})
+    result, _require, _get = run(
+        FakeModule(params(website_url="https://example.org"), client=client),
+        {"details": details, "production_access_enabled": False},
+        {"details": details, "production_access_enabled": False},
+    )
+
+    assert result.values["changed"]
+    assert client.put_account_details.call_args.kwargs["WebsiteURL"] == "https://example.org"
+
+
 def test_denied_request_with_new_details_is_resubmitted():
     client = Mock()
     details = dict(DETAILS, review_details={"status": "DENIED"})
