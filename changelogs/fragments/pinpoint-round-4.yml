@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number - with ``state=absent``, exit with ``changed=false`` when the number is released elsewhere
+    while waiting for it to become active, instead of trying to disassociate, update, or release it.
+  - pinpoint_sms_voice_phone_number_info - fail with a clear message when AWS returns malformed phone number data
+    for a ``phone_number_ids`` lookup, instead of raising a Python error.
+  - pinpoint_sms_voice_phone_pool_info - fail with a clear message when AWS returns malformed pool data
+    for a ``pool_ids`` lookup, instead of raising a Python error.
+  - pinpoint_sms_voice_phone_pool - fail before any change, including in check mode, when ``origination_identity`` already belongs
+    to a pool with a different ``Name`` tag, naming that pool and suggesting ``pool_id``, instead of calling ``CreatePool``.

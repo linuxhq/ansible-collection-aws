@@ -449,6 +449,8 @@ def find_pool(client, module):
     filters = ansible_dict_to_boto3_filter_list({"message-type": module.params["message_type"]})
     iso_country_code = module.params["iso_country_code"]
     matches = []
+    # Pools that already hold the identity under another Name tag; CreatePool would reject the identity.
+    conflicts = []
 
     for pool in describe_pools(client, module, Filters=filters, Owner="SELF"):
         if pool.get("Status") == "DELETING":
@@ -469,13 +471,25 @@ def find_pool(client, module):
             pool = pool_with_tags(client, module, pool)
             if boto3_tag_list_to_ansible_dict(pool.get("Tags", [])).get("Name") == module.params["name"]:
                 matches.append(pool)
-                break
+            else:
+                conflicts.append(pool)
+
+            break
 
     if len(matches) > 1:
         module.fail_json(
             msg=(
                 f"Multiple Pinpoint SMS Voice V2 pools matched name "
                 f"{module.params['name']}: " + ", ".join(sorted(pool.get("PoolId", "") for pool in matches))
+            )
+        )
+
+    if not matches and conflicts:
+        module.fail_json(
+            msg=(
+                f"Origination identity {module.params['origination_identity']} already belongs to Pinpoint SMS "
+                f"Voice V2 pool {conflicts[0].get('PoolId')}, whose Name tag is not {module.params['name']}; "
+                "set pool_id to manage or rename that pool"
             )
         )
 

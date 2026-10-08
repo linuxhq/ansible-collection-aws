@@ -201,6 +201,77 @@ def test_pool_lookup_uses_name_tag_to_disambiguate_sender_pools():
     assert result["PoolId"] == "pool-2"
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_identity_in_a_differently_named_pool_fails_before_create(check_mode):
+    client = Mock()
+    module = FakeModule(
+        {
+            "deletion_protection_enabled": None,
+            "iso_country_code": None,
+            "message_type": "TRANSACTIONAL",
+            "name": "second",
+            "origination_identity": "sender-1",
+            "pool_id": None,
+            "purge_tags": True,
+            "state": "present",
+            "tags": None,
+            "wait": False,
+        },
+        check_mode=check_mode,
+    )
+    pool = {"MessageType": "TRANSACTIONAL", "PoolId": "pool-1", "Status": "ACTIVE"}
+
+    with (
+        patch.object(plugin, "describe_pools", return_value=[pool]),
+        patch.object(
+            plugin,
+            "pool_with_origination_identities",
+            return_value=dict(pool, OriginationIdentities=[{"OriginationIdentity": "sender-1"}]),
+        ),
+        patch.object(
+            plugin,
+            "pool_with_tags",
+            side_effect=lambda client, module, pool: dict(pool, Tags=[{"Key": "Name", "Value": "first"}]),
+        ),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert "pool-1" in raised.value.values["msg"]
+    assert "pool_id" in raised.value.values["msg"]
+    assert not raised.value.values.get("changed")
+    client.create_pool.assert_not_called()
+
+
+def test_identity_in_another_country_pool_does_not_conflict():
+    module = FakeModule(
+        {
+            "iso_country_code": "US",
+            "message_type": "TRANSACTIONAL",
+            "name": "second",
+            "origination_identity": "sender-1",
+            "pool_id": None,
+        }
+    )
+    pool = {"PoolId": "pool-1", "Status": "ACTIVE"}
+
+    with (
+        patch.object(plugin, "describe_pools", return_value=[pool]),
+        patch.object(
+            plugin,
+            "pool_with_origination_identities",
+            return_value=dict(
+                pool,
+                OriginationIdentities=[{"IsoCountryCode": "CA", "OriginationIdentity": "sender-1"}],
+            ),
+        ),
+        patch.object(plugin, "pool_with_tags") as pool_with_tags,
+    ):
+        assert plugin.find_pool(Mock(), module) is None
+
+    pool_with_tags.assert_not_called()
+
+
 def test_check_mode_projects_new_pool_identity_and_name_tag():
     client = Mock()
     module = FakeModule(
