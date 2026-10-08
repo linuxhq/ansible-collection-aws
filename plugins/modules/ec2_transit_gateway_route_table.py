@@ -293,6 +293,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
 )
 
 ROUTE_TABLE_TERMINAL_STATES = {"deleted"}
+ROUTE_TABLE_DELETED_STATES = {"deleted", "deleting"}
 ROUTE_DELETED_STATES = {"deleted", "deleting"}
 ROUTE_PRESENT_STATES = {"active", "blackhole", "pending"}
 ROUTE_STATE_ORDER = {
@@ -478,6 +479,7 @@ def wait_for_route_table(
     """Wait for a route table state; changed reports earlier modifications, for failure results."""
     deadline = time.monotonic() + module.params["wait_timeout"]
     route_table = {}
+    seen = False
     target = " or ".join(sorted(desired_states))
 
     while time.monotonic() < deadline:
@@ -491,6 +493,20 @@ def wait_for_route_table(
         if state in desired_states:
             return route_table
 
+        # A deleting or deleted route table cannot become available. A route table that is not yet
+        # visible is retried, since EC2 describe calls are eventually consistent after a create.
+        if (route_table is None and seen) or (
+            state in ROUTE_TABLE_DELETED_STATES and not desired_states & ROUTE_TABLE_DELETED_STATES
+        ):
+            module.fail_json(
+                changed=changed,
+                msg=f"Unable to wait for EC2 transit gateway route table {transit_gateway_route_table_id} to become {target}",
+                state=state,
+                transit_gateway_route_table=normalize_route_table(route_table),
+                transit_gateway_route_table_id=transit_gateway_route_table_id,
+            )
+
+        seen = seen or route_table is not None
         time.sleep(
             min(
                 module.params["wait_delay"],
@@ -621,6 +637,7 @@ def wait_for_route(client, module, transit_gateway_route_table_id, desired, chan
     """Wait for a route; changed reports earlier modifications, for failure results."""
     deadline = time.monotonic() + module.params["wait_timeout"]
     route = {}
+    seen = False
     target = "blackhole" if desired.get("blackhole") else "active"
 
     while time.monotonic() < deadline:
@@ -638,6 +655,17 @@ def wait_for_route(client, module, transit_gateway_route_table_id, desired, chan
         ):
             return route
 
+        # A deleting or deleted route cannot become active or blackhole. A route that is not yet
+        # visible is retried, since route searches are eventually consistent after a create.
+        if (route is None and seen) or (route or {}).get("State") in ROUTE_DELETED_STATES:
+            module.fail_json(
+                changed=changed,
+                msg=f"Unable to wait for EC2 transit gateway route {desired['destination_cidr_block']} to become {target}",
+                route=normalize_routes([route])[0] if route else {},
+                transit_gateway_route_table_id=transit_gateway_route_table_id,
+            )
+
+        seen = seen or route is not None
         time.sleep(
             min(
                 module.params["wait_delay"],
@@ -710,7 +738,7 @@ def ensure_route_absent(client, module, transit_gateway_route_table_id, destinat
         changed=changed,
     )
     try:
-        client.delete_transit_gateway_route(
+        response = client.delete_transit_gateway_route(
             DestinationCidrBlock=destination_cidr_block,
             TransitGatewayRouteTableId=transit_gateway_route_table_id,
             aws_retry=True,
@@ -727,11 +755,17 @@ def ensure_route_absent(client, module, transit_gateway_route_table_id, destinat
         )
 
     if wait:
-        route = wait_for_route_absent(
+        return True, wait_for_route_absent(
             client, module, transit_gateway_route_table_id, destination_cidr_block, changed=True
         )
 
-    return True, route
+    # Return the route as EC2 left it; get_route() selects no route once it is deleted.
+    route = validated_routes(
+        module,
+        [response.get("Route") if isinstance(response, dict) else None],
+        changed=True,
+    )[0]
+    return True, None if route.get("State") == "deleted" else route
 
 
 def ensure_present(client, module):

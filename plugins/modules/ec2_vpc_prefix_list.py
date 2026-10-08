@@ -317,6 +317,25 @@ EC2_WAITER_MODEL_DATA = {
                 "matcher": "path",
                 "state": "failure",
             },
+            # A prefix list deleted while it is awaited can never become ready.
+            {
+                "argument": "PrefixLists[0].State",
+                "expected": "delete-in-progress",
+                "matcher": "path",
+                "state": "failure",
+            },
+            {
+                "argument": "PrefixLists[0].State",
+                "expected": "delete-complete",
+                "matcher": "path",
+                "state": "failure",
+            },
+            {
+                "argument": "PrefixLists[0].State",
+                "expected": "delete-failed",
+                "matcher": "path",
+                "state": "failure",
+            },
         ],
     },
     "managed_prefix_list_deleted": {
@@ -473,7 +492,7 @@ def delete_prefix_list(client, module, prefix_list_id):
             msg=f"Unable to delete EC2 VPC managed prefix list {module.params['name']}",
         )
 
-    if prefix_list_id and module.params["wait"]:
+    if module.params["wait"]:
         wait_for_prefix_list_state(
             client,
             module,
@@ -493,11 +512,7 @@ def ensure_absent(client, module, owner_id):
     if state == "delete-in-progress" and module.params["wait"] and not module.check_mode:
         wait_for_prefix_list_state(client, module, prefix_list_id, "managed_prefix_list_deleted")
     elif changed and not module.check_mode:
-        if state in {
-            "create-in-progress",
-            "modify-in-progress",
-            "restore-in-progress",
-        }:
+        if state in IN_PROGRESS_STATES:
             wait_for_ready_state(client, module, prefix_list_id)
 
         delete_prefix_list(client, module, prefix_list_id)
@@ -602,6 +617,8 @@ def ensure_present(client, module, owner_id):
 
         if changed and not module.check_mode:
             if entries_changed or resource_changed:
+                # Updates do not change tags, and ModifyManagedPrefixList may omit them.
+                current_tags = current.get("Tags", [])
                 current, current_entries = update_prefix_list(
                     client,
                     module,
@@ -611,6 +628,7 @@ def ensure_present(client, module, owner_id):
                     desired_entries,
                     desired_prefix_list["max_entries"],
                 )
+                current = dict(current, Tags=current_tags)
                 current_prefix_list = comparable_prefix_list(current)
                 if wait and current_prefix_list != desired_prefix_list:
                     module.fail_json(
@@ -623,24 +641,17 @@ def ensure_present(client, module, owner_id):
                         desired=desired_prefix_list,
                     )
 
-            if current is not None and tags is not None:
-                tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                    boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
-                    tags,
-                    purge_tags=purge_tags,
+            # Tag deltas come from the describe above; the update response may omit tags.
+            if tags_to_set or tag_keys_to_unset:
+                reconcile_tags(
+                    client,
+                    module,
+                    current["PrefixListId"],
+                    tags_to_set,
+                    tag_keys_to_unset,
+                    changed=entries_changed or resource_changed,
                 )
-                prefix_list_id = current.get("PrefixListId")
-
-                if prefix_list_id:
-                    reconcile_tags(
-                        client,
-                        module,
-                        prefix_list_id,
-                        tags_to_set,
-                        tag_keys_to_unset,
-                        changed=entries_changed or resource_changed,
-                    )
-                    current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
+                current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
         elif changed and module.check_mode:
             current = dict(current)
             current.update(snake_dict_to_camel_dict(desired_prefix_list, capitalize_first=True))

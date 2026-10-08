@@ -1,6 +1,7 @@
 from unittest.mock import Mock, call, patch
 
 import pytest
+from botocore.loaders import Loader
 from botocore.waiter import Waiter, WaiterModel
 
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_vpc_prefix_list as plugin
@@ -844,6 +845,9 @@ def test_create_adds_entries_beyond_one_request_in_batches():
         ("managed_prefix_list_ready", "create-failed"),
         ("managed_prefix_list_ready", "modify-failed"),
         ("managed_prefix_list_ready", "restore-failed"),
+        ("managed_prefix_list_ready", "delete-in-progress"),
+        ("managed_prefix_list_ready", "delete-complete"),
+        ("managed_prefix_list_ready", "delete-failed"),
         ("managed_prefix_list_deleted", "delete-failed"),
     ],
 )
@@ -855,6 +859,41 @@ def test_prefix_list_waiter_stops_on_failed_state(name, state):
         waiter.wait(PrefixListIds=["pl-1"], WaiterConfig={"Delay": 0, "MaxAttempts": 5})
 
     operation.assert_called_once()
+
+
+def test_ready_waiter_handles_every_prefix_list_state():
+    shapes = Loader().load_service_model("ec2", "service-2")["shapes"]
+    acceptors = plugin.EC2_WAITER_MODEL_DATA["managed_prefix_list_ready"]["acceptors"]
+
+    assert {acceptor["expected"] for acceptor in acceptors} == set(shapes["PrefixListState"]["enum"])
+
+
+def test_ready_wait_fails_immediately_when_the_prefix_list_is_deleting():
+    module = FakeModule({"wait_delay": 1, "wait_timeout": 600})
+    client = Mock()
+    client.describe_managed_prefix_lists.return_value = {
+        "PrefixLists": [{"PrefixListId": "pl-1", "State": "delete-in-progress"}]
+    }
+    waiter = Waiter(
+        "managed_prefix_list_ready",
+        WaiterModel({"version": 2, "waiters": plugin.EC2_WAITER_MODEL_DATA}).get_waiter("managed_prefix_list_ready"),
+        client.describe_managed_prefix_lists,
+    )
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch("botocore.waiter.time.sleep") as sleep,
+        patch(
+            "ansible_collections.linuxhq.aws.plugins.module_utils.wait.BaseWaiterFactory.get_waiter",
+            return_value=waiter,
+        ),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.wait_for_ready_state(client, module, "pl-1", changed=True)
+
+    client.describe_managed_prefix_lists.assert_called_once_with(PrefixListIds=["pl-1"])
+    sleep.assert_not_called()
+    assert raised.value.values["msg"] == "Unable to wait for EC2 VPC managed prefix list pl-1 to become ready"
+    assert raised.value.values["changed"] is True
 
 
 def test_create_failed_prefix_list_is_not_modified():
@@ -999,3 +1038,62 @@ def test_wait_failure_before_any_change_reports_unchanged():
         plugin.ensure_present(Mock(), module, OWNER)
 
     assert raised.value.values["changed"] is False
+
+
+def test_tag_deltas_after_update_without_wait_use_the_described_tags():
+    client = Mock()
+    tags = [{"Key": "Env", "Value": "test"}, {"Key": "Old", "Value": "x"}]
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}], tags={"Env": "test", "Team": "net"}))
+    with (
+        patch.object(plugin, "get_current", return_value=(prefix_list(Tags=tags), [{"Cidr": "192.0.2.0/24"}])),
+        # ModifyManagedPrefixList may return the prefix list without its tags.
+        patch.object(
+            plugin, "modify_prefix_list", return_value=prefix_list(State="modify-in-progress", Tags=[], Version=2)
+        ),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "reconcile_ec2_tags") as reconcile,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    reconcile.assert_called_once_with(
+        module, client, ["pl-1"], {"Team": "net"}, ["Old"], "EC2 VPC managed prefix list", changed=True
+    )
+    assert result.value.values["prefix_list"]["tags"] == {"Env": "test", "Team": "net"}
+
+
+def test_untagged_update_without_wait_keeps_the_described_tags():
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}]))
+    with (
+        patch.object(
+            plugin,
+            "get_current",
+            return_value=(prefix_list(Tags=[{"Key": "Env", "Value": "test"}]), [{"Cidr": "192.0.2.0/24"}]),
+        ),
+        patch.object(plugin, "modify_prefix_list", return_value=prefix_list(Version=2)),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "reconcile_ec2_tags") as reconcile,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    reconcile.assert_not_called()
+    assert result.value.values["prefix_list"]["tags"] == {"Env": "test"}
+
+
+@pytest.mark.parametrize("state", sorted(plugin.IN_PROGRESS_STATES))
+def test_absent_waits_for_an_in_progress_prefix_list_before_deleting(state):
+    client = Mock()
+    module = FakeModule({"name": "main", "wait": False})
+    with (
+        patch.object(plugin, "get_customer_managed_prefix_list_by_name", return_value=prefix_list(State=state)),
+        patch.object(plugin, "wait_for_ready_state") as wait,
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module, OWNER)
+
+    assert raised.value.values["changed"] is True
+    wait.assert_called_once_with(client, module, "pl-1")
+    client.delete_managed_prefix_list.assert_called_once_with(PrefixListId="pl-1", aws_retry=True)
