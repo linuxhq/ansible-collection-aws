@@ -753,6 +753,41 @@ def test_delete_is_idempotent_and_waits(params, connection, state, changed, sdk_
         sdk_checks.assert_called_once_with(ANY, client, "EC2", {"delete_vpn_connection": ("VpnConnectionId",)})
 
 
+def test_pending_connection_becomes_available_before_delete(params, connection):
+    connection["State"] = "pending"
+    client = Mock()
+    with pytest.raises(ModuleExit) as result:
+        plugin.ensure_absent(client, FakeModule(params), connection)
+
+    assert result.value.values == {"changed": True, "vpn_connection": {}}
+    # The VpnConnectionDeleted waiter fails on a pending connection, so deletion waits for available first.
+    assert [call.args for call in client.get_waiter.call_args_list] == [
+        ("vpn_connection_available",),
+        ("vpn_connection_deleted",),
+    ]
+    assert [call[0] for call in client.method_calls if call[0] in ("get_waiter", "delete_vpn_connection")] == [
+        "get_waiter",
+        "delete_vpn_connection",
+        "get_waiter",
+    ]
+
+
+def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings(params, connection):
+    params.update(name=None, filters={"customer-gateway-configuration": "x", "x-count": [2], "x-flag": [True]})
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [connection]}
+    plugin.find_connection(client, FakeModule(params))
+
+    client.describe_vpn_connections.assert_called_once_with(
+        Filters=[
+            {"Name": "customer-gateway-configuration", "Values": ["x"]},
+            {"Name": "x-count", "Values": ["2"]},
+            {"Name": "x-flag", "Values": ["true"]},
+        ],
+        aws_retry=True,
+    )
+
+
 def test_absent_check_mode_and_already_absent(params, connection):
     client = Mock()
     with pytest.raises(ModuleExit) as result:

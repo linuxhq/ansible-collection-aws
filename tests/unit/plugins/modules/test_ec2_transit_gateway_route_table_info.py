@@ -39,19 +39,23 @@ def test_route_search_uses_paginated_query():
         patch.object(
             plugin,
             "query_list",
-            side_effect=[
-                [
-                    {
-                        "State": "available",
-                        "TransitGatewayRouteTableId": "tgw-rtb-1",
-                    }
-                ],
-                [
-                    {"DestinationCidrBlock": "10.0.0.0/8", "State": "active", "Type": "static"},
-                    {"DestinationCidrBlock": "192.0.2.0/24", "State": "active", "Type": "static"},
-                ],
+            return_value=[
+                {
+                    "State": "available",
+                    "TransitGatewayRouteTableId": "tgw-rtb-1",
+                }
             ],
         ) as query,
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            return_value={
+                "Routes": [
+                    {"DestinationCidrBlock": "10.0.0.0/8", "State": "active", "Type": "static"},
+                    {"DestinationCidrBlock": "192.0.2.0/24", "State": "active", "Type": "static"},
+                ]
+            },
+        ) as search,
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
@@ -68,10 +72,14 @@ def test_route_search_uses_paginated_query():
         "TransitGatewayRouteTableId",
     )
     assert len(raised.value.values["transit_gateway_route_tables"][0]["routes"]) == 2
-    assert query.call_args_list[1].args[2] == "search_transit_gateway_routes"
-    assert query.call_args_list[0].kwargs == {
-        "Filters": [{"Name": "transit-gateway-route-table-id", "Values": ["tgw-rtb-1"]}]
-    }
+    search.assert_called_once_with(
+        client,
+        "search_transit_gateway_routes",
+        TransitGatewayRouteTableId="tgw-rtb-1",
+        Filters=[{"Name": "type", "Values": ["static", "propagated"]}],
+        MaxResults=1000,
+    )
+    assert query.call_args.kwargs == {"Filters": [{"Name": "transit-gateway-route-table-id", "Values": ["tgw-rtb-1"]}]}
     client.search_transit_gateway_routes.assert_not_called()
 
 
@@ -118,11 +126,9 @@ def test_rejects_malformed_route_response():
         patch.object(
             plugin,
             "query_list",
-            side_effect=[
-                [{"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}],
-                [None],
-            ],
+            return_value=[{"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}],
         ),
+        patch.object(plugin, "paginated_query_with_retries", return_value={"Routes": [None]}),
         pytest.raises(ModuleFail),
     ):
         plugin.main()
@@ -166,3 +172,90 @@ def test_missing_route_table_id_returns_an_empty_list():
 
     assert raised.value.values["transit_gateway_route_tables"] == []
     assert "TransitGatewayRouteTableIds" not in query.call_args.kwargs
+
+
+def test_route_table_deleted_before_route_search_is_omitted():
+    module = FakeModule(
+        {"filters": None, "transit_gateway_route_table_ids": None},
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "query_list",
+            return_value=[
+                {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-gone"},
+                {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"},
+            ],
+        ),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=[
+                plugin.ClientError(
+                    {"Error": {"Code": "InvalidRouteTableID.NotFound", "Message": "gone"}},
+                    "SearchTransitGatewayRoutes",
+                ),
+                {"Routes": []},
+            ],
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert [
+        route_table["transit_gateway_route_table_id"]
+        for route_table in raised.value.values["transit_gateway_route_tables"]
+    ] == ["tgw-rtb-1"]
+
+
+def test_route_search_failures_are_reported():
+    module = FakeModule(
+        {"filters": None, "transit_gateway_route_table_ids": None},
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "query_list",
+            return_value=[{"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}],
+        ),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=plugin.ClientError(
+                {"Error": {"Code": "UnauthorizedOperation", "Message": "denied"}},
+                "SearchTransitGatewayRoutes",
+            ),
+        ),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == "Unable to search EC2 transit gateway routes in route table tgw-rtb-1"
+
+
+def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings():
+    module = FakeModule(
+        {
+            "filters": {"default-association-route-table": [True], "x-count": [2]},
+            "transit_gateway_route_table_ids": None,
+        },
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]) as query,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()
+
+    assert query.call_args.kwargs["Filters"] == [
+        {"Name": "default-association-route-table", "Values": ["true"]},
+        {"Name": "x-count", "Values": ["2"]},
+    ]

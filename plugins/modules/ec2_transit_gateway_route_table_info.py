@@ -18,6 +18,7 @@ options:
         tables.
       - Filter names and values are passed to the EC2
         C(DescribeTransitGatewayRouteTables) API.
+      - Boolean and numeric values, including list entries, are converted to strings.
     type: dict
   transit_gateway_route_table_ids:
     description:
@@ -61,6 +62,7 @@ transit_gateway_route_tables:
     - A list of EC2 transit gateway route tables.
     - Each route table includes a C(routes) list gathered from
       C(SearchTransitGatewayRoutes) when the route table is available.
+    - A route table deleted before its routes are searched is omitted.
   returned: always
   type: list
   elements: dict
@@ -150,6 +152,15 @@ transit_gateway_route_tables:
       sample: tgw-rtb-0123456789abcdef0
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
+
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
+    is_boto3_error_code,
+    paginated_query_with_retries,
+)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -157,6 +168,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
+    ansible_dict_to_string_filter_list,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -185,6 +199,9 @@ def validate_route_tables(module, route_tables):
 
 
 def validate_routes(module, routes):
+    if not isinstance(routes, list):
+        module.fail_json(msg="EC2 returned invalid transit gateway routes")
+
     for route in routes:
         if (
             not isinstance(route, dict)
@@ -218,7 +235,7 @@ def main():
 
     request = {}
     if filters:
-        request["Filters"] = ansible_dict_to_boto3_filter_list(filters)
+        request["Filters"] = ansible_dict_to_string_filter_list(filters)
 
     require_client_methods(
         module,
@@ -264,21 +281,25 @@ def main():
         if route_table.get("State") == "available":
             transit_gateway_route_table_id = route_table["TransitGatewayRouteTableId"]
 
+            try:
+                response = paginated_query_with_retries(
+                    client,
+                    "search_transit_gateway_routes",
+                    TransitGatewayRouteTableId=transit_gateway_route_table_id,
+                    Filters=ansible_dict_to_boto3_filter_list({"type": ["static", "propagated"]}),
+                    MaxResults=1000,
+                )
+            except is_boto3_error_code("InvalidRouteTableID.NotFound"):
+                # The route table was deleted after it was described.
+                continue
+            except (BotoCoreError, ClientError) as e:
+                module.fail_json_aws(
+                    e,
+                    msg=f"Unable to search EC2 transit gateway routes in route table {transit_gateway_route_table_id}",
+                )
+
             route_table["Routes"] = sorted(
-                validate_routes(
-                    module,
-                    query_list(
-                        module,
-                        client,
-                        "search_transit_gateway_routes",
-                        "Routes",
-                        "Unable to search EC2 transit gateway routes in route table "
-                        f"{transit_gateway_route_table_id}",
-                        TransitGatewayRouteTableId=transit_gateway_route_table_id,
-                        Filters=ansible_dict_to_boto3_filter_list({"type": ["static", "propagated"]}),
-                        MaxResults=1000,
-                    ),
-                ),
+                validate_routes(module, response.get("Routes", []) if isinstance(response, dict) else None),
                 key=route_sort_key,
             )
 

@@ -793,6 +793,9 @@ def test_missing_route_is_created():
 
 def test_purge_passes_each_found_route_without_searching_again():
     client = Mock()
+    client.delete_transit_gateway_route.return_value = {
+        "Route": {"DestinationCidrBlock": "192.0.2.0/24", "State": "deleted", "Type": "static"}
+    }
     module = FakeModule(present_params(routes=[]))
     table = {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
     deleting = {"DestinationCidrBlock": "192.0.2.0/24", "State": "deleting", "Type": "static"}
@@ -963,3 +966,131 @@ def test_route_wait_timeout_reports_earlier_changes(changed):
         plugin.wait_for_route(Mock(), module, "tgw-rtb-1", desired, changed=changed)
 
     assert raised.value.values["changed"] is changed
+
+
+@pytest.mark.parametrize(("state", "returned"), [("deleting", True), ("deleted", False)])
+def test_route_delete_without_wait_returns_the_route_as_deleted(state, returned):
+    client = Mock()
+    deleted_route = {"DestinationCidrBlock": "10.0.0.0/8", "State": state, "Type": "static"}
+    client.delete_transit_gateway_route.return_value = {"Route": deleted_route}
+    with (
+        patch.object(plugin, "wait_for_route_absent") as wait,
+        patch.object(plugin, "require_client_methods"),
+    ):
+        changed, route = plugin.ensure_route_absent(
+            client,
+            FakeModule({"wait": False}),
+            "tgw-rtb-1",
+            "10.0.0.0/8",
+            {"DestinationCidrBlock": "10.0.0.0/8", "State": "active", "Type": "static"},
+        )
+
+    assert changed
+    # The route from before the delete is never returned as the final state.
+    assert route == (deleted_route if returned else None)
+    wait.assert_not_called()
+
+
+def test_route_delete_without_wait_rejects_malformed_response():
+    client = Mock()
+    client.delete_transit_gateway_route.return_value = {}
+    with (
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_route_absent(
+            client,
+            FakeModule({"wait": False}),
+            "tgw-rtb-1",
+            "10.0.0.0/8",
+            {"DestinationCidrBlock": "10.0.0.0/8", "State": "active", "Type": "static"},
+        )
+
+    assert raised.value.values["changed"] is True
+
+
+@pytest.mark.parametrize(
+    "route_tables",
+    [
+        [{"State": "deleting", "TransitGatewayRouteTableId": "tgw-rtb-1"}],
+        [{"State": "deleted", "TransitGatewayRouteTableId": "tgw-rtb-1"}],
+        [{"State": "pending", "TransitGatewayRouteTableId": "tgw-rtb-1"}, None],
+    ],
+)
+@pytest.mark.parametrize("changed", [True, False])
+def test_route_table_wait_stops_when_available_is_unreachable(route_tables, changed):
+    module = FakeModule({"wait_delay": 1, "wait_timeout": 600})
+    with (
+        patch.object(plugin, "get_route_table_by_id", side_effect=route_tables),
+        patch.object(plugin.time, "sleep") as sleep,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.wait_for_route_table(Mock(), module, "tgw-rtb-1", {"available"}, changed=changed)
+
+    assert (
+        raised.value.values["msg"] == "Unable to wait for EC2 transit gateway route table tgw-rtb-1 to become available"
+    )
+    assert raised.value.values["changed"] is changed
+    assert sleep.call_count == len(route_tables) - 1
+
+
+def test_route_table_wait_retries_a_route_table_not_yet_visible():
+    available = {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    module = FakeModule({"wait_delay": 1, "wait_timeout": 600})
+    with (
+        patch.object(plugin, "get_route_table_by_id", side_effect=[None, available]),
+        patch.object(plugin.time, "sleep") as sleep,
+    ):
+        assert plugin.wait_for_route_table(Mock(), module, "tgw-rtb-1", {"available"}) == available
+
+    sleep.assert_called_once_with(1)
+
+
+@pytest.mark.parametrize(
+    "routes",
+    [
+        [{"DestinationCidrBlock": "10.0.0.0/8", "State": "deleting", "Type": "static"}],
+        [{"DestinationCidrBlock": "10.0.0.0/8", "State": "pending", "Type": "static"}, None],
+    ],
+)
+@pytest.mark.parametrize("blackhole", [True, False])
+def test_route_wait_stops_when_the_route_is_removed(routes, blackhole):
+    module = FakeModule({"wait_delay": 1, "wait_timeout": 600})
+    desired = {"blackhole": blackhole, "destination_cidr_block": "10.0.0.0/8", "transit_gateway_attachment_id": None}
+    with (
+        patch.object(plugin, "get_route", side_effect=routes),
+        patch.object(plugin.time, "sleep") as sleep,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.wait_for_route(Mock(), module, "tgw-rtb-1", desired, changed=True)
+
+    target = "blackhole" if blackhole else "active"
+    assert raised.value.values["msg"] == f"Unable to wait for EC2 transit gateway route 10.0.0.0/8 to become {target}"
+    assert raised.value.values["changed"] is True
+    assert sleep.call_count == len(routes) - 1
+
+
+def test_route_wait_retries_a_route_not_yet_visible():
+    route = {"DestinationCidrBlock": "10.0.0.0/8", "State": "blackhole", "Type": "static"}
+    module = FakeModule({"wait_delay": 1, "wait_timeout": 600})
+    desired = {"blackhole": True, "destination_cidr_block": "10.0.0.0/8"}
+    with (
+        patch.object(plugin, "get_route", side_effect=[None, route]),
+        patch.object(plugin.time, "sleep") as sleep,
+    ):
+        assert plugin.wait_for_route(Mock(), module, "tgw-rtb-1", desired) == route
+
+    sleep.assert_called_once_with(1)
+
+
+def test_absent_route_table_wait_still_treats_absence_as_success():
+    module = FakeModule({"wait_delay": 1, "wait_timeout": 600})
+    with (
+        patch.object(
+            plugin,
+            "get_route_table_by_id",
+            side_effect=[{"State": "deleting", "TransitGatewayRouteTableId": "tgw-rtb-1"}, None],
+        ),
+        patch.object(plugin.time, "sleep"),
+    ):
+        assert plugin.wait_for_route_table(Mock(), module, "tgw-rtb-1", {"deleted"}, absent_is_success=True) is None
