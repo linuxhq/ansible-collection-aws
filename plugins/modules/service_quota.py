@@ -11,8 +11,9 @@ description:
   - Requests AWS service quota increases.
   - Only submits a quota increase request when the desired value is greater than the current applied quota
     and there is no existing open or pending request for the same quota.
-  - Falls back to the AWS default quota when the quota has no applied value
-    and no O(context_id) is provided.
+  - Falls back to the AWS default quota when the quota has no applied value.
+  - Fails when the quota has neither an applied value nor an AWS default
+    value.
   - Fails before requesting an increase for a quota that is not adjustable.
   - Warns when an open or pending request asks for less than O(value).
 author:
@@ -21,6 +22,12 @@ options:
   context_id:
     description:
       - The context ID for a resource-level quota.
+      - When the resource has no applied value of its own, O(value) is
+        compared with the quota that applies to every resource in the scope,
+        or with the AWS default quota, and an increase is still requested for
+        O(context_id).
+      - In that case RV(current_quota) is the fallback quota, so
+        its C(quota_context.context_id) is C(*) or absent.
       - This option requires AWS SDK support for the C(ContextId) request
         parameter.
     type: str
@@ -120,7 +127,10 @@ current_quota:
       returned: when returned by AWS
       type: str
     quota_context:
-      description: The resource-level context of the quota.
+      description:
+        - The resource-level context of the quota.
+        - The C(context_id) is C(*) for the value that applies to every
+          resource in the scope.
       returned: when returned by AWS
       type: dict
     quota_name:
@@ -420,13 +430,12 @@ def main():
         history_request["QuotaRequestedAtLevel"] = "RESOURCE"
 
     methods = {
+        "get_aws_default_service_quota": ("QuotaCode", "ServiceCode"),
         "get_service_quota": tuple(quota_request),
         "list_requested_service_quota_change_history_by_quota": (
             ("MaxResults", "NextToken", "Status") + tuple(history_request)
         ),
     }
-    if not context_id:
-        methods["get_aws_default_service_quota"] = ("QuotaCode", "ServiceCode")
 
     if not module.check_mode:
         methods["request_service_quota_increase"] = ("DesiredValue",) + tuple(quota_request)

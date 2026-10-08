@@ -72,14 +72,27 @@ def test_mismatched_quota_context_fails():
     assert raised.value.values["msg"] == "AWS Service Quotas returned a mismatched quota context for ec2/L-1"
 
 
-def test_missing_resource_level_quota_returns_empty_without_default_fallback():
+def test_context_without_applied_value_returns_the_resource_scope_quota():
+    missing = ClientError({"Error": {"Code": "NoSuchResourceException", "Message": "gone"}}, "GetServiceQuota")
+    fallback = {"Value": 25.0, "QuotaContext": {"ContextScope": "RESOURCE", "ContextId": "*"}}
+    client = Mock()
+    client.get_service_quota.side_effect = [missing, {"Quota": fallback}]
+    result = run(FakeModule({"context_id": "arn:context", "quota_code": "L-1", "service_code": "ec2"}, client=client))
+
+    assert result["quota"] == {"value": 25.0, "quota_context": {"context_scope": "RESOURCE", "context_id": "*"}}
+    client.get_aws_default_service_quota.assert_not_called()
+
+
+def test_missing_resource_level_quota_returns_empty():
     missing = ClientError({"Error": {"Code": "NoSuchResourceException", "Message": "gone"}}, "GetServiceQuota")
     client = Mock()
     client.get_service_quota.side_effect = missing
+    client.get_aws_default_service_quota.side_effect = missing
     result = run(FakeModule({"context_id": "arn:context", "quota_code": "L-1", "service_code": "ec2"}, client=client))
 
     assert result["quota"] == {}
-    client.get_aws_default_service_quota.assert_not_called()
+    assert client.get_service_quota.call_count == 2
+    client.get_aws_default_service_quota.assert_called_once_with(QuotaCode="L-1", ServiceCode="ec2", aws_retry=True)
 
 
 def test_metric_dimension_identifiers_are_preserved():

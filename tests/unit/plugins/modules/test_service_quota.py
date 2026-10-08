@@ -201,7 +201,7 @@ def test_context_id_requests_a_resource_level_increase():
     assert "ContextId" in methods["get_service_quota"]
     assert "ContextId" in methods["request_service_quota_increase"]
     assert "QuotaRequestedAtLevel" in methods["list_requested_service_quota_change_history_by_quota"]
-    assert "get_aws_default_service_quota" not in methods
+    assert methods["get_aws_default_service_quota"] == ("QuotaCode", "ServiceCode")
 
 
 def test_context_id_check_mode_reports_the_context():
@@ -233,14 +233,65 @@ def test_missing_applied_and_default_quota_fails():
     assert result.values["msg"] == "AWS service quota ec2/L-1 does not exist"
 
 
-def test_missing_resource_level_quota_fails_without_default_fallback():
+RESOURCE_SCOPE_QUOTA = {
+    "QuotaCode": "L-1",
+    "ServiceCode": "ec2",
+    "Value": 5.0,
+    "QuotaContext": {"ContextScope": "RESOURCE", "ContextId": "*"},
+}
+
+
+def test_context_without_applied_value_requests_a_resource_level_increase():
+    client = Mock()
+    client.get_service_quota.side_effect = [missing("GetServiceQuota"), {"Quota": RESOURCE_SCOPE_QUOTA}]
+    client.request_service_quota_increase.return_value = {
+        "RequestedQuota": {"DesiredValue": 10.0, "QuotaContext": {"ContextId": "arn:resource"}}
+    }
+    result, query, _require = run(FakeModule(params(context_id="arn:resource"), client=client))
+
+    assert result.values["changed"]
+    assert result.values["current_quota"]["value"] == 5.0
+    assert result.values["current_quota"]["quota_context"]["context_id"] == "*"
+    assert all(call.kwargs["QuotaRequestedAtLevel"] == "RESOURCE" for call in query.call_args_list)
+    client.request_service_quota_increase.assert_called_once_with(
+        QuotaCode="L-1", ServiceCode="ec2", ContextId="arn:resource", DesiredValue=10.0, aws_retry=True
+    )
+
+
+def test_context_without_applied_value_check_mode_reports_the_context():
+    client = Mock()
+    client.get_service_quota.side_effect = [missing("GetServiceQuota"), missing("GetServiceQuota")]
+    client.get_aws_default_service_quota.return_value = {"Quota": {"Value": 5.0}}
+    result = run(FakeModule(params(context_id="arn:resource"), check_mode=True, client=client))[0]
+
+    assert result.values["changed"]
+    assert result.values["requested_quota"]["quota_context"] == {"context_id": "arn:resource"}
+    assert result.values["requested_quota"]["quota_requested_at_level"] == "RESOURCE"
+    client.request_service_quota_increase.assert_not_called()
+
+
+def test_context_without_applied_value_at_the_desired_value_is_unchanged():
+    client = Mock()
+    client.get_service_quota.side_effect = [
+        missing("GetServiceQuota"),
+        {"Quota": dict(RESOURCE_SCOPE_QUOTA, Value=10.0)},
+    ]
+    result = run(FakeModule(params(context_id="arn:resource"), client=client))[0]
+
+    assert isinstance(result, ModuleExit)
+    assert not result.values["changed"]
+    client.request_service_quota_increase.assert_not_called()
+
+
+def test_missing_resource_level_quota_fails():
     client = Mock()
     client.get_service_quota.side_effect = missing("GetServiceQuota")
+    client.get_aws_default_service_quota.side_effect = missing("GetAWSDefaultServiceQuota")
     result = run(FakeModule(params(context_id="arn:resource"), client=client))[0]
 
     assert isinstance(result, ModuleFail)
     assert result.values["msg"] == "AWS service quota ec2/L-1 for arn:resource does not exist"
-    client.get_aws_default_service_quota.assert_not_called()
+    client.request_service_quota_increase.assert_not_called()
 
 
 def test_metric_dimension_identifiers_are_preserved():

@@ -16,7 +16,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def quota_from_response(module, response, description, service_code, quota_code, context_id=None):
+def quota_from_response(module, response, description, service_code, quota_code, context_id=None, resource_scope=False):
     if not isinstance(response, dict) or not isinstance(response.get("Quota"), dict) or not response["Quota"]:
         module.fail_json(msg=f"AWS Service Quotas returned an invalid {description} response")
 
@@ -32,32 +32,45 @@ def quota_from_response(module, response, description, service_code, quota_code,
     if context_id and (quota_context is None or quota_context.get("ContextId") != context_id):
         module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota context for {service_code}/{quota_code}")
 
+    if resource_scope and (quota_context or {}).get("ContextScope", "RESOURCE") != "RESOURCE":
+        module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota context for {service_code}/{quota_code}")
+
     return quota
 
 
 def get_quota(client, module, service_code, quota_code, context_id=None):
-    """Return the applied quota, or the default quota for an account-level quota; return None when missing."""
+    """Return the applied quota, falling back to the resource-scope and default quotas; return None when missing.
+
+    A context without its own applied value uses the quota that applies to every resource in the scope.
+    """
     identifier = f"{service_code}/{quota_code}" + (f" for {context_id}" if context_id else "")
     request = {"QuotaCode": quota_code, "ServiceCode": service_code}
+    lookups = [
+        (client.get_service_quota, "service quota", request, None),
+        (client.get_aws_default_service_quota, "default service quota", request, None),
+    ]
     if context_id:
-        request["ContextId"] = context_id
+        lookups.insert(0, (client.get_service_quota, "service quota", dict(request, ContextId=context_id), context_id))
 
-    try:
-        response = client.get_service_quota(**request, aws_retry=True)
-        return quota_from_response(module, response, "service quota", service_code, quota_code, context_id)
-    except is_boto3_error_code("NoSuchResourceException"):
-        if context_id:
-            return None
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to get AWS service quota {identifier}")
+    for method, description, lookup_request, lookup_context_id in lookups:
+        try:
+            response = method(**lookup_request, aws_retry=True)
+        except is_boto3_error_code("NoSuchResourceException"):
+            continue
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, msg=f"Unable to get AWS {description} {identifier}")
 
-    try:
-        response = client.get_aws_default_service_quota(**request, aws_retry=True)
-        return quota_from_response(module, response, "default service quota", service_code, quota_code)
-    except is_boto3_error_code("NoSuchResourceException"):
-        return None
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to get AWS default service quota {identifier}")
+        return quota_from_response(
+            module,
+            response,
+            description,
+            service_code,
+            quota_code,
+            lookup_context_id,
+            resource_scope=bool(context_id) and not lookup_context_id,
+        )
+
+    return None
 
 
 def quota_to_ansible_dict(quota):

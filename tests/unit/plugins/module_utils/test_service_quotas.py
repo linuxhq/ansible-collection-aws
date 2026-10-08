@@ -35,6 +35,22 @@ def test_quota_from_response_rejects_invalid_response(response, context_id, mess
     assert message in raised.value.values["msg"]
 
 
+@pytest.mark.parametrize("scope", ["ACCOUNT", "UNKNOWN"])
+def test_quota_from_response_rejects_a_non_resource_scope(scope):
+    response = {"Quota": {"Value": 5.0, "QuotaContext": {"ContextScope": scope}}}
+    with pytest.raises(ModuleFail) as raised:
+        quota_from_response(FakeModule({}), response, "service quota", "ec2", "L-1", resource_scope=True)
+
+    assert "mismatched quota context" in raised.value.values["msg"]
+
+
+@pytest.mark.parametrize("quota", [{"Value": 5.0}, {"Value": 5.0, "QuotaContext": {"ContextScope": "RESOURCE"}}])
+def test_quota_from_response_accepts_a_resource_scope(quota):
+    response = {"Quota": quota}
+
+    assert quota_from_response(FakeModule({}), response, "service quota", "ec2", "L-1", resource_scope=True) == quota
+
+
 def test_quota_from_response_accepts_matching_context():
     quota = {"Value": 5.0, "QuotaContext": {"ContextId": "arn:context"}}
 
@@ -66,15 +82,76 @@ def test_get_quota_returns_none_when_the_default_quota_is_missing():
     assert get_quota(client, FakeModule({}), "ec2", "L-1") is None
 
 
-def test_get_quota_does_not_fall_back_for_a_resource_level_quota():
+RESOURCE_SCOPE_QUOTA = {
+    "QuotaCode": "L-1",
+    "ServiceCode": "ec2",
+    "Value": 25.0,
+    "QuotaContext": {"ContextScope": "RESOURCE", "ContextScopeType": "AWS::IAM::Role", "ContextId": "*"},
+}
+
+
+def test_get_quota_falls_back_to_the_resource_scope_quota_for_a_context():
+    client = Mock()
+    client.get_service_quota.side_effect = [
+        error("NoSuchResourceException", "GetServiceQuota"),
+        {"Quota": RESOURCE_SCOPE_QUOTA},
+    ]
+
+    assert get_quota(client, FakeModule({}), "ec2", "L-1", "arn:context") == RESOURCE_SCOPE_QUOTA
+    assert [call.kwargs for call in client.get_service_quota.call_args_list] == [
+        {"QuotaCode": "L-1", "ServiceCode": "ec2", "ContextId": "arn:context", "aws_retry": True},
+        {"QuotaCode": "L-1", "ServiceCode": "ec2", "aws_retry": True},
+    ]
+    client.get_aws_default_service_quota.assert_not_called()
+
+
+def test_get_quota_falls_back_to_the_default_quota_for_a_context():
+    default = {"Value": 20.0, "QuotaContext": {"ContextScope": "RESOURCE", "ContextScopeType": "AWS::IAM::Role"}}
     client = Mock()
     client.get_service_quota.side_effect = error("NoSuchResourceException", "GetServiceQuota")
+    client.get_aws_default_service_quota.return_value = {"Quota": default}
+
+    assert get_quota(client, FakeModule({}), "ec2", "L-1", "arn:context") == default
+    assert client.get_service_quota.call_count == 2
+    client.get_aws_default_service_quota.assert_called_once_with(QuotaCode="L-1", ServiceCode="ec2", aws_retry=True)
+
+
+def test_get_quota_returns_none_when_a_context_quota_is_missing():
+    client = Mock()
+    client.get_service_quota.side_effect = error("NoSuchResourceException", "GetServiceQuota")
+    client.get_aws_default_service_quota.side_effect = error("NoSuchResourceException", "GetAWSDefaultServiceQuota")
 
     assert get_quota(client, FakeModule({}), "ec2", "L-1", "arn:context") is None
-    client.get_service_quota.assert_called_once_with(
-        QuotaCode="L-1", ServiceCode="ec2", ContextId="arn:context", aws_retry=True
-    )
-    client.get_aws_default_service_quota.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("fallback", "message"),
+    [
+        ({"Value": 5.0, "QuotaContext": {"ContextScope": "ACCOUNT"}}, "mismatched quota context"),
+        ({"Value": 5.0, "QuotaCode": "L-2"}, "mismatched quota"),
+    ],
+)
+def test_get_quota_rejects_an_invalid_context_fallback(fallback, message):
+    client = Mock()
+    client.get_service_quota.side_effect = [error("NoSuchResourceException", "GetServiceQuota"), {"Quota": fallback}]
+
+    with pytest.raises(ModuleFail) as raised:
+        get_quota(client, FakeModule({}), "ec2", "L-1", "arn:context")
+
+    assert message in raised.value.values["msg"]
+
+
+def test_get_quota_reports_context_fallback_failures():
+    client = Mock()
+    client.get_service_quota.side_effect = [
+        error("NoSuchResourceException", "GetServiceQuota"),
+        error("AccessDeniedException", "GetServiceQuota"),
+    ]
+
+    with pytest.raises(ModuleFail) as raised:
+        get_quota(client, FakeModule({}), "ec2", "L-1", "arn:context")
+
+    assert raised.value.values["msg"] == "Unable to get AWS service quota ec2/L-1 for arn:context"
 
 
 @pytest.mark.parametrize(
