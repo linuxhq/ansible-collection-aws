@@ -9,8 +9,9 @@ version_added: '1.9.0'
 short_description: Gather information about AWS Systems Manager documents
 description:
   - Gathers information about AWS Systems Manager documents.
-  - Retrieves each document as JSON and parses the returned content when
-    possible; the content is returned exactly as AWS stores it.
+  - Retrieves each document in O(document_format) and parses the returned
+    content as JSON when possible; other content is returned exactly as AWS
+    stores it.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -174,9 +175,11 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import list_ssm_tags
-
-SSM_DOCUMENT_RESOURCE_TYPE = "Document"
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    SSM_DOCUMENT_RESOURCE_TYPE,
+    list_ssm_tags,
+    ssm_filter_list,
+)
 
 
 def content_transform(content):
@@ -242,15 +245,7 @@ def main():
     else:
         request = {}
         if filters:
-            request["Filters"] = []
-            for key, value in filters.items():
-                values = value if isinstance(value, list) else [value]
-                request["Filters"].append(
-                    {
-                        "Key": key,
-                        "Values": [str(item) for item in values],
-                    }
-                )
+            request["Filters"] = ssm_filter_list(filters)
 
         document_identifiers = query_list(
             module,

@@ -42,6 +42,10 @@ options:
       - V($LATEST) reconciles against the newest document version, while
         V($DEFAULT) reconciles against the effective default version.
       - Matching V($LATEST) content is promoted when it is not the default version.
+      - A numbered version, such as V(2), is compared but never updated
+        because AWS document versions are immutable; content that differs
+        from it fails, so use V($LATEST) or V($DEFAULT) to update a document.
+      - Ignored when O(state=absent).
     default: $LATEST
     type: str
   force:
@@ -197,7 +201,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import list_ssm_tags
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    SSM_DOCUMENT_RESOURCE_TYPE,
+    list_ssm_tags,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_ssm_tags,
@@ -208,7 +215,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     run_waiter,
 )
 
-SSM_DOCUMENT_RESOURCE_TYPE = "Document"
 SSM_DOCUMENT_WAITER_MODEL_DATA = {
     "document_active": {
         "delay": 5,
@@ -234,6 +240,7 @@ SSM_DOCUMENT_WAITER_MODEL_DATA = {
     },
 }
 TRANSITIONAL_STATUSES = ("Creating", "Updating")
+UPDATABLE_DOCUMENT_VERSIONS = ("$DEFAULT", "$LATEST")
 
 
 def document_description_from_response(module, response, message):
@@ -305,7 +312,8 @@ def wait_for_document(client, module, state, document_version=None, changed=Fals
 
 
 def ensure_absent(client, module):
-    current = get_document(client, module)
+    # The document is deleted as a whole, so any version that still exists identifies it.
+    current = get_document(client, module, document_version="$LATEST")
     name = module.params["name"]
     changed = current is not None and current.get("Status") != "Deleting"
 
@@ -379,6 +387,15 @@ def ensure_present(client, module):
             module.fail_json(msg=f"Unable to update AWS Systems Manager document {name}: immutable fields differ")
 
         changed = current_comparable != desired_comparable
+        if changed and module.params["document_version"] not in UPDATABLE_DOCUMENT_VERSIONS:
+            module.fail_json(
+                msg=(
+                    f"Unable to update AWS Systems Manager document {name} version "
+                    f"{module.params['document_version']}: numbered document versions cannot be updated; "
+                    "use $LATEST or $DEFAULT"
+                )
+            )
+
         resource_changed = changed
         if not changed and current.get("Status") == "Failed":
             fail_failed_document(module, current)
@@ -468,11 +485,8 @@ def ensure_present(client, module):
                     response = client.update_document(
                         Content=desired_content,
                         DocumentFormat="JSON",
-                        DocumentVersion=(
-                            "$LATEST"
-                            if module.params["document_version"] == "$DEFAULT"
-                            else module.params["document_version"]
-                        ),
+                        # AWS updates only the latest version, and numbered versions never reach here.
+                        DocumentVersion="$LATEST",
                         Name=name,
                         aws_retry=True,
                     )
@@ -509,7 +523,15 @@ def ensure_present(client, module):
                 )
 
         if resource_changed or default_version_to_promote:
-            refreshed = get_document(client, module, changed=True)
+            # Only creation reaches here with a numbered version, which may not name the created version.
+            refreshed = get_document(
+                client,
+                module,
+                document_version=(
+                    None if module.params["document_version"] in UPDATABLE_DOCUMENT_VERSIONS else "$LATEST"
+                ),
+                changed=True,
+            )
             if refreshed and comparable_document(refreshed) == desired_comparable:
                 if "Tags" in current:
                     # Document updates and promotions cannot change tags, so the tags already read still apply.
@@ -537,7 +559,8 @@ def ensure_present(client, module):
 
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
-        current = dict(current or {})
+        # A promotion returns the promoted version, as a real run does.
+        current = dict((latest if default_version_to_promote else current) or {})
         current.update(
             {
                 "Content": desired_comparable["content"],

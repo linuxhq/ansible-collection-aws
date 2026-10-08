@@ -588,3 +588,74 @@ def test_absent_wait_failure_after_delete_reports_changed():
         plugin.ensure_absent(client, FakeModule(params(state="absent")))
 
     assert run_waiter.call_args.kwargs["changed"] is True
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_numbered_version_with_different_content_fails_before_any_change(check_mode):
+    client = Mock()
+    result, _wait, get_document = run_present(
+        client,
+        FakeModule(params(document_version="2"), check_mode=check_mode),
+        [document({"schemaVersion": "1.2"}, DocumentVersion="2")],
+    )
+
+    assert isinstance(result, ModuleFail)
+    assert not result.values.get("changed")
+    assert result.values["msg"] == (
+        "Unable to update AWS Systems Manager document example version 2: "
+        "numbered document versions cannot be updated; use $LATEST or $DEFAULT"
+    )
+    assert get_document.call_count == 1
+    client.update_document.assert_not_called()
+    client.update_document_default_version.assert_not_called()
+
+
+def test_numbered_version_with_matching_content_is_unchanged_without_promotion():
+    client = Mock()
+    result, _wait, get_document = run_present(
+        client,
+        FakeModule(params(document_version="2")),
+        [document({"schemaVersion": "2.2"}, DocumentVersion="2")],
+    )
+
+    assert result.values["changed"] is False
+    assert result.values["document"]["document_version"] == "2"
+    assert get_document.call_count == 1
+    client.update_document.assert_not_called()
+    client.update_document_default_version.assert_not_called()
+
+
+def test_numbered_version_refreshes_latest_after_create():
+    client = Mock()
+    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1"}}
+    result, _wait, get_document = run_present(
+        client, FakeModule(params(document_version="3")), [None, document({"schemaVersion": "2.2"})]
+    )
+
+    assert result.values["changed"] is True
+    assert get_document.call_args_list[1].kwargs["document_version"] == "$LATEST"
+
+
+@pytest.mark.parametrize("document_version", ["$DEFAULT", "$LATEST", "2"])
+def test_absent_ignores_document_version(document_version):
+    client = Mock(get_document=Mock(return_value={"Content": "{}", "Name": "example"}))
+    with pytest.raises(ModuleExit) as raised:
+        plugin.ensure_absent(client, FakeModule(params(state="absent", document_version=document_version, wait=False)))
+
+    assert raised.value.values["changed"] is True
+    assert client.get_document.call_args.kwargs["DocumentVersion"] == "$LATEST"
+    client.delete_document.assert_called_once_with(Name="example", aws_retry=True)
+
+
+def test_default_version_check_mode_predicts_the_promoted_latest_version():
+    current = document({"schemaVersion": "1.2"})
+    latest = document({"schemaVersion": "2.2"}, DocumentVersion="2")
+    real, _wait, _get = run_present(Mock(), FakeModule(params(document_version="$DEFAULT")), [current, latest, latest])
+    client = Mock()
+    predicted, _wait, _get = run_present(
+        client, FakeModule(params(document_version="$DEFAULT"), check_mode=True), [current, latest]
+    )
+
+    assert predicted.values == real.values
+    assert predicted.values["document"]["document_version"] == "2"
+    client.update_document_default_version.assert_not_called()

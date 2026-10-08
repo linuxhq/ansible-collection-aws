@@ -42,6 +42,7 @@
           - _ssm_instance_info_dict[
               _ec2_instance_info_dict['molecule'].instance_id
             ].resource_type == 'EC2Instance'
+          - "'connection_status' not in _ssm_instance_info_list.0"
 
     - name: Ensure role is included with ping status
       ansible.builtin.include_role:
@@ -56,6 +57,32 @@
         that:
           - _ssm_instance_info_list | length == 1
           - _ssm_instance_info_list.0.ping_status == 'Online'
+
+    - name: Ensure aws systems manager instance is connected
+      linuxhq.aws.ssm_instance_info:
+        connection_status: true
+        instance_ids:
+          - "{{ _ec2_instance_info_dict['molecule'].instance_id }}"
+        validate_certs: true
+      register: __ssm_instance_info_connection
+      until:
+        - __ssm_instance_info_connection.instances.0.connection_status | d('') == 'connected'
+      retries: 30
+      delay: 10
+
+    - name: Ensure role is included with connection status
+      ansible.builtin.include_role:
+        name: ssm_instance_info
+      vars:
+        ssm_instance_info_connection_status: true
+        ssm_instance_info_instance_ids:
+          - "{{ _ec2_instance_info_dict['molecule'].instance_id }}"
+
+    - name: Ensure info with connection status is verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_instance_info_list | length == 1
+          - _ssm_instance_info_list.0.connection_status == 'connected'
 
     - name: Ensure role is included with an unregistered instance id
       ansible.builtin.include_role:

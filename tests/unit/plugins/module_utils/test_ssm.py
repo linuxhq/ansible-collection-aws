@@ -6,6 +6,7 @@ from botocore.exceptions import ClientError
 from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
     association_overview,
     list_ssm_tags,
+    ssm_filter_list,
 )
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule, ModuleFail
 
@@ -72,3 +73,18 @@ def test_list_ssm_tags_rejects_malformed_responses(response):
     assert (
         raised.value.values["msg"] == "Unexpected response while listing tags for AWS Systems Manager association a-1"
     )
+
+
+def test_ssm_filter_list_groups_string_values_per_filter():
+    assert ssm_filter_list({"Owner": "Self", "PlatformTypes": ["Linux", 1]}) == [
+        {"Key": "Owner", "Values": ["Self"]},
+        {"Key": "PlatformTypes", "Values": ["Linux", "1"]},
+    ]
+
+
+def test_ssm_filter_list_splits_values_with_custom_key_names():
+    assert ssm_filter_list({"Name": ["a", "b"], "Status": "Success"}, "key", "value", split_values=True) == [
+        {"key": "Name", "value": "a"},
+        {"key": "Name", "value": "b"},
+        {"key": "Status", "value": "Success"},
+    ]

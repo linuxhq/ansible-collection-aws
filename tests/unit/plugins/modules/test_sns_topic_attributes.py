@@ -47,6 +47,10 @@ def test_module_contract():
 
 def test_changed_attribute_is_set():
     client = client_with({"KmsMasterKeyId": "old"})
+    client.get_topic_attributes.side_effect = [
+        {"Attributes": {"KmsMasterKeyId": "old"}},
+        {"Attributes": {"KmsMasterKeyId": "new"}},
+    ]
     result, _require = run(FakeModule({"kms_master_key_id": "new", "topic_arn": "arn:topic"}, client=client))
 
     assert result.values["changed"]
@@ -82,7 +86,7 @@ def test_missing_topic_fails_in_check_mode():
         FakeModule({"kms_master_key_id": "new", "topic_arn": "arn:missing"}, check_mode=True, client=client)
     )
 
-    assert result.values["msg"] == "AWS Simple Notification Service topic does not exist arn:missing"
+    assert result.values["msg"] == "AWS Simple Notification Service topic arn:missing does not exist"
     client.set_topic_attributes.assert_not_called()
 
 
@@ -131,3 +135,54 @@ def test_all_topic_attributes_are_returned_snake_cased():
         "subscriptions_confirmed": "1",
         "topic_arn": "arn:topic",
     }
+
+
+def test_result_is_read_again_after_setting_the_attribute():
+    client = Mock(
+        get_topic_attributes=Mock(
+            side_effect=[
+                {"Attributes": {"TopicArn": "arn:topic"}},
+                {"Attributes": {"KmsMasterKeyId": "arn:aws:kms:us-east-1:123456789012:alias/aws/sns"}},
+            ]
+        )
+    )
+    result, _require = run(FakeModule({"kms_master_key_id": "alias/aws/sns", "topic_arn": "arn:topic"}, client=client))
+
+    assert result.values == {
+        "attributes": {"kms_master_key_id": "arn:aws:kms:us-east-1:123456789012:alias/aws/sns"},
+        "changed": True,
+        "topic_arn": "arn:topic",
+    }
+    assert client.get_topic_attributes.call_count == 2
+
+
+def test_check_mode_predicts_the_attribute_without_reading_again():
+    client = client_with({"TopicArn": "arn:topic"})
+    result, _require = run(
+        FakeModule({"kms_master_key_id": "alias/aws/sns", "topic_arn": "arn:topic"}, check_mode=True, client=client)
+    )
+
+    assert result.values["attributes"] == {"kms_master_key_id": "alias/aws/sns", "topic_arn": "arn:topic"}
+    assert client.get_topic_attributes.call_count == 1
+
+
+def test_read_failure_after_setting_the_attribute_reports_changed():
+    error = ClientError({"Error": {"Code": "InternalError", "Message": "failed"}}, "GetTopicAttributes")
+    client = Mock(get_topic_attributes=Mock(side_effect=[{"Attributes": {}}, error]))
+    result, _require = run(FakeModule({"kms_master_key_id": "alias/aws/sns", "topic_arn": "arn:topic"}, client=client))
+
+    assert isinstance(result, ModuleFail)
+    assert result.values["changed"] is True
+    assert result.values["msg"] == "Unable to get AWS Simple Notification Service topic attributes for arn:topic"
+    client.set_topic_attributes.assert_called_once()
+
+
+def test_set_failure_reports_unchanged():
+    error = ClientError({"Error": {"Code": "InvalidParameter", "Message": "bad"}}, "SetTopicAttributes")
+    client = client_with({})
+    client.set_topic_attributes.side_effect = error
+    result, _require = run(FakeModule({"kms_master_key_id": "alias/aws/sns", "topic_arn": "arn:topic"}, client=client))
+
+    assert isinstance(result, ModuleFail)
+    assert not result.values.get("changed")
+    assert client.get_topic_attributes.call_count == 1

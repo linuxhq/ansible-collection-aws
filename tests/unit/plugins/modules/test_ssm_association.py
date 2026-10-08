@@ -417,3 +417,54 @@ def test_association_status_names_are_preserved(check_mode):
         "association_status_aggregated_count": {"InProgress": 1, "Success": 2},
         "detailed_status": "Success",
     }
+
+
+def run_update(current, **overrides):
+    client = Mock()
+    client.update_association.return_value = {"AssociationDescription": current_association()}
+    with (
+        patch.object(
+            plugin,
+            "get_boto3_client_method_parameters",
+            return_value=UPDATE_PARAMETERS + ("CalendarNames", "TargetLocations", "TargetMaps"),
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params(**overrides)), current)
+
+    assert raised.value.values["changed"]
+    return client.update_association.call_args.kwargs
+
+
+def test_update_omits_empty_lists_copied_from_the_association():
+    request = run_update(
+        current_association(CalendarNames=[], TargetLocations=[], TargetMaps=[]),
+        schedule_expression="rate(2 hours)",
+        targets=None,
+    )
+
+    assert request["Targets"] == [{"Key": "InstanceIds", "Values": ["i-1"]}]
+    assert not {"CalendarNames", "TargetLocations", "TargetMaps"} & set(request)
+
+
+def test_update_omits_target_maps_when_sending_targets():
+    target_maps = [{"Source": ["i-1"]}]
+    request = run_update(
+        current_association(Targets=[], TargetMaps=target_maps),
+        targets=[{"key": "InstanceIds", "values": ["i-2"]}],
+    )
+
+    assert request["Targets"] == [{"Key": "InstanceIds", "Values": ["i-2"]}]
+    assert "TargetMaps" not in request
+
+
+def test_update_keeps_target_maps_without_targets():
+    target_maps = [{"Source": ["i-1"]}]
+    request = run_update(
+        current_association(Targets=[], TargetMaps=target_maps),
+        schedule_expression="rate(2 hours)",
+        targets=None,
+    )
+
+    assert request["TargetMaps"] == target_maps
+    assert "Targets" not in request
