@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_instance_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -14,7 +15,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 
 
 def params(**overrides):
-    values = {"filters": None, "instance_ids": None, "ping_status": None}
+    values = {"connection_status": False, "filters": None, "instance_ids": None, "ping_status": None}
     values.update(overrides)
     return values
 
@@ -124,4 +125,56 @@ def test_warns_when_instance_id_is_invalid():
     module.warn.assert_called_once_with(
         "Unexpected response while describing AWS Systems Manager instances; "
         "instance 1 did not contain a valid InstanceId and was omitted from instance_ids"
+    )
+
+
+def test_connection_status_is_not_requested_by_default():
+    client = Mock()
+    result, require_client_methods, _query = run(FakeModule(params(), client=client), [{"InstanceId": "i-1"}])
+
+    assert require_client_methods.call_args.args[3] == {"describe_instance_information": ()}
+    client.get_connection_status.assert_not_called()
+    assert result.values["instances"] == [{"instance_id": "i-1"}]
+
+
+def test_connection_status_is_added_to_each_instance():
+    client = Mock()
+    client.get_connection_status.side_effect = [{"Status": "connected"}, {"Status": "notconnected"}]
+    result, require_client_methods, _query = run(
+        FakeModule(params(connection_status=True), client=client), [{"InstanceId": "i-1"}, {}, {"InstanceId": "i-2"}]
+    )
+
+    assert require_client_methods.call_args.args[3] == {
+        "describe_instance_information": (),
+        "get_connection_status": ("Target",),
+    }
+    assert [call.kwargs for call in client.get_connection_status.call_args_list] == [
+        {"Target": "i-1", "aws_retry": True},
+        {"Target": "i-2", "aws_retry": True},
+    ]
+    assert result.values["instances"] == [
+        {"instance_id": "i-1", "connection_status": "connected"},
+        {},
+        {"instance_id": "i-2", "connection_status": "notconnected"},
+    ]
+
+
+def test_connection_status_error_names_instance():
+    client = Mock()
+    client.get_connection_status.side_effect = ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "GetConnectionStatus"
+    )
+    result, _require, _query = run(FakeModule(params(connection_status=True), client=client), [{"InstanceId": "i-1"}])
+
+    assert result.values["msg"] == "Unable to get AWS Systems Manager connection status for i-1"
+
+
+@pytest.mark.parametrize("response", [None, {}, {"Status": None}, {"Status": 1}])
+def test_rejects_malformed_connection_status(response):
+    client = Mock()
+    client.get_connection_status.return_value = response
+    result, _require, _query = run(FakeModule(params(connection_status=True), client=client), [{"InstanceId": "i-1"}])
+
+    assert result.values["msg"] == (
+        "Unexpected response while getting AWS Systems Manager connection status for i-1; status was not a string"
     )

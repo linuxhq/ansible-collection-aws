@@ -131,6 +131,22 @@ MANAGED_ATTRIBUTES = {
 }
 
 
+def get_sms_attributes(client, module, changed=False):
+    """Return the SMS attributes; changed reports whether they were already modified, for failure results."""
+    try:
+        response = client.get_sms_attributes(aws_retry=True)
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, changed=changed, msg="Unable to get AWS Simple Notification Service SMS attributes")
+
+    if not isinstance(response, dict) or not isinstance(response.get("attributes", {}), dict):
+        module.fail_json(
+            changed=changed,
+            msg="Unexpected response while getting AWS Simple Notification Service SMS attributes",
+        )
+
+    return response.get("attributes", {})
+
+
 def main():
     argument_spec = {
         "default_sender_id": {"type": "str"},
@@ -176,15 +192,7 @@ def main():
 
         desired[attribute_name] = str(module_value)
 
-    try:
-        response = client.get_sms_attributes(aws_retry=True)
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg="Unable to get AWS Simple Notification Service SMS attributes")
-
-    if not isinstance(response, dict) or not isinstance(response.get("attributes", {}), dict):
-        module.fail_json(msg="Unexpected response while getting AWS Simple Notification Service SMS attributes")
-
-    current_attributes = response.get("attributes", {})
+    current_attributes = get_sms_attributes(client, module)
 
     # GetSMSAttributes omits unset attributes, so they compare as empty strings.
     current = {}
@@ -193,18 +201,18 @@ def main():
 
     changed = current != desired
 
-    if changed:
-        if not module.check_mode:
-            try:
-                client.set_sms_attributes(attributes=desired, aws_retry=True)
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg="Unable to manage AWS Simple Notification Service SMS attributes",
-                )
+    if changed and module.check_mode:
+        current_attributes = dict(current_attributes, **desired)
+    elif changed:
+        try:
+            client.set_sms_attributes(attributes=desired, aws_retry=True)
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(
+                e,
+                msg="Unable to manage AWS Simple Notification Service SMS attributes",
+            )
 
-        current_attributes = dict(current_attributes)
-        current_attributes.update(desired)
+        current_attributes = get_sms_attributes(client, module, changed=True)
 
     module.exit_json(
         attributes=boto3_resource_to_ansible_dict(current_attributes, transform_tags=False, force_tags=False),

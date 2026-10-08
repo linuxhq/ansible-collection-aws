@@ -1,0 +1,35 @@
+---
+bugfixes:
+  - ssm_document - compare a numbered ``document_version`` without updating it, and fail before any change when its
+    content differs because AWS document versions are immutable; previously every run after the first update failed
+    with ``InvalidDocumentVersion``.
+  - ssm_document - ignore ``document_version`` when ``state=absent`` and read the ``$LATEST`` version, so a missing
+    numbered version no longer fails the deletion.
+  - ssm_document - with ``document_version=$DEFAULT``, return the promoted ``$LATEST`` version in check mode, as a real
+    run does.
+  - ssm_association - omit empty lists copied from the current association, and omit ``TargetMaps`` when ``Targets``
+    is sent, so that ``UpdateAssociation`` no longer rejects the request.
+  - ssm_document_info - describe that documents are retrieved in ``document_format`` and parsed as JSON when possible.
+  - sns_topic_attributes - read the topic attributes again after ``SetTopicAttributes`` and report ``changed=true``
+    when that read fails.
+  - sns_topic_attributes - name the topic before the reason in the missing topic failure message.
+  - sns_sms_attributes - read the SMS attributes again after ``SetSMSAttributes`` instead of merging the requested
+    values, and report ``changed=true`` when that read fails.
+  - ssm_proxy - wait until the instance's Session Manager connection status is ``connected`` instead of waiting only
+    for an ``Online`` ping status, because SSM Agent reports ``Online`` before it accepts sessions and the session
+    could fail with ``TargetNotConnected``.
+minor_changes:
+  - ssm_instance_info - add the ``connection_status`` option to return each instance's Session Manager connection
+    status from ``GetConnectionStatus``.
+  - ssm_instance_info role - add the ``ssm_instance_info_connection_status`` variable to pass ``connection_status`` to
+    the module.
+  - ssm_proxy - depend on the ``ec2_instance_info`` role so its instance facts are available to the proxy.
+  - ssm_association, ssm_association_info, ssm_document, ssm_document_info, ssm_instance_info - share the SSM resource
+    type constants and filter list construction in ``module_utils/ssm.py``.
+trivial:
+  - molecule - set OBJC_DISABLE_INITIALIZE_FORK_SAFETY in every scenario's provisioner environment so forked
+    workers do not crash on macOS, run the ssm_session and ssm_proxy subnets in us-east-1a, and forward the
+    ssm_proxy scenario to the instance private IP because SSM Agent now rejects loopback targets.
+  - molecule - launch the us-east-1b instances of the ec2_instance, ec2_instance_info, ec2_vol, and ec2_vol_info
+    scenarios in their us-east-1a subnet to avoid InsufficientInstanceCapacity, and terminate only the ssm_proxy
+    scenario's session-manager-plugin processes in its verify.

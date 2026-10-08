@@ -135,8 +135,6 @@ try:
 except ImportError:
     pass
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
@@ -150,7 +148,27 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 
-MANAGED_ATTRIBUTES = ["kms_master_key_id"]
+
+def get_topic_attributes(client, module, topic_arn, changed=False):
+    """Return the topic attributes; changed reports whether the topic was already modified, for failure results."""
+    try:
+        response = client.get_topic_attributes(
+            TopicArn=topic_arn,
+            aws_retry=True,
+        )
+    except is_boto3_error_code("NotFound"):
+        module.fail_json(changed=changed, msg=f"AWS Simple Notification Service topic {topic_arn} does not exist")
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(
+            e,
+            changed=changed,
+            msg=f"Unable to get AWS Simple Notification Service topic attributes for {topic_arn}",
+        )
+
+    if not isinstance(response, dict) or not isinstance(response.get("Attributes", {}), dict):
+        module.fail_json(changed=changed, msg=f"Unexpected response while getting topic attributes for {topic_arn}")
+
+    return response.get("Attributes", {})
 
 
 def main():
@@ -162,8 +180,11 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     client = module.client("sns", retry_decorator=AWSRetry.jittered_backoff())
 
+    kms_master_key_id = module.params["kms_master_key_id"]
+    topic_arn = module.params["topic_arn"]
+
     methods = {"get_topic_attributes": ("TopicArn",)}
-    if any(module.params[attribute] is not None for attribute in MANAGED_ATTRIBUTES):
+    if kms_master_key_id is not None:
         methods["set_topic_attributes"] = (
             "AttributeName",
             "AttributeValue",
@@ -172,69 +193,34 @@ def main():
 
     require_client_methods(module, client, "SNS", methods)
 
-    topic_arn = module.params["topic_arn"]
+    attributes = get_topic_attributes(client, module, topic_arn)
 
-    desired_parameters = {}
-    for attribute in MANAGED_ATTRIBUTES:
-        module_value = module.params[attribute]
+    # AWS omits KmsMasterKeyId when encryption is disabled, which matches an empty string.
+    changed = kms_master_key_id is not None and (attributes.get("KmsMasterKeyId") or "") != kms_master_key_id
 
-        if module_value is None:
-            continue
+    if changed and module.check_mode:
+        attributes = dict(attributes, KmsMasterKeyId=kms_master_key_id)
+    elif changed:
+        try:
+            client.set_topic_attributes(
+                AttributeName="KmsMasterKeyId",
+                AttributeValue=kms_master_key_id,
+                TopicArn=topic_arn,
+                aws_retry=True,
+            )
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to manage AWS Simple Notification Service topic attributes for {topic_arn}",
+            )
 
-        desired_parameters[attribute] = module_value
+        attributes = get_topic_attributes(client, module, topic_arn, changed=True)
 
-    try:
-        response = client.get_topic_attributes(
-            TopicArn=topic_arn,
-            aws_retry=True,
-        )
-    except is_boto3_error_code("NotFound"):
-        module.fail_json(msg=f"AWS Simple Notification Service topic does not exist {topic_arn}")
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e,
-            msg=f"Unable to get AWS Simple Notification Service topic attributes for {topic_arn}",
-        )
-
-    if not isinstance(response, dict) or not isinstance(response.get("Attributes", {}), dict):
-        module.fail_json(msg=f"Unexpected response while getting topic attributes for {topic_arn}")
-
-    current_attributes = response.get("Attributes", {})
-
-    desired_attributes = snake_dict_to_camel_dict(desired_parameters, capitalize_first=True)
-    current_normalized = boto3_resource_to_ansible_dict(current_attributes, transform_tags=False, force_tags=False)
-    current = {}
-    for attribute in desired_parameters:
-        current[attribute] = current_normalized.get(attribute) or ""
-
-    changed = current != desired_parameters
-
-    if changed:
-        if not module.check_mode:
-            for attribute, value in desired_attributes.items():
-                try:
-                    client.set_topic_attributes(
-                        AttributeName=attribute,
-                        AttributeValue=value,
-                        TopicArn=topic_arn,
-                        aws_retry=True,
-                    )
-                except (BotoCoreError, ClientError) as e:
-                    module.fail_json_aws(
-                        e,
-                        msg=f"Unable to manage AWS Simple Notification Service topic attributes for {topic_arn}",
-                    )
-
-        current_attributes = dict(current_attributes)
-        current_attributes.update(desired_attributes)
-
-    result = {
-        "attributes": boto3_resource_to_ansible_dict(current_attributes, transform_tags=False, force_tags=False),
-        "changed": changed,
-        "topic_arn": topic_arn,
-    }
-
-    module.exit_json(**result)
+    module.exit_json(
+        attributes=boto3_resource_to_ansible_dict(attributes, transform_tags=False, force_tags=False),
+        changed=changed,
+        topic_arn=topic_arn,
+    )
 
 
 if __name__ == "__main__":

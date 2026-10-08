@@ -246,6 +246,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    SSM_ASSOCIATION_RESOURCE_TYPE,
     association_overview,
     list_ssm_tags,
 )
@@ -255,7 +256,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
 )
 
-SSM_ASSOCIATION_RESOURCE_TYPE = "Association"
 TARGET_DEFAULTS = {"values": []}
 
 
@@ -428,9 +428,11 @@ def ensure_present(client, module, current):
         changed = (current_comparable or {}) != desired_comparable
         resource_changed = changed
         if changed and not module.check_mode:
+            # Empty lists are dropped because some, such as TargetLocations, reject them and omitting one keeps it unset.
             update_request = {
                 parameter: current.get(parameter)
                 for parameter in get_boto3_client_method_parameters(client, "update_association")
+                if current.get(parameter) != []
             }
             update_request["AssociationId"] = association_id
             if schedule_expression is not None:
@@ -439,9 +441,14 @@ def ensure_present(client, module, current):
             if aws_targets is not None:
                 update_request["Targets"] = desired["Targets"]
 
+            update_request = scrub_none_parameters(update_request)
+            if "Targets" in update_request:
+                # AWS rejects Targets and TargetMaps together.
+                update_request.pop("TargetMaps", None)
+
             try:
                 response = client.update_association(
-                    **scrub_none_parameters(update_request),
+                    **update_request,
                     aws_retry=True,
                 )
             except (BotoCoreError, ClientError) as e:

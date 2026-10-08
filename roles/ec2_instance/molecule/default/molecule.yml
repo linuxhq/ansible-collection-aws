@@ -23,6 +23,7 @@ provisioner:
     ANSIBLE_ACTION_WARNINGS: false
     ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
     ANSIBLE_DEPRECATION_WARNINGS: false
+    OBJC_DISABLE_INITIALIZE_FORK_SAFETY: 'YES'
   log: true
   options:
     diff: true
@@ -44,16 +45,16 @@ provisioner:
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t2.medium
             vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-a'].id }}"
-          - name: molecule-b
-            exact_count: 3
-            image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
-            instance_type: t2.medium
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-b'].id }}"
           - name: molecule-c
             exact_count: 3
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t2.medium
             vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-c'].id }}"
+          - name: molecule-d
+            exact_count: 3
+            image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
+            instance_type: t2.medium
+            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-d'].id }}"
 
         ec2_vpc_net_list:
           - name: molecule
@@ -65,8 +66,8 @@ provisioner:
               - name: molecule-pub-a
                 az: us-east-1a
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,0) }}"
-              - name: molecule-pub-b
-                az: us-east-1b
+              - name: molecule-pub-d
+                az: us-east-1d
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,1) }}"
               - name: molecule-pub-c
                 az: us-east-1c
@@ -74,8 +75,8 @@ provisioner:
               - name: molecule-pvt-a
                 az: us-east-1a
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,3) }}"
-              - name: molecule-pvt-b
-                az: us-east-1b
+              - name: molecule-pvt-d
+                az: us-east-1d
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,4) }}"
               - name: molecule-pvt-c
                 az: us-east-1c

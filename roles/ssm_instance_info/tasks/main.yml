@@ -3,6 +3,7 @@
   tags:
     - ssm_instance_info
   linuxhq.aws.ssm_instance_info:
+    connection_status: "{{ ssm_instance_info_connection_status }}"
     filters: "{{ ssm_instance_info_filters }}"
     instance_ids: "{{ ssm_instance_info_instance_ids }}"
     ping_status: "{{ ssm_instance_info_ping_status or omit }}"

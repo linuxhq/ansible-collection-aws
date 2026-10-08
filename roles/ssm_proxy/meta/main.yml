@@ -1,5 +1,7 @@
 ---
 dependencies:
+  - role: ec2_instance_info
+    tags: ssm_proxy
   - role: eks_cluster_info
     tags: ssm_proxy
 galaxy_info:

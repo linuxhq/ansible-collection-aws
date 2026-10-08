@@ -148,11 +148,11 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
+    SSM_ASSOCIATION_RESOURCE_TYPE,
     association_overview,
     list_ssm_tags,
+    ssm_filter_list,
 )
-
-SSM_ASSOCIATION_RESOURCE_TYPE = "Association"
 
 
 def main():
@@ -165,12 +165,7 @@ def main():
     filters = module.params["filters"]
     request = {}
     if filters:
-        request["AssociationFilterList"] = []
-        for key, value in filters.items():
-            values = value if isinstance(value, list) else [value]
-
-            for item in values:
-                request["AssociationFilterList"].append({"key": key, "value": str(item)})
+        request["AssociationFilterList"] = ssm_filter_list(filters, "key", "value", split_values=True)
 
     require_client_methods(
         module,
