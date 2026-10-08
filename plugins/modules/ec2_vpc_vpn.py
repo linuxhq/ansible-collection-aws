@@ -479,7 +479,11 @@ from ansible_collections.amazon.aws.plugins.module_utils.waiter import custom_wa
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.filters import ansible_dict_to_string_filter_list
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import reconcile_ec2_tags, require_valid_tags
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    ec2_tag_methods,
+    reconcile_ec2_tags,
+    require_valid_tags,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import require_positive_wait_bounds, run_waiter
 
 CONNECTION_FIELDS = {
@@ -1043,12 +1047,7 @@ def ensure_present(client, module, connection):
     if add_routes:
         methods["create_vpn_connection_route"] = ("DestinationCidrBlock", "VpnConnectionId")
 
-    if tags_to_remove:
-        methods["delete_tags"] = ("Resources", "Tags")
-
-    if tags_to_set:
-        methods["create_tags"] = ("Resources", "Tags")
-
+    methods.update(ec2_tag_methods(tags_to_set, tags_to_remove))
     require_client_methods(module, client, "EC2", methods, changed=mutated)
 
     pending_routes = {

@@ -4,6 +4,7 @@ from unittest.mock import ANY, Mock, patch
 import pytest
 import yaml
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import tags as tag_utils
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_transit_gateway_route_table as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -200,15 +201,16 @@ def test_check_mode_builds_blackhole_route():
     }
 
 
-def test_propagated_route_is_not_deleted():
-    client = Mock()
-    module = SimpleNamespace(params={"wait": False}, check_mode=False)
-    route = {"State": "active", "Type": "propagated"}
-    changed, returned = plugin.ensure_route_absent(client, module, "tgw-rtb-1", "10.0.0.0/8", route)
+def test_get_route_selects_only_live_static_routes():
+    propagated = {"DestinationCidrBlock": "10.0.0.0/8", "State": "active", "Type": "propagated"}
+    deleted = {"DestinationCidrBlock": "10.0.0.0/8", "State": "deleted", "Type": "static"}
+    deleting = dict(deleted, State="deleting")
+    active = dict(deleted, State="active")
+    with patch.object(plugin, "search_routes", return_value=[propagated, deleted, deleting, active]):
+        assert plugin.get_route(Mock(), FakeModule({}), "tgw-rtb-1", "10.0.0.0/8") is active
 
-    assert not changed
-    assert returned is route
-    client.delete_transit_gateway_route.assert_not_called()
+    with patch.object(plugin, "search_routes", return_value=[propagated, deleted]):
+        assert plugin.get_route(Mock(), FakeModule({}), "tgw-rtb-1", "10.0.0.0/8") is None
 
 
 def test_changed_static_route_is_replaced_in_place():
@@ -854,30 +856,6 @@ def test_name_tag_must_match_name():
     assert raised.value.values["msg"] == "tags.Name must match name"
 
 
-@pytest.mark.parametrize(
-    ("tags_to_set", "tag_keys_to_unset", "methods"),
-    [
-        ({"Env": "prod"}, [], {"create_tags"}),
-        ({}, ["Old"], {"delete_tags"}),
-        ({"Env": "prod"}, ["Old"], {"create_tags", "delete_tags"}),
-    ],
-)
-def test_tag_changes_are_gated_and_reconciled_once(tags_to_set, tag_keys_to_unset, methods):
-    client = Mock()
-    module = FakeModule({})
-    with (
-        patch.object(plugin, "require_client_methods") as require,
-        patch.object(plugin, "reconcile_ec2_tags") as reconcile,
-    ):
-        plugin.reconcile_tags(client, module, "tgw-rtb-1", tags_to_set, tag_keys_to_unset)
-
-    require.assert_called_once()
-    assert set(require.call_args.args[3]) == methods
-    reconcile.assert_called_once_with(
-        module, client, ["tgw-rtb-1"], tags_to_set, tag_keys_to_unset, "EC2 transit gateway route table", changed=False
-    )
-
-
 def test_route_table_wait_timeout_names_target_state():
     module = FakeModule({"wait_delay": 1, "wait_timeout": 1})
     with (
@@ -914,6 +892,7 @@ def test_route_failure_reports_whether_tags_were_changed(tags, changed):
         patch.object(plugin, "find_route_table", return_value=table),
         patch.object(plugin, "get_route", return_value=None),
         patch.object(plugin, "require_client_methods"),
+        patch.object(tag_utils, "require_client_methods") as require_tag_methods,
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -921,6 +900,10 @@ def test_route_failure_reports_whether_tags_were_changed(tags, changed):
     assert raised.value.values["msg"] == "Unable to create EC2 transit gateway route 10.0.0.0/8"
     assert raised.value.values["changed"] is changed
     assert client.create_tags.called is changed
+    # Tag writes are checked against the installed botocore before they are made.
+    assert [call.args[3] for call in require_tag_methods.call_args_list] == (
+        [{"create_tags": ("Resources", "Tags")}] if changed else []
+    )
 
 
 def test_wait_timeout_after_create_reports_changed():
