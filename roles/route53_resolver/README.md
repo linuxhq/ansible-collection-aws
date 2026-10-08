@@ -37,7 +37,7 @@ None
               ip_addresses:
                 - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
                   ip: 192.168.0.125
-                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
                   ip: 192.168.0.253
               protocols:
                 - Do53
@@ -50,7 +50,7 @@ None
               ip_addresses:
                 - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
                   ip: 192.168.0.126
-                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+                - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
                   ip: 192.168.0.254
               protocols:
                 - Do53

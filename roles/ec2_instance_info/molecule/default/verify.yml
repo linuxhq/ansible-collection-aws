@@ -14,16 +14,16 @@
           - _ec2_instance_info_dict['molecule-a'].image_id ==
               _ec2_ami_info_latest[ec2_ami_info_list.0.name]
           - _ec2_instance_info_dict['molecule-a'].instance_id is defined
-          - _ec2_instance_info_dict['molecule-a'].instance_type == 't2.medium'
+          - _ec2_instance_info_dict['molecule-a'].instance_type == 't3a.medium'
           - _ec2_instance_info_dict['molecule-a'].tags.molecule == 'ec2_instance_info'
           - _ec2_instance_info_dict['molecule-c'].image_id ==
               _ec2_ami_info_latest[ec2_ami_info_list.0.name]
           - _ec2_instance_info_dict['molecule-c'].instance_id is defined
-          - _ec2_instance_info_dict['molecule-c'].instance_type == 't2.medium'
+          - _ec2_instance_info_dict['molecule-c'].instance_type == 't3a.medium'
           - _ec2_instance_info_dict['molecule-d'].image_id ==
               _ec2_ami_info_latest[ec2_ami_info_list.0.name]
           - _ec2_instance_info_dict['molecule-d'].instance_id is defined
-          - _ec2_instance_info_dict['molecule-d'].instance_type == 't2.medium'
+          - _ec2_instance_info_dict['molecule-d'].instance_type == 't3a.medium'
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

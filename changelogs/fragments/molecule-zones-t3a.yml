@@ -1,0 +1,5 @@
+---
+trivial:
+  - molecule and role README examples - use availability zones ``us-east-1a``, ``us-east-1c``, and ``us-east-1d``
+    instead of ``us-east-1b``, rename zone-lettered fixtures to match, and launch ``t3a`` instance types.
+...

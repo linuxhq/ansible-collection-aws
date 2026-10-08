@@ -48,12 +48,12 @@ provisioner:
                              file='~/.aws/config',
                              section='profile molecule') ~ 'a' }}"
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(25,0) }}"
-              - name: molecule-b
+              - name: molecule-c
                 az:
                   "{{ lookup('ansible.builtin.ini',
                              'region',
                              file='~/.aws/config',
-                             section='profile molecule') ~ 'b' }}"
+                             section='profile molecule') ~ 'c' }}"
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(25,1) }}"
 
         ec2_security_group_list:
@@ -80,7 +80,7 @@ provisioner:
             ip_addresses:
               - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
                 ip: 192.168.0.125
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
                 ip: 192.168.0.253
             security_group_ids:
               - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
@@ -90,7 +90,7 @@ provisioner:
             ip_addresses:
               - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
                 ip: 192.168.0.126
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
                 ip: 192.168.0.254
             security_group_ids:
               - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"

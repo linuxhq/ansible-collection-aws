@@ -44,20 +44,20 @@ provisioner:
               - name: molecule-pub-a
                 az: us-east-1a
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,0) }}"
-              - name: molecule-pub-b
-                az: us-east-1b
-                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,1) }}"
               - name: molecule-pub-c
                 az: us-east-1c
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,1) }}"
+              - name: molecule-pub-d
+                az: us-east-1d
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,2) }}"
               - name: molecule-pvt-a
                 az: us-east-1a
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,3) }}"
-              - name: molecule-pvt-b
-                az: us-east-1b
-                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,4) }}"
               - name: molecule-pvt-c
                 az: us-east-1c
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,4) }}"
+              - name: molecule-pvt-d
+                az: us-east-1d
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,5) }}"
 
         ec2_vpc_nat_gateway_info_filters:
@@ -70,15 +70,15 @@ provisioner:
             release_eip: true
             subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-a'].id }}"
             wait: true
-          - name: molecule-pub-b
-            if_exist_do_not_create: true
-            release_eip: true
-            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-b'].id }}"
-            wait: true
           - name: molecule-pub-c
             if_exist_do_not_create: true
             release_eip: true
             subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-c'].id }}"
+            wait: true
+          - name: molecule-pub-d
+            if_exist_do_not_create: true
+            release_eip: true
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-d'].id }}"
             wait: true
 
         ec2_vpc_route_table_list:
@@ -90,8 +90,8 @@ provisioner:
                     gateway_id: igw
                 subnets:
                   - "{{ _ec2_vpc_subnet_info_dict['molecule-pub-a'].id }}"
-                  - "{{ _ec2_vpc_subnet_info_dict['molecule-pub-b'].id }}"
                   - "{{ _ec2_vpc_subnet_info_dict['molecule-pub-c'].id }}"
+                  - "{{ _ec2_vpc_subnet_info_dict['molecule-pub-d'].id }}"
 
               - name: "molecule-pvt-a"
                 routes:
@@ -100,19 +100,19 @@ provisioner:
                 subnets:
                   - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-a'].id }}"
 
-              - name: "molecule-pvt-b"
-                routes:
-                  - dest: '0.0.0.0/0'
-                    gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub-b'].nat_gateway_id }}"
-                subnets:
-                  - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-b'].id }}"
-
               - name: "molecule-pvt-c"
                 routes:
                   - dest: '0.0.0.0/0'
                     gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub-c'].nat_gateway_id }}"
                 subnets:
                   - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-c'].id }}"
+
+              - name: "molecule-pvt-d"
+                routes:
+                  - dest: '0.0.0.0/0'
+                    gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub-d'].nat_gateway_id }}"
+                subnets:
+                  - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-d'].id }}"
 
 scenario:
   test_sequence:

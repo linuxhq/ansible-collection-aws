@@ -14,14 +14,14 @@
           - _ec2_vpc_subnet_info_dict['molecule-a-01'].id is defined
           - _ec2_vpc_subnet_info_dict['molecule-a-02'].id is defined
           - _ec2_vpc_subnet_info_dict['molecule-a-03'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-b-00'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-b-01'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-b-02'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-b-03'].id is defined
           - _ec2_vpc_subnet_info_dict['molecule-c-00'].id is defined
           - _ec2_vpc_subnet_info_dict['molecule-c-01'].id is defined
           - _ec2_vpc_subnet_info_dict['molecule-c-02'].id is defined
           - _ec2_vpc_subnet_info_dict['molecule-c-03'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-d-00'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-d-01'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-d-02'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-d-03'].id is defined
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

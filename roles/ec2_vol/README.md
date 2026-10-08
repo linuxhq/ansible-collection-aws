@@ -51,23 +51,23 @@ None
                   device_name: sdk
                   volume_size: "{{ 10 | random(start=1) }}"
 
-            - instance: "{{ _ec2_instance_info_dict['molecule-b'].instance_id }}"
+            - instance: "{{ _ec2_instance_info_dict['molecule-c'].instance_id }}"
               volumes:
-                - name: molecule-vol-b-01
+                - name: molecule-vol-c-01
                   device_name: sdf
                   volume_size: "{{ 10 | random(start=1) }}"
-                - name: molecule-vol-b-02
+                - name: molecule-vol-c-02
                   device_name: sdg
                   volume_size: "{{ 10 | random(start=1) }}"
-                - name: molecule-vol-b-03
+                - name: molecule-vol-c-03
                   device_name: sdh
                   volume_size: "{{ 10 | random(start=1) }}"
-                - name: molecule-vol-b-04
+                - name: molecule-vol-c-04
                   device_name: sdi
                   volume_size: "{{ 10 | random(start=1) }}"
-                - name: molecule-vol-b-05
+                - name: molecule-vol-c-05
                   device_name: sdj
                   volume_size: "{{ 10 | random(start=1) }}"
-                - name: molecule-vol-b-06
+                - name: molecule-vol-c-06
                   device_name: sdk
                   volume_size: "{{ 10 | random(start=1) }}"

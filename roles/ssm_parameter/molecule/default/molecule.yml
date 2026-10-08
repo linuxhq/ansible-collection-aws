@@ -49,12 +49,12 @@ provisioner:
                              section='profile molecule') ~ 'a' }}"
 
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(25,0) }}"
-              - name: molecule-b
+              - name: molecule-c
                 az:
                   "{{ lookup('ansible.builtin.ini',
                              'region',
                              file='~/.aws/config',
-                             section='profile molecule') ~ 'b' }}"
+                             section='profile molecule') ~ 'c' }}"
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(25,1) }}"
 
         ec2_vpc_nat_gateway_info_filters:
@@ -78,12 +78,12 @@ provisioner:
                 subnets:
                   - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
 
-              - name: molecule-b
+              - name: molecule-c
                 routes:
                   - dest: '0.0.0.0/0'
                     gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule'].nat_gateway_id }}"
                 subnets:
-                  - "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+                  - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
 
         ssm_parameter_list:
           - name: /molecule/vpc/id
@@ -98,14 +98,14 @@ provisioner:
           - name: /molecule/vpc/rtb/a/id
             value: "{{ _ec2_vpc_route_table_info_dict['molecule-a'].route_table_id }}"
 
-          - name: /molecule/vpc/rtb/b/id
-            value: "{{ _ec2_vpc_route_table_info_dict['molecule-b'].route_table_id }}"
+          - name: /molecule/vpc/rtb/c/id
+            value: "{{ _ec2_vpc_route_table_info_dict['molecule-c'].route_table_id }}"
 
           - name: /molecule/vpc/subnet/a/id
             value: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
 
-          - name: /molecule/vpc/subnet/b/id
-            value: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+          - name: /molecule/vpc/subnet/c/id
+            value: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
 
 scenario:
   test_sequence:

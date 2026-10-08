@@ -33,4 +33,4 @@ None
             - name: molecule
               subnets:
                 - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"

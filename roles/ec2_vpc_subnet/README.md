@@ -44,27 +44,27 @@ None
                 - name: molecule-a-03
                   az: us-east-1a
                   cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,3) }}"
-                - name: molecule-b-00
-                  az: us-east-1b
-                  cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,4) }}"
-                - name: molecule-b-01
-                  az: us-east-1b
-                  cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,5) }}"
-                - name: molecule-b-02
-                  az: us-east-1b
-                  cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,6) }}"
-                - name: molecule-b-03
-                  az: us-east-1b
-                  cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,7) }}"
                 - name: molecule-c-00
                   az: us-east-1c
-                  cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,8) }}"
+                  cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,4) }}"
                 - name: molecule-c-01
                   az: us-east-1c
-                  cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,9) }}"
+                  cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,5) }}"
                 - name: molecule-c-02
                   az: us-east-1c
-                  cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,10) }}"
+                  cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,6) }}"
                 - name: molecule-c-03
                   az: us-east-1c
+                  cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,7) }}"
+                - name: molecule-d-00
+                  az: us-east-1d
+                  cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,8) }}"
+                - name: molecule-d-01
+                  az: us-east-1d
+                  cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,9) }}"
+                - name: molecule-d-02
+                  az: us-east-1d
+                  cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,10) }}"
+                - name: molecule-d-03
+                  az: us-east-1d
                   cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,11) }}"
