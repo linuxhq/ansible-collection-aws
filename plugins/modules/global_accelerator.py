@@ -13,10 +13,14 @@ description:
   - Listener updates release conflicting ports before dependent updates.
   - Circular listener port dependencies fail before listener changes and require an intermediate configuration.
   - Listener entries in O(listeners) that exactly match an existing listener's
-    protocol and port ranges keep that listener, remaining entries update
-    existing listeners with the same protocol in place, and new listeners are
-    created for the rest; existing listeners not present in O(listeners) are
-    deleted when O(purge_listeners=true), including their endpoint groups.
+    protocol and port ranges keep that listener. When O(purge_listeners=true),
+    remaining entries update existing listeners with the same protocol in
+    place, new listeners are created for the rest, and existing listeners not
+    present in O(listeners) are deleted, including their endpoint groups.
+  - When O(purge_listeners=false), remaining entries always create new
+    listeners and existing listeners not present in O(listeners) are left
+    unchanged; the module fails before any listener change when a new
+    listener's ports overlap one of those existing listeners.
   - Endpoint groups are identified by
     O(listeners[].endpoint_groups[].endpoint_group_region), which AWS keeps
     unique per listener, so entries update the existing endpoint group for
@@ -891,7 +895,8 @@ def reconcile_listeners(module, current_listeners):
 
     for desired in pending:
         match = None
-        for current in remaining:
+        # Only listeners that would otherwise be purged are reused for other ports.
+        for current in remaining if module.params["purge_listeners"] else []:
             if current["protocol"] == desired["protocol"]:
                 match = current
                 break
@@ -1403,7 +1408,8 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False):
         if any(listeners_overlap(current, desired) for desired in desired_changes):
             module.fail_json(
                 changed=mutated,
-                msg="Unable to update AWS Global Accelerator listeners: desired ports overlap a retained listener",
+                msg="Unable to update AWS Global Accelerator listeners: desired ports overlap retained listener "
+                f"{current['listener_arn']}",
             )
 
     # Build every listener write before releasing any ports.

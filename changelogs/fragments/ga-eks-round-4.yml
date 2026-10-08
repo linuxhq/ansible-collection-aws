@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - global_accelerator - reuse an existing listener for other ports only when ``purge_listeners=true``; with
+    ``purge_listeners=false``, new listeners are created and unlisted listeners are left unchanged, and the
+    module fails before any listener change when a new listener overlaps one of them.
+  - eks_cluster - document that ``zonal_shift_config`` requires botocore 1.35.45 or later.
