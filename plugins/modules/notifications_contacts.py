@@ -121,6 +121,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import contact_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -242,21 +243,7 @@ def ensure_present(client, module):
                 msg=f"Unable to list tags for AWS Notifications contact {contact['arn']}",
             )
 
-        if (
-            not isinstance(tag_response, dict)
-            or not isinstance(tag_response.get("tags", {}), dict)
-            or not all(
-                isinstance(tag_key, str) and isinstance(tag_value, str)
-                for tag_key, tag_value in tag_response.get("tags", {}).items()
-            )
-        ):
-            module.fail_json(
-                msg=(
-                    f"Unable to list tags for AWS Notifications contact {contact['arn']}: AWS returned an invalid response"
-                )
-            )
-
-        contact["tags"] = tag_response.get("tags", {})
+        contact["tags"] = contact_tags(module, tag_response, contact["arn"])
 
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
             contact["tags"],

@@ -216,6 +216,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.eks import has_valid_cluster_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -223,16 +224,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 
 
 def validate_cluster(module, cluster, expected_name):
-    tags = cluster.get("tags") if isinstance(cluster, dict) else None
-    if (
-        not isinstance(cluster, dict)
-        or cluster.get("name") != expected_name
-        or (tags is not None and not isinstance(tags, dict))
-        or (
-            isinstance(tags, dict)
-            and any(not isinstance(key, str) or not isinstance(value, str) for key, value in tags.items())
-        )
-    ):
+    if not isinstance(cluster, dict) or cluster.get("name") != expected_name or not has_valid_cluster_tags(cluster):
         module.fail_json(msg=f"EKS returned an invalid cluster for {expected_name}")
 
     return cluster

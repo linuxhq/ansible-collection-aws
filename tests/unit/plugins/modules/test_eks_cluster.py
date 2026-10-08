@@ -257,6 +257,7 @@ def test_vpc_endpoint_and_network_changes_use_separate_updates():
     )
     module = FakeModule(params)
     current = {
+        "arn": "arn:example",
         "name": "example",
         "resourcesVpcConfig": {
             "endpointPublicAccess": True,
@@ -374,11 +375,13 @@ def test_no_wait_change_waits_for_active_cluster_and_rechecks_state():
         }
     )
     transitioning = {
+        "arn": "arn:example",
         "name": "example",
         "resourcesVpcConfig": {"endpointPublicAccess": True},
         "status": "UPDATING",
     }
     active = {
+        "arn": "arn:example",
         "name": "example",
         "resourcesVpcConfig": {"endpointPublicAccess": False},
         "status": "ACTIVE",
@@ -498,13 +501,8 @@ def test_failed_update_stops_waiting_with_update_details():
     ):
         plugin.wait_for_update(client, module, "update-1")
 
-    require.assert_called_once_with(
-        module,
-        client,
-        "EKS",
-        {"describe_update": ("name", "updateId")},
-        changed=False,
-    )
+    # ensure_present checks describe_update support before the first update.
+    require.assert_not_called()
     assert raised.value.values["update"]["status"] == "Failed"
 
 
@@ -1067,7 +1065,7 @@ def test_absent_deletes_a_cluster_that_fails_while_waiting(status):
         patch.object(
             plugin,
             "describe_cluster",
-            side_effect=[dict(cluster, status=status), dict(cluster, status="FAILED")],
+            side_effect=[dict(cluster, status=status), dict(cluster, status="FAILED"), dict(cluster, status="FAILED")],
         ),
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "wait_for_cluster_updates"),
@@ -1079,6 +1077,49 @@ def test_absent_deletes_a_cluster_that_fails_while_waiting(status):
 
     stubber.assert_no_pending_responses()
     client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
+    assert raised.value.values["changed"] is True
+
+
+@pytest.mark.parametrize("status", ["CREATING", "UPDATING"])
+def test_absent_reports_absent_when_a_waited_cluster_disappears(status):
+    client = eks_client()
+    client.delete_cluster = Mock()
+    module = FakeModule({"name": "example", "wait": False, "wait_delay": 15, "wait_timeout": 1200})
+    cluster = {"name": "example", "arn": "arn:example"}
+    with (
+        Stubber(client) as stubber,
+        patch.object(plugin, "describe_cluster", side_effect=[dict(cluster, status=status), None, None]),
+        patch.object(plugin, "wait_for_cluster_updates") as wait_for_updates,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        # The native waiter stops when DescribeCluster reports the cluster is gone.
+        stubber.add_client_error(
+            "describe_cluster",
+            service_error_code="ResourceNotFoundException",
+            expected_params={"name": "example"},
+        )
+        plugin.ensure_absent(client, module)
+
+    stubber.assert_no_pending_responses()
+    wait_for_updates.assert_not_called()
+    client.delete_cluster.assert_not_called()
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["cluster"] == {}
+    assert raised.value.values["state"] == "absent"
+
+
+def test_tagging_uses_the_validated_cluster_arn():
+    current = {"name": "example", "arn": "arn:example", "status": "ACTIVE", "tags": {}}
+    client = Mock()
+    module = FakeModule(eks_params(tags={"Name": "example"}))
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    client.tag_resource.assert_called_once_with(resourceArn="arn:example", tags={"Name": "example"}, aws_retry=True)
     assert raised.value.values["changed"] is True
 
 
@@ -1227,6 +1268,43 @@ def test_update_wait_support_is_checked_before_the_first_update():
 
     assert raised.value.values["changed"] is False
     client.update_cluster_config.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"deletion_protection": True, "version": "1.31"},
+        {"deletion_protection": True, "resources_vpc_config": {"endpoint_public_access": False}},
+        {"version": "1.31", "wait": True},
+    ],
+)
+def test_update_wait_support_is_checked_before_any_waited_update(overrides):
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "deletionProtection": False,
+        "resourcesVpcConfig": {"endpointPublicAccess": True},
+        "version": "1.30",
+    }
+    client = Mock()
+    module = FakeModule(eks_params(**overrides))
+
+    def require(module, client, service, methods, changed=False):
+        if "describe_update" in methods:
+            module.fail_json(changed=changed, msg="unsupported")
+
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods", side_effect=require),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+    client.update_cluster_config.assert_not_called()
+    client.update_cluster_version.assert_not_called()
 
 
 def test_failed_update_wait_reports_changed():

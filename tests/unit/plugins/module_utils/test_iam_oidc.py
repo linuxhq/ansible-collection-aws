@@ -47,3 +47,37 @@ def test_provider_rejects_invalid_response():
     module.fail_json.assert_called_once_with(
         changed=False, msg="Unable to get AWS IAM OIDC provider arn:provider: AWS returned an invalid response"
     )
+
+
+def test_provider_treats_missing_lists_as_empty():
+    client = Mock(get_open_id_connect_provider=Mock(return_value={"Url": "example.com/id"}))
+    assert get_provider_by_arn(client, Mock(), "arn:provider") == {
+        "OpenIDConnectProviderArn": "arn:provider",
+        "ClientIDList": [],
+        "ThumbprintList": [],
+        "Url": "example.com/id",
+    }
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"ClientIDList": None},
+        {"ThumbprintList": "abc"},
+        {"ClientIDList": [1]},
+        {"ThumbprintList": [None]},
+        {"Tags": None},
+        {"Tags": [{"Key": "Name"}]},
+    ],
+)
+@pytest.mark.parametrize("changed", [False, True])
+def test_provider_rejects_present_invalid_fields(fields, changed):
+    client = Mock(get_open_id_connect_provider=Mock(return_value=dict({"Url": "example.com/id"}, **fields)))
+    module = Mock()
+    module.fail_json.side_effect = SystemExit
+    with pytest.raises(SystemExit):
+        get_provider_by_arn(client, module, "arn:provider", changed=changed)
+
+    module.fail_json.assert_called_once_with(
+        changed=changed, msg="Unable to get AWS IAM OIDC provider arn:provider: AWS returned an invalid response"
+    )
