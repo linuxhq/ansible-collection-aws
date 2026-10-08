@@ -10,9 +10,16 @@ short_description: Manage aws end user messaging sms phone numbers
 description:
   - Requests and releases AWS End User Messaging SMS origination phone numbers.
   - Without O(phone_number_id), an existing phone number matching the requested
-    attributes and tags is adopted; otherwise a new phone number is requested.
+    attributes is adopted; otherwise a new phone number is requested.
   - Matching uses the attributes fixed when a number is requested, O(iso_country_code),
     O(message_type), O(number_capabilities), O(number_type), O(pool_id), and O(registration_id).
+  - When O(tags) contains a C(Name) key, matching also requires an equal C(Name) tag, and the
+    module fails if more than one phone number matches. Other tags are not used for matching.
+  - When O(tags) is omitted, the first phone number matching the fixed attributes is adopted.
+  - When O(tags) has no C(Name) key, the module fails if more than one phone number matches the
+    fixed attributes, instead of retagging an arbitrary number. Set a C(Name) tag to identify a
+    specific number.
+  - O(tags) other than C(Name) are converged on the matched number according to O(purge_tags).
   - O(deletion_protection_enabled), O(international_sending_enabled), and O(opt_out_list_name)
     are updated in place on the matched number with C(UpdatePhoneNumber).
   - With O(phone_number_id), that number is updated; a missing number or mismatched
@@ -110,19 +117,24 @@ options:
   wait:
     default: true
     description:
-      - Whether to wait for the phone number status to become C(ACTIVE).
+      - Whether to wait for a requested or matched phone number status to become C(ACTIVE).
+      - Even when O(wait=false), the module waits for a matched number that is not C(ACTIVE)
+        before updating its settings or tags.
+      - When O(state=absent), the module always waits for the number to become C(ACTIVE)
+        before and between the steps that disassociate it from its pool, disable deletion
+        protection, and release it.
     type: bool
   wait_delay:
     default: 5
     description:
-      - The delay between polling attempts when O(wait=true).
-      - This must be 1 or greater.
+      - The delay in seconds between polling attempts whenever the module waits.
+      - This must be 1 or greater and is validated even when O(wait=false).
     type: int
   wait_timeout:
     default: 300
     description:
-      - The maximum number of seconds to wait when O(wait=true).
-      - This must be 1 or greater.
+      - The maximum number of seconds for each wait the module performs.
+      - This must be 1 or greater and is validated even when O(wait=false).
     type: int
 notes:
   - O(tags) accepts at most 200 entries; keys must contain 1 to 128 characters
@@ -299,6 +311,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_arn_tags,
+    require_valid_tag_list,
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
@@ -336,14 +349,12 @@ def phone_number_tags(client, module, phone_number, changed=False):
             e, changed=changed, msg=f"Unable to list tags for Pinpoint SMS Voice V2 phone number {arn}"
         )
 
-    tags = response.get("Tags") if isinstance(response, dict) else None
-    if not isinstance(tags, list) or any(
-        not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str)
-        for tag in tags
-    ):
-        module.fail_json(
-            changed=changed, msg=f"AWS returned malformed tags for Pinpoint SMS Voice V2 phone number {arn}"
-        )
+    tags = require_valid_tag_list(
+        module,
+        response.get("Tags") if isinstance(response, dict) else None,
+        f"AWS returned malformed tags for Pinpoint SMS Voice V2 phone number {arn}",
+        changed=changed,
+    )
 
     return boto3_tag_list_to_ansible_dict(tags)
 
@@ -491,6 +502,25 @@ def updatable_settings_delta(module, current):
         updates["OptOutListName"] = opt_out_list_name
 
     return updates
+
+
+def phone_number_changes(client, module, current):
+    """Return the number with its tags and the settings and tag changes it needs."""
+    tags = module.params["tags"]
+    updates = updatable_settings_delta(module, current)
+
+    # Tags are read before any write, so tagging failures before any change report changed=False.
+    tags_to_set, tag_keys_to_unset = ({}, [])
+    if tags is not None:
+        current = dict(current)
+        if "Tags" not in current:
+            current["Tags"] = ansible_dict_to_boto3_tag_list(phone_number_tags(client, module, current))
+
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(
+            boto3_tag_list_to_ansible_dict(current["Tags"]), tags, purge_tags=module.params["purge_tags"]
+        )
+
+    return current, updates, tags_to_set, tag_keys_to_unset
 
 
 def update_phone_number(client, module, current, updates):
@@ -649,7 +679,9 @@ def ensure_present(client, module):
     if registration_id is not None:
         desired["RegistrationId"] = registration_id
 
-    current = None
+    # Without phone_number_id, a requested Name tag identifies the number; other tags converge below.
+    name = None if module.params["phone_number_id"] else (tags or {}).get("Name")
+    matches = []
     for phone_number in phone_numbers:
         validate_phone_number(
             module,
@@ -682,45 +714,51 @@ def ensure_present(client, module):
         if not matched:
             continue
 
-        if tags is None or module.params["phone_number_id"]:
-            current = phone_number
-            break
-
-        current_tags = phone_number_tags(client, module, phone_number)
-        tags_match = True
-        for key, value in tags.items():
-            if current_tags.get(key) != value:
-                tags_match = False
+        if name is None:
+            matches.append(phone_number)
+            if tags is None:
                 break
 
-        if not tags_match:
             continue
 
-        current = dict(phone_number)
-        current["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
-        break
+        current_tags = phone_number_tags(client, module, phone_number)
+        if current_tags.get("Name") == name:
+            matches.append(dict(phone_number, Tags=ansible_dict_to_boto3_tag_list(current_tags)))
 
+    if name is None and len(matches) > 1:
+        # Retagging needs one unambiguous number when no Name tag identifies it.
+        module.fail_json(
+            msg=(
+                "Multiple Pinpoint SMS Voice V2 phone numbers matched the requested attributes; "
+                "set a Name tag or phone_number_id to choose one: "
+                + ", ".join(sorted(phone_number["PhoneNumberId"] for phone_number in matches))
+            )
+        )
+
+    if len(matches) > 1:
+        module.fail_json(
+            msg=(
+                f"Multiple Pinpoint SMS Voice V2 phone numbers matched name {name}: "
+                + ", ".join(sorted(phone_number["PhoneNumberId"] for phone_number in matches))
+            )
+        )
+
+    current = matches[0] if matches else None
     if current is not None:
-        if wait and not module.check_mode and current.get("Status") != "ACTIVE":
+        current, updates, tags_to_set, tag_keys_to_unset = phone_number_changes(client, module, current)
+        if (
+            not module.check_mode
+            and current.get("Status") != "ACTIVE"
+            and (wait or updates or tags_to_set or tag_keys_to_unset)
+        ):
+            # Changes always wait for ACTIVE, even when wait=false, and are recalculated from the settled number.
             current = wait_for_phone_number_active(client, module, current["PhoneNumberId"], tags=current.get("Tags"))
+            current, updates, tags_to_set, tag_keys_to_unset = phone_number_changes(client, module, current)
 
-        updates = updatable_settings_delta(module, current)
         if updates and current.get("PoolId"):
             options = ", ".join(SETTING_OPTIONS[field] for field in updates)
             module.fail_json(
                 msg=f"Unable to update {options} for Pinpoint SMS Voice V2 phone number {current['PhoneNumberId']} in pool {current['PoolId']}"
-            )
-
-        # Tags are read and their writes checked before the settings update, so tagging failures before any
-        # change report changed=False.
-        tags_to_set, tag_keys_to_unset = ({}, [])
-        if tags is not None:
-            current = dict(current)
-            if "Tags" not in current:
-                current["Tags"] = ansible_dict_to_boto3_tag_list(phone_number_tags(client, module, current))
-
-            tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                boto3_tag_list_to_ansible_dict(current["Tags"]), tags, purge_tags=module.params["purge_tags"]
             )
 
         tags_changed = bool(tags_to_set or tag_keys_to_unset)
@@ -740,7 +778,12 @@ def ensure_present(client, module):
         changed = bool(updates) or tags_changed
         if updates:
             if module.check_mode:
-                current = dict(current, **updates)
+                # Project OptOutListName as DescribePhoneNumbers returns it, the name rather than the ARN.
+                projected = dict(updates)
+                if "OptOutListName" in projected:
+                    projected["OptOutListName"] = projected["OptOutListName"].rsplit("/", 1)[-1]
+
+                current = dict(current, **projected)
             else:
                 current = update_phone_number(client, module, current, updates)
 
@@ -877,15 +920,13 @@ def main():
             module.fail_json(msg="message_type must be TRANSACTIONAL when number_type is SIMULATOR")
 
     require_valid_tags(module, tags if state == "present" else None, 200)
-    require_positive_wait_bounds(module, always=state == "absent")
+    require_positive_wait_bounds(module, always=True)
 
     client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())
-    describe_parameters = ("MaxResults", "NextToken")
-    if state == "present":
-        describe_parameters += ("PhoneNumberIds",) if module.params["phone_number_id"] else ("Filters", "Owner")
-
-    if state == "absent":
-        describe_parameters += ("PhoneNumberIds",)
+    # Waits and re-reads describe by PhoneNumberIds on every path.
+    describe_parameters = ("MaxResults", "NextToken", "PhoneNumberIds")
+    if state == "present" and not module.params["phone_number_id"]:
+        describe_parameters += ("Filters", "Owner")
 
     require_client_methods(
         module,

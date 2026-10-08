@@ -48,7 +48,7 @@ def test_optional_create_parameters_are_not_gated_when_omitted():
         plugin.main()
 
     methods = require.call_args.args[3]
-    assert methods["describe_pools"] == ("Filters", "Owner", "MaxResults", "NextToken")
+    assert methods["describe_pools"] == ("PoolIds", "MaxResults", "NextToken", "Filters", "Owner")
     assert methods["list_pool_origination_identities"] == ("PoolId", "MaxResults", "NextToken")
     assert methods["create_pool"] == (
         "MessageType",
@@ -739,3 +739,44 @@ def test_delete_failure_without_earlier_changes_reports_unchanged():
 
     assert raised.value.values["changed"] is False
     client.update_pool.assert_not_called()
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_pool_tags_report_malformed_tags_with_changed(changed):
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"Tags": [{"Key": "Name"}]}
+    with pytest.raises(ModuleFail) as raised:
+        plugin.pool_with_tags(client, FakeModule({}), {"PoolArn": "arn:pool-1"}, changed=changed)
+
+    assert raised.value.values["msg"] == "AWS returned malformed tags for Pinpoint SMS Voice V2 pool arn:pool-1"
+    assert raised.value.values["changed"] is changed
+
+
+def test_pool_id_search_paths_gate_describe_by_pool_ids():
+    client = Mock()
+    module = FakeModule(
+        {
+            "client_token": None,
+            "deletion_protection_enabled": None,
+            "iso_country_code": None,
+            "message_type": "TRANSACTIONAL",
+            "name": "main",
+            "origination_identity": None,
+            "pool_id": "pool-1",
+            "purge_tags": True,
+            "state": "present",
+            "tags": None,
+            "wait": False,
+            "wait_delay": 5,
+            "wait_timeout": 300,
+        },
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(plugin, "ensure_present"),
+    ):
+        plugin.main()
+
+    assert require.call_args.args[3]["describe_pools"] == ("PoolIds", "MaxResults", "NextToken")
