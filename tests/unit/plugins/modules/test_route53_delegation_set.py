@@ -171,3 +171,17 @@ def test_invalid_listing_after_a_create_reports_changed():
         plugin.get_reusable_delegation_set(Mock(), module, changed=True)
 
     assert raised.value.values["changed"] is True
+
+
+def test_listing_failure_after_a_create_reports_changed():
+    def failing_query(module, client, method_name, result_key, error_msg, changed=False, **kwargs):
+        module.fail_json(changed=changed, msg=error_msg)
+
+    with (
+        patch.object(plugin, "query_list", side_effect=failing_query),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.get_reusable_delegation_set(Mock(), FakeModule({"name": "main"}), changed=True)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"] == "Unable to list AWS Route53 reusable delegation sets"

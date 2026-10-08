@@ -24,7 +24,7 @@
           - _route53_resolver_rule_info_dict['molecule-cloudflare'].resolver_endpoint_id ==
               route53_resolver_rule_list.0.resolver_endpoint_id
           - _route53_resolver_rule_info_dict['molecule-cloudflare'].rule_type ==
-              route53_resolver_rule_list.0.rule_type | upper
+              route53_resolver_rule_list.0.rule_type
           - _route53_resolver_rule_info_dict['molecule-cloudflare'].status == 'COMPLETE'
           - _route53_resolver_rule_info_dict['molecule-cloudflare'].tags.molecule ==
               'route53_resolver_rule_info'
@@ -48,7 +48,7 @@
           - _route53_resolver_rule_info_dict['molecule-google'].resolver_endpoint_id ==
               route53_resolver_rule_list.1.resolver_endpoint_id
           - _route53_resolver_rule_info_dict['molecule-google'].rule_type ==
-              route53_resolver_rule_list.1.rule_type | upper
+              route53_resolver_rule_list.1.rule_type
           - _route53_resolver_rule_info_dict['molecule-google'].status == 'COMPLETE'
           - _route53_resolver_rule_info_dict['molecule-google'].target_ips |
             json_query('[].[ip, port]') |
@@ -83,7 +83,7 @@
           - _route53_resolver_rule_info_dict[route53_resolver_rule_list.0.name].resolver_endpoint_id ==
               route53_resolver_rule_list.0.resolver_endpoint_id
           - _route53_resolver_rule_info_dict[route53_resolver_rule_list.0.name].rule_type ==
-              route53_resolver_rule_list.0.rule_type | upper
+              route53_resolver_rule_list.0.rule_type
           - _route53_resolver_rule_info_dict[route53_resolver_rule_list.0.name].vpc_ids ==
               [_ec2_vpc_net_info_dict['molecule'].id]
 

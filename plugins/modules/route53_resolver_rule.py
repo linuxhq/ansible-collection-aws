@@ -33,11 +33,11 @@ options:
   rule_type:
     description:
       - The resolver rule type.
-      - Only V(forward) rules can be managed by this module; C(SYSTEM) and
-        C(RECURSIVE) rules do not accept target IPs or resolver endpoints.
+      - Only V(FORWARD) rules can be managed by this module; C(SYSTEM),
+        C(RECURSIVE), and C(DELEGATE) rules are not supported.
       - This is required when O(state=present).
     choices:
-      - forward
+      - FORWARD
     type: str
   state:
     description:
@@ -122,7 +122,7 @@ EXAMPLES = r"""
     domain_name: cloudflare.com
     name: molecule-cloudflare
     resolver_endpoint_id: rslvr-out-0123456789abcdef0
-    rule_type: forward
+    rule_type: FORWARD
     tags:
       Name: molecule-cloudflare
     target_ips:
@@ -264,10 +264,14 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
+    AWS_OWNED_RULE_OWNER,
     comparable_ip_fields,
+    comparable_ips_match,
     require_ip_versions,
+    resolver_resource_with_tags,
+    resolver_rule_has_details,
     valid_resolver_name,
-    validate_tags,
+    validate_resolver_rule,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
@@ -343,8 +347,6 @@ TARGET_IP_FIELDS = (
     "protocol",
     "server_name_indication",
 )
-# The OwnerId of rules that Route 53 Resolver creates, such as the Internet Resolver rule.
-AWS_OWNED_RULE_OWNER = "Route 53 Resolver"
 
 
 def desired_request(module):
@@ -353,7 +355,7 @@ def desired_request(module):
         "DomainName": module.params["domain_name"],
         "Name": module.params["name"],
         "ResolverEndpointId": module.params["resolver_endpoint_id"],
-        "RuleType": module.params["rule_type"].upper(),
+        "RuleType": module.params["rule_type"],
         "TargetIps": [
             snake_dict_to_camel_dict(scrub_none_parameters(target_ip), capitalize_first=True)
             for target_ip in module.params["target_ips"]
@@ -499,7 +501,7 @@ def ensure_present(client, module):
     elif current is None:
         rule = create_resolver_rule(client, module, request)
         if module.params["wait"]:
-            rule = resolver_rule_with_tags(client, module, rule, changed=True)
+            rule = resolver_resource_with_tags(client, module, rule, "rule", changed=True)
         elif tags is not None:
             rule["Tags"] = ansible_dict_to_boto3_tag_list(tags)
     elif changed:
@@ -635,33 +637,13 @@ def comparable_rule(rule):
     }
 
 
-def target_ips_match(current, desired):
-    # A requested target matches a current one when every supplied field is equal; omitted fields keep AWS values.
-    remaining = list(current)
-    for desired_target_ip in sorted(desired, key=len, reverse=True):
-        match = next(
-            (
-                index
-                for index, current_target_ip in enumerate(remaining)
-                if all(current_target_ip.get(field) == value for field, value in desired_target_ip.items())
-            ),
-            None,
-        )
-        if match is None:
-            return False
-
-        remaining.pop(match)
-
-    return not remaining
-
-
 def rules_match(current, desired):
     if current is None:
         return False
 
     return all(
         current[field] == desired[field] for field in ("domain_name", "resolver_endpoint_id", "rule_type")
-    ) and target_ips_match(current["target_ips"], desired["target_ips"])
+    ) and comparable_ips_match(current["target_ips"], desired["target_ips"])
 
 
 def get_resolver_rule(client, module, resolver_rule_id, changed=False):
@@ -729,90 +711,7 @@ def get_resolver_rule_by_name(client, module, changed=False):
 
     # ListResolverRules returns the full rule, so only the tags need another call.
     rule = validate_resolver_rule(module, rules[0], "list_resolver_rules", require_details=True, changed=changed)
-    return resolver_rule_with_tags(client, module, rule, changed=changed)
-
-
-def resolver_rule_with_tags(client, module, rule, changed=False):
-    """Add listed tags; changed reports whether the rule was already modified, for failure results."""
-    if not rule or not rule.get("Arn"):
-        return rule
-
-    rule = dict(rule)
-
-    tags = query_list(
-        module,
-        client,
-        "list_tags_for_resource",
-        "Tags",
-        f"Unable to list tags for AWS Route53 Resolver rule {rule['Arn']}",
-        changed=changed,
-        ResourceArn=rule["Arn"],
-    )
-    rule["Tags"] = validate_tags(module, tags, changed=changed)
-
-    return rule
-
-
-def resolver_rule_has_details(rule):
-    return isinstance(rule, dict) and all(
-        field in rule for field in ("DomainName", "ResolverEndpointId", "RuleType", "TargetIps")
-    )
-
-
-def validate_resolver_rule(
-    module,
-    rule,
-    operation,
-    expected_id=None,
-    expected_name=None,
-    require_details=False,
-    changed=False,
-):
-    if not isinstance(rule, dict):
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid resolver rule")
-
-    rule_id = rule.get("Id")
-    if not isinstance(rule_id, str) or not rule_id:
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned a resolver rule without a valid ID")
-
-    if expected_id is not None and rule_id != expected_id:
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an unexpected resolver rule ID {rule_id}")
-
-    if expected_name is not None and rule.get("Name") != expected_name:
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an unexpected resolver rule name")
-
-    for field in ("Arn", "DomainName", "Name", "ResolverEndpointId", "RuleType", "Status"):
-        if field in rule and not isinstance(rule[field], str):
-            module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid resolver rule {field}")
-
-    if require_details and not resolver_rule_has_details(rule):
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an incomplete resolver rule")
-
-    if "TargetIps" in rule:
-        validate_target_ips(module, rule["TargetIps"], operation, changed=changed)
-
-    return rule
-
-
-def validate_target_ips(module, target_ips, operation, changed=False):
-    if not isinstance(target_ips, list):
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid resolver rule TargetIps")
-
-    for target_ip in target_ips:
-        if not isinstance(target_ip, dict):
-            module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid target IP")
-
-        if not any(isinstance(target_ip.get(field), str) and target_ip[field] for field in ("Ip", "Ipv6")):
-            module.fail_json(changed=changed, msg=f"{operation}: AWS returned a target IP without an IP address")
-
-        for field in ("Ip", "Ipv6", "Protocol", "ServerNameIndication"):
-            if field in target_ip and not isinstance(target_ip[field], str):
-                module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid target IP {field}")
-
-        if "Port" in target_ip and (not isinstance(target_ip["Port"], int) or isinstance(target_ip["Port"], bool)):
-            module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid target IP Port")
-
-    return target_ips
+    return resolver_resource_with_tags(client, module, rule, "rule", changed=changed)
 
 
 def main():
@@ -822,7 +721,7 @@ def main():
             "name": {"required": True, "type": "str"},
             "purge_tags": {"default": True, "type": "bool"},
             "resolver_endpoint_id": {"type": "str"},
-            "rule_type": {"choices": ["forward"], "type": "str"},
+            "rule_type": {"choices": ["FORWARD"], "type": "str"},
             "state": {
                 "choices": ["absent", "present"],
                 "default": "present",

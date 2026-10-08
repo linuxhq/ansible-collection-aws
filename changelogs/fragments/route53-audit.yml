@@ -3,7 +3,7 @@ bugfixes:
   - route53_delegation_set - list more than one page of reusable delegation sets instead of failing with a repeated pagination marker.
   - route53_delegation_set_info - list more than one page of reusable delegation sets instead of failing with a repeated pagination marker.
   - route53_resolver - allow protocol changes on inbound endpoints and fail before modifying the endpoint
-    only when the protocols would change directly from only ``do53`` to only ``doh`` or ``doh-fips``.
+    only when the protocols would change directly from only ``Do53`` to only ``DoH`` or ``DoH-FIPS``.
   - route53_resolver - do not wait for the endpoint to settle after an update with ``wait=false``
     when the existing IP addresses already satisfy the requested subnet-only entries.
   - route53_resolver - document that ``resolver_endpoint.ip_addresses[].ip_id`` and ``status`` are absent

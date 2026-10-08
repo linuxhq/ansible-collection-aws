@@ -1,0 +1,17 @@
+---
+breaking_changes:
+  - route53_resolver_rule - ``rule_type`` accepts the AWS value ``FORWARD`` instead of ``forward`` and sends it unchanged;
+    playbooks and role variables that pass ``rule_type=forward`` must use ``FORWARD``.
+bugfixes:
+  - route53_delegation_set - report ``changed=true`` when listing reusable delegation sets fails after a create.
+  - route53_resolver - accept several subnet-only ``ip_addresses`` entries in the same subnet;
+    entries must be unique only when they set ``ip`` or ``ipv6``.
+  - route53_resolver_rule_info - skip the tag lookup for AWS-owned rules such as the Internet Resolver rule,
+    which cannot be tagged, and fail on other ``InvalidRequestException`` errors instead of returning empty tags.
+  - rds_subnet_group_info - describe the ``diff_mode`` attribute as returning no diff output.
+trivial:
+  - module_utils - share the Route53 Resolver tag lookup, IP entry matching, and endpoint and rule validation helpers.
+  - route53_resolver_info - validate listed endpoints like route53_resolver.
+  - route53_resolver_rule_info - validate listed rules and their target IPs like route53_resolver_rule.
+  - changelog - use the AWS ``protocols`` and ``resolver_endpoint_type`` values in unreleased route53_resolver fragments.
+  - route53_resolver - document how each AWS IP address status is handled and test that every SDK status is classified.
