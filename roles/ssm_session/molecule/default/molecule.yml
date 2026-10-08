@@ -49,7 +49,7 @@ provisioner:
             exact_count: 1
             iam_instance_profile: molecule-instance
             image_id: "{{ _ec2_ami_info_latest['al2023-ami-2023'] }}"
-            instance_type: t2.medium
+            instance_type: t3a.medium
             security_groups:
               - molecule
             vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt'].id }}"

@@ -59,4 +59,4 @@ None
                 - "{{ _ec2_security_group_info_dict['molecule-http-80'].group_id }}"
               subnets:
                 - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"

@@ -40,11 +40,11 @@ provisioner:
               - name: molecule-pub-a
                 az: us-east-1a
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,0) }}"
-              - name: molecule-pub-b
-                az: us-east-1b
-                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,1) }}"
               - name: molecule-pub-c
                 az: us-east-1c
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,1) }}"
+              - name: molecule-pub-d
+                az: us-east-1d
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,2) }}"
 
         ec2_vpc_igw_list:
@@ -63,15 +63,15 @@ provisioner:
             release_eip: true
             subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-a'].id }}"
             wait: true
-          - name: molecule-pub-b
-            if_exist_do_not_create: true
-            release_eip: true
-            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-b'].id }}"
-            wait: true
           - name: molecule-pub-c
             if_exist_do_not_create: true
             release_eip: true
             subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-c'].id }}"
+            wait: true
+          - name: molecule-pub-d
+            if_exist_do_not_create: true
+            release_eip: true
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-d'].id }}"
             wait: true
 
 scenario:

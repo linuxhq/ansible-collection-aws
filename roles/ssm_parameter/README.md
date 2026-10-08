@@ -47,11 +47,11 @@ None
             - name: /molecule/vpc/rtb/a/id
               value: "{{ _ec2_vpc_route_table_info_dict['molecule-a'].route_table_id }}"
 
-            - name: /molecule/vpc/rtb/b/id
-              value: "{{ _ec2_vpc_route_table_info_dict['molecule-b'].route_table_id }}"
+            - name: /molecule/vpc/rtb/c/id
+              value: "{{ _ec2_vpc_route_table_info_dict['molecule-c'].route_table_id }}"
 
             - name: /molecule/vpc/subnet/a/id
               value: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
 
-            - name: /molecule/vpc/subnet/b/id
-              value: "{{ _ec2_vpc_subnet_info_dict['molecule-b'].id }}"
+            - name: /molecule/vpc/subnet/c/id
+              value: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"

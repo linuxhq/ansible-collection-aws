@@ -35,13 +35,13 @@ None
               release_eip: true
               subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-a'].id }}"
               wait: true
-            - name: molecule-pub-b
-              if_exist_do_not_create: true
-              release_eip: true
-              subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-b'].id }}"
-              wait: true
             - name: molecule-pub-c
               if_exist_do_not_create: true
               release_eip: true
               subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-c'].id }}"
+              wait: true
+            - name: molecule-pub-d
+              if_exist_do_not_create: true
+              release_eip: true
+              subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-d'].id }}"
               wait: true
