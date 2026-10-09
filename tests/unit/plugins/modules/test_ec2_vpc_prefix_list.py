@@ -4,6 +4,7 @@ import pytest
 from botocore.loaders import Loader
 from botocore.waiter import Waiter, WaiterModel
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import tags
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_vpc_prefix_list as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -87,10 +88,12 @@ def test_entries_are_normalized_and_sorted():
         [
             {"Cidr": "192.0.2.0/24", "Description": None},
             {"Cidr": "10.0.0.0/8", "Description": "private"},
+            {"Cidr": "198.51.100.0/24", "Description": ""},
         ]
     ) == [
         {"cidr": "10.0.0.0/8", "description": "private"},
         {"cidr": "192.0.2.0/24"},
+        {"cidr": "198.51.100.0/24"},
     ]
 
 
@@ -702,6 +705,37 @@ def test_max_entries_headroom_avoids_resizing():
     )
 
 
+def test_empty_description_matches_an_entry_without_description():
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8", "description": ""}]))
+    with (
+        patch.object(plugin, "get_current", return_value=(prefix_list(), [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(plugin, "modify_prefix_list") as modify,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert result.value.values["changed"] is False
+    modify.assert_not_called()
+
+
+def test_empty_description_clears_a_description_without_sending_it():
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8", "description": ""}]))
+    current = prefix_list()
+    with (
+        patch.object(plugin, "get_current", return_value=(current, [{"Cidr": "10.0.0.0/8", "Description": "old"}])),
+        patch.object(plugin, "modify_prefix_list", return_value=prefix_list(Version=2)) as modify,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert result.value.values["changed"] is True
+    modify.assert_called_once_with(
+        client, module, current, changed=False, add_entries=[{"cidr": "10.0.0.0/8"}], remove_entries=None
+    )
+
+
 def test_omitted_max_entries_never_shrinks_an_existing_prefix_list():
     client = Mock()
     module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}]))
@@ -962,30 +996,6 @@ def test_wait_failure_names_target_state(waiter_name, target_state):
     )
 
 
-@pytest.mark.parametrize(
-    ("tags_to_set", "tag_keys_to_unset", "methods"),
-    [
-        ({"Env": "prod"}, [], {"create_tags"}),
-        ({}, ["Old"], {"delete_tags"}),
-        ({"Env": "prod"}, ["Old"], {"create_tags", "delete_tags"}),
-    ],
-)
-def test_tag_changes_are_gated_and_reconciled_once(tags_to_set, tag_keys_to_unset, methods):
-    client = Mock()
-    module = FakeModule({})
-    with (
-        patch.object(plugin, "require_client_methods") as require,
-        patch.object(plugin, "reconcile_ec2_tags") as reconcile,
-    ):
-        plugin.reconcile_tags(client, module, "pl-1", tags_to_set, tag_keys_to_unset)
-
-    require.assert_called_once()
-    assert set(require.call_args.args[3]) == methods
-    reconcile.assert_called_once_with(
-        module, client, ["pl-1"], tags_to_set, tag_keys_to_unset, "EC2 VPC managed prefix list", changed=False
-    )
-
-
 @pytest.mark.parametrize(("description", "changed"), [("new", True), ("old", False)])
 def test_tag_failure_reports_whether_entries_were_modified(description, changed):
     client = Mock()
@@ -999,6 +1009,7 @@ def test_tag_failure_reports_whether_entries_were_modified(description, changed)
         ),
         patch.object(plugin, "modify_prefix_list", return_value=prefix_list(Version=2)) as modify,
         patch.object(plugin, "require_client_methods"),
+        patch.object(tags, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module, OWNER)
@@ -1057,7 +1068,14 @@ def test_tag_deltas_after_update_without_wait_use_the_described_tags():
         plugin.ensure_present(client, module, OWNER)
 
     reconcile.assert_called_once_with(
-        module, client, ["pl-1"], {"Team": "net"}, ["Old"], "EC2 VPC managed prefix list", changed=True
+        module,
+        client,
+        ["pl-1"],
+        {"Team": "net"},
+        ["Old"],
+        "EC2 VPC managed prefix list",
+        changed=True,
+        check_sdk=True,
     )
     assert result.value.values["prefix_list"]["tags"] == {"Env": "test", "Team": "net"}
 
