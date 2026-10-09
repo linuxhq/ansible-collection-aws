@@ -77,6 +77,8 @@ attributes:
       execution.
     - Attribute names are returned in snake case, for example
       C(default_sms_type).
+    - An attribute cleared with an empty string is omitted, including in
+      check mode.
   returned: always
   type: dict
   contains:
@@ -203,6 +205,10 @@ def main():
 
     if changed and module.check_mode:
         current_attributes = dict(current_attributes, **desired)
+        # SetSMSAttributes removes an attribute set to an empty string, so GetSMSAttributes omits it.
+        for attribute_name, value in desired.items():
+            if not value:
+                current_attributes.pop(attribute_name)
     elif changed:
         try:
             client.set_sms_attributes(attributes=desired, aws_retry=True)

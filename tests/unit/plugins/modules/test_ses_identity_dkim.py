@@ -131,6 +131,32 @@ def test_check_mode_predicts_generation_without_calling_aws():
     client.put_email_identity_dkim_attributes.assert_not_called()
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_failed_status_warns_without_changes(check_mode):
+    client = client_with(dict(EASY, Status="FAILED"))
+    module = FakeModule(params(), client=client, check_mode=check_mode)
+    result, _require = run(module)
+
+    assert result.values["changed"] is False
+    assert result.values["dkim_attributes"]["status"] == "FAILED"
+    assert module.warnings == [
+        (
+            "DKIM verification failed for AWS SES identity example.com; "
+            "check that the DKIM CNAME records are published and correct"
+        )
+    ]
+    client.put_email_identity_dkim_signing_attributes.assert_not_called()
+    client.put_email_identity_dkim_attributes.assert_not_called()
+
+
+@pytest.mark.parametrize("status", ["PENDING", "SUCCESS", "TEMPORARY_FAILURE", "NOT_STARTED"])
+def test_other_statuses_do_not_warn(status):
+    module = FakeModule(params(), client=client_with(dict(EASY, Status=status)))
+    run(module)
+
+    assert module.warnings == []
+
+
 def test_missing_identity_fails():
     client = Mock(
         get_email_identity=Mock(
