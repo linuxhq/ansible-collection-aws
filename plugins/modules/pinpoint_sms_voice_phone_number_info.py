@@ -205,7 +205,11 @@ def describe_phone_numbers_by_id(module, client, request):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to describe Pinpoint SMS Voice V2 phone number {phone_number_id}")
 
-        phone_numbers.extend(response.get("PhoneNumbers", []))
+        found = response.get("PhoneNumbers", []) if isinstance(response, dict) else None
+        if not isinstance(found, list):
+            module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 phone number data")
+
+        phone_numbers.extend(found)
 
     return phone_numbers
 

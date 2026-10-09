@@ -94,6 +94,17 @@ def test_only_missing_ids_return_empty_results():
     assert raised.value.values["pools"] == []
 
 
+@pytest.mark.parametrize("response", [[], {"Pools": "invalid"}, {"Pools": None}])
+def test_id_lookup_rejects_malformed_response(response):
+    with (
+        patch.object(plugin, "paginated_query_with_retries", return_value=response),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.describe_pools_by_id(FakeModule({}), Mock(), {"PoolIds": ["pool-1"]})
+
+    assert raised.value.values["msg"] == "AWS returned malformed Pinpoint SMS Voice V2 pool data"
+
+
 def test_empty_result_does_not_require_detail_operations():
     module = FakeModule({"filters": None, "max_results": None, "owner": "SELF", "pool_ids": None})
     with (
