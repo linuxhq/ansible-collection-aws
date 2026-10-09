@@ -530,8 +530,9 @@ def ensure_absent(client, module):
         mutated = False
         if current.get("Status") != "ACTIVE":
             current = wait_for_pool_active(client, module, pool_id)
-            if current.get("Status") == "DELETING":
-                exit_result(module, True, current)
+            # Deleted elsewhere during the wait; this run changed nothing.
+            if not current or current.get("Status") == "DELETING":
+                exit_result(module, False, None)
 
         if current.get("DeletionProtectionEnabled"):
             try:

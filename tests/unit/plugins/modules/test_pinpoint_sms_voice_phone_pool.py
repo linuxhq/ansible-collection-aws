@@ -477,25 +477,51 @@ def test_absent_activation_wait_accepts_disappearing_pool():
     assert result == {}
 
 
-def test_absent_stops_when_wait_observes_external_deletion():
+@pytest.mark.parametrize("waited", [{}, {"PoolId": "pool-1", "Status": "DELETING"}])
+def test_absent_stops_when_wait_observes_external_deletion(waited):
     client = Mock()
     module = FakeModule({"pool_id": "pool-1", "state": "absent"})
     with (
         patch.object(
             plugin,
             "describe_pools",
-            return_value=[{"PoolId": "pool-1", "Status": "UPDATING"}],
+            return_value=[
+                {
+                    "DeletionProtectionEnabled": True,
+                    "PoolId": "pool-1",
+                    "Status": "UPDATING",
+                }
+            ],
         ),
-        patch.object(
-            plugin,
-            "wait_for_pool_active",
-            return_value={"PoolId": "pool-1", "Status": "DELETING"},
-        ),
+        patch.object(plugin, "wait_for_pool_active", return_value=waited),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_absent(client, module)
 
-    assert raised.value.values["changed"]
+    assert raised.value.values["changed"] is False
+    assert "pool" not in raised.value.values
+    client.update_pool.assert_not_called()
+    client.delete_pool.assert_not_called()
+
+
+def test_check_mode_absent_treats_deleting_pool_as_absent():
+    client = Mock()
+    module = FakeModule({"pool_id": "pool-1", "state": "absent"}, check_mode=True)
+    with (
+        patch.object(
+            plugin,
+            "describe_pools",
+            return_value=[{"PoolId": "pool-1", "Status": "DELETING"}],
+        ),
+        patch.object(plugin, "wait_for_pool_active") as wait_for_pool_active,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert "pool" not in raised.value.values
+    wait_for_pool_active.assert_not_called()
+    client.update_pool.assert_not_called()
     client.delete_pool.assert_not_called()
 
 

@@ -8,3 +8,5 @@ bugfixes:
     for a ``pool_ids`` lookup, instead of raising a Python error.
   - pinpoint_sms_voice_phone_pool - fail before any change, including in check mode, when ``origination_identity`` already belongs
     to a pool with a different ``Name`` tag, naming that pool and suggesting ``pool_id``, instead of calling ``CreatePool``.
+  - pinpoint_sms_voice_phone_pool - with ``state=absent``, exit with ``changed=false`` when the pool is deleted elsewhere
+    while waiting for it to become active, instead of reporting a change or trying to update or delete it.
