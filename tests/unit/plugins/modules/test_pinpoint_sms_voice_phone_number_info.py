@@ -122,6 +122,17 @@ def test_id_lookup_fails_on_other_errors():
     assert raised.value.values["msg"] == "Unable to describe Pinpoint SMS Voice V2 phone number phone-1"
 
 
+@pytest.mark.parametrize("response", [[], {"PhoneNumbers": "invalid"}, {"PhoneNumbers": None}])
+def test_id_lookup_rejects_malformed_response(response):
+    with (
+        patch.object(plugin, "paginated_query_with_retries", return_value=response),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.describe_phone_numbers_by_id(FakeModule({}), Mock(), {"PhoneNumberIds": ["phone-1"]})
+
+    assert raised.value.values["msg"] == "AWS returned malformed Pinpoint SMS Voice V2 phone number data"
+
+
 def test_empty_result_does_not_require_tag_operations():
     module = FakeModule(
         {

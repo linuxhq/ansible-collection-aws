@@ -745,6 +745,36 @@ def test_absent_stops_when_number_disappears_after_disassociation():
     client.release_phone_number.assert_not_called()
 
 
+@pytest.mark.parametrize("waited", [{}, {"PhoneNumberId": "phone-1", "Status": "DELETED"}])
+def test_absent_stops_when_wait_observes_external_deletion(waited):
+    client = Mock()
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
+
+    with (
+        patch.object(
+            plugin,
+            "get_phone_number",
+            return_value={
+                "DeletionProtectionEnabled": True,
+                "PhoneNumberId": "phone-1",
+                "PoolId": "pool-1",
+                "Status": "PENDING",
+            },
+        ),
+        patch.object(plugin, "wait_for_phone_number_active", return_value=waited),
+        patch.object(plugin, "require_client_methods") as require,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert "phone_number" not in raised.value.values
+    require.assert_not_called()
+    client.disassociate_origination_identity.assert_not_called()
+    client.update_phone_number.assert_not_called()
+    client.release_phone_number.assert_not_called()
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_pooled_number_setting_changes_fail_before_mutation(check_mode):
     client = Mock()

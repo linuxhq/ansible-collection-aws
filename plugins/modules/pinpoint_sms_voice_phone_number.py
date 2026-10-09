@@ -554,6 +554,9 @@ def ensure_absent(client, module):
     if changed and not module.check_mode:
         if current.get("Status") != "ACTIVE":
             current = wait_for_phone_number_active(client, module, phone_number_id)
+            # Deleted elsewhere during the wait; this run changed nothing.
+            if not current or current.get("Status") == "DELETED":
+                exit_result(module, False, None)
 
         # Every write is checked before the first one, so an older botocore fails without modifying anything.
         methods = {"release_phone_number": ("PhoneNumberId",)}

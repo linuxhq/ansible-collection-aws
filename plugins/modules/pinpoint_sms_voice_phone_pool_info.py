@@ -202,7 +202,11 @@ def describe_pools_by_id(module, client, request):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to describe Pinpoint SMS Voice V2 pool {pool_id}")
 
-        pools.extend(response.get("Pools", []))
+        found = response.get("Pools", []) if isinstance(response, dict) else None
+        if not isinstance(found, list):
+            module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 pool data")
+
+        pools.extend(found)
 
     return pools
 
