@@ -223,6 +223,39 @@ def test_update_refresh_reuses_tags_read_before_the_update():
     client.remove_tags_from_resource.assert_not_called()
 
 
+@pytest.mark.parametrize("refreshed_content", [{"schemaVersion": "2.2"}, {"schemaVersion": "1.2"}])
+def test_update_response_tags_do_not_replace_tags_read_before_the_update(refreshed_content):
+    client = Mock()
+    client.update_document.return_value = {
+        "DocumentDescription": {"DocumentVersion": "2", "Name": "example", "Tags": [{"Key": "Stale", "Value": "1"}]}
+    }
+    current = document({"schemaVersion": "1.2"}, Tags=[{"Key": "Old", "Value": "1"}])
+    refreshed = document(refreshed_content, DocumentVersion="2")
+    result, _wait, _get = run_present(client, FakeModule(params(tags={"Name": "example"})), [current, refreshed])
+
+    client.remove_tags_from_resource.assert_called_once_with(
+        ResourceType="Document", ResourceId="example", TagKeys=["Old"], aws_retry=True
+    )
+    client.add_tags_to_resource.assert_called_once_with(
+        ResourceType="Document", ResourceId="example", Tags=[{"Key": "Name", "Value": "example"}], aws_retry=True
+    )
+    assert result.values["document"]["tags"] == {"Name": "example"}
+
+
+def test_update_response_tags_are_not_returned_when_tags_are_omitted():
+    client = Mock()
+    client.update_document.return_value = {
+        "DocumentDescription": {"DocumentVersion": "2", "Name": "example", "Tags": [{"Key": "Stale", "Value": "1"}]}
+    }
+    current = document({"schemaVersion": "1.2"})
+    refreshed = document({"schemaVersion": "2.2"}, DocumentVersion="2")
+    result, _wait, _get = run_present(client, FakeModule(params()), [current, refreshed])
+
+    assert "tags" not in result.values["document"]
+    client.add_tags_to_resource.assert_not_called()
+    client.remove_tags_from_resource.assert_not_called()
+
+
 def test_update_result_ignores_stale_default_version_refresh():
     client = Mock()
     client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2", "Name": "example"}}

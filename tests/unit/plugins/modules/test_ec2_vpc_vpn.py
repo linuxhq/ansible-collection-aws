@@ -423,7 +423,7 @@ def test_unmanaged_route_cidr_does_not_block_vpn_deletion(params, connection, ro
     plugin.validate_connection(module, connection)
     client = Mock()
     assert ensure(client, module, connection)["changed"] is False
-    with patch.object(plugin, "wait_for_connection"), pytest.raises(ModuleExit) as result:
+    with patch.object(plugin, "wait_for_connection_deleted"), pytest.raises(ModuleExit) as result:
         plugin.ensure_absent(client, module, connection)
 
     assert result.value.values["changed"] is True
@@ -743,12 +743,13 @@ def test_invalid_inputs_fail_locally(params, overrides):
 def test_delete_is_idempotent_and_waits(params, connection, state, changed, sdk_checks):
     connection["State"] = state
     client = Mock()
-    with pytest.raises(ModuleExit) as result:
+    with patch.object(plugin, "wait_for_connection_deleted") as waiter, pytest.raises(ModuleExit) as result:
         plugin.ensure_absent(client, FakeModule(params), connection)
 
     assert result.value.values == {"changed": changed, "vpn_connection": {}}
     assert bool(client.delete_vpn_connection.call_count) == changed
-    client.get_waiter.assert_called_once_with("vpn_connection_deleted")
+    waiter.assert_called_once_with(client, ANY, "vpn-123", changed=changed)
+    client.get_waiter.assert_not_called()
     if changed:
         sdk_checks.assert_called_once_with(ANY, client, "EC2", {"delete_vpn_connection": ("VpnConnectionId",)})
 
@@ -756,20 +757,54 @@ def test_delete_is_idempotent_and_waits(params, connection, state, changed, sdk_
 def test_pending_connection_becomes_available_before_delete(params, connection):
     connection["State"] = "pending"
     client = Mock()
-    with pytest.raises(ModuleExit) as result:
+    client.attach_mock(Mock(), "wait_for_connection_deleted")
+    with (
+        patch.object(plugin, "wait_for_connection_deleted", client.wait_for_connection_deleted),
+        pytest.raises(ModuleExit) as result,
+    ):
         plugin.ensure_absent(client, FakeModule(params), connection)
 
     assert result.value.values == {"changed": True, "vpn_connection": {}}
-    # The VpnConnectionDeleted waiter fails on a pending connection, so deletion waits for available first.
-    assert [call.args for call in client.get_waiter.call_args_list] == [
-        ("vpn_connection_available",),
-        ("vpn_connection_deleted",),
-    ]
-    assert [call[0] for call in client.method_calls if call[0] in ("get_waiter", "delete_vpn_connection")] == [
+    # The deleted waiter fails on a pending connection, so deletion waits for available first.
+    client.get_waiter.assert_called_once_with("vpn_connection_available")
+    assert [
+        call[0]
+        for call in client.method_calls
+        if call[0] in ("get_waiter", "delete_vpn_connection", "wait_for_connection_deleted")
+    ] == [
         "get_waiter",
         "delete_vpn_connection",
-        "get_waiter",
+        "wait_for_connection_deleted",
     ]
+
+
+@pytest.mark.parametrize(
+    "outcome,succeeds",
+    [("deleted", True), ("not_found", True), ("pending", False)],
+)
+def test_deleted_waiter_treats_a_vanished_connection_as_deleted(params, outcome, succeeds):
+    params.update(wait_delay=1, wait_timeout=600)
+    client = Session().create_client(
+        "ec2", region_name="us-east-1", aws_access_key_id="EXAMPLE", aws_secret_access_key="EXAMPLE"
+    )
+    describe = Mock(return_value={"VpnConnections": [{"VpnConnectionId": "vpn-123", "State": outcome}]})
+    if outcome == "not_found":
+        describe.side_effect = ClientError(
+            {"Error": {"Code": "InvalidVpnConnectionID.NotFound", "Message": "VPN is missing"}},
+            "DescribeVpnConnections",
+        )
+
+    with patch.object(client, "describe_vpn_connections", describe), patch("botocore.waiter.time.sleep") as sleep:
+        if succeeds:
+            plugin.wait_for_connection_deleted(client, FakeModule(params), "vpn-123", changed=True)
+        else:
+            with pytest.raises(ModuleFail, match="vpn-123 to become deleted") as failure:
+                plugin.wait_for_connection_deleted(client, FakeModule(params), "vpn-123", changed=True)
+
+            assert failure.value.values["changed"] is True
+
+    describe.assert_called_once_with(VpnConnectionIds=["vpn-123"])
+    sleep.assert_not_called()
 
 
 def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings(params, connection):

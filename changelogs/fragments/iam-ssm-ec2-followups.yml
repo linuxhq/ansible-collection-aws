@@ -1,0 +1,16 @@
+---
+breaking_changes:
+  - iam_oidc_provider - reject an empty ``thumbprint_list`` before any AWS call, because IAM retrieves a thumbprint
+    when none is supplied and the empty list could never converge; omit ``thumbprint_list`` instead.
+bugfixes:
+  - ec2_transit_gateway_route_table - document that ``transit_gateway_route_table.tags`` is returned only when EC2
+    returns tags or the module applies or predicts tag changes, rather than always.
+  - ec2_transit_gateway_route_table - document that ``transit_gateway_route_table.creation_time``,
+    ``default_association_route_table``, and ``default_propagation_route_table`` are not returned for a create
+    predicted in check mode.
+  - ec2_transit_gateway_route_table_info - document that ``tags`` is returned only when EC2 returns tags for a
+    route table, rather than always.
+  - ec2_vpc_vpn - treat ``InvalidVpnConnectionID.NotFound`` as deleted while waiting for a deleted VPN connection,
+    instead of failing once EC2 no longer reports the connection.
+  - ssm_document - keep the tags read before ``UpdateDocument`` instead of the tags in its response, so a content
+    update reconciles and returns the tags actually applied.

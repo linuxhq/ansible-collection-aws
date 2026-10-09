@@ -507,6 +507,8 @@ def ensure_present(client, module):
 
                 # A new version can be promoted only after AWS has validated it.
                 wait_for_document(client, module, "active", new_version, changed=True)
+                # UpdateDocument cannot change tags, so keep the tags already read rather than any in the response.
+                updated.pop("Tags", None)
                 current = dict(current or {}, **updated, Content=desired_content)
 
             try:

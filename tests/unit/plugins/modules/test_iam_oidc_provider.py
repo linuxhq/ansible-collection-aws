@@ -200,6 +200,21 @@ def test_provider_list_limits_are_rejected():
         assert_module_rejects(plugin, params, message)
 
 
+def test_empty_thumbprint_list_is_rejected_before_aws_calls():
+    assert_module_rejects(
+        plugin,
+        {
+            "client_id_list": ["client"],
+            "state": "present",
+            "tags": None,
+            "thumbprint_list": [],
+            "url": "https://example.com/id",
+        },
+        "thumbprint_list must not be empty; omit it to let IAM retrieve the thumbprint on create "
+        "and to leave the existing thumbprints unchanged on update",
+    )
+
+
 def test_thumbprint_case_does_not_trigger_an_update():
     client = Mock()
     module = FakeModule(
