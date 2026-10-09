@@ -295,6 +295,7 @@ options:
   zonal_shift_config:
     description:
       - The cluster zonal shift configuration.
+      - This requires botocore C(1.35.45) or later.
     suboptions:
       enabled:
         description:
