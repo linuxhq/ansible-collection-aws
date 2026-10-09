@@ -234,7 +234,7 @@ transit_gateway_route_table:
       sample: available
     tags:
       description: The route table tags.
-      returned: always
+      returned: when returned by EC2, or when the module applies or predicts tag changes
       type: dict
     transit_gateway_id:
       description: The transit gateway ID.

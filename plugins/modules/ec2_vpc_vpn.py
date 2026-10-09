@@ -601,17 +601,59 @@ def find_connection(client, module, connection_id=None, changed=False):
     return matches[0] if matches else None
 
 
-def wait_for_connection(client, module, connection_id, state="available", changed=False):
+def wait_for_connection(client, module, connection_id, changed=False):
     """Wait for the connection; changed reports whether it was already modified, for failure results."""
     try:
-        client.get_waiter(f"vpn_connection_{state}").wait(
+        client.get_waiter("vpn_connection_available").wait(
             VpnConnectionIds=[connection_id],
             WaiterConfig=custom_waiter_config(module.params["wait_timeout"], default_pause=module.params["wait_delay"]),
         )
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
-            e, changed=changed, msg=f"Unable to wait for VPN connection {connection_id} to become {state}"
+            e, changed=changed, msg=f"Unable to wait for VPN connection {connection_id} to become available"
         )
+
+
+def wait_for_connection_deleted(client, module, connection_id, changed=False):
+    """Wait for deletion; changed reports whether the connection was already modified, for failure results."""
+    waiter_name = "VPNConnectionDeleted"
+    # The botocore vpn_connection_deleted acceptors, plus success once EC2 no longer reports the connection.
+    model = {
+        waiter_name: {
+            "operation": "DescribeVpnConnections",
+            # Required model defaults; run_waiter applies the user's wait bounds.
+            "delay": 15,
+            "maxAttempts": 40,
+            "acceptors": [
+                {
+                    "state": "success",
+                    "matcher": "pathAll",
+                    "argument": "VpnConnections[].State",
+                    "expected": "deleted",
+                },
+                {
+                    "state": "failure",
+                    "matcher": "pathAny",
+                    "argument": "VpnConnections[].State",
+                    "expected": "pending",
+                },
+                {
+                    "state": "success",
+                    "matcher": "error",
+                    "expected": "InvalidVpnConnectionID.NotFound",
+                },
+            ],
+        },
+    }
+    run_waiter(
+        module,
+        client,
+        model,
+        waiter_name,
+        f"Unable to wait for VPN connection {connection_id} to become deleted",
+        changed=changed,
+        VpnConnectionIds=[connection_id],
+    )
 
 
 def tunnel_request(options):
@@ -1215,7 +1257,7 @@ def ensure_absent(client, module, connection):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to delete VPN connection {connection_id}")
 
-    wait_for_connection(client, module, connection_id, "deleted", changed=changed)
+    wait_for_connection_deleted(client, module, connection_id, changed=changed)
     module.exit_json(changed=changed, vpn_connection={})
 
 

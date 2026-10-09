@@ -1094,3 +1094,15 @@ def test_absent_route_table_wait_still_treats_absence_as_success():
         patch.object(plugin.time, "sleep"),
     ):
         assert plugin.wait_for_route_table(Mock(), module, "tgw-rtb-1", {"deleted"}, absent_is_success=True) is None
+
+
+def test_untagged_route_table_result_omits_tags_as_documented():
+    returned = yaml.safe_load(plugin.RETURN)["transit_gateway_route_table"]["contains"]["tags"]["returned"]
+    assert returned != "always"
+
+    with pytest.raises(ModuleExit) as raised:
+        plugin.exit_module(
+            FakeModule({"state": "present"}), False, {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+        )
+
+    assert "tags" not in raised.value.values["transit_gateway_route_table"]

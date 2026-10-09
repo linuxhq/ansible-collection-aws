@@ -39,6 +39,7 @@ options:
       - When omitted while creating a provider, IAM retrieves the thumbprint of the
         provider's top intermediate certificate authority.
       - When omitted while updating a provider, the existing thumbprints are left unchanged.
+      - An empty list is rejected because IAM retrieves a thumbprint when none is supplied, so it cannot converge.
     elements: str
     type: list
   url:
@@ -520,6 +521,13 @@ def main():
 
         if len(set(module.params["client_id_list"] or [])) > 100:
             module.fail_json(msg="client_id_list must contain at most 100 unique entries")
+
+        # IAM retrieves a thumbprint when none is supplied, so an empty list can never converge.
+        if module.params["thumbprint_list"] == []:
+            module.fail_json(
+                msg="thumbprint_list must not be empty; omit it to let IAM retrieve the thumbprint on create "
+                "and to leave the existing thumbprints unchanged on update"
+            )
 
         if len({item.lower() for item in module.params["thumbprint_list"] or []}) > 5:
             module.fail_json(msg="thumbprint_list must contain at most 5 unique entries")
