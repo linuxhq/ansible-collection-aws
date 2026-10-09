@@ -13,6 +13,8 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     boto3_tag_list_to_ansible_dict,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
+
 
 def require_valid_tags(module, tags, max_tags, key_max=128):
     if tags is None:
@@ -119,8 +121,35 @@ def reconcile_ssm_tags(
             module.fail_json_aws(e, changed=changed, msg=f"Unable to tag {description} {resource_id}")
 
 
-def reconcile_ec2_tags(module, client, resource_ids, tags_to_set, tag_keys_to_unset, description, changed=False):
-    """Reconcile EC2 tags; changed reports whether the resources were already modified, for failure results."""
+def ec2_tag_methods(tags_to_set, tag_keys_to_unset):
+    """Return the EC2 tag methods reconcile_ec2_tags calls, in the form require_client_methods accepts."""
+    methods = {}
+    if tag_keys_to_unset:
+        methods["delete_tags"] = ("Resources", "Tags")
+
+    if tags_to_set:
+        methods["create_tags"] = ("Resources", "Tags")
+
+    return methods
+
+
+def reconcile_ec2_tags(
+    module,
+    client,
+    resource_ids,
+    tags_to_set,
+    tag_keys_to_unset,
+    description,
+    changed=False,
+    check_sdk=False,
+):
+    """Reconcile EC2 tags; changed reports whether the resources were already modified, for failure results.
+
+    check_sdk first fails if the installed botocore lacks a tag method this call needs.
+    """
+    if check_sdk:
+        require_client_methods(module, client, "EC2", ec2_tag_methods(tags_to_set, tag_keys_to_unset), changed=changed)
+
     identifier = ", ".join(resource_ids)
 
     if tag_keys_to_unset:

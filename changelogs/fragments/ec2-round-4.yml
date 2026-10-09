@@ -1,0 +1,12 @@
+---
+bugfixes:
+  - ec2_vpc_prefix_list - treat an empty ``entries[].description`` as no description. EC2 does not store empty descriptions,
+    so the entry never converged and every run created a new prefix list version. The empty description is no longer sent.
+minor_changes:
+  - account_region - document that ``account_id`` requires botocore 1.29.70 or later.
+  - ec2_instance_type_info - document the returned ``fpga_info``, ``inference_accelerator_info``, ``media_accelerator_info``,
+    ``neuron_info``, ``nitro_tpm_info``, ``phc_support``, and ``reboot_migration_support`` fields.
+  - ec2_transit_gateway_route_table - remove route type and deleted state checks that the route search already guarantees.
+  - ec2_transit_gateway_route_table, ec2_vpc_prefix_list, ec2_vpc_vpn - share the EC2 tag botocore support check
+    in the collection tag helpers.
+...

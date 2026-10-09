@@ -1,12 +1,14 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 from botocore.exceptions import ClientError
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import tags as tag_utils
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
+    ec2_tag_methods,
     reconcile_arn_tags,
     reconcile_ec2_tags,
     reconcile_ssm_tags,
@@ -105,6 +107,72 @@ def test_reconcile_ec2_tags_only_calls_nonempty_operations(tags_to_set, tag_keys
     reconcile_ec2_tags(Mock(), client, ["rtb-1"], tags_to_set, tag_keys_to_unset, "resource")
     getattr(client, called).assert_called_once()
     getattr(client, not_called).assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("tags_to_set", "tag_keys_to_unset", "methods"),
+    (
+        ({}, [], {}),
+        ({"new": "value"}, [], {"create_tags": ("Resources", "Tags")}),
+        ({}, ["old"], {"delete_tags": ("Resources", "Tags")}),
+        ({"new": "value"}, ["old"], {"create_tags": ("Resources", "Tags"), "delete_tags": ("Resources", "Tags")}),
+    ),
+)
+def test_ec2_tag_methods_lists_only_needed_methods(tags_to_set, tag_keys_to_unset, methods):
+    assert ec2_tag_methods(tags_to_set, tag_keys_to_unset) == methods
+
+
+@pytest.mark.parametrize("changed", (False, True))
+def test_reconcile_ec2_tags_checks_sdk_before_writing(changed):
+    client = Mock()
+    module = FakeModule({})
+    calls = []
+    with patch.object(
+        tag_utils, "require_client_methods", side_effect=lambda *args, **kwargs: calls.append("sdk")
+    ) as require:
+        client.delete_tags.side_effect = lambda **kwargs: calls.append("delete_tags")
+        client.create_tags.side_effect = lambda **kwargs: calls.append("create_tags")
+        reconcile_ec2_tags(
+            module, client, ["pl-1"], {"new": "value"}, ["old"], "resource", changed=changed, check_sdk=True
+        )
+
+    require.assert_called_once_with(
+        module,
+        client,
+        "EC2",
+        {"create_tags": ("Resources", "Tags"), "delete_tags": ("Resources", "Tags")},
+        changed=changed,
+    )
+    assert calls == ["sdk", "delete_tags", "create_tags"]
+
+
+def test_reconcile_ec2_tags_sdk_failure_writes_nothing():
+    client = Mock()
+    module = FakeModule({})
+    with (
+        patch.object(
+            tag_utils,
+            "require_client_methods",
+            side_effect=lambda module, *args, **kwargs: module.fail_json(changed=kwargs["changed"], msg="old botocore"),
+        ),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        reconcile_ec2_tags(
+            module, client, ["pl-1"], {"new": "value"}, ["old"], "resource", changed=True, check_sdk=True
+        )
+
+    assert raised.value.values == {"changed": True, "msg": "old botocore"}
+    client.create_tags.assert_not_called()
+    client.delete_tags.assert_not_called()
+
+
+def test_reconcile_ec2_tags_skips_sdk_check_by_default():
+    client = Mock()
+    with patch.object(tag_utils, "require_client_methods") as require:
+        reconcile_ec2_tags(Mock(), client, ["fl-1"], {"new": "value"}, [], "EC2 flow logs")
+
+    require.assert_not_called()
+    client.create_tags.assert_called_once()
 
 
 @pytest.mark.parametrize(

@@ -20,6 +20,7 @@ options:
       - Omit to use the account of the calling identity, including a management account.
       - Cross-account access requires organization management or delegated administrator credentials,
         all organization features, and trusted access for Account Management.
+      - Requires botocore 1.29.70 or later.
     type: str
     version_added: "2.6.0"
   name:

@@ -122,6 +122,10 @@ instance_types:
       description: Amazon EBS settings for the instance type.
       returned: when available
       type: dict
+    fpga_info:
+      description: FPGA accelerator settings for the instance type.
+      returned: when available
+      type: dict
     free_tier_eligible:
       description: Whether the instance type is eligible for the free tier.
       returned: when available
@@ -138,6 +142,10 @@ instance_types:
       description: Hypervisor for the instance type.
       returned: when available
       type: str
+    inference_accelerator_info:
+      description: Inference accelerator settings for the instance type.
+      returned: when available
+      type: dict
     instance_storage_info:
       description: Instance storage for the instance type.
       returned: when available
@@ -156,16 +164,32 @@ instance_types:
         - The size in MiB is returned as C(size_in_mi_b).
       returned: when available
       type: dict
+    media_accelerator_info:
+      description: Media accelerator settings for the instance type.
+      returned: when available
+      type: dict
     network_info:
       description: Network settings for the instance type.
+      returned: when available
+      type: dict
+    neuron_info:
+      description: Neuron accelerator settings for the instance type.
       returned: when available
       type: dict
     nitro_enclaves_support:
       description: Whether Nitro Enclaves is supported.
       returned: when available
       type: str
+    nitro_tpm_info:
+      description: Supported NitroTPM versions for the instance type.
+      returned: when available
+      type: dict
     nitro_tpm_support:
       description: Whether NitroTPM is supported.
+      returned: when available
+      type: str
+    phc_support:
+      description: Whether a local Precision Time Protocol (PTP) hardware clock (PHC) is supported.
       returned: when available
       type: str
     placement_group_info:
@@ -176,6 +200,10 @@ instance_types:
       description: Processor of the instance type.
       returned: when available
       type: dict
+    reboot_migration_support:
+      description: Whether reboot migration during a user-initiated reboot is supported for instances with a scheduled C(system-reboot) event.
+      returned: when available
+      type: str
     supported_boot_modes:
       description: Supported boot modes.
       returned: when available

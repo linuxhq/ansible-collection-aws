@@ -36,6 +36,8 @@ options:
       - This list must contain at least one entry, and entry CIDR blocks must
         be unique.
       - Entries without O(entries[].description) have no description.
+      - An empty O(entries[].description) is the same as omitting it, since
+        EC2 does not store empty descriptions.
     elements: dict
     suboptions:
       cidr:
@@ -643,13 +645,15 @@ def ensure_present(client, module, owner_id):
 
             # Tag deltas come from the describe above; the update response may omit tags.
             if tags_to_set or tag_keys_to_unset:
-                reconcile_tags(
-                    client,
+                reconcile_ec2_tags(
                     module,
-                    current["PrefixListId"],
+                    client,
+                    [current["PrefixListId"]],
                     tags_to_set,
                     tag_keys_to_unset,
+                    "EC2 VPC managed prefix list",
                     changed=entries_changed or resource_changed,
+                    check_sdk=True,
                 )
                 current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
         elif changed and module.check_mode:
@@ -678,27 +682,6 @@ def ensure_present(client, module, owner_id):
         result["prefix_list_id"] = prefix_list_id
 
     module.exit_json(**result)
-
-
-def reconcile_tags(client, module, prefix_list_id, tags_to_set, tag_keys_to_unset, changed=False):
-    """Reconcile tags; changed reports whether the prefix list was already modified, for failure results."""
-    tag_methods = {}
-    if tag_keys_to_unset:
-        tag_methods["delete_tags"] = ("Resources", "Tags")
-
-    if tags_to_set:
-        tag_methods["create_tags"] = ("Resources", "Tags")
-
-    require_client_methods(module, client, "EC2", tag_methods, changed=changed)
-    reconcile_ec2_tags(
-        module,
-        client,
-        [prefix_list_id],
-        tags_to_set,
-        tag_keys_to_unset,
-        "EC2 VPC managed prefix list",
-        changed=changed,
-    )
 
 
 def get_current(client, module, owner_id, changed=False):
@@ -924,8 +907,9 @@ def comparable_entries(entries):
     result = []
     for entry in normalized_entries or []:
         normalized_entry = {}
+        # EC2 returns a cleared description as no description, so an empty one is never sent or compared.
         for field in ("cidr", "description"):
-            if entry.get(field) is not None:
+            if entry.get(field):
                 normalized_entry[field] = entry.get(field)
 
         result.append(normalized_entry)

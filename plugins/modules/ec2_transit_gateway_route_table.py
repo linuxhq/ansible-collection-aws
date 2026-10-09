@@ -301,7 +301,6 @@ ROUTE_STATE_ORDER = {
     "blackhole": 1,
     "pending": 2,
     "deleting": 3,
-    "deleted": 4,
 }
 
 
@@ -359,27 +358,6 @@ def desired_tags(module):
 
 def current_tags(route_table):
     return boto3_tag_list_to_ansible_dict((route_table or {}).get("Tags", []))
-
-
-def reconcile_tags(client, module, resource_id, tags_to_set, tag_keys_to_unset, changed=False):
-    """Reconcile tags; changed reports whether the route table was already modified, for failure results."""
-    tag_methods = {}
-    if tag_keys_to_unset:
-        tag_methods["delete_tags"] = ("Resources", "Tags")
-
-    if tags_to_set:
-        tag_methods["create_tags"] = ("Resources", "Tags")
-
-    require_client_methods(module, client, "EC2", tag_methods, changed=changed)
-    reconcile_ec2_tags(
-        module,
-        client,
-        [resource_id],
-        tags_to_set,
-        tag_keys_to_unset,
-        "EC2 transit gateway route table",
-        changed=changed,
-    )
 
 
 def route_sort_key(route):
@@ -591,7 +569,7 @@ def static_routes(client, module, transit_gateway_route_table_id, changed=False)
 
 
 def desired_route_matches(route, desired):
-    if route is None or route.get("Type") != "static":
+    if route is None:
         return False
 
     if route.get("State") not in ROUTE_PRESENT_STATES:
@@ -613,7 +591,7 @@ def desired_route_matches(route, desired):
 
 
 def route_is_static(route):
-    return route is not None and route.get("Type") == "static" and route.get("State") not in ROUTE_DELETED_STATES
+    return route is not None and route.get("State") not in ROUTE_DELETED_STATES
 
 
 def check_mode_route(desired):
@@ -689,8 +667,8 @@ def wait_for_route_absent(client, module, transit_gateway_route_table_id, destin
     while time.monotonic() < deadline:
         route = get_route(client, module, transit_gateway_route_table_id, destination_cidr_block, changed=changed)
 
-        if route is None or route.get("Type") != "static" or route.get("State") == "deleted":
-            return route
+        if route is None:
+            return
 
         time.sleep(
             min(
@@ -853,13 +831,15 @@ def ensure_present(client, module):
 
         if tag_changed:
             if not module.check_mode:
-                reconcile_tags(
-                    client,
+                reconcile_ec2_tags(
                     module,
-                    route_table_id(route_table),
+                    client,
+                    [route_table_id(route_table)],
                     tags_to_set,
                     tag_keys_to_unset,
+                    "EC2 transit gateway route table",
                     changed=mutated,
+                    check_sdk=True,
                 )
                 mutated = True
 
