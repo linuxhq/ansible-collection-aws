@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - ses_sandbox - treat review details that contain only a case ID and no status as an existing production access request,
+    so check mode no longer predicts a change and unchanged details are not submitted again on every run.
+  - sns_topic_attributes - omit ``kms_master_key_id`` from the check mode result when ``kms_master_key_id=""`` disables encryption,
+    matching the attributes AWS returns after a real run.

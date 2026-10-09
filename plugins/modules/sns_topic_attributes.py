@@ -85,7 +85,9 @@ attributes:
       returned: when returned by AWS
       type: str
     kms_master_key_id:
-      description: AWS KMS key identifier used for topic encryption.
+      description:
+        - AWS KMS key identifier used for topic encryption.
+        - This is omitted when encryption is disabled, including in check mode.
       returned: when returned by AWS
       type: str
     maximum_message_size:
@@ -200,6 +202,8 @@ def main():
 
     if changed and module.check_mode:
         attributes = dict(attributes, KmsMasterKeyId=kms_master_key_id)
+        if not kms_master_key_id:
+            attributes.pop("KmsMasterKeyId")
     elif changed:
         try:
             client.set_topic_attributes(
