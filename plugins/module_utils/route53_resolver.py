@@ -28,23 +28,28 @@ def comparable_ip_fields(item, fields):
 
 def comparable_ips_match(current, desired):
     """Pair each desired entry with a current one whose fields match; omitted fields keep AWS values."""
-    remaining = list(current)
+    return len(current) == len(desired) and None not in comparable_ips_matches(current, desired)
+
+
+def comparable_ips_matches(current, desired):
+    """Return, for each desired entry, the index of the current entry it matches, or None."""
+    remaining = list(range(len(current)))
+    matches = [None] * len(desired)
     # Match the most specific entries first so they are not taken by broader ones.
-    for desired_entry in sorted(desired, key=len, reverse=True):
+    for desired_index in sorted(range(len(desired)), key=lambda index: len(desired[index]), reverse=True):
         match = next(
             (
-                index
-                for index, current_entry in enumerate(remaining)
-                if all(current_entry.get(field) == value for field, value in desired_entry.items())
+                current_index
+                for current_index in remaining
+                if all(current[current_index].get(field) == value for field, value in desired[desired_index].items())
             ),
             None,
         )
-        if match is None:
-            return False
+        if match is not None:
+            remaining.remove(match)
+            matches[desired_index] = match
 
-        remaining.pop(match)
-
-    return not remaining
+    return matches
 
 
 def require_ip_versions(module, entry, option):

@@ -9,6 +9,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver impor
     AWS_OWNED_RULE_OWNER,
     comparable_ip_fields,
     comparable_ips_match,
+    comparable_ips_matches,
     require_ip_versions,
     resolver_resource_with_tags,
     response_items,
@@ -237,3 +238,9 @@ def test_validate_resolver_endpoint_rejects_malformed_endpoints(endpoint, messag
         validate_resolver_endpoint(FakeModule({}), endpoint, "list_resolver_endpoints", changed=True)
 
     assert raised.value.values == {"changed": True, "msg": message}
+
+
+def test_comparable_ips_matches_reports_each_desired_entry_match():
+    current = [{"ip": "192.0.2.1", "port": 53}, {"ip": "192.0.2.2", "port": 53}]
+    desired = [{"ip": "192.0.2.2"}, {"ip": "192.0.2.9"}, {"ip": "192.0.2.1", "port": 53}]
+    assert comparable_ips_matches(current, desired) == [1, None, 0]
