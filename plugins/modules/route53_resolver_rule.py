@@ -90,12 +90,16 @@ options:
   wait_delay:
     description:
       - The delay between polling attempts when O(wait=true).
+      - When O(state=present), this also applies regardless of O(wait) before
+        a rule that is still changing is updated.
       - This must be 1 or greater.
     default: 5
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait when O(wait=true).
+      - When O(state=present), this also applies regardless of O(wait) before
+        a rule that is still changing is updated.
       - This must be 1 or greater.
     default: 300
     type: int
@@ -267,6 +271,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver impor
     AWS_OWNED_RULE_OWNER,
     comparable_ip_fields,
     comparable_ips_match,
+    comparable_ips_matches,
     require_ip_versions,
     resolver_resource_with_tags,
     resolver_rule_has_details,
@@ -493,6 +498,10 @@ def ensure_present(client, module):
                 )
             )
 
+    if current is not None and resource_changed:
+        # UpdateResolverRule resets omitted target fields, so keep the values of the matched current targets.
+        request = dict(request, TargetIps=target_ips_with_current_fields(rule["TargetIps"], request["TargetIps"]))
+
     if changed and module.check_mode:
         # Only a configuration change replaces the stored values; a tag-only change keeps them.
         rule = dict(rule or {}, **request) if resource_changed else dict(rule)
@@ -614,6 +623,29 @@ def wait_for_resolver_rule_status(client, module, resolver_rule_id, state, allow
         )
 
     return rule
+
+
+def target_ips_with_current_fields(current_target_ips, target_ips):
+    """Fill omitted port, protocol, and SNI of each target from the current target it matches."""
+    matches = comparable_ips_matches(
+        [comparable_target_ip(target_ip) for target_ip in current_target_ips],
+        [comparable_target_ip(target_ip) for target_ip in target_ips],
+    )
+    return [
+        (
+            target_ip
+            if match is None
+            else dict(
+                {
+                    field: current_target_ips[match][field]
+                    for field in ("Port", "Protocol", "ServerNameIndication")
+                    if current_target_ips[match].get(field) is not None
+                },
+                **target_ip,
+            )
+        )
+        for target_ip, match in zip(target_ips, matches)
+    ]
 
 
 def comparable_target_ip(target_ip):

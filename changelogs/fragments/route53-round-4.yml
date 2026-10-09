@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - route53_resolver_rule - keep the current port, protocol, and server name indication of a matched target when an
+    update omits them, instead of letting AWS reset them to its defaults.
+  - route53_resolver - document every change that fails without modifying the endpoint, including ``resolver_endpoint_type``
+    changes to or from ``IPV6`` and direct ``Do53`` to ``DoH`` protocol switches on ``INBOUND`` endpoints.
+  - route53_resolver, route53_resolver_rule - document when ``wait_delay`` and ``wait_timeout`` apply regardless of ``wait``.
