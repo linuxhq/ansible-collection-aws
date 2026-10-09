@@ -456,6 +456,78 @@ def test_listener_reconciliation_reuses_protocol_listener_for_update():
     assert deletes == []
 
 
+def test_listener_reconciliation_keeps_unlisted_listeners_without_purge():
+    current = [review_listener("arn:listener", 443, 443)]
+    module = FakeModule({"listeners": [review_desired(8080, 8080)], "purge_listeners": False})
+
+    matched, updates, creates, deletes = plugin.reconcile_listeners(module, current)
+
+    assert matched == [(current[0], None)]
+    assert updates == []
+    assert creates == [review_desired(8080, 8080)]
+    assert deletes == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_listener_creation_without_purge_leaves_unlisted_listeners_unchanged(check_mode):
+    current = review_listener("arn:listener", 443, 443)
+    module = FakeModule(
+        {"listeners": [review_desired(8080, 8080)], "purge_listeners": False},
+        check_mode=check_mode,
+    )
+    client = Mock()
+    client.create_listener.return_value = {
+        "Listener": {
+            "ClientAffinity": "NONE",
+            "ListenerArn": "arn:new",
+            "PortRanges": [{"FromPort": 8080, "ToPort": 8080}],
+            "Protocol": "TCP",
+        }
+    }
+    with (
+        patch.object(plugin, "get_listeners", return_value=[current]),
+        patch.object(plugin, "wait_for_accelerator"),
+        patch.object(plugin, "delete_listener") as delete,
+    ):
+        changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    assert changed
+    client.update_listener.assert_not_called()
+    delete.assert_not_called()
+    if check_mode:
+        client.create_listener.assert_not_called()
+    else:
+        client.create_listener.assert_called_once()
+        assert client.create_listener.call_args.kwargs["PortRanges"] == [{"FromPort": 8080, "ToPort": 8080}]
+
+    created = {"client_affinity": "NONE", "port_ranges": [{"from_port": 8080, "to_port": 8080}], "protocol": "TCP"}
+    if not check_mode:
+        created["listener_arn"] = "arn:new"
+
+    assert listeners == [current, created]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_listener_creation_without_purge_fails_on_unlisted_overlap(check_mode):
+    current = review_listener("arn:listener", 443, 443)
+    module = FakeModule(
+        {"listeners": [review_desired(440, 450)], "purge_listeners": False},
+        check_mode=check_mode,
+    )
+    client = Mock()
+    with (
+        patch.object(plugin, "get_listeners", return_value=[current]),
+        patch.object(plugin, "delete_listener") as delete,
+        pytest.raises(ModuleFail, match="overlap retained listener arn:listener") as raised,
+    ):
+        plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    assert raised.value.values["changed"] is False
+    delete.assert_not_called()
+    client.update_listener.assert_not_called()
+    client.create_listener.assert_not_called()
+
+
 def test_provider_limits_are_rejected():
     cases = [
         (
