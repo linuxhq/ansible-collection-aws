@@ -217,15 +217,15 @@ transit_gateway_route_table:
   contains:
     creation_time:
       description: The time the route table was created.
-      returned: always
+      returned: always, except for a create predicted in check mode
       type: str
     default_association_route_table:
       description: Whether this is the default association route table for the transit gateway.
-      returned: always
+      returned: always, except for a create predicted in check mode
       type: bool
     default_propagation_route_table:
       description: Whether this is the default propagation route table for the transit gateway.
-      returned: always
+      returned: always, except for a create predicted in check mode
       type: bool
     state:
       description: The route table state.
