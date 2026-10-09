@@ -13,9 +13,11 @@ description:
     reflects the account state observed from AWS, including in check mode.
   - Without O(website_url) the module only reports the current account details.
   - A request is submitted when the account details differ from the requested
-    details, or when production access is disabled and no request was made.
-    A pending, denied, or failed request with the same details is not
-    submitted again; a denied or failed request produces a warning.
+    details, or when production access is disabled and AWS returns no review
+    details for the account.
+  - A request with the same details is not submitted again while AWS returns
+    review details for it, including review details with only a case
+    identifier and no status. A denied or failed request produces a warning.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -359,12 +361,11 @@ def main():
         field: value for field, value in comparable_details(current_details).items() if field in desired_compared
     }
     production_access_enabled = current_account.get("production_access_enabled", False)
-    review_status = (current_details.get("review_details") or {}).get("status")
+    review_details = current_details.get("review_details") or {}
+    review_status = review_details.get("status")
 
-    # A request with unchanged details is not submitted again while it is reviewed or after it is rejected.
-    changed = ready and (
-        compared_details != desired_compared or (not production_access_enabled and review_status is None)
-    )
+    # Any review details, even a case ID without a status, show a request was made; unchanged details are not resent.
+    changed = ready and (compared_details != desired_compared or (not production_access_enabled and not review_details))
 
     if ready and not changed and not production_access_enabled and review_status in ("DENIED", "FAILED"):
         module.warn(

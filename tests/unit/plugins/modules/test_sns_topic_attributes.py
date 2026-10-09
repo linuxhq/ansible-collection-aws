@@ -166,6 +166,18 @@ def test_check_mode_predicts_the_attribute_without_reading_again():
     assert client.get_topic_attributes.call_count == 1
 
 
+def test_check_mode_omits_the_key_when_disabling_encryption():
+    client = client_with({"KmsMasterKeyId": "alias/aws/sns", "TopicArn": "arn:topic"})
+    result, _require = run(
+        FakeModule({"kms_master_key_id": "", "topic_arn": "arn:topic"}, check_mode=True, client=client)
+    )
+
+    assert result.values["changed"] is True
+    assert result.values["attributes"] == {"topic_arn": "arn:topic"}
+    client.set_topic_attributes.assert_not_called()
+    assert client.get_topic_attributes.call_count == 1
+
+
 def test_read_failure_after_setting_the_attribute_reports_changed():
     error = ClientError({"Error": {"Code": "InternalError", "Message": "failed"}}, "GetTopicAttributes")
     client = Mock(get_topic_attributes=Mock(side_effect=[{"Attributes": {}}, error]))
