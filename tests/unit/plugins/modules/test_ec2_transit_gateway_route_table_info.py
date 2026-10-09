@@ -1,6 +1,7 @@
 from unittest.mock import Mock, patch
 
 import pytest
+import yaml
 
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_transit_gateway_route_table_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -172,6 +173,26 @@ def test_missing_route_table_id_returns_an_empty_list():
 
     assert raised.value.values["transit_gateway_route_tables"] == []
     assert "TransitGatewayRouteTableIds" not in query.call_args.kwargs
+
+
+def test_untagged_route_table_result_omits_tags_as_documented():
+    returned = yaml.safe_load(plugin.RETURN)["transit_gateway_route_tables"]["contains"]["tags"]["returned"]
+    assert returned != "always"
+
+    module = FakeModule({"filters": None, "transit_gateway_route_table_ids": None}, client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "query_list",
+            return_value=[{"State": "pending", "TransitGatewayRouteTableId": "tgw-rtb-1"}],
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert "tags" not in raised.value.values["transit_gateway_route_tables"][0]
 
 
 def test_route_table_deleted_before_route_search_is_omitted():
