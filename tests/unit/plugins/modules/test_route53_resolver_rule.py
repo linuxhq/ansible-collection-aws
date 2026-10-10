@@ -505,39 +505,108 @@ def test_tag_change_rejects_rule_without_arn():
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("field,value", [("domain_name", "new.example.com"), ("rule_type", "SYSTEM")])
-def test_immutable_changes_preserve_rule(check_mode, field, value):
-    params = {
-        "domain_name": "example.com",
-        "name": "main",
-        "purge_tags": True,
-        "resolver_endpoint_id": "rslvr-out-1",
-        "rule_type": "FORWARD",
-        "tags": {"new": "value"},
-        "target_ips": [{"ip": "192.0.2.1"}],
-        "wait": False,
-    }
-    params[field] = value
-    module = FakeModule(params, check_mode=check_mode)
-    current = {
-        "DomainName": "example.com",
-        "Id": "rslvr-rr-1",
-        "ResolverEndpointId": "rslvr-out-1",
-        "RuleType": "FORWARD",
-        "TargetIps": [{"Ip": "192.0.2.1"}],
-    }
+@pytest.mark.parametrize(
+    "field,current",
+    [
+        (
+            "domain_name",
+            {
+                "DomainName": "old.example.com",
+                "Id": "rslvr-rr-1",
+                "ResolverEndpointId": "rslvr-out-1",
+                "RuleType": "FORWARD",
+                "TargetIps": [{"Ip": "192.0.2.1"}],
+            },
+        ),
+        # A non-FORWARD rule has no endpoint or targets; rule_type choices only accept FORWARD.
+        ("rule_type", {"DomainName": "example.com", "Id": "rslvr-rr-1", "Name": "main", "RuleType": "SYSTEM"}),
+    ],
+)
+def test_immutable_changes_preserve_rule(check_mode, field, current):
+    module = FakeModule(
+        {
+            "domain_name": "example.com",
+            "name": "main",
+            "purge_tags": True,
+            "resolver_endpoint_id": "rslvr-out-1",
+            "rule_type": "FORWARD",
+            "state": "present",
+            "tags": {"new": "value"},
+            "target_ips": [{"ip": "192.0.2.1"}],
+            "wait": False,
+        },
+        check_mode=check_mode,
+    )
     client = Mock()
+    if field == "rule_type":
+        # Exercise the real name lookup so the non-FORWARD rule is not rejected as incomplete.
+        lookup = patch.object(plugin, "query_list", return_value=[current])
+    else:
+        lookup = patch.object(plugin, "get_resolver_rule_by_name", return_value=current)
+
     with (
-        patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
+        lookup,
         patch.object(plugin, "delete_resolver_rule") as delete,
         patch.object(plugin, "create_resolver_rule") as create,
-        pytest.raises(ModuleFail, match=field),
+        pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module)
 
+    assert raised.value.values["msg"].startswith(f"{field} cannot be changed")
     delete.assert_not_called()
     create.assert_not_called()
     assert not client.mock_calls
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("rule_type", ["DELEGATE", "RECURSIVE", "SYSTEM"])
+def test_absent_rejects_same_named_non_forward_rule(check_mode, rule_type):
+    module = FakeModule({"name": "corp", "state": "absent", "wait": True}, check_mode=check_mode)
+    current = {"DomainName": "corp.example.com", "Id": "rslvr-rr-1", "Name": "corp", "RuleType": rule_type}
+    client = Mock()
+    with (
+        patch.object(plugin, "query_list", return_value=[current]),
+        patch.object(plugin, "delete_resolver_rule") as delete,
+        patch.object(plugin, "wait_for_resolver_rule_status") as wait,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["msg"] == (
+        f"AWS Route53 Resolver rule corp (rslvr-rr-1) is a {rule_type} rule; "
+        "only FORWARD rules can be managed. The existing rule has not been modified."
+    )
+    delete.assert_not_called()
+    wait.assert_not_called()
+    assert not client.mock_calls
+
+
+@pytest.mark.parametrize("server_name_indication, gated", [("dns.example.com", True), (None, False)])
+def test_server_name_indication_requires_a_supporting_botocore(server_name_indication, gated):
+    target_ip = {
+        "ip": "192.0.2.1",
+        "ipv6": None,
+        "port": None,
+        "protocol": "DoH",
+        "server_name_indication": server_name_indication,
+    }
+    module = FakeModule(rule_params(target_ips=[target_ip]))
+    module.require_botocore_at_least = Mock(side_effect=ModuleFail({"msg": "botocore"}))
+
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods", side_effect=ModuleExit({})),
+        pytest.raises(ModuleFail if gated else ModuleExit),
+    ):
+        plugin.main()
+
+    if gated:
+        module.require_botocore_at_least.assert_called_once_with(
+            "1.35.38", reason="for target_ips[].server_name_indication"
+        )
+    else:
+        module.require_botocore_at_least.assert_not_called()
 
 
 @pytest.mark.parametrize("wait", [False, True])

@@ -80,6 +80,7 @@ options:
       server_name_indication:
         description:
           - The server name indication for the target.
+          - This requires botocore C(1.35.38) or later.
         type: str
     type: list
   wait:
@@ -432,6 +433,15 @@ def delete_resolver_rule(client, module, rule):
 
 def ensure_absent(client, module):
     rule = get_resolver_rule_by_name(client, module)
+    if rule is not None and rule.get("RuleType", "FORWARD") != "FORWARD":
+        module.fail_json(
+            changed=False,
+            msg=(
+                f"AWS Route53 Resolver rule {module.params['name']} ({rule['Id']}) is a {rule['RuleType']} rule; "
+                "only FORWARD rules can be managed. The existing rule has not been modified."
+            ),
+        )
+
     deleting = (rule or {}).get("Status") == "DELETING"
     changed = rule is not None and not deleting
 
@@ -742,7 +752,14 @@ def get_resolver_rule_by_name(client, module, changed=False):
         return rules[0]
 
     # ListResolverRules returns the full rule, so only the tags need another call.
-    rule = validate_resolver_rule(module, rules[0], "list_resolver_rules", require_details=True, changed=changed)
+    # Only FORWARD rules have an endpoint and targets; other types reach the immutable rule_type check.
+    rule = validate_resolver_rule(
+        module,
+        rules[0],
+        "list_resolver_rules",
+        require_details=rules[0].get("RuleType") == "FORWARD",
+        changed=changed,
+    )
     return resolver_resource_with_tags(client, module, rule, "rule", changed=changed)
 
 
@@ -828,6 +845,9 @@ def main():
             module.fail_json(msg="target_ips[].server_name_indication must contain at most 255 characters")
 
     require_positive_wait_bounds(module, always=state == "present")
+
+    if any(target_ip.get("server_name_indication") is not None for target_ip in module.params["target_ips"] or []):
+        module.require_botocore_at_least("1.35.38", reason="for target_ips[].server_name_indication")
 
     client = module.client("route53resolver", retry_decorator=AWSRetry.jittered_backoff())
     methods = {"list_resolver_rules": ("Filters", "MaxResults", "NextToken")}

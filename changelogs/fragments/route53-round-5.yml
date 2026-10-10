@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - route53_resolver_rule - fail with a clear message instead of an SDK parameter validation error when
+    ``target_ips[].server_name_indication`` is set with botocore older than 1.35.38.
+  - route53_resolver_rule - report that ``rule_type`` cannot be changed instead of an incomplete rule error
+    when a same-named ``SYSTEM``, ``RECURSIVE``, or ``DELEGATE`` rule exists with ``state=present``.
+  - route53_resolver_rule - fail without deleting a same-named ``SYSTEM``, ``RECURSIVE``, or ``DELEGATE`` rule
+    with ``state=absent``; only ``FORWARD`` rules are managed.
