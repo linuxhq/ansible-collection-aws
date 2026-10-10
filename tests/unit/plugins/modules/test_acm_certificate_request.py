@@ -492,6 +492,72 @@ def test_service_managed_certificate_is_not_reused():
     assert result["certificate_arn"] == "arn:new"
 
 
+def run_request_with_botocore_gate(client, summaries, require):
+    module = FakeModule(
+        {
+            "domain_name": "example.com",
+            "idempotency_token": None,
+            "purge_tags": True,
+            "subject_alternative_names": None,
+            "tags": {"Name": "example"},
+        },
+        client=client,
+    )
+    module.require_botocore_at_least = require
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=summaries),
+        pytest.raises((ModuleExit, ModuleFail)) as result,
+    ):
+        plugin.main()
+
+    return result.value.values
+
+
+def test_reuse_requires_botocore_that_models_managed_by():
+    client = Mock()
+    # botocore before 1.38.4 drops ManagedBy, so a CloudFront certificate looks reusable.
+    client.describe_certificate.return_value = issued_certificate("arn:cloudfront")
+    require = Mock(side_effect=ModuleFail({"msg": "botocore"}))
+
+    result = run_request_with_botocore_gate(
+        client,
+        [{"CertificateArn": "arn:cloudfront", "DomainName": "example.com"}],
+        require,
+    )
+
+    assert result["msg"] == "botocore"
+    require.assert_called_once_with("1.38.4", reason="to reuse an existing certificate")
+    client.list_tags_for_certificate.assert_not_called()
+    client.add_tags_to_certificate.assert_not_called()
+    client.remove_tags_from_certificate.assert_not_called()
+    client.request_certificate.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "summaries, described",
+    [
+        ([], None),
+        (
+            [{"CertificateArn": "arn:other", "DomainName": "example.com"}],
+            issued_certificate("arn:other", Type="IMPORTED"),
+        ),
+    ],
+)
+def test_request_without_reuse_does_not_require_newer_botocore(summaries, described):
+    client = Mock()
+    client.describe_certificate.return_value = described
+    client.request_certificate.return_value = {"CertificateArn": "arn:new"}
+    require = Mock(side_effect=ModuleFail({"msg": "botocore"}))
+
+    result = run_request_with_botocore_gate(client, summaries, require)
+
+    assert result["changed"] is True
+    assert result["certificate_arn"] == "arn:new"
+    require.assert_not_called()
+
+
 def run_tagged_request(client, tags, check_mode=False):
     client.describe_certificate.return_value = issued_certificate("arn:match")
     module = FakeModule(

@@ -1,0 +1,11 @@
+---
+bugfixes:
+  - acm_certificate_request - require botocore 1.38.4 or later before reusing an existing certificate, because
+    older botocore releases drop the ``ManagedBy`` field and could reuse or retag a certificate managed by
+    another AWS service, such as CloudFront. Requesting a new certificate still works with older botocore.
+  - account_region - predict the ``ENABLING`` or ``DISABLING`` status in check mode when ``wait=false``,
+    matching the status a real run returns, instead of the settled ``ENABLED`` or ``DISABLED`` status.
+  - eks_cluster - return an empty ``cluster`` once ``state=absent`` deletes the cluster instead of the
+    description from before the deletion, and return the cluster in ``DELETING`` status when ``wait=false``.
+  - glue_connection_info - document that ``apply_override_for_compute_environment`` and the
+    ``ConnectionSchemaVersion`` filter key require botocore 1.35.74 or later.

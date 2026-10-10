@@ -300,7 +300,7 @@ def ensure_present(client, module):
             )
 
     if changed and module.check_mode:
-        current_status = "ENABLED"
+        current_status = "ENABLED" if module.params["wait"] else "ENABLING"
     elif (
         module.params["wait"] and not module.check_mode and (changed or previous_status not in PRESENT_STEADY_STATUSES)
     ):
@@ -352,7 +352,7 @@ def ensure_absent(client, module):
             )
 
     if changed and module.check_mode:
-        current_status = "DISABLED"
+        current_status = "DISABLED" if module.params["wait"] else "DISABLING"
     elif module.params["wait"] and not module.check_mode and (changed or previous_status not in ABSENT_STEADY_STATUSES):
         current_status = wait_for_status(
             client,

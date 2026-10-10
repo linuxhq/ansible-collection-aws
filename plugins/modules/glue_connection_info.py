@@ -17,6 +17,7 @@ options:
       - The compute environment whose overridden properties to retrieve for
         the selected Glue connection in O(name).
       - Requires O(name).
+      - This requires botocore C(1.35.74) or later.
     choices: [SPARK, ATHENA, PYTHON]
     type: str
   catalog_id:
@@ -29,6 +30,7 @@ options:
       - Passed unchanged to the Glue C(GetConnections) API as C(Filter), so keys
         use the API field names C(ConnectionType), C(ConnectionSchemaVersion),
         and C(MatchCriteria).
+      - The C(ConnectionSchemaVersion) key requires botocore C(1.35.74) or later.
       - Mutually exclusive with O(name).
     type: dict
   hide_password:

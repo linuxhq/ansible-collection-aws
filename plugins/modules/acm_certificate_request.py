@@ -14,6 +14,10 @@ description:
     C(ISSUED), and its domain name and subject alternative names match; the
     most recently created certificate is reused when several match.
   - Certificates managed by another AWS service, such as CloudFront, are never reused.
+  - Reusing an existing certificate requires botocore C(1.38.4) or later so
+    that certificates managed by another AWS service can be identified. A new
+    certificate can still be requested with older botocore releases when no
+    existing certificate matches.
   - ACM permits at most 50 tags on a certificate; tag keys must contain 1 to
     128 characters and tag values may contain at most 256 characters.
   - Existing certificate tags are purged only when O(tags) is provided and
@@ -265,6 +269,9 @@ def main():
 
         if certificate_names != desired_names:
             continue
+
+        # Older botocore releases drop ManagedBy, so service-managed certificates cannot be excluded.
+        module.require_botocore_at_least("1.38.4", reason="to reuse an existing certificate")
 
         created_at = certificate.get("CreatedAt")
         if created_at is None:

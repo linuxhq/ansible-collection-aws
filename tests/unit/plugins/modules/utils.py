@@ -40,11 +40,15 @@ class FakeModule:
         self.check_mode = check_mode
         self.params = params
         self.region = region
+        self.botocore_requirements = []
         self.warnings = []
         self._client = client
 
     def client(self, *args, **kwargs):
         return self._client
+
+    def require_botocore_at_least(self, desired, reason=None):
+        self.botocore_requirements.append((desired, reason))
 
     def warn(self, warning):
         self.warnings.append(warning)

@@ -55,17 +55,31 @@ def test_get_region_opt_status_rejects_missing_status():
     assert "unexpected status None" in raised.value.values["msg"]
 
 
-def test_check_mode_predicts_region_enablement():
-    module = FakeModule({"name": "af-south-1", "wait": True}, check_mode=True)
+@pytest.mark.parametrize(
+    "state, previous, wait, predicted",
+    [
+        ("present", "DISABLED", True, "ENABLED"),
+        ("present", "DISABLED", False, "ENABLING"),
+        ("absent", "ENABLED", True, "DISABLED"),
+        ("absent", "ENABLED", False, "DISABLING"),
+    ],
+)
+def test_check_mode_predicts_region_status(state, previous, wait, predicted):
+    module = FakeModule({"name": "af-south-1", "wait": wait}, check_mode=True)
     client = Mock()
     with (
-        patch.object(plugin, "get_region_opt_status", return_value="DISABLED"),
+        patch.object(plugin, "get_region_opt_status", return_value=previous) as get_status,
+        patch.object(plugin, "wait_for_status") as wait_for_status,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        getattr(plugin, f"ensure_{state}")(client, module)
 
+    get_status.assert_called_once_with(client, module)
+    wait_for_status.assert_not_called()
     client.enable_region.assert_not_called()
-    assert raised.value.values["region_opt_status"] == "ENABLED"
+    client.disable_region.assert_not_called()
+    assert raised.value.values["previous_region_opt_status"] == previous
+    assert raised.value.values["region_opt_status"] == predicted
     assert raised.value.values["changed"]
 
 
