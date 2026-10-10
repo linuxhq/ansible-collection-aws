@@ -11,6 +11,16 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
+def pool_with_other_phone_number():
+    """A ListPoolOriginationIdentities result where phone-1 is not the last phone number."""
+    return {
+        "OriginationIdentities": [
+            {"OriginationIdentity": "phone-1", "PhoneNumber": "+12065550100"},
+            {"OriginationIdentity": "phone-2", "PhoneNumber": "+12065550101"},
+        ]
+    }
+
+
 def test_module_contract():
     options = assert_module_contract(plugin)
     assert len(options["required_if"]) == 2
@@ -462,6 +472,7 @@ def test_absent_removes_pool_and_deletion_protection_before_release():
                 "Status": "ACTIVE",
             },
         ) as wait_for_phone_number_active,
+        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -506,6 +517,7 @@ def test_absent_tolerates_disappearing_prerequisites():
                 "Status": "ACTIVE",
             },
         ),
+        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -714,6 +726,7 @@ def test_absent_waits_for_disassociation_before_release():
             return_value={"PhoneNumberId": "phone-1", "PoolId": "pool-1", "Status": "ACTIVE"},
         ),
         patch.object(plugin, "wait_for_phone_number_active", events.wait),
+        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -735,6 +748,7 @@ def test_absent_stops_when_number_disappears_after_disassociation():
             return_value={"PhoneNumberId": "phone-1", "PoolId": "pool-1", "Status": "ACTIVE"},
         ),
         patch.object(plugin, "wait_for_phone_number_active", return_value={}),
+        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -948,6 +962,7 @@ def test_release_failure_reports_whether_the_number_was_disassociated(pool_id, c
         patch.object(
             plugin, "wait_for_phone_number_active", return_value=existing_number(DeletionProtectionEnabled=False)
         ),
+        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -967,6 +982,7 @@ def test_unsupported_release_fails_before_disassociating():
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
     with (
         patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods", side_effect=require),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -1190,3 +1206,154 @@ def test_phone_number_tags_reports_malformed_tags_with_changed(changed):
         raised.value.values["msg"] == "AWS returned malformed tags for Pinpoint SMS Voice V2 phone number arn:phone-1"
     )
     assert raised.value.values["changed"] is changed
+
+
+def pool_listing(*originations):
+    return {"OriginationIdentities": list(originations)}
+
+
+LAST_PHONE_NUMBER_POOL = pool_listing(
+    {
+        "OriginationIdentity": "phone-1",
+        "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:phone-number/phone-1",
+    },
+    {
+        "OriginationIdentity": "sender-1",
+        "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US",
+    },
+)
+
+
+def pool_query(pool_listing_result, pools_result):
+    def query(client, method, **kwargs):
+        if method == "list_pool_origination_identities":
+            assert kwargs == {"PoolId": "pool-1"}
+            return pool_listing_result
+
+        assert method == "describe_pools"
+        assert kwargs == {"PoolIds": ["pool-1"]}
+        return pools_result
+
+    return query
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_absent_fails_without_mutation_for_last_phone_number_in_pool(check_mode):
+    client = Mock()
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=pool_query(LAST_PHONE_NUMBER_POOL, {"Pools": [{"PoolId": "pool-1", "Status": "ACTIVE"}]}),
+        ),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert "pool-1" in raised.value.values["msg"]
+    assert "linuxhq.aws.pinpoint_sms_voice_phone_pool" in raised.value.values["msg"]
+    client.disassociate_origination_identity.assert_not_called()
+    client.update_phone_number.assert_not_called()
+    client.release_phone_number.assert_not_called()
+    client.delete_pool.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_absent_proceeds_when_other_phone_numbers_remain_in_pool(check_mode):
+    client = Mock()
+    client.update_phone_number.return_value = existing_number(DeletionProtectionEnabled=False)
+    client.release_phone_number.return_value = {"PhoneNumberId": "phone-1", "Status": "DELETED"}
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(plugin, "wait_for_phone_number_active", return_value=existing_number()),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=pool_query(pool_with_other_phone_number(), None),
+        ),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert client.disassociate_origination_identity.called is not check_mode
+    assert client.release_phone_number.called is not check_mode
+
+
+@pytest.mark.parametrize(
+    "pools_result",
+    [{"Pools": [{"PoolId": "pool-1", "Status": "DELETING"}]}, {"Pools": []}],
+    ids=["deleting", "gone"],
+)
+def test_absent_releases_last_phone_number_of_a_pool_being_deleted(pools_result):
+    client = Mock()
+    client.release_phone_number.return_value = {"PhoneNumberId": "phone-1", "Status": "DELETED"}
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
+    with (
+        patch.object(
+            plugin, "get_phone_number", return_value=existing_number(DeletionProtectionEnabled=False, PoolId="pool-1")
+        ),
+        patch.object(
+            plugin, "wait_for_phone_number_active", return_value=existing_number(DeletionProtectionEnabled=False)
+        ),
+        patch.object(
+            plugin, "paginated_query_with_retries", side_effect=pool_query(LAST_PHONE_NUMBER_POOL, pools_result)
+        ),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+    client.release_phone_number.assert_called_once_with(PhoneNumberId="phone-1", aws_retry=True)
+
+
+def test_absent_maps_last_phone_number_conflict_to_clear_failure():
+    client = Mock()
+    client.disassociate_origination_identity.side_effect = plugin.ClientError(
+        {
+            "Error": {"Code": "ConflictException", "Message": "conflict"},
+            "Reason": "LAST_PHONE_NUMBER",
+            "ResourceId": "pool-1",
+        },
+        "DisassociateOriginationIdentity",
+    )
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
+    with (
+        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["msg"] == plugin.last_phone_number_message("phone-1", "pool-1")
+    client.release_phone_number.assert_not_called()
+
+
+def test_absent_reports_other_disassociate_conflicts_from_aws():
+    client = Mock()
+    client.disassociate_origination_identity.side_effect = plugin.ClientError(
+        {"Error": {"Code": "ConflictException", "Message": "conflict"}, "Reason": "RESOURCE_NOT_ACTIVE"},
+        "DisassociateOriginationIdentity",
+    )
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
+    with (
+        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["msg"] == (
+        "Unable to disassociate Pinpoint SMS Voice V2 phone number phone-1 from pool pool-1"
+    )
+    client.release_phone_number.assert_not_called()

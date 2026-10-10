@@ -48,7 +48,7 @@ def test_optional_create_parameters_are_not_gated_when_omitted():
         plugin.main()
 
     methods = require.call_args.args[3]
-    assert methods["describe_pools"] == ("PoolIds", "MaxResults", "NextToken", "Filters", "Owner")
+    assert methods["describe_pools"] == ("PoolIds", "MaxResults", "NextToken", "Owner")
     assert methods["list_pool_origination_identities"] == ("PoolId", "MaxResults", "NextToken")
     assert methods["create_pool"] == (
         "MessageType",
@@ -173,8 +173,8 @@ def test_pool_lookup_uses_name_tag_to_disambiguate_sender_pools():
         }
     )
     pools = [
-        {"PoolId": "pool-1", "Status": "ACTIVE"},
-        {"PoolId": "pool-2", "Status": "ACTIVE"},
+        {"MessageType": "TRANSACTIONAL", "PoolId": "pool-1", "Status": "ACTIVE"},
+        {"MessageType": "TRANSACTIONAL", "PoolId": "pool-2", "Status": "ACTIVE"},
     ]
 
     with (
@@ -201,16 +201,28 @@ def test_pool_lookup_uses_name_tag_to_disambiguate_sender_pools():
     assert result["PoolId"] == "pool-2"
 
 
-@pytest.mark.parametrize("check_mode", [False, True])
-def test_identity_in_a_differently_named_pool_fails_before_create(check_mode):
-    client = Mock()
-    module = FakeModule(
+PHONE_ORIGINATION = {
+    "IsoCountryCode": "US",
+    "OriginationIdentity": "phone-1",
+    "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:phone-number/phone-1",
+    "PhoneNumber": "+12065550100",
+}
+SENDER_ORIGINATION = {
+    "IsoCountryCode": "US",
+    "OriginationIdentity": "sender-1",
+    "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US",
+}
+
+
+def create_params(origination_identity, check_mode=False, iso_country_code=None):
+    return FakeModule(
         {
+            "client_token": None,
             "deletion_protection_enabled": None,
-            "iso_country_code": None,
+            "iso_country_code": iso_country_code,
             "message_type": "TRANSACTIONAL",
             "name": "second",
-            "origination_identity": "sender-1",
+            "origination_identity": origination_identity,
             "pool_id": None,
             "purge_tags": True,
             "state": "present",
@@ -219,28 +231,82 @@ def test_identity_in_a_differently_named_pool_fails_before_create(check_mode):
         },
         check_mode=check_mode,
     )
-    pool = {"MessageType": "TRANSACTIONAL", "PoolId": "pool-1", "Status": "ACTIVE"}
 
-    with (
+
+def patch_held_pool(pool, origination):
+    return (
         patch.object(plugin, "describe_pools", return_value=[pool]),
         patch.object(
             plugin,
             "pool_with_origination_identities",
-            return_value=dict(pool, OriginationIdentities=[{"OriginationIdentity": "sender-1"}]),
+            return_value=dict(pool, OriginationIdentities=[origination]),
         ),
         patch.object(
             plugin,
             "pool_with_tags",
             side_effect=lambda client, module, pool: dict(pool, Tags=[{"Key": "Name", "Value": "first"}]),
         ),
-        pytest.raises(ModuleFail) as raised,
-    ):
+    )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("pool", "iso_country_code"),
+    [
+        ({"MessageType": "TRANSACTIONAL", "PoolId": "pool-1", "Status": "ACTIVE"}, None),
+        ({"MessageType": "PROMOTIONAL", "PoolId": "pool-1", "Status": "ACTIVE"}, None),
+        ({"MessageType": "TRANSACTIONAL", "PoolId": "pool-1", "Status": "ACTIVE"}, "CA"),
+    ],
+    ids=["other-name", "other-message-type", "other-country"],
+)
+def test_phone_number_in_a_non_matching_pool_fails_before_create(check_mode, pool, iso_country_code):
+    client = Mock()
+    module = create_params("phone-1", check_mode=check_mode, iso_country_code=iso_country_code)
+    describe, originations, tags = patch_held_pool(pool, PHONE_ORIGINATION)
+
+    with originations, tags, describe as describe_pools, pytest.raises(ModuleFail) as raised:
         plugin.ensure_present(client, module)
 
     assert "pool-1" in raised.value.values["msg"]
     assert "pool_id" in raised.value.values["msg"]
     assert not raised.value.values.get("changed")
+    assert "Filters" not in describe_pools.call_args.kwargs
     client.create_pool.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "origination",
+    [
+        {"OriginationIdentity": "phone-1", "OriginationIdentityArn": PHONE_ORIGINATION["OriginationIdentityArn"]},
+        {"OriginationIdentity": "phone-1", "PhoneNumber": "+12065550100"},
+    ],
+    ids=["arn", "phone-number-field"],
+)
+def test_phone_number_identity_is_detected_from_listed_item(origination):
+    module = create_params("phone-1")
+    pool = {"MessageType": "TRANSACTIONAL", "PoolId": "pool-1", "Status": "ACTIVE"}
+    describe, originations, tags = patch_held_pool(pool, origination)
+
+    with describe, originations, tags, pytest.raises(ModuleFail) as raised:
+        plugin.find_pool(Mock(), module)
+
+    assert "pool-1" in raised.value.values["msg"]
+
+
+@pytest.mark.parametrize("message_type", ["TRANSACTIONAL", "PROMOTIONAL"])
+def test_sender_id_in_another_pool_does_not_conflict_and_creates_pool(message_type):
+    client = Mock()
+    client.create_pool.return_value = {"PoolId": "pool-2", "Status": "ACTIVE"}
+    module = create_params("sender-1")
+    pool = {"MessageType": message_type, "PoolId": "pool-1", "Status": "ACTIVE"}
+    describe, originations, tags = patch_held_pool(pool, SENDER_ORIGINATION)
+
+    with describe, originations, tags, pytest.raises(ModuleExit) as raised:
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["pool_id"] == "pool-2"
+    assert client.create_pool.call_args.kwargs["OriginationIdentity"] == "sender-1"
 
 
 def test_identity_in_another_country_pool_does_not_conflict():

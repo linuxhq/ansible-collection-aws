@@ -1,0 +1,23 @@
+---
+bugfixes:
+  - >-
+    pinpoint_sms_voice_phone_pool - without ``pool_id``, a sender ID that
+    already belongs to another pool no longer fails as a conflict, because a
+    sender ID can belong to several pools; a new pool is created instead.
+  - >-
+    pinpoint_sms_voice_phone_pool - without ``pool_id``, a phone number that
+    already belongs to a pool with a different ``message_type`` or country now
+    fails with the module's clear conflict message, including in check mode,
+    instead of predicting a create that AWS rejects.
+  - >-
+    pinpoint_sms_voice_phone_number - ``state=absent`` now fails without
+    changes, including in check mode, when the number is the last phone number
+    in its pool, and names the pool to delete with
+    ``linuxhq.aws.pinpoint_sms_voice_phone_pool`` first; a ``LAST_PHONE_NUMBER``
+    conflict from AWS reports the same message.
+  - >-
+    pinpoint_sms_voice_phone_pool_associate - ``state=absent`` now fails
+    without changes, including in check mode, when the origination identity is
+    the last phone number in the pool, and names the pool to delete with
+    ``linuxhq.aws.pinpoint_sms_voice_phone_pool`` first; a
+    ``LAST_PHONE_NUMBER`` conflict from AWS reports the same message.
