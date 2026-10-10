@@ -14,6 +14,9 @@ description:
     signing is enabled.
   - Publishing the returned tokens as DKIM CNAME records verifies the domain.
   - The identity must already exist.
+  - The module warns when the identity's DKIM verification status is
+    V(FAILED), including in check mode. Check that the DKIM CNAME records are
+    published and correct.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -212,6 +215,12 @@ def main():
                 )
 
             current = get_dkim_attributes(client, module, changed=True)
+
+    if current.get("Status") == "FAILED":
+        module.warn(
+            f"DKIM verification failed for AWS SES identity {identity}; "
+            "check that the DKIM CNAME records are published and correct"
+        )
 
     module.exit_json(
         changed=changed,

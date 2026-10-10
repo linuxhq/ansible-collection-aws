@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - sns_sms_attributes - omit attributes cleared with an empty string from the check mode result, matching
+    ``GetSMSAttributes`` after a real run.
+  - ses_sandbox role - skip the production access request whenever review details exist, including review details
+    with only a case ID and no status, instead of only when a status is present.
+minor_changes:
+  - ses_identity_dkim - warn when the identity's DKIM verification status is ``FAILED``, including in check mode,
+    so unpublished or incorrect DKIM CNAME records are not reported as OK silently.
+...
