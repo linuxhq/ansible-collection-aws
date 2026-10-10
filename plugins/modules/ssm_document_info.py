@@ -24,6 +24,11 @@ options:
     description:
       - The document format to request from the Systems Manager
         C(GetDocument) API.
+      - AWS converts between C(JSON) and C(YAML), but cannot return a C(JSON)
+        or C(YAML) document as C(TEXT), or a C(TEXT) document as C(JSON) or
+        C(YAML).
+      - Documents that cannot be returned in this format are omitted from the
+        results.
     type: str
   document_version:
     description:
@@ -44,8 +49,9 @@ options:
     description:
       - Systems Manager document name used to limit the result set.
       - This must not be empty when provided.
-      - A document that does not exist, or that does not have the requested
-        version, results in an empty list.
+      - A document that does not exist, that does not have the requested
+        version, or that cannot be returned in O(document_format) results in
+        an empty list.
       - Mutually exclusive with O(filters).
     type: str
   version_name:
@@ -192,6 +198,27 @@ def content_transform(content):
         return content
 
 
+def format_available(document_format, requested_format):
+    # GetDocument converts between JSON and YAML only; TEXT documents are served only as TEXT.
+    return (document_format == "TEXT") == (requested_format == "TEXT")
+
+
+def describe_document_format(module, client, name, request):
+    try:
+        response = client.describe_document(**request, Name=name, aws_retry=True)
+    except is_boto3_error_code(["InvalidDocument", "InvalidDocumentVersion"]):
+        return None
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to describe AWS Systems Manager document {name}")
+
+    document = response.get("Document") if isinstance(response, dict) else None
+    document_format = document.get("DocumentFormat") if isinstance(document, dict) else None
+    if not isinstance(document_format, str) or not document_format:
+        module.fail_json(msg=f"Unexpected response while describing AWS Systems Manager document {name}")
+
+    return document_format
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -211,6 +238,7 @@ def main():
         ],
         supports_check_mode=True,
     )
+    document_format = module.params["document_format"]
     filters = module.params["filters"]
     name = module.params["name"]
     version_name = module.params["version_name"]
@@ -221,7 +249,7 @@ def main():
 
     get_request = scrub_none_parameters(
         {
-            "DocumentFormat": module.params["document_format"],
+            "DocumentFormat": document_format,
             "DocumentVersion": module.params["document_version"] or (None if version_name else "$LATEST"),
             "VersionName": version_name,
         }
@@ -230,8 +258,11 @@ def main():
         "get_document": ("Name",) + tuple(get_request),
         "list_tags_for_resource": ("ResourceId", "ResourceType"),
     }
+    describe_request = {key: value for key, value in get_request.items() if key != "DocumentFormat"}
     if name is None:
         methods["list_documents"] = ("Filters",) if filters else ()
+    else:
+        methods["describe_document"] = ("Name",) + tuple(describe_request)
 
     require_client_methods(
         module,
@@ -241,7 +272,9 @@ def main():
     )
 
     if name:
-        document_names = [name]
+        # GetDocument reports a format it cannot serve only as a generic ValidationException, so check the format first.
+        current_format = describe_document_format(module, client, name, describe_request)
+        document_names = [name] if current_format and format_available(current_format, document_format) else []
     else:
         request = {}
         if filters:
@@ -262,7 +295,9 @@ def main():
             if not isinstance(document_name, str) or not document_name:
                 module.fail_json(msg="Unexpected response while listing AWS Systems Manager documents")
 
-            document_names.append(document_name)
+            # ListDocuments returns each document's format, so documents that cannot be served are skipped.
+            if format_available(document.get("DocumentFormat"), document_format):
+                document_names.append(document_name)
 
     documents = []
     for document_name in document_names:

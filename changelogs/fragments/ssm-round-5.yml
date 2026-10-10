@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - ssm_document_info - omit documents that cannot be returned in ``document_format``, such as JSON and YAML
+    documents requested as ``TEXT``, instead of failing with AWS's ``ValidationException``.
+  - ssm_association - fail without changes, including in check mode, when updating an existing association
+    with a botocore older than 1.42.54, instead of clearing its ``AssociationDispatchAssumeRole``.
+...

@@ -14,6 +14,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 UPDATE_PARAMETERS = (
+    "AssociationDispatchAssumeRole",
     "AssociationId",
     "AssociationName",
     "DocumentVersion",
@@ -468,3 +469,45 @@ def test_update_keeps_target_maps_without_targets():
 
     assert request["TargetMaps"] == target_maps
     assert "Targets" not in request
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_update_fails_unchanged_when_the_sdk_cannot_preserve_the_dispatch_role(check_mode):
+    client = Mock()
+    module = FakeModule(params(schedule_expression="rate(2 hours)"), check_mode=check_mode)
+    sdk_parameters = tuple(parameter for parameter in UPDATE_PARAMETERS if parameter != "AssociationDispatchAssumeRole")
+    with (
+        patch.object(plugin, "get_boto3_client_method_parameters", return_value=sdk_parameters),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module, current_association())
+
+    assert raised.value.values["changed"] is False
+    assert "AssociationDispatchAssumeRole" in raised.value.values["msg"]
+    assert "botocore >= 1.42.54" in raised.value.values["msg"]
+    client.update_association.assert_not_called()
+
+
+def test_update_preserves_the_dispatch_role():
+    role = "arn:aws:iam::123456789012:role/dispatch"
+    request = run_update(
+        current_association(AssociationDispatchAssumeRole=role),
+        schedule_expression="rate(2 hours)",
+    )
+
+    assert request["AssociationDispatchAssumeRole"] == role
+
+
+@pytest.mark.parametrize("current", [None, current_association()])
+def test_create_and_no_op_do_not_require_dispatch_role_support(current):
+    client = Mock()
+    client.create_association.return_value = {"AssociationDescription": current_association()}
+    with (
+        patch.object(plugin, "get_boto3_client_method_parameters", return_value=("AssociationId",)) as parameters,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params()), current)
+
+    assert raised.value.values["changed"] is (current is None)
+    parameters.assert_not_called()
+    client.update_association.assert_not_called()

@@ -72,6 +72,11 @@ options:
 notes:
   - O(tags) accepts at most 1000 entries; keys must contain 1 to 128 characters
     and values at most 256 characters.
+  - Updating an existing association requires botocore 1.42.54 or later,
+    the first version that models C(AssociationDispatchAssumeRole); with an
+    older botocore, an update fails without changes instead of clearing that
+    field. Creating an association, reading one, and runs that do not update
+    it are unaffected.
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -257,6 +262,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 )
 
 TARGET_DEFAULTS = {"values": []}
+# UpdateAssociation clears omitted fields, so updates need an SDK that models every preserved field.
+DISPATCH_ROLE_BOTOCORE_VERSION = "1.42.54"
 
 
 def comparable_targets(targets):
@@ -427,12 +434,21 @@ def ensure_present(client, module, current):
     else:
         changed = (current_comparable or {}) != desired_comparable
         resource_changed = changed
+        update_parameters = get_boto3_client_method_parameters(client, "update_association") if changed else []
+        if changed and "AssociationDispatchAssumeRole" not in update_parameters:
+            module.fail_json(
+                changed=False,
+                msg=(
+                    f"Updating AWS Systems Manager association {name} requires botocore >= "
+                    f"{DISPATCH_ROLE_BOTOCORE_VERSION}, which models AssociationDispatchAssumeRole; "
+                    "older versions would clear that field"
+                ),
+            )
+
         if changed and not module.check_mode:
             # Empty lists are dropped because some, such as TargetLocations, reject them and omitting one keeps it unset.
             update_request = {
-                parameter: current.get(parameter)
-                for parameter in get_boto3_client_method_parameters(client, "update_association")
-                if current.get(parameter) != []
+                parameter: current.get(parameter) for parameter in update_parameters if current.get(parameter) != []
             }
             update_request["AssociationId"] = association_id
             if schedule_expression is not None:

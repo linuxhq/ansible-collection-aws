@@ -21,6 +21,10 @@ def params(**overrides):
     return values
 
 
+def described(document_format="JSON"):
+    return {"Document": {"DocumentFormat": document_format, "Name": "example"}}
+
+
 def run(module, documents=None):
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
@@ -62,6 +66,7 @@ def test_empty_name_is_rejected():
 
 def test_version_name_omits_document_version_and_loads_content_and_tags():
     client = Mock()
+    client.describe_document.return_value = described()
     client.get_document.return_value = {"Content": '{"schemaVersion":"2.2"}', "Name": "example"}
     client.list_tags_for_resource.return_value = {"TagList": [{"Key": "Name", "Value": "example"}]}
     module = FakeModule(params(name="example", version_name="production"), client=client)
@@ -72,6 +77,7 @@ def test_version_name_omits_document_version_and_loads_content_and_tags():
         client,
         "Systems Manager",
         {
+            "describe_document": ("Name", "VersionName"),
             "get_document": ("Name", "DocumentFormat", "VersionName"),
             "list_tags_for_resource": ("ResourceId", "ResourceType"),
         },
@@ -89,6 +95,7 @@ def test_content_keys_are_returned_unchanged():
         "mainSteps": [{"action": "aws:executeScript", "inputs": {"InputPayload": {"Key_Name": 1}}}],
     }
     client = Mock()
+    client.describe_document.return_value = described()
     client.get_document.return_value = {"Content": json.dumps(content), "Name": "example"}
     client.list_tags_for_resource.return_value = {"TagList": []}
     result, _require, _query = run(FakeModule(params(name="example"), client=client))
@@ -109,7 +116,7 @@ def test_rejects_malformed_document_identifier():
 
 
 def test_rejects_malformed_get_response():
-    client = Mock(get_document=Mock(return_value=None))
+    client = Mock(describe_document=Mock(return_value=described()), get_document=Mock(return_value=None))
     result, _require, _query = run(FakeModule(params(name="example"), client=client))
 
     assert result.values["msg"] == "Unexpected response while getting AWS Systems Manager document example"
@@ -117,6 +124,7 @@ def test_rejects_malformed_get_response():
 
 def test_rejects_malformed_tags():
     client = Mock(
+        describe_document=Mock(return_value=described()),
         get_document=Mock(return_value={"Content": "{}", "Name": "example"}),
         list_tags_for_resource=Mock(return_value={"TagList": [None]}),
     )
@@ -125,8 +133,8 @@ def test_rejects_malformed_tags():
     assert result.values["msg"] == "Unexpected response while listing tags for AWS Systems Manager document example"
 
 
-def missing_version_error():
-    return ClientError({"Error": {"Code": "InvalidDocumentVersion", "Message": "no"}}, "GetDocument")
+def missing_version_error(operation="GetDocument"):
+    return ClientError({"Error": {"Code": "InvalidDocumentVersion", "Message": "no"}}, operation)
 
 
 @pytest.mark.parametrize("version", [{"document_version": "3"}, {"version_name": "production"}])
@@ -142,9 +150,64 @@ def test_listed_documents_without_the_requested_version_are_omitted(version):
 
 
 def test_named_document_without_the_requested_version_returns_empty():
-    client = Mock(get_document=Mock(side_effect=missing_version_error()))
+    client = Mock(describe_document=Mock(side_effect=missing_version_error("DescribeDocument")))
     result, _require, _query = run(FakeModule(params(name="example", version_name="production"), client=client))
 
     assert result.values["document"] == {}
     assert result.values["documents"] == []
+    client.describe_document.assert_called_once_with(Name="example", VersionName="production", aws_retry=True)
+    client.get_document.assert_not_called()
     client.list_tags_for_resource.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("document_format", "requested", "available"),
+    [
+        ("JSON", "JSON", True),
+        ("JSON", "YAML", True),
+        ("YAML", "JSON", True),
+        ("JSON", "TEXT", False),
+        ("YAML", "TEXT", False),
+        ("TEXT", "TEXT", True),
+        ("TEXT", "JSON", False),
+        ("TEXT", "YAML", False),
+    ],
+)
+def test_format_available_only_converts_between_json_and_yaml(document_format, requested, available):
+    assert plugin.format_available(document_format, requested) is available
+
+
+def test_listed_documents_that_cannot_be_served_in_the_requested_format_are_skipped():
+    client = Mock(
+        get_document=Mock(return_value={"Content": "echo", "DocumentFormat": "TEXT", "Name": "text"}),
+        list_tags_for_resource=Mock(return_value={"TagList": []}),
+    )
+    identifiers = [
+        {"DocumentFormat": "JSON", "Name": "json"},
+        {"DocumentFormat": "YAML", "Name": "yaml"},
+        {"DocumentFormat": "TEXT", "Name": "text"},
+    ]
+    result, _require, _query = run(FakeModule(params(document_format="TEXT"), client=client), identifiers)
+
+    assert [document["name"] for document in result.values["documents"]] == ["text"]
+    client.get_document.assert_called_once_with(
+        DocumentFormat="TEXT", DocumentVersion="$LATEST", Name="text", aws_retry=True
+    )
+
+
+def test_named_document_that_cannot_be_served_in_the_requested_format_returns_empty():
+    client = Mock(describe_document=Mock(return_value=described("JSON")))
+    result, _require, _query = run(FakeModule(params(name="example", document_format="TEXT"), client=client))
+
+    assert result.values["document"] == {}
+    assert result.values["documents"] == []
+    client.describe_document.assert_called_once_with(DocumentVersion="$LATEST", Name="example", aws_retry=True)
+    client.get_document.assert_not_called()
+
+
+def test_named_document_rejects_malformed_describe_response():
+    client = Mock(describe_document=Mock(return_value={"Document": {}}))
+    result, _require, _query = run(FakeModule(params(name="example"), client=client))
+
+    assert result.values["msg"] == "Unexpected response while describing AWS Systems Manager document example"
+    client.get_document.assert_not_called()
