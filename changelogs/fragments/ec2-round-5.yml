@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - ec2_flow_log - report ``changed=false`` for ``state=absent`` when every matching flow log was already deleted
+    before the module removed it.
+  - ec2_pricing_info - return the price list ``format_version`` from the AWS response, falling back to the requested
+    format version when AWS omits it.
+  - ec2_transit_gateway_route_table - report no change when a route or route table was already deleted before the
+    module removed it.
+...

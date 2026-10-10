@@ -438,7 +438,10 @@ def get_flow_logs(client, module):
 
 
 def delete_flow_logs(client, module, flow_log_ids, changed=False):
-    """Delete flow logs; changed reports whether resources were already modified, for failure results."""
+    """Delete flow logs and return whether any were removed.
+
+    changed reports whether resources were already modified, for failure results.
+    """
     require_client_methods(
         module,
         client,
@@ -454,16 +457,19 @@ def delete_flow_logs(client, module, flow_log_ids, changed=False):
         module.fail_json_aws(e, changed=changed, msg=f"Unable to delete EC2 flow logs {', '.join(flow_log_ids)}")
 
     failures = response.get("Unsuccessful", [])
+    removed = len(failures) < len(flow_log_ids)
     unsuccessful = [
         failure for failure in failures if (failure.get("Error") or {}).get("Code") != "InvalidFlowLogId.NotFound"
     ]
 
     if unsuccessful:
         module.fail_json(
-            changed=changed or len(failures) < len(flow_log_ids),
+            changed=changed or removed,
             msg="Unable to delete one or more EC2 flow logs",
             unsuccessful=boto3_resource_list_to_ansible_dict(unsuccessful, transform_tags=False, force_tags=False),
         )
+
+    return removed
 
 
 def verified_purge(module, flow_logs, current, purge_flow_log_ids, changed=False):
@@ -525,7 +531,7 @@ def ensure_absent(client, module):
     changed = bool(flow_log_ids)
 
     if changed and not module.check_mode:
-        delete_flow_logs(client, module, flow_log_ids)
+        changed = delete_flow_logs(client, module, flow_log_ids)
 
     module.exit_json(
         changed=changed,

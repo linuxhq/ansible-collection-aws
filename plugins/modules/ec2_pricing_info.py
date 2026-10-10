@@ -320,9 +320,11 @@ def main():
 
         products.append(normalized)
 
+    response_format_version = response.get("FormatVersion")
+
     module.exit_json(
         changed=False,
-        format_version=format_version,
+        format_version=response_format_version if isinstance(response_format_version, str) else format_version,
         products=products,
         service_code=service_code,
     )

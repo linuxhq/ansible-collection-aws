@@ -15,10 +15,11 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
-def test_route_delete_tolerates_route_disappearing():
+@pytest.mark.parametrize("code", ["InvalidRoute.NotFound", "InvalidRouteTableID.NotFound"])
+def test_route_delete_tolerates_route_disappearing(code):
     client = Mock()
     client.delete_transit_gateway_route.side_effect = plugin.ClientError(
-        {"Error": {"Code": "InvalidRoute.NotFound", "Message": "gone"}},
+        {"Error": {"Code": code, "Message": "gone"}},
         "DeleteTransitGatewayRoute",
     )
     module = FakeModule({"wait": True})
@@ -30,12 +31,13 @@ def test_route_delete_tolerates_route_disappearing():
             client, module, "tgw-rtb-1", "10.0.0.0/8", {"State": "active", "Type": "static"}
         )
 
-    assert changed
+    assert changed is False
     assert route is None
     wait.assert_not_called()
 
 
-def test_absent_tolerates_route_table_disappearing_during_delete():
+@pytest.mark.parametrize("wait", [True, False])
+def test_absent_tolerates_route_table_disappearing_during_delete(wait):
     client = Mock()
     client.delete_transit_gateway_route_table.side_effect = plugin.ClientError(
         {
@@ -46,16 +48,19 @@ def test_absent_tolerates_route_table_disappearing_during_delete():
         },
         "DeleteTransitGatewayRouteTable",
     )
-    module = FakeModule({"state": "absent", "wait": False})
+    module = FakeModule({"state": "absent", "wait": wait})
     current = {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
     with (
         patch.object(plugin, "find_route_table", return_value=current),
         patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_route_table") as wait_for_route_table,
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_absent(client, module)
 
-    assert raised.value.values["changed"]
+    assert raised.value.values["changed"] is False
+    assert "transit_gateway_route_table" not in raised.value.values
+    wait_for_route_table.assert_not_called()
 
 
 def test_module_contract():
