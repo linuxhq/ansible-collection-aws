@@ -167,6 +167,18 @@ def test_check_mode_predicts_attributes_without_reading_again():
     assert client.get_sms_attributes.call_count == 1
 
 
+def test_check_mode_omits_cleared_attributes():
+    client = Mock()
+    client.get_sms_attributes.return_value = {"attributes": {"DefaultSenderID": "old", "MonthlySpendLimit": "1"}}
+    result, _require = run(
+        FakeModule(params(default_sender_id="", default_sms_type="Transactional"), client=client, check_mode=True)
+    )
+
+    assert result.values["changed"] is True
+    assert result.values["attributes"] == {"default_sms_type": "Transactional", "monthly_spend_limit": "1"}
+    client.set_sms_attributes.assert_not_called()
+
+
 def test_read_failure_after_setting_attributes_reports_changed():
     error = ClientError({"Error": {"Code": "InternalError", "Message": "failed"}}, "GetSMSAttributes")
     client = Mock(get_sms_attributes=Mock(side_effect=[{"attributes": {}}, error]))

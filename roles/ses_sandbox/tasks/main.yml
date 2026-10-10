@@ -18,7 +18,7 @@
     website_url: "{{ ses_sandbox_website_url }}"
   when:
     - not __ses_sandbox_info_query.account.production_access_enabled | bool
-    - __ses_sandbox_info_query.account.details.review_details.status is not defined
+    - not __ses_sandbox_info_query.account.details.review_details | d({})
     - ses_sandbox_use_case_description is not none
     - ses_sandbox_website_url is not none
 ...
