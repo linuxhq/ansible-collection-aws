@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - ssm_document - detect whether a document exists with ``DescribeDocument`` when ``state=absent``, so a ``TEXT``
+    format document, such as a ``ChangeCalendar`` document, can be deleted instead of failing with
+    ``Invalid document format JSON``.
+  - ssm_document - fail clearly before any change, including in check mode, when ``state=present`` names an existing
+    ``TEXT`` format document, because the module manages only JSON-content documents.
