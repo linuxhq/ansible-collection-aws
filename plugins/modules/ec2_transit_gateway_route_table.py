@@ -721,10 +721,9 @@ def ensure_route_absent(client, module, transit_gateway_route_table_id, destinat
             TransitGatewayRouteTableId=transit_gateway_route_table_id,
             aws_retry=True,
         )
-    except is_boto3_error_code("InvalidRoute.NotFound"):
-        return True, None
-    except is_boto3_error_code("InvalidRouteTableID.NotFound"):
-        return True, None
+    except is_boto3_error_code(["InvalidRoute.NotFound", "InvalidRouteTableID.NotFound"]):
+        # The route or its table was already deleted elsewhere.
+        return False, None
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
@@ -1067,7 +1066,8 @@ def ensure_absent(client, module):
             changed=True,
         )
     except is_boto3_error_code("InvalidRouteTableID.NotFound"):
-        route_table = None
+        # The route table was already deleted elsewhere.
+        exit_module(module, False, None)
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,

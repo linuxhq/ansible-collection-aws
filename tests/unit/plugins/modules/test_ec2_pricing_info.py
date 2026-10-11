@@ -265,3 +265,31 @@ def test_region_is_required():
         plugin.main()
 
     assert "region is required" in raised.value.values["msg"]
+
+
+@pytest.mark.parametrize(
+    ("response", "returned"),
+    [
+        ({"FormatVersion": "aws_v2", "PriceList": []}, "aws_v2"),
+        ({"PriceList": []}, "aws_v1"),
+    ],
+)
+def test_format_version_is_returned_from_the_response(response, returned):
+    module = FakeModule(
+        {
+            "filters": [],
+            "format_version": "aws_v1",
+            "max_results": None,
+            "service_code": "AmazonEC2",
+        },
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "paginated_query_with_retries", return_value=response),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["format_version"] == returned

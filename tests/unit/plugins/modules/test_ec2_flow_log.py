@@ -51,10 +51,20 @@ def test_sdk_validation_matches_flow_log_requests():
     assert require.call_args.args[3] == {"describe_flow_logs": ("Filter", "MaxResults", "NextToken")}
 
 
-def test_absent_ignores_flow_log_disappearing_during_delete():
+@pytest.mark.parametrize(
+    ("not_found_ids", "changed"),
+    [
+        (["fl-1", "fl-2"], False),
+        (["fl-1"], True),
+        ([], True),
+    ],
+)
+def test_absent_reports_changed_only_when_a_flow_log_was_removed(not_found_ids, changed):
     client = Mock()
     client.delete_flow_logs.return_value = {
-        "Unsuccessful": [{"Error": {"Code": "InvalidFlowLogId.NotFound"}, "ResourceId": "fl-1"}]
+        "Unsuccessful": [
+            {"Error": {"Code": "InvalidFlowLogId.NotFound"}, "ResourceId": flow_log_id} for flow_log_id in not_found_ids
+        ]
     }
     params = dict.fromkeys(plugin.ABSENT_MATCH_FIELDS)
     params.update({"destination_options": None, "resource_ids": ["vpc-1"]})
@@ -63,14 +73,18 @@ def test_absent_ignores_flow_log_disappearing_during_delete():
         patch.object(
             plugin,
             "get_flow_logs",
-            return_value=[{"FlowLogId": "fl-1", "ResourceId": "vpc-1"}],
+            return_value=[
+                {"FlowLogId": "fl-1", "ResourceId": "vpc-1"},
+                {"FlowLogId": "fl-2", "ResourceId": "vpc-1"},
+            ],
         ),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_absent(client, module)
 
-    assert raised.value.values["changed"]
+    assert raised.value.values["changed"] is changed
+    assert raised.value.values["flow_log_ids"] == ["fl-1", "fl-2"]
 
 
 def test_module_contract():
