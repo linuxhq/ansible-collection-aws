@@ -49,7 +49,7 @@ options:
   idempotency_token:
     description:
       - Unique idempotency token for accelerator creation.
-      - When omitted, a deterministic token is generated from O(name), O(ip_address_type), and O(ip_addresses).
+      - When omitted, a unique token is generated for each creation attempt.
       - This option is only used when creating an accelerator.
       - This must contain at most 255 characters.
     type: str
@@ -536,10 +536,9 @@ state:
   type: str
 """
 
-import hashlib
 import ipaddress
-import json
 import re
+import uuid
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -547,7 +546,6 @@ except ImportError:
     pass
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
-from ansible.module_utils.common.text.converters import to_bytes
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
@@ -1291,22 +1289,10 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups, mutate
                 results.append(predicted_endpoint_group(None, desired))
                 continue
 
-            token = hashlib.sha256(
-                to_bytes(
-                    json.dumps(
-                        {
-                            "endpoint_group_region": region,
-                            "listener_arn": listener_arn,
-                        },
-                        separators=(",", ":"),
-                        sort_keys=True,
-                    )
-                )
-            ).hexdigest()
-
             request = endpoint_group_request(desired)
             request["EndpointGroupRegion"] = region
-            request["IdempotencyToken"] = token
+            # A fixed token would replay an earlier create, even one modified since; AWSRetry reuses this one.
+            request["IdempotencyToken"] = str(uuid.uuid4())
             request["ListenerArn"] = listener_arn
 
             try:
@@ -1427,20 +1413,8 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False):
         for desired in creates:
             request = listener_request(desired)
             request["AcceleratorArn"] = accelerator_arn
-            request["IdempotencyToken"] = hashlib.sha256(
-                to_bytes(
-                    json.dumps(
-                        {
-                            "accelerator_arn": accelerator_arn,
-                            "client_affinity": desired["client_affinity"],
-                            "port_ranges": desired["port_ranges"],
-                            "protocol": desired["protocol"],
-                        },
-                        separators=(",", ":"),
-                        sort_keys=True,
-                    )
-                )
-            ).hexdigest()
+            # A fixed token would replay an earlier create, even one modified since; AWSRetry reuses this one.
+            request["IdempotencyToken"] = str(uuid.uuid4())
             create_requests.append(request)
 
     # Release only obsolete listeners that block the validated writes.
@@ -1780,19 +1754,10 @@ def ensure_present(client, module):
             require_endpoint_group_writes(module, client)
 
     if created and not module.check_mode:
+        # A fixed token would replay an earlier create, even one renamed since; AWSRetry reuses this one.
         token = module.params["idempotency_token"]
-
         if token is None:
-            token_fields = {
-                "ip_address_type": desired.get("ip_address_type"),
-                "name": desired["name"],
-            }
-            if "ip_addresses" in desired:
-                token_fields["ip_addresses"] = desired["ip_addresses"]
-
-            token = hashlib.sha256(
-                to_bytes(json.dumps(token_fields, separators=(",", ":"), sort_keys=True))
-            ).hexdigest()
+            token = str(uuid.uuid4())
 
         request = scrub_none_parameters(
             snake_dict_to_camel_dict(

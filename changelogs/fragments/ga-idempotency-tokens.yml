@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - global_accelerator - generate a unique idempotency token for each listener, endpoint group, and accelerator
+    creation instead of deriving it from the requested settings, so a create after an in-place listener
+    modification no longer returns the modified listener instead of creating the requested one.

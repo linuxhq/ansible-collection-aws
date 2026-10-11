@@ -3,6 +3,8 @@ from unittest.mock import Mock, patch
 import pytest
 from botocore.exceptions import WaiterError
 
+from ansible_collections.amazon.aws.plugins.module_utils.retries import RetryingBotoClientWrapper
+
 from ansible_collections.linuxhq.aws.plugins.modules import global_accelerator as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -950,6 +952,8 @@ def test_listener_replacement_retries_after_freeing_quota():
     assert changed
     assert listeners[0]["listener_arn"] == "arn:new"
     assert client.create_listener.call_count == 2
+    first, second = client.create_listener.call_args_list
+    assert first.kwargs["IdempotencyToken"] == second.kwargs["IdempotencyToken"]
     delete_listener.assert_called_once_with(client, module, "arn:accelerator", "arn:old", changed=False)
     wait_for_accelerator.assert_called_once_with(
         client, module, "arn:accelerator", "accelerator_deployed", changed=True
@@ -1000,6 +1004,112 @@ def test_accelerator_creation_waits_before_listeners():
             "Name",
         )
     }
+
+
+def created_listener_response(**request):
+    return {
+        "Listener": {
+            "ClientAffinity": "NONE",
+            "ListenerArn": "arn:listener",
+            "PortRanges": request["PortRanges"],
+            "Protocol": request["Protocol"],
+        }
+    }
+
+
+def test_listener_creates_with_identical_inputs_use_unique_tokens():
+    client = Mock()
+    client.create_listener.side_effect = created_listener_response
+    module = FakeModule({"listeners": [review_desired(443, 443)], "purge_listeners": True})
+    with (
+        patch.object(plugin, "get_listeners", return_value=[]),
+        patch.object(plugin, "wait_for_accelerator"),
+    ):
+        plugin.ensure_listeners(client, module, "arn:accelerator")
+        plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    first, second = client.create_listener.call_args_list
+    assert first.kwargs["IdempotencyToken"] != second.kwargs["IdempotencyToken"]
+
+
+def test_listener_create_retries_reuse_the_token():
+    raw_client = Mock()
+    raw_client.create_listener.side_effect = [
+        plugin.ClientError({"Error": {"Code": "Throttling", "Message": "slow down"}}, "CreateListener"),
+        created_listener_response(PortRanges=[{"FromPort": 443, "ToPort": 443}], Protocol="TCP"),
+    ]
+    client = RetryingBotoClientWrapper(raw_client, plugin.AWSRetry.jittered_backoff(delay=0))
+    module = FakeModule({"listeners": [review_desired(443, 443)], "purge_listeners": True})
+    with (
+        patch.object(plugin, "get_listeners", return_value=[]),
+        patch.object(plugin, "wait_for_accelerator"),
+    ):
+        plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    first, second = raw_client.create_listener.call_args_list
+    assert first.kwargs["IdempotencyToken"] == second.kwargs["IdempotencyToken"]
+
+
+def test_endpoint_group_creates_with_identical_inputs_use_unique_tokens():
+    client = Mock()
+    client.create_endpoint_group.return_value = {
+        "EndpointGroup": {
+            "EndpointGroupArn": "arn:group",
+            "EndpointGroupRegion": "us-east-1",
+        }
+    }
+    module = FakeModule({"purge_endpoint_groups": False})
+    desired = {
+        "endpoint_configurations": None,
+        "endpoint_group_region": "us-east-1",
+        "health_check_interval_seconds": None,
+        "health_check_path": None,
+        "health_check_port": None,
+        "health_check_protocol": None,
+        "port_overrides": None,
+        "threshold_count": None,
+        "traffic_dial_percentage": None,
+    }
+    with patch.object(plugin, "get_endpoint_groups", return_value=[]):
+        plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired])
+        plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired])
+
+    first, second = client.create_endpoint_group.call_args_list
+    assert first.kwargs["IdempotencyToken"] != second.kwargs["IdempotencyToken"]
+
+
+def test_accelerator_creates_with_identical_inputs_use_unique_tokens():
+    client = Mock()
+    client.create_accelerator.return_value = {
+        "Accelerator": {
+            "AcceleratorArn": "arn:accelerator",
+            "Enabled": True,
+            "IpAddressType": "IPV4",
+            "Name": "example",
+        }
+    }
+    module = FakeModule(
+        {
+            "enabled": None,
+            "idempotency_token": None,
+            "ip_address_type": None,
+            "ip_addresses": None,
+            "listeners": None,
+            "name": "example",
+            "tags": None,
+            "wait": False,
+        }
+    )
+    with (
+        patch.object(plugin, "get_accelerator", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+    ):
+        for _attempt in range(2):
+            with pytest.raises(ModuleExit):
+                plugin.ensure_present(client, module)
+
+    first, second = client.create_accelerator.call_args_list
+    assert first.kwargs["IdempotencyToken"] != second.kwargs["IdempotencyToken"]
 
 
 def review_listener(arn, start, end):
