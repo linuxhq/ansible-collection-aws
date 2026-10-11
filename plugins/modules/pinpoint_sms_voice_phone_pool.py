@@ -57,6 +57,13 @@ options:
       - This is required when O(state=present) and O(pool_id) is not provided.
       - This is used only to find or create a pool when O(pool_id) is not
         provided, and is ignored when O(pool_id) is provided.
+      - A pool matches when it holds this identity, its C(Name) tag equals
+        O(name), its message type equals O(message_type), and, when
+        O(iso_country_code) is provided, the identity's country equals it.
+      - A phone number can belong to only one pool, so the module fails when
+        a phone number already belongs to a pool that does not match.
+      - A sender ID can belong to several pools, so pools that hold the sender
+        ID but do not match are ignored and a new pool is created.
       - This option is ignored when O(state=absent).
     type: str
   pool_id:
@@ -252,11 +259,14 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     compare_aws_tags,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    ansible_dict_to_boto3_filter_list,
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    identity_matches,
+    is_phone_number_identity,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -446,35 +456,38 @@ def find_pool(client, module):
     if module.params["pool_id"] is not None:
         return get_pool_by_id(client, module, module.params["pool_id"])
 
-    filters = ansible_dict_to_boto3_filter_list({"message-type": module.params["message_type"]})
+    origination_identity = module.params["origination_identity"]
     iso_country_code = module.params["iso_country_code"]
     matches = []
-    # Pools that already hold the identity under another Name tag; CreatePool would reject the identity.
+    # A phone number can belong to only one pool, so CreatePool rejects a phone number that any non-matching
+    # pool holds. A sender ID can belong to several pools, so non-matching pools that hold one are skipped.
     conflicts = []
 
-    for pool in describe_pools(client, module, Filters=filters, Owner="SELF"):
+    # Pools are not filtered by message type, so a phone number held by a pool of the other message type is
+    # reported as a conflict instead of predicting a CreatePool request that AWS rejects.
+    for pool in describe_pools(client, module, Owner="SELF"):
         if pool.get("Status") == "DELETING":
             continue
 
         pool = pool_with_origination_identities(client, module, pool)
+        holding = [
+            origination
+            for origination in pool.get("OriginationIdentities", [])
+            if identity_matches(origination, (origination_identity,))
+        ]
+        if not holding:
+            continue
 
-        for origination in pool.get("OriginationIdentities", []):
-            if module.params["origination_identity"] not in (
-                origination.get("OriginationIdentity"),
-                origination.get("OriginationIdentityArn"),
-            ):
-                continue
-
-            if iso_country_code is not None and origination.get("IsoCountryCode") != iso_country_code:
-                continue
-
+        if pool.get("MessageType") == module.params["message_type"] and any(
+            iso_country_code is None or origination.get("IsoCountryCode") == iso_country_code for origination in holding
+        ):
             pool = pool_with_tags(client, module, pool)
             if boto3_tag_list_to_ansible_dict(pool.get("Tags", [])).get("Name") == module.params["name"]:
                 matches.append(pool)
-            else:
-                conflicts.append(pool)
+                continue
 
-            break
+        if any(is_phone_number_identity(origination) for origination in holding):
+            conflicts.append(pool)
 
     if len(matches) > 1:
         module.fail_json(
@@ -487,9 +500,10 @@ def find_pool(client, module):
     if not matches and conflicts:
         module.fail_json(
             msg=(
-                f"Origination identity {module.params['origination_identity']} already belongs to Pinpoint SMS "
-                f"Voice V2 pool {conflicts[0].get('PoolId')}, whose Name tag is not {module.params['name']}; "
-                "set pool_id to manage or rename that pool"
+                f"Phone number {origination_identity} already belongs to Pinpoint SMS Voice V2 pool "
+                f"{conflicts[0].get('PoolId')}, whose Name tag, message type, or country does not match; "
+                "a phone number can belong to only one pool, so set pool_id to manage that pool or "
+                "disassociate the phone number from it first"
             )
         )
 
@@ -809,7 +823,7 @@ def main():
     # Waits and re-reads describe by PoolIds on every path.
     describe_parameters = ("PoolIds", "MaxResults", "NextToken")
     if state == "present" and module.params["pool_id"] is None:
-        describe_parameters += ("Filters", "Owner")
+        describe_parameters += ("Owner",)
 
     methods = {"describe_pools": describe_parameters}
     if state == "present":

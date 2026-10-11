@@ -97,6 +97,13 @@ options:
       - The phone number ID to manage or release.
       - Set this with O(state=present) to update tags and settings on a specific existing number.
       - This is required when O(state=absent).
+      - With O(state=absent), a number in a pool is disassociated from the pool
+        before it is released.
+      - With O(state=absent), the module fails without changes, including in
+        check mode, when the number is the last phone number in its pool,
+        because AWS does not allow it to be disassociated. Delete the pool with
+        M(linuxhq.aws.pinpoint_sms_voice_phone_pool) first. Sender IDs in the
+        pool do not count as phone numbers, and this module never deletes pools.
     type: str
   pool_id:
     description:
@@ -304,6 +311,11 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    is_last_phone_number,
+    is_last_phone_number_conflict,
+    last_phone_number_message,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -541,6 +553,55 @@ def update_phone_number(client, module, current, updates):
     return dict(current, **response)
 
 
+def disassociate_failure_message(phone_number_id, pool_id):
+    return f"Unable to disassociate Pinpoint SMS Voice V2 phone number {phone_number_id} from pool {pool_id}"
+
+
+def pool_is_deleting(client, module, pool_id):
+    try:
+        response = paginated_query_with_retries(client, "describe_pools", PoolIds=[pool_id])
+    except is_boto3_error_code("ResourceNotFoundException"):
+        return True
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to describe Pinpoint SMS Voice V2 pool {pool_id}")
+
+    pools = response.get("Pools") if isinstance(response, dict) else None
+    if not isinstance(pools, list) or any(not isinstance(pool, dict) for pool in pools):
+        module.fail_json(msg=f"AWS returned malformed data while describing Pinpoint SMS Voice V2 pool {pool_id}")
+
+    return not pools or pools[0].get("Status") == "DELETING"
+
+
+def require_not_last_pool_phone_number(client, module, current):
+    """Fail without changes when AWS would reject disassociating the number as the last one in its pool."""
+    pool_id = current["PoolId"]
+    phone_number_id = current["PhoneNumberId"]
+    require_client_methods(
+        module,
+        client,
+        "Pinpoint SMS Voice V2",
+        {
+            "describe_pools": ("PoolIds",),
+            "list_pool_origination_identities": ("PoolId",),
+        },
+    )
+    try:
+        response = paginated_query_with_retries(client, "list_pool_origination_identities", PoolId=pool_id)
+    except is_boto3_error_code("ResourceNotFoundException"):
+        return
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}")
+
+    originations = response.get("OriginationIdentities") if isinstance(response, dict) else None
+    if not isinstance(originations, list) or any(not isinstance(origination, dict) for origination in originations):
+        module.fail_json(msg=f"AWS returned malformed origination identities for Pinpoint SMS Voice V2 pool {pool_id}")
+
+    identities = tuple(filter(None, (phone_number_id, current.get("PhoneNumberArn"))))
+    # Deleting a pool disassociates its numbers, so the number can be released once its pool is going away.
+    if is_last_phone_number(originations, identities) and not pool_is_deleting(client, module, pool_id):
+        module.fail_json(changed=False, msg=last_phone_number_message(phone_number_id, pool_id))
+
+
 def ensure_absent(client, module):
     phone_number_id = module.params["phone_number_id"]
     current = get_phone_number(client, module, phone_number_id)
@@ -551,12 +612,19 @@ def ensure_absent(client, module):
     changed = current is not None
     response = current
 
+    # Only the pool module deletes pools, so the last phone number in a pool is never released here.
+    if changed and module.check_mode and current.get("PoolId"):
+        require_not_last_pool_phone_number(client, module, current)
+
     if changed and not module.check_mode:
         if current.get("Status") != "ACTIVE":
             current = wait_for_phone_number_active(client, module, phone_number_id)
             # Deleted elsewhere during the wait; this run changed nothing.
             if not current or current.get("Status") == "DELETED":
                 exit_result(module, False, None)
+
+        if current.get("PoolId"):
+            require_not_last_pool_phone_number(client, module, current)
 
         # Every write is checked before the first one, so an older botocore fails without modifying anything.
         methods = {"release_phone_number": ("PhoneNumberId",)}
@@ -579,14 +647,13 @@ def ensure_absent(client, module):
                 )
             except is_boto3_error_code("ResourceNotFoundException"):
                 pass
+            except is_boto3_error_code("ConflictException") as e:
+                if is_last_phone_number_conflict(e):
+                    module.fail_json(changed=False, msg=last_phone_number_message(phone_number_id, current["PoolId"]))
+
+                module.fail_json_aws(e, msg=disassociate_failure_message(phone_number_id, current["PoolId"]))
             except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=(
-                        "Unable to disassociate Pinpoint SMS Voice V2 phone "
-                        f"number {phone_number_id} from pool {current['PoolId']}"
-                    ),
-                )
+                module.fail_json_aws(e, msg=disassociate_failure_message(phone_number_id, current["PoolId"]))
             else:
                 mutated = True
                 current = wait_for_phone_number_active(client, module, phone_number_id, changed=True)

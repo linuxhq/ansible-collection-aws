@@ -49,6 +49,11 @@ options:
     default: present
     description:
       - Whether the origination identity should be associated with the pool.
+      - With O(state=absent), the module fails without changes, including in
+        check mode, when O(origination_identity) is the last phone number in
+        the pool, because AWS does not allow it to be disassociated. Delete the
+        pool with M(linuxhq.aws.pinpoint_sms_voice_phone_pool) instead. Sender
+        IDs do not count as phone numbers.
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -142,6 +147,11 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    is_last_phone_number,
+    is_last_phone_number_conflict,
+    last_phone_number_message,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
@@ -281,10 +291,23 @@ def ensure_present(client, module):
     exit_result(module, changed, association)
 
 
+def disassociate_failure_message(module):
+    return (
+        f"Unable to disassociate origination identity {module.params['origination_identity']} "
+        f"from Pinpoint SMS Voice V2 pool {module.params['pool_id']}"
+    )
+
+
 def ensure_absent(client, module):
     current = current_associations(client, module)
     association = current_association(module, current)
     changed = association is not None
+    origination_identity = module.params["origination_identity"]
+    pool_id = module.params["pool_id"].rsplit("/", 1)[-1]
+
+    # AWS rejects disassociating the last phone number in a pool; only the pool module deletes pools.
+    if changed and is_last_phone_number(current, (origination_identity,)):
+        module.fail_json(changed=False, msg=last_phone_number_message(origination_identity, pool_id))
 
     if changed and not module.check_mode:
         response = None
@@ -296,16 +319,13 @@ def ensure_absent(client, module):
             )
         except is_boto3_error_code("ResourceNotFoundException"):
             association = None
+        except is_boto3_error_code("ConflictException") as e:
+            if is_last_phone_number_conflict(e):
+                module.fail_json(changed=False, msg=last_phone_number_message(origination_identity, pool_id))
+
+            module.fail_json_aws(e, msg=disassociate_failure_message(module))
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=(
-                    "Unable to disassociate origination identity "
-                    f"{module.params['origination_identity']} from "
-                    "Pinpoint SMS Voice V2 pool "
-                    f"{module.params['pool_id']}"
-                ),
-            )
+            module.fail_json_aws(e, msg=disassociate_failure_message(module))
 
         if response is not None:
             validate_association(module, response, changed=True)
