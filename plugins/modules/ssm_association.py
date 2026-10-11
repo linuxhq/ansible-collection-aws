@@ -72,6 +72,10 @@ options:
 notes:
   - O(tags) accepts at most 1000 entries; keys must contain 1 to 128 characters
     and values at most 256 characters.
+  - Updates send every field of the existing association because
+    C(UpdateAssociation) clears omitted fields. botocore older than 1.42.54
+    does not model C(AssociationDispatchAssumeRole), so updating an
+    association with such a botocore clears that field.
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
