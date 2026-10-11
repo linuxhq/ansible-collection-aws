@@ -360,6 +360,8 @@ RETURN = r"""
 cluster:
   description:
     - The EKS cluster. Empty when the cluster does not exist.
+    - With O(state=absent), empty once the cluster is deleted. With O(wait=false), the
+      cluster is returned with C(DELETING) status while AWS deletes it.
   returned: always
   type: dict
   contains:
@@ -1271,13 +1273,16 @@ def ensure_absent(client, module):
         exit_result(module, False, {}, "absent")
 
     if current.get("status") == "DELETING":
-        if module.params["wait"] and not module.check_mode:
+        if not module.params["wait"]:
+            exit_result(module, False, current, "absent")
+
+        if not module.check_mode:
             wait_for_cluster(client, module, "cluster_deleted")
 
-        exit_result(module, False, current, "absent")
+        exit_result(module, False, {}, "absent")
 
     if module.check_mode:
-        exit_result(module, True, current, "absent")
+        exit_result(module, True, {} if module.params["wait"] else dict(current, status="DELETING"), "absent")
 
     if current.get("status") in {"CREATING", "PENDING", "UPDATING"}:
         # A cluster that fails to create or update can still be deleted.
@@ -1304,8 +1309,10 @@ def ensure_absent(client, module):
 
     if module.params["wait"]:
         wait_for_cluster(client, module, "cluster_deleted", changed=True)
+        exit_result(module, True, {}, "absent")
 
-    exit_result(module, True, current, "absent")
+    # Without a wait the cluster remains in DELETING, so return its current description.
+    exit_result(module, True, describe_cluster(client, module, changed=True), "absent")
 
 
 def main():

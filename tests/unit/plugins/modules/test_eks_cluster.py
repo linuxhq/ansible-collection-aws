@@ -1065,7 +1065,12 @@ def test_absent_deletes_a_cluster_that_fails_while_waiting(status):
         patch.object(
             plugin,
             "describe_cluster",
-            side_effect=[dict(cluster, status=status), dict(cluster, status="FAILED"), dict(cluster, status="FAILED")],
+            side_effect=[
+                dict(cluster, status=status),
+                dict(cluster, status="FAILED"),
+                dict(cluster, status="FAILED"),
+                dict(cluster, status="DELETING"),
+            ],
         ),
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "wait_for_cluster_updates"),
@@ -1078,6 +1083,7 @@ def test_absent_deletes_a_cluster_that_fails_while_waiting(status):
     stubber.assert_no_pending_responses()
     client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
     assert raised.value.values["changed"] is True
+    assert raised.value.values["cluster"]["status"] == "DELETING"
 
 
 @pytest.mark.parametrize("status", ["CREATING", "UPDATING"])
@@ -1369,3 +1375,89 @@ def test_cluster_updates_share_one_deadline():
 
     assert raised.value.values["msg"] == "Timed out waiting for AWS EKS cluster updates first, second for example"
     assert client.describe_update.call_count == 4
+
+
+def run_absent(params, described, check_mode=False):
+    client = Mock()
+    module = FakeModule(
+        dict({"name": "example", "wait_delay": 15, "wait_timeout": 1200}, **params), check_mode=check_mode
+    )
+    with (
+        patch.object(plugin, "describe_cluster", side_effect=described) as describe,
+        patch.object(plugin, "wait_for_cluster") as wait_for_cluster,
+        patch.object(plugin, "wait_for_cluster_updates"),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    return client, module, describe, wait_for_cluster, raised.value.values
+
+
+def test_absent_with_wait_returns_an_empty_cluster_after_deletion():
+    client, module, _describe, wait_for_cluster, result = run_absent(
+        {"wait": True}, [{"name": "example", "status": "ACTIVE"}]
+    )
+
+    client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
+    wait_for_cluster.assert_called_once_with(client, module, "cluster_deleted", changed=True)
+    assert result["changed"] is True
+    assert result["cluster"] == {}
+
+
+@pytest.mark.parametrize(
+    ("reread", "expected"),
+    [
+        ({"name": "example", "status": "DELETING"}, {"name": "example", "status": "DELETING"}),
+        (None, {}),
+    ],
+)
+def test_absent_without_wait_returns_the_cluster_as_it_is_being_deleted(reread, expected):
+    client, _module, describe, wait_for_cluster, result = run_absent(
+        {"wait": False}, [{"name": "example", "status": "ACTIVE"}, reread]
+    )
+
+    client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
+    wait_for_cluster.assert_not_called()
+    assert describe.call_args_list[1].kwargs == {"changed": True}
+    assert result["changed"] is True
+    assert result["cluster"] == expected
+
+
+@pytest.mark.parametrize(
+    ("wait", "expected"),
+    [
+        (True, {}),
+        (False, {"name": "example", "status": "DELETING"}),
+    ],
+)
+def test_absent_check_mode_predicts_the_deleted_cluster(wait, expected):
+    client, _module, describe, wait_for_cluster, result = run_absent(
+        {"wait": wait}, [{"name": "example", "status": "ACTIVE"}], check_mode=True
+    )
+
+    client.delete_cluster.assert_not_called()
+    wait_for_cluster.assert_not_called()
+    assert describe.call_count == 1
+    assert result["changed"] is True
+    assert result["cluster"] == expected
+
+
+@pytest.mark.parametrize(
+    ("wait", "check_mode", "waited", "expected"),
+    [
+        (True, False, True, {}),
+        (True, True, False, {}),
+        (False, False, False, {"name": "example", "status": "DELETING"}),
+        (False, True, False, {"name": "example", "status": "DELETING"}),
+    ],
+)
+def test_absent_in_progress_delete_returns_a_result_consistent_with_wait(wait, check_mode, waited, expected):
+    client, _module, _describe, wait_for_cluster, result = run_absent(
+        {"wait": wait}, [{"name": "example", "status": "DELETING"}], check_mode=check_mode
+    )
+
+    client.delete_cluster.assert_not_called()
+    assert wait_for_cluster.called is waited
+    assert result["changed"] is False
+    assert result["cluster"] == expected

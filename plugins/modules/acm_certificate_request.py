@@ -13,7 +13,10 @@ description:
     is C(AMAZON_ISSUED), uses DNS validation, is C(PENDING_VALIDATION) or
     C(ISSUED), and its domain name and subject alternative names match; the
     most recently created certificate is reused when several match.
-  - Certificates managed by another AWS service, such as CloudFront, are never reused.
+  - Certificates managed by another AWS service, such as CloudFront, are never
+    reused. This requires botocore C(1.38.4) or later; older releases do not
+    return C(ManagedBy), so such a certificate can be reused if it otherwise
+    matches.
   - ACM permits at most 50 tags on a certificate; tag keys must contain 1 to
     128 characters and tag values may contain at most 256 characters.
   - Existing certificate tags are purged only when O(tags) is provided and
