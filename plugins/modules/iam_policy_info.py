@@ -24,6 +24,8 @@ options:
     description:
       - IAM path prefix used when listing groups, roles, and users.
       - Only used when none of O(group_name), O(role_name), or O(user_name) is provided.
+      - When any of O(group_name), O(role_name), or O(user_name) is provided,
+        this option is ignored and a warning is returned.
       - Must begin with C(/), contain only printable ASCII characters, and contain at most 512 characters.
     type: str
   policy_name:
@@ -390,6 +392,9 @@ def main():
         module.fail_json(
             msg="path_prefix must begin with /, contain only printable ASCII characters, and contain at most 512 characters"
         )
+
+    if path_prefix and any(module.params[f"{entity_type.lower()}_name"] for entity_type in ENTITY_TYPES):
+        module.warn("path_prefix is ignored when group_name, role_name, or user_name is given")
 
     client = module.client("iam", retry_decorator=AWSRetry.jittered_backoff())
 

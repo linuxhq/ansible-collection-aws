@@ -43,6 +43,27 @@ def test_explicit_names_do_not_require_entity_list_operations():
         plugin.main()
 
     require_methods.assert_not_called()
+    assert module.warnings == ["path_prefix is ignored when group_name, role_name, or user_name is given"]
+
+
+@pytest.mark.parametrize(
+    ("names", "path_prefix"),
+    [
+        ({"group_name": None, "role_name": None, "user_name": None}, "/service/"),
+        ({"group_name": None, "role_name": "app", "user_name": None}, None),
+    ],
+)
+def test_path_prefix_without_conflicting_name_does_not_warn(names, path_prefix):
+    module = FakeModule(dict(names, path_prefix=path_prefix, policy_name=None), client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "entity_names", return_value=[]),
+        patch.object(plugin, "build_entity_policies", return_value=[]),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()
+
+    assert module.warnings == []
 
 
 def test_empty_results_only_require_entity_list_operations():

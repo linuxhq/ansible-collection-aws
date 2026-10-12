@@ -12,6 +12,9 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     assert_module_rejects,
 )
 
+ACTIVE_US_EAST_1 = {"notificationHubRegion": "us-east-1", "statusSummary": {"reason": "", "status": "ACTIVE"}}
+ACTIVE_US_WEST_2 = {"notificationHubRegion": "us-west-2", "statusSummary": {"reason": "", "status": "ACTIVE"}}
+
 
 def test_absent_tolerates_hub_disappearing_during_delete():
     client = Mock()
@@ -21,13 +24,14 @@ def test_absent_tolerates_hub_disappearing_during_delete():
     )
     module = FakeModule({"region": "us-east-1"})
     with (
-        patch.object(plugin, "get_notification_hub", return_value={}),
+        patch.object(plugin, "list_notification_hubs", return_value=[ACTIVE_US_EAST_1, ACTIVE_US_WEST_2]),
         patch.object(plugin, "require_client_methods") as require,
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_absent(client, module)
 
     assert raised.value.values["changed"]
+    client.deregister_notification_hub.assert_called_once_with(notificationHubRegion="us-east-1", aws_retry=True)
     require.assert_called_once_with(
         module,
         client,
@@ -76,7 +80,7 @@ def test_hub_lookup_matches_exact_region():
     ]
     module = FakeModule({"region": "us-east-1"})
     with patch.object(plugin, "query_list", return_value=hubs):
-        result = plugin.get_notification_hub(None, module)
+        result = plugin.find_notification_hub(plugin.list_notification_hubs(None, module), "us-east-1")
 
     assert result == {"notificationHubRegion": "us-east-1", "statusSummary": {"reason": "", "status": "ACTIVE"}}
 
@@ -91,7 +95,7 @@ def test_hub_lookup_rejects_invalid_status():
         ),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.get_notification_hub(None, module)
+        plugin.list_notification_hubs(None, module)
 
     assert raised.value.values["msg"] == "Unable to list AWS Notifications hubs: AWS returned an invalid hub"
 
@@ -100,7 +104,7 @@ def test_register_rejects_hub_for_different_region():
     client = Mock(register_notification_hub=Mock(return_value={"notificationHubRegion": "us-west-2"}))
     module = FakeModule({"region": "us-east-1"})
     with (
-        patch.object(plugin, "get_notification_hub", return_value=None),
+        patch.object(plugin, "list_notification_hubs", return_value=[]),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -116,7 +120,7 @@ def test_register_rejects_hub_for_different_region():
 def test_invalid_register_response_reports_changed():
     client = Mock(register_notification_hub=Mock(return_value={}))
     with (
-        patch.object(plugin, "get_notification_hub", return_value=None),
+        patch.object(plugin, "list_notification_hubs", return_value=[]),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -140,14 +144,14 @@ def test_inactive_hub_is_registered_again():
         "statusSummary": {"status": "INACTIVE"},
     }
     with (
-        patch.object(plugin, "get_notification_hub", return_value=inactive),
+        patch.object(plugin, "list_notification_hubs", return_value=[inactive]),
         patch.object(plugin, "require_client_methods") as require,
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
 
     assert raised.value.values["changed"]
-    client.register_notification_hub.assert_called_once_with(notificationHubRegion="us-east-1", aws_retry=True)
+    client.register_notification_hub.assert_called_once_with(notificationHubRegion="us-east-1")
     require.assert_called_once_with(
         module,
         client,
@@ -164,7 +168,7 @@ def test_inactive_hub_is_already_absent():
         "statusSummary": {"status": "INACTIVE"},
     }
     with (
-        patch.object(plugin, "get_notification_hub", return_value=inactive),
+        patch.object(plugin, "list_notification_hubs", return_value=[inactive]),
         patch.object(plugin, "require_client_methods") as require,
         pytest.raises(ModuleExit) as raised,
     ):
@@ -183,7 +187,7 @@ def test_active_hub_does_not_require_register():
         "statusSummary": {"status": "ACTIVE"},
     }
     with (
-        patch.object(plugin, "get_notification_hub", return_value=active),
+        patch.object(plugin, "list_notification_hubs", return_value=[active]),
         patch.object(plugin, "require_client_methods") as require,
         pytest.raises(ModuleExit) as raised,
     ):
@@ -192,3 +196,93 @@ def test_active_hub_does_not_require_register():
     assert not raised.value.values["changed"]
     client.register_notification_hub.assert_not_called()
     require.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "others",
+    [
+        [],
+        [{"notificationHubRegion": "us-west-2", "statusSummary": {"reason": "", "status": "REGISTERING"}}],
+        [{"notificationHubRegion": "us-west-2", "statusSummary": {"reason": "", "status": "INACTIVE"}}],
+    ],
+)
+def test_last_active_hub_is_not_deregistered(others, check_mode):
+    client = Mock()
+    module = FakeModule({"region": "us-east-1"}, check_mode=check_mode)
+    with (
+        patch.object(plugin, "list_notification_hubs", return_value=[ACTIVE_US_EAST_1] + others),
+        patch.object(plugin, "require_client_methods") as require,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["msg"] == (
+        "Unable to delete AWS Notifications hub us-east-1: AWS does not allow deregistering the last ACTIVE hub"
+    )
+    client.deregister_notification_hub.assert_not_called()
+    require.assert_not_called()
+
+
+def test_active_hub_is_deregistered_when_another_hub_is_active():
+    client = Mock()
+    module = FakeModule({"region": "us-east-1"})
+    with (
+        patch.object(plugin, "list_notification_hubs", return_value=[ACTIVE_US_WEST_2, ACTIVE_US_EAST_1]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"]
+    client.deregister_notification_hub.assert_called_once_with(notificationHubRegion="us-east-1", aws_retry=True)
+
+
+def test_deregister_conflict_is_not_retried():
+    module = FakeModule({"region": "us-east-1", "state": "absent"})
+    module.client = Mock(return_value=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_absent"),
+    ):
+        plugin.main()
+
+    deregister = Mock(
+        side_effect=plugin.ClientError(
+            {"Error": {"Code": "ConflictException", "Message": "Cannot deregister last ACTIVE notification hub"}},
+            "DeregisterNotificationHub",
+        )
+    )
+    with patch("time.sleep") as sleep, pytest.raises(plugin.ClientError):
+        module.client.call_args.kwargs["retry_decorator"](deregister)(notificationHubRegion="us-east-1")
+
+    deregister.assert_called_once_with(notificationHubRegion="us-east-1")
+    sleep.assert_not_called()
+
+
+def test_register_retries_conflicts():
+    calls = []
+
+    def register(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise plugin.ClientError(
+                {"Error": {"Code": "ConflictException", "Message": "deregistering"}},
+                "RegisterNotificationHub",
+            )
+
+        return {"notificationHubRegion": "us-east-1"}
+
+    client = Mock(register_notification_hub=register)
+    with (
+        patch.object(plugin, "list_notification_hubs", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        patch("time.sleep"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule({"region": "us-east-1"}))
+
+    assert raised.value.values["changed"]
+    assert calls == [{"notificationHubRegion": "us-east-1"}] * 2

@@ -1,0 +1,12 @@
+---
+minor_changes:
+  - iam_policy_info - warn that ``path_prefix`` is ignored when ``group_name``, ``role_name``, or ``user_name``
+    is given.
+bugfixes:
+  - ec2_vpc_vpn - document the tunnel option fields returned under ``vpn_connection.options.tunnel_options``.
+  - notifications_hub - fail immediately without changes, including in check mode, when ``state=absent``
+    targets the last ``ACTIVE`` hub, which AWS does not allow to be deregistered.
+  - notifications_hub - retry ``ConflictException`` only when registering a hub instead of on every call, so a
+    deregistration conflict is reported without a long backoff.
+  - ses_sandbox - keep the current additional contact email addresses when ``additional_contact_email_addresses``
+    is empty and other account details change, as documented.

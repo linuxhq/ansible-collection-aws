@@ -11,7 +11,8 @@ plugins under `plugins/`. Apply these with `ansible-plugins.md`.
 - Prefix a module name with the boto3 service name that supplies its client.
 - Include the managed resource in the name when the service manages several.
 - Use established AWS abbreviations only; do not invent shortened names.
-- Reserve the `aws_` prefix for broad AWS behavior that has no clear service.
+- Reserve the `aws_` prefix for account, region, or caller information, as in
+  amazon.aws `aws_region_info`.
 
 ## SDK and module base
 
