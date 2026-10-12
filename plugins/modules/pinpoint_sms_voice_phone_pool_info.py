@@ -308,7 +308,8 @@ def main():
                 response = paginated_query_with_retries(
                     client,
                     "list_pool_origination_identities",
-                    PoolId=pool_id,
+                    # A shared pool requires its full ARN.
+                    PoolId=pool.get("PoolArn") or pool_id,
                 )
             except is_boto3_error_code("ResourceNotFoundException"):
                 continue
