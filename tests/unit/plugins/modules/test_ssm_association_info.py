@@ -49,6 +49,23 @@ def test_scalar_filters_are_converted_to_association_filters():
     assert query_list.call_args.kwargs["AssociationFilterList"] == [{"key": "Name", "value": "document"}]
 
 
+def test_single_value_list_filters_are_accepted():
+    _result, _require, query_list = run(FakeModule({"filters": {"Name": ["document"]}}, client=Mock()), [])
+
+    assert query_list.call_args.kwargs["AssociationFilterList"] == [{"key": "Name", "value": "document"}]
+
+
+def test_filters_with_several_values_are_rejected_before_any_call():
+    module = FakeModule({"filters": {"AssociationName": ["a", "b"]}}, client=Mock())
+    result, require_client_methods, query_list = run(module, [])
+
+    assert result.values["msg"] == (
+        "filters.AssociationName accepts a single value; ListAssociations does not allow repeating a filter key"
+    )
+    require_client_methods.assert_not_called()
+    query_list.assert_not_called()
+
+
 def test_associations_include_tags():
     client = Mock(list_tags_for_resource=Mock(return_value={"TagList": [{"Key": "CostCenter", "Value": "A1"}]}))
     result, _require, _query = run(
