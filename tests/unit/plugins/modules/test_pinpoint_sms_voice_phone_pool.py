@@ -943,3 +943,21 @@ def test_pool_id_search_paths_gate_describe_by_pool_ids():
         plugin.main()
 
     assert require.call_args.args[3]["describe_pools"] == ("PoolIds", "MaxResults", "NextToken")
+
+
+POOL_ARN = "arn:aws:sms-voice:us-east-1:111111111111:pool/pool-1"
+
+
+@pytest.mark.parametrize(
+    ("pool", "expected_pool_id"),
+    [
+        ({"PoolArn": POOL_ARN, "PoolId": "pool-1"}, POOL_ARN),
+        ({"PoolId": "pool-1"}, "pool-1"),
+    ],
+)
+def test_origination_identities_prefer_the_pool_arn(pool, expected_pool_id):
+    with patch.object(plugin, "query_list", return_value=[{"OriginationIdentity": "phone-1"}]) as query:
+        result = plugin.pool_with_origination_identities(Mock(), FakeModule({}), pool)
+
+    assert query.call_args.kwargs["PoolId"] == expected_pool_id
+    assert result["OriginationIdentities"] == [{"OriginationIdentity": "phone-1"}]

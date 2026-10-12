@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_pool_info - list origination identities with the pool ARN when AWS returns one,
+    as AWS requires for shared pools, so shared pools are no longer silently omitted from ``pools``.
+  - pinpoint_sms_voice_phone_pool - list origination identities with the pool ARN when AWS returns one,
+    as AWS requires for shared pools.
+  - pinpoint_sms_voice_phone_pool - document that the ``pool_id`` and ``pool.pool_id`` return values are
+    omitted for a pool predicted in check mode.

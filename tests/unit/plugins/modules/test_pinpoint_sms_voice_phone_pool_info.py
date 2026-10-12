@@ -259,3 +259,37 @@ def test_rejects_malformed_tags():
         plugin.main()
 
     assert "malformed tags" in raised.value.values["msg"]
+
+
+POOL_ARN = "arn:aws:sms-voice:us-east-1:111111111111:pool/pool-1"
+
+
+@pytest.mark.parametrize(
+    ("pool", "expected_pool_id"),
+    [
+        ({"PoolArn": POOL_ARN, "PoolId": "pool-1"}, POOL_ARN),
+        ({"PoolId": "pool-1"}, "pool-1"),
+    ],
+)
+def test_origination_identities_prefer_the_pool_arn(pool, expected_pool_id):
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"Tags": []}
+    module = FakeModule(
+        {"filters": None, "max_results": None, "owner": "SHARED", "pool_ids": None},
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[pool]),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            return_value={"OriginationIdentities": [{"OriginationIdentity": "phone-1"}]},
+        ) as paginate,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert paginate.call_args.kwargs["PoolId"] == expected_pool_id
+    assert raised.value.values["pools"][0]["origination_identities"] == [{"origination_identity": "phone-1"}]

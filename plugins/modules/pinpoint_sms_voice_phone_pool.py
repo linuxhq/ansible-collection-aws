@@ -197,7 +197,7 @@ pool:
       type: str
     pool_id:
       description: The pool ID.
-      returned: always
+      returned: always, except for a pool predicted in check mode
       type: str
     self_managed_opt_outs_enabled:
       description: Whether self-managed opt-outs are enabled.
@@ -228,7 +228,7 @@ pool_arn:
 pool_id:
   description:
     - The ID of the phone pool.
-  returned: when available
+  returned: when a pool is returned, except for a pool predicted in check mode
   type: str
 state:
   description:
@@ -332,7 +332,8 @@ def pool_with_origination_identities(client, module, pool, changed=False):
             "OriginationIdentities",
             f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}",
             changed=changed,
-            PoolId=pool_id,
+            # A shared pool requires its full ARN.
+            PoolId=pool.get("PoolArn") or pool_id,
         )
         if any(
             not isinstance(identity, dict)
