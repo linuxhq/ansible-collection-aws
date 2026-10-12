@@ -383,6 +383,71 @@ def test_additive_tags_reject_a_result_above_the_provider_limit():
     client.tag_resource.assert_not_called()
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_tag_limit_ignores_aws_reserved_tags(check_mode):
+    client = Mock()
+    params = dict.fromkeys(plugin.CREATE_FIELDS)
+    params.update(
+        {
+            "name": "example",
+            "purge_tags": False,
+            "tags": {"new": "tag"},
+            "wait": False,
+        }
+    )
+    reserved = {
+        "aws:cloudformation:logical-id": "Cluster",
+        "AWS:CloudFormation:stack-id": "arn:stack",
+        "aws:cloudformation:stack-name": "stack",
+    }
+    current = {
+        "arn": "arn:cluster",
+        "name": "example",
+        "status": "ACTIVE",
+        "tags": dict(reserved, **{str(index): "" for index in range(49)}),
+    }
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["cluster"]["tags"]["new"] == "tag"
+    if check_mode:
+        client.tag_resource.assert_not_called()
+    else:
+        client.tag_resource.assert_called_once_with(resourceArn="arn:cluster", tags={"new": "tag"}, aws_retry=True)
+
+
+def test_tag_limit_still_rejects_more_than_fifty_user_tags_beside_aws_tags():
+    client = Mock()
+    params = dict.fromkeys(plugin.CREATE_FIELDS)
+    params.update(
+        {
+            "name": "example",
+            "purge_tags": False,
+            "tags": {"new": "tag"},
+            "wait": False,
+        }
+    )
+    current = {
+        "arn": "arn:cluster",
+        "name": "example",
+        "status": "ACTIVE",
+        "tags": dict({"aws:cloudformation:stack-name": "stack"}, **{str(index): "" for index in range(50)}),
+    }
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=True))
+
+    assert raised.value.values["msg"] == "The resulting cluster tags must contain at most 50 entries"
+    client.tag_resource.assert_not_called()
+
+
 def test_no_wait_change_waits_for_active_cluster_and_rechecks_state():
     client = Mock()
     params = dict.fromkeys(plugin.CREATE_FIELDS)
@@ -483,6 +548,32 @@ def test_absent_does_not_repeat_an_in_progress_delete():
 
     assert not raised.value.values["changed"]
     client.delete_cluster.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("status", ["ACTIVE", "UPDATING"])
+def test_absent_fails_without_waiting_when_deletion_protection_is_enabled(check_mode, status):
+    client = Mock()
+    module = FakeModule({"name": "example", "wait": True}, check_mode=check_mode)
+    with (
+        patch.object(
+            plugin,
+            "describe_cluster",
+            return_value={"name": "example", "status": status, "deletionProtection": True},
+        ),
+        patch.object(plugin, "wait_for_cluster") as wait_for_cluster,
+        patch.object(plugin, "wait_for_cluster_updates") as wait_for_updates,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert "example" in raised.value.values["msg"]
+    assert "deletion_protection=false" in raised.value.values["msg"]
+    wait_for_cluster.assert_not_called()
+    wait_for_updates.assert_not_called()
+    client.delete_cluster.assert_not_called()
+    client.update_cluster_config.assert_not_called()
 
 
 def test_new_cluster_requires_role_and_subnets():
