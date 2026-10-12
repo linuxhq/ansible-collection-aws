@@ -184,6 +184,8 @@ def ensure_absent(client, module, hosted_zone_id):
                 aws_retry=True,
             )
         except is_boto3_error_code("VPCAssociationNotFound"):
+            # The association was removed after it was read, so this run changed nothing.
+            changed = False
             response = None
         except is_boto3_error_code("LastVPCAssociation") as e:
             module.fail_json_aws(e, msg=last_vpc_association_message(module, hosted_zone_id))
@@ -195,8 +197,7 @@ def ensure_absent(client, module, hosted_zone_id):
 
         wait_for_change(client, module, response, hosted_zone_id)
 
-    if changed:
-        vpcs = [vpc for vpc in vpcs if vpc != requested_vpc]
+    vpcs = [vpc for vpc in vpcs if vpc != requested_vpc]
 
     module.exit_json(
         changed=changed,

@@ -122,7 +122,8 @@ def ensure_absent(client, module):
                 aws_retry=True,
             )
         except is_boto3_error_code("NoSuchDelegationSet"):
-            pass
+            # The set was deleted after it was read, so this run changed nothing.
+            changed = False
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,

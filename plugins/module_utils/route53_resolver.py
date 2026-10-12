@@ -32,22 +32,41 @@ def comparable_ips_match(current, desired):
 
 
 def comparable_ips_matches(current, desired):
-    """Return, for each desired entry, the index of the current entry it matches, or None."""
-    remaining = list(range(len(current)))
-    matches = [None] * len(desired)
-    # Match the most specific entries first so they are not taken by broader ones.
+    """Return, for each desired entry, the index of the current entry it matches, or None.
+
+    Pairs entries with a maximum bipartite matching (Kuhn's algorithm), so a broad desired entry
+    cannot take the only current entry a more specific one could match while another was free.
+    """
+    compatible = [
+        [
+            current_index
+            for current_index in range(len(current))
+            if all(current[current_index].get(field) == value for field, value in entry.items())
+        ]
+        for entry in desired
+    ]
+    owners = [None] * len(current)
+
+    def augment(desired_index, visited):
+        for current_index in compatible[desired_index]:
+            if current_index in visited:
+                continue
+
+            visited.add(current_index)
+            if owners[current_index] is None or augment(owners[current_index], visited):
+                owners[current_index] = desired_index
+                return True
+
+        return False
+
+    # Try the most specific entries first; a matched entry stays matched as later ones augment.
     for desired_index in sorted(range(len(desired)), key=lambda index: len(desired[index]), reverse=True):
-        match = next(
-            (
-                current_index
-                for current_index in remaining
-                if all(current[current_index].get(field) == value for field, value in desired[desired_index].items())
-            ),
-            None,
-        )
-        if match is not None:
-            remaining.remove(match)
-            matches[desired_index] = match
+        augment(desired_index, set())
+
+    matches = [None] * len(desired)
+    for current_index, desired_index in enumerate(owners):
+        if desired_index is not None:
+            matches[desired_index] = current_index
 
     return matches
 

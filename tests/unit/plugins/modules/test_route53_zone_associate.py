@@ -223,7 +223,8 @@ def test_absent_tolerates_association_disappearing_during_delete():
     ):
         plugin.ensure_absent(client, FakeModule(params(state="absent", wait=True)), "Z1")
 
-    assert raised.value.values["changed"]
+    # AWS reported the association already gone, so this run removed nothing and does not wait.
+    assert raised.value.values["changed"] is False
     assert raised.value.values["vpcs"] == [{"vpc_id": "vpc-2", "vpc_region": "us-west-2"}]
     client.get_waiter.assert_not_called()
 
