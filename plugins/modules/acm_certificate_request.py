@@ -32,7 +32,9 @@ options:
   idempotency_token:
     description:
       - Custom ACM idempotency token for the certificate request.
-      - When omitted, a deterministic token is generated from O(domain_name) and O(subject_alternative_names).
+      - When omitted, a unique token is generated for each certificate request, so a request made within the last hour
+        for a certificate that has since failed or been deleted is not replayed.
+      - A supplied token is sent unchanged; ACM treats requests that repeat a token within one hour as a single request.
       - ACM requires a token of 1 to 32 ASCII word characters.
       - This option is only used when requesting a certificate.
     type: str
@@ -74,16 +76,13 @@ certificate_arn:
   type: str
 """
 
-import hashlib
-import json
 import re
+import uuid
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
     pass
-
-from ansible.module_utils.common.text.converters import to_bytes
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
@@ -295,13 +294,7 @@ def main():
         )
 
         if idempotency_token is None:
-            token_data = {
-                "domain_name": normalized_domain_name,
-                "subject_alternative_names": sorted(subject_alternative_names),
-            }
-            idempotency_token = hashlib.sha256(
-                to_bytes(json.dumps(token_data, separators=(",", ":"), sort_keys=True))
-            ).hexdigest()[:32]
+            idempotency_token = uuid.uuid4().hex
 
         request = scrub_none_parameters(
             {

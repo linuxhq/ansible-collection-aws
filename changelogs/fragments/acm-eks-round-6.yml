@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - acm_certificate_request - generate a unique idempotency token for each certificate request when
+    O(idempotency_token) is omitted, so a rerun within an hour of a request whose certificate has since failed
+    or been deleted requests a new certificate instead of replaying the earlier request.
+  - eks_cluster - keep C(aws:) prefixed tags in the check mode and no-wait cluster prediction when O(purge_tags=true),
+    matching the tags the module actually leaves on the cluster.
+  - eks_cluster - carry the existing Auto Mode node pools and node role into an enabled C(computeConfig) update
+    when O(compute_config.node_pools) or O(compute_config.node_role_arn) is omitted, because EKS otherwise
+    clears the cluster's node pools.

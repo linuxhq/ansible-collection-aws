@@ -55,11 +55,13 @@ options:
       node_pools:
         description:
           - The EKS Auto Mode node pools.
+          - When omitted while EKS Auto Mode compute is enabled, the existing node pools are kept.
         elements: str
         type: list
       node_role_arn:
         description:
           - The IAM role ARN used by EKS Auto Mode nodes.
+          - When omitted while EKS Auto Mode compute is enabled, the existing node role is kept.
         type: str
     type: dict
   deletion_protection:
@@ -699,6 +701,12 @@ def auto_mode_request(current, config_request):
         if "enabled" not in config and "enabled" in current_config:
             config["enabled"] = current_config["enabled"]
 
+        if field == "computeConfig" and config.get("enabled") is True:
+            # EKS clears node pools and the node role when an enabled request omits them.
+            for key in ("nodePools", "nodeRoleArn"):
+                if key not in config and key in current_config:
+                    config[key] = current_config[key]
+
         if config:
             for key in reversed(path):
                 config = {key: config}
@@ -935,8 +943,12 @@ def check_mode_cluster(module, current):
 
     cluster["name"] = module.params["name"]
     if tags is not None:
-        current_tags = {} if module.params["purge_tags"] else dict(cluster.get("tags") or {})
-        current_tags.update(tags)
+        current_tags = dict(cluster.get("tags") or {})
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge_tags=module.params["purge_tags"])
+        for tag_key in tag_keys_to_unset:
+            current_tags.pop(tag_key, None)
+
+        current_tags.update(tags_to_set)
         cluster["tags"] = current_tags
 
     return cluster

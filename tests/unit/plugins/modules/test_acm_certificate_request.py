@@ -1,3 +1,4 @@
+import re
 from unittest.mock import Mock, patch
 
 import pytest
@@ -364,13 +365,13 @@ def test_rejects_matching_certificate_without_creation_time():
     client.request_certificate.assert_not_called()
 
 
-def test_generated_idempotency_token_is_stable_for_normalized_names():
+def request_new_certificate(idempotency_token=None):
     client = Mock()
     client.request_certificate.return_value = {"CertificateArn": "arn:new"}
     module = FakeModule(
         {
             "domain_name": "Example.COM",
-            "idempotency_token": None,
+            "idempotency_token": idempotency_token,
             "purge_tags": True,
             "subject_alternative_names": [
                 "WWW.example.com",
@@ -390,11 +391,24 @@ def test_generated_idempotency_token_is_stable_for_normalized_names():
     ):
         plugin.main()
 
-    assert client.request_certificate.call_args.kwargs["IdempotencyToken"] == "e113b629356ead495e5f4cfb72dfd792"
-    assert client.request_certificate.call_args.kwargs["SubjectAlternativeNames"] == [
-        "www.example.com",
-        "api.example.com",
-    ]
+    client.request_certificate.assert_called_once()
+    return client.request_certificate.call_args.kwargs
+
+
+def test_generated_idempotency_token_is_unique_per_request():
+    first = request_new_certificate()
+    second = request_new_certificate()
+
+    assert re.fullmatch(r"\w{1,32}", first["IdempotencyToken"], flags=re.ASCII)
+    assert re.fullmatch(r"\w{1,32}", second["IdempotencyToken"], flags=re.ASCII)
+    assert first["IdempotencyToken"] != second["IdempotencyToken"]
+    assert first["SubjectAlternativeNames"] == ["www.example.com", "api.example.com"]
+
+
+def test_supplied_idempotency_token_is_sent_unchanged():
+    request = request_new_certificate("Custom_Token_1")
+
+    assert request["IdempotencyToken"] == "Custom_Token_1"
 
 
 def issued_certificate(arn, **overrides):
