@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ssm_document - wait for a ``TEXT`` format document that is already being deleted and then create the requested
+    document with ``state=present``, instead of failing because the existing document is ``TEXT`` format.
+...

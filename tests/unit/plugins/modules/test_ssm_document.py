@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from unittest.mock import Mock, call, patch
+from unittest.mock import ANY, Mock, call, patch
 
 import pytest
 from botocore.exceptions import ClientError
@@ -767,6 +767,31 @@ def test_present_fails_before_any_change_for_a_text_document(check_mode):
         "update_document_default_version",
     ):
         getattr(client, method).assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_present_replaces_a_text_document_that_is_being_deleted(check_mode):
+    client = Mock(
+        describe_document=Mock(
+            return_value={"Document": described("TEXT", DocumentType="ChangeCalendar", Status="Deleting")}
+        )
+    )
+    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1", "Name": "example"}}
+    with (
+        patch.object(plugin, "get_document", return_value=document({"schemaVersion": "2.2"})) as get_document,
+        patch.object(plugin, "wait_for_document") as wait_for_document,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params(), check_mode=check_mode))
+
+    assert raised.value.values["changed"] is True
+    if check_mode:
+        wait_for_document.assert_not_called()
+        get_document.assert_not_called()
+        client.create_document.assert_not_called()
+    else:
+        assert wait_for_document.call_args_list[0] == call(client, ANY, "deleted")
+        client.create_document.assert_called_once()
 
 
 @pytest.mark.parametrize("document_format", ["JSON", "YAML"])
