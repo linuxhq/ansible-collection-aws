@@ -974,7 +974,7 @@ def test_auto_mode_load_balancing_updates_with_matching_create_only_network_sett
         "name": "example",
         "arn": "arn:example",
         "status": "ACTIVE",
-        "computeConfig": {"enabled": True, "nodePools": ["system"]},
+        "computeConfig": {"enabled": True, "nodePools": ["general-purpose", "system"], "nodeRoleArn": "arn:node"},
         "kubernetesNetworkConfig": {
             "ipFamily": "ipv4",
             "serviceIpv4Cidr": "10.100.0.0/16",
@@ -1004,7 +1004,7 @@ def test_auto_mode_load_balancing_updates_with_matching_create_only_network_sett
     client.update_cluster_config.assert_called_once_with(
         name="example",
         aws_retry=True,
-        computeConfig={"enabled": True},
+        computeConfig={"enabled": True, "nodePools": ["general-purpose", "system"], "nodeRoleArn": "arn:node"},
         kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
         storageConfig={"blockStorage": {"enabled": True}},
     )
@@ -1054,10 +1054,29 @@ def test_auto_mode_request_fills_omitted_enabled_flags_from_the_cluster():
     }
 
     assert plugin.auto_mode_request(current, {"computeConfig": {"nodePools": ["general-purpose"]}}) == {
-        "computeConfig": {"enabled": True, "nodePools": ["general-purpose"]},
+        "computeConfig": {"enabled": True, "nodePools": ["general-purpose"], "nodeRoleArn": "arn:node"},
         "kubernetesNetworkConfig": {"elasticLoadBalancing": {"enabled": True}},
         "storageConfig": {"blockStorage": {"enabled": True}},
     }
+
+
+@pytest.mark.parametrize(
+    ("compute_config", "expected"),
+    [
+        ({"nodePools": []}, {"enabled": True, "nodePools": [], "nodeRoleArn": "arn:node"}),
+        (
+            {"nodePools": ["general-purpose"], "nodeRoleArn": "arn:other"},
+            {"enabled": True, "nodePools": ["general-purpose"], "nodeRoleArn": "arn:other"},
+        ),
+        ({"enabled": False}, {"enabled": False}),
+    ],
+)
+def test_auto_mode_request_keeps_supplied_compute_settings(compute_config, expected):
+    current = {
+        "computeConfig": {"enabled": True, "nodePools": ["general-purpose", "system"], "nodeRoleArn": "arn:node"},
+    }
+
+    assert plugin.auto_mode_request(current, {"computeConfig": compute_config})["computeConfig"] == expected
 
 
 def test_auto_mode_request_never_sends_create_only_network_settings():
