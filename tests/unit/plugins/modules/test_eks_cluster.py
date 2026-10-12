@@ -335,6 +335,27 @@ def test_check_mode_preserves_unmanaged_tags():
     assert plugin.check_mode_cluster(FakeModule(fields), current)["tags"] == {"keep": "yes", "managed": "new"}
 
 
+def test_check_mode_purge_keeps_aws_reserved_tags():
+    fields = dict.fromkeys(plugin.CREATE_FIELDS)
+    fields.update(
+        {
+            "name": "example",
+            "purge_tags": True,
+            "tags": {"managed": "new"},
+        }
+    )
+    current = {
+        "name": "example",
+        "tags": {"aws:cloudformation:stack-name": "stack", "drop": "yes", "managed": "old"},
+    }
+
+    assert plugin.check_mode_cluster(FakeModule(fields), current)["tags"] == {
+        "aws:cloudformation:stack-name": "stack",
+        "managed": "new",
+    }
+    assert current["tags"] == {"aws:cloudformation:stack-name": "stack", "drop": "yes", "managed": "old"}
+
+
 def test_additive_tags_reject_a_result_above_the_provider_limit():
     client = Mock()
     params = dict.fromkeys(plugin.CREATE_FIELDS)

@@ -935,8 +935,12 @@ def check_mode_cluster(module, current):
 
     cluster["name"] = module.params["name"]
     if tags is not None:
-        current_tags = {} if module.params["purge_tags"] else dict(cluster.get("tags") or {})
-        current_tags.update(tags)
+        current_tags = dict(cluster.get("tags") or {})
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge_tags=module.params["purge_tags"])
+        for tag_key in tag_keys_to_unset:
+            current_tags.pop(tag_key, None)
+
+        current_tags.update(tags_to_set)
         cluster["tags"] = current_tags
 
     return cluster
