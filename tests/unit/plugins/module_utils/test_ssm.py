@@ -5,6 +5,7 @@ from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
     association_overview,
+    describe_ssm_document,
     list_ssm_tags,
     ssm_filter_list,
 )
@@ -88,3 +89,37 @@ def test_ssm_filter_list_splits_values_with_custom_key_names():
         {"key": "Name", "value": "b"},
         {"key": "Status", "value": "Success"},
     ]
+
+
+def test_describe_ssm_document_returns_the_description():
+    description = {"DocumentFormat": "TEXT", "Name": "example", "Status": "Active"}
+    client = Mock(describe_document=Mock(return_value={"Document": description}))
+
+    assert describe_ssm_document(FakeModule({}), client, "example", DocumentVersion="$LATEST") == description
+    client.describe_document.assert_called_once_with(DocumentVersion="$LATEST", Name="example", aws_retry=True)
+
+
+@pytest.mark.parametrize("code", ["InvalidDocument", "InvalidDocumentVersion"])
+def test_describe_ssm_document_returns_none_when_missing(code):
+    client = Mock(describe_document=Mock(side_effect=ClientError({"Error": {"Code": code, "Message": "gone"}}, "X")))
+
+    assert describe_ssm_document(FakeModule({}), client, "example") is None
+
+
+@pytest.mark.parametrize("response", [None, {}, {"Document": {}}, {"Document": {"DocumentFormat": ""}}])
+def test_describe_ssm_document_rejects_malformed_responses(response):
+    client = Mock(describe_document=Mock(return_value=response))
+    with pytest.raises(ModuleFail) as raised:
+        describe_ssm_document(FakeModule({}), client, "example")
+
+    assert raised.value.values["msg"] == "Unexpected response while describing AWS Systems Manager document example"
+
+
+def test_describe_ssm_document_reports_other_errors():
+    client = Mock(
+        describe_document=Mock(side_effect=ClientError({"Error": {"Code": "AccessDenied", "Message": "no"}}, "X"))
+    )
+    with pytest.raises(ModuleFail) as raised:
+        describe_ssm_document(FakeModule({}), client, "example")
+
+    assert raised.value.values["msg"] == "Unable to describe AWS Systems Manager document example"

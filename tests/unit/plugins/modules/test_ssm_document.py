@@ -39,10 +39,17 @@ def document(content, **overrides):
     return values
 
 
-def run_present(client, module, documents):
+def described(document_format="JSON", **overrides):
+    values = {"DocumentFormat": document_format, "Name": "example", "Status": "Active"}
+    values.update(overrides)
+    return values
+
+
+def run_present(client, module, documents, description=None):
     """Run ensure_present with get_document returning each document in turn and waits patched out."""
     reads = documents if callable(documents) else Mock(side_effect=list(documents))
     with (
+        patch.object(plugin, "describe_ssm_document", return_value=description),
         patch.object(plugin, "get_document", side_effect=reads) as get_document,
         patch.object(plugin, "wait_for_document") as wait_for_document,
         pytest.raises((ModuleExit, ModuleFail)) as raised,
@@ -54,7 +61,7 @@ def run_present(client, module, documents):
 
 def run_absent(client, module, current):
     with (
-        patch.object(plugin, "get_document", return_value=current),
+        patch.object(plugin, "describe_ssm_document", return_value=current),
         patch.object(plugin, "wait_for_document") as wait_for_document,
         pytest.raises((ModuleExit, ModuleFail)) as raised,
     ):
@@ -127,6 +134,7 @@ def test_content_update_waits_for_the_new_version_before_promoting():
     client.update_document_default_version.side_effect = calls.promote
     module = FakeModule(params(wait=False))
     with (
+        patch.object(plugin, "describe_ssm_document", return_value=None),
         patch.object(
             plugin,
             "get_document",
@@ -564,6 +572,7 @@ def test_failure_after_create_reports_changed():
     client = Mock()
     client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1"}}
     with (
+        patch.object(plugin, "describe_ssm_document", return_value=None),
         patch.object(plugin, "get_document", return_value=None),
         patch.object(plugin, "run_waiter", side_effect=ModuleFail({})) as run_waiter,
         pytest.raises(ModuleFail),
@@ -614,7 +623,7 @@ def test_tag_failure_after_update_reports_changed():
 def test_absent_wait_failure_after_delete_reports_changed():
     client = Mock()
     with (
-        patch.object(plugin, "get_document", return_value={"Name": "example"}),
+        patch.object(plugin, "describe_ssm_document", return_value=described()),
         patch.object(plugin, "run_waiter", side_effect=ModuleFail({})) as run_waiter,
         pytest.raises(ModuleFail),
     ):
@@ -671,12 +680,13 @@ def test_numbered_version_refreshes_latest_after_create():
 
 @pytest.mark.parametrize("document_version", ["$DEFAULT", "$LATEST", "2"])
 def test_absent_ignores_document_version(document_version):
-    client = Mock(get_document=Mock(return_value={"Content": "{}", "Name": "example"}))
+    client = Mock(describe_document=Mock(return_value={"Document": described()}))
     with pytest.raises(ModuleExit) as raised:
         plugin.ensure_absent(client, FakeModule(params(state="absent", document_version=document_version, wait=False)))
 
     assert raised.value.values["changed"] is True
-    assert client.get_document.call_args.kwargs["DocumentVersion"] == "$LATEST"
+    client.describe_document.assert_called_once_with(DocumentVersion="$LATEST", Name="example", aws_retry=True)
+    client.get_document.assert_not_called()
     client.delete_document.assert_called_once_with(Name="example", aws_retry=True)
 
 
@@ -692,3 +702,102 @@ def test_default_version_check_mode_predicts_the_promoted_latest_version():
     assert predicted.values == real.values
     assert predicted.values["document"]["document_version"] == "2"
     client.update_document_default_version.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("document_format", ["JSON", "TEXT", "YAML"])
+def test_absent_deletes_documents_of_every_format(document_format, check_mode):
+    client = Mock(describe_document=Mock(return_value={"Document": described(document_format)}))
+    module = FakeModule(params(state="absent", content=None, document_type=None, wait=False), check_mode=check_mode)
+    with pytest.raises(ModuleExit) as raised:
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values == {"changed": True, "name": "example", "state": "absent"}
+    client.get_document.assert_not_called()
+    if check_mode:
+        client.delete_document.assert_not_called()
+    else:
+        client.delete_document.assert_called_once_with(Name="example", aws_retry=True)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_absent_is_unchanged_when_the_document_is_missing(check_mode):
+    client = Mock(
+        describe_document=Mock(
+            side_effect=ClientError({"Error": {"Code": "InvalidDocument", "Message": "gone"}}, "DescribeDocument")
+        )
+    )
+    with pytest.raises(ModuleExit) as raised:
+        plugin.ensure_absent(client, FakeModule(params(state="absent"), check_mode=check_mode))
+
+    assert raised.value.values["changed"] is False
+    client.delete_document.assert_not_called()
+
+
+def test_absent_waits_on_a_text_document_already_deleting_without_deleting_again():
+    client = Mock()
+    result, wait_for_document = run_absent(
+        client, FakeModule(params(state="absent")), described("TEXT", Status="Deleting")
+    )
+
+    assert result.values["changed"] is False
+    client.delete_document.assert_not_called()
+    wait_for_document.assert_called_once()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_present_fails_before_any_change_for_a_text_document(check_mode):
+    client = Mock(describe_document=Mock(return_value={"Document": described("TEXT", DocumentType="ChangeCalendar")}))
+    module = FakeModule(params(tags={"Name": "example"}), check_mode=check_mode)
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["msg"] == (
+        "Unable to manage AWS Systems Manager document example: the existing document is TEXT format, "
+        "and this module manages only JSON-content documents"
+    )
+    client.describe_document.assert_called_once_with(DocumentVersion="$LATEST", Name="example", aws_retry=True)
+    for method in (
+        "add_tags_to_resource",
+        "create_document",
+        "get_document",
+        "remove_tags_from_resource",
+        "update_document",
+        "update_document_default_version",
+    ):
+        getattr(client, method).assert_not_called()
+
+
+@pytest.mark.parametrize("document_format", ["JSON", "YAML"])
+def test_present_reads_json_and_yaml_documents_as_json(document_format):
+    content = {"schemaVersion": "2.2"}
+    client = Mock(
+        describe_document=Mock(return_value={"Document": described(document_format)}),
+        get_document=Mock(return_value=document(content)),
+    )
+    with pytest.raises(ModuleExit) as raised:
+        plugin.ensure_present(client, FakeModule(params(content=content)))
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["document"]["content"] == content
+    assert all(read.kwargs["DocumentFormat"] == "JSON" for read in client.get_document.call_args_list)
+    client.update_document.assert_not_called()
+
+
+def test_present_creates_a_missing_document_after_describing_it():
+    client = Mock(
+        describe_document=Mock(
+            side_effect=ClientError({"Error": {"Code": "InvalidDocument", "Message": "gone"}}, "DescribeDocument")
+        )
+    )
+    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1", "Name": "example"}}
+    with (
+        patch.object(plugin, "get_document", side_effect=[None, document({"schemaVersion": "2.2"})]),
+        patch.object(plugin, "wait_for_document"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params()))
+
+    assert raised.value.values["changed"] is True
+    assert client.create_document.call_args.kwargs["DocumentFormat"] == "JSON"

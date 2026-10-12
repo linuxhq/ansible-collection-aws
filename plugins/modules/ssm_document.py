@@ -9,7 +9,12 @@ version_added: '1.9.0'
 short_description: Manage AWS Systems Manager documents
 description:
   - Manages AWS Systems Manager documents.
-  - Supports creating, updating, and deleting JSON documents.
+  - Supports creating, updating, and deleting documents with JSON content.
+  - An existing V(YAML) format document is read and compared as JSON, because
+    AWS converts between the two formats.
+  - An existing V(TEXT) format document, such as a V(ChangeCalendar)
+    document, can be deleted with O(state=absent), but O(state=present) fails
+    without making changes because AWS cannot serve its content as JSON.
   - Content updates create a new document version and promote it to the
     default version once AWS reports it as active.
   - Content is sent and compared exactly as provided, with the AWS document
@@ -203,6 +208,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
     SSM_DOCUMENT_RESOURCE_TYPE,
+    describe_ssm_document,
     list_ssm_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
@@ -312,9 +318,10 @@ def wait_for_document(client, module, state, document_version=None, changed=Fals
 
 
 def ensure_absent(client, module):
-    # The document is deleted as a whole, so any version that still exists identifies it.
-    current = get_document(client, module, document_version="$LATEST")
     name = module.params["name"]
+    # The document is deleted as a whole, so any version that still exists identifies it.
+    # DescribeDocument serves every format, while GetDocument cannot read a TEXT document as JSON.
+    current = describe_ssm_document(module, client, name, DocumentVersion="$LATEST")
     changed = current is not None and current.get("Status") != "Deleting"
 
     if current is not None and not module.check_mode:
@@ -368,10 +375,25 @@ def current_document(client, module, include_tags, document_version=None):
     return current
 
 
+def require_json_readable(client, module):
+    """Fail before any change when the document is stored as TEXT, which GetDocument cannot serve as JSON."""
+    name = module.params["name"]
+    existing = describe_ssm_document(module, client, name, DocumentVersion=module.params["document_version"])
+    if existing is not None and existing["DocumentFormat"] == "TEXT":
+        module.fail_json(
+            changed=False,
+            msg=(
+                f"Unable to manage AWS Systems Manager document {name}: the existing document is TEXT format, "
+                "and this module manages only JSON-content documents"
+            ),
+        )
+
+
 def ensure_present(client, module):
     name = module.params["name"]
     tags = module.params["tags"]
     purge_tags = module.params["purge_tags"]
+    require_json_readable(client, module)
     current = current_document(client, module, include_tags=tags is not None)
     desired_comparable = {
         "content": module.params["content"],
@@ -679,15 +701,15 @@ def main():
         retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["TooManyUpdates"]),
     )
 
-    methods = {"get_document": ("DocumentFormat", "DocumentVersion", "Name")}
+    methods = {"describe_document": ("DocumentVersion", "Name")}
     if state == "present":
+        methods["get_document"] = ("DocumentFormat", "DocumentVersion", "Name")
         methods["create_document"] = (
             "Content",
             "DocumentFormat",
             "DocumentType",
             "Name",
         )
-        methods["describe_document"] = ("DocumentVersion", "Name")
         methods["update_document"] = (
             "Content",
             "DocumentFormat",
@@ -716,8 +738,6 @@ def main():
 
     if state == "absent":
         methods["delete_document"] = ("Name",) + (("Force",) if module.params["force"] else ())
-        if module.params["wait"]:
-            methods["describe_document"] = ("Name",)
 
     require_client_methods(module, client, "Systems Manager", methods)
 

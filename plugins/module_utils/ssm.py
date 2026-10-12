@@ -64,3 +64,23 @@ def list_ssm_tags(module, client, resource_type, resource_id, description, chang
         module.fail_json(changed=changed, msg=f"Unexpected response while listing tags for {description} {resource_id}")
 
     return tags
+
+
+def describe_ssm_document(module, client, name, **request):
+    """Return a document's DescribeDocument description, or None when the document or requested version is missing.
+
+    The description reports the stored DocumentFormat, which GetDocument cannot read for a format it cannot serve.
+    """
+    try:
+        response = client.describe_document(**request, Name=name, aws_retry=True)
+    except is_boto3_error_code(["InvalidDocument", "InvalidDocumentVersion"]):
+        return None
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to describe AWS Systems Manager document {name}")
+
+    document = response.get("Document") if isinstance(response, dict) else None
+    document_format = document.get("DocumentFormat") if isinstance(document, dict) else None
+    if not isinstance(document_format, str) or not document_format:
+        module.fail_json(msg=f"Unexpected response while describing AWS Systems Manager document {name}")
+
+    return document

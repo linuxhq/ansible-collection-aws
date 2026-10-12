@@ -183,6 +183,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
     SSM_DOCUMENT_RESOURCE_TYPE,
+    describe_ssm_document,
     list_ssm_tags,
     ssm_filter_list,
 )
@@ -201,22 +202,6 @@ def content_transform(content):
 def format_available(document_format, requested_format):
     # GetDocument converts between JSON and YAML only; TEXT documents are served only as TEXT.
     return (document_format == "TEXT") == (requested_format == "TEXT")
-
-
-def describe_document_format(module, client, name, request):
-    try:
-        response = client.describe_document(**request, Name=name, aws_retry=True)
-    except is_boto3_error_code(["InvalidDocument", "InvalidDocumentVersion"]):
-        return None
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to describe AWS Systems Manager document {name}")
-
-    document = response.get("Document") if isinstance(response, dict) else None
-    document_format = document.get("DocumentFormat") if isinstance(document, dict) else None
-    if not isinstance(document_format, str) or not document_format:
-        module.fail_json(msg=f"Unexpected response while describing AWS Systems Manager document {name}")
-
-    return document_format
 
 
 def main():
@@ -273,8 +258,8 @@ def main():
 
     if name:
         # GetDocument reports a format it cannot serve only as a generic ValidationException, so check the format first.
-        current_format = describe_document_format(module, client, name, describe_request)
-        document_names = [name] if current_format and format_available(current_format, document_format) else []
+        current = describe_ssm_document(module, client, name, **describe_request)
+        document_names = [name] if current and format_available(current["DocumentFormat"], document_format) else []
     else:
         request = {}
         if filters:
