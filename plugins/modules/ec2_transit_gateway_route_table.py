@@ -852,14 +852,16 @@ def ensure_present(client, module):
         routes = []
         transit_gateway_route_table_id = route_table_id(route_table)
 
-        if module.check_mode and not transit_gateway_route_table_id:
+        # A table that does not exist yet or is still pending has no routes, and searching
+        # a pending table fails, so check mode predicts each present route as an addition.
+        if module.check_mode and (not transit_gateway_route_table_id or route_table.get("State") == "pending"):
             for desired_route in desired_routes:
                 if desired_route.get("state", "present") != "present":
                     continue
 
                 routes.append(check_mode_route(desired_route))
 
-            route_changed = bool(desired_routes)
+            route_changed = bool(routes)
         else:
             for desired_route in desired_routes:
                 if desired_route.get("state", "present") == "absent":

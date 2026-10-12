@@ -633,6 +633,79 @@ def test_present_check_mode_skips_transition_waits(case):
     assert client.mock_calls == []
 
 
+@pytest.mark.parametrize("purge_routes", [True, False])
+def test_check_mode_predicts_routes_on_pending_table_without_searching(purge_routes):
+    module = FakeModule(
+        present_params(
+            purge_routes=purge_routes,
+            routes=[
+                {"destination_cidr_block": "10.0.0.0/8", "transit_gateway_attachment_id": "tgw-attach-1"},
+                {"blackhole": True, "destination_cidr_block": "10.1.0.0/16"},
+                {"destination_cidr_block": "10.2.0.0/16", "state": "absent"},
+            ],
+            wait=True,
+        ),
+        check_mode=True,
+    )
+    table = {"State": "pending", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    client = Mock()
+    client.search_transit_gateway_routes.side_effect = AssertionError("Unexpected route search")
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "wait_for_route_table", side_effect=AssertionError("Unexpected table wait")),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    assert [(route["destination_cidr_block"], route["state"]) for route in result.value.values["routes"]] == [
+        ("10.0.0.0/8", "active"),
+        ("10.1.0.0/16", "blackhole"),
+    ]
+    assert client.mock_calls == []
+
+
+def test_check_mode_absent_routes_on_pending_table_report_no_change():
+    module = FakeModule(
+        present_params(routes=[{"destination_cidr_block": "10.2.0.0/16", "state": "absent"}]),
+        check_mode=True,
+    )
+    table = {"State": "pending", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    client = Mock()
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is False
+    assert result.value.values["routes"] == []
+    assert client.mock_calls == []
+
+
+def test_check_mode_searches_routes_on_available_table():
+    module = FakeModule(
+        present_params(
+            purge_routes=False,
+            routes=[{"destination_cidr_block": "10.0.0.0/8", "transit_gateway_attachment_id": "tgw-attach-1"}],
+        ),
+        check_mode=True,
+    )
+    table = {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    client = Mock()
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "get_route", return_value=None) as get_route,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    get_route.assert_called_once_with(client, module, "tgw-rtb-1", "10.0.0.0/8", changed=False)
+    assert result.value.values["changed"] is True
+    assert result.value.values["routes"][0]["destination_cidr_block"] == "10.0.0.0/8"
+    assert client.mock_calls == []
+
+
 def test_absent_check_mode_skips_deleting_table_wait():
     module = FakeModule({"state": "absent", "wait": True}, check_mode=True)
     table = {"TransitGatewayRouteTableId": "tgw-rtb-1", "State": "deleting"}
