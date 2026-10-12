@@ -106,7 +106,7 @@ def test_product_terms_use_snake_case_fields_and_keep_codes():
     )
 
 
-def test_new_filter_types_require_compatible_botocore():
+def test_non_term_match_filter_types_are_sent_without_botocore_gate():
     module = Mock(
         params={
             "filters": [{"field": "instanceType", "type": "EQUALS", "value": "t3"}],
@@ -119,11 +119,12 @@ def test_new_filter_types_require_compatible_botocore():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", return_value={"PriceList": []}),
+        patch.object(plugin, "paginated_query_with_retries", return_value={"PriceList": []}) as query,
     ):
         plugin.main()
 
-    module.require_botocore_at_least.assert_called_once_with("1.39.5")
+    module.require_botocore_at_least.assert_not_called()
+    assert query.call_args.kwargs["Filters"] == [{"Field": "instanceType", "Type": "EQUALS", "Value": "t3"}]
 
 
 def test_max_results_is_validated_when_requested():

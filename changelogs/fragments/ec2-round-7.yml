@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - ec2_pricing_info - stop requiring botocore 1.39.5 for O(filters[].type) values other than C(TERM_MATCH);
+    botocore sends the filter type unchanged and the Pricing API validates it.
+  - ec2_transit_gateway_route_table - document that O(transit_gateway_route_table_id) is required when either
+    O(transit_gateway_id) or O(name) is omitted, matching the module's validation.
+  - ec2_vpc_vpn - document that O(wait_delay) and O(wait_timeout) must be 1 or greater, matching the module's
+    validation.
