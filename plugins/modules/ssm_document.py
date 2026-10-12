@@ -14,7 +14,8 @@ description:
     AWS converts between the two formats.
   - An existing V(TEXT) format document, such as a V(ChangeCalendar)
     document, can be deleted with O(state=absent), but O(state=present) fails
-    without making changes because AWS cannot serve its content as JSON.
+    without making changes because AWS cannot serve its content as JSON. A
+    V(TEXT) document that is already being deleted is waited on and replaced.
   - Content updates create a new document version and promote it to the
     default version once AWS reports it as active.
   - Content is sent and compared exactly as provided, with the AWS document
@@ -376,10 +377,19 @@ def current_document(client, module, include_tags, document_version=None):
 
 
 def require_json_readable(client, module):
-    """Fail before any change when the document is stored as TEXT, which GetDocument cannot serve as JSON."""
+    """Fail before any change when the document is stored as TEXT, which GetDocument cannot serve as JSON.
+
+    Returns False when a TEXT document that is being deleted will be gone, so it must not be read as JSON.
+    """
     name = module.params["name"]
     existing = describe_ssm_document(module, client, name, DocumentVersion=module.params["document_version"])
     if existing is not None and existing["DocumentFormat"] == "TEXT":
+        if existing.get("Status") == "Deleting":
+            if not module.check_mode:
+                wait_for_document(client, module, "deleted")
+
+            return False
+
         module.fail_json(
             changed=False,
             msg=(
@@ -388,13 +398,15 @@ def require_json_readable(client, module):
             ),
         )
 
+    return True
+
 
 def ensure_present(client, module):
     name = module.params["name"]
     tags = module.params["tags"]
     purge_tags = module.params["purge_tags"]
-    require_json_readable(client, module)
-    current = current_document(client, module, include_tags=tags is not None)
+    readable = require_json_readable(client, module)
+    current = current_document(client, module, include_tags=tags is not None) if readable else None
     desired_comparable = {
         "content": module.params["content"],
         "document_type": module.params["document_type"],
