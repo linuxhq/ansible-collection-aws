@@ -430,6 +430,76 @@ vpn_connection:
                   description: The configured value.
                   returned: always
                   type: int
+            dpd_timeout_action:
+              description: The action to take after a dead peer detection timeout.
+              returned: when provided by EC2
+              type: str
+            dpd_timeout_seconds:
+              description: The number of seconds after which a dead peer detection timeout occurs.
+              returned: when provided by EC2
+              type: int
+            enable_tunnel_lifecycle_control:
+              description: Whether tunnel endpoint lifecycle control is enabled.
+              returned: when provided by EC2
+              type: bool
+            log_options:
+              description: Options for logging VPN tunnel activity.
+              returned: when provided by EC2
+              type: dict
+              contains:
+                cloud_watch_log_options:
+                  description: Options for sending VPN tunnel logs to CloudWatch.
+                  returned: when provided by EC2
+                  type: dict
+                  contains:
+                    bgp_log_enabled:
+                      description: Whether BGP logging is enabled.
+                      returned: when provided by EC2
+                      type: bool
+                    bgp_log_group_arn:
+                      description: The ARN of the CloudWatch log group for BGP logs.
+                      returned: when provided by EC2
+                      type: str
+                    bgp_log_output_format:
+                      description: The output format for BGP logs.
+                      returned: when provided by EC2
+                      type: str
+                    log_enabled:
+                      description: Whether VPN tunnel logging is enabled.
+                      returned: when provided by EC2
+                      type: bool
+                    log_group_arn:
+                      description: The ARN of the CloudWatch log group for tunnel logs.
+                      returned: when provided by EC2
+                      type: str
+                    log_output_format:
+                      description: The output format for tunnel logs.
+                      returned: when provided by EC2
+                      type: str
+            phase1_lifetime_seconds:
+              description: The lifetime for phase 1 of the IKE negotiation, in seconds.
+              returned: when provided by EC2
+              type: int
+            phase2_lifetime_seconds:
+              description: The lifetime for phase 2 of the IKE negotiation, in seconds.
+              returned: when provided by EC2
+              type: int
+            rekey_fuzz_percentage:
+              description: The percentage of the rekey window set by the rekey margin time during which the rekey time is randomly selected.
+              returned: when provided by EC2
+              type: int
+            rekey_margin_time_seconds:
+              description: The margin time, in seconds, before the phase 2 lifetime expires during which AWS performs an IKE rekey.
+              returned: when provided by EC2
+              type: int
+            replay_window_size:
+              description: The number of packets in an IKE replay window.
+              returned: when provided by EC2
+              type: int
+            startup_action:
+              description: The action to take when establishing the VPN tunnel.
+              returned: when provided by EC2
+              type: str
     routes:
       description: Static routes with destination_cidr_block and state fields.
       returned: when a connection exists

@@ -10,6 +10,8 @@ short_description: Manage AWS Notifications hubs
 description:
   - Manages AWS Notifications hubs.
   - The module always uses the C(us-east-1) AWS Notifications endpoint.
+  - AWS does not allow deregistering the last C(ACTIVE) notification hub, so
+    O(state=absent) fails without changes for that hub.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -19,6 +21,8 @@ options:
       - ec2_region
     description:
       - The notification hub region.
+      - This selects the notification hub to manage, not the API endpoint.
+      - A O(region) set through C(module_defaults) applies, as it does for other AWS modules.
       - This must match the AWS region name format, for example V(us-west-2).
     required: true
     type: str
@@ -115,6 +119,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 HUB_STATUSES = ("ACTIVE", "DEREGISTERING", "INACTIVE", "REGISTERING")
+# Registering a region while its hub is deregistering raises a modeled ConflictException.
+REGISTER_RETRY = AWSRetry.jittered_backoff(catch_extra_error_codes=["ConflictException"])
 
 
 def validate_hub(module, hub, operation, require_status=True, changed=False):
@@ -136,9 +142,7 @@ def validate_hub(module, hub, operation, require_status=True, changed=False):
     return hub
 
 
-def get_notification_hub(client, module):
-    region = module.params["region"]
-
+def list_notification_hubs(client, module):
     hubs = query_list(
         module,
         client,
@@ -152,17 +156,32 @@ def get_notification_hub(client, module):
 
     for hub in hubs:
         validate_hub(module, hub, "Unable to list AWS Notifications hubs")
-        if hub.get("notificationHubRegion") == region:
-            return hub
 
-    return None
+    return hubs
+
+
+def find_notification_hub(hubs, region):
+    return next((hub for hub in hubs if hub["notificationHubRegion"] == region), None)
+
+
+def hub_status(hub):
+    return ((hub or {}).get("statusSummary") or {}).get("status")
 
 
 def ensure_absent(client, module):
     region = module.params["region"]
-    hub = get_notification_hub(client, module)
-    status = ((hub or {}).get("statusSummary") or {}).get("status")
+    hubs = list_notification_hubs(client, module)
+    hub = find_notification_hub(hubs, region)
+    status = hub_status(hub)
     changed = hub is not None and status not in ("DEREGISTERING", "INACTIVE")
+
+    if status == "ACTIVE" and not any(
+        hub_status(other) == "ACTIVE" for other in hubs if other["notificationHubRegion"] != region
+    ):
+        module.fail_json(
+            changed=False,
+            msg=f"Unable to delete AWS Notifications hub {region}: AWS does not allow deregistering the last ACTIVE hub",
+        )
 
     if changed and not module.check_mode:
         require_client_methods(
@@ -192,8 +211,8 @@ def ensure_absent(client, module):
 
 def ensure_present(client, module):
     region = module.params["region"]
-    hub = get_notification_hub(client, module)
-    status = ((hub or {}).get("statusSummary") or {}).get("status")
+    hub = find_notification_hub(list_notification_hubs(client, module), region)
+    status = hub_status(hub)
     changed = hub is None or status in ("DEREGISTERING", "INACTIVE")
 
     if changed and not module.check_mode:
@@ -204,10 +223,7 @@ def ensure_present(client, module):
             {"register_notification_hub": ("notificationHubRegion",)},
         )
         try:
-            hub = client.register_notification_hub(
-                notificationHubRegion=region,
-                aws_retry=True,
-            )
+            hub = REGISTER_RETRY(client.register_notification_hub)(notificationHubRegion=region)
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
@@ -259,7 +275,7 @@ def main():
     client = module.client(
         "notifications",
         region="us-east-1",
-        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConflictException"]),
+        retry_decorator=AWSRetry.jittered_backoff(),
     )
     require_client_methods(
         module,

@@ -338,8 +338,10 @@ def main():
     current_details = current_account.get("details") or {}
     desired_details = comparable_details(
         {
-            "additional_contact_email_addresses": module.params["additional_contact_email_addresses"],
-            # Omitted choices keep the account's values instead of reverting them to defaults.
+            # Omitted contacts and choices keep the account's values instead of reverting them to defaults.
+            "additional_contact_email_addresses": module.params["additional_contact_email_addresses"]
+            or current_details.get("additional_contact_email_addresses")
+            or [],
             "contact_language": (module.params["contact_language"] or "").upper()
             or current_details.get("contact_language")
             or "EN",

@@ -214,7 +214,37 @@ def test_changed_details_with_a_case_id_are_submitted():
     )
 
     assert result.values["changed"]
-    assert client.put_account_details.call_args.kwargs["WebsiteURL"] == "https://example.org"
+    request = client.put_account_details.call_args.kwargs
+    assert request["WebsiteURL"] == "https://example.org"
+    assert request["AdditionalContactEmailAddresses"] == ["existing@example.com"]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_omitted_contacts_are_kept_when_other_details_change(check_mode):
+    client = Mock()
+    account = {"details": DETAILS, "production_access_enabled": True}
+    result, _require, _get = run(
+        FakeModule(params(mail_type="marketing"), client=client, check_mode=check_mode), account, account
+    )
+
+    assert result.values["changed"]
+    if check_mode:
+        client.put_account_details.assert_not_called()
+    else:
+        request = client.put_account_details.call_args.kwargs
+        assert request["MailType"] == "MARKETING"
+        assert request["AdditionalContactEmailAddresses"] == ["existing@example.com"]
+
+
+def test_supplied_contacts_replace_existing_addresses():
+    client = Mock()
+    account = {"details": DETAILS, "production_access_enabled": True}
+    result, _require, _get = run(
+        FakeModule(params(additional_contact_email_addresses=["new@example.com"]), client=client), account, account
+    )
+
+    assert result.values["changed"]
+    assert client.put_account_details.call_args.kwargs["AdditionalContactEmailAddresses"] == ["new@example.com"]
 
 
 def test_denied_request_with_new_details_is_resubmitted():
