@@ -989,3 +989,18 @@ def test_target_fields_are_filled_only_from_the_matched_target():
         {"Ip": "192.0.2.1", "Port": 5353, "Protocol": "DoH", "ServerNameIndication": "dns.example.com"},
         {"Ip": "192.0.2.3"},
     ]
+
+
+def test_targets_that_need_a_non_greedy_pairing_converge():
+    current_targets = [
+        {"Ip": "1.1.1.1", "Port": 443, "Protocol": "DoH", "ServerNameIndication": "a"},
+        {"Ip": "1.1.1.1", "Port": 443, "Protocol": "DoH", "ServerNameIndication": "b"},
+    ]
+    desired_targets = [{"Ip": "1.1.1.1", "Protocol": "DoH"}, {"Ip": "1.1.1.1", "ServerNameIndication": "a"}]
+    assert plugin.target_ips_with_current_fields(current_targets, desired_targets) == [
+        {"Ip": "1.1.1.1", "Port": 443, "Protocol": "DoH", "ServerNameIndication": "b"},
+        {"Ip": "1.1.1.1", "Port": 443, "Protocol": "DoH", "ServerNameIndication": "a"},
+    ]
+    current = plugin.comparable_rule(dict(existing_rule(), TargetIps=current_targets))
+    desired = plugin.comparable_rule(dict(existing_rule(), TargetIps=desired_targets))
+    assert plugin.rules_match(current, desired)

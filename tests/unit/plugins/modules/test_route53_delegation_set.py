@@ -28,7 +28,22 @@ def test_absent_tolerates_set_disappearing_during_delete():
     ):
         plugin.ensure_absent(client, module)
 
-    assert raised.value.values["changed"]
+    # AWS reported the set already gone, so this run deleted nothing.
+    assert raised.value.values["changed"] is False
+    client.delete_reusable_delegation_set.assert_called_once()
+
+
+def test_absent_reports_changed_after_a_delete():
+    client = Mock()
+    module = FakeModule({"name": "main"})
+    with (
+        patch.object(plugin, "get_reusable_delegation_set", return_value={"Id": "delegation-set-1"}),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+    client.delete_reusable_delegation_set.assert_called_once_with(Id="delegation-set-1", aws_retry=True)
 
 
 def test_module_contract():

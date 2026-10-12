@@ -179,6 +179,31 @@ def test_comparable_ips_match_pairs_each_entry_once(current, desired, expected):
     assert comparable_ips_match(current, desired) is expected
 
 
+def test_comparable_ips_matches_finds_a_pairing_greedy_matching_misses():
+    current = [
+        {"ip": "1.1.1.1", "port": 443, "protocol": "DoH", "server_name_indication": "a"},
+        {"ip": "1.1.1.1", "port": 443, "protocol": "DoH", "server_name_indication": "b"},
+    ]
+    desired = [{"ip": "1.1.1.1", "protocol": "DoH"}, {"ip": "1.1.1.1", "server_name_indication": "a"}]
+    assert comparable_ips_matches(current, desired) == [1, 0]
+    assert comparable_ips_match(current, desired) is True
+
+
+def test_comparable_ips_matches_moves_an_earlier_entry_to_free_a_target():
+    current = [{"ip": "192.0.2.1", "subnet_id": "a"}, {"ip": "192.0.2.2", "subnet_id": "a"}]
+    desired = [{"subnet_id": "a"}, {"ip": "192.0.2.1"}]
+    assert comparable_ips_matches(current, desired) == [1, 0]
+    assert comparable_ips_match(current, desired) is True
+
+
+def test_comparable_ips_matches_keeps_endpoint_subnet_pairing():
+    current = [{"ip": "10.0.0.5", "subnet_id": "a"}, {"ip": "10.0.1.5", "subnet_id": "b"}]
+    desired = [{"subnet_id": "b"}, {"subnet_id": "a"}]
+    assert comparable_ips_matches(current, desired) == [1, 0]
+    assert comparable_ips_match(current, desired) is True
+    assert comparable_ips_match(current, [{"subnet_id": "a"}, {"subnet_id": "a"}]) is False
+
+
 @pytest.mark.parametrize("resource_type", ["endpoint", "rule"])
 def test_resolver_resource_with_tags_adds_tags_and_keeps_the_message(resource_type):
     def failing_query(module, client, method_name, result_key, error_msg, changed=False, **kwargs):

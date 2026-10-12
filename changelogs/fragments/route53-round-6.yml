@@ -1,0 +1,11 @@
+---
+bugfixes:
+  - route53_delegation_set - report ``changed=false`` when AWS reports the reusable delegation set was
+    already deleted after it was read.
+  - route53_resolver - pair desired endpoint IP addresses with current ones using a maximum matching instead
+    of a greedy one, so a valid pairing is always found.
+  - route53_resolver_rule - pair desired target IPs with current ones using a maximum matching instead of a
+    greedy one, so rules whose targets need a non-greedy pairing converge instead of reporting a change on
+    every run and then failing because the updated rule does not match.
+  - route53_zone_associate - report ``changed=false`` and skip waiting when AWS reports the VPC association
+    was already removed after it was read.
