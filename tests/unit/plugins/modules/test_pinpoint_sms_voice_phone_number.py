@@ -439,6 +439,29 @@ def test_get_phone_number_rejects_wrong_phone_number():
     assert "wrong" in raised.value.values["msg"]
 
 
+PHONE_NUMBER_ARN = "arn:aws:sms-voice:us-east-1:111111111111:phone-number/phone-1"
+
+
+def test_get_phone_number_accepts_an_arn():
+    response = {"PhoneNumbers": [{"PhoneNumberId": "phone-1", "Status": "ACTIVE"}]}
+    with patch.object(plugin, "paginated_query_with_retries", return_value=response) as query:
+        result = plugin.get_phone_number(Mock(), FakeModule({}), PHONE_NUMBER_ARN)
+
+    assert query.call_args.kwargs["PhoneNumberIds"] == [PHONE_NUMBER_ARN]
+    assert result["PhoneNumberId"] == "phone-1"
+
+
+def test_get_phone_number_rejects_wrong_phone_number_for_an_arn():
+    response = {"PhoneNumbers": [{"PhoneNumberId": "phone-2", "Status": "ACTIVE"}]}
+    with (
+        patch.object(plugin, "paginated_query_with_retries", return_value=response),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.get_phone_number(Mock(), FakeModule({}), PHONE_NUMBER_ARN)
+
+    assert "wrong" in raised.value.values["msg"]
+
+
 def test_absent_removes_pool_and_deletion_protection_before_release():
     client = Mock()
     client.update_phone_number.return_value = {
