@@ -31,9 +31,12 @@ provisioner:
     group_vars:
       all:
         route53_delegation_set_list:
-          - name: "molecule-01-{{ ansible_facts.date_time.date }}"
-          - name: "molecule-02-{{ ansible_facts.date_time.date }}"
-          - name: "molecule-03-{{ ansible_facts.date_time.date }}"
+          - name: "molecule-01-{{ route53_delegation_set_uuid }}"
+          - name: "molecule-02-{{ route53_delegation_set_uuid }}"
+          - name: "molecule-03-{{ route53_delegation_set_uuid }}"
+
+        route53_delegation_set_uuid: >-
+          {{ (lookup('ansible.builtin.file', '${MOLECULE_STATE_FILE}') | from_yaml).run_uuid }}
 
 scenario:
   test_sequence:
