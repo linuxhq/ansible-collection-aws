@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - ec2_vpc_prefix_list - send one ``ClientToken`` per run when creating a managed prefix list so SDK retries
+    of a request that already succeeded cannot create a duplicate prefix list with the same name.
+  - ssm_association_info - reject a filter with an empty list or a null value before calling
+    ``ListAssociations``, instead of silently dropping the filter or sending the string ``None``.
