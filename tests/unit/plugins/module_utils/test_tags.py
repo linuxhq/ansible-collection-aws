@@ -33,6 +33,15 @@ def test_tag_limits_are_rejected():
         assert raised.value.values["msg"] == message
 
 
+def test_aws_reserved_tags_do_not_count_against_the_limit():
+    require_valid_tags(FakeModule({}), {"aws:cloudformation:stack-name": "stack", "AWS:other": "x", "Name": ""}, 1)
+
+    with pytest.raises(ModuleFail) as raised:
+        require_valid_tags(FakeModule({}), {"aws:reserved": "x", "one": "", "two": ""}, 1)
+
+    assert raised.value.values["msg"] == "tags must contain at most 1 entries"
+
+
 def test_tag_keys_and_values_are_normalized_for_map_apis():
     tags = {1: True, "count": 2}
     require_valid_tags(FakeModule({}), tags, 50)

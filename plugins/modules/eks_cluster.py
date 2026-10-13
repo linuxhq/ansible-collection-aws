@@ -1129,7 +1129,8 @@ def ensure_present(client, module):
             final_tags.pop(key, None)
 
         final_tags.update(tags_to_set)
-        if len(final_tags) > 50:
+        # AWS-reserved aws: tags do not count against the EKS per-resource tag limit.
+        if sum(not key.lower().startswith("aws:") for key in final_tags) > 50:
             module.fail_json(msg="The resulting cluster tags must contain at most 50 entries")
 
     tags_changed = bool(tags_to_set or tag_keys_to_unset)
@@ -1292,6 +1293,13 @@ def ensure_absent(client, module):
             wait_for_cluster(client, module, "cluster_deleted")
 
         exit_result(module, False, {}, "absent")
+
+    if current.get("deletionProtection"):
+        module.fail_json(
+            msg=f"Unable to delete EKS cluster {name} because deletion protection is enabled; "
+            "set deletion_protection=false first",
+            changed=False,
+        )
 
     if module.check_mode:
         exit_result(module, True, {} if module.params["wait"] else dict(current, status="DELETING"), "absent")
