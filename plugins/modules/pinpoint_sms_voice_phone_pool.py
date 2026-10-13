@@ -580,7 +580,8 @@ def ensure_absent(client, module):
                     aws_retry=True,
                 )
             except is_boto3_error_code("ResourceNotFoundException"):
-                exit_result(module, True, None)
+                # Deleted elsewhere before this run changed anything.
+                exit_result(module, mutated, None)
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
@@ -601,6 +602,8 @@ def ensure_absent(client, module):
                 aws_retry=True,
             )
         except is_boto3_error_code("ResourceNotFoundException"):
+            # Deleted elsewhere; only an earlier write by this run is a change.
+            changed = mutated
             response = None
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, changed=mutated, msg=f"Unable to delete Pinpoint SMS Voice V2 pool {pool_id}")

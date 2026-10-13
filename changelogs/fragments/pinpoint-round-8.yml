@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number - report ``changed=false`` when the phone number is released elsewhere
+    before this run disassociates it or disables deletion protection.
+  - pinpoint_sms_voice_phone_pool - report ``changed=false`` when the pool is deleted elsewhere
+    before this run disables deletion protection.
+  - pinpoint_sms_voice_phone_pool_associate - report ``changed=false`` when the association is removed
+    elsewhere before this run disassociates it, and document that ``association`` is empty when nothing is associated.
+...
