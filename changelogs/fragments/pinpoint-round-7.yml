@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number - accept a phone number ARN in O(phone_number_id) instead of failing with
+    "AWS returned the wrong Pinpoint SMS Voice V2 phone number", because AWS describes the number by ARN but
+    returns its ID.
+  - pinpoint_sms_voice_phone_pool - skip a pool that another actor deletes while the module searches pools by
+    O(origination_identity), instead of failing when listing that pool's origination identities or tags.

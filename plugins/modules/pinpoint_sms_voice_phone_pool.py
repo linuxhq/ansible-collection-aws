@@ -267,10 +267,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
     identity_matches,
     is_phone_number_identity,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    query_list,
-    require_client_methods,
-)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_arn_tags,
@@ -319,23 +316,33 @@ def validate_pool(module, pool, context, changed=False):
     return pool
 
 
-def pool_with_origination_identities(client, module, pool, changed=False):
-    """Add origination identities; changed reports whether the pool was already modified, for failure results."""
+def pool_with_origination_identities(client, module, pool, changed=False, missing_ok=False):
+    """Add origination identities; changed reports whether the pool was already modified, for failure results.
+
+    With missing_ok, a pool deleted since it was described returns None instead of failing.
+    """
     pool = dict(pool)
     pool_id = pool.get("PoolId")
 
     if pool_id:
-        pool["OriginationIdentities"] = query_list(
-            module,
-            client,
-            "list_pool_origination_identities",
-            "OriginationIdentities",
-            f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}",
-            changed=changed,
-            # A shared pool requires its full ARN.
-            PoolId=pool.get("PoolArn") or pool_id,
-        )
-        if any(
+        msg = f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}"
+        try:
+            response = paginated_query_with_retries(
+                client,
+                "list_pool_origination_identities",
+                # A shared pool requires its full ARN.
+                PoolId=pool.get("PoolArn") or pool_id,
+            )
+        except is_boto3_error_code("ResourceNotFoundException") as e:
+            if missing_ok:
+                return None
+
+            module.fail_json_aws(e, changed=changed, msg=msg)
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, changed=changed, msg=msg)
+
+        pool["OriginationIdentities"] = response.get("OriginationIdentities") if isinstance(response, dict) else None
+        if not isinstance(pool["OriginationIdentities"], list) or any(
             not isinstance(identity, dict)
             or not any(isinstance(identity.get(key), str) for key in ("OriginationIdentity", "OriginationIdentityArn"))
             for identity in pool["OriginationIdentities"]
@@ -351,20 +358,29 @@ def pool_with_origination_identities(client, module, pool, changed=False):
     return pool
 
 
-def pool_with_tags(client, module, pool, changed=False):
-    """Add tags; changed reports whether the pool was already modified, for failure results."""
+def pool_with_tags(client, module, pool, changed=False, missing_ok=False):
+    """Add tags; changed reports whether the pool was already modified, for failure results.
+
+    With missing_ok, a pool deleted since it was described returns None instead of failing.
+    """
     pool = dict(pool)
     arn = pool.get("PoolArn")
     tags = {}
 
     if arn:
+        msg = f"Unable to list tags for Pinpoint SMS Voice V2 pool {arn}"
         try:
             response = client.list_tags_for_resource(
                 ResourceArn=arn,
                 aws_retry=True,
             )
+        except is_boto3_error_code("ResourceNotFoundException") as e:
+            if missing_ok:
+                return None
+
+            module.fail_json_aws(e, changed=changed, msg=msg)
         except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, changed=changed, msg=f"Unable to list tags for Pinpoint SMS Voice V2 pool {arn}")
+            module.fail_json_aws(e, changed=changed, msg=msg)
 
         tag_list = require_valid_tag_list(
             module,
@@ -470,7 +486,11 @@ def find_pool(client, module):
         if pool.get("Status") == "DELETING":
             continue
 
-        pool = pool_with_origination_identities(client, module, pool)
+        # Another actor can delete a pool between DescribePools and these reads; a deleted pool is skipped.
+        pool = pool_with_origination_identities(client, module, pool, missing_ok=True)
+        if pool is None:
+            continue
+
         holding = [
             origination
             for origination in pool.get("OriginationIdentities", [])
@@ -482,7 +502,10 @@ def find_pool(client, module):
         if pool.get("MessageType") == module.params["message_type"] and any(
             iso_country_code is None or origination.get("IsoCountryCode") == iso_country_code for origination in holding
         ):
-            pool = pool_with_tags(client, module, pool)
+            pool = pool_with_tags(client, module, pool, missing_ok=True)
+            if pool is None:
+                continue
+
             if boto3_tag_list_to_ansible_dict(pool.get("Tags", [])).get("Name") == module.params["name"]:
                 matches.append(pool)
                 continue

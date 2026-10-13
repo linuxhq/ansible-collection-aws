@@ -94,7 +94,7 @@ options:
     type: str
   phone_number_id:
     description:
-      - The phone number ID to manage or release.
+      - The phone number ID or ARN to manage or release.
       - Set this with O(state=present) to update tags and settings on a specific existing number.
       - This is required when O(state=absent).
       - With O(state=absent), a number in a pool is disassociated from the pool
@@ -437,7 +437,8 @@ def get_phone_number(client, module, phone_number_id, changed=False):
         return None
 
     phone_number = validate_phone_number(module, phone_numbers[0], f"describing {phone_number_id}", changed=changed)
-    if phone_number["PhoneNumberId"] != phone_number_id:
+    # DescribePhoneNumbers accepts an ID or an ARN but always returns the ID.
+    if phone_number["PhoneNumberId"] != phone_number_id.rsplit("/", 1)[-1]:
         module.fail_json(
             changed=changed,
             msg=f"AWS returned the wrong Pinpoint SMS Voice V2 phone number while describing {phone_number_id}",

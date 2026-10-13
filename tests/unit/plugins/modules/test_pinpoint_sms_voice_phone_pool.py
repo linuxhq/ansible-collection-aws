@@ -182,7 +182,7 @@ def test_pool_lookup_uses_name_tag_to_disambiguate_sender_pools():
         patch.object(
             plugin,
             "pool_with_origination_identities",
-            side_effect=lambda client, module, pool: dict(
+            side_effect=lambda client, module, pool, **kwargs: dict(
                 pool,
                 OriginationIdentities=[{"OriginationIdentity": "sender-1"}],
             ),
@@ -244,7 +244,7 @@ def patch_held_pool(pool, origination):
         patch.object(
             plugin,
             "pool_with_tags",
-            side_effect=lambda client, module, pool: dict(pool, Tags=[{"Key": "Name", "Value": "first"}]),
+            side_effect=lambda client, module, pool, **kwargs: dict(pool, Tags=[{"Key": "Name", "Value": "first"}]),
         ),
     )
 
@@ -956,8 +956,56 @@ POOL_ARN = "arn:aws:sms-voice:us-east-1:111111111111:pool/pool-1"
     ],
 )
 def test_origination_identities_prefer_the_pool_arn(pool, expected_pool_id):
-    with patch.object(plugin, "query_list", return_value=[{"OriginationIdentity": "phone-1"}]) as query:
+    response = {"OriginationIdentities": [{"OriginationIdentity": "phone-1"}]}
+    with patch.object(plugin, "paginated_query_with_retries", return_value=response) as query:
         result = plugin.pool_with_origination_identities(Mock(), FakeModule({}), pool)
 
     assert query.call_args.kwargs["PoolId"] == expected_pool_id
     assert result["OriginationIdentities"] == [{"OriginationIdentity": "phone-1"}]
+
+
+def not_found():
+    return plugin.ClientError({"Error": {"Code": "ResourceNotFoundException"}}, "operation")
+
+
+@pytest.mark.parametrize("deleted_by", ["list_pool_origination_identities", "list_tags_for_resource"])
+def test_find_pool_skips_a_pool_deleted_during_the_scan(deleted_by):
+    deleted = {"MessageType": "TRANSACTIONAL", "PoolArn": "arn:pool-1", "PoolId": "pool-1", "Status": "ACTIVE"}
+    kept = {"MessageType": "TRANSACTIONAL", "PoolArn": "arn:pool-2", "PoolId": "pool-2", "Status": "ACTIVE"}
+    module = create_params("phone-1")
+    module.params["name"] = "first"
+
+    def list_identities(client, method_name, PoolId):
+        if deleted_by == "list_pool_origination_identities" and PoolId == "arn:pool-1":
+            raise not_found()
+
+        return {"OriginationIdentities": [PHONE_ORIGINATION]}
+
+    def list_tags(ResourceArn, aws_retry):
+        if deleted_by == "list_tags_for_resource" and ResourceArn == "arn:pool-1":
+            raise not_found()
+
+        return {"Tags": [{"Key": "Name", "Value": "first"}]}
+
+    client = Mock()
+    client.list_tags_for_resource.side_effect = list_tags
+    with (
+        patch.object(plugin, "describe_pools", return_value=[deleted, kept]),
+        patch.object(plugin, "paginated_query_with_retries", side_effect=list_identities),
+    ):
+        result = plugin.find_pool(client, module)
+
+    assert result["PoolId"] == "pool-2"
+
+
+@pytest.mark.parametrize("helper", ["pool_with_origination_identities", "pool_with_tags"])
+def test_pool_detail_reads_fail_when_the_pool_is_missing_by_default(helper):
+    client = Mock()
+    client.list_tags_for_resource.side_effect = not_found()
+    with (
+        patch.object(plugin, "paginated_query_with_retries", side_effect=not_found()),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        getattr(plugin, helper)(client, FakeModule({}), {"PoolArn": "arn:pool-1", "PoolId": "pool-1"})
+
+    assert "pool-1" in raised.value.values["msg"]
