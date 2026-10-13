@@ -42,7 +42,7 @@ options:
         default: TERM_MATCH
         description:
           - The pricing filter type.
-          - Values other than C(TERM_MATCH) require botocore 1.39.5 or later.
+          - The Pricing API validates the filter type.
         type: str
       value:
         description:
@@ -255,9 +255,6 @@ def main():
         )
 
     client = module.client("pricing", retry_decorator=AWSRetry.jittered_backoff())
-
-    if any(pricing_filter["type"] != "TERM_MATCH" for pricing_filter in filters):
-        module.require_botocore_at_least("1.39.5")
 
     request = scrub_none_parameters(
         {

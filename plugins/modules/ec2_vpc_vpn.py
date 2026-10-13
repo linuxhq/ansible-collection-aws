@@ -154,12 +154,16 @@ options:
       - Mutually exclusive with O(transit_gateway_id).
     type: str
   wait_delay:
-    description: Seconds between readiness checks.
+    description:
+      - Seconds between readiness checks.
+      - This must be 1 or greater.
     type: int
     default: 15
     aliases: [delay]
   wait_timeout:
-    description: Maximum seconds to wait for each connection operation.
+    description:
+      - Maximum seconds to wait for each connection operation.
+      - This must be 1 or greater.
     type: int
     default: 600
 extends_documentation_fragment:

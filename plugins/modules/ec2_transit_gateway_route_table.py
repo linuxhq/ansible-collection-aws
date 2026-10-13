@@ -88,7 +88,7 @@ options:
   transit_gateway_route_table_id:
     description:
       - The transit gateway route table ID.
-      - Required when O(transit_gateway_id) and O(name) are omitted.
+      - Required when O(transit_gateway_id) or O(name) is omitted.
     type: str
   wait:
     description:
