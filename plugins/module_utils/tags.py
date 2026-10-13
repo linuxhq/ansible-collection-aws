@@ -30,7 +30,8 @@ def require_valid_tags(module, tags, max_tags, key_max=128):
 
     tags.clear()
     tags.update(normalized)
-    if len(tags) > max_tags:
+    # AWS reserves the aws: prefix, and those tags do not count against the per-resource limit.
+    if sum(not key.lower().startswith("aws:") for key in tags) > max_tags:
         module.fail_json(msg=f"tags must contain at most {max_tags} entries")
 
     if any(not 1 <= len(key) <= key_max or len(value) > 256 for key, value in tags.items()):

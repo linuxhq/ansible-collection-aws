@@ -4,3 +4,5 @@ bugfixes:
     AWS-reserved tags against the per-resource tag limit.
   - eks_cluster - fail without changes when O(state=absent) targets a cluster with deletion protection enabled,
     instead of predicting a delete in check mode or waiting for the cluster before AWS rejects the delete.
+  - module_utils.tags - do not count C(aws:) prefixed keys in a module's C(tags) option against its tag limit,
+    because AWS does not count AWS-reserved tags against the per-resource limit.
