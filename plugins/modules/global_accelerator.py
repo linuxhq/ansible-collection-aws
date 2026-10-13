@@ -352,12 +352,12 @@ accelerator:
     - Includes C(listeners) when O(listeners) is provided, and each listener
       includes C(endpoint_groups) when O(listeners[].endpoint_groups) is
       provided.
-  returned: when an accelerator exists after module execution
+  returned: when O(state=present)
   type: dict
   contains:
     accelerator_arn:
       description: The accelerator ARN.
-      returned: always
+      returned: when the accelerator exists
       type: str
     created_time:
       description: The time the accelerator was created.
@@ -527,7 +527,7 @@ accelerator:
 accelerator_arn:
   description:
     - ARN of the accelerator.
-  returned: when available
+  returned: when O(state=present) and the accelerator exists
   type: str
 state:
   description:
@@ -1719,6 +1719,14 @@ def ensure_present(client, module):
             tags,
             purge_tags=module.params["purge_tags"],
         )
+        final_tags = dict(current_tags)
+        for key in tag_keys_to_unset:
+            final_tags.pop(key, None)
+
+        final_tags.update(tags_to_set)
+        # AWS-reserved aws: tags do not count against the per-resource tag limit.
+        if sum(not key.lower().startswith("aws:") for key in final_tags) > 50:
+            module.fail_json(msg="The resulting accelerator tags must contain at most 50 entries")
 
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
 

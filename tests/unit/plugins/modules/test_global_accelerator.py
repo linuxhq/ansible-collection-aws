@@ -1965,3 +1965,98 @@ def test_invalid_tag_lists_are_rejected(tags):
 def test_valid_tag_lists_are_returned():
     tags = [{"Key": "Name", "Value": ""}]
     assert plugin.validate_tag_list(FakeModule({}), tags) is tags
+
+
+def tag_limit_case(check_mode, current_tags, tags):
+    module = FakeModule(
+        {
+            "enabled": False,
+            "ip_address_type": "IPV4",
+            "ip_addresses": None,
+            "listeners": [],
+            "name": "renamed",
+            "purge_tags": False,
+            "tags": tags,
+            "wait": False,
+        },
+        check_mode=check_mode,
+    )
+    current = {
+        "AcceleratorArn": "arn:accelerator",
+        "Enabled": True,
+        "IpAddressType": "IPV4",
+        "Name": "example",
+        "Status": "DEPLOYED",
+    }
+    client = Mock()
+    client.list_tags_for_resource.return_value = {
+        "Tags": [{"Key": key, "Value": value} for key, value in current_tags.items()]
+    }
+    return module, current, client
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_tag_limit_without_purge_fails_before_any_write(check_mode):
+    module, current, client = tag_limit_case(
+        check_mode,
+        {f"existing{index}": "value" for index in range(40)},
+        {f"new{index}": "value" for index in range(15)},
+    )
+    with (
+        patch.object(plugin, "get_accelerator", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_accelerator") as waiter,
+        patch.object(plugin, "ensure_listeners") as listeners,
+        patch.object(plugin, "reconcile_arn_tags") as tagger,
+        pytest.raises(ModuleFail) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["msg"] == "The resulting accelerator tags must contain at most 50 entries"
+    waiter.assert_not_called()
+    listeners.assert_not_called()
+    tagger.assert_not_called()
+    client.create_accelerator.assert_not_called()
+    client.update_accelerator.assert_not_called()
+    client.tag_resource.assert_not_called()
+    client.untag_resource.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("current_tags", "new_tag_count"),
+    [
+        ({f"existing{index}": "value" for index in range(35)}, 15),
+        (
+            {
+                **{f"existing{index}": "value" for index in range(40)},
+                **{f"AWS:reserved{index}": "value" for index in range(10)},
+            },
+            10,
+        ),
+    ],
+    ids=["under-limit", "aws-tags-excluded"],
+)
+def test_tag_limit_allows_up_to_fifty_user_tags(check_mode, current_tags, new_tag_count):
+    tags = {f"new{index}": "value" for index in range(new_tag_count)}
+    module, current, client = tag_limit_case(check_mode, current_tags, tags)
+    client.update_accelerator.return_value = {"Accelerator": {**current, "Enabled": False, "Name": "renamed"}}
+    with (
+        patch.object(plugin, "get_accelerator", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_listener_writes"),
+        patch.object(plugin, "require_endpoint_group_writes"),
+        patch.object(plugin, "ensure_listeners", return_value=(False, [])),
+        patch.object(plugin, "reconcile_arn_tags") as tagger,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["accelerator"]["tags"] == {**current_tags, **tags}
+    if check_mode:
+        tagger.assert_not_called()
+        client.update_accelerator.assert_not_called()
+    else:
+        tagger.assert_called_once()
+        client.update_accelerator.assert_called_once()
