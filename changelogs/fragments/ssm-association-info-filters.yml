@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ssm_association_info - fail with a clear message when a filter has more than one value, because
+    ``ListAssociations`` rejects a repeated filter key, instead of returning the raw AWS validation error.
+...

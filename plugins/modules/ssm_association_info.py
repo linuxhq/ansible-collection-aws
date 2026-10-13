@@ -17,6 +17,8 @@ options:
       - A dict of filters to apply when listing Systems Manager associations.
       - Filter keys and values are passed to the Systems Manager
         C(ListAssociations) API as C(AssociationFilterList).
+      - Each filter key accepts a single value, and associations must match
+        every filter.
     type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -160,9 +162,15 @@ def main():
         argument_spec={"filters": {"type": "dict"}},
         supports_check_mode=True,
     )
+    filters = module.params["filters"]
+    for key, value in (filters or {}).items():
+        if isinstance(value, list) and len(value) > 1:
+            module.fail_json(
+                msg=f"filters.{key} accepts a single value; ListAssociations does not allow repeating a filter key"
+            )
+
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
 
-    filters = module.params["filters"]
     request = {}
     if filters:
         request["AssociationFilterList"] = ssm_filter_list(filters, "key", "value", split_values=True)
