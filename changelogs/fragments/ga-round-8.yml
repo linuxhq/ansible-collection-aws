@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - global_accelerator - fail before creating or updating the accelerator, listeners, or endpoint groups when
+    the resulting accelerator tags would exceed the 50-tag limit, such as when ``purge_tags=false`` adds tags to
+    an accelerator that already has some. Tags with the reserved ``aws:`` prefix do not count toward the limit.
+  - global_accelerator - document that the ``accelerator.accelerator_arn`` and ``accelerator_arn`` return values
+    are omitted when check mode predicts a new accelerator.
