@@ -546,7 +546,7 @@ def test_absent_tolerates_disappearing_prerequisites():
     ):
         plugin.ensure_absent(client, module)
 
-    assert raised.value.values["changed"]
+    assert raised.value.values["changed"] is False
     client.release_phone_number.assert_not_called()
 
 
@@ -570,7 +570,59 @@ def test_absent_does_not_return_stale_data_when_release_races_with_deletion():
     ):
         plugin.ensure_absent(client, module)
 
-    assert raised.value.values["changed"]
+    assert raised.value.values["changed"] is False
+    assert "phone_number" not in raised.value.values
+
+
+def not_found(operation):
+    return plugin.ClientError({"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}}, operation)
+
+
+def test_absent_deletion_protection_race_after_disassociation_reports_changed():
+    client = Mock()
+    client.update_phone_number.side_effect = not_found("UpdatePhoneNumber")
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
+    with (
+        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(plugin, "wait_for_phone_number_active", return_value=existing_number()),
+        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert "phone_number" not in raised.value.values
+    client.release_phone_number.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("deletion_protection_enabled", "pool_id", "changed"),
+    [(False, None, False), (False, "pool-1", True), (True, None, True)],
+)
+def test_absent_release_race_reports_whether_the_number_was_changed(deletion_protection_enabled, pool_id, changed):
+    client = Mock()
+    client.update_phone_number.return_value = existing_number(DeletionProtectionEnabled=False)
+    client.release_phone_number.side_effect = not_found("ReleasePhoneNumber")
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
+    with (
+        patch.object(
+            plugin,
+            "get_phone_number",
+            return_value=existing_number(DeletionProtectionEnabled=deletion_protection_enabled, PoolId=pool_id),
+        ),
+        patch.object(
+            plugin,
+            "wait_for_phone_number_active",
+            return_value=existing_number(DeletionProtectionEnabled=deletion_protection_enabled),
+        ),
+        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is changed
     assert "phone_number" not in raised.value.values
 
 

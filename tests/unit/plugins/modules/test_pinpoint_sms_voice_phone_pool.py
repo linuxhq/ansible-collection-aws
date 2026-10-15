@@ -614,7 +614,7 @@ def test_absent_tolerates_disappearing_deletion_protection_update():
     ):
         plugin.ensure_absent(client, module)
 
-    assert raised.value.values["changed"]
+    assert raised.value.values["changed"] is False
     client.delete_pool.assert_not_called()
 
 
@@ -694,7 +694,22 @@ def test_absent_does_not_return_stale_data_when_delete_races():
     ):
         plugin.ensure_absent(client, module)
 
-    assert raised.value.values["changed"]
+    assert raised.value.values["changed"] is False
+    assert "pool" not in raised.value.values
+
+
+def test_absent_delete_race_after_disabling_deletion_protection_reports_changed():
+    client = Mock()
+    client.update_pool.return_value = active_pool(DeletionProtectionEnabled=False)
+    client.delete_pool.side_effect = not_found()
+    module = FakeModule({"pool_id": "pool-1", "state": "absent"})
+    with (
+        patch.object(plugin, "describe_pools", return_value=[active_pool(DeletionProtectionEnabled=True)]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
     assert "pool" not in raised.value.values
 
 

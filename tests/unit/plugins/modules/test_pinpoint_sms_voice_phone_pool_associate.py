@@ -178,6 +178,7 @@ def test_absent_does_not_return_association_that_disappeared():
         plugin.ensure_absent(client, module)
 
     assert raised.value.values["association"] == {}
+    assert raised.value.values["changed"] is False
 
 
 def test_rejects_lowercase_country_code():

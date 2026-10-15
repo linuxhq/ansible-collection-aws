@@ -87,6 +87,8 @@ RETURN = r"""
 association:
   description:
     - The requested origination identity association.
+    - Empty when nothing is associated, such as with O(state=absent) when the association does not exist
+      or was removed elsewhere during this run.
   returned: always
   type: dict
   contains:
@@ -96,7 +98,7 @@ association:
       type: str
     origination_identity:
       description: The origination identity, such as a phone number ID or sender ID.
-      returned: always
+      returned: when an association exists or is predicted
       type: str
     origination_identity_arn:
       description: The origination identity ARN.
@@ -318,6 +320,8 @@ def ensure_absent(client, module):
                 aws_retry=True,
             )
         except is_boto3_error_code("ResourceNotFoundException"):
+            # Disassociated elsewhere; this run changed nothing.
+            changed = False
             association = None
         except is_boto3_error_code("ConflictException") as e:
             if is_last_phone_number_conflict(e):
