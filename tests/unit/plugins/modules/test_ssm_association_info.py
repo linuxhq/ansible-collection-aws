@@ -55,12 +55,14 @@ def test_single_value_list_filters_are_accepted():
     assert query_list.call_args.kwargs["AssociationFilterList"] == [{"key": "Name", "value": "document"}]
 
 
-def test_filters_with_several_values_are_rejected_before_any_call():
-    module = FakeModule({"filters": {"AssociationName": ["a", "b"]}}, client=Mock())
+@pytest.mark.parametrize("value", [["a", "b"], [], None, [None]])
+def test_filters_without_exactly_one_value_are_rejected_before_any_call(value):
+    module = FakeModule({"filters": {"Name": "document", "AssociationName": value}}, client=Mock())
     result, require_client_methods, query_list = run(module, [])
 
     assert result.values["msg"] == (
-        "filters.AssociationName accepts a single value; ListAssociations does not allow repeating a filter key"
+        "filters.AssociationName requires exactly one value; "
+        "ListAssociations does not allow an empty or repeated filter key"
     )
     require_client_methods.assert_not_called()
     query_list.assert_not_called()

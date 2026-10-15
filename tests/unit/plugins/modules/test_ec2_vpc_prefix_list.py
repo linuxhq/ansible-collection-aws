@@ -4,6 +4,8 @@ import pytest
 from botocore.loaders import Loader
 from botocore.waiter import Waiter, WaiterModel
 
+from ansible_collections.amazon.aws.plugins.module_utils.retries import RetryingBotoClientWrapper
+
 from ansible_collections.linuxhq.aws.plugins.module_utils import tags
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_vpc_prefix_list as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -184,6 +186,7 @@ def test_create_without_wait_returns_the_create_response():
                 "MaxEntries",
                 "PrefixListName",
                 "Entries",
+                "ClientToken",
             )
         },
     )
@@ -200,6 +203,28 @@ def test_create_without_wait_returns_the_create_response():
         entries,
     )
     get_current.assert_not_called()
+
+
+def test_create_retries_reuse_the_client_token():
+    raw_client = Mock()
+    raw_client.create_managed_prefix_list.side_effect = [
+        plugin.ClientError({"Error": {"Code": "Throttling", "Message": "slow down"}}, "CreateManagedPrefixList"),
+        {"PrefixList": prefix_list(State="create-in-progress")},
+    ]
+    client = RetryingBotoClientWrapper(raw_client, plugin.AWSRetry.jittered_backoff(delay=0))
+    module = FakeModule({"name": "main", "tags": None, "wait": False})
+    with patch.object(plugin, "require_client_methods"):
+        plugin.create_prefix_list(
+            client,
+            module,
+            OWNER,
+            {"address_family": "IPv4", "max_entries": 1, "prefix_list_name": "main"},
+            [{"cidr": "192.0.2.0/24"}],
+        )
+
+    first, second = raw_client.create_managed_prefix_list.call_args_list
+    assert first.kwargs["ClientToken"]
+    assert first.kwargs["ClientToken"] == second.kwargs["ClientToken"]
 
 
 def test_create_rejects_malformed_response():

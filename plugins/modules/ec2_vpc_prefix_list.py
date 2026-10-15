@@ -217,6 +217,7 @@ state:
 
 import ipaddress
 import json
+import uuid
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -437,6 +438,9 @@ def create_prefix_list(client, module, owner_id, desired_prefix_list, desired_en
 
         if tag_specifications is not None:
             request["TagSpecifications"] = tag_specifications
+
+    # One token per run makes SDK retries of a request that already succeeded idempotent.
+    request["ClientToken"] = str(uuid.uuid4())
 
     require_client_methods(
         module,
