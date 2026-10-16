@@ -269,11 +269,20 @@ def ensure_present(client, module):
 
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:
+        current_tags = boto3_tag_list_to_ansible_dict((current or {}).get("Tags", []))
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
-            boto3_tag_list_to_ansible_dict((current or {}).get("Tags", [])),
+            current_tags,
             tags,
             purge_tags=module.params["purge_tags"],
         )
+        final_tags = dict(current_tags)
+        for key in tag_keys_to_unset:
+            final_tags.pop(key, None)
+
+        final_tags.update(tags_to_set)
+        # AWS-reserved aws: tags do not count against the per-resource tag limit.
+        if sum(not key.lower().startswith("aws:") for key in final_tags) > 50:
+            module.fail_json(msg="The resulting OIDC provider tags must contain at most 50 entries")
 
     resource_changed = (current_comparable or {}) != desired
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
