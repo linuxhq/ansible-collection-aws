@@ -785,6 +785,42 @@ def test_new_number_request_omits_unset_settings():
     assert "OptOutListName" not in request
 
 
+REGISTRATION_ARN = "arn:aws:sms-voice:us-east-1:111111111111:registration/registration-1"
+
+
+@pytest.mark.parametrize("phone_number_id", [None, "phone-1"])
+def test_registration_arn_matches_a_number_with_the_registration_id(phone_number_id):
+    client = Mock()
+    module = FakeModule(phone_number_params(phone_number_id=phone_number_id, registration_id=REGISTRATION_ARN))
+    number = existing_number(RegistrationId="registration-1")
+    with (
+        patch.object(plugin, "query_list", return_value=[number]),
+        patch.object(plugin, "get_phone_number", return_value=number),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is False
+    assert result.value.values["phone_number"]["phone_number_id"] == "phone-1"
+    client.request_phone_number.assert_not_called()
+
+
+def test_registration_arn_mismatch_requests_a_number_with_the_given_value():
+    client = Mock()
+    client.request_phone_number.return_value = existing_number(PhoneNumberId="phone-2", Status="PENDING")
+    module = FakeModule(phone_number_params(registration_id=REGISTRATION_ARN))
+    with (
+        patch.object(plugin, "query_list", return_value=[existing_number(RegistrationId="registration-2")]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    client.request_phone_number.assert_called_once()
+    assert client.request_phone_number.call_args.kwargs["RegistrationId"] == REGISTRATION_ARN
+
+
 def test_absent_waits_for_disassociation_before_release():
     client = Mock()
     client.release_phone_number.return_value = {"PhoneNumberId": "phone-1", "Status": "DELETED"}
