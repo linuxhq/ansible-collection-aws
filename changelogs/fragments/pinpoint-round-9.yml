@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number - match an existing phone number when ``registration_id`` is given as an ARN
+    instead of requesting a new number on every run, or failing when ``phone_number_id`` is set.
+...

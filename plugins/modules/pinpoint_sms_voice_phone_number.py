@@ -111,7 +111,7 @@ options:
     type: str
   registration_id:
     description:
-      - The registration ID to attach to the phone number request.
+      - The registration ID or ARN to attach to the phone number request.
     type: str
   state:
     description:
@@ -750,8 +750,9 @@ def ensure_present(client, module):
     if pool_id is not None:
         desired["PoolId"] = pool_id.rsplit("/", 1)[-1]
 
+    # RequestPhoneNumber accepts an ID or an ARN, but DescribePhoneNumbers returns the ID.
     if registration_id is not None:
-        desired["RegistrationId"] = registration_id
+        desired["RegistrationId"] = registration_id.rsplit("/", 1)[-1]
 
     # Without phone_number_id, a requested Name tag identifies the number; other tags converge below.
     name = None if module.params["phone_number_id"] else (tags or {}).get("Name")
