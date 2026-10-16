@@ -40,6 +40,7 @@ options:
   name:
     description:
       - The Name tag identifying the connection. Required when creating a connection.
+      - The name is matched exactly; C(*) and C(?) are not wildcards.
       - Supply one of O(name), O(vpn_connection_id), or O(filters).
       - Mutually exclusive with O(vpn_connection_id) and O(filters).
     type: str
@@ -672,6 +673,14 @@ def find_connection(client, module, connection_id=None, changed=False):
             continue
 
         matches.append(validate_connection(module, item, changed=changed))
+
+    if not connection_id and module.params["name"]:
+        # The tag filter treats * and ? as wildcards, so keep only the exact name.
+        matches = [
+            match
+            for match in matches
+            if boto3_tag_list_to_ansible_dict(match.get("Tags") or []).get("Name") == module.params["name"]
+        ]
 
     if len(matches) > 1:
         module.fail_json(changed=changed, msg="Multiple VPN connections matched; select a unique name, ID, or filters")

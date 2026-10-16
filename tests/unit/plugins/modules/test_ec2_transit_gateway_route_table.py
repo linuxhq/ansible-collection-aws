@@ -1167,3 +1167,24 @@ def test_untagged_route_table_result_omits_tags_as_documented():
         )
 
     assert "tags" not in raised.value.values["transit_gateway_route_table"]
+
+
+@pytest.mark.parametrize("name", ["web-*", "web-?"])
+def test_name_lookup_treats_wildcard_characters_literally(name):
+    def table(table_id, table_name):
+        return {
+            "TransitGatewayRouteTableId": table_id,
+            "State": "available",
+            "Tags": [{"Key": "Name", "Value": table_name}],
+        }
+
+    wildcard_matches = [table("tgw-rtb-a", "web-a"), table("tgw-rtb-b", "web-b")]
+    exact = table("tgw-rtb-exact", name)
+    module = FakeModule({"transit_gateway_route_table_id": None, "transit_gateway_id": None, "name": name})
+    with patch.object(plugin, "query_list", return_value=wildcard_matches + [exact]) as query:
+        assert plugin.find_route_table(Mock(), module) == exact
+
+    assert {"Name": "tag:Name", "Values": [name]} in query.call_args.kwargs["Filters"]
+
+    with patch.object(plugin, "query_list", return_value=wildcard_matches):
+        assert plugin.find_route_table(Mock(), module) is None
