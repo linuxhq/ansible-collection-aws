@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ssm_document - leave ``tags`` out of the result of a run that creates a document without ``tags``, as on later runs,
+    instead of returning the empty tag list that ``CreateDocument`` includes in its response.
+...

@@ -810,6 +810,27 @@ def test_present_reads_json_and_yaml_documents_as_json(document_format):
     client.update_document.assert_not_called()
 
 
+@pytest.mark.parametrize(("tags", "expected"), [(None, None), ({}, {})])
+def test_create_returns_tags_only_when_tags_are_supplied(tags, expected):
+    client = Mock(
+        describe_document=Mock(
+            side_effect=ClientError({"Error": {"Code": "InvalidDocument", "Message": "gone"}}, "DescribeDocument")
+        )
+    )
+    # CreateDocument returns an empty tag list even when the request has no tags.
+    client.create_document.return_value = {
+        "DocumentDescription": {"DocumentVersion": "1", "Name": "example", "Tags": []}
+    }
+    with (
+        patch.object(plugin, "get_document", side_effect=[None, document({"schemaVersion": "2.2"})]),
+        patch.object(plugin, "wait_for_document"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params(tags=tags)))
+
+    assert raised.value.values["document"].get("tags") == expected
+
+
 def test_present_creates_a_missing_document_after_describing_it():
     client = Mock(
         describe_document=Mock(

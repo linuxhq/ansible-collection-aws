@@ -508,6 +508,9 @@ def ensure_present(client, module):
             current["Content"] = desired_content
             if tags:
                 current["Tags"] = request["Tags"]
+            elif tags is None:
+                # CreateDocument returns Tags even when none were sent; tags are returned only when O(tags) is set.
+                current.pop("Tags", None)
 
         elif resource_changed or default_version_to_promote:
             new_version = default_version_to_promote
