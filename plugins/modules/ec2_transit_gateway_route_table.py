@@ -24,6 +24,7 @@ options:
     description:
       - The route table name.
       - This value is managed as the C(Name) tag.
+      - The name is matched exactly; C(*) and C(?) are not wildcards.
       - When O(tags) contains C(Name), its value must match this value.
       - Required when O(transit_gateway_route_table_id) is omitted.
     type: str
@@ -434,6 +435,10 @@ def find_route_table(client, module):
 
     for route_table in route_tables:
         validated_route_table(module, route_table)
+
+    if name:
+        # The tag filter treats * and ? as wildcards, so keep only the exact name.
+        route_tables = [route_table for route_table in route_tables if current_tags(route_table).get("Name") == name]
 
     if len(route_tables) > 1:
         transit_gateway_route_table_ids = [route_table_id(route_table) for route_table in route_tables]

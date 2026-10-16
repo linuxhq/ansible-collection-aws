@@ -1466,3 +1466,25 @@ def test_wait_failure_after_create_reports_changed(params, connection):
 
     assert raised.value.values["changed"] is True
     assert raised.value.values["msg"] == "Unable to wait for VPN connection vpn-123 to become available"
+
+
+@pytest.mark.parametrize("name", ["branch-*", "branch-?"])
+def test_name_lookup_treats_wildcard_characters_literally(params, connection, name):
+    def named(connection_id, connection_name):
+        return dict(
+            deepcopy(connection), VpnConnectionId=connection_id, Tags=[{"Key": "Name", "Value": connection_name}]
+        )
+
+    wildcard_matches = [named("vpn-a", "branch-a"), named("vpn-b", "branch-b")]
+    exact = named("vpn-exact", name)
+    params.update(name=name)
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": wildcard_matches + [exact]}
+    module = FakeModule(params)
+    assert plugin.find_connection(client, module) == exact
+    client.describe_vpn_connections.assert_called_once_with(
+        Filters=[{"Name": "tag:Name", "Values": [name]}], aws_retry=True
+    )
+
+    client.describe_vpn_connections.return_value = {"VpnConnections": wildcard_matches}
+    assert plugin.find_connection(client, module) is None

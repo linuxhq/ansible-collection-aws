@@ -64,6 +64,7 @@ options:
   name:
     description:
       - The managed prefix list name.
+      - The name is matched exactly; C(*) and C(?) are not wildcards.
     required: true
     type: str
   state:
@@ -883,7 +884,10 @@ def get_customer_managed_prefix_list_by_name(client, module, owner_id, changed=F
         ):
             continue
 
-        matches.append(validate_prefix_list(module, prefix_list, changed=changed))
+        prefix_list = validate_prefix_list(module, prefix_list, changed=changed)
+        # The name filter treats * and ? as wildcards, so keep only the exact name.
+        if prefix_list["PrefixListName"] == name:
+            matches.append(prefix_list)
 
     if len(matches) > 1:
         prefix_list_ids = [prefix_list.get("PrefixListId") for prefix_list in matches]

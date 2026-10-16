@@ -1140,3 +1140,16 @@ def test_absent_waits_for_an_in_progress_prefix_list_before_deleting(state):
     assert raised.value.values["changed"] is True
     wait.assert_called_once_with(client, module, "pl-1")
     client.delete_managed_prefix_list.assert_called_once_with(PrefixListId="pl-1", aws_retry=True)
+
+
+@pytest.mark.parametrize("name", ["web-*", "web-?"])
+def test_lookup_treats_wildcard_characters_literally(name):
+    wildcard_matches = [prefix_list(PrefixListId="pl-a", PrefixListName="web-a")]
+    exact = prefix_list(PrefixListId="pl-exact", PrefixListName=name)
+    with patch.object(plugin, "query_list", return_value=wildcard_matches + [exact]) as query:
+        assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": name}), OWNER) == exact
+
+    assert query.call_args.kwargs["Filters"] == [{"Name": "prefix-list-name", "Values": [name]}]
+
+    with patch.object(plugin, "query_list", return_value=wildcard_matches):
+        assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": name}), OWNER) is None
