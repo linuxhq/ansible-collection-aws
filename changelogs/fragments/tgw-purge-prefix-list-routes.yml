@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - ec2_transit_gateway_route_table - never select or purge a prefix list reference route, even when it reports
+    a destination CIDR block; such routes are not managed by this module.

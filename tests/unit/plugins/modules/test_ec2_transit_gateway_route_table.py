@@ -218,6 +218,12 @@ def test_get_route_selects_only_live_static_routes():
         assert plugin.get_route(Mock(), FakeModule({}), "tgw-rtb-1", "10.0.0.0/8") is None
 
 
+def test_get_route_skips_prefix_list_references():
+    reference = {"DestinationCidrBlock": "10.0.0.0/8", "PrefixListId": "pl-1", "State": "active", "Type": "static"}
+    with patch.object(plugin, "search_routes", return_value=[reference]):
+        assert plugin.get_route(Mock(), FakeModule({}), "tgw-rtb-1", "10.0.0.0/8") is None
+
+
 def test_changed_static_route_is_replaced_in_place():
     client = Mock()
     replacement = {
@@ -577,6 +583,44 @@ def test_purge_removes_only_undesired_static_routes():
     remove.assert_called_once_with(client, module, "tgw-rtb-1", "192.0.2.0/24", stale_route, changed=False)
     static_routes.assert_called_once()
     assert [route["destination_cidr_block"] for route in raised.value.values["routes"]] == ["10.0.0.0/8"]
+
+
+def test_purge_skips_prefix_list_references():
+    client = Mock()
+    stale_route = {
+        "DestinationCidrBlock": "192.0.2.0/24",
+        "State": "active",
+        "TransitGatewayAttachments": [{"TransitGatewayAttachmentId": "tgw-attach-1"}],
+        "Type": "static",
+    }
+    reference = dict(stale_route, DestinationCidrBlock="198.51.100.0/24", PrefixListId="pl-1")
+    module = FakeModule(
+        {
+            "name": None,
+            "purge_routes": True,
+            "purge_tags": True,
+            "routes": [],
+            "state": "present",
+            "tags": None,
+            "transit_gateway_id": None,
+            "transit_gateway_route_table_id": "tgw-rtb-1",
+            "wait": False,
+        }
+    )
+    route_table = {
+        "State": "available",
+        "TransitGatewayRouteTableId": "tgw-rtb-1",
+    }
+    with (
+        patch.object(plugin, "find_route_table", return_value=route_table),
+        patch.object(plugin, "static_routes", return_value=[stale_route, reference]),
+        patch.object(plugin, "ensure_route_absent", return_value=(True, None)) as remove,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"]
+    remove.assert_called_once_with(client, module, "tgw-rtb-1", "192.0.2.0/24", stale_route, changed=False)
 
 
 def test_tgw_absence_waits_until_deleting_route_disappears():
