@@ -739,6 +739,7 @@ def test_changed_settings_update_the_matched_number_instead_of_requesting_anothe
 
     assert result.value.values["changed"] is True
     assert result.value.values["phone_number"]["deletion_protection_enabled"] is False
+    assert result.value.values["phone_number"]["opt_out_list_name"] == "list-1"
     client.request_phone_number.assert_not_called()
     if check_mode:
         client.update_phone_number.assert_not_called()
@@ -1468,3 +1469,40 @@ def test_absent_reports_other_disassociate_conflicts_from_aws():
         "Unable to disassociate Pinpoint SMS Voice V2 phone number phone-1 from pool pool-1"
     )
     client.release_phone_number.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_new_number_with_arns_returns_ids_and_names_in_every_mode(check_mode):
+    client = Mock()
+    client.request_phone_number.return_value = existing_number(
+        OptOutListName="list-1",
+        PoolId="pool-1",
+        RegistrationId="registration-1",
+        Status="PENDING",
+    )
+    module = FakeModule(
+        phone_number_params(
+            opt_out_list_name="arn:aws:sms-voice:us-east-1:111111111111:opt-out-list/list-1",
+            pool_id="arn:aws:sms-voice:us-east-1:111111111111:pool/pool-1",
+            registration_id=REGISTRATION_ARN,
+        ),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    phone_number = result.value.values["phone_number"]
+    assert result.value.values["changed"] is True
+    assert phone_number["opt_out_list_name"] == "list-1"
+    assert phone_number["pool_id"] == "pool-1"
+    assert phone_number["registration_id"] == "registration-1"
+    if check_mode:
+        client.request_phone_number.assert_not_called()
+    else:
+        assert client.request_phone_number.call_args.kwargs["PoolId"] == (
+            "arn:aws:sms-voice:us-east-1:111111111111:pool/pool-1"
+        )

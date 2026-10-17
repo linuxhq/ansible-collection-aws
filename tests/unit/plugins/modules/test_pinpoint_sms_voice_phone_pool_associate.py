@@ -122,6 +122,34 @@ def test_present_rejects_wrong_association_response():
     assert raised.value.values["changed"] is True
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_present_with_pool_arn_returns_the_pool_id_in_every_mode(check_mode):
+    client = Mock()
+    client.associate_origination_identity.return_value = {
+        "OriginationIdentity": "sender-1",
+        "PoolId": "pool-1",
+    }
+    module = FakeModule(
+        {
+            "client_token": None,
+            "iso_country_code": None,
+            "origination_identity": "sender-1",
+            "pool_id": "arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1",
+            "state": "present",
+        },
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "current_associations", return_value=[]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["association"]["pool_id"] == "pool-1"
+    assert client.associate_origination_identity.called is not check_mode
+
+
 def test_malformed_listed_association_reports_unchanged():
     module = FakeModule({"origination_identity": "sender-1", "pool_id": "pool-1"})
     with pytest.raises(ModuleFail) as raised:
