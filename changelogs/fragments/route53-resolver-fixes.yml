@@ -1,0 +1,14 @@
+---
+bugfixes:
+  - route53_delegation_set - use a delegation set that a concurrent run or a retried create made when Route53
+    reports C(DelegationSetAlreadyCreated), and only report the name as used by a deleted delegation set when no
+    set with that caller reference is listed.
+  - route53_resolver - generate a unique creator request ID for each endpoint create instead of deriving it from
+    the arguments, so re-creating a deleted endpoint with identical arguments is not rejected or replayed.
+  - route53_resolver - no longer require botocore 1.38.43 or later for O(direction=INBOUND_DELEGATION).
+  - route53_resolver - report C(changed=false) and skip the wait when the endpoint is already gone at deletion.
+  - route53_resolver_rule - generate a unique creator request ID for each rule create instead of deriving it from
+    the arguments, so re-creating a deleted rule with identical arguments is not rejected or replayed.
+  - route53_resolver_rule - report C(changed=false) and skip the wait when the rule is already gone at deletion.
+  - route53_resolver_rule_associate - report C(changed=false) and skip the wait when the association is already
+    gone at disassociation.

@@ -243,7 +243,7 @@ def ensure_absent(client, module):
                     aws_retry=True,
                 )
             except is_boto3_error_code("ResourceNotFoundException"):
-                pass
+                changed = False
             except (BotoCoreError, ClientError) as e:
                 identifier = f"{module.params['resolver_rule_id']}/{module.params['vpc_id']}"
                 module.fail_json_aws(
@@ -251,7 +251,7 @@ def ensure_absent(client, module):
                     msg=f"Unable to delete AWS Route53 Resolver rule association {identifier}",
                 )
 
-        if module.params["wait"]:
+        if module.params["wait"] and (changed or deleting):
             wait_for_resolver_rule_association_status(
                 client,
                 module,
