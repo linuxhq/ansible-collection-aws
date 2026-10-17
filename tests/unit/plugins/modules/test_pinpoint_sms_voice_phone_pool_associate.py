@@ -151,7 +151,7 @@ def test_present_with_pool_arn_returns_the_pool_id_in_every_mode(check_mode):
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_present_unchanged_returns_the_same_association_keys_as_a_change(check_mode):
+def test_present_unchanged_returns_the_pool_id_and_arn(check_mode):
     client = Mock()
     pool_arn = "arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1"
     sender_arn = "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US"
@@ -186,6 +186,7 @@ def test_present_unchanged_returns_the_same_association_keys_as_a_change(check_m
     assert raised.value.values["origination_identity"] == sender_arn
     assert raised.value.values["association"] == {
         "iso_country_code": "US",
+        "number_capabilities": ["SMS"],
         "origination_identity": "sender-1",
         "origination_identity_arn": sender_arn,
         "pool_arn": pool_arn,

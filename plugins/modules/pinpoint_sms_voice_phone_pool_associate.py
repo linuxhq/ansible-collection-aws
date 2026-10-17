@@ -96,6 +96,11 @@ association:
       description: The two-character ISO country code.
       returned: when returned by AWS
       type: str
+    number_capabilities:
+      description: The origination identity's capabilities, such as V(SMS) or V(VOICE).
+      returned: when the association already existed
+      type: list
+      elements: str
     origination_identity:
       description: The origination identity, such as a phone number ID or sender ID.
       returned: when an association exists or is predicted
@@ -103,6 +108,10 @@ association:
     origination_identity_arn:
       description: The origination identity ARN.
       returned: when returned by AWS
+      type: str
+    phone_number:
+      description: The phone number in E.164 format.
+      returned: when the association already existed and the origination identity is a phone number
       type: str
     pool_arn:
       description: The pool ARN.
@@ -157,8 +166,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
-
-ASSOCIATION_KEYS = ("IsoCountryCode", "OriginationIdentity", "OriginationIdentityArn", "PoolArn", "PoolId")
 
 
 def current_associations(client, module):
@@ -238,8 +245,7 @@ def current_association(module, associations):
                 continue
 
             if identity == module.params["origination_identity"]:
-                # Return the AssociateOriginationIdentity response fields on every path.
-                return {key: association[key] for key in ASSOCIATION_KEYS if key in association}
+                return association
 
     return None
 

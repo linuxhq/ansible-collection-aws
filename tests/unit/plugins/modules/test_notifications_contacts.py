@@ -12,7 +12,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
-def test_absent_tolerates_contact_disappearing_during_delete():
+def test_absent_reports_unchanged_for_contact_disappearing_during_delete():
     client = Mock()
     client.delete_email_contact.side_effect = plugin.ClientError(
         {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
@@ -30,7 +30,7 @@ def test_absent_tolerates_contact_disappearing_during_delete():
     ):
         plugin.ensure_absent(client, module)
 
-    assert raised.value.values["changed"]
+    assert raised.value.values["changed"] is False
 
 
 def test_delete_retries_conflicts():

@@ -190,7 +190,8 @@ def ensure_absent(client, module):
         try:
             DELETE_RETRY(client.delete_email_contact)(arn=contact["arn"])
         except is_boto3_error_code("ResourceNotFoundException"):
-            pass
+            # The contact was deleted after it was read, so this run changed nothing.
+            changed = False
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,

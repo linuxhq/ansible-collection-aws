@@ -16,7 +16,7 @@ ACTIVE_US_EAST_1 = {"notificationHubRegion": "us-east-1", "statusSummary": {"rea
 ACTIVE_US_WEST_2 = {"notificationHubRegion": "us-west-2", "statusSummary": {"reason": "", "status": "ACTIVE"}}
 
 
-def test_absent_tolerates_hub_disappearing_during_delete():
+def test_absent_reports_unchanged_for_hub_disappearing_during_delete():
     client = Mock()
     client.deregister_notification_hub.side_effect = plugin.ClientError(
         {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
@@ -30,7 +30,7 @@ def test_absent_tolerates_hub_disappearing_during_delete():
     ):
         plugin.ensure_absent(client, module)
 
-    assert raised.value.values["changed"]
+    assert raised.value.values["changed"] is False
     client.deregister_notification_hub.assert_called_once_with(notificationHubRegion="us-east-1", aws_retry=True)
     require.assert_called_once_with(
         module,

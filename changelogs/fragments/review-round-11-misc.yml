@@ -18,6 +18,8 @@ bugfixes:
   - iam_oidc_provider - report ``changed=false`` when ``state=absent`` finds that the provider was deleted elsewhere.
   - notifications_contacts - retry ``ConflictException`` only when deleting a contact instead of on every call, so a
     contact creation conflict is reported without a long backoff.
+  - notifications_contacts - report ``changed=false`` when the contact is already gone at deletion.
+  - notifications_hub - report ``changed=false`` when the hub is already gone at deregistration.
   - notifications_hub - read ``region`` from the ``AWS_REGION`` or ``AWS_DEFAULT_REGION`` environment variable when
     it is not set, as for other AWS modules.
   - notifications_hub_info - document that the ``region`` option is ignored.
@@ -27,7 +29,7 @@ bugfixes:
     is required for a phone number shared from another account.
   - pinpoint_sms_voice_phone_pool - treat a pool given by ``pool_id`` that is being deleted as missing, so
     ``state=present`` fails with the same message whether or not ``wait`` is set.
-  - pinpoint_sms_voice_phone_pool_associate - return ``association.pool_id`` and ``association.pool_arn``, and only
-    the fields returned when an association is created, when the association already exists.
+  - pinpoint_sms_voice_phone_pool_associate - return ``association.pool_id`` and ``association.pool_arn`` when the
+    association already exists, as when it is created.
   - pinpoint_sms_voice_phone_pool_info - document that ``pool_ids`` accepts IDs or ARNs, and that an ARN is required
     for a pool shared from another account.
