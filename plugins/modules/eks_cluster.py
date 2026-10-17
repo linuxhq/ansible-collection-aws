@@ -209,6 +209,8 @@ options:
       public_access_cidrs:
         description:
           - CIDR blocks that can access the public Kubernetes API endpoint.
+          - Each CIDR block is converted to its canonical form, as EKS stores it, for example V(203.0.113.5/24)
+            becomes V(203.0.113.0/24).
           - This requires botocore C(1.12.117) or later.
         elements: str
         type: list
@@ -518,6 +520,7 @@ state:
   type: str
 """
 
+import ipaddress
 import time
 
 try:
@@ -686,6 +689,35 @@ def changed_request(current, desired):
 
     if changed(current, desired):
         return desired
+
+
+def canonicalize_public_access_cidrs(module):
+    resources_vpc_config = module.params["resources_vpc_config"] or {}
+    if not resources_vpc_config.get("public_access_cidrs"):
+        return
+
+    # EKS stores CIDRs in canonical form, so a CIDR with host bits set would otherwise never match.
+    try:
+        resources_vpc_config["public_access_cidrs"] = [
+            str(ipaddress.ip_network(cidr, strict=False)) for cidr in resources_vpc_config["public_access_cidrs"]
+        ]
+    except ValueError as e:
+        module.fail_json(msg=f"resources_vpc_config.public_access_cidrs must contain valid CIDR blocks: {e}")
+
+
+def with_auto_mode_defaults(current):
+    """Return current with omitted Auto Mode blocks shown as disabled, as EKS omits them on standard clusters."""
+    current = dict(current)
+    for field, path in AUTO_MODE_FIELDS.items():
+        config = dict(current.get(field) or {})
+        current[field] = config
+        for key in path:
+            config[key] = dict(config.get(key) or {})
+            config = config[key]
+
+        config.setdefault("enabled", False)
+
+    return current
 
 
 def auto_mode_request(current, config_request):
@@ -1070,7 +1102,10 @@ def ensure_present(client, module):
     auto_mode_changed = False
     for field, value in config_request.items():
         field_request = {field: value}
-        update_request = changed_request(current, field_request)
+        update_request = changed_request(
+            with_auto_mode_defaults(current) if field in AUTO_MODE_FIELDS else current,
+            field_request,
+        )
 
         if update_request is None:
             continue
@@ -1484,6 +1519,7 @@ def main():
         if state == "present" and len((module.params["remote_network_config"] or {}).get(network) or []) > 1:
             module.fail_json(msg=f"remote_network_config.{network} must contain at most one entry")
 
+    canonicalize_public_access_cidrs(module)
     require_positive_wait_bounds(module, always=True)
 
     client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())
