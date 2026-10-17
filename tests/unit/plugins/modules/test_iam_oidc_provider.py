@@ -531,6 +531,43 @@ def test_unsupported_tagging_fails_before_changing_client_ids():
     client.add_client_id_to_open_id_connect_provider.assert_not_called()
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_tag_limit_without_purge_fails_before_any_change(check_mode):
+    client = Mock()
+    existing = [{"Key": f"old{index}", "Value": ""} for index in range(45)]
+    new_tags = {f"new{index}": "" for index in range(10)}
+    module = FakeModule(
+        oidc_params(client_id_list=["keep", "new"], purge_tags=False, tags=new_tags), check_mode=check_mode
+    )
+    with (
+        patch.object(plugin, "get_provider_by_url", return_value=oidc_provider(Tags=existing)),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "The resulting OIDC provider tags must contain at most 50 entries"
+    assert raised.value.values.get("changed", False) is False
+    client.add_client_id_to_open_id_connect_provider.assert_not_called()
+    client.tag_open_id_connect_provider.assert_not_called()
+
+
+def test_aws_reserved_tags_do_not_count_against_the_tag_limit():
+    client = Mock()
+    existing = [{"Key": f"aws:reserved{index}", "Value": ""} for index in range(10)]
+    existing += [{"Key": f"old{index}", "Value": ""} for index in range(40)]
+    new_tags = {f"new{index}": "" for index in range(10)}
+    module = FakeModule(oidc_params(purge_tags=False, tags=new_tags), check_mode=True)
+    with (
+        patch.object(plugin, "get_provider_by_url", return_value=oidc_provider(Tags=existing)),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+
+
 def test_read_failure_after_create_reports_changed():
     client = Mock()
     client.create_open_id_connect_provider.return_value = {"OpenIDConnectProviderArn": "arn:provider"}

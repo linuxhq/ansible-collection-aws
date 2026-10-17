@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - iam_oidc_provider - check the resulting tag count against the 50-tag limit before any change, ignoring ``aws:``
+    prefixed tags, instead of updating client IDs or thumbprints and then failing on the tag call when
+    ``purge_tags=false`` would exceed the limit.
+...
