@@ -261,6 +261,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_ssm_tags,
+    require_resulting_tag_limit,
     require_valid_tags,
 )
 
@@ -388,6 +389,15 @@ def ensure_present(client, module, current):
         )
     )
 
+    # Tag deltas are computed before any write, so an over-limit result fails without modifying AWS.
+    tags_to_set, tag_keys_to_unset = ({}, [])
+    if tags is not None:
+        current_tags = boto3_tag_list_to_ansible_dict((current or {}).get("Tags", []))
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge_tags=purge_tags)
+        require_resulting_tag_limit(
+            module, current_tags, tags_to_set, tag_keys_to_unset, 1000, "AWS Systems Manager association"
+        )
+
     if current is None:
         changed = True
         resource_changed = True
@@ -492,14 +502,6 @@ def ensure_present(client, module, current):
                     association.pop(parameter, None)
         else:
             association = current
-
-    tags_to_set, tag_keys_to_unset = ({}, [])
-    if tags is not None:
-        tags_to_set, tag_keys_to_unset = compare_aws_tags(
-            boto3_tag_list_to_ansible_dict((current or {}).get("Tags", [])),
-            tags,
-            purge_tags=purge_tags,
-        )
 
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 

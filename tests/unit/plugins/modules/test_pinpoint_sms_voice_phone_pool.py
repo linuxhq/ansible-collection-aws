@@ -1056,3 +1056,27 @@ def test_pool_detail_reads_fail_when_the_pool_is_missing_by_default(helper):
         getattr(plugin, helper)(client, FakeModule({}), {"PoolArn": "arn:pool-1", "PoolId": "pool-1"})
 
     assert "pool-1" in raised.value.values["msg"]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_resulting_tag_limit_fails_before_updating_the_pool(check_mode):
+    client = Mock()
+    existing_tags = [{"Key": "Name", "Value": "primary"}, {"Key": "aws:reserved", "Value": ""}]
+    existing_tags += [{"Key": f"old{index}", "Value": ""} for index in range(199)]
+    module = FakeModule(
+        present_params(deletion_protection_enabled=True, purge_tags=False, tags={"Env": "test"}),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "find_pool", return_value=active_pool(Tags=existing_tags)),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert (
+        raised.value.values["msg"] == "The resulting Pinpoint SMS Voice V2 pool tags must contain at most 200 entries"
+    )
+    assert raised.value.values.get("changed", False) is False
+    client.update_pool.assert_not_called()
+    client.tag_resource.assert_not_called()

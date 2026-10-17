@@ -323,6 +323,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_arn_tags,
+    require_resulting_tag_limit,
     require_valid_tag_list,
     require_valid_tags,
 )
@@ -536,8 +537,10 @@ def phone_number_changes(client, module, current):
         if "Tags" not in current:
             current["Tags"] = ansible_dict_to_boto3_tag_list(phone_number_tags(client, module, current))
 
-        tags_to_set, tag_keys_to_unset = compare_aws_tags(
-            boto3_tag_list_to_ansible_dict(current["Tags"]), tags, purge_tags=module.params["purge_tags"]
+        current_tags = boto3_tag_list_to_ansible_dict(current["Tags"])
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge_tags=module.params["purge_tags"])
+        require_resulting_tag_limit(
+            module, current_tags, tags_to_set, tag_keys_to_unset, 200, "Pinpoint SMS Voice V2 phone number"
         )
 
     return current, updates, tags_to_set, tag_keys_to_unset

@@ -1488,3 +1488,23 @@ def test_name_lookup_treats_wildcard_characters_literally(params, connection, na
 
     client.describe_vpn_connections.return_value = {"VpnConnections": wildcard_matches}
     assert plugin.find_connection(client, module) is None
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_resulting_tag_limit_fails_before_any_write(params, connection, check_mode):
+    connection["Tags"] += [{"Key": f"old{index}", "Value": ""} for index in range(48)]
+    connection["Tags"].append({"Key": "aws:reserved", "Value": ""})
+    params.update(
+        purge_routes=False,
+        purge_tags=False,
+        routes=["10.0.0.0/8", "192.168.0.0/16"],
+        tags={"Env": "test"},
+        tunnel_options=[{"ike_versions": ["ikev2"]}],
+    )
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), connection)
+
+    assert raised.value.values["msg"] == "The resulting VPN connection tags must contain at most 50 entries"
+    assert raised.value.values.get("changed", False) is False
+    assert client.mock_calls == []

@@ -291,6 +291,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_ec2_tags,
+    require_resulting_tag_limit,
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
@@ -837,6 +838,14 @@ def ensure_present(client, module):
             current_tags(route_table),
             desired_route_table_tags,
             purge_tags=purge_tags,
+        )
+        require_resulting_tag_limit(
+            module,
+            current_tags(route_table),
+            tags_to_set,
+            tag_keys_to_unset,
+            50,
+            "EC2 transit gateway route table",
         )
 
         tag_changed = bool(tags_to_set or tag_keys_to_unset)

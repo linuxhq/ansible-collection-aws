@@ -588,6 +588,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     reconcile_arn_tags,
+    require_resulting_tag_limit,
     require_valid_tag_list,
     require_valid_tags,
 )
@@ -1739,14 +1740,7 @@ def ensure_present(client, module):
             tags,
             purge_tags=module.params["purge_tags"],
         )
-        final_tags = dict(current_tags)
-        for key in tag_keys_to_unset:
-            final_tags.pop(key, None)
-
-        final_tags.update(tags_to_set)
-        # AWS-reserved aws: tags do not count against the per-resource tag limit.
-        if sum(not key.lower().startswith("aws:") for key in final_tags) > 50:
-            module.fail_json(msg="The resulting accelerator tags must contain at most 50 entries")
+        require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "accelerator")
 
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
 

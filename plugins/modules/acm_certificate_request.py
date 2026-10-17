@@ -101,7 +101,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tags
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    require_resulting_tag_limit,
+    require_valid_tags,
+)
 
 # Keep this list synchronized with ACM's CertificateKeyAlgorithm model so
 # list_certificates does not omit certificates that use non-default key types.
@@ -360,14 +363,7 @@ def main():
             tags,
             purge_tags=purge_tags,
         )
-        final_tags = dict(current_tags)
-        for key in tag_keys_to_unset:
-            final_tags.pop(key, None)
-
-        final_tags.update(tags_to_set)
-        # AWS-reserved aws: tags do not count against the per-resource tag limit.
-        if sum(not key.lower().startswith("aws:") for key in final_tags) > 50:
-            module.fail_json(msg="The resulting certificate tags must contain at most 50 entries")
+        require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "certificate")
 
         changed = bool(tags_to_set or tag_keys_to_unset)
 

@@ -361,3 +361,32 @@ def test_tag_failure_reports_whether_tags_were_removed(current_tags, changed):
     assert raised.value.values["msg"] == "Unable to tag AWS Notifications contact arn:contact"
     assert raised.value.values["changed"] is changed
     assert client.untag_resource.called is changed
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_resulting_tag_limit_fails_before_tagging(check_mode):
+    client = Mock()
+    existing_tags = {f"old{index}": "" for index in range(200)}
+    existing_tags["aws:reserved"] = ""
+    client.list_tags_for_resource.return_value = {"tags": existing_tags}
+    module = FakeModule(
+        {
+            "email_address": "ops@example.com",
+            "name": "Operations",
+            "purge_tags": False,
+            "tags": {"new": ""},
+        },
+        check_mode=check_mode,
+    )
+    contact = {"address": "ops@example.com", "arn": "arn:contact", "name": "Operations"}
+    with (
+        patch.object(plugin, "get_contact_by_address", return_value=contact),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "The resulting AWS Notifications contact tags must contain at most 200 entries"
+    assert raised.value.values.get("changed", False) is False
+    client.tag_resource.assert_not_called()
+    client.untag_resource.assert_not_called()

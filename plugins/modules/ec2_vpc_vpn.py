@@ -557,6 +557,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_cli
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     ec2_tag_methods,
     reconcile_ec2_tags,
+    require_resulting_tag_limit,
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import require_positive_wait_bounds, run_waiter
@@ -982,7 +983,10 @@ def desired_tags(module, current):
         return {}, []
 
     require_valid_tags(module, tags, 50, key_max=127)
-    return compare_aws_tags(boto3_tag_list_to_ansible_dict(current.get("Tags") or []), tags, purge)
+    current_tags = boto3_tag_list_to_ansible_dict(current.get("Tags") or [])
+    tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge)
+    require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "VPN connection")
+    return tags_to_set, tag_keys_to_unset
 
 
 def validate_configuration(module, connection=None, changed=False):

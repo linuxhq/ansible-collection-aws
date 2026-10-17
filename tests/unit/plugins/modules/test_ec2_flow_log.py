@@ -613,3 +613,23 @@ def test_partial_delete_failure_reports_changed_when_other_flow_logs_were_delete
         plugin.delete_flow_logs(client, FakeModule({}), ["fl-1", "fl-2"])
 
     assert raised.value.values["changed"] is True
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_resulting_tag_limit_fails_before_creating_flow_logs(check_mode):
+    client = Mock()
+    existing_tags = [{"Key": f"aws:reserved{index}", "Value": ""} for index in range(5)]
+    existing_tags += [{"Key": f"old{index}", "Value": ""} for index in range(49)]
+    existing = dict(OLD_FLOW_LOG, LogDestination="arn:aws:s3:::new-bucket", Tags=existing_tags)
+    params = present_params(resource_ids=["vpc-1", "vpc-2"], purge_tags=False, tags={"new0": "", "new1": ""})
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[existing]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values["msg"] == "The resulting EC2 flow log tags must contain at most 50 entries"
+    assert raised.value.values.get("changed", False) is False
+    client.create_flow_logs.assert_not_called()
+    client.create_tags.assert_not_called()

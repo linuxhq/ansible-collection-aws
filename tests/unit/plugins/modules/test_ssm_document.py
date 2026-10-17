@@ -877,3 +877,22 @@ def test_present_creates_a_missing_document_after_describing_it():
 
     assert raised.value.values["changed"] is True
     assert client.create_document.call_args.kwargs["DocumentFormat"] == "JSON"
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_resulting_tag_limit_fails_before_updating_the_document(check_mode):
+    client = Mock()
+    existing_tags = [{"Key": "aws:reserved", "Value": ""}]
+    existing_tags += [{"Key": f"old{index}", "Value": ""} for index in range(1000)]
+    current = document({"schemaVersion": "1.2"}, Tags=existing_tags)
+    result, _wait, _get = run_present(
+        client,
+        FakeModule(params(purge_tags=False, tags={"new": ""}), check_mode=check_mode),
+        [current],
+    )
+
+    assert isinstance(result, ModuleFail)
+    assert result.values["msg"] == "The resulting AWS Systems Manager document tags must contain at most 1000 entries"
+    assert result.values.get("changed", False) is False
+    client.update_document.assert_not_called()
+    client.add_tags_to_resource.assert_not_called()
