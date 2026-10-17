@@ -96,6 +96,20 @@ accelerators:
       description: Whether the accelerator is enabled.
       returned: always
       type: bool
+    events:
+      description: The accelerator events, such as those reporting failed IP address transfers.
+      returned: when returned by AWS
+      type: list
+      elements: dict
+      contains:
+        message:
+          description: The event message.
+          returned: when returned by AWS
+          type: str
+        timestamp:
+          description: The time the event occurred.
+          returned: when returned by AWS
+          type: str
     ip_address_type:
       description: The accelerator IP address type.
       returned: always
@@ -116,6 +130,12 @@ accelerators:
           returned: always
           type: list
           elements: str
+        ip_family:
+          description:
+            - The IP address family.
+            - AWS deprecates this field in favor of C(ip_address_family).
+          returned: when returned by AWS
+          type: str
     last_modified_time:
       description: The time the accelerator was last modified.
       returned: when returned by AWS

@@ -58,7 +58,7 @@ def test_absent_tolerates_provider_disappearing_during_delete():
     ):
         plugin.ensure_absent(client, module)
 
-    assert raised.value.values["changed"]
+    assert raised.value.values["changed"] is False
 
 
 def test_module_contract():

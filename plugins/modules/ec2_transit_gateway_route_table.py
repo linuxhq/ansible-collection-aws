@@ -177,18 +177,20 @@ routes:
       type: str
       sample: active
     transit_gateway_attachments:
-      description: The attachments that the route sends traffic to.
-      returned: when the route has attachments
+      description:
+        - The attachments that the route sends traffic to.
+        - An empty list for a blackhole route predicted in check mode.
+      returned: when the route has attachments, or when the route is predicted in check mode
       type: list
       elements: dict
       contains:
         resource_id:
           description: The ID of the attached resource.
-          returned: always
+          returned: always, except for a route predicted in check mode
           type: str
         resource_type:
           description: The type of the attached resource.
-          returned: always
+          returned: always, except for a route predicted in check mode
           type: str
           sample: vpc
         transit_gateway_attachment_id:
@@ -243,14 +245,16 @@ transit_gateway_route_table:
       type: str
       sample: tgw-0123456789abcdef0
     transit_gateway_route_table_id:
-      description: The transit gateway route table ID.
+      description:
+        - The transit gateway route table ID.
+        - An empty string for a create predicted in check mode.
       returned: always
       type: str
       sample: tgw-rtb-0123456789abcdef0
 transit_gateway_route_table_id:
   description:
     - The transit gateway route table ID.
-  returned: when the route table exists
+  returned: when the route table exists, except for a create predicted in check mode
   type: str
 """
 

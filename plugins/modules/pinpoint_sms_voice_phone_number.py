@@ -337,8 +337,11 @@ SETTING_OPTIONS = {
 }
 
 
-def phone_number_tags(client, module, phone_number, changed=False):
-    """List tags; changed reports whether the phone number was already modified, for failure results."""
+def phone_number_tags(client, module, phone_number, changed=False, missing_ok=False):
+    """List tags; changed reports whether the phone number was already modified, for failure results.
+
+    With missing_ok, a phone number released since it was described returns None instead of failing.
+    """
     arn = phone_number.get("PhoneNumberArn")
 
     if not arn:
@@ -351,15 +354,19 @@ def phone_number_tags(client, module, phone_number, changed=False):
         {"list_tags_for_resource": ("ResourceArn",)},
         changed=changed,
     )
+    msg = f"Unable to list tags for Pinpoint SMS Voice V2 phone number {arn}"
     try:
         response = client.list_tags_for_resource(
             ResourceArn=arn,
             aws_retry=True,
         )
+    except is_boto3_error_code("ResourceNotFoundException") as e:
+        if missing_ok:
+            return None
+
+        module.fail_json_aws(e, changed=changed, msg=msg)
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e, changed=changed, msg=f"Unable to list tags for Pinpoint SMS Voice V2 phone number {arn}"
-        )
+        module.fail_json_aws(e, changed=changed, msg=msg)
 
     tags = require_valid_tag_list(
         module,
@@ -796,7 +803,11 @@ def ensure_present(client, module):
 
             continue
 
-        current_tags = phone_number_tags(client, module, phone_number)
+        # Another actor can release a candidate between DescribePhoneNumbers and ListTagsForResource.
+        current_tags = phone_number_tags(client, module, phone_number, missing_ok=True)
+        if current_tags is None:
+            continue
+
         if current_tags.get("Name") == name:
             matches.append(dict(phone_number, Tags=ansible_dict_to_boto3_tag_list(current_tags)))
 

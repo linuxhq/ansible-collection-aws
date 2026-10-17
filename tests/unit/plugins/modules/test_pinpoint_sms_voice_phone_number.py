@@ -418,6 +418,57 @@ def test_phone_number_tags_rejects_malformed_response():
     assert "malformed tags" in raised.value.values["msg"]
 
 
+@pytest.mark.parametrize("missing_ok", [False, True])
+def test_phone_number_tags_reports_a_released_number_only_when_missing_is_allowed(missing_ok):
+    client = Mock()
+    client.list_tags_for_resource.side_effect = plugin.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
+        "ListTagsForResource",
+    )
+    with patch.object(plugin, "require_client_methods"):
+        if missing_ok:
+            assert (
+                plugin.phone_number_tags(client, FakeModule({}), {"PhoneNumberArn": "arn:phone-1"}, missing_ok=True)
+                is None
+            )
+        else:
+            with pytest.raises(ModuleFail):
+                plugin.phone_number_tags(client, FakeModule({}), {"PhoneNumberArn": "arn:phone-1"})
+
+
+def test_name_matching_skips_a_candidate_released_before_its_tags_are_listed():
+    client = Mock()
+
+    def list_tags(ResourceArn, aws_retry):
+        if ResourceArn == "arn:phone-2":
+            raise plugin.ClientError(
+                {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
+                "ListTagsForResource",
+            )
+
+        return {"Tags": [{"Key": "Name", "Value": "sms"}]}
+
+    client.list_tags_for_resource.side_effect = list_tags
+    module = FakeModule(phone_number_params(tags={"Name": "sms"}), check_mode=True)
+    with (
+        patch.object(
+            plugin,
+            "query_list",
+            return_value=[
+                existing_number(PhoneNumberArn="arn:phone-2", PhoneNumberId="phone-2"),
+                existing_number(PhoneNumberArn="arn:phone-1"),
+            ],
+        ),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["phone_number_id"] == "phone-1"
+    client.request_phone_number.assert_not_called()
+
+
 def test_get_phone_number_rejects_malformed_response():
     with (
         patch.object(plugin, "paginated_query_with_retries", return_value=[]),
@@ -1132,7 +1183,9 @@ def test_name_matched_number_converges_tags_instead_of_requesting(tags, purge_ta
                 existing_number(PhoneNumberArn="arn:phone-1"),
             ],
         ),
-        patch.object(plugin, "phone_number_tags", side_effect=lambda client, module, number: named_tags(number)),
+        patch.object(
+            plugin, "phone_number_tags", side_effect=lambda client, module, number, **kwargs: named_tags(number)
+        ),
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "reconcile_arn_tags") as reconcile,
         pytest.raises(ModuleExit) as raised,
@@ -1157,7 +1210,9 @@ def test_number_without_the_requested_name_is_not_adopted():
     module = FakeModule(phone_number_params(tags={"Name": "missing"}), check_mode=True)
     with (
         patch.object(plugin, "query_list", return_value=[existing_number(PhoneNumberArn="arn:phone-1")]),
-        patch.object(plugin, "phone_number_tags", side_effect=lambda client, module, number: named_tags(number)),
+        patch.object(
+            plugin, "phone_number_tags", side_effect=lambda client, module, number, **kwargs: named_tags(number)
+        ),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -1198,7 +1253,9 @@ def test_tags_without_name_adopt_the_only_fixed_attribute_match():
     module = FakeModule(phone_number_params(tags={"Env": "new"}), check_mode=True)
     with (
         patch.object(plugin, "query_list", return_value=[existing_number(PhoneNumberArn="arn:phone-1")]),
-        patch.object(plugin, "phone_number_tags", side_effect=lambda client, module, number: named_tags(number)),
+        patch.object(
+            plugin, "phone_number_tags", side_effect=lambda client, module, number, **kwargs: named_tags(number)
+        ),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -1221,7 +1278,9 @@ def test_tags_without_name_fail_when_several_numbers_match():
                 existing_number(PhoneNumberArn="arn:phone-2", PhoneNumberId="phone-2"),
             ],
         ),
-        patch.object(plugin, "phone_number_tags", side_effect=lambda client, module, number: named_tags(number)),
+        patch.object(
+            plugin, "phone_number_tags", side_effect=lambda client, module, number, **kwargs: named_tags(number)
+        ),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module)

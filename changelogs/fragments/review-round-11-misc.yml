@@ -1,0 +1,33 @@
+---
+bugfixes:
+  - ec2_transit_gateway_route_table - document that ``transit_gateway_route_table.transit_gateway_route_table_id``
+    is empty and ``transit_gateway_route_table_id`` is omitted when check mode predicts a new route table, and that
+    routes predicted in check mode return ``transit_gateway_attachments`` without ``resource_id`` or
+    ``resource_type``, and an empty list for a blackhole route.
+  - eks_cluster - report ``changed=false`` when ``state=absent`` finds that the cluster was deleted elsewhere
+    while listing its updates or deleting it.
+  - eks_cluster_info - document that ``tags`` is returned only when AWS returns it, and that ``certificate_authority``,
+    ``kubernetes_network_config``, ``platform_version``, ``resources_vpc_config``, ``role_arn``, and ``version`` are
+    not returned for EKS Connector clusters.
+  - global_accelerator - document the ``accelerator.events`` and ``accelerator.ip_sets[].ip_family`` return values.
+  - global_accelerator_info - document the ``accelerators[].events`` and ``accelerators[].ip_sets[].ip_family``
+    return values.
+  - glue_connection_info - require botocore 1.35.74 or later when ``filters`` contains ``ConnectionSchemaVersion``,
+    as documented, instead of sending a filter key that older botocore rejects.
+  - iam_account_alias - report ``changed=false`` when ``state=absent`` finds that the alias was deleted elsewhere.
+  - iam_oidc_provider - report ``changed=false`` when ``state=absent`` finds that the provider was deleted elsewhere.
+  - notifications_contacts - retry ``ConflictException`` only when deleting a contact instead of on every call, so a
+    contact creation conflict is reported without a long backoff.
+  - notifications_hub - read ``region`` from the ``AWS_REGION`` or ``AWS_DEFAULT_REGION`` environment variable when
+    it is not set, as for other AWS modules.
+  - notifications_hub_info - document that the ``region`` option is ignored.
+  - pinpoint_sms_voice_phone_number - skip a candidate phone number released elsewhere before its tags are listed
+    instead of failing while matching existing phone numbers by ``Name`` tag.
+  - pinpoint_sms_voice_phone_number_info - document that ``phone_number_ids`` accepts IDs or ARNs, and that an ARN
+    is required for a phone number shared from another account.
+  - pinpoint_sms_voice_phone_pool - treat a pool given by ``pool_id`` that is being deleted as missing, so
+    ``state=present`` fails with the same message whether or not ``wait`` is set.
+  - pinpoint_sms_voice_phone_pool_associate - return ``association.pool_id`` and ``association.pool_arn``, and only
+    the fields returned when an association is created, when the association already exists.
+  - pinpoint_sms_voice_phone_pool_info - document that ``pool_ids`` accepts IDs or ARNs, and that an ARN is required
+    for a pool shared from another account.

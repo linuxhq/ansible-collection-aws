@@ -23,6 +23,8 @@ options:
       - The notification hub region.
       - This selects the notification hub to manage, not the API endpoint.
       - A O(region) set through C(module_defaults) applies, as it does for other AWS modules.
+      - The E(AWS_REGION) or E(AWS_DEFAULT_REGION) environment variable can also be used, in decreasing
+        order of preference.
       - This must match the AWS region name format, for example V(us-west-2).
     required: true
     type: str
@@ -103,6 +105,8 @@ try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
     pass
+
+from ansible.module_utils.common.parameters import env_fallback
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
@@ -255,6 +259,7 @@ def main():
         argument_spec={
             "region": {
                 "aliases": ["aws_region", "ec2_region"],
+                "fallback": (env_fallback, ["AWS_REGION", "AWS_DEFAULT_REGION"]),
                 "required": True,
                 "type": "str",
             },

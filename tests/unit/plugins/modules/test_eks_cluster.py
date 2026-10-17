@@ -135,7 +135,31 @@ def test_absent_tolerates_cluster_disappearing_during_delete():
 
     wait_for_updates.assert_called_once_with(client, module)
     require.assert_called_once_with(module, client, "EKS", {"delete_cluster": ("name",)})
-    assert raised.value.values["changed"]
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["cluster"] == {}
+
+
+def test_absent_reports_unchanged_when_the_cluster_disappears_before_listing_updates():
+    client = Mock()
+    module = FakeModule({"name": "example", "wait": True, "wait_delay": 1, "wait_timeout": 60})
+    with (
+        patch.object(plugin, "describe_cluster", return_value={"name": "example", "status": "ACTIVE"}),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=plugin.ClientError(
+                {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
+                "ListUpdates",
+            ),
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    client.delete_cluster.assert_not_called()
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["cluster"] == {}
 
 
 def test_module_contract():
@@ -981,15 +1005,14 @@ def test_delete_waits_for_in_progress_cluster_updates_first():
     with (
         patch.object(plugin, "describe_cluster", return_value={"name": "example", "status": "ACTIVE"}),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=["old", "auto"]) as query,
+        patch.object(plugin, "paginated_query_with_retries", return_value={"updateIds": ["old", "auto"]}) as query,
         patch.object(plugin.time, "sleep"),
         pytest.raises(ModuleExit) as result,
     ):
         plugin.ensure_absent(client, module)
 
     assert result.value.values["changed"] is True
-    assert query.call_args.args[2:4] == ("list_updates", "updateIds")
-    assert query.call_args.kwargs == {"name": "example"}
+    query.assert_called_once_with(client, "list_updates", name="example")
     assert client.describe_update.call_count == 3
     assert calls == ["delete"]
 
@@ -1466,7 +1489,7 @@ def test_cluster_updates_describe_history_once_and_poll_only_in_progress_updates
     ]
     with (
         patch.object(plugin, "require_client_methods") as require,
-        patch.object(plugin, "query_list", return_value=["old", "first", "second"]),
+        patch.object(plugin, "paginated_query_with_retries", return_value={"updateIds": ["old", "first", "second"]}),
         patch.object(plugin.time, "sleep") as sleep,
     ):
         plugin.wait_for_cluster_updates(client, module)
@@ -1497,7 +1520,7 @@ def test_cluster_updates_share_one_deadline():
     module = FakeModule({"name": "example", "wait_delay": 5, "wait_timeout": 10})
     with (
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=["first", "second"]),
+        patch.object(plugin, "paginated_query_with_retries", return_value={"updateIds": ["first", "second"]}),
         patch.object(plugin.time, "monotonic", side_effect=[0, 5, 5, 10]),
         patch.object(plugin.time, "sleep"),
         pytest.raises(ModuleFail) as raised,

@@ -128,6 +128,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tags
 
+# Of the calls this module makes, only DeleteEmailContact models a transient ConflictException;
+# CreateEmailContact raises it for a real conflict, which must not be retried.
+DELETE_RETRY = AWSRetry.jittered_backoff(catch_extra_error_codes=["ConflictException"])
+
 
 def apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset):
     updated = dict(contact)
@@ -184,10 +188,7 @@ def ensure_absent(client, module):
             {"delete_email_contact": ("arn",)},
         )
         try:
-            client.delete_email_contact(
-                arn=contact["arn"],
-                aws_retry=True,
-            )
+            DELETE_RETRY(client.delete_email_contact)(arn=contact["arn"])
         except is_boto3_error_code("ResourceNotFoundException"):
             pass
         except (BotoCoreError, ClientError) as e:
@@ -415,7 +416,7 @@ def main():
     require_valid_tags(module, module.params["tags"] if state == "present" else None, 200)
     client = module.client(
         "notificationscontacts",
-        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConflictException"]),
+        retry_decorator=AWSRetry.jittered_backoff(),
     )
     require_client_methods(
         module,

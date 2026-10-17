@@ -109,8 +109,8 @@ association:
       returned: when returned by AWS
       type: str
     pool_id:
-      description: The pool ID.
-      returned: when returned by AWS
+      description: The pool ID, even when O(pool_id) is a pool ARN.
+      returned: when an association exists or is predicted
       type: str
 origination_identity:
   description:
@@ -158,6 +158,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 
+ASSOCIATION_KEYS = ("IsoCountryCode", "OriginationIdentity", "OriginationIdentityArn", "PoolArn", "PoolId")
+
 
 def current_associations(client, module):
     try:
@@ -184,7 +186,15 @@ def current_associations(client, module):
     for association in associations:
         validate_association(module, association, require_pool=False)
 
-    return associations
+    # Listed items omit the pool, which the response returns once; add it as AssociateOriginationIdentity does.
+    pool = scrub_none_parameters(
+        {
+            "PoolArn": response.get("PoolArn") if isinstance(response.get("PoolArn"), str) else None,
+            "PoolId": module.params["pool_id"].rsplit("/", 1)[-1],
+        }
+    )
+
+    return [dict(association, **pool) for association in associations]
 
 
 def validate_association(module, association, require_pool=True, changed=False):
@@ -228,7 +238,8 @@ def current_association(module, associations):
                 continue
 
             if identity == module.params["origination_identity"]:
-                return association
+                # Return the AssociateOriginationIdentity response fields on every path.
+                return {key: association[key] for key in ASSOCIATION_KEYS if key in association}
 
     return None
 

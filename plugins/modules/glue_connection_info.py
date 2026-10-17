@@ -251,6 +251,10 @@ def main():
         required_by={"apply_override_for_compute_environment": ["name"]},
         supports_check_mode=True,
     )
+    # The parameter check below covers Filter itself, not this newer nested key.
+    if "ConnectionSchemaVersion" in (module.params["filters"] or {}):
+        module.require_botocore_at_least("1.35.74", reason="for filters.ConnectionSchemaVersion")
+
     client = module.client("glue", retry_decorator=AWSRetry.jittered_backoff())
 
     apply_override = module.params["apply_override_for_compute_environment"]
@@ -325,7 +329,8 @@ def main():
         force_tags=False,
     )
     for result, connection in zip(results, connections):
-        # ignore_list only applies to top-level keys; keep these user-defined parameter names unchanged.
+        # camel_dict_to_snake_dict does not pass ignore_list to nested dictionaries, so this nested map of
+        # user-defined parameter names is restored unchanged here.
         oauth2 = (connection.get("AuthenticationConfiguration") or {}).get("OAuth2Properties") or {}
         if isinstance(oauth2.get("TokenUrlParametersMap"), dict):
             result["authentication_configuration"]["o_auth2_properties"]["token_url_parameters_map"] = dict(

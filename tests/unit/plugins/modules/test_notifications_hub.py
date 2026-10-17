@@ -43,6 +43,7 @@ def test_absent_tolerates_hub_disappearing_during_delete():
 def test_module_contract():
     options = assert_module_contract(plugin)
     assert options["argument_spec"]["region"]["required"] is True
+    assert options["argument_spec"]["region"]["fallback"] == (plugin.env_fallback, ["AWS_REGION", "AWS_DEFAULT_REGION"])
 
 
 def test_invalid_region_is_rejected():

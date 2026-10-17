@@ -81,7 +81,7 @@ clusters:
       type: str
     certificate_authority:
       description: The certificate authority data for the cluster.
-      returned: always
+      returned: unless the cluster is an EKS Connector cluster
       type: dict
     compute_config:
       description: The EKS Auto Mode compute configuration.
@@ -110,7 +110,7 @@ clusters:
       type: dict
     kubernetes_network_config:
       description: The Kubernetes network configuration.
-      returned: always
+      returned: unless the cluster is an EKS Connector cluster
       type: dict
     logging:
       description: The control plane logging configuration.
@@ -122,7 +122,7 @@ clusters:
       type: str
     platform_version:
       description: The EKS platform version.
-      returned: always
+      returned: unless the cluster is an EKS Connector cluster
       type: str
     remote_network_config:
       description: The remote node and pod networks for EKS hybrid nodes.
@@ -130,7 +130,7 @@ clusters:
       type: dict
     resources_vpc_config:
       description: The cluster VPC configuration.
-      returned: always
+      returned: unless the cluster is an EKS Connector cluster
       type: dict
       contains:
         cluster_security_group_id:
@@ -166,7 +166,7 @@ clusters:
           type: str
     role_arn:
       description: The cluster IAM role ARN.
-      returned: always
+      returned: unless the cluster is an EKS Connector cluster
       type: str
     status:
       description: The cluster status.
@@ -179,7 +179,7 @@ clusters:
       type: dict
     tags:
       description: The cluster tags with key case preserved.
-      returned: always
+      returned: when returned by AWS
       type: dict
     upgrade_policy:
       description: The cluster upgrade policy.
@@ -193,7 +193,7 @@ clusters:
           sample: EXTENDED
     version:
       description: The Kubernetes version.
-      returned: always
+      returned: unless the cluster is an EKS Connector cluster
       type: str
       sample: "1.34"
     zonal_shift_config:

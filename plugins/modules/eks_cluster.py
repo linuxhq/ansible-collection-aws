@@ -529,6 +529,7 @@ from ansible.module_utils.common.dict_transformations import snake_dict_to_camel
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
+    paginated_query_with_retries,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -539,10 +540,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.eks import has_valid_cluster_tags
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    query_list,
-    require_client_methods,
-)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
@@ -870,14 +868,14 @@ def wait_for_cluster_updates(client, module):
             "list_updates": ("maxResults", "name", "nextToken"),
         },
     )
-    update_ids = query_list(
-        module,
-        client,
-        "list_updates",
-        "updateIds",
-        f"Unable to list AWS EKS cluster updates for {name}",
-        name=name,
-    )
+    try:
+        update_ids = paginated_query_with_retries(client, "list_updates", name=name).get("updateIds", [])
+    except is_boto3_error_code("ResourceNotFoundException"):
+        # The cluster was deleted after it was described.
+        return False
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to list AWS EKS cluster updates for {name}")
+
     if not isinstance(update_ids, list) or any(not isinstance(update_id, str) for update_id in update_ids):
         module.fail_json(msg=f"EKS returned invalid cluster updates for {name}")
 
@@ -890,12 +888,14 @@ def wait_for_cluster_updates(client, module):
             if describe_update(client, module, update_id)["status"] == "InProgress"
         ]
         if not update_ids:
-            return
+            return True
 
         if time.monotonic() >= deadline:
             module.fail_json(msg=f"Timed out waiting for AWS EKS cluster updates {', '.join(update_ids)} for {name}")
 
         time.sleep(min(wait_delay, max(0, deadline - time.monotonic())))
+
+    return True
 
 
 def desired_cluster(module):
@@ -1312,7 +1312,8 @@ def ensure_absent(client, module):
         if current is None:
             exit_result(module, False, {}, "absent")
 
-    wait_for_cluster_updates(client, module)
+    if not wait_for_cluster_updates(client, module):
+        exit_result(module, False, {}, "absent")
 
     require_client_methods(
         module,
@@ -1323,7 +1324,7 @@ def ensure_absent(client, module):
     try:
         client.delete_cluster(name=name, aws_retry=True)
     except is_boto3_error_code("ResourceNotFoundException"):
-        pass
+        exit_result(module, False, {}, "absent")
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to delete EKS cluster {name}")
 

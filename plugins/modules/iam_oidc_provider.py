@@ -232,7 +232,7 @@ def ensure_absent(client, module):
                 aws_retry=True,
             )
         except is_boto3_error_code("NoSuchEntity"):
-            pass
+            changed = False
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to delete AWS IAM OIDC provider {url}")
 
