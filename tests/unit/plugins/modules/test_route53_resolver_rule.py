@@ -5,6 +5,8 @@ from botocore.session import get_session
 
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 
+from ansible_collections.amazon.aws.plugins.module_utils.retries import RetryingBotoClientWrapper
+
 from ansible_collections.linuxhq.aws.plugins.module_utils import route53_resolver as route53_resolver_utils
 from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver_rule as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -142,8 +144,26 @@ def test_delete_tolerates_rule_disappearing():
     )
     module = FakeModule({"name": "rule", "wait": True})
     with patch.object(plugin, "wait_for_resolver_rule_status") as wait:
-        plugin.delete_resolver_rule(client, module, {"Id": "rslvr-rr-1"})
+        assert plugin.delete_resolver_rule(client, module, {"Id": "rslvr-rr-1"}) is False
 
+    wait.assert_not_called()
+
+
+def test_absent_reports_unchanged_when_rule_is_already_gone():
+    client = Mock()
+    client.delete_resolver_rule.side_effect = plugin.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
+        "DeleteResolverRule",
+    )
+    module = FakeModule({"name": "rule", "wait": True})
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value={"Id": "rslvr-rr-1"}),
+        patch.object(plugin, "wait_for_resolver_rule_status") as wait,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is False
     wait.assert_not_called()
 
 
@@ -373,7 +393,7 @@ def test_rule_comparison_normalizes_domain_without_adding_target_defaults():
     }
 
 
-def test_create_token_changes_with_desired_rule():
+def test_create_token_is_unique_per_create():
     client = Mock(
         create_resolver_rule=Mock(
             side_effect=[
@@ -391,11 +411,36 @@ def test_create_token_changes_with_desired_rule():
         "TargetIps": [{"Ip": "192.0.2.1"}],
     }
     plugin.create_resolver_rule(client, module, request)
-    plugin.create_resolver_rule(client, module, dict(request, DomainName="changed.example.com"))
+    plugin.create_resolver_rule(client, module, request)
 
     calls = client.create_resolver_rule.call_args_list
     assert calls[0].kwargs["CreatorRequestId"] != calls[1].kwargs["CreatorRequestId"]
     assert calls[0].kwargs["Tags"] == [{"Key": "Env", "Value": "test"}]
+
+
+def test_create_retries_reuse_the_creator_request_id():
+    raw_client = Mock()
+    raw_client.create_resolver_rule.side_effect = [
+        plugin.ClientError({"Error": {"Code": "Throttling", "Message": "slow down"}}, "CreateResolverRule"),
+        {"ResolverRule": {"Id": "rule-1"}},
+    ]
+    client = RetryingBotoClientWrapper(raw_client, plugin.AWSRetry.jittered_backoff(delay=0))
+    module = FakeModule({"tags": None, "wait": False})
+    plugin.create_resolver_rule(
+        client,
+        module,
+        {
+            "DomainName": "example.com",
+            "Name": "main",
+            "ResolverEndpointId": "rslvr-out-1",
+            "RuleType": "FORWARD",
+            "TargetIps": [{"Ip": "192.0.2.1"}],
+        },
+    )
+
+    first, second = raw_client.create_resolver_rule.call_args_list
+    assert first.kwargs["CreatorRequestId"]
+    assert first.kwargs["CreatorRequestId"] == second.kwargs["CreatorRequestId"]
 
 
 def test_absent_lookup_does_not_fetch_unused_rule_details():

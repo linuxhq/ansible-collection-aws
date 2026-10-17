@@ -149,14 +149,19 @@ def ensure_present(client, module):
                 aws_retry=True,
             )
         except is_boto3_error_code("DelegationSetAlreadyCreated") as e:
-            # The set is not listed, so its caller reference belongs to a deleted delegation set.
-            module.fail_json_aws(
-                e,
-                msg=(
-                    f"Unable to create AWS Route53 reusable delegation set {name}: the name was already used "
-                    "by a deleted delegation set and cannot be reused; choose a new name"
-                ),
-            )
+            # A concurrent run or a retried create that succeeded may have created the set since it was read.
+            delegation_set = get_reusable_delegation_set(client, module)
+            if delegation_set is None:
+                # The set is still not listed, so its caller reference belongs to a deleted delegation set.
+                module.fail_json_aws(
+                    e,
+                    msg=(
+                        f"Unable to create AWS Route53 reusable delegation set {name}: the name was already used "
+                        "by a deleted delegation set and cannot be reused; choose a new name"
+                    ),
+                )
+
+            response = {"DelegationSet": delegation_set}
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,

@@ -5,6 +5,8 @@ from botocore.session import get_session
 
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 
+from ansible_collections.amazon.aws.plugins.module_utils.retries import RetryingBotoClientWrapper
+
 from ansible_collections.linuxhq.aws.plugins.module_utils import route53_resolver as route53_resolver_utils
 from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -157,22 +159,19 @@ def test_provider_enum_values_are_sent_unchanged(direction):
     assert raised.value.values["changed"]
 
 
-@pytest.mark.parametrize("direction, gated", [("INBOUND_DELEGATION", True), ("OUTBOUND", False)])
-def test_inbound_delegation_requires_a_supporting_botocore(direction, gated):
+@pytest.mark.parametrize("direction", ["INBOUND_DELEGATION", "OUTBOUND"])
+def test_direction_values_are_not_gated_on_botocore(direction):
     module = FakeModule(endpoint_params(direction=direction, state="present"))
     module.require_botocore_at_least = Mock(side_effect=ModuleFail({"msg": "botocore"}))
 
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods", side_effect=ModuleExit({})),
-        pytest.raises(ModuleFail if gated else ModuleExit),
+        pytest.raises(ModuleExit),
     ):
         plugin.main()
 
-    if gated:
-        module.require_botocore_at_least.assert_called_once_with("1.38.43", reason="for direction=INBOUND_DELEGATION")
-    else:
-        module.require_botocore_at_least.assert_not_called()
+    module.require_botocore_at_least.assert_not_called()
 
 
 def test_get_rejects_malformed_response():
@@ -281,8 +280,26 @@ def test_delete_tolerates_endpoint_disappearing():
     )
     module = FakeModule({"name": "endpoint", "wait": True})
     with patch.object(plugin, "wait_for_resolver_endpoint_status") as wait:
-        plugin.delete_resolver_endpoint(client, module, {"Id": "rslvr-endpt-1"})
+        assert plugin.delete_resolver_endpoint(client, module, {"Id": "rslvr-endpt-1"}) is False
 
+    wait.assert_not_called()
+
+
+def test_absent_reports_unchanged_when_endpoint_is_already_gone():
+    client = Mock()
+    client.delete_resolver_endpoint.side_effect = plugin.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
+        "DeleteResolverEndpoint",
+    )
+    module = FakeModule({"name": "endpoint", "wait": True})
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value={"Id": "rslvr-endpt-1"}),
+        patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is False
     wait.assert_not_called()
 
 
@@ -627,7 +644,7 @@ def test_check_mode_preserves_unchanged_auto_assigned_addresses():
     ]
 
 
-def test_create_token_changes_with_desired_endpoint():
+def test_create_token_is_unique_per_create():
     client = Mock(
         create_resolver_endpoint=Mock(
             side_effect=[
@@ -646,11 +663,37 @@ def test_create_token_changes_with_desired_endpoint():
         "security_group_ids": ["sg-1"],
     }
     created = plugin.create_resolver_endpoint(client, module, desired)
-    plugin.create_resolver_endpoint(client, module, dict(desired, direction="INBOUND"))
+    plugin.create_resolver_endpoint(client, module, desired)
 
     tokens = [call.kwargs["CreatorRequestId"] for call in client.create_resolver_endpoint.call_args_list]
     assert tokens[0] != tokens[1]
     assert created["IpAddresses"] == [{"SubnetId": "subnet-1"}]
+
+
+def test_create_retries_reuse_the_creator_request_id():
+    raw_client = Mock()
+    raw_client.create_resolver_endpoint.side_effect = [
+        plugin.ClientError({"Error": {"Code": "Throttling", "Message": "slow down"}}, "CreateResolverEndpoint"),
+        {"ResolverEndpoint": {"Id": "endpoint-1"}},
+    ]
+    client = RetryingBotoClientWrapper(raw_client, plugin.AWSRetry.jittered_backoff(delay=0))
+    module = FakeModule({"tags": None, "wait": False})
+    plugin.create_resolver_endpoint(
+        client,
+        module,
+        {
+            "direction": "OUTBOUND",
+            "ip_addresses": [{"subnet_id": "subnet-1"}],
+            "name": "main",
+            "protocols": ["Do53"],
+            "resolver_endpoint_type": "IPV4",
+            "security_group_ids": ["sg-1"],
+        },
+    )
+
+    first, second = raw_client.create_resolver_endpoint.call_args_list
+    assert first.kwargs["CreatorRequestId"]
+    assert first.kwargs["CreatorRequestId"] == second.kwargs["CreatorRequestId"]
 
 
 def test_ip_reconciliation_adds_and_removes_only_differences():

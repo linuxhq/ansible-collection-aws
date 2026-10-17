@@ -165,6 +165,24 @@ def test_reused_caller_reference_fails_with_an_explanation():
     )
 
 
+def test_already_created_set_that_is_now_listed_is_used():
+    client = Mock()
+    client.create_reusable_delegation_set.side_effect = plugin.ClientError(
+        {"Error": {"Code": "DelegationSetAlreadyCreated", "Message": "already created"}},
+        "CreateReusableDelegationSet",
+    )
+    delegation_set = {"CallerReference": "main", "Id": "/delegationset/N1"}
+    with (
+        patch.object(plugin, "get_reusable_delegation_set", side_effect=[None, delegation_set]) as get,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule({"name": "main"}))
+
+    assert get.call_count == 2
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["delegation_set_id"] == "/delegationset/N1"
+
+
 def test_created_set_missing_from_the_response_and_listing_reports_changed():
     client = Mock(create_reusable_delegation_set=Mock(return_value={}))
     with (
