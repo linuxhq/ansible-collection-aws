@@ -553,6 +553,10 @@ def get_route(client, module, transit_gateway_route_table_id, destination_cidr_b
         if route.get("State") == "deleted":
             continue
 
+        # Prefix list references are not managed by this module.
+        if route.get("PrefixListId"):
+            continue
+
         matching_routes.append(route)
 
     routes = sorted(matching_routes, key=route_sort_key)
@@ -1003,6 +1007,10 @@ def ensure_present(client, module):
                 for current_route in static_routes(client, module, transit_gateway_route_table_id, changed=mutated):
                     destination = route_destination(current_route)
                     if not destination or destination in desired_destinations:
+                        continue
+
+                    # Never purge prefix list references, even if one reports a destination CIDR.
+                    if current_route.get("PrefixListId"):
                         continue
 
                     if current_route.get("State") == "deleted":
