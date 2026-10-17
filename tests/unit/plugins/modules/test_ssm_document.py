@@ -667,15 +667,45 @@ def test_numbered_version_with_matching_content_is_unchanged_without_promotion()
     client.update_document_default_version.assert_not_called()
 
 
-def test_numbered_version_refreshes_latest_after_create():
+def test_first_version_refreshes_the_created_version():
     client = Mock()
     client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1"}}
     result, _wait, get_document = run_present(
-        client, FakeModule(params(document_version="3")), [None, document({"schemaVersion": "2.2"})]
+        client, FakeModule(params(document_version="1")), [None, document({"schemaVersion": "2.2"})]
     )
 
     assert result.values["changed"] is True
-    assert get_document.call_args_list[1].kwargs["document_version"] == "$LATEST"
+    assert get_document.call_args_list[1].kwargs.get("document_version") is None
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_later_numbered_version_of_a_missing_document_fails_before_create(check_mode):
+    client = Mock()
+    result, _wait, get_document = run_present(
+        client, FakeModule(params(document_version="3"), check_mode=check_mode), [None]
+    )
+
+    assert isinstance(result, ModuleFail)
+    assert result.values["changed"] is False
+    assert result.values["msg"] == "AWS Systems Manager document example has no version 3"
+    assert get_document.call_count == 1
+    client.create_document.assert_not_called()
+
+
+def test_get_document_reports_a_missing_document_version():
+    client = Mock(
+        get_document=Mock(
+            side_effect=ClientError(
+                {"Error": {"Code": "InvalidDocumentVersion", "Message": "missing"}},
+                "GetDocument",
+            )
+        )
+    )
+    with pytest.raises(ModuleFail) as raised:
+        plugin.get_document(client, FakeModule(params(document_version="2")))
+
+    assert raised.value.values["msg"] == "AWS Systems Manager document example has no version 2"
+    assert client.get_document.call_args.kwargs["DocumentVersion"] == "2"
 
 
 @pytest.mark.parametrize("document_version", ["$DEFAULT", "$LATEST", "2"])
