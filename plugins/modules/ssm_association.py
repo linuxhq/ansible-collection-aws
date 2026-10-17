@@ -76,6 +76,10 @@ notes:
     C(UpdateAssociation) clears omitted fields. botocore older than 1.42.54
     does not model C(AssociationDispatchAssumeRole), so updating an
     association with such a botocore clears that field.
+  - Setting a O(schedule_expression) that is not a cron expression clears
+    the existing association's C(ApplyOnlyAtCronInterval),
+    C(ScheduleOffset), and C(Duration), which AWS supports only with cron
+    schedules.
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -260,6 +264,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
 )
 
+CRON_ONLY_PARAMETERS = ("ApplyOnlyAtCronInterval", "Duration", "ScheduleOffset")
 TARGET_DEFAULTS = {"values": []}
 
 
@@ -431,6 +436,8 @@ def ensure_present(client, module, current):
     else:
         changed = (current_comparable or {}) != desired_comparable
         resource_changed = changed
+        # AWS supports these fields only with cron schedules.
+        clears_cron_only_parameters = schedule_expression is not None and not schedule_expression.startswith("cron(")
         if changed and not module.check_mode:
             # Empty lists are dropped because some, such as TargetLocations, reject them and omitting one keeps it unset.
             update_request = {
@@ -441,6 +448,10 @@ def ensure_present(client, module, current):
             update_request["AssociationId"] = association_id
             if schedule_expression is not None:
                 update_request["ScheduleExpression"] = schedule_expression
+
+            if clears_cron_only_parameters:
+                for parameter in CRON_ONLY_PARAMETERS:
+                    update_request.pop(parameter, None)
 
             if aws_targets is not None:
                 update_request["Targets"] = desired["Targets"]
@@ -476,6 +487,9 @@ def ensure_present(client, module, current):
         elif changed and module.check_mode:
             association = dict(current)
             association.update(desired)
+            if clears_cron_only_parameters:
+                for parameter in CRON_ONLY_PARAMETERS:
+                    association.pop(parameter, None)
         else:
             association = current
 

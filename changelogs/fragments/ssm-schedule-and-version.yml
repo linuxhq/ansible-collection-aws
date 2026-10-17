@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - ssm_association - drop the existing association's ``ApplyOnlyAtCronInterval``, ``ScheduleOffset``, and ``Duration``
+    from the update when ``schedule_expression`` is not a cron expression, instead of failing with a ``ValidationException``
+    when changing a cron schedule to a rate schedule.
+  - ssm_document - fail with a clear message naming the document and version when a numbered ``document_version`` does
+    not exist, including before creating a missing document for a version other than ``1``, instead of creating the
+    document and then failing on the next run with a raw ``InvalidDocumentVersion`` error.
+...

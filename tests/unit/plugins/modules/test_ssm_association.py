@@ -426,7 +426,15 @@ def run_update(current, **overrides):
         patch.object(
             plugin,
             "get_boto3_client_method_parameters",
-            return_value=UPDATE_PARAMETERS + ("CalendarNames", "TargetLocations", "TargetMaps"),
+            return_value=UPDATE_PARAMETERS
+            + (
+                "ApplyOnlyAtCronInterval",
+                "CalendarNames",
+                "Duration",
+                "ScheduleOffset",
+                "TargetLocations",
+                "TargetMaps",
+            ),
         ),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -468,3 +476,57 @@ def test_update_keeps_target_maps_without_targets():
 
     assert request["TargetMaps"] == target_maps
     assert "Targets" not in request
+
+
+CRON_ONLY_FIELDS = {"ApplyOnlyAtCronInterval": True, "Duration": 2, "ScheduleOffset": 3}
+
+
+def test_update_to_rate_schedule_drops_cron_only_fields():
+    request = run_update(
+        current_association(ScheduleExpression="cron(0 0 * * ? *)", **CRON_ONLY_FIELDS),
+        schedule_expression="rate(2 hours)",
+    )
+
+    assert request["ScheduleExpression"] == "rate(2 hours)"
+    assert not set(CRON_ONLY_FIELDS) & set(request)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"schedule_expression": "cron(0 1 * * ? *)"},
+        {"schedule_expression": None, "targets": [{"key": "InstanceIds", "values": ["i-2"]}]},
+    ],
+)
+def test_update_keeps_cron_only_fields_without_a_rate_schedule(overrides):
+    request = run_update(
+        current_association(ScheduleExpression="cron(0 0 * * ? *)", **CRON_ONLY_FIELDS),
+        **overrides,
+    )
+
+    assert {key: request[key] for key in CRON_ONLY_FIELDS} == CRON_ONLY_FIELDS
+
+
+def test_check_mode_rate_schedule_predicts_cleared_cron_only_fields():
+    client = Mock()
+    result = run_present(
+        client,
+        FakeModule(params(schedule_expression="rate(2 hours)"), check_mode=True),
+        current_association(ScheduleExpression="cron(0 0 * * ? *)", **CRON_ONLY_FIELDS),
+    )
+
+    assert result.values["changed"]
+    assert not {"apply_only_at_cron_interval", "duration", "schedule_offset"} & set(result.values["association"])
+    client.update_association.assert_not_called()
+
+
+def test_rate_schedule_is_unchanged_after_cron_only_fields_are_cleared():
+    client = Mock()
+    result = run_present(
+        client,
+        FakeModule(params(schedule_expression="rate(2 hours)")),
+        current_association(ScheduleExpression="rate(2 hours)"),
+    )
+
+    assert not result.values["changed"]
+    client.update_association.assert_not_called()
