@@ -286,7 +286,8 @@ def ensure_present(client, module):
             {
                 "IsoCountryCode": module.params["iso_country_code"],
                 "OriginationIdentity": module.params["origination_identity"],
-                "PoolId": module.params["pool_id"],
+                # AWS returns the pool ID even when the pool is requested by ARN.
+                "PoolId": module.params["pool_id"].rsplit("/", 1)[-1],
             }
         )
 

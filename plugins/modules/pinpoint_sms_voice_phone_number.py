@@ -903,6 +903,11 @@ def ensure_present(client, module):
     if module.check_mode:
         predicted = dict(request)
         predicted.pop("ClientToken", None)
+        # Project IDs and names as DescribePhoneNumbers returns them, rather than the ARNs requested.
+        for field in ("OptOutListName", "PoolId", "RegistrationId"):
+            if field in predicted:
+                predicted[field] = predicted[field].rsplit("/", 1)[-1]
+
         exit_result(module, True, predicted)
 
     require_client_methods(

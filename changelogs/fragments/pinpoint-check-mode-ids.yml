@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number - return the pool ID, registration ID, and opt-out list name rather than
+    the requested ARNs when check mode predicts a new phone number.
+  - pinpoint_sms_voice_phone_pool_associate - return the pool ID rather than the requested ARN when check mode
+    predicts a new association.
