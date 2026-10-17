@@ -506,13 +506,13 @@ def test_service_managed_certificate_is_not_reused():
     assert result["certificate_arn"] == "arn:new"
 
 
-def run_tagged_request(client, tags, check_mode=False):
+def run_tagged_request(client, tags, check_mode=False, purge_tags=True):
     client.describe_certificate.return_value = issued_certificate("arn:match")
     module = FakeModule(
         {
             "domain_name": "example.com",
             "idempotency_token": None,
-            "purge_tags": True,
+            "purge_tags": purge_tags,
             "subject_alternative_names": None,
             "tags": tags,
         },
@@ -583,6 +583,50 @@ def test_tag_failure_reports_whether_tags_were_removed(current_tags, changed):
     assert result["msg"] == "Unable to tag AWS Certificate Manager certificate arn:match"
     assert result["changed"] is changed
     assert client.remove_tags_from_certificate.called is changed
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+def test_rejects_merged_tags_over_the_limit_before_any_write(check_mode):
+    client = Mock()
+    client.list_tags_for_certificate.return_value = {
+        "Tags": [{"Key": f"Existing{index}", "Value": "x"} for index in range(50)]
+    }
+
+    result = run_tagged_request(client, {"New": "y"}, check_mode=check_mode, purge_tags=False)
+
+    assert result["msg"] == "The resulting certificate tags must contain at most 50 entries"
+    client.add_tags_to_certificate.assert_not_called()
+    client.remove_tags_from_certificate.assert_not_called()
+
+
+def test_tag_limit_ignores_aws_reserved_tags():
+    client = Mock()
+    client.list_tags_for_certificate.return_value = {
+        "Tags": [{"Key": f"Existing{index}", "Value": "x"} for index in range(49)]
+        + [{"Key": "AWS:Reserved", "Value": "x"}]
+    }
+
+    result = run_tagged_request(client, {"New": "y"}, purge_tags=False)
+
+    assert result["changed"] is True
+    client.add_tags_to_certificate.assert_called_once_with(
+        CertificateArn="arn:match", Tags=[{"Key": "New", "Value": "y"}], aws_retry=True
+    )
+
+
+def test_merged_tags_under_the_limit_are_added():
+    client = Mock()
+    client.list_tags_for_certificate.return_value = {
+        "Tags": [{"Key": f"Existing{index}", "Value": "x"} for index in range(49)]
+    }
+
+    result = run_tagged_request(client, {"New": "y"}, purge_tags=False)
+
+    assert result["changed"] is True
+    client.remove_tags_from_certificate.assert_not_called()
+    client.add_tags_to_certificate.assert_called_once_with(
+        CertificateArn="arn:match", Tags=[{"Key": "New", "Value": "y"}], aws_retry=True
+    )
 
 
 def test_request_without_an_arn_reports_changed():

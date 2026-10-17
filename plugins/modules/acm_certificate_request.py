@@ -360,6 +360,14 @@ def main():
             tags,
             purge_tags=purge_tags,
         )
+        final_tags = dict(current_tags)
+        for key in tag_keys_to_unset:
+            final_tags.pop(key, None)
+
+        final_tags.update(tags_to_set)
+        # AWS-reserved aws: tags do not count against the per-resource tag limit.
+        if sum(not key.lower().startswith("aws:") for key in final_tags) > 50:
+            module.fail_json(msg="The resulting certificate tags must contain at most 50 entries")
 
         changed = bool(tags_to_set or tag_keys_to_unset)
 
