@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - acm_certificate_request - check the resulting tag count of a reused certificate against the 50-tag limit
+    before any change, ignoring ``aws:`` prefixed tags, instead of predicting a change in check mode and then
+    failing on the tag call when ``purge_tags=false`` would exceed the limit.
+...
