@@ -51,6 +51,9 @@ options:
       - A numbered version, such as V(2), is compared but never updated
         because AWS document versions are immutable; content that differs
         from it fails, so use V($LATEST) or V($DEFAULT) to update a document.
+      - A numbered version that the document does not have fails without
+        making changes. A missing document is created only for V($LATEST),
+        V($DEFAULT), or V(1), because a created document has only version 1.
       - Ignored when O(state=absent).
     default: $LATEST
     type: str
@@ -412,6 +415,10 @@ def ensure_present(client, module):
         "document_type": module.params["document_type"],
     }
     current_comparable = comparable_document(current)
+    document_version = module.params["document_version"]
+    if current is None and document_version not in UPDATABLE_DOCUMENT_VERSIONS + ("1",):
+        # A created document has only version 1, so a later numbered version can never exist.
+        module.fail_json(changed=False, msg=f"AWS Systems Manager document {name} has no version {document_version}")
 
     if current is None:
         changed = True
@@ -562,15 +569,8 @@ def ensure_present(client, module):
                 )
 
         if resource_changed or default_version_to_promote:
-            # Only creation reaches here with a numbered version, which may not name the created version.
-            refreshed = get_document(
-                client,
-                module,
-                document_version=(
-                    None if module.params["document_version"] in UPDATABLE_DOCUMENT_VERSIONS else "$LATEST"
-                ),
-                changed=True,
-            )
+            # Only creation reaches here with a numbered version, which is always version 1.
+            refreshed = get_document(client, module, changed=True)
             if refreshed and comparable_document(refreshed) == desired_comparable:
                 if "Tags" in current:
                     # Document updates and promotions cannot change tags, so the tags already read still apply.
@@ -630,16 +630,19 @@ def ensure_present(client, module):
 def get_document(client, module, include_tags=False, document_version=None, changed=False):
     """Get a document; changed reports whether it was already modified, for failure results."""
     name = module.params["name"]
+    document_version = document_version or module.params["document_version"]
 
     try:
         document = client.get_document(
             DocumentFormat="JSON",
-            DocumentVersion=document_version or module.params["document_version"],
+            DocumentVersion=document_version,
             Name=name,
             aws_retry=True,
         )
     except is_boto3_error_code("InvalidDocument"):
         return None
+    except is_boto3_error_code("InvalidDocumentVersion"):
+        module.fail_json(changed=changed, msg=f"AWS Systems Manager document {name} has no version {document_version}")
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg=f"Unable to get AWS Systems Manager document {name}")
 
