@@ -275,11 +275,13 @@ def test_absent_tolerates_association_disappearing_during_delete():
     )
     with (
         patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=ASSOCIATION),
+        patch.object(plugin, "wait_for_resolver_rule_association_status") as wait,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_absent(client, FakeModule(params(state="absent")))
+        plugin.ensure_absent(client, FakeModule(params(state="absent", wait=True)))
 
-    assert raised.value.values["changed"]
+    assert raised.value.values["changed"] is False
+    wait.assert_not_called()
 
 
 def test_absent_waits_for_deleting_association_without_disassociating():

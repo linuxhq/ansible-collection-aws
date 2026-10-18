@@ -22,7 +22,6 @@ options:
     description:
       - The resolver endpoint direction.
       - This is required when O(state=present).
-      - V(INBOUND_DELEGATION) requires botocore 1.38.43 or later.
     choices:
       - INBOUND
       - INBOUND_DELEGATION
@@ -267,8 +266,8 @@ state:
   type: str
 """
 
-import hashlib
 import json
+import uuid
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -449,7 +448,7 @@ def create_resolver_endpoint(client, module, desired):
             **scrub_none_parameters(
                 snake_dict_to_camel_dict(
                     {
-                        "creator_request_id": hashlib.sha256(json.dumps(desired, sort_keys=True).encode()).hexdigest(),
+                        "creator_request_id": str(uuid.uuid4()),
                         "direction": desired["direction"],
                         "ip_addresses": desired["ip_addresses"],
                         "name": desired["name"],
@@ -514,7 +513,7 @@ def delete_resolver_endpoint(client, module, endpoint):
             aws_retry=True,
         )
     except is_boto3_error_code("ResourceNotFoundException"):
-        return
+        return False
     except is_boto3_error_code("InvalidRequestException") as e:
         # DeleteResolverEndpoint rejects endpoints that resolver rules still use with InvalidRequestException.
         module.fail_json_aws(
@@ -539,6 +538,8 @@ def delete_resolver_endpoint(client, module, endpoint):
             changed=True,
         )
 
+    return True
+
 
 def ensure_absent(client, module):
     endpoint = get_resolver_endpoint_by_name(client, module)
@@ -548,7 +549,7 @@ def ensure_absent(client, module):
     if deleting and module.params["wait"] and not module.check_mode:
         wait_for_resolver_endpoint_status(client, module, endpoint.get("Id"), {"deleted"})
     elif changed and not module.check_mode:
-        delete_resolver_endpoint(client, module, endpoint)
+        changed = delete_resolver_endpoint(client, module, endpoint)
 
     module.exit_json(
         changed=changed,
@@ -1219,9 +1220,6 @@ def main():
         require_valid_tags(module, tags, 200)
 
     require_positive_wait_bounds(module, always=state == "present")
-
-    if module.params["direction"] == "INBOUND_DELEGATION":
-        module.require_botocore_at_least("1.38.43", reason="for direction=INBOUND_DELEGATION")
 
     client = module.client("route53resolver", retry_decorator=AWSRetry.jittered_backoff())
     method_names = {"list_resolver_endpoints"}

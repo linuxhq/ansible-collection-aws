@@ -242,8 +242,8 @@ state:
   type: str
 """
 
-import hashlib
 import json
+import uuid
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -373,7 +373,7 @@ def create_resolver_rule(client, module, request):
     try:
         response = client.create_resolver_rule(
             **request,
-            CreatorRequestId=hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest(),
+            CreatorRequestId=str(uuid.uuid4()),
             **(
                 {"Tags": ansible_dict_to_boto3_tag_list(module.params["tags"])}
                 if module.params["tags"] is not None
@@ -412,7 +412,7 @@ def delete_resolver_rule(client, module, rule):
             aws_retry=True,
         )
     except is_boto3_error_code("ResourceNotFoundException"):
-        return
+        return False
     except is_boto3_error_code("ResourceInUseException") as e:
         module.fail_json_aws(
             e,
@@ -429,6 +429,8 @@ def delete_resolver_rule(client, module, rule):
 
     if module.params["wait"]:
         wait_for_resolver_rule_status(client, module, resolver_rule_id, "deleted", changed=True)
+
+    return True
 
 
 def ensure_absent(client, module):
@@ -448,7 +450,7 @@ def ensure_absent(client, module):
     if deleting and module.params["wait"] and not module.check_mode:
         wait_for_resolver_rule_status(client, module, rule.get("Id"), "deleted")
     elif changed and not module.check_mode:
-        delete_resolver_rule(client, module, rule)
+        changed = delete_resolver_rule(client, module, rule)
 
     module.exit_json(
         changed=changed,
