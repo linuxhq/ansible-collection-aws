@@ -12,7 +12,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
-def test_absent_tolerates_contact_disappearing_during_delete():
+def test_absent_reports_unchanged_for_contact_disappearing_during_delete():
     client = Mock()
     client.delete_email_contact.side_effect = plugin.ClientError(
         {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
@@ -30,7 +30,49 @@ def test_absent_tolerates_contact_disappearing_during_delete():
     ):
         plugin.ensure_absent(client, module)
 
-    assert raised.value.values["changed"]
+    assert raised.value.values["changed"] is False
+
+
+def test_delete_retries_conflicts():
+    calls = []
+
+    def delete(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise plugin.ClientError({"Error": {"Code": "ConflictException", "Message": "busy"}}, "DeleteEmailContact")
+
+        return {}
+
+    client = Mock(delete_email_contact=delete)
+    with (
+        patch.object(plugin, "get_contact_by_address", return_value={"arn": "arn:contact"}),
+        patch.object(plugin, "require_client_methods"),
+        patch("time.sleep"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, FakeModule({"email_address": "ops@example.com"}))
+
+    assert raised.value.values["changed"] is True
+    assert calls == [{"arn": "arn:contact"}] * 2
+
+
+def test_client_retry_does_not_retry_create_conflicts():
+    module = FakeModule({"email_address": "ops@example.com", "name": None, "state": "absent", "tags": None})
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_absent"),
+        patch.object(module, "client", return_value=Mock()) as client,
+    ):
+        plugin.main()
+
+    decorator = client.call_args.kwargs["retry_decorator"]
+    error = plugin.ClientError({"Error": {"Code": "ConflictException", "Message": "exists"}}, "CreateEmailContact")
+    operation = Mock(side_effect=[error, {"arn": "arn:contact"}])
+    with patch("time.sleep"), pytest.raises(plugin.ClientError):
+        decorator(operation)()
+
+    assert operation.call_count == 1
 
 
 def test_module_contract():

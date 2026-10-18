@@ -40,7 +40,24 @@ def test_delete_tolerates_alias_disappearing():
         "DeleteAccountAlias",
     )
     with patch.object(plugin, "require_client_methods"):
-        plugin.delete_account_alias(client, FakeModule({}), "alias")
+        assert plugin.delete_account_alias(client, FakeModule({}), "alias") is False
+
+
+def test_absent_reports_unchanged_when_alias_disappears_during_delete():
+    client = Mock()
+    client.delete_account_alias.side_effect = plugin.ClientError(
+        {"Error": {"Code": "NoSuchEntity", "Message": "gone"}},
+        "DeleteAccountAlias",
+    )
+    with (
+        patch.object(plugin, "list_account_aliases", return_value=["alias"]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, FakeModule({"name": "alias"}))
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["account_aliases"] == []
 
 
 def test_module_contract():

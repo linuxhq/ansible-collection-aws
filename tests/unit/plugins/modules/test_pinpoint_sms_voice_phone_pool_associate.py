@@ -150,6 +150,50 @@ def test_present_with_pool_arn_returns_the_pool_id_in_every_mode(check_mode):
     assert client.associate_origination_identity.called is not check_mode
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_present_unchanged_returns_the_pool_id_and_arn(check_mode):
+    client = Mock()
+    pool_arn = "arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1"
+    sender_arn = "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US"
+    module = FakeModule(
+        {
+            "client_token": None,
+            "iso_country_code": "US",
+            "origination_identity": sender_arn,
+            "pool_id": pool_arn,
+            "state": "present",
+        },
+        check_mode=check_mode,
+    )
+    listed = {
+        "IsoCountryCode": "US",
+        "NumberCapabilities": ["SMS"],
+        "OriginationIdentity": "sender-1",
+        "OriginationIdentityArn": sender_arn,
+    }
+    with (
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            return_value={"OriginationIdentities": [listed], "PoolArn": pool_arn, "PoolId": "pool-1"},
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    client.associate_origination_identity.assert_not_called()
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["origination_identity"] == sender_arn
+    assert raised.value.values["association"] == {
+        "iso_country_code": "US",
+        "number_capabilities": ["SMS"],
+        "origination_identity": "sender-1",
+        "origination_identity_arn": sender_arn,
+        "pool_arn": pool_arn,
+        "pool_id": "pool-1",
+    }
+
+
 def test_malformed_listed_association_reports_unchanged():
     module = FakeModule({"origination_identity": "sender-1", "pool_id": "pool-1"})
     with pytest.raises(ModuleFail) as raised:

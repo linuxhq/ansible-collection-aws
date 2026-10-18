@@ -268,3 +268,31 @@ def test_filters_are_passed_unchanged():
     request_filter = query.call_args.kwargs["Filter"]
     assert request_filter == filters
     validate_parameters(request_filter, Session().get_service_model("glue").shape_for("GetConnectionsFilter"))
+
+
+@pytest.mark.parametrize(
+    ("filters", "gated"),
+    [
+        ({"ConnectionSchemaVersion": 2}, True),
+        ({"ConnectionType": "NETWORK"}, False),
+        (None, False),
+    ],
+)
+def test_connection_schema_version_filter_requires_newer_botocore(filters, gated):
+    client = Mock()
+    module = FakeModule(glue_params(filters=filters), client=client)
+    module.require_botocore_at_least = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()
+
+    if gated:
+        module.require_botocore_at_least.assert_called_once_with(
+            "1.35.74", reason="for filters.ConnectionSchemaVersion"
+        )
+    else:
+        module.require_botocore_at_least.assert_not_called()

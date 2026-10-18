@@ -116,9 +116,11 @@ def delete_account_alias(client, module, name):
             aws_retry=True,
         )
     except is_boto3_error_code("NoSuchEntity"):
-        return
+        return False
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to delete AWS IAM account alias {name}")
+
+    return True
 
 
 def ensure_absent(client, module):
@@ -130,7 +132,7 @@ def ensure_absent(client, module):
 
     if changed:
         if not module.check_mode:
-            delete_account_alias(client, module, name)
+            changed = delete_account_alias(client, module, name)
 
         aliases = desired_aliases
 

@@ -39,7 +39,8 @@ options:
     type: str
   phone_number_ids:
     description:
-      - Phone number IDs used to limit the result set.
+      - Phone number IDs or ARNs used to limit the result set.
+      - An ARN is required for a phone number shared from another account.
       - IDs that do not exist are omitted from the results.
       - This must contain at most 5 entries.
       - Mutually exclusive with O(owner).

@@ -773,6 +773,38 @@ def test_get_pool_by_id_adds_details_to_the_described_pool():
     pool_with_details.assert_called_once_with("client", "module", pool, changed=False)
 
 
+@pytest.mark.parametrize("wait", [False, True])
+def test_present_reports_a_deleting_pool_id_as_missing(wait):
+    client = Mock()
+    module = FakeModule(
+        {
+            "deletion_protection_enabled": None,
+            "iso_country_code": None,
+            "message_type": "TRANSACTIONAL",
+            "name": "primary",
+            "origination_identity": None,
+            "pool_id": "pool-1",
+            "purge_tags": True,
+            "state": "present",
+            "tags": None,
+            "wait": wait,
+            "wait_delay": 1,
+            "wait_timeout": 60,
+        }
+    )
+    with (
+        patch.object(plugin, "describe_pools", return_value=[{"PoolId": "pool-1", "Status": "DELETING"}]),
+        patch.object(plugin, "pool_with_details") as pool_with_details,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    pool_with_details.assert_not_called()
+    assert raised.value.values["msg"] == "Pinpoint SMS Voice V2 pool pool-1 does not exist"
+    client.create_pool.assert_not_called()
+    client.delete_pool.assert_not_called()
+
+
 def test_explicit_pool_id_does_not_require_origination_identity():
     client = Mock()
     module = FakeModule(

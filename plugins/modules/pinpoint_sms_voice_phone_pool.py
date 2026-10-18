@@ -418,7 +418,8 @@ def pool_with_details(client, module, pool, changed=False):
 def get_pool_by_id(client, module, pool_id, changed=False):
     pools = describe_pools(client, module, changed=changed, PoolIds=[pool_id])
     pool = select_pool_by_id(module, pools, pool_id, changed=changed)
-    if pool is None:
+    # A pool being deleted cannot be managed, so it is treated as missing like in the origination identity search.
+    if pool is None or pool.get("Status") == "DELETING":
         return None
 
     return pool_with_details(client, module, pool, changed=changed)

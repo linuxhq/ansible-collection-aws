@@ -10,6 +10,7 @@ short_description: Gather information about AWS Notifications hubs
 description:
   - Gathers information about AWS Notifications hubs.
   - The module always uses the C(us-east-1) AWS Notifications endpoint.
+  - The O(region) option is ignored because AWS Notifications returns the hubs for every region from that endpoint.
 author:
   - Taylor Kimball (@tkimball83)
 extends_documentation_fragment:

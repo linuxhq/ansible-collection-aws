@@ -39,7 +39,8 @@ options:
     type: str
   pool_ids:
     description:
-      - Phone pool IDs used to limit the result set.
+      - Phone pool IDs or ARNs used to limit the result set.
+      - An ARN is required for a pool shared from another account.
       - IDs that do not exist are omitted from the results.
       - This must contain at most 5 entries.
       - Mutually exclusive with O(owner).
