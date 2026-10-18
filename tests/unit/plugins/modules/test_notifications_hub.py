@@ -101,6 +101,61 @@ def test_hub_lookup_rejects_invalid_status():
     assert raised.value.values["msg"] == "Unable to list AWS Notifications hubs: AWS returned an invalid hub"
 
 
+@pytest.mark.parametrize("status", [None, "", 1])
+def test_hub_lookup_rejects_missing_status(status):
+    module = FakeModule({"region": "us-east-1"})
+    with (
+        patch.object(
+            plugin,
+            "query_list",
+            return_value=[{"notificationHubRegion": "us-east-1", "statusSummary": {"reason": "", "status": status}}],
+        ),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.list_notification_hubs(None, module)
+
+    assert raised.value.values["msg"] == "Unable to list AWS Notifications hubs: AWS returned an invalid hub"
+
+
+def test_hub_lookup_accepts_unknown_status():
+    hub = {"notificationHubRegion": "us-east-1", "statusSummary": {"reason": "", "status": "SUSPENDED"}}
+    module = FakeModule({"region": "us-east-1"})
+    with patch.object(plugin, "query_list", return_value=[hub]):
+        assert plugin.list_notification_hubs(None, module) == [hub]
+
+
+def test_hub_with_unknown_status_is_present():
+    client = Mock()
+    module = FakeModule({"region": "us-east-1"})
+    hub = {"notificationHubRegion": "us-east-1", "statusSummary": {"reason": "", "status": "SUSPENDED"}}
+    with (
+        patch.object(plugin, "query_list", return_value=[hub]),
+        patch.object(plugin, "require_client_methods") as require,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["notification_hub"]["status_summary"]["status"] == "SUSPENDED"
+    client.register_notification_hub.assert_not_called()
+    require.assert_not_called()
+
+
+def test_hub_with_unknown_status_is_deregistered_without_last_active_guard():
+    client = Mock()
+    module = FakeModule({"region": "us-east-1"})
+    hub = {"notificationHubRegion": "us-east-1", "statusSummary": {"reason": "", "status": "SUSPENDED"}}
+    with (
+        patch.object(plugin, "query_list", return_value=[hub]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+    client.deregister_notification_hub.assert_called_once_with(notificationHubRegion="us-east-1", aws_retry=True)
+
+
 def test_register_rejects_hub_for_different_region():
     client = Mock(register_notification_hub=Mock(return_value={"notificationHubRegion": "us-west-2"}))
     module = FakeModule({"region": "us-east-1"})

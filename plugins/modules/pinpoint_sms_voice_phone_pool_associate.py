@@ -54,6 +54,8 @@ options:
         the pool, because AWS does not allow it to be disassociated. Delete the
         pool with M(linuxhq.aws.pinpoint_sms_voice_phone_pool) instead. Sender
         IDs do not count as phone numbers.
+      - When the pool is already being deleted, removing its last phone number
+        reports no change instead, because deleting the pool disassociates it.
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -162,6 +164,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
     is_last_phone_number,
     is_last_phone_number_conflict,
     last_phone_number_message,
+    pool_is_deleting,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
@@ -327,6 +330,10 @@ def ensure_absent(client, module):
 
     # AWS rejects disassociating the last phone number in a pool; only the pool module deletes pools.
     if changed and is_last_phone_number(current, (origination_identity,)):
+        # A DELETING pool is treated as missing, because deleting it disassociates its numbers.
+        if pool_is_deleting(client, module, pool_id):
+            exit_result(module, False, None)
+
         module.fail_json(changed=False, msg=last_phone_number_message(origination_identity, pool_id))
 
     if changed and not module.check_mode:
@@ -398,6 +405,7 @@ def main():
         methods["associate_origination_identity"] = origination_parameters
 
     if state == "absent":
+        methods["describe_pools"] = ("PoolIds",)
         methods["disassociate_origination_identity"] = origination_parameters
 
     require_client_methods(module, client, "Pinpoint SMS Voice V2", methods)

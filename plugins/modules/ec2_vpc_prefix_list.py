@@ -493,7 +493,8 @@ def delete_prefix_list(client, module, prefix_list_id):
             aws_retry=True,
         )
     except is_boto3_error_code("InvalidPrefixListID.NotFound"):
-        return
+        # The prefix list was deleted after it was read, so this run changed nothing.
+        return False
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
@@ -509,6 +510,8 @@ def delete_prefix_list(client, module, prefix_list_id):
             changed=True,
         )
 
+    return True
+
 
 def ensure_absent(client, module, owner_id):
     current = get_customer_managed_prefix_list_by_name(client, module, owner_id)
@@ -523,7 +526,7 @@ def ensure_absent(client, module, owner_id):
         if state in IN_PROGRESS_STATES:
             wait_for_ready_state(client, module, prefix_list_id)
 
-        delete_prefix_list(client, module, prefix_list_id)
+        changed = delete_prefix_list(client, module, prefix_list_id)
 
     result = {
         "changed": changed,

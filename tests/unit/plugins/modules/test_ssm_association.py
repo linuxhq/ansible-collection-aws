@@ -478,6 +478,34 @@ def test_update_keeps_target_maps_without_targets():
     assert "Targets" not in request
 
 
+def test_check_mode_predicts_target_maps_replaced_by_targets():
+    client = Mock()
+    result = run_present(
+        client,
+        FakeModule(params(targets=[{"key": "InstanceIds", "values": ["i-2"]}]), check_mode=True),
+        current_association(Targets=[], TargetMaps=[{"Source": ["i-1"]}]),
+    )
+
+    assert result.values["changed"]
+    assert result.values["association"]["targets"] == [{"key": "InstanceIds", "values": ["i-2"]}]
+    assert "target_maps" not in result.values["association"]
+    client.update_association.assert_not_called()
+
+
+def test_check_mode_keeps_target_maps_without_targets():
+    client = Mock()
+    target_maps = [{"Source": ["i-1"]}]
+    result = run_present(
+        client,
+        FakeModule(params(schedule_expression="rate(2 hours)", targets=None), check_mode=True),
+        current_association(Targets=[], TargetMaps=target_maps),
+    )
+
+    assert result.values["changed"]
+    assert result.values["association"]["target_maps"] == target_maps
+    client.update_association.assert_not_called()
+
+
 CRON_ONLY_FIELDS = {"ApplyOnlyAtCronInterval": True, "Duration": 2, "ScheduleOffset": 3}
 
 

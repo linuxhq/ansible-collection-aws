@@ -62,3 +62,40 @@ def test_rejects_invalid_hub():
         plugin.main()
 
     assert raised.value.values["msg"] == "Unable to list AWS Notifications hubs: AWS returned an invalid hub"
+
+
+def test_returns_hub_with_unknown_status():
+    module = FakeModule({}, client=Mock())
+    hub = {
+        "creationTime": "2026-01-01T00:00:00Z",
+        "notificationHubRegion": "us-east-1",
+        "statusSummary": {"reason": "", "status": "SUSPENDED"},
+    }
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[hub]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["notification_hubs"][0]["status_summary"] == {"reason": "", "status": "SUSPENDED"}
+
+
+@pytest.mark.parametrize("status", [None, "", 1])
+def test_rejects_hub_without_status(status):
+    module = FakeModule({}, client=Mock())
+    hub = {
+        "creationTime": "2026-01-01T00:00:00Z",
+        "notificationHubRegion": "us-east-1",
+        "statusSummary": {"reason": "", "status": status},
+    }
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[hub]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == "Unable to list AWS Notifications hubs: AWS returned an invalid hub"
