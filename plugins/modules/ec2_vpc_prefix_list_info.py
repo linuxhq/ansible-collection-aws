@@ -32,6 +32,7 @@ options:
       - When omitted, the current version entries are returned.
       - AWS-managed prefix lists are not versioned, so their current entries are
         returned regardless of this option.
+      - Customer-managed prefix lists without this version are omitted from the results.
       - This must be 1 or greater.
     type: int
 extends_documentation_fragment:
@@ -292,7 +293,8 @@ def main():
                 "get_managed_prefix_list_entries",
                 **entry_request,
             )
-        except is_boto3_error_code("InvalidPrefixListID.NotFound"):
+        # Skip lists deleted since the describe call or whose history lacks the target version.
+        except is_boto3_error_code(["InvalidPrefixListID.NotFound", "PrefixListVersionNotFound"]):
             continue
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(

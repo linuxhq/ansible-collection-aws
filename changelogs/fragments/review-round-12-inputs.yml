@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - account_region - share one ``wait_timeout`` budget between waiting out a pending opposite transition and
+    waiting for the requested state, so the total wait no longer reaches twice ``wait_timeout``.
+  - ec2_instance_metadata - check botocore support for ``http_tokens_enforced`` before reading the current
+    defaults, so older botocore fails clearly instead of silently reporting no change or a false check-mode change.
+  - ec2_vpc_prefix_list_info - omit customer-managed prefix lists that lack the requested ``target_version``
+    instead of failing the whole query with ``PrefixListVersionNotFound``.
