@@ -212,6 +212,46 @@ def test_waited_update_rejects_disappearing_cluster():
     assert raised.value.values["msg"] == "EKS cluster example disappeared after update"
 
 
+@pytest.mark.parametrize(
+    ("method", "updates", "current_version"),
+    [
+        ("update_cluster_config", {"resources_vpc_config": {"endpoint_public_access": False}}, "1.34"),
+        ("update_cluster_version", {}, "1.33"),
+    ],
+)
+def test_update_retries_while_another_update_is_in_progress(method, updates, current_version):
+    in_use = plugin.ClientError(
+        {"Error": {"Code": "ResourceInUseException", "Message": "update in progress"}},
+        "UpdateClusterConfig",
+    )
+    client = Mock()
+    getattr(client, method).side_effect = [in_use, {"update": {"id": "update-1", "status": "InProgress"}}]
+    params = dict.fromkeys(plugin.CREATE_FIELDS)
+    params.update({"name": "example", "purge_tags": True, "tags": None, "version": "1.34", "wait": False})
+    params.update(updates)
+    current = {
+        "arn": "arn:cluster",
+        "name": "example",
+        "resourcesVpcConfig": {"endpointPublicAccess": True},
+        "status": "ACTIVE",
+        "version": current_version,
+    }
+    module = FakeModule(params)
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        patch.object(plugin, "wait_for_update"),
+        patch.object(plugin, "wait_for_cluster"),
+        patch("time.sleep"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"]
+    assert getattr(client, method).call_count == 2
+
+
 def test_changed_request_contains_only_differences():
     current = {"version": "1.32", "resources": {"public": True, "private": False}}
     desired = {"version": "1.32", "resources": {"public": False}}
@@ -280,12 +320,10 @@ def test_vpc_endpoint_and_network_changes_use_separate_updates():
         {
             "name": "example",
             "resourcesVpcConfig": {"endpointPublicAccess": False},
-            "aws_retry": True,
         },
         {
             "name": "example",
             "resourcesVpcConfig": {"subnetIds": ["subnet-new"]},
-            "aws_retry": True,
         },
     ]
     assert require.call_args_list == [
@@ -683,7 +721,6 @@ def test_eks_auto_mode_settings_use_one_request(enabled):
 
     client.update_cluster_config.assert_called_once_with(
         name="example",
-        aws_retry=True,
         computeConfig={"enabled": enabled},
         kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": enabled}},
         storageConfig={"blockStorage": {"enabled": enabled}},
@@ -821,7 +858,7 @@ def test_partial_update_result_preserves_unmanaged_configuration(check_mode):
         client.update_cluster_config.assert_not_called()
     else:
         client.update_cluster_config.assert_called_once_with(
-            name="example", resourcesVpcConfig={"endpointPublicAccess": False}, aws_retry=True
+            name="example", resourcesVpcConfig={"endpointPublicAccess": False}
         )
 
 
@@ -924,7 +961,7 @@ def test_deletion_protection_and_remote_networks_use_their_own_update(overrides,
         plugin.ensure_present(client, FakeModule(eks_params(**overrides)))
 
     assert result.value.values["changed"] is True
-    client.update_cluster_config.assert_called_once_with(name="example", aws_retry=True, **expected)
+    client.update_cluster_config.assert_called_once_with(name="example", **expected)
     assert require_methods.call_args.args[3] == {"update_cluster_config": tuple(expected) + ("name",)}
 
 
@@ -1094,7 +1131,6 @@ def test_auto_mode_load_balancing_updates_with_matching_create_only_network_sett
 
     client.update_cluster_config.assert_called_once_with(
         name="example",
-        aws_retry=True,
         computeConfig={"enabled": True, "nodePools": ["general-purpose", "system"], "nodeRoleArn": "arn:node"},
         kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
         storageConfig={"blockStorage": {"enabled": True}},
@@ -1130,7 +1166,6 @@ def test_auto_mode_node_pool_change_sends_every_capability_together():
     assert raised.value.values["changed"] is True
     client.update_cluster_config.assert_called_once_with(
         name="example",
-        aws_retry=True,
         computeConfig={"enabled": True, "nodePools": ["general-purpose", "system"], "nodeRoleArn": "arn:node"},
         kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
         storageConfig={"blockStorage": {"enabled": True}},

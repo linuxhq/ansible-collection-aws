@@ -548,6 +548,9 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
 )
 
+# EKS can run an internal update right after a cluster becomes active, and rejects new updates until it finishes.
+UPDATE_RETRY = AWSRetry.jittered_backoff(catch_extra_error_codes=["ResourceInUseException"])
+
 CREATE_FIELDS = [
     "access_config",
     "bootstrap_self_managed_addons",
@@ -1194,10 +1197,7 @@ def ensure_present(client, module):
     mutated = False
     for index, update_request in enumerate(update_requests):
         try:
-            response = client.update_cluster_config(
-                **update_request,
-                aws_retry=True,
-            )
+            response = UPDATE_RETRY(client.update_cluster_config)(**update_request)
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, changed=mutated, msg=f"Unable to update EKS cluster {name}")
 
@@ -1216,11 +1216,7 @@ def ensure_present(client, module):
 
     if version_changed:
         try:
-            response = client.update_cluster_version(
-                name=name,
-                version=version,
-                aws_retry=True,
-            )
+            response = UPDATE_RETRY(client.update_cluster_version)(name=name, version=version)
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, changed=mutated, msg=f"Unable to update EKS cluster {name} version")
 
