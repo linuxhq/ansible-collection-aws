@@ -1615,3 +1615,110 @@ def test_absent_in_progress_delete_returns_a_result_consistent_with_wait(wait, c
     assert wait_for_cluster.called is waited
     assert result["changed"] is False
     assert result["cluster"] == expected
+
+
+@pytest.mark.parametrize(
+    "cidrs, expected",
+    [
+        (["52.94.76.5/24"], ["52.94.76.0/24"]),
+        (["0.0.0.0/0", "2001:db8::1/32"], ["0.0.0.0/0", "2001:db8::/32"]),
+    ],
+)
+def test_public_access_cidrs_are_canonicalized(cidrs, expected):
+    module = FakeModule(eks_params(resources_vpc_config={"public_access_cidrs": cidrs}))
+
+    plugin.canonicalize_public_access_cidrs(module)
+
+    assert module.params["resources_vpc_config"]["public_access_cidrs"] == expected
+
+
+def test_invalid_public_access_cidr_fails():
+    module = FakeModule(eks_params(resources_vpc_config={"public_access_cidrs": ["not-a-cidr"]}))
+
+    with pytest.raises(ModuleFail) as raised:
+        plugin.canonicalize_public_access_cidrs(module)
+
+    assert raised.value.values["msg"].startswith("resources_vpc_config.public_access_cidrs must contain valid")
+
+
+def test_canonical_public_access_cidr_matches_the_cluster():
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "resourcesVpcConfig": {"publicAccessCidrs": ["52.94.76.0/24"]},
+    }
+    client = Mock()
+    module = FakeModule(eks_params(resources_vpc_config={"public_access_cidrs": ["52.94.76.5/24"]}))
+    plugin.canonicalize_public_access_cidrs(module)
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    client.update_cluster_config.assert_not_called()
+    assert raised.value.values["changed"] is False
+
+
+def test_explicitly_disabled_auto_mode_matches_a_standard_cluster():
+    # EKS omits computeConfig and storageConfig on clusters that never enabled Auto Mode.
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "kubernetesNetworkConfig": {"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": False}},
+    }
+    client = Mock()
+    module = FakeModule(
+        eks_params(
+            compute_config={"enabled": False},
+            kubernetes_network_config={"elastic_load_balancing": {"enabled": False}},
+            storage_config={"block_storage": {"enabled": False}},
+        )
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    client.update_cluster_config.assert_not_called()
+    assert raised.value.values["changed"] is False
+
+
+def test_enabling_auto_mode_on_a_standard_cluster_sends_every_capability():
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "kubernetesNetworkConfig": {"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": False}},
+    }
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    module = FakeModule(
+        eks_params(
+            compute_config={"enabled": True},
+            kubernetes_network_config={"elastic_load_balancing": {"enabled": True}},
+            storage_config={"block_storage": {"enabled": True}},
+        )
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
+
+    client.update_cluster_config.assert_called_once_with(
+        name="example",
+        aws_retry=True,
+        computeConfig={"enabled": True},
+        kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
+        storageConfig={"blockStorage": {"enabled": True}},
+    )
