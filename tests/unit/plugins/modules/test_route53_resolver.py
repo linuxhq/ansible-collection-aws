@@ -1616,3 +1616,36 @@ def test_lookup_failure_before_create_reports_unchanged():
 
     assert raised.value.values["changed"] is False
     client.create_resolver_endpoint.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_resulting_tag_limit_fails_before_updating_the_endpoint(check_mode):
+    client = Mock()
+    existing_tags = [{"Key": "aws:reserved", "Value": ""}]
+    existing_tags += [{"Key": f"old{index}", "Value": ""} for index in range(200)]
+    params = endpoint_params(
+        ip_addresses=[{"ip": "192.0.2.3", "subnet_id": "subnet-3"}, {"ip": "192.0.2.2", "subnet_id": "subnet-2"}],
+        purge_tags=False,
+        tags={"new": ""},
+    )
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint(Tags=existing_tags)),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(
+            plugin, "reconcile_resolver_endpoint_ip_addresses", side_effect=lambda *args, **kwargs: args[2]
+        ) as reconcile,
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_resolver_endpoint_status", side_effect=lambda *args, **kwargs: args[2]) as wait,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values["msg"] == (
+        "The resulting AWS Route53 Resolver endpoint tags must contain at most 200 entries"
+    )
+    assert raised.value.values.get("changed", False) is False
+    reconcile.assert_not_called()
+    wait.assert_not_called()
+    client.update_resolver_endpoint.assert_not_called()
+    client.tag_resource.assert_not_called()

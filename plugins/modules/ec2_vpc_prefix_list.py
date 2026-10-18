@@ -254,6 +254,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_ec2_tags,
+    require_resulting_tag_limit,
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
@@ -610,10 +611,10 @@ def ensure_present(client, module, owner_id):
         changed = bool(entries_changed or resource_changed)
         tags_to_set, tag_keys_to_unset = ({}, [])
         if tags is not None:
-            tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
-                tags,
-                purge_tags=purge_tags,
+            current_tags = boto3_tag_list_to_ansible_dict(current.get("Tags", []))
+            tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge_tags=purge_tags)
+            require_resulting_tag_limit(
+                module, current_tags, tags_to_set, tag_keys_to_unset, 50, "EC2 VPC managed prefix list"
             )
 
         changed = bool(changed or tags_to_set or tag_keys_to_unset)

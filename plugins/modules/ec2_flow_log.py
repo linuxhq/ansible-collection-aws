@@ -328,6 +328,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_ec2_tags,
+    require_resulting_tag_limit,
     require_valid_tags,
 )
 
@@ -581,11 +582,13 @@ def ensure_present(client, module):
     tags_changed = []
     if tags is not None:
         for flow_log in current:
+            current_tags = boto3_tag_list_to_ansible_dict(flow_log.get("Tags", []))
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                boto3_tag_list_to_ansible_dict(flow_log.get("Tags", [])),
+                current_tags,
                 tags,
                 purge_tags=module.params["purge_tags"],
             )
+            require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "EC2 flow log")
 
             if tags_to_set or tag_keys_to_unset:
                 tags_changed.append((flow_log, tags_to_set, tag_keys_to_unset))

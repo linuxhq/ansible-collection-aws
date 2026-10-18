@@ -271,6 +271,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_cli
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_arn_tags,
+    require_resulting_tag_limit,
     require_valid_tag_list,
     require_valid_tags,
 )
@@ -650,11 +651,13 @@ def ensure_present(client, module):
     tags = dict(user_tags or {})
     tags["Name"] = module.params["name"]
 
+    current_tags = boto3_tag_list_to_ansible_dict((current or {}).get("Tags", []))
     tags_to_set, tag_keys_to_unset = compare_aws_tags(
-        boto3_tag_list_to_ansible_dict((current or {}).get("Tags", [])),
+        current_tags,
         tags,
         purge_tags=module.params["purge_tags"] if user_tags is not None else False,
     )
+    require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 200, "Pinpoint SMS Voice V2 pool")
 
     changed = current is None or bool(update_request or tags_to_set or tag_keys_to_unset)
 
@@ -673,10 +676,14 @@ def ensure_present(client, module):
         ):
             update_request["DeletionProtectionEnabled"] = deletion_protection_enabled
 
+        current_tags = boto3_tag_list_to_ansible_dict(current.get("Tags", []))
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
-            boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
+            current_tags,
             tags,
             purge_tags=(module.params["purge_tags"] if user_tags is not None else False),
+        )
+        require_resulting_tag_limit(
+            module, current_tags, tags_to_set, tag_keys_to_unset, 200, "Pinpoint SMS Voice V2 pool"
         )
         changed = bool(update_request or tags_to_set or tag_keys_to_unset)
 

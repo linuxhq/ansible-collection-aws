@@ -12,6 +12,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     reconcile_arn_tags,
     reconcile_ec2_tags,
     reconcile_ssm_tags,
+    require_resulting_tag_limit,
     require_valid_tag_list,
     require_valid_tags,
 )
@@ -40,6 +41,22 @@ def test_aws_reserved_tags_do_not_count_against_the_limit():
         require_valid_tags(FakeModule({}), {"aws:reserved": "x", "one": "", "two": ""}, 1)
 
     assert raised.value.values["msg"] == "tags must contain at most 1 entries"
+
+
+def test_resulting_tag_limit_counts_current_tags_after_deltas():
+    current = {"aws:reserved": "x", "keep": "", "old": ""}
+    require_resulting_tag_limit(FakeModule({}), current, {"new": ""}, ["old"], 2, "widget")
+    assert current == {"aws:reserved": "x", "keep": "", "old": ""}
+
+    with pytest.raises(ModuleFail) as raised:
+        require_resulting_tag_limit(FakeModule({}), current, {"new": ""}, [], 2, "widget")
+
+    assert raised.value.values == {"msg": "The resulting widget tags must contain at most 2 entries"}
+
+
+def test_resulting_tag_limit_does_not_double_count_replaced_or_reserved_tags():
+    current = {"AWS:Reserved": "x", "aws:other": "y", "keep": "old"}
+    require_resulting_tag_limit(FakeModule({}), current, {"keep": "new", "aws:third": "z"}, ["missing"], 1, "widget")
 
 
 def test_tag_keys_and_values_are_normalized_for_map_apis():

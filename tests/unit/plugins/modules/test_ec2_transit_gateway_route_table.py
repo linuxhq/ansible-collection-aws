@@ -1232,3 +1232,37 @@ def test_name_lookup_treats_wildcard_characters_literally(name):
 
     with patch.object(plugin, "query_list", return_value=wildcard_matches):
         assert plugin.find_route_table(Mock(), module) is None
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_resulting_tag_limit_counts_the_name_tag_before_any_write(check_mode):
+    client = Mock()
+    existing_tags = [{"Key": "aws:reserved", "Value": ""}]
+    existing_tags += [{"Key": f"old{index}", "Value": ""} for index in range(49)]
+    table = {"State": "available", "Tags": existing_tags, "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    module = FakeModule(
+        present_params(
+            name="main",
+            purge_routes=False,
+            purge_tags=False,
+            routes=[{"blackhole": True, "destination_cidr_block": "10.0.0.0/8"}],
+            tags={"Env": "test"},
+        ),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "get_route", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(tag_utils, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == (
+        "The resulting EC2 transit gateway route table tags must contain at most 50 entries"
+    )
+    assert raised.value.values.get("changed", False) is False
+    client.create_tags.assert_not_called()
+    client.delete_tags.assert_not_called()
+    client.create_transit_gateway_route.assert_not_called()

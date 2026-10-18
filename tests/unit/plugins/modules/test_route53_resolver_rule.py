@@ -1049,3 +1049,31 @@ def test_targets_that_need_a_non_greedy_pairing_converge():
     current = plugin.comparable_rule(dict(existing_rule(), TargetIps=current_targets))
     desired = plugin.comparable_rule(dict(existing_rule(), TargetIps=desired_targets))
     assert plugin.rules_match(current, desired)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_resulting_tag_limit_fails_before_updating_the_rule(check_mode):
+    client = Mock()
+    existing_tags = [{"Key": "aws:reserved", "Value": ""}]
+    existing_tags += [{"Key": f"old{index}", "Value": ""} for index in range(200)]
+    module = FakeModule(
+        rule_params(
+            purge_tags=False,
+            tags={"new": ""},
+            target_ips=[
+                {"ip": "192.0.2.2", "ipv6": None, "port": None, "protocol": None, "server_name_indication": None}
+            ],
+        ),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=existing_rule(Tags=existing_tags)),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "The resulting AWS Route53 Resolver rule tags must contain at most 200 entries"
+    assert raised.value.values.get("changed", False) is False
+    client.update_resolver_rule.assert_not_called()
+    client.tag_resource.assert_not_called()

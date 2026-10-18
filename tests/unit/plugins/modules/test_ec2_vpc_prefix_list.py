@@ -1153,3 +1153,31 @@ def test_lookup_treats_wildcard_characters_literally(name):
 
     with patch.object(plugin, "query_list", return_value=wildcard_matches):
         assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": name}), OWNER) is None
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_resulting_tag_limit_fails_before_modifying_entries(check_mode):
+    client = Mock()
+    existing_tags = [{"Key": "aws:reserved", "Value": ""}]
+    existing_tags += [{"Key": f"old{index}", "Value": ""} for index in range(50)]
+    module = FakeModule(
+        present_params([{"cidr": "10.0.0.0/8"}, {"cidr": "192.0.2.0/24"}], purge_tags=False, tags={"new": ""}),
+        check_mode=check_mode,
+    )
+    current = prefix_list(Tags=existing_tags)
+    with (
+        patch.object(plugin, "get_current", return_value=(current, [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(plugin, "modify_prefix_list") as modify,
+        patch.object(plugin, "update_prefix_list") as update,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert (
+        raised.value.values["msg"] == "The resulting EC2 VPC managed prefix list tags must contain at most 50 entries"
+    )
+    assert raised.value.values.get("changed", False) is False
+    modify.assert_not_called()
+    update.assert_not_called()
+    client.create_tags.assert_not_called()
+    client.modify_managed_prefix_list.assert_not_called()

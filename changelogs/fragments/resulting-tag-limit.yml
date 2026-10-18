@@ -1,0 +1,36 @@
+---
+bugfixes:
+  - ec2_flow_log - check the resulting tag count of each matched flow log against the 50-tag limit before any
+    change, ignoring ``aws:`` prefixed tags, instead of creating flow logs and then failing on the tag call when
+    ``purge_tags=false`` would exceed the limit.
+  - ec2_transit_gateway_route_table - check the resulting tag count, including the ``Name`` tag, against the
+    50-tag limit before any change, ignoring ``aws:`` prefixed tags, instead of failing on the tag call when
+    ``purge_tags=false`` would exceed the limit.
+  - ec2_vpc_prefix_list - check the resulting tag count against the 50-tag limit before any change, ignoring
+    ``aws:`` prefixed tags, instead of modifying entries and then failing on the tag call when ``purge_tags=false``
+    would exceed the limit.
+  - ec2_vpc_vpn - check the resulting tag count, including the ``Name`` tag, against the 50-tag limit before any
+    change, ignoring ``aws:`` prefixed tags, instead of modifying options, tunnels, and routes and then failing on
+    the tag call when ``purge_tags=false`` would exceed the limit.
+  - notifications_contacts - check the resulting tag count against the 200-tag limit before any change, ignoring
+    ``aws:`` prefixed tags, instead of predicting a change in check mode and then failing on the tag call when
+    ``purge_tags=false`` would exceed the limit.
+  - pinpoint_sms_voice_phone_number - check the resulting tag count against the 200-tag limit before any change,
+    ignoring ``aws:`` prefixed tags, instead of updating settings and then failing on the tag call when
+    ``purge_tags=false`` would exceed the limit.
+  - pinpoint_sms_voice_phone_pool - check the resulting tag count, including the ``Name`` tag, against the
+    200-tag limit before any change, ignoring ``aws:`` prefixed tags, instead of updating the pool and then failing
+    on the tag call when ``purge_tags=false`` would exceed the limit.
+  - route53_resolver - check the resulting tag count against the 200-tag limit before any change, ignoring
+    ``aws:`` prefixed tags, instead of updating the endpoint and then failing on the tag call when
+    ``purge_tags=false`` would exceed the limit.
+  - route53_resolver_rule - check the resulting tag count against the 200-tag limit before any change, ignoring
+    ``aws:`` prefixed tags, instead of updating the rule and then failing on the tag call when ``purge_tags=false``
+    would exceed the limit.
+  - ssm_association - check the resulting tag count against the 1000-tag limit before any change, ignoring
+    ``aws:`` prefixed tags, instead of updating the association and then failing on the tag call when
+    ``purge_tags=false`` would exceed the limit.
+  - ssm_document - check the resulting tag count against the 1000-tag limit before any change, ignoring ``aws:``
+    prefixed tags, instead of updating the document and then failing on the tag call when ``purge_tags=false``
+    would exceed the limit.
+...

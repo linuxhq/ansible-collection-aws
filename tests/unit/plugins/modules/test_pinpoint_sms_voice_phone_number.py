@@ -1565,3 +1565,28 @@ def test_new_number_with_arns_returns_ids_and_names_in_every_mode(check_mode):
         assert client.request_phone_number.call_args.kwargs["PoolId"] == (
             "arn:aws:sms-voice:us-east-1:111111111111:pool/pool-1"
         )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_resulting_tag_limit_fails_before_updating_settings(check_mode):
+    client = Mock()
+    existing_tags = {f"old{index}": "" for index in range(200)}
+    existing_tags["aws:reserved"] = ""
+    module = FakeModule(
+        phone_number_params(deletion_protection_enabled=False, purge_tags=False, tags={"Env": "test"}),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "query_list", return_value=[existing_number(PhoneNumberArn=PHONE_NUMBER_ARN)]),
+        patch.object(plugin, "phone_number_tags", return_value=existing_tags),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == (
+        "The resulting Pinpoint SMS Voice V2 phone number tags must contain at most 200 entries"
+    )
+    assert raised.value.values.get("changed", False) is False
+    client.update_phone_number.assert_not_called()
+    client.tag_resource.assert_not_called()

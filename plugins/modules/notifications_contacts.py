@@ -126,7 +126,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tags
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    require_resulting_tag_limit,
+    require_valid_tags,
+)
 
 # Of the calls this module makes, only DeleteEmailContact models a transient ConflictException;
 # CreateEmailContact raises it for a real conflict, which must not be retried.
@@ -251,6 +254,9 @@ def ensure_present(client, module):
             contact["tags"],
             tags,
             purge_tags=module.params["purge_tags"],
+        )
+        require_resulting_tag_limit(
+            module, contact["tags"], tags_to_set, tag_keys_to_unset, 200, "AWS Notifications contact"
         )
 
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)

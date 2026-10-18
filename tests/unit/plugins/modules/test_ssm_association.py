@@ -530,3 +530,24 @@ def test_rate_schedule_is_unchanged_after_cron_only_fields_are_cleared():
 
     assert not result.values["changed"]
     client.update_association.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_resulting_tag_limit_fails_before_updating_the_association(check_mode):
+    client = Mock()
+    existing_tags = [{"Key": "aws:reserved", "Value": ""}]
+    existing_tags += [{"Key": f"old{index}", "Value": ""} for index in range(1000)]
+    module = FakeModule(
+        params(purge_tags=False, schedule_expression="rate(2 hours)", tags={"new": ""}),
+        check_mode=check_mode,
+    )
+    with patch.object(plugin, "association_with_tags", side_effect=lambda *args: dict(args[2], Tags=existing_tags)):
+        result = run_present(client, module, current_association())
+
+    assert isinstance(result, ModuleFail)
+    assert (
+        result.values["msg"] == "The resulting AWS Systems Manager association tags must contain at most 1000 entries"
+    )
+    assert result.values.get("changed", False) is False
+    client.update_association.assert_not_called()
+    client.add_tags_to_resource.assert_not_called()

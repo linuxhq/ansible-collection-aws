@@ -541,7 +541,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.eks import has_valid_cluster_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tags
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    require_resulting_tag_limit,
+    require_valid_tags,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
 )
@@ -1124,14 +1127,7 @@ def ensure_present(client, module):
             tags,
             purge_tags=module.params["purge_tags"],
         )
-        final_tags = dict(current.get("tags") or {})
-        for key in tag_keys_to_unset:
-            final_tags.pop(key, None)
-
-        final_tags.update(tags_to_set)
-        # AWS-reserved aws: tags do not count against the EKS per-resource tag limit.
-        if sum(not key.lower().startswith("aws:") for key in final_tags) > 50:
-            module.fail_json(msg="The resulting cluster tags must contain at most 50 entries")
+        require_resulting_tag_limit(module, current.get("tags") or {}, tags_to_set, tag_keys_to_unset, 50, "cluster")
 
     tags_changed = bool(tags_to_set or tag_keys_to_unset)
     cluster_changed = config_changed or version_changed

@@ -308,6 +308,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_arn_tags,
+    require_resulting_tag_limit,
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
@@ -610,10 +611,10 @@ def ensure_present(client, module):
     resource_changed = changed
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:
-        tags_to_set, tag_keys_to_unset = compare_aws_tags(
-            boto3_tag_list_to_ansible_dict((endpoint or {}).get("Tags", [])),
-            tags,
-            purge_tags=purge_tags,
+        current_tag_dict = boto3_tag_list_to_ansible_dict(current_tags)
+        tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tag_dict, tags, purge_tags=purge_tags)
+        require_resulting_tag_limit(
+            module, current_tag_dict, tags_to_set, tag_keys_to_unset, 200, "AWS Route53 Resolver endpoint"
         )
 
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
