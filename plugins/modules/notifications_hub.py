@@ -122,7 +122,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 
-HUB_STATUSES = ("ACTIVE", "DEREGISTERING", "INACTIVE", "REGISTERING")
 # Registering a region while its hub is deregistering raises a modeled ConflictException.
 REGISTER_RETRY = AWSRetry.jittered_backoff(catch_extra_error_codes=["ConflictException"])
 
@@ -138,7 +137,8 @@ def validate_hub(module, hub, operation, require_status=True, changed=False):
     status_summary = hub.get("statusSummary")
     if (require_status or status_summary is not None) and (
         not isinstance(status_summary, dict)
-        or status_summary.get("status") not in HUB_STATUSES
+        or not isinstance(status_summary.get("status"), str)
+        or not status_summary["status"]
         or not isinstance(status_summary.get("reason"), str)
     ):
         module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid hub")

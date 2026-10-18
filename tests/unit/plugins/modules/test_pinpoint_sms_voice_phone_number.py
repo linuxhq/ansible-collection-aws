@@ -2,6 +2,7 @@ from unittest.mock import Mock, call, patch
 
 import pytest
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import pinpoint_sms_voice
 from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_phone_number as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -1414,10 +1415,11 @@ def test_absent_fails_without_mutation_for_last_phone_number_in_pool(check_mode)
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=check_mode)
     with (
         patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(plugin, "paginated_query_with_retries", side_effect=pool_query(LAST_PHONE_NUMBER_POOL, None)),
         patch.object(
-            plugin,
+            pinpoint_sms_voice,
             "paginated_query_with_retries",
-            side_effect=pool_query(LAST_PHONE_NUMBER_POOL, {"Pools": [{"PoolId": "pool-1", "Status": "ACTIVE"}]}),
+            side_effect=pool_query(None, {"Pools": [{"PoolId": "pool-1", "Status": "ACTIVE"}]}),
         ),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
@@ -1473,9 +1475,8 @@ def test_absent_releases_last_phone_number_of_a_pool_being_deleted(pools_result)
         patch.object(
             plugin, "wait_for_phone_number_active", return_value=existing_number(DeletionProtectionEnabled=False)
         ),
-        patch.object(
-            plugin, "paginated_query_with_retries", side_effect=pool_query(LAST_PHONE_NUMBER_POOL, pools_result)
-        ),
+        patch.object(plugin, "paginated_query_with_retries", side_effect=pool_query(LAST_PHONE_NUMBER_POOL, None)),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=pool_query(None, pools_result)),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):

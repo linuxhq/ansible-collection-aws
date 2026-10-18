@@ -315,6 +315,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
     is_last_phone_number,
     is_last_phone_number_conflict,
     last_phone_number_message,
+    pool_is_deleting,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
@@ -566,21 +567,6 @@ def update_phone_number(client, module, current, updates):
 
 def disassociate_failure_message(phone_number_id, pool_id):
     return f"Unable to disassociate Pinpoint SMS Voice V2 phone number {phone_number_id} from pool {pool_id}"
-
-
-def pool_is_deleting(client, module, pool_id):
-    try:
-        response = paginated_query_with_retries(client, "describe_pools", PoolIds=[pool_id])
-    except is_boto3_error_code("ResourceNotFoundException"):
-        return True
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to describe Pinpoint SMS Voice V2 pool {pool_id}")
-
-    pools = response.get("Pools") if isinstance(response, dict) else None
-    if not isinstance(pools, list) or any(not isinstance(pool, dict) for pool in pools):
-        module.fail_json(msg=f"AWS returned malformed data while describing Pinpoint SMS Voice V2 pool {pool_id}")
-
-    return not pools or pools[0].get("Status") == "DELETING"
 
 
 def require_not_last_pool_phone_number(client, module, current):

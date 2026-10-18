@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import pinpoint_sms_voice
 from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_phone_pool_associate as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -37,6 +38,27 @@ def test_list_capability_includes_pagination_parameters():
         plugin.main()
 
     assert require.call_args.args[3]["list_pool_origination_identities"] == ("PoolId", "MaxResults", "NextToken")
+
+
+def test_absent_capabilities_include_describe_pools():
+    module = FakeModule(
+        {
+            "client_token": None,
+            "iso_country_code": None,
+            "origination_identity": "phone-1",
+            "pool_id": "pool-1",
+            "state": "absent",
+        },
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(plugin, "ensure_absent"),
+    ):
+        plugin.main()
+
+    assert require.call_args.args[3]["describe_pools"] == ("PoolIds",)
 
 
 def test_association_matches_id_or_arn():
@@ -347,15 +369,66 @@ def test_absent_fails_without_mutation_for_last_phone_number(check_mode):
     client = Mock()
     with (
         patch.object(plugin, "current_associations", return_value=[PHONE_1, SENDER_1]),
+        patch.object(
+            pinpoint_sms_voice,
+            "paginated_query_with_retries",
+            return_value={"Pools": [{"PoolId": "pool-1", "Status": "ACTIVE"}]},
+        ) as query,
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_absent(client, absent_params(check_mode=check_mode))
+
+    query.assert_called_once_with(client, "describe_pools", PoolIds=["pool-1"])
 
     assert raised.value.values["changed"] is False
     assert raised.value.values["msg"] == plugin.last_phone_number_message("phone-1", "pool-1")
     assert "linuxhq.aws.pinpoint_sms_voice_phone_pool" in raised.value.values["msg"]
     client.disassociate_origination_identity.assert_not_called()
     client.delete_pool.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "describe",
+    [
+        {"return_value": {"Pools": [{"PoolId": "pool-1", "Status": "DELETING"}]}},
+        {"return_value": {"Pools": []}},
+        {"side_effect": pool_not_found()},
+    ],
+    ids=["deleting", "empty", "not-found"],
+)
+def test_absent_reports_no_change_for_last_phone_number_of_a_deleting_pool(describe, check_mode):
+    client = Mock()
+    with (
+        patch.object(plugin, "current_associations", return_value=[PHONE_1, SENDER_1]),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", **describe) as query,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, absent_params(check_mode=check_mode))
+
+    query.assert_called_once_with(client, "describe_pools", PoolIds=["pool-1"])
+    assert raised.value.values == {
+        "association": {},
+        "changed": False,
+        "origination_identity": "phone-1",
+        "pool_id": "arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1",
+        "state": "absent",
+    }
+    client.disassociate_origination_identity.assert_not_called()
+    client.delete_pool.assert_not_called()
+
+
+def test_absent_does_not_describe_pool_unless_removing_its_last_phone_number():
+    client = Mock()
+    client.disassociate_origination_identity.return_value = {"OriginationIdentity": "phone-1", "PoolId": "pool-1"}
+    with (
+        patch.object(plugin, "current_associations", return_value=[PHONE_1, PHONE_2]),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries") as query,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_absent(client, absent_params())
+
+    query.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

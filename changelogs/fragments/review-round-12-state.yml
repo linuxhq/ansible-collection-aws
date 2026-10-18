@@ -1,0 +1,11 @@
+---
+bugfixes:
+  - ec2_vpc_prefix_list - report ``changed=false`` when ``state=absent`` finds that the prefix list was deleted
+    elsewhere while deleting it.
+  - notifications_hub - accept any non-empty hub status instead of failing on a status the module does not know,
+    treating an unknown status as an existing hub that is not ``ACTIVE``.
+  - notifications_hub_info - accept any non-empty hub status instead of failing on a status the module does not know.
+  - pinpoint_sms_voice_phone_pool_associate - report ``changed=false`` instead of failing when ``state=absent``
+    removes the last phone number of a pool that is being deleted, as ``pinpoint_sms_voice_phone_number`` does.
+  - ssm_association - omit ``association.target_maps`` from the check mode prediction when ``targets`` replaces them,
+    matching the update the module makes.

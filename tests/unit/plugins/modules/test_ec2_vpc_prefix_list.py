@@ -69,7 +69,7 @@ def test_delete_tolerates_prefix_list_disappearing():
         patch.object(plugin, "require_client_methods") as require,
         patch.object(plugin, "wait_for_prefix_list_state") as wait,
     ):
-        plugin.delete_prefix_list(client, module, "pl-1")
+        assert plugin.delete_prefix_list(client, module, "pl-1") is False
 
     require.assert_called_once_with(
         module,
@@ -428,6 +428,39 @@ def test_absent_does_not_repeat_an_in_progress_delete():
 
     assert not raised.value.values["changed"]
     client.delete_managed_prefix_list.assert_not_called()
+
+
+def test_absent_reports_unchanged_when_prefix_list_disappears():
+    client = Mock()
+    client.delete_managed_prefix_list.side_effect = plugin.ClientError(
+        {"Error": {"Code": "InvalidPrefixListID.NotFound", "Message": "gone"}},
+        "DeleteManagedPrefixList",
+    )
+    module = FakeModule({"name": "main", "wait": True})
+    current = {
+        "PrefixListId": "pl-1",
+        "PrefixListName": "main",
+        "State": "create-complete",
+    }
+    with (
+        patch.object(
+            plugin,
+            "get_customer_managed_prefix_list_by_name",
+            return_value=current,
+        ),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_prefix_list_state") as wait,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module, OWNER)
+
+    assert raised.value.values == {
+        "changed": False,
+        "name": "main",
+        "prefix_list_id": "pl-1",
+        "state": "absent",
+    }
+    wait.assert_not_called()
 
 
 def test_lookup_ignores_delete_complete_tombstones():

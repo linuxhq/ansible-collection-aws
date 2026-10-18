@@ -77,8 +77,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 
-HUB_STATUSES = ("ACTIVE", "DEREGISTERING", "INACTIVE", "REGISTERING")
-
 
 def validate_hubs(module, hubs):
     if not isinstance(hubs, list):
@@ -94,7 +92,8 @@ def validate_hubs(module, hubs):
             or not hub["notificationHubRegion"]
             or hub.get("creationTime") is None
             or not isinstance(status_summary, dict)
-            or status_summary.get("status") not in HUB_STATUSES
+            or not isinstance(status_summary.get("status"), str)
+            or not status_summary["status"]
             or not isinstance(status_summary.get("reason"), str)
         ):
             module.fail_json(msg="Unable to list AWS Notifications hubs: AWS returned an invalid hub")
