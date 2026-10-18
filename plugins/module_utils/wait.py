@@ -30,13 +30,16 @@ def build_waiter_factory(model_data):
     return _WaiterFactory()
 
 
-def run_waiter(module, client, model_data, waiter_name, error_msg, changed=False, **wait_kwargs):
-    """Run a custom waiter; changed reports whether the resource was already modified, for failure results."""
+def run_waiter(module, client, model_data, waiter_name, error_msg, changed=False, timeout=None, **wait_kwargs):
+    """Run a custom waiter; changed reports whether the resource was already modified, for failure results.
+
+    timeout overrides wait_timeout when part of the wait budget was already spent.
+    """
     try:
         build_waiter_factory(model_data).get_waiter(client, waiter_name).wait(
             **wait_kwargs,
             WaiterConfig=custom_waiter_config(
-                module.params["wait_timeout"],
+                module.params["wait_timeout"] if timeout is None else timeout,
                 default_pause=module.params["wait_delay"],
             ),
         )

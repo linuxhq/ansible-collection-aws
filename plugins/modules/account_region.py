@@ -58,6 +58,7 @@ options:
     description:
       - Maximum number of seconds to wait when O(wait=true).
       - Also bounds the wait for a pending opposite transition, which happens even when O(wait=false).
+      - The wait for a pending opposite transition and the final wait share this budget.
       - This must be 1 or greater.
     default: 1800
     type: int
@@ -106,6 +107,8 @@ region_opt_status:
   returned: always
   type: str
 """
+
+import time
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -247,16 +250,25 @@ def get_region_opt_status(client, module, changed=False):
     return region_status
 
 
-def wait_for_status(client, module, waiter_name, statuses, changed=False):
+def wait_for_status(client, module, waiter_name, statuses, changed=False, deadline=None):
     region_name = region_target(module)
+    error_msg = f"Timed out waiting for AWS account region {region_name} to reach one of {sorted(statuses)}"
+
+    # A deadline shares one wait_timeout budget with an earlier wait for an opposite transition.
+    timeout = None
+    if deadline is not None:
+        timeout = int(deadline - time.monotonic())
+        if timeout < 1:
+            module.fail_json(changed=changed, msg=error_msg)
 
     run_waiter(
         module,
         client,
         ACCOUNT_REGION_WAITER_MODEL_DATA,
         waiter_name,
-        f"Timed out waiting for AWS account region {region_name} to reach one of {sorted(statuses)}",
+        error_msg,
         changed=changed,
+        timeout=timeout,
         **region_request(module),
     )
 
@@ -278,8 +290,10 @@ def ensure_present(client, module):
 
     changed = previous_status not in PRESENT_STATUSES
 
+    deadline = None
     if changed and not module.check_mode:
         if previous_status == "DISABLING":
+            deadline = time.monotonic() + module.params["wait_timeout"]
             wait_for_status(client, module, "region_disabled", ABSENT_STEADY_STATUSES)
 
         require_client_methods(
@@ -310,6 +324,7 @@ def ensure_present(client, module):
             "region_enabled",
             PRESENT_STEADY_STATUSES,
             changed=changed,
+            deadline=deadline,
         )
     elif changed:
         current_status = get_region_opt_status(client, module, changed=True)
@@ -330,8 +345,10 @@ def ensure_absent(client, module):
 
     changed = previous_status not in ABSENT_STATUSES
 
+    deadline = None
     if changed and not module.check_mode:
         if previous_status == "ENABLING":
+            deadline = time.monotonic() + module.params["wait_timeout"]
             wait_for_status(client, module, "region_enabled", PRESENT_STEADY_STATUSES)
 
         require_client_methods(
@@ -360,6 +377,7 @@ def ensure_absent(client, module):
             "region_disabled",
             ABSENT_STEADY_STATUSES,
             changed=changed,
+            deadline=deadline,
         )
     elif changed:
         current_status = get_region_opt_status(client, module, changed=True)

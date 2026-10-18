@@ -242,6 +242,38 @@ def test_target_version_is_omitted_for_aws_managed_prefix_lists():
     ]
 
 
+def test_prefix_list_without_the_target_version_is_omitted():
+    module = FakeModule(
+        {"filters": None, "prefix_list_ids": None, "target_version": 3},
+        client=Mock(),
+    )
+    version_not_found = plugin.ClientError(
+        {"Error": {"Code": "PrefixListVersionNotFound", "Message": "Version (3) of (pl-short) not found"}},
+        "GetManagedPrefixListEntries",
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "query_list",
+            return_value=[
+                {"OwnerId": "123456789012", "PrefixListId": "pl-short"},
+                {"OwnerId": "123456789012", "PrefixListId": "pl-long"},
+            ],
+        ),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=[version_not_found, {"Entries": [{"Cidr": "10.0.0.0/8"}]}],
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert [prefix_list["prefix_list_id"] for prefix_list in raised.value.values["prefix_lists"]] == ["pl-long"]
+
+
 def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings():
     module = FakeModule(
         {"filters": {"owner-id": [123456789012], "x-flag": [True]}, "prefix_list_ids": None, "target_version": None},

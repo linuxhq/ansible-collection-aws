@@ -194,3 +194,47 @@ def test_modification_failure_reports_unchanged():
 
     assert result.type is ModuleFail
     assert "changed" not in result.value.values
+
+
+def require_without_http_tokens_enforced(module, _client, service, methods):
+    # Emulate botocore older than 1.42.56, which lacks HttpTokensEnforced.
+    for method_name, parameters in methods.items():
+        if "HttpTokensEnforced" in parameters:
+            module.fail_json(
+                msg=f"Installed botocore does not support {service} {method_name} parameter HttpTokensEnforced"
+            )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_http_tokens_enforced_support_is_checked_before_reading(check_mode):
+    client = Mock()
+    module = FakeModule(metadata_params(http_tokens_enforced="no-preference"), check_mode=check_mode, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods", side_effect=require_without_http_tokens_enforced),
+        patch.object(plugin, "get_instance_metadata_defaults", return_value={}) as get_defaults,
+        pytest.raises((ModuleExit, ModuleFail)) as raised,
+    ):
+        plugin.main()
+
+    assert raised.type is ModuleFail
+    assert "HttpTokensEnforced" in raised.value.values["msg"]
+    get_defaults.assert_not_called()
+    client.modify_instance_metadata_defaults.assert_not_called()
+
+
+def test_older_botocore_is_unaffected_without_http_tokens_enforced():
+    client = Mock()
+    client.modify_instance_metadata_defaults.return_value = {"Return": True}
+    module = FakeModule(metadata_params(http_tokens="required"), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods", side_effect=require_without_http_tokens_enforced) as require,
+        patch.object(plugin, "get_instance_metadata_defaults", return_value={"http_tokens": "optional"}),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is True
+    assert require.call_args_list[0].args[3] == {"get_instance_metadata_defaults": ()}
+    client.modify_instance_metadata_defaults.assert_called_once_with(HttpTokens="required", aws_retry=True)

@@ -99,7 +99,7 @@ def test_default_region_cannot_be_disabled():
 
 
 def test_enable_waits_for_disabling_region_even_without_final_wait():
-    module = FakeModule({"name": "af-south-1", "wait": False})
+    module = FakeModule({"name": "af-south-1", "wait": False, "wait_timeout": 1800})
     client = Mock()
     with (
         patch.object(
@@ -119,7 +119,7 @@ def test_enable_waits_for_disabling_region_even_without_final_wait():
 
 
 def test_disable_waits_for_enabling_region_even_without_final_wait():
-    module = FakeModule({"name": "af-south-1", "wait": False})
+    module = FakeModule({"name": "af-south-1", "wait": False, "wait_timeout": 1800})
     client = Mock()
     with (
         patch.object(
@@ -165,7 +165,12 @@ def test_account_id_is_sent_to_the_waiter():
     with patch.object(plugin, "run_waiter") as run_waiter:
         plugin.wait_for_status(client, module, "region_enabled", plugin.PRESENT_STEADY_STATUSES)
 
-    assert run_waiter.call_args.kwargs == {"AccountId": "123456789012", "RegionName": "af-south-1", "changed": False}
+    assert run_waiter.call_args.kwargs == {
+        "AccountId": "123456789012",
+        "RegionName": "af-south-1",
+        "changed": False,
+        "timeout": None,
+    }
     assert "af-south-1 in account 123456789012" in run_waiter.call_args.args[4]
 
 
@@ -229,6 +234,50 @@ def test_status_failure_after_mutation_reports_changed(state, previous, mutation
 
     getattr(client, mutation).assert_called_once_with(RegionName="af-south-1", aws_retry=True)
     assert raised.value.values["changed"] is True
+
+
+@pytest.mark.parametrize(
+    ("state", "statuses"),
+    [
+        ("present", ["DISABLING", "DISABLED", "ENABLED"]),
+        ("absent", ["ENABLING", "ENABLED", "DISABLED"]),
+    ],
+)
+def test_final_wait_receives_the_remaining_wait_budget(state, statuses):
+    module = FakeModule({"name": "af-south-1", "state": state, "wait": True, "wait_delay": 30, "wait_timeout": 1800})
+    client = Mock()
+    client.get_region_opt_status.side_effect = [{"RegionOptStatus": status} for status in statuses]
+    with (
+        patch.object(plugin.time, "monotonic", side_effect=[100, 700]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "run_waiter") as run_waiter,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        getattr(plugin, f"ensure_{state}")(client, module)
+
+    assert [waiter_call.kwargs["timeout"] for waiter_call in run_waiter.call_args_list] == [None, 1200]
+    assert raised.value.values["region_opt_status"] == statuses[-1]
+
+
+@pytest.mark.parametrize(
+    ("state", "statuses"),
+    [("present", ["DISABLING", "DISABLED"]), ("absent", ["ENABLING", "ENABLED"])],
+)
+def test_final_wait_times_out_when_the_opposite_transition_spent_the_budget(state, statuses):
+    module = FakeModule({"name": "af-south-1", "state": state, "wait": True, "wait_delay": 30, "wait_timeout": 1800})
+    client = Mock()
+    client.get_region_opt_status.side_effect = [{"RegionOptStatus": status} for status in statuses]
+    with (
+        patch.object(plugin.time, "monotonic", side_effect=[100, 1900]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "run_waiter") as run_waiter,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        getattr(plugin, f"ensure_{state}")(client, module)
+
+    assert run_waiter.call_count == 1
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"].startswith("Timed out waiting for AWS account region af-south-1")
 
 
 def test_status_failure_before_mutation_reports_unchanged():

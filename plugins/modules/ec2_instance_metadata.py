@@ -225,12 +225,12 @@ def main():
 
     desired_update = snake_dict_to_camel_dict(desired, capitalize_first=True)
 
-    require_client_methods(
-        module,
-        client,
-        "EC2",
-        {"get_instance_metadata_defaults": ()},
-    )
+    supported_methods = {"get_instance_metadata_defaults": ()}
+    # Older botocore drops HttpTokensEnforced from the read, so check support before comparing.
+    if module.params["http_tokens_enforced"] is not None:
+        supported_methods["modify_instance_metadata_defaults"] = ("HttpTokensEnforced",)
+
+    require_client_methods(module, client, "EC2", supported_methods)
 
     current_account_level = get_instance_metadata_defaults(client, module)
 
