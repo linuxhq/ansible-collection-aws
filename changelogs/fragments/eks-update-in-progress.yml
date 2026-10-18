@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - eks_cluster - retry cluster configuration and version updates while EKS
+    reports that another update is in progress, which can happen right after
+    a cluster is created.
