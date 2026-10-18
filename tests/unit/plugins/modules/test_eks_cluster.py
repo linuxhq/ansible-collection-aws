@@ -1752,7 +1752,6 @@ def test_enabling_auto_mode_on_a_standard_cluster_sends_every_capability():
 
     client.update_cluster_config.assert_called_once_with(
         name="example",
-        aws_retry=True,
         computeConfig={"enabled": True},
         kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
         storageConfig={"blockStorage": {"enabled": True}},
