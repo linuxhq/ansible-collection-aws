@@ -25,9 +25,9 @@ options:
       - EC2 transit gateway route table IDs used to limit the result set.
       - This is sent as the C(transit-gateway-route-table-id) filter and takes
         precedence over a C(transit-gateway-route-table-id) key in O(filters).
-      - EC2 accepts at most 200 filter values in each request, counted across all
+      - EC2 accepts at most 100 filter values in each request, counted across all
         filters, so this list is split across requests and O(filters) must contain
-        fewer than 200 values when this is set.
+        fewer than 100 values when this is set.
       - An ID that does not exist results in no entry; no error is raised.
     elements: str
     type: list
@@ -180,6 +180,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 
+# DescribeTransitGatewayRouteTables returns FilterLimitExceeded above 100 values across all filters,
+# lower than the 200 that other EC2 describe operations accept.
+MAX_FILTER_VALUES_PER_REQUEST = 100
+
 
 def route_sort_key(route):
     return (
@@ -240,6 +244,7 @@ def main():
         "transit-gateway-route-table-id",
         transit_gateway_route_table_ids,
         "transit_gateway_route_table_ids",
+        max_values=MAX_FILTER_VALUES_PER_REQUEST,
     )
 
     require_client_methods(

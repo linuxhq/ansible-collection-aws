@@ -65,3 +65,20 @@ def test_filter_value_batches_fail_when_other_filters_leave_no_room():
         "EC2 accepts at most 200 filter values in each request, so filters must contain fewer than 200 values "
         "when group_names is set"
     )
+
+
+def test_filter_value_batches_honor_a_lower_max_values():
+    filters = {"state": ["available"]}
+    values = [f"tgw-rtb-{index}" for index in range(100)]
+
+    batches = filter_value_batches(FakeModule({}), filters, "id", values, "ids", max_values=100)
+
+    assert [len(batch["id"]) for batch in batches] == [99, 1]
+
+    with pytest.raises(ModuleFail) as raised:
+        filter_value_batches(FakeModule({}), {"state": [str(index) for index in range(100)]}, "id", ["x"], "ids", 100)
+
+    assert raised.value.values["msg"] == (
+        "EC2 accepts at most 100 filter values in each request, so filters must contain fewer than 100 values "
+        "when ids is set"
+    )

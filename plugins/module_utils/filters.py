@@ -31,8 +31,8 @@ def ansible_dict_to_string_filter_list(filters):
     )
 
 
-def filter_value_batches(module, filters, name, values, option):
-    """Return copies of filters with values split across them under name, so no request exceeds the EC2 limit.
+def filter_value_batches(module, filters, name, values, option, max_values=MAX_FILTER_VALUES_PER_REQUEST):
+    """Return copies of filters with values split across them under name, so no request exceeds max_values.
 
     Without values, filters are returned unchanged and EC2 validates them.
     """
@@ -42,12 +42,12 @@ def filter_value_batches(module, filters, name, values, option):
     other_value_count = sum(
         len(value) if isinstance(value, list) else 1 for key, value in filters.items() if key != name
     )
-    batch_size = MAX_FILTER_VALUES_PER_REQUEST - other_value_count
+    batch_size = max_values - other_value_count
     if batch_size < 1:
         module.fail_json(
             msg=(
-                f"EC2 accepts at most {MAX_FILTER_VALUES_PER_REQUEST} filter values in each request, so filters "
-                f"must contain fewer than {MAX_FILTER_VALUES_PER_REQUEST} values when {option} is set"
+                f"EC2 accepts at most {max_values} filter values in each request, so filters "
+                f"must contain fewer than {max_values} values when {option} is set"
             )
         )
 
