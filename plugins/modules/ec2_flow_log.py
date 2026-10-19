@@ -307,6 +307,7 @@ except ImportError:
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 
+from ansible_collections.amazon.aws.plugins.module_utils.iterators import chunks
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
@@ -331,6 +332,11 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_resulting_tag_limit,
     require_valid_tags,
 )
+
+# EC2 rejects more filter values per call, and more resource IDs per CreateFlowLogs call.
+MAX_FILTER_VALUES_PER_REQUEST = 200
+MAX_RESOURCE_IDS_PER_CREATE = 300
+MAX_TRANSIT_GATEWAY_RESOURCE_IDS_PER_CREATE = 25
 
 ABSENT_MATCH_FIELDS = (
     "deliver_cross_account_role",
@@ -425,21 +431,24 @@ def matching_flow_logs(module, flow_logs, desired):
 
 
 def get_flow_logs(client, module):
-    resource_ids = normalized_resource_ids(module)
-    request = {"Filter": ansible_dict_to_boto3_filter_list({"resource-id": resource_ids})}
+    flow_logs = []
+    for batch in chunks(normalized_resource_ids(module), MAX_FILTER_VALUES_PER_REQUEST):
+        flow_logs.extend(
+            query_list(
+                module,
+                client,
+                "describe_flow_logs",
+                "FlowLogs",
+                f"Unable to describe EC2 flow logs for resources {', '.join(batch)}",
+                Filter=ansible_dict_to_boto3_filter_list({"resource-id": batch}),
+            )
+        )
 
-    return query_list(
-        module,
-        client,
-        "describe_flow_logs",
-        "FlowLogs",
-        f"Unable to describe EC2 flow logs for resources {', '.join(resource_ids)}",
-        **request,
-    )
+    return flow_logs
 
 
 def delete_flow_logs(client, module, flow_log_ids, changed=False):
-    """Delete flow logs and return whether any were removed.
+    """Delete flow logs and return the IDs that were removed.
 
     changed reports whether resources were already modified, for failure results.
     """
@@ -458,14 +467,15 @@ def delete_flow_logs(client, module, flow_log_ids, changed=False):
         module.fail_json_aws(e, changed=changed, msg=f"Unable to delete EC2 flow logs {', '.join(flow_log_ids)}")
 
     failures = response.get("Unsuccessful", [])
-    removed = len(failures) < len(flow_log_ids)
+    failed_flow_log_ids = {failure.get("ResourceId") for failure in failures}
+    removed = [flow_log_id for flow_log_id in flow_log_ids if flow_log_id not in failed_flow_log_ids]
     unsuccessful = [
         failure for failure in failures if (failure.get("Error") or {}).get("Code") != "InvalidFlowLogId.NotFound"
     ]
 
     if unsuccessful:
         module.fail_json(
-            changed=changed or removed,
+            changed=changed or bool(removed),
             msg="Unable to delete one or more EC2 flow logs",
             unsuccessful=boto3_resource_list_to_ansible_dict(unsuccessful, transform_tags=False, force_tags=False),
         )
@@ -532,7 +542,7 @@ def ensure_absent(client, module):
     changed = bool(flow_log_ids)
 
     if changed and not module.check_mode:
-        changed = delete_flow_logs(client, module, flow_log_ids)
+        changed = bool(delete_flow_logs(client, module, flow_log_ids))
 
     module.exit_json(
         changed=changed,
@@ -662,56 +672,63 @@ def ensure_present(client, module):
                             )
                         )
 
-            request = dict(
-                desired,
-                resource_ids=missing_resource_ids,
-                resource_type=resource_type,
-            )
-            request = snake_dict_to_camel_dict(request, capitalize_first=True)
-            # One token per run makes SDK retries of a request that already succeeded idempotent.
-            request["ClientToken"] = str(uuid.uuid4())
-
+            tag_specifications = None
             if tags is not None:
                 tag_specifications = boto3_tag_specifications(tags, types="vpc-flow-log")
+
+            batch_size = MAX_RESOURCE_IDS_PER_CREATE
+            if resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
+                batch_size = MAX_TRANSIT_GATEWAY_RESOURCE_IDS_PER_CREATE
+
+            created_flow_log_ids = []
+            for batch in chunks(missing_resource_ids, batch_size):
+                request = dict(
+                    desired,
+                    resource_ids=batch,
+                    resource_type=resource_type,
+                )
+                request = snake_dict_to_camel_dict(request, capitalize_first=True)
+                # One token per request makes SDK retries of a request that already succeeded idempotent.
+                request["ClientToken"] = str(uuid.uuid4())
 
                 if tag_specifications is not None:
                     request["TagSpecifications"] = tag_specifications
 
-            try:
-                response = client.create_flow_logs(**request, aws_retry=True)
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to create EC2 flow logs for resources {', '.join(missing_resource_ids)}",
-                )
+                try:
+                    response = client.create_flow_logs(**request, aws_retry=True)
+                except (BotoCoreError, ClientError) as e:
+                    module.fail_json_aws(
+                        e,
+                        changed=modified,
+                        msg=f"Unable to create EC2 flow logs for resources {', '.join(batch)}",
+                    )
 
-            unsuccessful = response.get("Unsuccessful", [])
-            created_flow_log_ids = response.get("FlowLogIds", [])
+                unsuccessful = response.get("Unsuccessful", [])
+                batch_flow_log_ids = response.get("FlowLogIds", [])
 
-            if unsuccessful:
-                module.fail_json(
-                    changed=bool(created_flow_log_ids),
-                    msg="Unable to create EC2 flow logs for one or more resources",
-                    unsuccessful=boto3_resource_list_to_ansible_dict(
-                        unsuccessful, transform_tags=False, force_tags=False
-                    ),
-                )
+                if unsuccessful:
+                    module.fail_json(
+                        changed=modified or bool(batch_flow_log_ids),
+                        msg="Unable to create EC2 flow logs for one or more resources",
+                        unsuccessful=boto3_resource_list_to_ansible_dict(
+                            unsuccessful, transform_tags=False, force_tags=False
+                        ),
+                    )
 
-            # The create request succeeded, so AWS may have created flow logs.
-            modified = True
+                # The create request succeeded, so AWS may have created flow logs.
+                modified = True
 
-            if (
-                not isinstance(created_flow_log_ids, list)
-                or not created_flow_log_ids
-                or any(not isinstance(flow_log_id, str) or not flow_log_id for flow_log_id in created_flow_log_ids)
-            ):
-                module.fail_json(
-                    changed=modified,
-                    msg=(
-                        "AWS did not return valid created EC2 flow log IDs for resources "
-                        f"{', '.join(missing_resource_ids)}"
-                    ),
-                )
+                if (
+                    not isinstance(batch_flow_log_ids, list)
+                    or not batch_flow_log_ids
+                    or any(not isinstance(flow_log_id, str) or not flow_log_id for flow_log_id in batch_flow_log_ids)
+                ):
+                    module.fail_json(
+                        changed=modified,
+                        msg=f"AWS did not return valid created EC2 flow log IDs for resources {', '.join(batch)}",
+                    )
+
+                created_flow_log_ids.extend(batch_flow_log_ids)
 
             created_flow_logs = query_list(
                 module,
@@ -777,7 +794,12 @@ def ensure_present(client, module):
         if purge_flow_log_ids and not module.check_mode:
             purge_flow_log_ids = verified_purge(module, flow_logs, current, purge_flow_log_ids, changed=modified)
             if purge_flow_log_ids:
-                delete_flow_logs(client, module, purge_flow_log_ids, changed=modified)
+                purge_flow_log_ids = delete_flow_logs(client, module, purge_flow_log_ids, changed=modified)
+                modified = modified or bool(purge_flow_log_ids)
+
+    if not module.check_mode:
+        # Report only work AWS performed, such as flow logs that were already gone when deleted.
+        changed = modified
 
     flow_log_ids = [flow_log["FlowLogId"] for flow_log in current if flow_log.get("FlowLogId")]
 

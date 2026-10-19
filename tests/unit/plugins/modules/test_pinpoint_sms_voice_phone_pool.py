@@ -367,6 +367,36 @@ def test_check_mode_projects_new_pool_identity_and_name_tag():
     client.create_pool.assert_not_called()
 
 
+PHONE_ARN = "arn:aws:sms-voice:us-east-1:123456789012:phone-number/phone-1"
+SENDER_ARN = "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US"
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("origination_identity", "expected"),
+    [
+        (PHONE_ARN, {"origination_identity": "phone-1", "origination_identity_arn": PHONE_ARN}),
+        (SENDER_ARN, {"origination_identity": SENDER_ARN}),
+        ("phone-1", {"origination_identity": "phone-1"}),
+    ],
+    ids=["phone-number-arn", "sender-id-arn", "id"],
+)
+def test_new_pool_predicts_listed_origination_identity(check_mode, origination_identity, expected):
+    client = Mock()
+    client.create_pool.return_value = {"MessageType": "TRANSACTIONAL", "PoolId": "pool-2", "Status": "CREATING"}
+    module = create_params(origination_identity, check_mode=check_mode)
+    with (
+        patch.object(plugin, "find_pool", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"]
+    assert raised.value.values["pool"]["origination_identities"] == [expected]
+    assert client.create_pool.called is not check_mode
+
+
 def test_check_mode_preserves_existing_empty_pool_identities():
     current = {
         "DeletionProtectionEnabled": False,
@@ -518,6 +548,24 @@ def test_deleting_pool_stops_activation_wait():
         plugin.wait_for_pool_active(Mock(), module, "pool-1")
 
     assert raised.value.values["status"] == "DELETING"
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_present_activation_wait_fails_when_the_pool_disappears(changed):
+    module = FakeModule({"state": "present", "wait_delay": 1, "wait_timeout": 10})
+    with (
+        patch.object(plugin.time, "monotonic", side_effect=[0, 1]),
+        patch.object(plugin.time, "sleep") as sleep,
+        patch.object(plugin, "describe_pools", return_value=[]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.wait_for_pool_active(Mock(), module, "pool-1", changed=changed)
+
+    assert raised.value.values["changed"] is changed
+    assert raised.value.values["msg"] == (
+        "AWS End User Messaging SMS phone pool pool-1 was deleted while waiting for it to become active"
+    )
+    sleep.assert_not_called()
 
 
 def test_absent_activation_wait_accepts_external_deletion():

@@ -396,6 +396,21 @@ def pool_with_tags(client, module, pool, changed=False, missing_ok=False):
     return pool
 
 
+def predicted_origination_identity(module):
+    """Project the new pool's origination identity as ListPoolOriginationIdentities returns it."""
+    origination_identity = module.params["origination_identity"]
+    identity = {
+        "IsoCountryCode": module.params["iso_country_code"],
+        "OriginationIdentity": origination_identity,
+    }
+    # A phone number is listed by its ID; a sender ID ARN ends with its country, so it is kept as given.
+    if origination_identity.startswith("arn:") and ":phone-number/" in origination_identity:
+        identity["OriginationIdentity"] = origination_identity.rsplit("/", 1)[-1]
+        identity["OriginationIdentityArn"] = origination_identity
+
+    return scrub_none_parameters(identity)
+
+
 def select_pool_by_id(module, pools, pool_id, changed=False):
     if not pools:
         return None
@@ -434,10 +449,16 @@ def wait_for_pool_active(client, module, pool_id, changed=False):
     while time.monotonic() < deadline:
         pools = describe_pools(client, module, changed=changed, PoolIds=[pool_id])
         pool = select_pool_by_id(module, pools, pool_id, changed=changed)
-        if pool is None and module.params.get("state") == "absent":
-            return {}
+        if pool is None:
+            if module.params.get("state") == "absent":
+                return {}
 
-        pool = pool or {}
+            module.fail_json(
+                changed=changed,
+                msg=f"AWS End User Messaging SMS phone pool {pool_id} was deleted while waiting for it to become active",
+                pool_id=pool_id,
+            )
+
         status = pool.get("Status")
 
         if status == "ACTIVE":
@@ -712,14 +733,7 @@ def ensure_present(client, module):
 
             validate_pool(module, current, "creating a pool", changed=True)
             current.pop("ResponseMetadata", None)
-            current["OriginationIdentities"] = [
-                scrub_none_parameters(
-                    {
-                        "OriginationIdentity": module.params["origination_identity"],
-                        "IsoCountryCode": module.params["iso_country_code"],
-                    }
-                )
-            ]
+            current["OriginationIdentities"] = [predicted_origination_identity(module)]
             current["Tags"] = request["Tags"]
             tags_to_set, tag_keys_to_unset = ({}, [])
         else:
@@ -791,14 +805,7 @@ def ensure_present(client, module):
             current["DeletionProtectionEnabled"] = False
 
         if new_pool:
-            current["OriginationIdentities"] = [
-                scrub_none_parameters(
-                    {
-                        "OriginationIdentity": module.params["origination_identity"],
-                        "IsoCountryCode": module.params["iso_country_code"],
-                    }
-                )
-            ]
+            current["OriginationIdentities"] = [predicted_origination_identity(module)]
 
         current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
 

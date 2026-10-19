@@ -464,10 +464,20 @@ def wait_for_phone_number_active(client, module, phone_number_id, tags=None, cha
 
     while time.monotonic() < deadline:
         found_phone_number = get_phone_number(client, module, phone_number_id, changed=changed)
-        if found_phone_number is None and module.params.get("state") == "absent":
-            return {}
+        if found_phone_number is None:
+            if module.params.get("state") == "absent":
+                return {}
 
-        phone_number = found_phone_number or {}
+            module.fail_json(
+                changed=changed,
+                msg=(
+                    f"AWS End User Messaging SMS phone number {phone_number_id} "
+                    "was released while waiting for it to become active"
+                ),
+                phone_number_id=phone_number_id,
+            )
+
+        phone_number = found_phone_number
         status = phone_number.get("Status")
 
         if status == "ACTIVE":

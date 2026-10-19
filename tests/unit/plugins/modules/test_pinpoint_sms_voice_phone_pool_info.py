@@ -39,6 +39,34 @@ def test_ids_do_not_send_the_implicit_owner():
     query_list.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("ids", "expected"),
+    [
+        (
+            ["pool-1", "arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1", "pool-2"],
+            ["arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1", "pool-2"],
+        ),
+        (
+            ["arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1", "pool-1"],
+            ["arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1"],
+        ),
+    ],
+)
+def test_ids_and_arns_of_one_resource_are_described_once(ids, expected):
+    module = FakeModule({"filters": None, "max_results": None, "owner": None, "pool_ids": ids})
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "paginated_query_with_retries", return_value={"Pools": []}) as query,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()
+
+    assert [query_call.kwargs for query_call in query.call_args_list] == [
+        {"PoolIds": [identifier]} for identifier in expected
+    ]
+
+
 def test_missing_ids_are_omitted_from_results():
     missing = plugin.ClientError(
         {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},

@@ -1,0 +1,19 @@
+---
+bugfixes:
+  - ec2_flow_log - split resource ID filters into describe requests of at most 200 values, which EC2
+    requires, and create flow logs in requests of at most 25 transit gateway resources or 300 other
+    resources, each with its own client token.
+  - ec2_flow_log - report only the flow logs that were actually deleted in ``deleted_flow_log_ids``, and
+    report ``changed=false`` when every superseded flow log was already gone and nothing else changed.
+  - pinpoint_sms_voice_phone_number - fail immediately when the phone number is released while waiting
+    for it to become active instead of waiting until ``wait_timeout``.
+  - pinpoint_sms_voice_phone_number_info - describe a phone number given as both an ID and an ARN only
+    once.
+  - pinpoint_sms_voice_phone_pool - fail immediately when the pool is deleted while waiting for it to
+    become active instead of waiting until ``wait_timeout``.
+  - pinpoint_sms_voice_phone_pool - return the phone number ID and ARN in ``origination_identities`` for a
+    new pool created from a phone number ARN without waiting or in check mode, as AWS lists them.
+  - pinpoint_sms_voice_phone_pool_info - describe a pool given as both an ID and an ARN only once.
+  - ssm_association - reject an empty ``targets`` list before calling AWS, which SSM does not accept.
+  - wafv2_web_acl_logging - report ``changed=false`` when the logging configuration is deleted elsewhere
+    after it is read.

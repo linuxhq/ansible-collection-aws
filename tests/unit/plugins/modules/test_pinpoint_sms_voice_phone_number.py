@@ -341,6 +341,24 @@ def test_deleted_number_stops_activation_wait():
     assert raised.value.values["status"] == "DELETED"
 
 
+@pytest.mark.parametrize("changed", [False, True])
+def test_present_activation_wait_fails_when_the_number_disappears(changed):
+    module = FakeModule({"state": "present", "tags": None, "wait_delay": 1, "wait_timeout": 10})
+    with (
+        patch.object(plugin.time, "monotonic", side_effect=[0, 1]),
+        patch.object(plugin.time, "sleep") as sleep,
+        patch.object(plugin, "get_phone_number", return_value=None),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.wait_for_phone_number_active(Mock(), module, "phone-1", changed=changed)
+
+    assert raised.value.values["changed"] is changed
+    assert raised.value.values["msg"] == (
+        "AWS End User Messaging SMS phone number phone-1 was released while waiting for it to become active"
+    )
+    sleep.assert_not_called()
+
+
 def test_absent_activation_wait_does_not_fetch_tags():
     client = Mock()
     module = FakeModule(

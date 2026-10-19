@@ -216,13 +216,13 @@ def test_get_rejects_malformed_response(response):
     assert "unexpected logging configuration response" in raised.value.values["msg"]
 
 
-def test_absent_tolerates_configuration_disappearing_during_delete():
+def test_absent_reports_no_change_when_configuration_disappears_during_delete():
     client = Mock()
     client.delete_logging_configuration.side_effect = nonexistent("DeleteLoggingConfiguration")
     with patch.object(plugin, "get_logging_configuration", return_value={}), pytest.raises(ModuleExit) as raised:
         plugin.ensure_absent(client, FakeModule(params(state="absent")))
 
-    assert raised.value.values["changed"]
+    assert not raised.value.values["changed"]
 
 
 def test_absent_reports_no_change_for_a_missing_web_acl():
