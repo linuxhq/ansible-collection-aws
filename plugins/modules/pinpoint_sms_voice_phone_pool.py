@@ -445,20 +445,24 @@ def wait_for_pool_active(client, module, pool_id, changed=False):
     """Wait for a pool; changed reports whether the pool was already modified, for failure results."""
     deadline = time.monotonic() + module.params["wait_timeout"]
     pool = {}
+    seen = False
 
     while time.monotonic() < deadline:
         pools = describe_pools(client, module, changed=changed, PoolIds=[pool_id])
         pool = select_pool_by_id(module, pools, pool_id, changed=changed)
-        if pool is None:
-            if module.params.get("state") == "absent":
-                return {}
+        if pool is None and module.params.get("state") == "absent":
+            return {}
 
+        # A pool missing before it is first seen may not be visible yet, so only a later absence is a deletion.
+        if pool is None and seen:
             module.fail_json(
                 changed=changed,
                 msg=f"AWS End User Messaging SMS phone pool {pool_id} was deleted while waiting for it to become active",
                 pool_id=pool_id,
             )
 
+        seen = seen or pool is not None
+        pool = pool or {}
         status = pool.get("Status")
 
         if status == "ACTIVE":

@@ -551,12 +551,12 @@ def test_deleting_pool_stops_activation_wait():
 
 
 @pytest.mark.parametrize("changed", [False, True])
-def test_present_activation_wait_fails_when_the_pool_disappears(changed):
+def test_present_activation_wait_fails_when_a_seen_pool_disappears(changed):
     module = FakeModule({"state": "present", "wait_delay": 1, "wait_timeout": 10})
     with (
-        patch.object(plugin.time, "monotonic", side_effect=[0, 1]),
+        patch.object(plugin.time, "monotonic", side_effect=[0, 1, 1, 1]),
         patch.object(plugin.time, "sleep") as sleep,
-        patch.object(plugin, "describe_pools", return_value=[]),
+        patch.object(plugin, "describe_pools", side_effect=[[{"PoolId": "pool-1", "Status": "CREATING"}], []]),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.wait_for_pool_active(Mock(), module, "pool-1", changed=changed)
@@ -565,7 +565,19 @@ def test_present_activation_wait_fails_when_the_pool_disappears(changed):
     assert raised.value.values["msg"] == (
         "AWS End User Messaging SMS phone pool pool-1 was deleted while waiting for it to become active"
     )
-    sleep.assert_not_called()
+    sleep.assert_called_once()
+
+
+def test_present_activation_wait_polls_until_a_new_pool_is_visible():
+    module = FakeModule({"state": "present", "tags": None, "wait_delay": 1, "wait_timeout": 10})
+    with (
+        patch.object(plugin.time, "monotonic", side_effect=[0, 1, 1, 1]),
+        patch.object(plugin.time, "sleep"),
+        patch.object(plugin, "describe_pools", side_effect=[[], [{"PoolId": "pool-1", "Status": "ACTIVE"}]]),
+    ):
+        result = plugin.wait_for_pool_active(Mock(), module, "pool-1")
+
+    assert result["Status"] == "ACTIVE"
 
 
 def test_absent_activation_wait_accepts_external_deletion():
