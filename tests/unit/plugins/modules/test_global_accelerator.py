@@ -1,18 +1,26 @@
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import pytest
 from botocore.exceptions import WaiterError
 
 from ansible_collections.amazon.aws.plugins.module_utils.retries import RetryingBotoClientWrapper
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import wait as wait_utils
 from ansible_collections.linuxhq.aws.plugins.modules import global_accelerator as plugin
+from ansible_collections.linuxhq.aws.tests.unit.plugins.modules import utils
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    FakeModule,
     ModuleExit,
     ModuleFail,
     assert_module_contract,
     assert_module_rejects,
 )
+
+
+class FakeModule(utils.FakeModule):
+    """Supply the wait bounds that the argument spec always sets, unless a test overrides them."""
+
+    def __init__(self, params, **kwargs):
+        super().__init__(dict({"wait_delay": 10, "wait_timeout": 600}, **params), **kwargs)
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -37,7 +45,7 @@ def test_listener_consolidation_releases_conflicting_ports_first(check_mode):
     remaining = {item["listener_arn"]: item["port_ranges"] for item in current}
     operations = []
 
-    def delete(c, m, accelerator_arn, arn, changed=False):
+    def delete(c, m, accelerator_arn, arn, changed=False, deadline=None):
         remaining.pop(arn)
         operations.append(("delete", arn))
 
@@ -340,7 +348,9 @@ def test_update_waits_for_deployment_and_rechecks_desired_state():
     ):
         plugin.ensure_present(client, module)
 
-    wait_for_accelerator.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed")
+    wait_for_accelerator.assert_called_once_with(
+        client, module, "arn:accelerator", "accelerator_deployed", deadline=ANY
+    )
     assert not raised.value.values["changed"]
     client.update_accelerator.assert_not_called()
 
@@ -839,11 +849,15 @@ def test_absent_waits_for_prerequisites_when_wait_is_disabled():
     ):
         plugin.ensure_absent(client, module)
 
-    delete_listener.assert_called_once_with(client, module, "arn:accelerator", "arn:listener", changed=False)
+    delete_listener.assert_called_once_with(
+        client, module, "arn:accelerator", "arn:listener", changed=False, deadline=ANY
+    )
     assert wait_for_accelerator.call_count == 2
+    # The listener deletion and both prerequisite waits share one wait_timeout budget.
+    deadline = delete_listener.call_args.kwargs["deadline"]
     for call in wait_for_accelerator.call_args_list:
         assert call.args == (client, module, "arn:accelerator", "accelerator_deployed")
-        assert call.kwargs == {"changed": True}
+        assert call.kwargs == {"changed": True, "deadline": deadline}
 
     client.delete_accelerator.assert_called_once_with(AcceleratorArn="arn:accelerator", aws_retry=True)
 
@@ -865,7 +879,7 @@ def test_listener_deletion_waits_for_endpoint_group_deletion():
 
     delete_endpoint_group.assert_called_once_with(client, module, "arn:group", changed=False)
     wait_for_accelerator.assert_called_once_with(
-        client, module, "arn:accelerator", "accelerator_deployed", changed=True
+        client, module, "arn:accelerator", "accelerator_deployed", changed=True, deadline=ANY
     )
     client.delete_listener.assert_called_once_with(ListenerArn="arn:listener", aws_retry=True)
     require.assert_called_once_with(
@@ -908,7 +922,7 @@ def test_listener_creation_waits_before_endpoint_groups():
         plugin.ensure_listeners(client, module, "arn:accelerator")
 
     wait_for_accelerator.assert_called_once_with(
-        client, module, "arn:accelerator", "accelerator_deployed", changed=True
+        client, module, "arn:accelerator", "accelerator_deployed", changed=True, deadline=ANY
     )
 
 
@@ -954,9 +968,9 @@ def test_listener_replacement_retries_after_freeing_quota():
     assert client.create_listener.call_count == 2
     first, second = client.create_listener.call_args_list
     assert first.kwargs["IdempotencyToken"] == second.kwargs["IdempotencyToken"]
-    delete_listener.assert_called_once_with(client, module, "arn:accelerator", "arn:old", changed=False)
+    delete_listener.assert_called_once_with(client, module, "arn:accelerator", "arn:old", changed=False, deadline=ANY)
     wait_for_accelerator.assert_called_once_with(
-        client, module, "arn:accelerator", "accelerator_deployed", changed=True
+        client, module, "arn:accelerator", "accelerator_deployed", changed=True, deadline=ANY
     )
 
 
@@ -994,7 +1008,7 @@ def test_accelerator_creation_waits_before_listeners():
         plugin.ensure_present(client, module)
 
     wait_for_accelerator.assert_called_once_with(
-        client, module, "arn:accelerator", "accelerator_deployed", changed=True
+        client, module, "arn:accelerator", "accelerator_deployed", changed=True, deadline=ANY
     )
     assert require.call_args.args[3] == {
         "create_accelerator": (
@@ -1286,7 +1300,7 @@ def test_unchanged_accelerator_waits_for_requested_readiness(wait, check_mode):
     assert result.value.values["accelerator"]["status"] == ("DEPLOYED" if should_wait else "IN_PROGRESS")
     assert read.call_count == (2 if should_wait else 1)
     if should_wait:
-        waiter.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed")
+        waiter.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed", deadline=ANY)
     else:
         waiter.assert_not_called()
 
@@ -2060,3 +2074,48 @@ def test_tag_limit_allows_up_to_fifty_user_tags(check_mode, current_tags, new_ta
     else:
         tagger.assert_called_once()
         client.update_accelerator.assert_called_once()
+
+
+def run_recheck_and_update_waits(monotonic, waiter_results):
+    """Run ensure_present for a deploying accelerator that must then be enabled and deployed again."""
+    client = Mock()
+    client.update_accelerator.return_value = {"Accelerator": deployed_accelerator(Status="IN_PROGRESS")}
+    waiter = Mock()
+    waiter.wait.side_effect = waiter_results
+    module = FakeModule(accelerator_params(enabled=True, wait=True, wait_timeout=600))
+    with (
+        patch.object(
+            plugin,
+            "get_accelerator",
+            side_effect=[
+                deployed_accelerator(Enabled=False, Status="IN_PROGRESS"),
+                deployed_accelerator(Enabled=False),
+            ],
+        ),
+        patch.object(plugin, "get_accelerator_by_arn", return_value=deployed_accelerator()),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "custom_waiter", return_value=waiter),
+        patch.object(wait_utils.time, "monotonic", side_effect=monotonic),
+        pytest.raises(utils.ModuleResult) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    return raised.value, waiter
+
+
+def test_sequential_waits_share_one_wait_timeout_budget():
+    # The wait before the accelerator is checked again and the final deployment wait share 600s.
+    result, waiter = run_recheck_and_update_waits([100, 100, 400], [None, None])
+
+    assert isinstance(result, ModuleExit)
+    assert [wait_call.kwargs["WaiterConfig"] for wait_call in waiter.wait.call_args_list] == [
+        wait_utils.custom_waiter_config(timeout, default_pause=10) for timeout in (600, 300)
+    ]
+
+
+def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
+    result, waiter = run_recheck_and_update_waits([100, 100, 701], [None])
+
+    waiter.wait.assert_called_once()
+    assert isinstance(result, ModuleFail)
+    assert result.values == {"changed": True, "msg": "Timed out waiting for AWS Global Accelerator arn:accelerator"}

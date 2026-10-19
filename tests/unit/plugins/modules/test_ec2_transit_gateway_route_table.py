@@ -6,13 +6,20 @@ import yaml
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import tags as tag_utils
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_transit_gateway_route_table as plugin
+from ansible_collections.linuxhq.aws.tests.unit.plugins.modules import utils
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    FakeModule,
     ModuleExit,
     ModuleFail,
     assert_module_contract,
     assert_module_rejects,
 )
+
+
+class FakeModule(utils.FakeModule):
+    """Supply the wait bounds that the argument spec always sets, unless a test overrides them."""
+
+    def __init__(self, params, **kwargs):
+        super().__init__(dict({"wait_delay": 5, "wait_timeout": 600}, **params), **kwargs)
 
 
 @pytest.mark.parametrize("code", ["InvalidRoute.NotFound", "InvalidRouteTableID.NotFound"])
@@ -322,7 +329,7 @@ def test_new_table_waits_before_routes_when_final_wait_is_disabled():
     ):
         plugin.ensure_present(client, module)
 
-    wait.assert_called_once_with(client, module, "tgw-rtb-1", {"available"}, changed=True)
+    wait.assert_called_once_with(client, module, "tgw-rtb-1", {"available"}, changed=True, deadline=ANY)
 
 
 def test_absent_waits_for_pending_table_when_final_wait_is_disabled():
@@ -350,7 +357,7 @@ def test_absent_waits_for_pending_table_when_final_wait_is_disabled():
     ):
         plugin.ensure_absent(client, module)
 
-    wait_for_route_table.assert_called_once_with(client, module, "tgw-rtb-1", {"available"})
+    wait_for_route_table.assert_called_once_with(client, module, "tgw-rtb-1", {"available"}, deadline=ANY)
     client.delete_transit_gateway_route_table.assert_called_once_with(
         TransitGatewayRouteTableId="tgw-rtb-1", aws_retry=True
     )
@@ -401,7 +408,7 @@ def test_deleting_route_waits_before_recreation_when_final_wait_is_disabled():
     ):
         plugin.ensure_present(client, module)
 
-    wait.assert_called_once_with(client, module, "tgw-rtb-1", "10.0.0.0/8", changed=False)
+    wait.assert_called_once_with(client, module, "tgw-rtb-1", "10.0.0.0/8", changed=False, deadline=ANY)
     client.create_transit_gateway_route.assert_called_once()
 
 
@@ -580,7 +587,9 @@ def test_purge_removes_only_undesired_static_routes():
         plugin.ensure_present(client, module)
 
     assert raised.value.values["changed"]
-    remove.assert_called_once_with(client, module, "tgw-rtb-1", "192.0.2.0/24", stale_route, changed=False)
+    remove.assert_called_once_with(
+        client, module, "tgw-rtb-1", "192.0.2.0/24", stale_route, changed=False, deadline=ANY
+    )
     static_routes.assert_called_once()
     assert [route["destination_cidr_block"] for route in raised.value.values["routes"]] == ["10.0.0.0/8"]
 
@@ -620,7 +629,9 @@ def test_purge_skips_prefix_list_references():
         plugin.ensure_present(client, module)
 
     assert raised.value.values["changed"]
-    remove.assert_called_once_with(client, module, "tgw-rtb-1", "192.0.2.0/24", stale_route, changed=False)
+    remove.assert_called_once_with(
+        client, module, "tgw-rtb-1", "192.0.2.0/24", stale_route, changed=False, deadline=ANY
+    )
 
 
 def test_tgw_absence_waits_until_deleting_route_disappears():
@@ -823,7 +834,7 @@ def test_empty_routes_purge_every_static_route():
 
     assert result.value.values["changed"] is True
     assert result.value.values["routes"] == []
-    remove.assert_called_once_with(ANY, module, "tgw-rtb-1", "192.0.2.0/24", stale, changed=False)
+    remove.assert_called_once_with(ANY, module, "tgw-rtb-1", "192.0.2.0/24", stale, changed=False, deadline=ANY)
 
 
 def test_route_table_id_must_belong_to_transit_gateway():
@@ -1266,3 +1277,41 @@ def test_resulting_tag_limit_counts_the_name_tag_before_any_write(check_mode):
     client.create_tags.assert_not_called()
     client.delete_tags.assert_not_called()
     client.create_transit_gateway_route.assert_not_called()
+
+
+def test_route_waits_share_one_wait_timeout_budget():
+    # The first route settles after 8 of 10 seconds, so the second route has only 2 seconds left.
+    clock = {"now": 0}
+
+    def sleep(seconds):
+        clock["now"] += seconds
+
+    def get_route(client, module, transit_gateway_route_table_id, destination_cidr_block, changed=False):
+        settled = destination_cidr_block == "10.0.0.0/24" and clock["now"] >= 8
+        return {
+            "DestinationCidrBlock": destination_cidr_block,
+            "State": "active" if settled else "pending",
+            "TransitGatewayAttachments": [{"TransitGatewayAttachmentId": "tgw-attach-1"}],
+            "Type": "static",
+        }
+
+    routes = [
+        {"destination_cidr_block": cidr, "transit_gateway_attachment_id": "tgw-attach-1"}
+        for cidr in ("10.0.0.0/24", "10.0.1.0/24")
+    ]
+    module = FakeModule(
+        dict(present_params(purge_routes=False, routes=routes, wait=True), wait_delay=1, wait_timeout=10)
+    )
+    table = {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "get_route", side_effect=get_route),
+        patch.object(plugin.time, "monotonic", side_effect=lambda: clock["now"]),
+        patch.object(plugin.time, "sleep", side_effect=sleep),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    assert raised.value.values["msg"] == "Timed out waiting for EC2 transit gateway route 10.0.1.0/24 to become active"
+    assert raised.value.values["changed"] is False
+    assert clock["now"] == 10

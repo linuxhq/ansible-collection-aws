@@ -1,4 +1,4 @@
-from unittest.mock import Mock, call, patch
+from unittest.mock import ANY, Mock, call, patch
 
 import pytest
 from botocore.exceptions import WaiterError
@@ -6,12 +6,19 @@ from botocore.session import Session
 from botocore.stub import Stubber
 
 from ansible_collections.linuxhq.aws.plugins.modules import eks_cluster as plugin
+from ansible_collections.linuxhq.aws.tests.unit.plugins.modules import utils
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    FakeModule,
     ModuleExit,
     ModuleFail,
     assert_module_contract,
 )
+
+
+class FakeModule(utils.FakeModule):
+    """Supply the wait bounds that the argument spec always sets, unless a test overrides them."""
+
+    def __init__(self, params, **kwargs):
+        super().__init__(dict({"wait_delay": 15, "wait_timeout": 1200}, **params), **kwargs)
 
 
 def test_sdk_validation_starts_with_lookup_only():
@@ -133,7 +140,7 @@ def test_absent_tolerates_cluster_disappearing_during_delete():
     ):
         plugin.ensure_absent(client, module)
 
-    wait_for_updates.assert_called_once_with(client, module)
+    wait_for_updates.assert_called_once_with(client, module, deadline=ANY)
     require.assert_called_once_with(module, client, "EKS", {"delete_cluster": ("name",)})
     assert raised.value.values["changed"] is False
     assert raised.value.values["cluster"] == {}
@@ -376,7 +383,7 @@ def test_vpc_endpoint_and_network_changes_use_separate_updates():
         call(module, client, "EKS", {"describe_update": ("name", "updateId")}),
     ]
     assert nested.call_count == 2
-    wait_for_update.assert_called_once_with(client, module, "update-1", changed=True)
+    wait_for_update.assert_called_once_with(client, module, "update-1", changed=True, deadline=ANY)
     assert raised.value.values["cluster"]["resources_vpc_config"] == {
         "endpoint_public_access": False,
         "subnet_ids": ["subnet-new"],
@@ -542,7 +549,7 @@ def test_no_wait_change_waits_for_active_cluster_and_rechecks_state():
     ):
         plugin.ensure_present(client, module)
 
-    wait_for_cluster.assert_called_once_with(client, module, "cluster_active")
+    wait_for_cluster.assert_called_once_with(client, module, "cluster_active", deadline=ANY)
     client.update_cluster_config.assert_not_called()
     assert not raised.value.values["changed"]
 
@@ -584,7 +591,7 @@ def test_deleting_cluster_waits_then_recreates():
     ):
         plugin.ensure_present(client, module)
 
-    wait_for_cluster.assert_called_once_with(client, module, "cluster_deleted")
+    wait_for_cluster.assert_called_once_with(client, module, "cluster_deleted", deadline=ANY)
     assert require.call_args.args[3] == {
         "create_cluster": (
             "resourcesVpcConfig",
@@ -1589,7 +1596,7 @@ def test_absent_with_wait_returns_an_empty_cluster_after_deletion():
     )
 
     client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
-    wait_for_cluster.assert_called_once_with(client, module, "cluster_deleted", changed=True)
+    wait_for_cluster.assert_called_once_with(client, module, "cluster_deleted", changed=True, deadline=ANY)
     assert result["changed"] is True
     assert result["cluster"] == {}
 
@@ -1756,3 +1763,154 @@ def test_enabling_auto_mode_on_a_standard_cluster_sends_every_capability():
         kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
         storageConfig={"blockStorage": {"enabled": True}},
     )
+
+
+def fake_clock():
+    """Return a clock whose sleep and waiter calls advance it, and the patches that install it."""
+    clock = {"now": 0}
+
+    def sleep(seconds):
+        clock["now"] += seconds
+
+    return clock, (
+        patch.object(plugin.time, "monotonic", side_effect=lambda: clock["now"]),
+        patch.object(plugin.time, "sleep", side_effect=sleep),
+    )
+
+
+def test_update_waits_share_one_wait_timeout_budget():
+    # The first update takes 30 of 100 seconds and the cluster 20 more, so the second update has 50 left.
+    clock, clock_patches = fake_clock()
+    client = Mock()
+    client.update_cluster_config.side_effect = [
+        {"update": {"id": "update-1", "status": "InProgress"}},
+        {"update": {"id": "update-2", "status": "InProgress"}},
+    ]
+    attempts = []
+
+    def wait(name, WaiterConfig):
+        attempts.append(WaiterConfig["MaxAttempts"])
+        clock["now"] += 20
+
+    client.get_waiter.return_value = Mock(wait=Mock(side_effect=wait))
+
+    def describe_update(client, module, update_id, changed=False):
+        succeeded = update_id == "update-1" and clock["now"] >= 30
+        return {"id": update_id, "status": "Successful" if succeeded else "InProgress"}
+
+    module = FakeModule(
+        eks_params(
+            resources_vpc_config={"endpoint_public_access": False, "subnet_ids": ["subnet-new"]},
+            wait=True,
+            wait_delay=10,
+            wait_timeout=100,
+        )
+    )
+    current = {
+        "arn": "arn:example",
+        "name": "example",
+        "resourcesVpcConfig": {"endpointPublicAccess": True, "subnetIds": ["subnet-old"]},
+        "status": "ACTIVE",
+    }
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "describe_update", side_effect=describe_update),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        clock_patches[0],
+        clock_patches[1],
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "Timed out waiting for AWS EKS cluster update update-2 for example"
+    assert raised.value.values["changed"] is True
+    # The cluster waiter keeps its attempts arithmetic, bounded by the 70 seconds left after the first update.
+    assert attempts == [8]
+    assert clock["now"] == 100
+
+
+def test_recreating_a_deleting_cluster_shares_one_wait_timeout_budget():
+    clock, clock_patches = fake_clock()
+    attempts = []
+
+    def wait(name, WaiterConfig):
+        attempts.append(WaiterConfig["MaxAttempts"])
+        clock["now"] += 60
+
+    client = Mock(get_waiter=Mock(return_value=Mock(wait=Mock(side_effect=wait))))
+    client.create_cluster.return_value = {"cluster": {"arn": "arn:example", "name": "example", "status": "CREATING"}}
+    module = FakeModule(
+        eks_params(
+            resources_vpc_config={"subnet_ids": ["subnet-1"]},
+            role_arn="arn:role",
+            wait=True,
+            wait_delay=10,
+            wait_timeout=100,
+        )
+    )
+    active = {"arn": "arn:example", "name": "example", "status": "ACTIVE"}
+    with (
+        patch.object(plugin, "describe_cluster", side_effect=[{"name": "example", "status": "DELETING"}, None, active]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        clock_patches[0],
+        clock_patches[1],
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
+
+    assert [waiter_call.args[0] for waiter_call in client.get_waiter.call_args_list] == [
+        "cluster_deleted",
+        "cluster_active",
+    ]
+    # Waiting out the deletion leaves 40 of 100 seconds for the new cluster.
+    assert attempts == [11, 5]
+
+
+def test_an_exhausted_wait_timeout_budget_fails_the_cluster_wait():
+    waiter = Mock()
+    module = FakeModule({"name": "example", "wait_delay": 10, "wait_timeout": 100})
+    with patch.object(plugin.time, "monotonic", return_value=101), pytest.raises(ModuleFail) as raised:
+        plugin.wait_for_cluster(
+            Mock(get_waiter=Mock(return_value=waiter)), module, "cluster_active", changed=True, deadline=100.5
+        )
+
+    waiter.wait.assert_not_called()
+    assert raised.value.values == {
+        "changed": True,
+        "msg": "Unable to wait for AWS EKS cluster example to become active",
+    }
+
+
+def test_absent_waits_share_one_wait_timeout_budget():
+    clock, clock_patches = fake_clock()
+    attempts = []
+
+    def wait(name, WaiterConfig):
+        attempts.append(WaiterConfig["MaxAttempts"])
+        clock["now"] += 30
+
+    client = Mock(get_waiter=Mock(return_value=Mock(wait=Mock(side_effect=wait))))
+    module = FakeModule({"name": "example", "wait": True, "wait_delay": 10, "wait_timeout": 100})
+    updating = {"arn": "arn:example", "name": "example", "status": "UPDATING"}
+    with (
+        patch.object(plugin, "describe_cluster", side_effect=[updating, dict(updating, status="ACTIVE")]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "paginated_query_with_retries", return_value={"updateIds": ["update-1"]}),
+        patch.object(
+            plugin,
+            "describe_update",
+            side_effect=lambda client, module, update_id, changed=False: {
+                "id": update_id,
+                "status": "Successful" if clock["now"] >= 50 else "InProgress",
+            },
+        ),
+        clock_patches[0],
+        clock_patches[1],
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_absent(client, module)
+
+    # 30 seconds for the cluster to become active and 20 for its update leave 50 seconds for the deletion.
+    assert attempts == [11, 6]
