@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_placement_group_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -84,12 +85,62 @@ def test_group_ids_are_matched_locally():
     assert require_client_methods.call_args.args[3] == {"describe_placement_groups": ()}
 
 
+def not_found(code):
+    return ClientError({"Error": {"Code": code, "Message": "unknown"}}, "DescribePlacementGroups")
+
+
 @pytest.mark.parametrize("overrides", [{"group_ids": ["pg-missing"]}, {"group_names": ["missing"]}])
 def test_missing_groups_return_an_empty_list(overrides):
     groups = [] if "group_names" in overrides else GROUPS
-    result, _require, _query = run(FakeModule(params(**overrides), client=Mock()), groups)
+    client = Mock()
+    client.describe_placement_groups.side_effect = not_found("InvalidParameterValue")
+    result, _require, _query = run(FakeModule(params(**overrides), client=client), groups)
 
     assert result.values["placement_groups"] == []
+
+
+def test_shared_group_ids_are_described_by_id_one_at_a_time():
+    shared = {"GroupId": "pg-shared", "GroupName": "shared", "State": "available", "Strategy": "cluster"}
+    client = Mock()
+    client.describe_placement_groups.side_effect = [
+        not_found("InvalidPlacementGroup.Unknown"),
+        {"PlacementGroups": [shared]},
+        not_found("InvalidParameterValue"),
+    ]
+    module = FakeModule(
+        params(group_ids=["pg-missing", "pg-2", "pg-shared", "bad"], filters={"strategy": "cluster"}), client=client
+    )
+    result, require_client_methods, _query = run(module, GROUPS)
+
+    assert [group["group_id"] for group in result.values["placement_groups"]] == ["pg-2", "pg-shared"]
+    assert [call.kwargs for call in client.describe_placement_groups.call_args_list] == [
+        {
+            "GroupIds": [group_id],
+            "Filters": [{"Name": "strategy", "Values": ["cluster"]}],
+            "aws_retry": True,
+        }
+        for group_id in ["pg-missing", "pg-shared", "bad"]
+    ]
+    assert require_client_methods.call_args.args[3] == {"describe_placement_groups": ("Filters", "GroupIds")}
+
+
+def test_shared_group_ids_keep_the_group_name_filter():
+    client = Mock()
+    client.describe_placement_groups.return_value = {"PlacementGroups": []}
+    result, _require, _query = run(
+        FakeModule(params(group_ids=["pg-shared"], group_names=["other"]), client=client), []
+    )
+
+    assert result.values["placement_groups"] == []
+    assert client.describe_placement_groups.call_args.kwargs["Filters"] == [{"Name": "group-name", "Values": ["other"]}]
+
+
+def test_shared_group_describe_failure_names_the_group():
+    client = Mock()
+    client.describe_placement_groups.side_effect = not_found("UnauthorizedOperation")
+    result, _require, _query = run(FakeModule(params(group_ids=["pg-shared"]), client=client), [])
+
+    assert result.values["msg"] == "Unable to describe EC2 placement group pg-shared"
 
 
 def test_tags_keep_their_case():

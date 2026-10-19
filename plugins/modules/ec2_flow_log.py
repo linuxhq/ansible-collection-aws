@@ -307,6 +307,7 @@ except ImportError:
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import is_boto3_error_code
 from ansible_collections.amazon.aws.plugins.module_utils.iterators import chunks
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
@@ -335,6 +336,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 
 # EC2 rejects more filter values per call, and more resource IDs per CreateFlowLogs call.
 MAX_FILTER_VALUES_PER_REQUEST = 200
+# The EC2 model documents 1000 IDs, but DeleteFlowLogs and DescribeFlowLogs return InternalError above 100.
+MAX_FLOW_LOG_IDS_PER_REQUEST = 100
 MAX_RESOURCE_IDS_PER_CREATE = 300
 MAX_TRANSIT_GATEWAY_RESOURCE_IDS_PER_CREATE = 25
 
@@ -458,20 +461,57 @@ def delete_flow_logs(client, module, flow_log_ids, changed=False):
         "EC2",
         {"delete_flow_logs": ("FlowLogIds",)},
     )
-    try:
-        response = client.delete_flow_logs(
-            FlowLogIds=flow_log_ids,
-            aws_retry=True,
-        )
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, changed=changed, msg=f"Unable to delete EC2 flow logs {', '.join(flow_log_ids)}")
+    removed = []
+    unsuccessful = []
+    for batch in chunks(flow_log_ids, MAX_FLOW_LOG_IDS_PER_REQUEST):
+        try:
+            response = client.delete_flow_logs(
+                FlowLogIds=batch,
+                aws_retry=True,
+            )
+        except is_boto3_error_code("InvalidFlowLogId.NotFound"):
+            # EC2 rejects the whole request when any flow log is already gone, so delete only those that remain.
+            require_client_methods(
+                module,
+                client,
+                "EC2",
+                {"describe_flow_logs": ("FlowLogIds",)},
+                changed=changed or bool(removed),
+            )
+            remaining = query_list(
+                module,
+                client,
+                "describe_flow_logs",
+                "FlowLogs",
+                f"Unable to describe EC2 flow logs {', '.join(batch)}",
+                changed=changed or bool(removed),
+                FlowLogIds=batch,
+            )
+            remaining_ids = {flow_log.get("FlowLogId") for flow_log in remaining if isinstance(flow_log, dict)}
+            batch = [flow_log_id for flow_log_id in batch if flow_log_id in remaining_ids]
+            if not batch:
+                continue
 
-    failures = response.get("Unsuccessful", [])
-    failed_flow_log_ids = {failure.get("ResourceId") for failure in failures}
-    removed = [flow_log_id for flow_log_id in flow_log_ids if flow_log_id not in failed_flow_log_ids]
-    unsuccessful = [
-        failure for failure in failures if (failure.get("Error") or {}).get("Code") != "InvalidFlowLogId.NotFound"
-    ]
+            try:
+                response = client.delete_flow_logs(
+                    FlowLogIds=batch,
+                    aws_retry=True,
+                )
+            except (BotoCoreError, ClientError) as e:
+                module.fail_json_aws(
+                    e, changed=changed or bool(removed), msg=f"Unable to delete EC2 flow logs {', '.join(batch)}"
+                )
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(
+                e, changed=changed or bool(removed), msg=f"Unable to delete EC2 flow logs {', '.join(batch)}"
+            )
+
+        failures = response.get("Unsuccessful", [])
+        failed_flow_log_ids = {failure.get("ResourceId") for failure in failures}
+        removed.extend(flow_log_id for flow_log_id in batch if flow_log_id not in failed_flow_log_ids)
+        unsuccessful.extend(
+            failure for failure in failures if (failure.get("Error") or {}).get("Code") != "InvalidFlowLogId.NotFound"
+        )
 
     if unsuccessful:
         module.fail_json(
@@ -730,15 +770,19 @@ def ensure_present(client, module):
 
                 created_flow_log_ids.extend(batch_flow_log_ids)
 
-            created_flow_logs = query_list(
-                module,
-                client,
-                "describe_flow_logs",
-                "FlowLogs",
-                f"Unable to describe EC2 flow logs {', '.join(created_flow_log_ids)}",
-                changed=modified,
-                FlowLogIds=created_flow_log_ids,
-            )
+            created_flow_logs = []
+            for batch in chunks(created_flow_log_ids, MAX_FLOW_LOG_IDS_PER_REQUEST):
+                created_flow_logs.extend(
+                    query_list(
+                        module,
+                        client,
+                        "describe_flow_logs",
+                        "FlowLogs",
+                        f"Unable to describe EC2 flow logs {', '.join(batch)}",
+                        changed=modified,
+                        FlowLogIds=batch,
+                    )
+                )
 
             if any(not isinstance(flow_log, dict) for flow_log in created_flow_logs):
                 module.fail_json(changed=modified, msg="AWS returned an invalid created EC2 flow log")
