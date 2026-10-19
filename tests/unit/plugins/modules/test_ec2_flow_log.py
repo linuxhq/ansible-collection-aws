@@ -633,3 +633,96 @@ def test_resulting_tag_limit_fails_before_creating_flow_logs(check_mode):
     assert raised.value.values.get("changed", False) is False
     client.create_flow_logs.assert_not_called()
     client.create_tags.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("not_found_ids", "deleted", "changed"),
+    [
+        (["fl-old", "fl-old-2"], [], False),
+        (["fl-old"], ["fl-old-2"], True),
+    ],
+)
+def test_purge_reports_only_flow_logs_actually_deleted(not_found_ids, deleted, changed):
+    matching = dict(
+        OLD_FLOW_LOG, FlowLogId="fl-match", FlowLogStatus="ACTIVE", LogDestination="arn:aws:s3:::new-bucket"
+    )
+    client = Mock()
+    client.delete_flow_logs.return_value = {
+        "Unsuccessful": [
+            {"Error": {"Code": "InvalidFlowLogId.NotFound"}, "ResourceId": flow_log_id} for flow_log_id in not_found_ids
+        ]
+    }
+    flow_logs = [matching, dict(OLD_FLOW_LOG), dict(OLD_FLOW_LOG, FlowLogId="fl-old-2")]
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=flow_logs),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(present_params(purge_flow_logs=True)))
+
+    assert raised.value.values["changed"] is changed
+    assert raised.value.values["deleted_flow_log_ids"] == deleted
+    client.create_flow_logs.assert_not_called()
+
+
+def test_describe_batches_resource_id_filter_values():
+    resource_ids = [f"vpc-{index}" for index in range(401)]
+    with patch.object(
+        plugin, "query_list", side_effect=lambda *args, **kwargs: [{"Filter": kwargs["Filter"]}]
+    ) as query:
+        flow_logs = plugin.get_flow_logs(Mock(), FakeModule({"resource_ids": resource_ids}))
+
+    filter_values = [call.kwargs["Filter"][0]["Values"] for call in query.call_args_list]
+    assert [len(values) for values in filter_values] == [200, 200, 1]
+    assert [value for values in filter_values for value in values] == resource_ids
+    assert len(flow_logs) == 3
+
+
+@pytest.mark.parametrize(
+    ("resource_type", "prefix", "count", "batch_sizes"),
+    [
+        ("TransitGatewayAttachment", "tgw-attach", 26, [25, 1]),
+        ("TransitGateway", "tgw", 26, [25, 1]),
+        ("VPC", "vpc", 301, [300, 1]),
+    ],
+)
+def test_create_batches_resource_ids_with_a_token_per_request(resource_type, prefix, count, batch_sizes):
+    resource_ids = [f"{prefix}-{index}" for index in range(count)]
+    client = Mock()
+    client.create_flow_logs.side_effect = lambda **kwargs: {
+        "FlowLogIds": [f"fl-{resource_id}" for resource_id in kwargs["ResourceIds"]],
+        "Unsuccessful": [],
+    }
+    module = FakeModule(present_params(resource_ids=resource_ids, resource_type=resource_type, tags={"Name": "logs"}))
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[]),
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    requests = [call.kwargs for call in client.create_flow_logs.call_args_list]
+    assert [len(request["ResourceIds"]) for request in requests] == batch_sizes
+    assert [resource_id for request in requests for resource_id in request["ResourceIds"]] == resource_ids
+    assert len({request["ClientToken"] for request in requests}) == len(requests)
+    assert all(request["TagSpecifications"][0]["Tags"] == [{"Key": "Name", "Value": "logs"}] for request in requests)
+    assert raised.value.values["flow_log_ids"] == [f"fl-{resource_id}" for resource_id in resource_ids]
+
+
+def test_failed_later_create_batch_reports_changed():
+    client = Mock()
+    client.create_flow_logs.side_effect = [
+        {"FlowLogIds": [f"fl-{index}" for index in range(300)], "Unsuccessful": []},
+        ClientError({"Error": {"Code": "Throttling", "Message": "no"}}, "CreateFlowLogs"),
+    ]
+    module = FakeModule(present_params(resource_ids=[f"vpc-{index}" for index in range(301)]))
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[]),
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True

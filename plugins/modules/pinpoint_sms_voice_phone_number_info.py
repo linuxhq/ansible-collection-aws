@@ -41,6 +41,7 @@ options:
     description:
       - Phone number IDs or ARNs used to limit the result set.
       - An ARN is required for a phone number shared from another account.
+      - A phone number given as both an ID and an ARN is described once, by its ARN.
       - IDs that do not exist are omitted from the results.
       - This must contain at most 5 entries.
       - Mutually exclusive with O(owner).
@@ -185,6 +186,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
     ansible_dict_to_string_filter_list,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    unique_resource_ids,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -240,7 +244,7 @@ def main():
     filters = module.params["filters"]
     max_results = module.params["max_results"]
     owner = module.params["owner"] or "SELF"
-    phone_number_ids = list(dict.fromkeys(module.params["phone_number_ids"] or []))
+    phone_number_ids = unique_resource_ids(module.params["phone_number_ids"] or [])
 
     if max_results is not None and not 1 <= max_results <= 100:
         module.fail_json(msg="max_results must be between 1 and 100")

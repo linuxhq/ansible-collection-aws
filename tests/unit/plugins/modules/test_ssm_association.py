@@ -342,6 +342,23 @@ def test_provider_limits_are_rejected(overrides, message):
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
+def test_empty_targets_are_rejected_before_aws(check_mode):
+    module = FakeModule(params(targets=[]), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "changed": False,
+        "msg": "targets must contain at least one entry; omit targets to keep the current targets",
+    }
+    module.client.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
 def test_association_result_preserves_parameter_names(check_mode):
     parameters = {"Message": ["Hello"], "message": ["World"]}
     result = run_present(

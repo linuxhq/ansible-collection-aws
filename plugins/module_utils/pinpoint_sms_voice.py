@@ -12,6 +12,20 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 
 
+def unique_resource_ids(identifiers):
+    """Return identifiers without repeats of one resource given as an ID and an ARN.
+
+    The ARN form is kept because a resource shared from another account can only be described by its ARN.
+    """
+    unique = {}
+    for identifier in identifiers:
+        resource_id = identifier.rsplit("/", 1)[-1]
+        if resource_id not in unique or identifier.startswith("arn:"):
+            unique[resource_id] = identifier
+
+    return list(unique.values())
+
+
 def is_phone_number_identity(origination):
     """Return whether a ListPoolOriginationIdentities item is a phone number rather than a sender ID."""
     arn = origination.get("OriginationIdentityArn")

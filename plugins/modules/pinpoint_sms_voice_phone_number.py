@@ -461,12 +461,25 @@ def wait_for_phone_number_active(client, module, phone_number_id, tags=None, cha
     wait_delay = module.params["wait_delay"]
     deadline = time.monotonic() + module.params["wait_timeout"]
     phone_number = {}
+    seen = False
 
     while time.monotonic() < deadline:
         found_phone_number = get_phone_number(client, module, phone_number_id, changed=changed)
         if found_phone_number is None and module.params.get("state") == "absent":
             return {}
 
+        # A number missing before it is first seen may not be visible yet, so only a later absence is a release.
+        if found_phone_number is None and seen:
+            module.fail_json(
+                changed=changed,
+                msg=(
+                    f"AWS End User Messaging SMS phone number {phone_number_id} "
+                    "was released while waiting for it to become active"
+                ),
+                phone_number_id=phone_number_id,
+            )
+
+        seen = seen or found_phone_number is not None
         phone_number = found_phone_number or {}
         status = phone_number.get("Status")
 

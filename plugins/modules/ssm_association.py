@@ -50,7 +50,7 @@ options:
   targets:
     description:
       - The targets for the association.
-      - This must contain at most 5 targets.
+      - This must contain at least 1 and at most 5 targets.
       - When omitted, an existing association keeps its current targets, and a
         new association is created without targets.
     elements: dict
@@ -611,6 +611,13 @@ def main():
     if state == "present":
         if schedule_expression is not None and not 1 <= len(schedule_expression) <= 256:
             module.fail_json(msg="schedule_expression must be 1 to 256 characters")
+
+        # SSM rejects an empty target list, so omitting targets is the only way to keep them.
+        if targets == []:
+            module.fail_json(
+                changed=False,
+                msg="targets must contain at least one entry; omit targets to keep the current targets",
+            )
 
         if targets is not None and len(comparable_targets(targets)) > 5:
             module.fail_json(msg="targets must contain at most 5 targets")
