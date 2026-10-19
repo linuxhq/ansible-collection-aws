@@ -58,6 +58,7 @@ options:
       - The maximum number of seconds to wait when O(wait=true).
       - When O(state=present), this also applies while an association is
         replaced, regardless of O(wait).
+      - Sequential waits in one run share this budget.
       - This must be 1 or greater.
     default: 300
     type: int
@@ -158,8 +159,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    remaining_wait_timeout,
     require_positive_wait_bounds,
     run_waiter,
+    wait_deadline,
 )
 
 ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA = {
@@ -228,6 +231,7 @@ ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA = {
 
 
 def ensure_absent(client, module):
+    deadline = wait_deadline(module)
     name = module.params.get("name")
     association = get_resolver_rule_association_by_rule_and_vpc(client, module)
     deleting = (association or {}).get("Status") == "DELETING"
@@ -258,6 +262,7 @@ def ensure_absent(client, module):
                 resolver_rule_association_id,
                 "deleted",
                 changed=changed,
+                deadline=deadline,
             )
 
     result = {"changed": changed, "state": "absent"}
@@ -267,7 +272,11 @@ def ensure_absent(client, module):
     module.exit_json(**result)
 
 
-def ensure_present(client, module):
+def ensure_present(client, module, deadline=None):
+    # Re-runs after a wait pass the deadline on, so every wait in one run shares wait_timeout.
+    if deadline is None:
+        deadline = wait_deadline(module)
+
     name = module.params["name"]
     resolver_rule_id = module.params["resolver_rule_id"]
     vpc_id = module.params["vpc_id"]
@@ -277,8 +286,10 @@ def ensure_present(client, module):
         if module.check_mode:
             association = None
         else:
-            wait_for_resolver_rule_association_status(client, module, association.get("Id"), "deleted")
-            return ensure_present(client, module)
+            wait_for_resolver_rule_association_status(
+                client, module, association.get("Id"), "deleted", deadline=deadline
+            )
+            return ensure_present(client, module, deadline=deadline)
 
     current_association = (
         {
@@ -309,8 +320,10 @@ def ensure_present(client, module):
         and association.get("Status")
         and association.get("Status") not in ("COMPLETE", "FAILED", "OVERRIDDEN")
     ):
-        wait_for_resolver_rule_association_status(client, module, association.get("Id"), "complete", allow_failed=True)
-        return ensure_present(client, module)
+        wait_for_resolver_rule_association_status(
+            client, module, association.get("Id"), "complete", allow_failed=True, deadline=deadline
+        )
+        return ensure_present(client, module, deadline=deadline)
 
     if changed and not module.check_mode:
         if association is not None:
@@ -336,6 +349,7 @@ def ensure_present(client, module):
                 resolver_rule_association_id,
                 "deleted",
                 changed=True,
+                deadline=deadline,
             )
 
         request = {"ResolverRuleId": resolver_rule_id, "VPCId": vpc_id}
@@ -372,6 +386,7 @@ def ensure_present(client, module):
                 resolver_rule_association_id,
                 "complete",
                 changed=True,
+                deadline=deadline,
             )
     elif changed and module.check_mode:
         association = {
@@ -400,19 +415,24 @@ def ensure_present(client, module):
 
 
 def wait_for_resolver_rule_association_status(
-    client, module, resolver_rule_association_id, state, allow_failed=False, changed=False
+    client, module, resolver_rule_association_id, state, allow_failed=False, changed=False, deadline=None
 ):
-    """Wait for an association status; changed reports whether the association was already modified."""
-    identifier = module.params.get("name") or f"{module.params['resolver_rule_id']}/{module.params['vpc_id']}"
+    """Wait for an association status; changed reports whether the association was already modified.
 
+    deadline limits the wait to what is left of the run's shared wait_timeout budget.
+    """
+    identifier = module.params.get("name") or f"{module.params['resolver_rule_id']}/{module.params['vpc_id']}"
     # The waiter fails on terminal states as well as on timeouts, so the message names neither.
+    error_msg = f"Unable to wait for AWS Route53 Resolver rule association {identifier} to become {state}"
+
     run_waiter(
         module,
         client,
         ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA,
         f"resolver_rule_association_{state}",
-        f"Unable to wait for AWS Route53 Resolver rule association {identifier} to become {state}",
+        error_msg,
         changed=changed,
+        timeout=None if deadline is None else remaining_wait_timeout(module, deadline, error_msg, changed=changed),
         ResolverRuleAssociationId=resolver_rule_association_id,
     )
 

@@ -101,6 +101,7 @@ options:
       - The maximum number of seconds to wait when O(wait=true).
       - When O(state=present), this also applies regardless of O(wait) before
         a rule that is still changing is updated.
+      - Sequential waits in one run share this budget.
       - This must be 1 or greater.
     default: 300
     type: int
@@ -290,8 +291,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    remaining_wait_timeout,
     require_positive_wait_bounds,
     run_waiter,
+    wait_deadline,
 )
 
 ROUTE53_RESOLVER_RULE_WAITER_MODEL_DATA = {
@@ -370,7 +373,7 @@ def desired_request(module):
     }
 
 
-def create_resolver_rule(client, module, request):
+def create_resolver_rule(client, module, request, deadline=None):
     try:
         response = client.create_resolver_rule(
             **request,
@@ -395,7 +398,7 @@ def create_resolver_rule(client, module, request):
     rule = validate_resolver_rule(module, rule, "create_resolver_rule", changed=True)
 
     if module.params["wait"]:
-        return wait_for_resolver_rule_status(client, module, rule["Id"], "complete", changed=True)
+        return wait_for_resolver_rule_status(client, module, rule["Id"], "complete", changed=True, deadline=deadline)
 
     rule = dict(rule)
     for field, value in request.items():
@@ -404,7 +407,7 @@ def create_resolver_rule(client, module, request):
     return rule
 
 
-def delete_resolver_rule(client, module, rule):
+def delete_resolver_rule(client, module, rule, deadline=None):
     resolver_rule_id = rule.get("Id")
 
     try:
@@ -429,12 +432,13 @@ def delete_resolver_rule(client, module, rule):
         )
 
     if module.params["wait"]:
-        wait_for_resolver_rule_status(client, module, resolver_rule_id, "deleted", changed=True)
+        wait_for_resolver_rule_status(client, module, resolver_rule_id, "deleted", changed=True, deadline=deadline)
 
     return True
 
 
 def ensure_absent(client, module):
+    deadline = wait_deadline(module)
     rule = get_resolver_rule_by_name(client, module)
     if rule is not None and rule.get("RuleType", "FORWARD") != "FORWARD":
         module.fail_json(
@@ -449,9 +453,9 @@ def ensure_absent(client, module):
     changed = rule is not None and not deleting
 
     if deleting and module.params["wait"] and not module.check_mode:
-        wait_for_resolver_rule_status(client, module, rule.get("Id"), "deleted")
+        wait_for_resolver_rule_status(client, module, rule.get("Id"), "deleted", deadline=deadline)
     elif changed and not module.check_mode:
-        changed = delete_resolver_rule(client, module, rule)
+        changed = delete_resolver_rule(client, module, rule, deadline=deadline)
 
     module.exit_json(
         changed=changed,
@@ -460,7 +464,11 @@ def ensure_absent(client, module):
     )
 
 
-def ensure_present(client, module):
+def ensure_present(client, module, deadline=None):
+    # Re-runs after a wait pass the deadline on, so every wait in one run shares wait_timeout.
+    if deadline is None:
+        deadline = wait_deadline(module)
+
     tags = module.params["tags"]
     purge_tags = module.params["purge_tags"]
     request = desired_request(module)
@@ -471,8 +479,8 @@ def ensure_present(client, module):
         if module.check_mode:
             rule = None
         else:
-            wait_for_resolver_rule_status(client, module, rule["Id"], "deleted")
-            return ensure_present(client, module)
+            wait_for_resolver_rule_status(client, module, rule["Id"], "deleted", deadline=deadline)
+            return ensure_present(client, module, deadline=deadline)
 
     # Updates do not change tags, so later reads reuse these.
     current_tags = (rule or {}).get("Tags", [])
@@ -498,8 +506,8 @@ def ensure_present(client, module):
         and rule.get("Status")
         and rule.get("Status") not in ("COMPLETE", "FAILED")
     ):
-        wait_for_resolver_rule_status(client, module, rule["Id"], "complete", allow_failed=True)
-        return ensure_present(client, module)
+        wait_for_resolver_rule_status(client, module, rule["Id"], "complete", allow_failed=True, deadline=deadline)
+        return ensure_present(client, module, deadline=deadline)
 
     if current is not None:
         immutable_changes = [field for field in ("domain_name", "rule_type") if current[field] != desired[field]]
@@ -521,7 +529,7 @@ def ensure_present(client, module):
         if tags is not None:
             rule = apply_tag_deltas(dict(rule, Tags=current_tags), tags_to_set, tag_keys_to_unset)
     elif current is None:
-        rule = create_resolver_rule(client, module, request)
+        rule = create_resolver_rule(client, module, request, deadline=deadline)
         if module.params["wait"]:
             rule = resolver_resource_with_tags(client, module, rule, "rule", changed=True)
         elif tags is not None:
@@ -555,7 +563,9 @@ def ensure_present(client, module):
                 )
 
             if module.params["wait"]:
-                rule = wait_for_resolver_rule_status(client, module, resolver_rule_id, "complete", changed=True)
+                rule = wait_for_resolver_rule_status(
+                    client, module, resolver_rule_id, "complete", changed=True, deadline=deadline
+                )
 
             if not rules_match(comparable_rule(rule), desired):
                 module.fail_json(
@@ -608,16 +618,23 @@ def ensure_present(client, module):
     module.exit_json(**result)
 
 
-def wait_for_resolver_rule_status(client, module, resolver_rule_id, state, allow_failed=False, changed=False):
-    """Wait for a rule status; changed reports whether the rule was already modified."""
+def wait_for_resolver_rule_status(
+    client, module, resolver_rule_id, state, allow_failed=False, changed=False, deadline=None
+):
+    """Wait for a rule status; changed reports whether the rule was already modified.
+
+    deadline limits the wait to what is left of the run's shared wait_timeout budget.
+    """
     # The waiter fails on terminal states as well as on timeouts, so the message names neither.
+    error_msg = f"Unable to wait for AWS Route53 Resolver rule {module.params['name']} to become {state}"
     run_waiter(
         module,
         client,
         ROUTE53_RESOLVER_RULE_WAITER_MODEL_DATA,
         f"resolver_rule_{state}",
-        f"Unable to wait for AWS Route53 Resolver rule {module.params['name']} to become {state}",
+        error_msg,
         changed=changed,
+        timeout=None if deadline is None else remaining_wait_timeout(module, deadline, error_msg, changed=changed),
         ResolverRuleId=resolver_rule_id,
     )
 

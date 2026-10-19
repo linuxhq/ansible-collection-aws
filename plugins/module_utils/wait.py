@@ -1,6 +1,8 @@
 # Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
+import time
+
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -19,6 +21,20 @@ def require_positive_wait_bounds(module, always=False):
     for name in ("wait_delay", "wait_timeout"):
         if module.params[name] < 1:
             module.fail_json(msg=f"{name} must be 1 or greater")
+
+
+def wait_deadline(module):
+    """Return the monotonic time at which one run's shared wait_timeout budget ends."""
+    return time.monotonic() + module.params["wait_timeout"]
+
+
+def remaining_wait_timeout(module, deadline, error_msg, changed=False):
+    """Return the whole seconds left before deadline, failing with error_msg once less than one remains."""
+    timeout = int(deadline - time.monotonic())
+    if timeout < 1:
+        module.fail_json(changed=changed, msg=error_msg)
+
+    return timeout
 
 
 def build_waiter_factory(model_data):

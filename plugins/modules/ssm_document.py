@@ -96,6 +96,7 @@ options:
       - The maximum number of seconds to wait.
       - When O(state=present), this also applies while an updated document
         version is promoted, regardless of O(wait).
+      - Sequential waits in one run share this budget.
       - This must be 1 or greater.
     default: 300
     type: int
@@ -222,8 +223,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    remaining_wait_timeout,
     require_positive_wait_bounds,
     run_waiter,
+    wait_deadline,
 )
 
 SSM_DOCUMENT_WAITER_MODEL_DATA = {
@@ -283,10 +286,11 @@ def fail_failed_document(module, document, changed=False):
     )
 
 
-def wait_for_document(client, module, state, document_version=None, changed=False, fail_on_failed=True):
+def wait_for_document(client, module, state, document_version=None, changed=False, fail_on_failed=True, deadline=None):
     """Wait for a document version to settle, failing when it ends in the Failed status unless fail_on_failed is false.
 
     changed reports whether the document was already modified, for failure results.
+    deadline limits the wait to what is left of the run's shared wait_timeout budget.
     """
     name = module.params["name"]
     request = {"Name": name}
@@ -294,13 +298,15 @@ def wait_for_document(client, module, state, document_version=None, changed=Fals
         request["DocumentVersion"] = document_version
 
     # The waiter fails on terminal states as well as on timeouts, so the message names neither.
+    error_msg = f"Unable to wait for AWS Systems Manager document {name} to become {state}"
     run_waiter(
         module,
         client,
         SSM_DOCUMENT_WAITER_MODEL_DATA,
         f"document_{state}",
-        f"Unable to wait for AWS Systems Manager document {name} to become {state}",
+        error_msg,
         changed=changed,
+        timeout=None if deadline is None else remaining_wait_timeout(module, deadline, error_msg, changed=changed),
         **request,
     )
 
@@ -323,6 +329,7 @@ def wait_for_document(client, module, state, document_version=None, changed=Fals
 
 
 def ensure_absent(client, module):
+    deadline = wait_deadline(module)
     name = module.params["name"]
     # The document is deleted as a whole, so any version that still exists identifies it.
     # DescribeDocument serves every format, while GetDocument cannot read a TEXT document as JSON.
@@ -351,7 +358,7 @@ def ensure_absent(client, module):
                 module.fail_json_aws(e, msg=f"Unable to delete AWS Systems Manager document {name}")
 
         if module.params["wait"]:
-            wait_for_document(client, module, "deleted", changed=changed)
+            wait_for_document(client, module, "deleted", changed=changed, deadline=deadline)
 
     module.exit_json(
         changed=changed,
@@ -360,7 +367,7 @@ def ensure_absent(client, module):
     )
 
 
-def current_document(client, module, include_tags, document_version=None):
+def current_document(client, module, include_tags, document_version=None, deadline=None):
     """Read the document version, settling transitional and deleting states outside check mode."""
     current = get_document(client, module, include_tags=include_tags, document_version=document_version)
     status = (current or {}).get("Status")
@@ -369,18 +376,20 @@ def current_document(client, module, include_tags, document_version=None):
         if module.check_mode:
             return None
 
-        wait_for_document(client, module, "deleted")
+        wait_for_document(client, module, "deleted", deadline=deadline)
         return get_document(client, module, include_tags=include_tags, document_version=document_version)
 
     if status in TRANSITIONAL_STATUSES and not module.check_mode:
         # A version that ends Failed is re-read so ensure_present can replace it or report the failure.
-        wait_for_document(client, module, "active", current.get("DocumentVersion"), fail_on_failed=False)
+        wait_for_document(
+            client, module, "active", current.get("DocumentVersion"), fail_on_failed=False, deadline=deadline
+        )
         return get_document(client, module, include_tags=include_tags, document_version=document_version)
 
     return current
 
 
-def require_json_readable(client, module):
+def require_json_readable(client, module, deadline=None):
     """Fail before any change when the document is stored as TEXT, which GetDocument cannot serve as JSON.
 
     Returns False when a TEXT document that is being deleted will be gone, so it must not be read as JSON.
@@ -390,7 +399,7 @@ def require_json_readable(client, module):
     if existing is not None and existing["DocumentFormat"] == "TEXT":
         if existing.get("Status") == "Deleting":
             if not module.check_mode:
-                wait_for_document(client, module, "deleted")
+                wait_for_document(client, module, "deleted", deadline=deadline)
 
             return False
 
@@ -406,11 +415,13 @@ def require_json_readable(client, module):
 
 
 def ensure_present(client, module):
+    # Every wait in one run shares wait_timeout.
+    deadline = wait_deadline(module)
     name = module.params["name"]
     tags = module.params["tags"]
     purge_tags = module.params["purge_tags"]
-    readable = require_json_readable(client, module)
-    current = current_document(client, module, include_tags=tags is not None) if readable else None
+    readable = require_json_readable(client, module, deadline=deadline)
+    current = current_document(client, module, include_tags=tags is not None, deadline=deadline) if readable else None
     desired_comparable = {
         "content": module.params["content"],
         "document_type": module.params["document_type"],
@@ -444,7 +455,7 @@ def ensure_present(client, module):
 
     default_version_to_promote = None
     if resource_changed and current is not None and module.params["document_version"] == "$DEFAULT":
-        latest = current_document(client, module, include_tags=False, document_version="$LATEST")
+        latest = current_document(client, module, include_tags=False, document_version="$LATEST", deadline=deadline)
         if comparable_document(latest) == desired_comparable:
             if latest.get("Status") == "Failed":
                 fail_failed_document(module, latest)
@@ -511,7 +522,7 @@ def ensure_present(client, module):
                 module.fail_json(changed=True, msg=f"AWS Systems Manager did not return the created document {name}")
 
             if module.params["wait"]:
-                wait_for_document(client, module, "active", current["DocumentVersion"], changed=True)
+                wait_for_document(client, module, "active", current["DocumentVersion"], changed=True, deadline=deadline)
 
             current["Content"] = desired_content
             if tags:
@@ -551,7 +562,7 @@ def ensure_present(client, module):
                     )
 
                 # A new version can be promoted only after AWS has validated it.
-                wait_for_document(client, module, "active", new_version, changed=True)
+                wait_for_document(client, module, "active", new_version, changed=True, deadline=deadline)
                 # UpdateDocument cannot change tags, so keep the tags already read rather than any in the response.
                 updated.pop("Tags", None)
                 current = dict(current or {}, **updated, Content=desired_content)

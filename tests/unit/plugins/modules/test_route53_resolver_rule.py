@@ -1,4 +1,4 @@
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import pytest
 from botocore.session import get_session
@@ -8,6 +8,7 @@ from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 from ansible_collections.amazon.aws.plugins.module_utils.retries import RetryingBotoClientWrapper
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import route53_resolver as route53_resolver_utils
+from ansible_collections.linuxhq.aws.plugins.module_utils import wait as wait_utils
 from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver_rule as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -30,6 +31,7 @@ def test_equivalent_ipv6_target_is_idempotent(check_mode):
             "tags": None,
             "target_ips": [{"ipv6": "2001:0DB8:0000:0000:0000:0000:0000:0010"}],
             "wait": False,
+            "wait_timeout": 300,
         },
         check_mode=check_mode,
     )
@@ -112,7 +114,7 @@ def test_rule_and_tag_validation_rejects_malformed_entries():
 
 def test_absent_waits_for_deleting_rule_without_deleting_again():
     client = Mock()
-    module = FakeModule({"name": "rule", "wait": True})
+    module = FakeModule({"name": "rule", "wait": True, "wait_timeout": 300})
     rule = {"Id": "rslvr-rr-1", "Status": "DELETING"}
     with (
         patch.object(plugin, "get_resolver_rule_by_name", return_value=rule),
@@ -124,16 +126,16 @@ def test_absent_waits_for_deleting_rule_without_deleting_again():
 
     assert not raised.value.values["changed"]
     delete.assert_not_called()
-    wait.assert_called_once_with(client, module, "rslvr-rr-1", "deleted")
+    wait.assert_called_once_with(client, module, "rslvr-rr-1", "deleted", deadline=ANY)
 
 
 def test_delete_waits_when_requested():
     client = Mock()
-    module = FakeModule({"name": "rule", "wait": True})
+    module = FakeModule({"name": "rule", "wait": True, "wait_timeout": 300})
     with patch.object(plugin, "wait_for_resolver_rule_status") as wait:
         plugin.delete_resolver_rule(client, module, {"Id": "rslvr-rr-1"})
 
-    wait.assert_called_once_with(client, module, "rslvr-rr-1", "deleted", changed=True)
+    wait.assert_called_once_with(client, module, "rslvr-rr-1", "deleted", changed=True, deadline=ANY)
 
 
 def test_delete_tolerates_rule_disappearing():
@@ -155,7 +157,7 @@ def test_absent_reports_unchanged_when_rule_is_already_gone():
         {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
         "DeleteResolverRule",
     )
-    module = FakeModule({"name": "rule", "wait": True})
+    module = FakeModule({"name": "rule", "wait": True, "wait_timeout": 300})
     with (
         patch.object(plugin, "get_resolver_rule_by_name", return_value={"Id": "rslvr-rr-1"}),
         patch.object(plugin, "wait_for_resolver_rule_status") as wait,
@@ -466,6 +468,7 @@ def test_deleting_rule_waits_before_recreation_with_final_wait_disabled():
             "tags": None,
             "target_ips": [{"ip": "192.0.2.1"}],
             "wait": False,
+            "wait_timeout": 300,
         }
     )
     deleting = {"Id": "rslvr-rr-old", "Name": "main", "Status": "DELETING"}
@@ -484,7 +487,7 @@ def test_deleting_rule_waits_before_recreation_with_final_wait_disabled():
     ):
         plugin.ensure_present(client, module)
 
-    wait_for_status.assert_called_once_with(client, module, "rslvr-rr-old", "deleted")
+    wait_for_status.assert_called_once_with(client, module, "rslvr-rr-old", "deleted", deadline=ANY)
     create.assert_called_once()
 
 
@@ -500,6 +503,7 @@ def test_update_rereads_rule_when_response_is_lean():
             "tags": None,
             "target_ips": [{"ip": "192.0.2.1"}],
             "wait": False,
+            "wait_timeout": 300,
         }
     )
     current = {
@@ -531,6 +535,7 @@ def test_tag_change_rejects_rule_without_arn():
             "tags": {"Name": "main"},
             "target_ips": [{"ip": "192.0.2.1"}],
             "wait": False,
+            "wait_timeout": 300,
         }
     )
     current = {
@@ -579,6 +584,7 @@ def test_immutable_changes_preserve_rule(check_mode, field, current):
             "tags": {"new": "value"},
             "target_ips": [{"ip": "192.0.2.1"}],
             "wait": False,
+            "wait_timeout": 300,
         },
         check_mode=check_mode,
     )
@@ -606,7 +612,7 @@ def test_immutable_changes_preserve_rule(check_mode, field, current):
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("rule_type", ["DELEGATE", "RECURSIVE", "SYSTEM"])
 def test_absent_rejects_same_named_non_forward_rule(check_mode, rule_type):
-    module = FakeModule({"name": "corp", "state": "absent", "wait": True}, check_mode=check_mode)
+    module = FakeModule({"name": "corp", "state": "absent", "wait": True, "wait_timeout": 300}, check_mode=check_mode)
     current = {"DomainName": "corp.example.com", "Id": "rslvr-rr-1", "Name": "corp", "RuleType": rule_type}
     client = Mock()
     with (
@@ -666,6 +672,7 @@ def test_update_mismatch_preserves_rule(wait):
             "tags": None,
             "target_ips": [{"ip": "192.0.2.1"}],
             "wait": wait,
+            "wait_timeout": 300,
         }
     )
     current = {
@@ -1077,3 +1084,33 @@ def test_resulting_tag_limit_fails_before_updating_the_rule(check_mode):
     assert raised.value.values.get("changed", False) is False
     client.update_resolver_rule.assert_not_called()
     client.tag_resource.assert_not_called()
+
+
+def test_waits_after_a_re_run_share_one_wait_timeout_budget():
+    deleting = {"Id": "rslvr-rr-1", "Name": "main", "Status": "DELETING"}
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=deleting),
+        patch.object(plugin, "run_waiter", side_effect=[None, ModuleFail({})]) as run_waiter,
+        patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 700]),
+        pytest.raises(ModuleFail),
+    ):
+        plugin.ensure_present(Mock(), FakeModule(rule_params(wait_timeout=1800)))
+
+    assert [waiter_call.kwargs["timeout"] for waiter_call in run_waiter.call_args_list] == [1800, 1200]
+
+
+def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
+    deleting = {"Id": "rslvr-rr-1", "Name": "main", "Status": "DELETING"}
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=deleting),
+        patch.object(plugin, "run_waiter", side_effect=[None]) as run_waiter,
+        patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 1901]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(Mock(), FakeModule(rule_params(wait_timeout=1800)))
+
+    run_waiter.assert_called_once()
+    assert raised.value.values == {
+        "changed": False,
+        "msg": "Unable to wait for AWS Route53 Resolver rule main to become deleted",
+    }

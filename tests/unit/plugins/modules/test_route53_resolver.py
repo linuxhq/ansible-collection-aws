@@ -8,6 +8,7 @@ from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 from ansible_collections.amazon.aws.plugins.module_utils.retries import RetryingBotoClientWrapper
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import route53_resolver as route53_resolver_utils
+from ansible_collections.linuxhq.aws.plugins.module_utils import wait as wait_utils
 from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -248,7 +249,7 @@ def test_ip_and_tag_enrichment_reject_malformed_entries():
 
 def test_absent_waits_for_deleting_endpoint_without_deleting_again():
     client = Mock()
-    module = FakeModule({"name": "endpoint", "wait": True})
+    module = FakeModule({"name": "endpoint", "wait": True, "wait_timeout": 300})
     endpoint = {"Id": "rslvr-endpt-1", "Status": "DELETING"}
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint),
@@ -260,16 +261,16 @@ def test_absent_waits_for_deleting_endpoint_without_deleting_again():
 
     assert not raised.value.values["changed"]
     delete.assert_not_called()
-    wait.assert_called_once_with(client, module, "rslvr-endpt-1", {"deleted"})
+    wait.assert_called_once_with(client, module, "rslvr-endpt-1", {"deleted"}, deadline=ANY)
 
 
 def test_delete_waits_when_requested():
     client = Mock()
-    module = FakeModule({"name": "endpoint", "wait": True})
+    module = FakeModule({"name": "endpoint", "wait": True, "wait_timeout": 300})
     with patch.object(plugin, "wait_for_resolver_endpoint_status") as wait:
         plugin.delete_resolver_endpoint(client, module, {"Id": "rslvr-endpt-1"})
 
-    wait.assert_called_once_with(client, module, "rslvr-endpt-1", {"deleted"}, changed=True)
+    wait.assert_called_once_with(client, module, "rslvr-endpt-1", {"deleted"}, changed=True, deadline=ANY)
 
 
 def test_delete_tolerates_endpoint_disappearing():
@@ -291,7 +292,7 @@ def test_absent_reports_unchanged_when_endpoint_is_already_gone():
         {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
         "DeleteResolverEndpoint",
     )
-    module = FakeModule({"name": "endpoint", "wait": True})
+    module = FakeModule({"name": "endpoint", "wait": True, "wait_timeout": 300})
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value={"Id": "rslvr-endpt-1"}),
         patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
@@ -498,6 +499,7 @@ def test_omitted_protocols_and_type_leave_an_existing_endpoint_unchanged():
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": False,
+            "wait_timeout": 300,
         }
     )
     current = {
@@ -536,6 +538,7 @@ def test_check_mode_predicts_aws_defaults_for_a_new_endpoint():
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": False,
+            "wait_timeout": 300,
         },
         check_mode=True,
     )
@@ -566,6 +569,7 @@ def test_auto_assigned_ip_addresses_are_idempotent():
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": False,
+            "wait_timeout": 300,
         }
     )
     current = {
@@ -611,6 +615,7 @@ def test_check_mode_preserves_unchanged_auto_assigned_addresses():
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": False,
+            "wait_timeout": 300,
         },
         check_mode=True,
     )
@@ -725,7 +730,9 @@ def test_ip_reconciliation_adds_and_removes_only_differences():
         ResolverEndpointId="rslvr-1",
         aws_retry=True,
     )
-    wait_for_resolver_endpoint_status.assert_called_once_with(client, module, "rslvr-1", {"settled"}, changed=True)
+    wait_for_resolver_endpoint_status.assert_called_once_with(
+        client, module, "rslvr-1", {"settled"}, changed=True, deadline=ANY
+    )
     assert result["Id"] == "rslvr-1"
     assert result["IpAddresses"] == [{"SubnetId": "subnet-new"}]
 
@@ -766,6 +773,7 @@ def test_direction_change_preserves_the_endpoint():
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": False,
+            "wait_timeout": 300,
         }
     )
     current = {
@@ -820,6 +828,7 @@ def test_no_wait_change_waits_for_operational_endpoint_and_rechecks():
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": False,
+            "wait_timeout": 300,
         }
     )
     transitioning = {
@@ -852,7 +861,7 @@ def test_no_wait_change_waits_for_operational_endpoint_and_rechecks():
     ):
         plugin.ensure_present(client, module)
 
-    wait_for_status.assert_called_once_with(client, module, "rslvr-1", {"settled"})
+    wait_for_status.assert_called_once_with(client, module, "rslvr-1", {"settled"}, deadline=ANY)
     client.update_resolver_endpoint.assert_not_called()
     assert not raised.value.values["changed"]
 
@@ -873,6 +882,7 @@ def test_waited_endpoint_is_enriched_before_ip_reconciliation():
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": True,
+            "wait_timeout": 300,
         }
     )
     current = {
@@ -908,7 +918,7 @@ def test_waited_endpoint_is_enriched_before_ip_reconciliation():
         plugin.ensure_present(client, module)
 
     enrich.assert_called_with(client, module, waited, changed=True)
-    reconcile.assert_called_once_with(client, module, updated, ANY, changed=True)
+    reconcile.assert_called_once_with(client, module, updated, ANY, changed=True, deadline=ANY)
 
 
 def test_update_rereads_endpoint_when_response_is_lean():
@@ -927,6 +937,7 @@ def test_update_rereads_endpoint_when_response_is_lean():
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": False,
+            "wait_timeout": 300,
         }
     )
     current = {
@@ -970,6 +981,7 @@ def test_tag_change_rejects_endpoint_without_arn():
             "security_group_ids": ["sg-1"],
             "tags": {"Name": "main"},
             "wait": False,
+            "wait_timeout": 300,
         }
     )
     current = {
@@ -1008,6 +1020,7 @@ def test_immutable_changes_never_mutate_endpoint(check_mode, field, value):
         "security_group_ids": ["sg-1"],
         "tags": None,
         "wait": True,
+        "wait_timeout": 300,
     }
     endpoint = {
         "Direction": "OUTBOUND",
@@ -1045,6 +1058,7 @@ def test_unresolved_update_never_replaces_endpoint(wait):
             "security_group_ids": ["sg-1"],
             "tags": None,
             "wait": wait,
+            "wait_timeout": 300,
         }
     )
     endpoint = {
@@ -1242,7 +1256,7 @@ def test_failed_addresses_are_replaced_and_departing_addresses_are_ignored():
         ResolverEndpointId="rslvr-1",
         aws_retry=True,
     )
-    wait.assert_called_once_with(client, module, "rslvr-1", {"settled"}, changed=True)
+    wait.assert_called_once_with(client, module, "rslvr-1", {"settled"}, changed=True, deadline=ANY)
 
 
 def test_failed_address_makes_an_existing_endpoint_differ():
@@ -1649,3 +1663,49 @@ def test_resulting_tag_limit_fails_before_updating_the_endpoint(check_mode):
     wait.assert_not_called()
     client.update_resolver_endpoint.assert_not_called()
     client.tag_resource.assert_not_called()
+
+
+def test_waits_after_a_re_run_share_one_wait_timeout_budget():
+    deleting = {"Id": "rslvr-1", "Name": "main", "Status": "DELETING"}
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=deleting),
+        patch.object(plugin, "run_waiter", side_effect=[None, ModuleFail({})]) as run_waiter,
+        patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 700]),
+        pytest.raises(ModuleFail),
+    ):
+        plugin.ensure_present(Mock(), FakeModule(endpoint_params(wait_timeout=1800)))
+
+    assert [waiter_call.kwargs["timeout"] for waiter_call in run_waiter.call_args_list] == [1800, 1200]
+
+
+def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
+    deleting = {"Id": "rslvr-1", "Name": "main", "Status": "DELETING"}
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=deleting),
+        patch.object(plugin, "run_waiter", side_effect=[None]) as run_waiter,
+        patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 1901]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(Mock(), FakeModule(endpoint_params(wait_timeout=1800)))
+
+    run_waiter.assert_called_once()
+    assert raised.value.values == {
+        "changed": False,
+        "msg": "Unable to wait for AWS Route53 Resolver endpoint main to become deleted",
+    }
+
+
+def test_ip_address_changes_wait_only_for_the_remaining_budget():
+    endpoint = {"Id": "rslvr-1", "IpAddresses": [{"IpId": "rni-old", "SubnetId": "subnet-old"}]}
+    desired = {"name": "main", "ip_addresses": [{"subnet_id": "subnet-new"}]}
+    with (
+        patch.object(plugin, "run_waiter") as run_waiter,
+        patch.object(plugin, "get_resolver_endpoint", return_value=endpoint),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", return_value=endpoint),
+        patch.object(wait_utils.time, "monotonic", side_effect=[400, 1000]),
+    ):
+        plugin.reconcile_resolver_endpoint_ip_addresses(
+            Mock(), FakeModule(endpoint_params(wait=True, wait_timeout=1800)), endpoint, desired, deadline=1900
+        )
+
+    assert [waiter_call.kwargs["timeout"] for waiter_call in run_waiter.call_args_list] == [1500, 900]

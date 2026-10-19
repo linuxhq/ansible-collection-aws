@@ -1,8 +1,9 @@
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import pytest
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import wait as wait_utils
 from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver_rule_associate as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     HEADER,
@@ -140,7 +141,7 @@ def test_failed_association_is_replaced(name):
     client.disassociate_resolver_rule.assert_called_once_with(
         ResolverRuleId="rslvr-rr-1", VPCId="vpc-1", aws_retry=True
     )
-    wait_for_status.assert_called_once_with(client, module, "rslvr-rrassoc-1", "deleted", changed=True)
+    wait_for_status.assert_called_once_with(client, module, "rslvr-rrassoc-1", "deleted", changed=True, deadline=ANY)
     # An omitted name keeps the failed association's name.
     client.associate_resolver_rule.assert_called_once_with(
         Name="main", ResolverRuleId="rslvr-rr-1", VPCId="vpc-1", aws_retry=True
@@ -184,7 +185,7 @@ def test_creating_association_wait_allows_failed_so_it_can_be_replaced():
         plugin.ensure_present(client, FakeModule(params(wait=True)))
 
     assert wait_for_status.call_args_list[0].args[2:] == ("rslvr-rrassoc-1", "complete")
-    assert wait_for_status.call_args_list[0].kwargs == {"allow_failed": True}
+    assert wait_for_status.call_args_list[0].kwargs == {"allow_failed": True, "deadline": ANY}
     assert raised.value.values["changed"]
     client.disassociate_resolver_rule.assert_called_once()
 
@@ -300,7 +301,7 @@ def test_absent_waits_for_deleting_association_without_disassociating():
 
     assert not raised.value.values["changed"]
     client.disassociate_resolver_rule.assert_not_called()
-    wait_for_status.assert_called_once_with(client, module, "rslvr-rrassoc-1", "deleted", changed=False)
+    wait_for_status.assert_called_once_with(client, module, "rslvr-rrassoc-1", "deleted", changed=False, deadline=ANY)
 
 
 def test_omitted_name_keeps_an_existing_association():
@@ -345,7 +346,7 @@ def test_replacement_waits_for_deletion_when_final_wait_is_disabled():
     ):
         plugin.ensure_present(client, module)
 
-    wait_for_status.assert_called_once_with(client, module, "old-association", "deleted", changed=True)
+    wait_for_status.assert_called_once_with(client, module, "old-association", "deleted", changed=True, deadline=ANY)
 
 
 def test_deleting_association_waits_before_recreation():
@@ -360,7 +361,7 @@ def test_deleting_association_waits_before_recreation():
     ):
         plugin.ensure_present(client, module)
 
-    wait_for_status.assert_called_once_with(client, module, "old-association", "deleted")
+    wait_for_status.assert_called_once_with(client, module, "old-association", "deleted", deadline=ANY)
     client.associate_resolver_rule.assert_called_once()
 
 
@@ -416,3 +417,33 @@ def test_disassociation_wait_failure_reports_changed(state):
     assert (
         raised.value.values["msg"] == "Unable to wait for AWS Route53 Resolver rule association main to become deleted"
     )
+
+
+def test_waits_after_a_re_run_share_one_wait_timeout_budget():
+    deleting = dict(ASSOCIATION, Status="DELETING")
+    with (
+        patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=deleting),
+        patch.object(plugin, "run_waiter", side_effect=[None, ModuleFail({})]) as run_waiter,
+        patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 700]),
+        pytest.raises(ModuleFail),
+    ):
+        plugin.ensure_present(Mock(), FakeModule(params(wait_timeout=1800)))
+
+    assert [waiter_call.kwargs["timeout"] for waiter_call in run_waiter.call_args_list] == [1800, 1200]
+
+
+def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
+    deleting = dict(ASSOCIATION, Status="DELETING")
+    with (
+        patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=deleting),
+        patch.object(plugin, "run_waiter", side_effect=[None]) as run_waiter,
+        patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 1901]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(Mock(), FakeModule(params(wait_timeout=1800)))
+
+    run_waiter.assert_called_once()
+    assert raised.value.values == {
+        "changed": False,
+        "msg": "Unable to wait for AWS Route53 Resolver rule association main to become deleted",
+    }
