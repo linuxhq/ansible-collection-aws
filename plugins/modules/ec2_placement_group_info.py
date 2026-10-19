@@ -33,6 +33,9 @@ options:
       - EC2 placement group names used to limit the result set.
       - This is sent as the C(group-name) filter and takes precedence over a
         C(group-name) key in O(filters).
+      - EC2 accepts at most 200 filter values in each request, counted across all
+        filters, so this list is split across requests and O(filters) must contain
+        fewer than 200 values when this is set.
       - A name that does not exist results in no entry; no error is raised.
     elements: str
     type: list
@@ -134,6 +137,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
     ansible_dict_to_string_filter_list,
+    filter_value_batches,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
@@ -174,28 +178,33 @@ def main():
     # GroupNames and GroupIds fail for a group that does not exist, so names are
     # filtered by the documented group-name filter and IDs are matched locally.
     # Shared groups are described only by ID, so unmatched IDs are described one at a time.
-    if group_names:
-        filters["group-name"] = group_names
+    requests = []
+    for batch_filters in filter_value_batches(module, filters, "group-name", group_names, "group_names"):
+        request = {}
+        if batch_filters:
+            request["Filters"] = ansible_dict_to_string_filter_list(batch_filters)
 
-    request = {}
-    if filters:
-        request["Filters"] = ansible_dict_to_string_filter_list(filters)
+        requests.append(request)
 
     require_client_methods(
         module,
         client,
         "EC2",
-        {"describe_placement_groups": tuple(request)},
+        {"describe_placement_groups": tuple(requests[0])},
     )
 
-    placement_groups = query_list(
-        module,
-        client,
-        "describe_placement_groups",
-        "PlacementGroups",
-        "Unable to describe EC2 placement groups",
-        **request,
-    )
+    placement_groups = []
+    for request in requests:
+        placement_groups.extend(
+            query_list(
+                module,
+                client,
+                "describe_placement_groups",
+                "PlacementGroups",
+                "Unable to describe EC2 placement groups",
+                **request,
+            )
+        )
 
     if any(not isinstance(placement_group, dict) for placement_group in placement_groups):
         module.fail_json(msg="EC2 returned invalid placement group information")
@@ -212,17 +221,22 @@ def main():
                 module,
                 client,
                 "EC2",
-                {"describe_placement_groups": tuple(request) + ("GroupIds",)},
+                {"describe_placement_groups": tuple(requests[0]) + ("GroupIds",)},
             )
 
         for group_id in unmatched_group_ids:
-            shared_groups = describe_placement_group_by_id(client, module, group_id, request)
-            if any(not isinstance(placement_group, dict) for placement_group in shared_groups):
-                module.fail_json(msg="EC2 returned invalid placement group information")
+            # A group matches at most one group-name batch, so stop at the first match.
+            for request in requests:
+                shared_groups = describe_placement_group_by_id(client, module, group_id, request)
+                if any(not isinstance(placement_group, dict) for placement_group in shared_groups):
+                    module.fail_json(msg="EC2 returned invalid placement group information")
 
-            placement_groups.extend(
-                placement_group for placement_group in shared_groups if placement_group.get("GroupId") == group_id
-            )
+                matches = [
+                    placement_group for placement_group in shared_groups if placement_group.get("GroupId") == group_id
+                ]
+                if matches:
+                    placement_groups.extend(matches)
+                    break
 
     module.exit_json(
         changed=False,

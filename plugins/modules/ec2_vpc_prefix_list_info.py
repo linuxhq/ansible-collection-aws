@@ -23,6 +23,9 @@ options:
       - EC2 VPC managed prefix list IDs used to limit the result set.
       - This is sent as the C(prefix-list-id) filter and takes precedence over
         a C(prefix-list-id) key in O(filters).
+      - EC2 accepts at most 200 filter values in each request, counted across all
+        filters, so this list is split across requests and O(filters) must contain
+        fewer than 200 values when this is set.
       - An ID that does not exist results in no entry; no error is raised.
     elements: str
     type: list
@@ -172,6 +175,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
     ansible_dict_to_string_filter_list,
+    filter_value_batches,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
@@ -236,34 +240,37 @@ def main():
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     # PrefixListIds fails for a prefix list that does not exist, so IDs are sent
-    # as the documented prefix-list-id filter.
-    if prefix_list_ids:
-        filters["prefix-list-id"] = prefix_list_ids
-
-    request = {}
-    if filters:
-        request["Filters"] = ansible_dict_to_string_filter_list(filters)
+    # as the documented prefix-list-id filter, split to stay within the filter value limit.
+    filter_batches = filter_value_batches(module, filters, "prefix-list-id", prefix_list_ids, "prefix_list_ids")
 
     require_client_methods(
         module,
         client,
         "EC2",
         {
-            "describe_managed_prefix_lists": tuple(request) + ("MaxResults", "NextToken"),
+            "describe_managed_prefix_lists": (("Filters",) if filter_batches[0] else ()) + ("MaxResults", "NextToken"),
         },
     )
 
-    prefix_lists = validate_prefix_lists(
-        module,
-        query_list(
-            module,
-            client,
-            "describe_managed_prefix_lists",
-            "PrefixLists",
-            "Unable to describe EC2 VPC managed prefix lists",
-            **request,
-        ),
-    )
+    prefix_lists = []
+    for batch_filters in filter_batches:
+        request = {}
+        if batch_filters:
+            request["Filters"] = ansible_dict_to_string_filter_list(batch_filters)
+
+        prefix_lists.extend(
+            validate_prefix_lists(
+                module,
+                query_list(
+                    module,
+                    client,
+                    "describe_managed_prefix_lists",
+                    "PrefixLists",
+                    "Unable to describe EC2 VPC managed prefix lists",
+                    **request,
+                ),
+            )
+        )
 
     if prefix_lists:
         require_client_methods(

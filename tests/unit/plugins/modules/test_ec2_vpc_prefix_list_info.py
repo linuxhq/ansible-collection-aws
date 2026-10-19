@@ -291,3 +291,35 @@ def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings():
         {"Name": "owner-id", "Values": ["123456789012"]},
         {"Name": "x-flag", "Values": ["true"]},
     ]
+
+
+def test_prefix_list_ids_are_batched_with_the_other_filter_values():
+    prefix_list_ids = [f"pl-{index}" for index in range(200)]
+    module = FakeModule(
+        {"filters": {"owner-id": "123456789012"}, "prefix_list_ids": prefix_list_ids, "target_version": None},
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(
+            plugin,
+            "query_list",
+            side_effect=lambda *args, **kwargs: [{"PrefixListId": kwargs["Filters"][1]["Values"][0]}],
+        ) as query,
+        patch.object(plugin, "paginated_query_with_retries", return_value={"Entries": []}),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    batches = [call.kwargs["Filters"] for call in query.call_args_list]
+    assert [len(batch[1]["Values"]) for batch in batches] == [199, 1]
+    assert all(batch[0] == {"Name": "owner-id", "Values": ["123456789012"]} for batch in batches)
+    assert [value for batch in batches for value in batch[1]["Values"]] == prefix_list_ids
+    assert require.call_args_list[0].args[3] == {
+        "describe_managed_prefix_lists": ("Filters", "MaxResults", "NextToken")
+    }
+    assert [prefix_list["prefix_list_id"] for prefix_list in raised.value.values["prefix_lists"]] == [
+        "pl-0",
+        "pl-199",
+    ]
