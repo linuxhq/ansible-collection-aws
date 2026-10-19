@@ -277,25 +277,28 @@ options:
       - Whether to wait for the accelerator to finish deploying after changes
         are applied, and for the accelerator deletion to complete when
         O(state=absent).
-      - When O(state=absent), the module always waits for listener and
-        endpoint group deletions and for the accelerator to be disabled,
-        because AWS deletes an accelerator only after these deploy.
       - Accelerator, listener, and endpoint group changes are applied first
         and share a single deployment wait.
+      - Even when O(wait=false), the module waits for an accelerator that is still deploying before
+        changing it or managing its listeners, for a new accelerator to deploy before creating its
+        listeners, between dependent listener changes, after deleting a listener's endpoint groups
+        before deleting the listener, and before endpoint group changes. When O(state=absent), it
+        also waits for listener and endpoint group deletions and for the accelerator to be disabled,
+        because AWS deletes an accelerator only after these deploy. These waits use O(wait_delay) and
+        are bounded by O(wait_timeout).
     default: true
     type: bool
   wait_delay:
     description:
       - The delay in seconds between accelerator status polling attempts.
-      - This also applies when O(wait=false), because the module still waits for an accelerator to
-        finish deploying before changing it, between dependent listener changes, before endpoint
-        group changes, and for listener deletions and disabling the accelerator before deleting it.
+      - This also applies to the waits that happen even when O(wait=false).
       - This must be 1 or greater.
     default: 10
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait.
+      - Also bounds the waits that happen even when O(wait=false).
       - Sequential waits in one run share this budget.
       - This must be 1 or greater.
     default: 600

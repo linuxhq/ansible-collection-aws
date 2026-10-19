@@ -93,18 +93,25 @@ options:
     type: str
   wait:
     description:
-      - Whether to wait for route table and route state changes to complete.
+      - Whether to wait for the route table and route changes made by the module to complete, and for a
+        C(pending) or C(deleting) route table or route that the module finds to settle.
+      - Even when O(wait=false), the module waits for a new or C(pending) route table to become
+        C(available) when O(routes) is set, and for a C(deleting) route to be removed before it creates
+        that route again. When O(state=absent), it also waits for a C(pending) route table to become
+        C(available) before deleting it. These waits use O(wait_delay) and are bounded by O(wait_timeout).
     default: true
     type: bool
   wait_delay:
     description:
-      - The delay between polling attempts when O(wait=true).
+      - The delay between polling attempts when O(wait=true) or while the module waits even when
+        O(wait=false).
       - This must be 1 or greater.
     default: 5
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait when O(wait=true).
+      - Also bounds the waits that happen even when O(wait=false).
       - Sequential waits in one run share this budget.
       - This must be 1 or greater.
     default: 600

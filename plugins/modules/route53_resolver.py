@@ -98,23 +98,23 @@ options:
   wait:
     description:
       - Whether to wait for the resolver endpoint state change to complete.
+      - Even when O(wait=false), when O(state=present) the module waits for a C(DELETING) endpoint to be
+        deleted before creating it again, for an endpoint that is still changing to settle before
+        updating it, after an update that is followed by IP address changes, and between IP address
+        changes. These waits use O(wait_delay) and are bounded by O(wait_timeout).
     default: true
     type: bool
   wait_delay:
     description:
-      - The delay between polling attempts when O(wait=true).
-      - When O(state=present), this also applies regardless of O(wait) before
-        an endpoint that is still changing is updated, after an update that is
-        followed by IP address changes, and between IP address changes.
+      - The delay between polling attempts when O(wait=true) or while the module waits even when
+        O(wait=false).
       - This must be 1 or greater.
     default: 5
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait when O(wait=true).
-      - When O(state=present), this also applies regardless of O(wait) before
-        an endpoint that is still changing is updated, after an update that is
-        followed by IP address changes, and between IP address changes.
+      - Also bounds the waits that happen even when O(wait=false).
       - Sequential waits in one run share this budget.
       - This must be 1 or greater.
     default: 300

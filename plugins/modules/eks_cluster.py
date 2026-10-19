@@ -279,21 +279,25 @@ options:
   wait:
     default: true
     description:
-      - Whether to wait for cluster create, update, or delete operations.
+      - Whether to wait for the cluster create, update, or delete operations made by the module to complete.
+      - Even when O(wait=false), the module waits for a C(DELETING) cluster to be deleted before
+        recreating it, for a cluster to become C(ACTIVE) before changing or deleting it, for each
+        cluster configuration update to complete before the next update or a version update, and for
+        in-progress cluster updates to complete before deleting the cluster. These waits use
+        O(wait_delay) and are bounded by O(wait_timeout).
     type: bool
   wait_delay:
     default: 15
     description:
       - The delay in seconds between cluster status and update polling attempts.
-      - This also applies when O(wait=false), because the module still waits for a deleting cluster
-        before recreating it, for a cluster to become active before changing or deleting it, for
-        in-progress updates before deleting it, and between dependent updates.
+      - This also applies to the waits that happen even when O(wait=false).
       - This must be 1 or greater.
     type: int
   wait_timeout:
     default: 1200
     description:
       - The maximum number of seconds to wait.
+      - Also bounds the waits that happen even when O(wait=false).
       - Sequential waits in one run share this budget.
       - This must be 1 or greater.
     type: int
