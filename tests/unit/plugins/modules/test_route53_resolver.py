@@ -1227,11 +1227,15 @@ def test_waiting_for_a_usable_endpoint_stops_when_it_is_deleting():
 
 def test_wait_failure_message_does_not_claim_a_timeout():
     module = FakeModule(endpoint_params())
-    with patch.object(plugin, "run_waiter") as run_waiter, patch.object(plugin, "get_resolver_endpoint"):
+    with (
+        patch.object(plugin, "custom_waiter") as custom_waiter,
+        patch.object(plugin, "run_waiter") as run_waiter,
+        patch.object(plugin, "get_resolver_endpoint"),
+    ):
         plugin.wait_for_resolver_endpoint_status(Mock(), module, "rslvr-1", {"operational"})
 
-    assert run_waiter.call_args.args[3] == "resolver_endpoint_operational"
-    assert run_waiter.call_args.args[4] == "Unable to wait for AWS Route53 Resolver endpoint main to become operational"
+    assert custom_waiter.call_args.args[2] == "resolver_endpoint_operational"
+    assert run_waiter.call_args.args[2] == "Unable to wait for AWS Route53 Resolver endpoint main to become operational"
 
 
 def test_failed_addresses_are_replaced_and_departing_addresses_are_ignored():
@@ -1482,7 +1486,7 @@ def test_update_reuses_tags_read_at_the_start():
     client.untag_resource.assert_not_called()
 
 
-def failing_waiter(module, client, model_data, waiter_name, error_msg, changed=False, **kwargs):
+def failing_waiter(module, waiter, error_msg, changed=False, **kwargs):
     module.fail_json(changed=changed, msg=error_msg)
 
 
@@ -1541,6 +1545,7 @@ def test_create_wait_failure_reports_changed():
     client = Mock(create_resolver_endpoint=Mock(return_value={"ResolverEndpoint": existing_endpoint()}))
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter", side_effect=failing_waiter),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -1552,6 +1557,7 @@ def test_create_wait_failure_reports_changed():
 
 def test_delete_wait_failure_reports_changed():
     with (
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter", side_effect=failing_waiter),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -1609,6 +1615,7 @@ def test_address_listing_failure_after_create_reports_changed():
     client = Mock(create_resolver_endpoint=Mock(return_value={"ResolverEndpoint": existing_endpoint()}))
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter"),
         patch.object(plugin, "get_resolver_endpoint", return_value=existing_endpoint()),
         patch.object(plugin, "query_list", side_effect=failing_query),
@@ -1665,30 +1672,52 @@ def test_resulting_tag_limit_fails_before_updating_the_endpoint(check_mode):
     client.tag_resource.assert_not_called()
 
 
+def waiter_configs(waiter):
+    """Return the WaiterConfig that reached each wait, for comparing with the expected remaining budgets."""
+    return [wait_call.kwargs["WaiterConfig"] for wait_call in waiter.wait.call_args_list]
+
+
+def budget_configs(*timeouts):
+    return [wait_utils.custom_waiter_config(timeout, default_pause=5) for timeout in timeouts]
+
+
+def sdk_error():
+    return plugin.ClientError({"Error": {"Code": "Failed", "Message": "no"}}, "Wait")
+
+
 def test_waits_after_a_re_run_share_one_wait_timeout_budget():
-    deleting = {"Id": "rslvr-1", "Name": "main", "Status": "DELETING"}
+    waiter = Mock()
+    waiter.wait.side_effect = [None, sdk_error()]
     with (
-        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=deleting),
-        patch.object(plugin, "run_waiter", side_effect=[None, ModuleFail({})]) as run_waiter,
+        patch.object(
+            plugin,
+            "get_resolver_endpoint_by_name",
+            return_value={"Id": "rslvr-1", "Name": "main", "Status": "DELETING"},
+        ),
+        patch.object(plugin, "custom_waiter", return_value=waiter),
         patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 700]),
         pytest.raises(ModuleFail),
     ):
         plugin.ensure_present(Mock(), FakeModule(endpoint_params(wait_timeout=1800)))
 
-    assert [waiter_call.kwargs["timeout"] for waiter_call in run_waiter.call_args_list] == [1800, 1200]
+    assert waiter_configs(waiter) == budget_configs(1800, 1200)
 
 
 def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
-    deleting = {"Id": "rslvr-1", "Name": "main", "Status": "DELETING"}
+    waiter = Mock()
     with (
-        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=deleting),
-        patch.object(plugin, "run_waiter", side_effect=[None]) as run_waiter,
+        patch.object(
+            plugin,
+            "get_resolver_endpoint_by_name",
+            return_value={"Id": "rslvr-1", "Name": "main", "Status": "DELETING"},
+        ),
+        patch.object(plugin, "custom_waiter", return_value=waiter),
         patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 1901]),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(Mock(), FakeModule(endpoint_params(wait_timeout=1800)))
 
-    run_waiter.assert_called_once()
+    waiter.wait.assert_called_once()
     assert raised.value.values == {
         "changed": False,
         "msg": "Unable to wait for AWS Route53 Resolver endpoint main to become deleted",
@@ -1698,8 +1727,9 @@ def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
 def test_ip_address_changes_wait_only_for_the_remaining_budget():
     endpoint = {"Id": "rslvr-1", "IpAddresses": [{"IpId": "rni-old", "SubnetId": "subnet-old"}]}
     desired = {"name": "main", "ip_addresses": [{"subnet_id": "subnet-new"}]}
+    waiter = Mock()
     with (
-        patch.object(plugin, "run_waiter") as run_waiter,
+        patch.object(plugin, "custom_waiter", return_value=waiter),
         patch.object(plugin, "get_resolver_endpoint", return_value=endpoint),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", return_value=endpoint),
         patch.object(wait_utils.time, "monotonic", side_effect=[400, 1000]),
@@ -1708,4 +1738,4 @@ def test_ip_address_changes_wait_only_for_the_remaining_budget():
             Mock(), FakeModule(endpoint_params(wait=True, wait_timeout=1800)), endpoint, desired, deadline=1900
         )
 
-    assert [waiter_call.kwargs["timeout"] for waiter_call in run_waiter.call_args_list] == [1500, 900]
+    assert waiter_configs(waiter) == budget_configs(1500, 900)

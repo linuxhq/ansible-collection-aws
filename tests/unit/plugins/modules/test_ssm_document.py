@@ -382,16 +382,20 @@ def test_failed_document_with_new_content_is_updated():
 @pytest.mark.parametrize("state", ["active", "deleted"])
 def test_wait_message_names_the_target_state(state):
     module = FakeModule(params())
-    with patch.object(plugin, "run_waiter", side_effect=ModuleFail({})) as run_waiter, pytest.raises(ModuleFail):
+    with (
+        patch.object(plugin, "custom_waiter") as custom_waiter,
+        patch.object(plugin, "run_waiter", side_effect=ModuleFail({})) as run_waiter,
+        pytest.raises(ModuleFail),
+    ):
         plugin.wait_for_document(Mock(), module, state, "2" if state == "active" else None)
 
-    assert run_waiter.call_args.args[3] == f"document_{state}"
-    assert run_waiter.call_args.args[4] == f"Unable to wait for AWS Systems Manager document example to become {state}"
+    assert custom_waiter.call_args.args[2] == f"document_{state}"
+    assert run_waiter.call_args.args[2] == f"Unable to wait for AWS Systems Manager document example to become {state}"
 
 
 def test_wait_fails_when_the_document_version_failed():
     client = Mock(describe_document=Mock(return_value={"Document": {"Status": "Failed", "StatusInformation": "Bad"}}))
-    with patch.object(plugin, "run_waiter"), pytest.raises(ModuleFail) as raised:
+    with patch.object(plugin, "custom_waiter"), patch.object(plugin, "run_waiter"), pytest.raises(ModuleFail) as raised:
         plugin.wait_for_document(client, FakeModule(params()), "active", "2")
 
     assert raised.value.values["msg"] == "AWS Systems Manager document example failed: Bad"
@@ -553,7 +557,7 @@ def test_transitional_document_that_ends_failed_is_replaced_with_new_content():
 
 def test_wait_without_fail_on_failed_does_not_inspect_the_status():
     client = Mock()
-    with patch.object(plugin, "run_waiter"):
+    with patch.object(plugin, "custom_waiter"), patch.object(plugin, "run_waiter"):
         plugin.wait_for_document(client, FakeModule(params()), "active", "2", fail_on_failed=False)
 
     client.describe_document.assert_not_called()
@@ -562,7 +566,11 @@ def test_wait_without_fail_on_failed_does_not_inspect_the_status():
 @pytest.mark.parametrize("changed", [False, True])
 def test_wait_failures_report_whether_the_document_changed(changed):
     client = Mock(describe_document=Mock(return_value={"Document": {"Status": "Failed"}}))
-    with patch.object(plugin, "run_waiter") as run_waiter, pytest.raises(ModuleFail) as raised:
+    with (
+        patch.object(plugin, "custom_waiter"),
+        patch.object(plugin, "run_waiter") as run_waiter,
+        pytest.raises(ModuleFail) as raised,
+    ):
         plugin.wait_for_document(client, FakeModule(params()), "active", "2", changed=changed)
 
     assert run_waiter.call_args.kwargs["changed"] is changed
@@ -575,6 +583,7 @@ def test_failure_after_create_reports_changed():
     with (
         patch.object(plugin, "describe_ssm_document", return_value=None),
         patch.object(plugin, "get_document", return_value=None),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter", side_effect=ModuleFail({})) as run_waiter,
         pytest.raises(ModuleFail),
     ):
@@ -625,6 +634,7 @@ def test_absent_wait_failure_after_delete_reports_changed():
     client = Mock()
     with (
         patch.object(plugin, "describe_ssm_document", return_value=described()),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter", side_effect=ModuleFail({})) as run_waiter,
         pytest.raises(ModuleFail),
     ):
@@ -899,6 +909,19 @@ def test_resulting_tag_limit_fails_before_updating_the_document(check_mode):
     client.add_tags_to_resource.assert_not_called()
 
 
+def waiter_configs(waiter):
+    """Return the WaiterConfig that reached each wait, for comparing with the expected remaining budgets."""
+    return [wait_call.kwargs["WaiterConfig"] for wait_call in waiter.wait.call_args_list]
+
+
+def budget_configs(*timeouts):
+    return [wait_utils.custom_waiter_config(timeout, default_pause=5) for timeout in timeouts]
+
+
+def sdk_error():
+    return plugin.ClientError({"Error": {"Code": "Failed", "Message": "no"}}, "Wait")
+
+
 def run_default_version_waits(monotonic, waiter_results):
     """Run ensure_present for $DEFAULT while both the default and the latest version are still being created."""
     documents = [
@@ -906,28 +929,30 @@ def run_default_version_waits(monotonic, waiter_results):
         document({"schemaVersion": "1.2"}, Status="Active"),
         document({"schemaVersion": "2.2"}, DocumentVersion="2", Status="Creating"),
     ]
+    waiter = Mock()
+    waiter.wait.side_effect = waiter_results
     with (
         patch.object(plugin, "describe_ssm_document", return_value=None),
         patch.object(plugin, "get_document", side_effect=documents),
-        patch.object(plugin, "run_waiter", side_effect=waiter_results) as run_waiter,
+        patch.object(plugin, "custom_waiter", return_value=waiter),
         patch.object(wait_utils.time, "monotonic", side_effect=monotonic),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(Mock(), FakeModule(params(document_version="$DEFAULT", wait_timeout=1800)))
 
-    return raised.value, run_waiter
+    return raised.value, waiter
 
 
 def test_sequential_waits_share_one_wait_timeout_budget():
-    _result, run_waiter = run_default_version_waits([100, 100, 700], [None, ModuleFail({})])
+    _result, waiter = run_default_version_waits([100, 100, 700], [None, sdk_error()])
 
-    assert [waiter_call.kwargs["timeout"] for waiter_call in run_waiter.call_args_list] == [1800, 1200]
+    assert waiter_configs(waiter) == budget_configs(1800, 1200)
 
 
 def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
-    result, run_waiter = run_default_version_waits([100, 100, 1901], [None])
+    result, waiter = run_default_version_waits([100, 100, 1901], [None])
 
-    run_waiter.assert_called_once()
+    waiter.wait.assert_called_once()
     assert result.values == {
         "changed": False,
         "msg": "Unable to wait for AWS Systems Manager document example to become active",

@@ -223,7 +223,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
-    remaining_wait_timeout,
+    custom_waiter,
     require_positive_wait_bounds,
     run_waiter,
     wait_deadline,
@@ -301,12 +301,10 @@ def wait_for_document(client, module, state, document_version=None, changed=Fals
     error_msg = f"Unable to wait for AWS Systems Manager document {name} to become {state}"
     run_waiter(
         module,
-        client,
-        SSM_DOCUMENT_WAITER_MODEL_DATA,
-        f"document_{state}",
+        custom_waiter(client, SSM_DOCUMENT_WAITER_MODEL_DATA, f"document_{state}"),
         error_msg,
         changed=changed,
-        timeout=None if deadline is None else remaining_wait_timeout(module, deadline, error_msg, changed=changed),
+        deadline=deadline,
         **request,
     )
 

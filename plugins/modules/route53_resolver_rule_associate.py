@@ -159,7 +159,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
-    remaining_wait_timeout,
+    custom_waiter,
     require_positive_wait_bounds,
     run_waiter,
     wait_deadline,
@@ -427,12 +427,12 @@ def wait_for_resolver_rule_association_status(
 
     run_waiter(
         module,
-        client,
-        ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA,
-        f"resolver_rule_association_{state}",
+        custom_waiter(
+            client, ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA, f"resolver_rule_association_{state}"
+        ),
         error_msg,
         changed=changed,
-        timeout=None if deadline is None else remaining_wait_timeout(module, deadline, error_msg, changed=changed),
+        deadline=deadline,
         ResolverRuleAssociationId=resolver_rule_association_id,
     )
 

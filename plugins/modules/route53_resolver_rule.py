@@ -291,7 +291,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
-    remaining_wait_timeout,
+    custom_waiter,
     require_positive_wait_bounds,
     run_waiter,
     wait_deadline,
@@ -629,12 +629,10 @@ def wait_for_resolver_rule_status(
     error_msg = f"Unable to wait for AWS Route53 Resolver rule {module.params['name']} to become {state}"
     run_waiter(
         module,
-        client,
-        ROUTE53_RESOLVER_RULE_WAITER_MODEL_DATA,
-        f"resolver_rule_{state}",
+        custom_waiter(client, ROUTE53_RESOLVER_RULE_WAITER_MODEL_DATA, f"resolver_rule_{state}"),
         error_msg,
         changed=changed,
-        timeout=None if deadline is None else remaining_wait_timeout(module, deadline, error_msg, changed=changed),
+        deadline=deadline,
         ResolverRuleId=resolver_rule_id,
     )
 

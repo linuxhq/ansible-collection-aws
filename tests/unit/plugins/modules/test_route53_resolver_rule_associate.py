@@ -80,13 +80,13 @@ def test_deleted_waiter_stops_on_failed():
 @pytest.mark.parametrize("state", ["complete", "deleted"])
 def test_wait_message_names_the_target_state(state):
     module = FakeModule(params())
-    with patch.object(plugin, "run_waiter") as run_waiter:
+    with patch.object(plugin, "custom_waiter") as custom_waiter, patch.object(plugin, "run_waiter") as run_waiter:
         run_waiter.side_effect = ModuleFail({})
         with pytest.raises(ModuleFail):
             plugin.wait_for_resolver_rule_association_status(Mock(), module, "rslvr-rrassoc-1", state)
 
-    assert run_waiter.call_args.args[3] == f"resolver_rule_association_{state}"
-    assert run_waiter.call_args.args[4] == (
+    assert custom_waiter.call_args.args[2] == f"resolver_rule_association_{state}"
+    assert run_waiter.call_args.args[2] == (
         f"Unable to wait for AWS Route53 Resolver rule association main to become {state}"
     )
 
@@ -96,7 +96,7 @@ def test_wait_fails_with_status_message_when_association_failed():
     client.get_resolver_rule_association.return_value = {
         "ResolverRuleAssociation": dict(ASSOCIATION, Status="FAILED", StatusMessage="VPC is gone")
     }
-    with patch.object(plugin, "run_waiter"), pytest.raises(ModuleFail) as raised:
+    with patch.object(plugin, "custom_waiter"), patch.object(plugin, "run_waiter"), pytest.raises(ModuleFail) as raised:
         plugin.wait_for_resolver_rule_association_status(client, FakeModule(params()), "rslvr-rrassoc-1", "complete")
 
     assert raised.value.values["msg"] == "AWS Route53 Resolver rule association main failed: VPC is gone"
@@ -106,7 +106,7 @@ def test_wait_fails_with_status_message_when_association_failed():
 def test_wait_returns_failed_association_when_allowed():
     client = Mock()
     client.get_resolver_rule_association.return_value = {"ResolverRuleAssociation": dict(ASSOCIATION, Status="FAILED")}
-    with patch.object(plugin, "run_waiter"):
+    with patch.object(plugin, "custom_waiter"), patch.object(plugin, "run_waiter"):
         association = plugin.wait_for_resolver_rule_association_status(
             client, FakeModule(params()), "rslvr-rrassoc-1", "complete", allow_failed=True
         )
@@ -116,7 +116,7 @@ def test_wait_returns_failed_association_when_allowed():
 
 def test_wait_rejects_malformed_get_response():
     client = Mock(get_resolver_rule_association=Mock(return_value=[]))
-    with patch.object(plugin, "run_waiter"), pytest.raises(ModuleFail) as raised:
+    with patch.object(plugin, "custom_waiter"), patch.object(plugin, "run_waiter"), pytest.raises(ModuleFail) as raised:
         plugin.wait_for_resolver_rule_association_status(client, FakeModule(params()), "rslvr-rrassoc-1", "complete")
 
     assert "invalid resolver rule association" in raised.value.values["msg"]
@@ -389,6 +389,7 @@ def test_association_that_fails_after_creation_reports_changed():
     }
     with (
         patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=None),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter"),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -400,7 +401,7 @@ def test_association_that_fails_after_creation_reports_changed():
 
 @pytest.mark.parametrize("state", ["absent", "present"])
 def test_disassociation_wait_failure_reports_changed(state):
-    def failing_waiter(module, client, model_data, waiter_name, error_msg, changed=False, **kwargs):
+    def failing_waiter(module, waiter, error_msg, changed=False, **kwargs):
         module.fail_json(changed=changed, msg=error_msg)
 
     ensure = plugin.ensure_absent if state == "absent" else plugin.ensure_present
@@ -408,6 +409,7 @@ def test_disassociation_wait_failure_reports_changed(state):
         patch.object(
             plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=dict(ASSOCIATION, Status="FAILED")
         ),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter", side_effect=failing_waiter),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -419,30 +421,48 @@ def test_disassociation_wait_failure_reports_changed(state):
     )
 
 
+def waiter_configs(waiter):
+    """Return the WaiterConfig that reached each wait, for comparing with the expected remaining budgets."""
+    return [wait_call.kwargs["WaiterConfig"] for wait_call in waiter.wait.call_args_list]
+
+
+def budget_configs(*timeouts):
+    return [wait_utils.custom_waiter_config(timeout, default_pause=5) for timeout in timeouts]
+
+
+def sdk_error():
+    return plugin.ClientError({"Error": {"Code": "Failed", "Message": "no"}}, "Wait")
+
+
 def test_waits_after_a_re_run_share_one_wait_timeout_budget():
-    deleting = dict(ASSOCIATION, Status="DELETING")
+    waiter = Mock()
+    waiter.wait.side_effect = [None, sdk_error()]
     with (
-        patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=deleting),
-        patch.object(plugin, "run_waiter", side_effect=[None, ModuleFail({})]) as run_waiter,
+        patch.object(
+            plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=dict(ASSOCIATION, Status="DELETING")
+        ),
+        patch.object(plugin, "custom_waiter", return_value=waiter),
         patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 700]),
         pytest.raises(ModuleFail),
     ):
         plugin.ensure_present(Mock(), FakeModule(params(wait_timeout=1800)))
 
-    assert [waiter_call.kwargs["timeout"] for waiter_call in run_waiter.call_args_list] == [1800, 1200]
+    assert waiter_configs(waiter) == budget_configs(1800, 1200)
 
 
 def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
-    deleting = dict(ASSOCIATION, Status="DELETING")
+    waiter = Mock()
     with (
-        patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=deleting),
-        patch.object(plugin, "run_waiter", side_effect=[None]) as run_waiter,
+        patch.object(
+            plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=dict(ASSOCIATION, Status="DELETING")
+        ),
+        patch.object(plugin, "custom_waiter", return_value=waiter),
         patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 1901]),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(Mock(), FakeModule(params(wait_timeout=1800)))
 
-    run_waiter.assert_called_once()
+    waiter.wait.assert_called_once()
     assert raised.value.values == {
         "changed": False,
         "msg": "Unable to wait for AWS Route53 Resolver rule association main to become deleted",

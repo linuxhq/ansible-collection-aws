@@ -2,6 +2,7 @@ from unittest.mock import Mock, call, patch
 
 import pytest
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import wait as wait_utils
 from ansible_collections.linuxhq.aws.plugins.modules import account_region as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -162,16 +163,16 @@ def test_account_id_is_sent_to_the_waiter():
     module = FakeModule({"account_id": "123456789012", "name": "af-south-1"})
     client = Mock()
     client.get_region_opt_status.return_value = {"RegionOptStatus": "ENABLED"}
-    with patch.object(plugin, "run_waiter") as run_waiter:
+    with patch.object(plugin, "custom_waiter"), patch.object(plugin, "run_waiter") as run_waiter:
         plugin.wait_for_status(client, module, "region_enabled", plugin.PRESENT_STEADY_STATUSES)
 
     assert run_waiter.call_args.kwargs == {
         "AccountId": "123456789012",
         "RegionName": "af-south-1",
         "changed": False,
-        "timeout": None,
+        "deadline": None,
     }
-    assert "af-south-1 in account 123456789012" in run_waiter.call_args.args[4]
+    assert "af-south-1 in account 123456789012" in run_waiter.call_args.args[2]
 
 
 @pytest.mark.parametrize("account_id", ["", "123", "a" * 12])
@@ -206,6 +207,7 @@ def test_waiter_failure_after_mutation_reports_changed(state, previous, mutation
     with (
         patch.object(plugin, "get_region_opt_status", return_value=previous),
         patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter", side_effect=ModuleFail({"msg": "timed out"})) as run_waiter,
         pytest.raises(ModuleFail),
     ):
@@ -248,14 +250,17 @@ def test_final_wait_receives_the_remaining_wait_budget(state, statuses):
     client = Mock()
     client.get_region_opt_status.side_effect = [{"RegionOptStatus": status} for status in statuses]
     with (
-        patch.object(plugin.time, "monotonic", side_effect=[100, 700]),
+        patch.object(wait_utils.time, "monotonic", side_effect=[100, 700]),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "run_waiter") as run_waiter,
+        patch.object(plugin, "custom_waiter") as custom_waiter,
         pytest.raises(ModuleExit) as raised,
     ):
         getattr(plugin, f"ensure_{state}")(client, module)
 
-    assert [waiter_call.kwargs["timeout"] for waiter_call in run_waiter.call_args_list] == [None, 1200]
+    assert [wait_call.kwargs["WaiterConfig"] for wait_call in custom_waiter.return_value.wait.call_args_list] == [
+        wait_utils.custom_waiter_config(1800, default_pause=30),
+        wait_utils.custom_waiter_config(1200, default_pause=30),
+    ]
     assert raised.value.values["region_opt_status"] == statuses[-1]
 
 
@@ -268,14 +273,14 @@ def test_final_wait_times_out_when_the_opposite_transition_spent_the_budget(stat
     client = Mock()
     client.get_region_opt_status.side_effect = [{"RegionOptStatus": status} for status in statuses]
     with (
-        patch.object(plugin.time, "monotonic", side_effect=[100, 1900]),
+        patch.object(wait_utils.time, "monotonic", side_effect=[100, 1900]),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "run_waiter") as run_waiter,
+        patch.object(plugin, "custom_waiter") as custom_waiter,
         pytest.raises(ModuleFail) as raised,
     ):
         getattr(plugin, f"ensure_{state}")(client, module)
 
-    assert run_waiter.call_count == 1
+    custom_waiter.return_value.wait.assert_called_once()
     assert raised.value.values["changed"] is True
     assert raised.value.values["msg"].startswith("Timed out waiting for AWS account region af-south-1")
 

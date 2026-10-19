@@ -843,13 +843,14 @@ def test_rule_that_fails_after_a_change_reports_the_aws_status_message():
     module = FakeModule(rule_params())
     failed = existing_rule(Status="FAILED", StatusMessage="Target 192.0.2.1 is unreachable")
     with (
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter") as run_waiter,
         patch.object(plugin, "get_resolver_rule", return_value=failed),
         pytest.raises(ModuleFail) as result,
     ):
         plugin.wait_for_resolver_rule_status(Mock(), module, "rslvr-rr-1", "complete")
 
-    assert run_waiter.call_args.args[4] == "Unable to wait for AWS Route53 Resolver rule main to become complete"
+    assert run_waiter.call_args.args[2] == "Unable to wait for AWS Route53 Resolver rule main to become complete"
     assert result.value.values["msg"] == "AWS Route53 Resolver rule main failed: Target 192.0.2.1 is unreachable"
 
 
@@ -908,7 +909,7 @@ def test_check_mode_tag_change_keeps_the_stored_target_values():
     assert result.value.values["resolver_rule"]["tags"] == {"Env": "test"}
 
 
-def failing_waiter(module, client, model_data, waiter_name, error_msg, changed=False, **kwargs):
+def failing_waiter(module, waiter, error_msg, changed=False, **kwargs):
     module.fail_json(changed=changed, msg=error_msg)
 
 
@@ -918,6 +919,7 @@ def test_rule_that_fails_after_an_update_reports_changed():
     failed = existing_rule(Status="FAILED", StatusMessage="Target is unreachable")
     with (
         patch.object(plugin, "get_resolver_rule_by_name", return_value=existing_rule(TargetIps=[{"Ip": "192.0.2.9"}])),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter"),
         patch.object(plugin, "get_resolver_rule", return_value=failed),
         pytest.raises(ModuleFail) as raised,
@@ -932,6 +934,7 @@ def test_create_wait_failure_reports_changed():
     client = Mock(create_resolver_rule=Mock(return_value={"ResolverRule": existing_rule(Status="UPDATING")}))
     with (
         patch.object(plugin, "get_resolver_rule_by_name", return_value=None),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter", side_effect=failing_waiter),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -943,6 +946,7 @@ def test_create_wait_failure_reports_changed():
 
 def test_delete_wait_failure_reports_changed():
     with (
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter", side_effect=failing_waiter),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -977,6 +981,7 @@ def test_tag_listing_failure_after_create_reports_changed():
     client = Mock(create_resolver_rule=Mock(return_value={"ResolverRule": existing_rule(Status="UPDATING")}))
     with (
         patch.object(plugin, "get_resolver_rule_by_name", return_value=None),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter"),
         patch.object(plugin, "get_resolver_rule", return_value=existing_rule()),
         patch.object(route53_resolver_utils, "query_list", side_effect=failing_query),
@@ -1086,30 +1091,48 @@ def test_resulting_tag_limit_fails_before_updating_the_rule(check_mode):
     client.tag_resource.assert_not_called()
 
 
+def waiter_configs(waiter):
+    """Return the WaiterConfig that reached each wait, for comparing with the expected remaining budgets."""
+    return [wait_call.kwargs["WaiterConfig"] for wait_call in waiter.wait.call_args_list]
+
+
+def budget_configs(*timeouts):
+    return [wait_utils.custom_waiter_config(timeout, default_pause=5) for timeout in timeouts]
+
+
+def sdk_error():
+    return plugin.ClientError({"Error": {"Code": "Failed", "Message": "no"}}, "Wait")
+
+
 def test_waits_after_a_re_run_share_one_wait_timeout_budget():
-    deleting = {"Id": "rslvr-rr-1", "Name": "main", "Status": "DELETING"}
+    waiter = Mock()
+    waiter.wait.side_effect = [None, sdk_error()]
     with (
-        patch.object(plugin, "get_resolver_rule_by_name", return_value=deleting),
-        patch.object(plugin, "run_waiter", side_effect=[None, ModuleFail({})]) as run_waiter,
+        patch.object(
+            plugin, "get_resolver_rule_by_name", return_value={"Id": "rslvr-rr-1", "Name": "main", "Status": "DELETING"}
+        ),
+        patch.object(plugin, "custom_waiter", return_value=waiter),
         patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 700]),
         pytest.raises(ModuleFail),
     ):
         plugin.ensure_present(Mock(), FakeModule(rule_params(wait_timeout=1800)))
 
-    assert [waiter_call.kwargs["timeout"] for waiter_call in run_waiter.call_args_list] == [1800, 1200]
+    assert waiter_configs(waiter) == budget_configs(1800, 1200)
 
 
 def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
-    deleting = {"Id": "rslvr-rr-1", "Name": "main", "Status": "DELETING"}
+    waiter = Mock()
     with (
-        patch.object(plugin, "get_resolver_rule_by_name", return_value=deleting),
-        patch.object(plugin, "run_waiter", side_effect=[None]) as run_waiter,
+        patch.object(
+            plugin, "get_resolver_rule_by_name", return_value={"Id": "rslvr-rr-1", "Name": "main", "Status": "DELETING"}
+        ),
+        patch.object(plugin, "custom_waiter", return_value=waiter),
         patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 1901]),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(Mock(), FakeModule(rule_params(wait_timeout=1800)))
 
-    run_waiter.assert_called_once()
+    waiter.wait.assert_called_once()
     assert raised.value.values == {
         "changed": False,
         "msg": "Unable to wait for AWS Route53 Resolver rule main to become deleted",
