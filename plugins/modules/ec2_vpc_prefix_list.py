@@ -258,6 +258,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    custom_waiter,
     require_positive_wait_bounds,
     run_waiter,
 )
@@ -854,9 +855,7 @@ def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name, chan
     )
     run_waiter(
         module,
-        client,
-        EC2_WAITER_MODEL_DATA,
-        waiter_name,
+        custom_waiter(client, EC2_WAITER_MODEL_DATA, waiter_name),
         f"Unable to wait for EC2 VPC managed prefix list {prefix_list_id} to become {target_state}",
         changed=changed,
         PrefixListIds=[prefix_list_id],

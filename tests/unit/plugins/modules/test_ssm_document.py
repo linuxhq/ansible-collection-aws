@@ -5,6 +5,7 @@ from unittest.mock import ANY, Mock, call, patch
 import pytest
 from botocore.exceptions import ClientError
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import wait as wait_utils
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_document as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     HEADER,
@@ -183,7 +184,7 @@ def test_default_version_waits_for_a_transitional_latest_before_promoting():
     module = FakeModule(params(document_version="$DEFAULT"))
     _result, wait_for_document, get_document = run_present(client, module, [current, creating, active, active])
 
-    wait_for_document.assert_called_once_with(client, module, "active", "2", fail_on_failed=False)
+    wait_for_document.assert_called_once_with(client, module, "active", "2", fail_on_failed=False, deadline=ANY)
     assert get_document.call_args_list[2].kwargs["document_version"] == "$LATEST"
     client.update_document.assert_not_called()
     client.update_document_default_version.assert_called_once_with(DocumentVersion="2", Name="example", aws_retry=True)
@@ -381,16 +382,20 @@ def test_failed_document_with_new_content_is_updated():
 @pytest.mark.parametrize("state", ["active", "deleted"])
 def test_wait_message_names_the_target_state(state):
     module = FakeModule(params())
-    with patch.object(plugin, "run_waiter", side_effect=ModuleFail({})) as run_waiter, pytest.raises(ModuleFail):
+    with (
+        patch.object(plugin, "custom_waiter") as custom_waiter,
+        patch.object(plugin, "run_waiter", side_effect=ModuleFail({})) as run_waiter,
+        pytest.raises(ModuleFail),
+    ):
         plugin.wait_for_document(Mock(), module, state, "2" if state == "active" else None)
 
-    assert run_waiter.call_args.args[3] == f"document_{state}"
-    assert run_waiter.call_args.args[4] == f"Unable to wait for AWS Systems Manager document example to become {state}"
+    assert custom_waiter.call_args.args[2] == f"document_{state}"
+    assert run_waiter.call_args.args[2] == f"Unable to wait for AWS Systems Manager document example to become {state}"
 
 
 def test_wait_fails_when_the_document_version_failed():
     client = Mock(describe_document=Mock(return_value={"Document": {"Status": "Failed", "StatusInformation": "Bad"}}))
-    with patch.object(plugin, "run_waiter"), pytest.raises(ModuleFail) as raised:
+    with patch.object(plugin, "custom_waiter"), patch.object(plugin, "run_waiter"), pytest.raises(ModuleFail) as raised:
         plugin.wait_for_document(client, FakeModule(params()), "active", "2")
 
     assert raised.value.values["msg"] == "AWS Systems Manager document example failed: Bad"
@@ -552,7 +557,7 @@ def test_transitional_document_that_ends_failed_is_replaced_with_new_content():
 
 def test_wait_without_fail_on_failed_does_not_inspect_the_status():
     client = Mock()
-    with patch.object(plugin, "run_waiter"):
+    with patch.object(plugin, "custom_waiter"), patch.object(plugin, "run_waiter"):
         plugin.wait_for_document(client, FakeModule(params()), "active", "2", fail_on_failed=False)
 
     client.describe_document.assert_not_called()
@@ -561,7 +566,11 @@ def test_wait_without_fail_on_failed_does_not_inspect_the_status():
 @pytest.mark.parametrize("changed", [False, True])
 def test_wait_failures_report_whether_the_document_changed(changed):
     client = Mock(describe_document=Mock(return_value={"Document": {"Status": "Failed"}}))
-    with patch.object(plugin, "run_waiter") as run_waiter, pytest.raises(ModuleFail) as raised:
+    with (
+        patch.object(plugin, "custom_waiter"),
+        patch.object(plugin, "run_waiter") as run_waiter,
+        pytest.raises(ModuleFail) as raised,
+    ):
         plugin.wait_for_document(client, FakeModule(params()), "active", "2", changed=changed)
 
     assert run_waiter.call_args.kwargs["changed"] is changed
@@ -574,6 +583,7 @@ def test_failure_after_create_reports_changed():
     with (
         patch.object(plugin, "describe_ssm_document", return_value=None),
         patch.object(plugin, "get_document", return_value=None),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter", side_effect=ModuleFail({})) as run_waiter,
         pytest.raises(ModuleFail),
     ):
@@ -624,6 +634,7 @@ def test_absent_wait_failure_after_delete_reports_changed():
     client = Mock()
     with (
         patch.object(plugin, "describe_ssm_document", return_value=described()),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter", side_effect=ModuleFail({})) as run_waiter,
         pytest.raises(ModuleFail),
     ):
@@ -820,7 +831,7 @@ def test_present_replaces_a_text_document_that_is_being_deleted(check_mode):
         get_document.assert_not_called()
         client.create_document.assert_not_called()
     else:
-        assert wait_for_document.call_args_list[0] == call(client, ANY, "deleted")
+        assert wait_for_document.call_args_list[0] == call(client, ANY, "deleted", deadline=ANY)
         client.create_document.assert_called_once()
 
 
@@ -896,3 +907,53 @@ def test_resulting_tag_limit_fails_before_updating_the_document(check_mode):
     assert result.values.get("changed", False) is False
     client.update_document.assert_not_called()
     client.add_tags_to_resource.assert_not_called()
+
+
+def waiter_configs(waiter):
+    """Return the WaiterConfig that reached each wait, for comparing with the expected remaining budgets."""
+    return [wait_call.kwargs["WaiterConfig"] for wait_call in waiter.wait.call_args_list]
+
+
+def budget_configs(*timeouts):
+    return [wait_utils.custom_waiter_config(timeout, default_pause=5) for timeout in timeouts]
+
+
+def sdk_error():
+    return plugin.ClientError({"Error": {"Code": "Failed", "Message": "no"}}, "Wait")
+
+
+def run_default_version_waits(monotonic, waiter_results):
+    """Run ensure_present for $DEFAULT while both the default and the latest version are still being created."""
+    documents = [
+        document({"schemaVersion": "1.2"}, Status="Creating"),
+        document({"schemaVersion": "1.2"}, Status="Active"),
+        document({"schemaVersion": "2.2"}, DocumentVersion="2", Status="Creating"),
+    ]
+    waiter = Mock()
+    waiter.wait.side_effect = waiter_results
+    with (
+        patch.object(plugin, "describe_ssm_document", return_value=None),
+        patch.object(plugin, "get_document", side_effect=documents),
+        patch.object(plugin, "custom_waiter", return_value=waiter),
+        patch.object(wait_utils.time, "monotonic", side_effect=monotonic),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(Mock(), FakeModule(params(document_version="$DEFAULT", wait_timeout=1800)))
+
+    return raised.value, waiter
+
+
+def test_sequential_waits_share_one_wait_timeout_budget():
+    _result, waiter = run_default_version_waits([100, 100, 700], [None, sdk_error()])
+
+    assert waiter_configs(waiter) == budget_configs(1800, 1200)
+
+
+def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
+    result, waiter = run_default_version_waits([100, 100, 1901], [None])
+
+    waiter.wait.assert_called_once()
+    assert result.values == {
+        "changed": False,
+        "msg": "Unable to wait for AWS Systems Manager document example to become active",
+    }

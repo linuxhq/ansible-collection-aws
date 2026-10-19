@@ -108,8 +108,6 @@ region_opt_status:
   type: str
 """
 
-import time
-
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -123,8 +121,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    custom_waiter,
     require_positive_wait_bounds,
     run_waiter,
+    wait_deadline,
 )
 
 PRESENT_STATUSES = {"ENABLED", "ENABLING", "ENABLED_BY_DEFAULT"}
@@ -254,21 +254,13 @@ def wait_for_status(client, module, waiter_name, statuses, changed=False, deadli
     region_name = region_target(module)
     error_msg = f"Timed out waiting for AWS account region {region_name} to reach one of {sorted(statuses)}"
 
-    # A deadline shares one wait_timeout budget with an earlier wait for an opposite transition.
-    timeout = None
-    if deadline is not None:
-        timeout = int(deadline - time.monotonic())
-        if timeout < 1:
-            module.fail_json(changed=changed, msg=error_msg)
-
     run_waiter(
         module,
-        client,
-        ACCOUNT_REGION_WAITER_MODEL_DATA,
-        waiter_name,
+        custom_waiter(client, ACCOUNT_REGION_WAITER_MODEL_DATA, waiter_name),
         error_msg,
         changed=changed,
-        timeout=timeout,
+        # A deadline shares one wait_timeout budget with an earlier wait for an opposite transition.
+        deadline=deadline,
         **region_request(module),
     )
 
@@ -293,7 +285,7 @@ def ensure_present(client, module):
     deadline = None
     if changed and not module.check_mode:
         if previous_status == "DISABLING":
-            deadline = time.monotonic() + module.params["wait_timeout"]
+            deadline = wait_deadline(module)
             wait_for_status(client, module, "region_disabled", ABSENT_STEADY_STATUSES)
 
         require_client_methods(
@@ -348,7 +340,7 @@ def ensure_absent(client, module):
     deadline = None
     if changed and not module.check_mode:
         if previous_status == "ENABLING":
-            deadline = time.monotonic() + module.params["wait_timeout"]
+            deadline = wait_deadline(module)
             wait_for_status(client, module, "region_enabled", PRESENT_STEADY_STATUSES)
 
         require_client_methods(

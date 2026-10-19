@@ -1,7 +1,7 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from contextlib import ExitStack
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import pytest
 
@@ -14,7 +14,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import Fak
 @pytest.mark.parametrize("kind", ["endpoint", "rule", "association"])
 @pytest.mark.parametrize("wait_enabled,check_mode", [(True, False), (False, False), (True, True)])
 def test_matching_in_progress_resource_readiness(kind, wait_enabled, check_mode):
-    common = {"name": "example", "wait": wait_enabled, "tags": None, "purge_tags": True}
+    common = {"name": "example", "wait": wait_enabled, "wait_timeout": 300, "tags": None, "purge_tags": True}
     if kind == "endpoint":
         plugin = endpoint
         params = dict(
@@ -103,9 +103,9 @@ def test_matching_in_progress_resource_readiness(kind, wait_enabled, check_mode)
         # Endpoints settle first so an endpoint that needs action can be repaired,
         # and rules and associations accept FAILED here so they can be repaired.
         if kind == "endpoint":
-            wait.assert_called_once_with(client, module, current["Id"], {"settled"})
+            wait.assert_called_once_with(client, module, current["Id"], {"settled"}, deadline=ANY)
         else:
-            wait.assert_called_once_with(client, module, current["Id"], "complete", allow_failed=True)
+            wait.assert_called_once_with(client, module, current["Id"], "complete", allow_failed=True, deadline=ANY)
 
         assert result.value.values[result_key]["status"] == ready["Status"]
     else:

@@ -1045,12 +1045,13 @@ def test_wait_failure_names_target_state(waiter_name, target_state):
     module = FakeModule({})
     with (
         patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter") as run_waiter,
     ):
         plugin.wait_for_prefix_list_state(Mock(), module, "pl-1", waiter_name)
 
     assert (
-        run_waiter.call_args.args[4] == f"Unable to wait for EC2 VPC managed prefix list pl-1 to become {target_state}"
+        run_waiter.call_args.args[2] == f"Unable to wait for EC2 VPC managed prefix list pl-1 to become {target_state}"
     )
 
 
@@ -1077,7 +1078,7 @@ def test_tag_failure_reports_whether_entries_were_modified(description, changed)
     assert modify.called is changed
 
 
-def failing_waiter(module, client, model_data, waiter_name, error_msg, changed=False, **kwargs):
+def failing_waiter(module, waiter, error_msg, changed=False, **kwargs):
     module.fail_json(changed=changed, msg=error_msg)
 
 
@@ -1087,6 +1088,7 @@ def test_wait_failure_after_create_reports_changed():
     with (
         patch.object(plugin, "get_current", return_value=(None, None)),
         patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter", side_effect=failing_waiter),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -1101,6 +1103,7 @@ def test_wait_failure_before_any_change_reports_unchanged():
     with (
         patch.object(plugin, "get_current", return_value=(prefix_list(State="modify-in-progress"), [])),
         patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "custom_waiter"),
         patch.object(plugin, "run_waiter", side_effect=failing_waiter),
         pytest.raises(ModuleFail) as raised,
     ):

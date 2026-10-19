@@ -63,12 +63,12 @@ clusters:
   contains:
     access_config:
       description: The cluster access configuration.
-      returned: always
+      returned: unless the cluster is an EKS Connector cluster
       type: dict
       contains:
         authentication_mode:
           description: The cluster authentication mode.
-          returned: always
+          returned: unless the cluster is an EKS Connector cluster
           type: str
           sample: API_AND_CONFIG_MAP
         bootstrap_cluster_creator_admin_permissions:
@@ -87,6 +87,27 @@ clusters:
       description: The EKS Auto Mode compute configuration.
       returned: when returned by AWS
       type: dict
+    connector_config:
+      description: The EKS Connector configuration of a registered cluster.
+      returned: when the cluster is an EKS Connector cluster
+      type: dict
+      contains:
+        activation_expiry:
+          description: The expiration time of the connected cluster's activation.
+          returned: when returned by AWS
+          type: str
+        activation_id:
+          description: The unique ID of the connected cluster's activation.
+          returned: when returned by AWS
+          type: str
+        provider:
+          description: The cluster's cloud service provider.
+          returned: when returned by AWS
+          type: str
+        role_arn:
+          description: The ARN of the role that communicates with the Kubernetes cluster.
+          returned: when returned by AWS
+          type: str
     created_at:
       description: The time the cluster was created.
       returned: always
@@ -114,7 +135,7 @@ clusters:
       type: dict
     logging:
       description: The control plane logging configuration.
-      returned: always
+      returned: unless the cluster is an EKS Connector cluster
       type: dict
     name:
       description: The cluster name.
@@ -139,30 +160,30 @@ clusters:
           type: str
         endpoint_private_access:
           description: Whether the private API server endpoint is enabled.
-          returned: always
+          returned: unless the cluster is an EKS Connector cluster
           type: bool
         endpoint_public_access:
           description: Whether the public API server endpoint is enabled.
-          returned: always
+          returned: unless the cluster is an EKS Connector cluster
           type: bool
         public_access_cidrs:
           description: The CIDR blocks that can access the public API server endpoint.
-          returned: always
+          returned: unless the cluster is an EKS Connector cluster
           type: list
           elements: str
         security_group_ids:
           description: The additional security group IDs.
-          returned: always
+          returned: unless the cluster is an EKS Connector cluster
           type: list
           elements: str
         subnet_ids:
           description: The cluster subnet IDs.
-          returned: always
+          returned: unless the cluster is an EKS Connector cluster
           type: list
           elements: str
         vpc_id:
           description: The cluster VPC ID.
-          returned: always
+          returned: unless the cluster is an EKS Connector cluster
           type: str
     role_arn:
       description: The cluster IAM role ARN.
@@ -188,7 +209,7 @@ clusters:
       contains:
         support_type:
           description: The cluster support type.
-          returned: always
+          returned: unless the cluster is an EKS Connector cluster
           type: str
           sample: EXTENDED
     version:

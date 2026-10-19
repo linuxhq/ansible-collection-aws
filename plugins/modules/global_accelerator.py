@@ -593,6 +593,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    custom_waiter,
     require_positive_wait_bounds,
     run_waiter,
 )
@@ -808,9 +809,7 @@ def wait_for_accelerator(client, module, accelerator_arn, waiter_name, changed=F
     )
     run_waiter(
         module,
-        client,
-        GLOBAL_ACCELERATOR_WAITER_MODEL_DATA,
-        waiter_name,
+        custom_waiter(client, GLOBAL_ACCELERATOR_WAITER_MODEL_DATA, waiter_name),
         f"Timed out waiting for AWS Global Accelerator {accelerator_arn}",
         changed=changed,
         AcceleratorArn=accelerator_arn,

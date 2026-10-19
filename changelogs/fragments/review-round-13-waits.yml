@@ -1,0 +1,16 @@
+---
+bugfixes:
+  - eks_cluster_info - document ``access_config``, ``logging``, the ``resources_vpc_config`` fields, and
+    ``upgrade_policy.support_type`` as returned only for EKS-managed clusters, and document ``connector_config``,
+    because ``DescribeCluster`` returns only the name, ARN, creation time, status, tags, and connector configuration
+    for an EKS Connector cluster.
+  - route53_resolver - share one ``wait_timeout`` budget across every wait in a run, including the waits before
+    the module checks a changing or deleting endpoint again, so the total wait no longer exceeds ``wait_timeout``.
+  - route53_resolver_rule - share one ``wait_timeout`` budget across every wait in a run, including the waits
+    before the module checks a changing or deleting rule again, so the total wait no longer exceeds
+    ``wait_timeout``.
+  - route53_resolver_rule_associate - share one ``wait_timeout`` budget across every wait in a run, including the
+    waits before the module checks a changing or deleting association again, so the total wait no longer exceeds
+    ``wait_timeout``.
+  - ssm_document - share one ``wait_timeout`` budget across every wait in a run, so waiting out a deleting or
+    transitional document and then a new version no longer reaches several times ``wait_timeout``.

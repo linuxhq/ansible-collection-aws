@@ -560,7 +560,11 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_resulting_tag_limit,
     require_valid_tags,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.wait import require_positive_wait_bounds, run_waiter
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    custom_waiter,
+    require_positive_wait_bounds,
+    run_waiter,
+)
 
 CONNECTION_FIELDS = {
     "local_ipv4_network_cidr": "LocalIpv4NetworkCidr",
@@ -735,9 +739,7 @@ def wait_for_connection_deleted(client, module, connection_id, changed=False):
     }
     run_waiter(
         module,
-        client,
-        model,
-        waiter_name,
+        custom_waiter(client, model, waiter_name),
         f"Unable to wait for VPN connection {connection_id} to become deleted",
         changed=changed,
         VpnConnectionIds=[connection_id],
@@ -1283,9 +1285,7 @@ def wait_for_route_state(client, module, connection_id, route, state, changed=Fa
     # the new route is available or the VPN itself disappears.
     run_waiter(
         module,
-        client,
-        model,
-        waiter_name,
+        custom_waiter(client, model, waiter_name),
         f"Unable to wait for route {route} to become {state} on VPN connection {connection_id}",
         changed=changed,
         VpnConnectionIds=[connection_id],
