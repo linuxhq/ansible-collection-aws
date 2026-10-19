@@ -6,6 +6,11 @@ bugfixes:
     report ``changed=true`` when a later delete batch fails after an earlier batch deleted flow logs; and when EC2
     rejects a delete request because a flow log is already gone, delete only the flow logs that still exist
     instead of failing.
+  - ec2_flow_log - add and remove tags in batches of at most 100 flow logs, because EC2 ``CreateTags`` and
+    ``DeleteTags`` return ``InternalError`` for more than 100 flow log IDs, so retagging more than 100 flow logs no
+    longer fails, and report ``changed=true`` when a later tag batch fails after an earlier batch succeeded.
+  - ec2_flow_log_info - describe flow logs in batches of at most 100 ``flow_log_ids`` and 200 ``resource_ids``,
+    so requesting more flow log IDs or resource IDs than EC2 accepts in one call no longer fails.
   - ec2_placement_group_info - describe each requested ``group_ids`` entry that the account-wide query did not
     return by its ID, so placement groups shared with the account are returned, because EC2 describes shared
     placement groups only by ID. An ID that does not exist still results in no entry.

@@ -79,3 +79,32 @@ def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings():
         {"Name": "x-flag", "Values": ["true"]},
         {"Name": "resource-id", "Values": ["vpc-1"]},
     ]
+
+
+def test_flow_log_ids_and_resource_ids_are_batched():
+    flow_log_ids = [f"fl-{index}" for index in range(101)]
+    resource_ids = [f"vpc-{index}" for index in range(201)]
+    module = FakeModule(
+        {"filters": {"traffic-type": "ALL"}, "flow_log_ids": flow_log_ids, "resource_ids": resource_ids},
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(
+            plugin, "query_list", side_effect=lambda *args, **kwargs: [{"FlowLogId": kwargs["FlowLogIds"][0]}]
+        ) as query,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert require.call_args.args[3] == {"describe_flow_logs": ("FlowLogIds", "Filter", "MaxResults", "NextToken")}
+    requests = [call.kwargs for call in query.call_args_list]
+    assert [(len(request["FlowLogIds"]), len(request["Filter"][1]["Values"])) for request in requests] == [
+        (100, 200),
+        (100, 1),
+        (1, 200),
+        (1, 1),
+    ]
+    assert all(request["Filter"][0] == {"Name": "traffic-type", "Values": ["ALL"]} for request in requests)
+    assert len(raised.value.values["flow_logs"]) == 4
