@@ -7,7 +7,10 @@ import re
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import boto3_resource_to_ansible_dict
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import query_list
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    reconcile_arn_tags,
+    require_valid_tag_list,
+)
 
 # The OwnerId of rules that Route 53 Resolver creates, such as the Internet Resolver rule.
 AWS_OWNED_RULE_OWNER = "Route 53 Resolver"
@@ -26,6 +29,11 @@ def comparable_ip_fields(item, fields):
     return {field: normalized[field] for field in fields if normalized.get(field) is not None}
 
 
+def comparable_ip_entry_matches(current, desired):
+    """Return whether a comparable current entry has every field a comparable desired entry sets."""
+    return all(current.get(field) == value for field, value in desired.items())
+
+
 def comparable_ips_match(current, desired):
     """Pair each desired entry with a current one whose fields match; omitted fields keep AWS values."""
     return len(current) == len(desired) and None not in comparable_ips_matches(current, desired)
@@ -41,7 +49,7 @@ def comparable_ips_matches(current, desired):
         [
             current_index
             for current_index in range(len(current))
-            if all(current[current_index].get(field) == value for field, value in entry.items())
+            if comparable_ip_entry_matches(current[current_index], entry)
         ]
         for entry in desired
     ]
@@ -69,6 +77,32 @@ def comparable_ips_matches(current, desired):
             matches[desired_index] = current_index
 
     return matches
+
+
+def reconcile_resolver_arn_tags(module, client, resource, label, name, tags_to_set, tag_keys_to_unset, changed=False):
+    """Reconcile a resolver resource's tags by ARN; changed reports whether it was already modified."""
+    if not tags_to_set and not tag_keys_to_unset:
+        return
+
+    resource_arn = resource.get("Arn")
+    if not isinstance(resource_arn, str) or not resource_arn:
+        module.fail_json(
+            changed=changed,
+            msg=(
+                f"Unable to reconcile tags for AWS Route53 Resolver {label} "
+                f"{name}: AWS returned an invalid {label} ARN"
+            ),
+        )
+
+    reconcile_arn_tags(
+        module,
+        client,
+        resource_arn,
+        tags_to_set,
+        tag_keys_to_unset,
+        f"AWS Route53 Resolver {label}",
+        changed=changed,
+    )
 
 
 def require_ip_versions(module, entry, option):

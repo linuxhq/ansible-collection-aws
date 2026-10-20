@@ -7,9 +7,11 @@ import pytest
 from ansible_collections.linuxhq.aws.plugins.module_utils import route53_resolver as route53_resolver_utils
 from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
     AWS_OWNED_RULE_OWNER,
+    comparable_ip_entry_matches,
     comparable_ip_fields,
     comparable_ips_match,
     comparable_ips_matches,
+    reconcile_resolver_arn_tags,
     require_ip_versions,
     resolver_resource_with_tags,
     response_items,
@@ -269,3 +271,48 @@ def test_comparable_ips_matches_reports_each_desired_entry_match():
     current = [{"ip": "192.0.2.1", "port": 53}, {"ip": "192.0.2.2", "port": 53}]
     desired = [{"ip": "192.0.2.2"}, {"ip": "192.0.2.9"}, {"ip": "192.0.2.1", "port": 53}]
     assert comparable_ips_matches(current, desired) == [1, None, 0]
+
+
+def test_comparable_ip_entry_matches_requires_every_desired_field():
+    current = {"ip": "192.0.2.1", "port": 53, "subnet_id": "subnet-1"}
+    assert comparable_ip_entry_matches(current, {"subnet_id": "subnet-1"})
+    assert comparable_ip_entry_matches(current, {})
+    assert not comparable_ip_entry_matches(current, {"ip": "192.0.2.1", "port": 54})
+    assert not comparable_ip_entry_matches(current, {"ipv6": "2001:db8::1"})
+
+
+def test_reconcile_resolver_arn_tags_skips_empty_deltas():
+    with patch.object(route53_resolver_utils, "reconcile_arn_tags") as reconcile:
+        reconcile_resolver_arn_tags(FakeModule({}), Mock(), {}, "rule", "main", {}, [])
+
+    reconcile.assert_not_called()
+
+
+def test_reconcile_resolver_arn_tags_reconciles_by_arn():
+    module = FakeModule({})
+    client = Mock()
+    with patch.object(route53_resolver_utils, "reconcile_arn_tags") as reconcile:
+        reconcile_resolver_arn_tags(
+            module, client, {"Arn": "arn:rule"}, "rule", "main", {"new": "value"}, ["old"], changed=True
+        )
+
+    reconcile.assert_called_once_with(
+        module, client, "arn:rule", {"new": "value"}, ["old"], "AWS Route53 Resolver rule", changed=True
+    )
+
+
+@pytest.mark.parametrize("resource", [{}, {"Arn": ""}, {"Arn": 1}])
+def test_reconcile_resolver_arn_tags_rejects_an_invalid_arn(resource):
+    with (
+        patch.object(route53_resolver_utils, "reconcile_arn_tags") as reconcile,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        reconcile_resolver_arn_tags(FakeModule({}), Mock(), resource, "endpoint", "main", {}, ["old"], changed=True)
+
+    assert raised.value.values == {
+        "changed": True,
+        "msg": (
+            "Unable to reconcile tags for AWS Route53 Resolver endpoint main: " "AWS returned an invalid endpoint ARN"
+        ),
+    }
+    reconcile.assert_not_called()

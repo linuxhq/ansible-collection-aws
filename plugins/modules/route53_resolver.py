@@ -294,8 +294,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
+    comparable_ip_entry_matches,
     comparable_ip_fields,
     comparable_ips_match,
+    reconcile_resolver_arn_tags,
     require_ip_versions,
     resolver_resource_with_tags,
     valid_resolver_name,
@@ -308,7 +310,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
-    reconcile_arn_tags,
     require_resulting_tag_limit,
     require_valid_tags,
 )
@@ -819,27 +820,16 @@ def ensure_present(client, module, deadline=None):
                 tags,
                 purge_tags=purge_tags,
             )
-            resource_arn = endpoint.get("Arn")
-
-            if tags_to_set or tag_keys_to_unset:
-                if not isinstance(resource_arn, str) or not resource_arn:
-                    module.fail_json(
-                        changed=resource_changed,
-                        msg=(
-                            "Unable to reconcile tags for AWS Route53 Resolver endpoint "
-                            f"{module.params['name']}: AWS returned an invalid endpoint ARN"
-                        ),
-                    )
-
-                reconcile_arn_tags(
-                    module,
-                    client,
-                    resource_arn,
-                    tags_to_set,
-                    tag_keys_to_unset,
-                    "AWS Route53 Resolver endpoint",
-                    changed=resource_changed,
-                )
+            reconcile_resolver_arn_tags(
+                module,
+                client,
+                endpoint,
+                "endpoint",
+                module.params["name"],
+                tags_to_set,
+                tag_keys_to_unset,
+                changed=resource_changed,
+            )
 
             endpoint = apply_tag_deltas(endpoint, tags_to_set, tag_keys_to_unset)
 
@@ -895,7 +885,7 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
             (
                 index
                 for index, current_ip_address in enumerate(remaining)
-                if ip_address_matches(comparable_ip_address(current_ip_address), desired_comparable)
+                if comparable_ip_entry_matches(comparable_ip_address(current_ip_address), desired_comparable)
             ),
             None,
         )
@@ -1050,10 +1040,6 @@ def comparable_ip_addresses(ip_addresses):
         [comparable_ip_address(ip_address) for ip_address in ip_addresses or []],
         key=lambda item: json.dumps(item, sort_keys=True),
     )
-
-
-def ip_address_matches(current, desired):
-    return all(current.get(field) == value for field, value in desired.items())
 
 
 def comparable_endpoints_match(current, desired):
@@ -1313,7 +1299,7 @@ def main():
         module,
         client,
         "Route53 Resolver",
-        {name: required_method_parameters.get(name, ()) for name in method_names},
+        {name: required_method_parameters[name] for name in method_names},
     )
 
     if state == "present":
