@@ -165,13 +165,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
     get_provider_by_arn,
+    get_provider_by_url,
     normalize_provider_url,
-    validate_provider_summaries,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    query_list,
-    require_client_methods,
-)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     require_resulting_tag_limit,
@@ -179,44 +176,9 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 )
 
 
-def get_provider_by_url(client, module):
-    desired_url = normalize_provider_url(module.params["url"])
-
-    providers = validate_provider_summaries(
-        module,
-        query_list(
-            module,
-            client,
-            "list_open_id_connect_providers",
-            "OpenIDConnectProviderList",
-            "Unable to list AWS IAM OIDC providers",
-        ),
-    )
-
-    for provider_summary in providers:
-        arn = provider_summary["Arn"]
-
-        arn_url = arn.partition(":oidc-provider/")[2]
-        if normalize_provider_url(arn_url) != desired_url:
-            continue
-
-        require_client_methods(
-            module,
-            client,
-            "IAM",
-            {"get_open_id_connect_provider": ("OpenIDConnectProviderArn",)},
-        )
-        provider = get_provider_by_arn(client, module, arn)
-
-        if provider and normalize_provider_url(provider.get("Url")) == desired_url:
-            return provider
-
-    return None
-
-
 def ensure_absent(client, module):
     url = module.params["url"]
-    current = get_provider_by_url(client, module)
+    current = get_provider_by_url(client, module, url)
     changed = current is not None
     arn = (current or {}).get("OpenIDConnectProviderArn")
 
@@ -251,7 +213,7 @@ def ensure_absent(client, module):
 def ensure_present(client, module):
     tags = module.params["tags"]
     url = module.params["url"]
-    current = get_provider_by_url(client, module)
+    current = get_provider_by_url(client, module, url)
     desired = {"url": normalize_provider_url(url)}
     if module.params["client_id_list"] is not None:
         desired["client_id_list"] = sorted(set(module.params["client_id_list"]))
@@ -407,8 +369,6 @@ def ensure_present(client, module):
                         )
 
                     provider_changed = True
-
-                provider_changed = True
 
             if thumbprints_changed:
                 try:

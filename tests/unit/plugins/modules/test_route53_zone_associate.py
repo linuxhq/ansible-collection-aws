@@ -6,6 +6,8 @@ import pytest
 from botocore.exceptions import ClientError
 from botocore.session import Session
 
+from ansible_collections.amazon.aws.plugins.module_utils.waiter import custom_waiter_config
+
 from ansible_collections.linuxhq.aws.plugins.modules import route53_zone_associate as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     HEADER,
@@ -259,7 +261,7 @@ def test_wait_polls_the_returned_change(state):
     assert raised.value.values["changed"]
     client.get_waiter.assert_called_once_with("resource_record_sets_changed")
     client.get_waiter.return_value.wait.assert_called_once_with(
-        Id="/change/C1", WaiterConfig=plugin.custom_waiter_config(70, default_pause=7)
+        Id="/change/C1", WaiterConfig=custom_waiter_config(70, default_pause=7)
     )
 
 

@@ -190,7 +190,7 @@ def ensure_present(client, module):
         "name": name,
         "state": "present",
     }
-    delegation_set_id = (delegation_set or {}).get("Id")
+    delegation_set_id = delegation_set.get("Id")
 
     if delegation_set_id is not None:
         result["delegation_set_id"] = delegation_set_id

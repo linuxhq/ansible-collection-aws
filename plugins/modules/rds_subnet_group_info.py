@@ -6,7 +6,7 @@ DOCUMENTATION = r"""
 ---
 module: rds_subnet_group_info
 version_added: '1.9.0'
-short_description: Gather information about aws rds subnet groups
+short_description: Gather information about AWS RDS subnet groups
 description:
   - Gathers information about AWS Relational Database Service (RDS) DB subnet
     groups.
@@ -117,7 +117,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import boto3_tag_list_to_ansible_dict
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_list_to_ansible_dict,
+    boto3_resource_to_ansible_dict,
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
@@ -191,7 +191,7 @@ def main():
         if tags is None:
             continue
 
-        result = boto3_resource_list_to_ansible_dict([subnet_group], transform_tags=False, force_tags=False)[0]
+        result = boto3_resource_to_ansible_dict(subnet_group, transform_tags=False, force_tags=False)
         result["tags"] = tags
         results.append(result)
 

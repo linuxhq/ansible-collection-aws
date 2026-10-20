@@ -212,15 +212,15 @@ def ensure_present(client, module):
     name = module.params["name"]
     tags = module.params["tags"]
     contact = get_contact_by_address(client, module)
-    current_contact = {"address": contact.get("address"), "name": contact.get("name")} if contact else None
     desired_contact = {
         "address": email_address,
         "name": name,
     }
-    resource_changed = (current_contact or {}) != desired_contact
+    # The contact is matched by address, so only a missing contact needs creating.
+    resource_changed = contact is None
 
     tags_to_set, tag_keys_to_unset = ({}, [])
-    if contact is not None and resource_changed:
+    if contact is not None and contact["name"] != name:
         module.fail_json(
             msg=(
                 "name cannot be changed for an existing AWS Notifications contact. "

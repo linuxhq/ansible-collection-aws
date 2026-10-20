@@ -157,11 +157,11 @@ def main():
             "Unable to list AWS Notifications contacts",
         )
 
-    if not isinstance(email_contacts, list):
-        module.fail_json(msg="Unable to list AWS Notifications contacts: AWS returned an invalid response")
+        if not isinstance(email_contacts, list):
+            module.fail_json(msg="Unable to list AWS Notifications contacts: AWS returned an invalid response")
 
-    for contact in email_contacts:
-        validate_contact(module, contact, "Unable to list AWS Notifications contacts")
+        for contact in email_contacts:
+            validate_contact(module, contact, "Unable to list AWS Notifications contacts")
 
     if email_contacts:
         require_client_methods(

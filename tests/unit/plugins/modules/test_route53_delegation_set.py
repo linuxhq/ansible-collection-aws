@@ -46,6 +46,19 @@ def test_absent_reports_changed_after_a_delete():
     client.delete_reusable_delegation_set.assert_called_once_with(Id="delegation-set-1", aws_retry=True)
 
 
+def test_absent_reports_unchanged_when_the_set_is_missing():
+    client = Mock()
+    module = FakeModule({"name": "main"})
+    with (
+        patch.object(plugin, "get_reusable_delegation_set", return_value=None),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values == {"changed": False, "name": "main", "state": "absent"}
+    client.delete_reusable_delegation_set.assert_not_called()
+
+
 def test_module_contract():
     options = assert_module_contract(plugin)
     assert options["argument_spec"]["name"]["required"] is True

@@ -1,4 +1,3 @@
-from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -92,42 +91,6 @@ def test_main_only_requires_provider_listing_before_reconciliation():
         "IAM",
         {"list_open_id_connect_providers": ()},
     )
-
-
-def test_provider_lookup_normalizes_url():
-    client = Mock()
-    module = SimpleNamespace(params={"url": "https://EXAMPLE.com/id"})
-    provider = {
-        "OpenIDConnectProviderArn": "arn:aws:iam::1:oidc-provider/example.com/id",
-        "Url": "example.com/id",
-    }
-    providers = [{"Arn": "arn:aws:iam::1:oidc-provider/example.com/id"}]
-    with (
-        patch.object(plugin, "query_list", return_value=providers) as query_list,
-        patch.object(plugin, "get_provider_by_arn", return_value=provider),
-        patch.object(plugin, "require_client_methods"),
-    ):
-        result = plugin.get_provider_by_url(client, module)
-
-    assert result == provider
-    query_list.assert_called_once_with(
-        module,
-        client,
-        "list_open_id_connect_providers",
-        "OpenIDConnectProviderList",
-        "Unable to list AWS IAM OIDC providers",
-    )
-
-
-def test_provider_lookup_rejects_invalid_summaries():
-    module = FakeModule({"url": "https://example.com/id"})
-    with (
-        patch.object(plugin, "query_list", return_value=[{}]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_provider_by_url(Mock(), module)
-
-    assert raised.value.values["msg"] == "Unable to list AWS IAM OIDC providers: AWS returned an invalid response"
 
 
 def test_non_hexadecimal_thumbprint_is_rejected():

@@ -609,7 +609,7 @@ def ensure_absent(client, module):
                 )
             except is_boto3_error_code("ResourceNotFoundException"):
                 # Deleted elsewhere before this run changed anything.
-                exit_result(module, mutated, None)
+                exit_result(module, False, None)
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
@@ -643,6 +643,27 @@ def ensure_absent(client, module):
     exit_result(module, changed, response)
 
 
+def pool_changes(module, current, tags):
+    """Return the settings update and tag changes a pool needs; a new pool (current None) has no settings update."""
+    deletion_protection_enabled = module.params["deletion_protection_enabled"]
+    update_request = {}
+    if (
+        current is not None
+        and deletion_protection_enabled is not None
+        and current.get("DeletionProtectionEnabled") != deletion_protection_enabled
+    ):
+        update_request["DeletionProtectionEnabled"] = deletion_protection_enabled
+
+    current_tags = boto3_tag_list_to_ansible_dict((current or {}).get("Tags", []))
+    tags_to_set, tag_keys_to_unset = compare_aws_tags(
+        current_tags,
+        tags,
+        purge_tags=module.params["purge_tags"] if module.params["tags"] is not None else False,
+    )
+    require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 200, "Pinpoint SMS Voice V2 pool")
+    return update_request, tags_to_set, tag_keys_to_unset
+
+
 def ensure_present(client, module):
     deletion_protection_enabled = module.params["deletion_protection_enabled"]
     message_type = module.params["message_type"]
@@ -665,25 +686,9 @@ def ensure_present(client, module):
     ):
         current = pool_with_details(client, module, wait_for_pool_active(client, module, current["PoolId"]))
 
-    update_request = {}
-    if (
-        current is not None
-        and deletion_protection_enabled is not None
-        and current.get("DeletionProtectionEnabled") != deletion_protection_enabled
-    ):
-        update_request["DeletionProtectionEnabled"] = deletion_protection_enabled
-
-    user_tags = module.params["tags"]
-    tags = dict(user_tags or {})
+    tags = dict(module.params["tags"] or {})
     tags["Name"] = module.params["name"]
-
-    current_tags = boto3_tag_list_to_ansible_dict((current or {}).get("Tags", []))
-    tags_to_set, tag_keys_to_unset = compare_aws_tags(
-        current_tags,
-        tags,
-        purge_tags=module.params["purge_tags"] if user_tags is not None else False,
-    )
-    require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 200, "Pinpoint SMS Voice V2 pool")
+    update_request, tags_to_set, tag_keys_to_unset = pool_changes(module, current, tags)
 
     changed = current is None or bool(update_request or tags_to_set or tag_keys_to_unset)
 
@@ -695,22 +700,7 @@ def ensure_present(client, module):
         and current.get("PoolId")
     ):
         current = pool_with_details(client, module, wait_for_pool_active(client, module, current["PoolId"]))
-        update_request = {}
-        if (
-            deletion_protection_enabled is not None
-            and current.get("DeletionProtectionEnabled") != deletion_protection_enabled
-        ):
-            update_request["DeletionProtectionEnabled"] = deletion_protection_enabled
-
-        current_tags = boto3_tag_list_to_ansible_dict(current.get("Tags", []))
-        tags_to_set, tag_keys_to_unset = compare_aws_tags(
-            current_tags,
-            tags,
-            purge_tags=(module.params["purge_tags"] if user_tags is not None else False),
-        )
-        require_resulting_tag_limit(
-            module, current_tags, tags_to_set, tag_keys_to_unset, 200, "Pinpoint SMS Voice V2 pool"
-        )
+        update_request, tags_to_set, tag_keys_to_unset = pool_changes(module, current, tags)
         changed = bool(update_request or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
@@ -858,8 +848,7 @@ def main():
         if iso_country_code is not None and not re.fullmatch(r"[A-Z]{2}", iso_country_code):
             module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
 
-    require_valid_tags(module, module.params["tags"] if state == "present" else None, 200)
-    if state == "present":
+        require_valid_tags(module, module.params["tags"], 200)
         tags = dict(module.params["tags"] or {})
         tags["Name"] = module.params["name"]
         require_valid_tags(module, tags, 200)
