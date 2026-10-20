@@ -241,14 +241,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
+    MAX_FILTER_VALUES_PER_REQUEST,
     ansible_dict_to_string_filter_list,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-
-MAX_FILTER_VALUES = 200
 
 
 def main():
@@ -271,8 +270,10 @@ def main():
         filters["instance-type"] = instance_types
 
     # EC2 rejects a call with more than 200 values across all of its filters.
-    if sum(len(value) if isinstance(value, list) else 1 for value in filters.values()) > MAX_FILTER_VALUES:
-        module.fail_json(msg=f"filters and instance_types must contain at most {MAX_FILTER_VALUES} values in total")
+    if sum(len(value) if isinstance(value, list) else 1 for value in filters.values()) > MAX_FILTER_VALUES_PER_REQUEST:
+        module.fail_json(
+            msg=f"filters and instance_types must contain at most {MAX_FILTER_VALUES_PER_REQUEST} values in total"
+        )
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 

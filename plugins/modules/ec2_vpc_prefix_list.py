@@ -263,6 +263,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_ec2_tags,
     require_resulting_tag_limit,
+    require_valid_tag_list,
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
@@ -395,7 +396,6 @@ WAITER_TARGET_STATES = {
 
 
 def validate_prefix_list(module, prefix_list, changed=False):
-    tags = prefix_list.get("Tags") if isinstance(prefix_list, dict) else None
     if (
         not isinstance(prefix_list, dict)
         or not isinstance(prefix_list.get("AddressFamily"), str)
@@ -408,18 +408,13 @@ def validate_prefix_list(module, prefix_list, changed=False):
         or not isinstance(prefix_list.get("State"), str)
         or not isinstance(prefix_list.get("Version"), int)
         or isinstance(prefix_list.get("Version"), bool)
-        or (tags is not None and not isinstance(tags, list))
-        or (
-            isinstance(tags, list)
-            and any(
-                not isinstance(tag, dict)
-                or not isinstance(tag.get("Key"), str)
-                or not isinstance(tag.get("Value"), str)
-                for tag in tags
-            )
-        )
     ):
         module.fail_json(changed=changed, msg="EC2 returned an invalid managed prefix list")
+
+    if prefix_list.get("Tags") is not None:
+        require_valid_tag_list(
+            module, prefix_list["Tags"], "EC2 returned an invalid managed prefix list", changed=changed
+        )
 
     return prefix_list
 
@@ -445,11 +440,9 @@ def create_prefix_list(client, module, owner_id, desired_prefix_list, desired_en
             capitalize_first=True,
         )
     )
-    if tags is not None:
-        tag_specifications = boto3_tag_specifications(tags, types="prefix-list")
-
-        if tag_specifications is not None:
-            request["TagSpecifications"] = tag_specifications
+    tag_specifications = boto3_tag_specifications(tags, types="prefix-list")
+    if tag_specifications is not None:
+        request["TagSpecifications"] = tag_specifications
 
     # One token per run makes SDK retries of a request that already succeeded idempotent.
     request["ClientToken"] = str(uuid.uuid4())

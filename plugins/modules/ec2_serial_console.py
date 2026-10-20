@@ -122,48 +122,31 @@ def main():
         )
 
     if changed and not module.check_mode:
-        if state == "present":
-            require_client_methods(
-                module,
-                client,
-                "EC2",
-                {"enable_serial_console_access": ()},
+        action = "enable" if desired_enabled else "disable"
+        method_name = "enable_serial_console_access" if desired_enabled else "disable_serial_console_access"
+        require_client_methods(module, client, "EC2", {method_name: ()})
+
+        # Resolve the method only after require_client_methods confirms it exists.
+        method = client.enable_serial_console_access if desired_enabled else client.disable_serial_console_access
+        try:
+            response = method(aws_retry=True)
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to {action} EC2 serial console access in region {module.region}",
             )
-            try:
-                response = client.enable_serial_console_access(aws_retry=True)
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to enable EC2 serial console access in region {module.region}",
-                )
-        else:
-            require_client_methods(
-                module,
-                client,
-                "EC2",
-                {"disable_serial_console_access": ()},
-            )
-            try:
-                response = client.disable_serial_console_access(aws_retry=True)
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to disable EC2 serial console access in region {module.region}",
-                )
 
         current = {**current, **normalized_serial_console_access(module, response, changed=True)}
 
     elif changed:
         current = {**current, "serial_console_access_enabled": desired_enabled}
 
-    result = {
-        "changed": changed,
-        "region": module.region,
-        "serial_console_access": current,
-        "state": state,
-    }
-
-    module.exit_json(**result)
+    module.exit_json(
+        changed=changed,
+        region=module.region,
+        serial_console_access=current,
+        state=state,
+    )
 
 
 if __name__ == "__main__":
