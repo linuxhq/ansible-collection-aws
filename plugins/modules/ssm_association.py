@@ -263,6 +263,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     reconcile_ssm_tags,
     require_resulting_tag_limit,
     require_valid_tags,
+    ssm_tag_methods,
 )
 
 CRON_ONLY_PARAMETERS = ("ApplyOnlyAtCronInterval", "Duration", "ScheduleOffset")
@@ -340,7 +341,7 @@ def ensure_absent(client, module, current):
 
 
 def ensure_present(client, module, current):
-    association_name = module.params.get("association_name")
+    association_name = module.params["association_name"]
     name = module.params["name"]
     schedule_expression = module.params["schedule_expression"]
     tags = module.params["tags"]
@@ -406,22 +407,12 @@ def ensure_present(client, module, current):
             if tags is not None:
                 association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
         else:
+            create_request = dict(desired)
+            if tags:
+                create_request["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+
             try:
-                response = client.create_association(
-                    **scrub_none_parameters(
-                        snake_dict_to_camel_dict(
-                            {
-                                "association_name": association_name,
-                                "name": name,
-                                "schedule_expression": schedule_expression,
-                                "tags": (ansible_dict_to_boto3_tag_list(tags) if tags else None),
-                                "targets": aws_targets,
-                            },
-                            capitalize_first=True,
-                        )
-                    ),
-                    aws_retry=True,
-                )
+                response = client.create_association(**create_request, aws_retry=True)
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
@@ -655,21 +646,7 @@ def main():
         if tags:
             methods["create_association"] += ("Tags",)
 
-        if tags is not None:
-            methods["list_tags_for_resource"] = ("ResourceId", "ResourceType")
-            if tags:
-                methods["add_tags_to_resource"] = (
-                    "ResourceId",
-                    "ResourceType",
-                    "Tags",
-                )
-
-            if module.params["purge_tags"]:
-                methods["remove_tags_from_resource"] = (
-                    "ResourceId",
-                    "ResourceType",
-                    "TagKeys",
-                )
+        methods.update(ssm_tag_methods(tags, module.params["purge_tags"]))
 
     if state == "absent":
         methods["delete_association"] = ("AssociationId",)
@@ -712,10 +689,10 @@ def main():
 
     current = matches[0] if matches else None
 
-    if state == "present" and current is not None:
-        current = describe_association(client, module, current["AssociationId"])
-
     if state == "present":
+        if current is not None:
+            current = describe_association(client, module, current["AssociationId"])
+
         ensure_present(client, module, current)
 
     if state == "absent":

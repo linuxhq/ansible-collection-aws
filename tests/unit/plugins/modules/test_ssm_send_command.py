@@ -39,6 +39,7 @@ def patch_time(*monotonic_values):
         monotonic=Mock(side_effect=monotonic_values),
         sleep=Mock(),
     )
+    # wait_deadline reads the clock through module_utils.wait, so both share one mocked clock.
     with patch.object(plugin, "time", mocked_time), patch.object(wait, "time", mocked_time):
         yield mocked_time
 

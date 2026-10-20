@@ -408,13 +408,13 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     sleep_until_next_poll,
+    wait_deadline,
 )
 
 SUCCESS_STATUSES = {"Success"}
 TERMINAL_STATUSES = {"Cancelled", "Failed", "Success", "TimedOut"}
 SEND_COMMAND_OPTIONS = [
     "comment",
-    "instance_ids",
     "max_concurrency",
     "max_errors",
     "timeout_seconds",
@@ -436,6 +436,10 @@ def normalize_command(command):
         transform_tags=False,
         force_tags=False,
     )
+
+
+def normalize_invocations(invocations):
+    return boto3_resource_list_to_ansible_dict(invocations, transform_tags=False, force_tags=False)
 
 
 def main():
@@ -512,7 +516,6 @@ def main():
     send_command_request = {option: module.params[option] for option in SEND_COMMAND_OPTIONS}
     send_command_request["document_name"] = document_name
     send_command_request["instance_ids"] = instance_ids or None
-    send_command_request["parameters"] = parameters
     send_command_request["targets"] = targets or None
     send_command_args = scrub_none_parameters(snake_dict_to_camel_dict(send_command_request, capitalize_first=True))
     send_command_args["Parameters"] = parameters
@@ -567,7 +570,7 @@ def main():
     }
 
     if wait:
-        deadline = time.monotonic() + module.params["wait_timeout"]
+        deadline = wait_deadline(module)
         invocations = []
 
         while time.monotonic() < deadline:
@@ -647,9 +650,7 @@ def main():
                     ),
                     command=normalize_command(command),
                     command_id=command_id,
-                    command_invocations=boto3_resource_list_to_ansible_dict(
-                        invocations, transform_tags=False, force_tags=False
-                    ),
+                    command_invocations=normalize_invocations(invocations),
                     status=command_status,
                 )
 
@@ -667,9 +668,7 @@ def main():
                         ),
                         command=normalize_command(command),
                         command_id=command_id,
-                        command_invocations=boto3_resource_list_to_ansible_dict(
-                            invocations, transform_tags=False, force_tags=False
-                        ),
+                        command_invocations=normalize_invocations(invocations),
                         status=command_status,
                     )
 
@@ -714,9 +713,7 @@ def main():
                     msg=f"AWS Systems Manager command {command_id} did not complete successfully",
                     command=normalize_command(command),
                     command_id=command_id,
-                    command_invocations=boto3_resource_list_to_ansible_dict(
-                        invocations, transform_tags=False, force_tags=False
-                    ),
+                    command_invocations=normalize_invocations(invocations),
                     status=command_status,
                 )
 
@@ -727,16 +724,12 @@ def main():
                 msg=f"Timed out waiting for AWS Systems Manager command {command_id}",
                 command=normalize_command(command),
                 command_id=command_id,
-                command_invocations=boto3_resource_list_to_ansible_dict(
-                    invocations, transform_tags=False, force_tags=False
-                ),
+                command_invocations=normalize_invocations(invocations),
                 status=command_status,
             )
 
         result["command"] = normalize_command(command)
-        result["command_invocations"] = boto3_resource_list_to_ansible_dict(
-            invocations, transform_tags=False, force_tags=False
-        )
+        result["command_invocations"] = normalize_invocations(invocations)
         result["status"] = command_status
 
     module.exit_json(**result)

@@ -15,6 +15,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_resulting_tag_limit,
     require_valid_tag_list,
     require_valid_tags,
+    ssm_tag_methods,
 )
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -146,6 +147,25 @@ def test_reconcile_ec2_tags_only_calls_nonempty_operations(tags_to_set, tag_keys
 )
 def test_ec2_tag_methods_lists_only_needed_methods(tags_to_set, tag_keys_to_unset, methods):
     assert ec2_tag_methods(tags_to_set, tag_keys_to_unset) == methods
+
+
+SSM_LIST_TAGS = ("list_tags_for_resource", ("ResourceId", "ResourceType"))
+SSM_ADD_TAGS = ("add_tags_to_resource", ("ResourceId", "ResourceType", "Tags"))
+SSM_REMOVE_TAGS = ("remove_tags_from_resource", ("ResourceId", "ResourceType", "TagKeys"))
+
+
+@pytest.mark.parametrize(
+    ("tags", "purge_tags", "methods"),
+    (
+        (None, True, []),
+        ({}, False, [SSM_LIST_TAGS]),
+        ({}, True, [SSM_LIST_TAGS, SSM_REMOVE_TAGS]),
+        ({"new": "value"}, False, [SSM_LIST_TAGS, SSM_ADD_TAGS]),
+        ({"new": "value"}, True, [SSM_LIST_TAGS, SSM_ADD_TAGS, SSM_REMOVE_TAGS]),
+    ),
+)
+def test_ssm_tag_methods_lists_only_needed_methods_in_order(tags, purge_tags, methods):
+    assert list(ssm_tag_methods(tags, purge_tags).items()) == methods
 
 
 @pytest.mark.parametrize("changed", (False, True))
