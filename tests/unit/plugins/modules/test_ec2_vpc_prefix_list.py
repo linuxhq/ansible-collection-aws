@@ -1,4 +1,4 @@
-from unittest.mock import Mock, call, patch
+from unittest.mock import ANY, Mock, call, patch
 
 import pytest
 from botocore.loaders import Loader
@@ -7,9 +7,10 @@ from botocore.waiter import Waiter, WaiterModel
 from ansible_collections.amazon.aws.plugins.module_utils.retries import RetryingBotoClientWrapper
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import tags
+from ansible_collections.linuxhq.aws.plugins.module_utils import wait as wait_utils
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_vpc_prefix_list as plugin
+from ansible_collections.linuxhq.aws.tests.unit.plugins.modules import utils
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    FakeModule,
     ModuleExit,
     ModuleFail,
     assert_module_contract,
@@ -17,6 +18,13 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 OWNER = "123456789012"
+
+
+class FakeModule(utils.FakeModule):
+    """Supply the wait bounds that the argument spec always sets, unless a test overrides them."""
+
+    def __init__(self, params, **kwargs):
+        super().__init__(dict({"wait_delay": 1, "wait_timeout": 60}, **params), **kwargs)
 
 
 def test_sdk_validation_starts_with_lookup_only():
@@ -326,7 +334,7 @@ def test_entry_replacement_is_one_request_before_shrinking():
         ),
         call(client, module, replaced, changed=True, max_entries=1),
     ]
-    wait_for_ready_state.assert_called_once_with(client, module, "pl-1", changed=True)
+    wait_for_ready_state.assert_called_once_with(client, module, "pl-1", changed=True, deadline=ANY)
     assert raised.value.values["prefix_list"]["entries"] == [{"cidr": "192.0.2.0/24"}]
 
 
@@ -403,7 +411,7 @@ def test_present_waits_for_an_existing_modification_and_rechecks():
     ):
         plugin.ensure_present(client, module, OWNER)
 
-    wait_for_ready_state.assert_called_once_with(client, module, "pl-1")
+    wait_for_ready_state.assert_called_once_with(client, module, "pl-1", deadline=ANY)
     assert not raised.value.values["changed"]
     client.modify_managed_prefix_list.assert_not_called()
 
@@ -644,7 +652,7 @@ def test_matching_prefix_list_readiness(state, wait_enabled, check_mode):
     assert result.value.values["changed"] is False
     assert client.mock_calls == []
     if wait_enabled and not check_mode:
-        wait.assert_called_once_with(client, module, "pl-1")
+        wait.assert_called_once_with(client, module, "pl-1", deadline=ANY)
         assert result.value.values["prefix_list"]["state"] == "modify-complete"
     else:
         wait.assert_not_called()
@@ -928,7 +936,7 @@ def test_create_adds_entries_beyond_one_request_in_batches():
     assert len(client.create_managed_prefix_list.call_args.kwargs["Entries"]) == 100
     assert len(modify.call_args.kwargs["add_entries"]) == 50
     assert modify.call_args.kwargs["changed"] is True
-    wait.assert_called_once_with(client, module, "pl-1", changed=True)
+    wait.assert_called_once_with(client, module, "pl-1", changed=True, deadline=ANY)
 
 
 @pytest.mark.parametrize(
@@ -1174,7 +1182,7 @@ def test_absent_waits_for_an_in_progress_prefix_list_before_deleting(state):
         plugin.ensure_absent(client, module, OWNER)
 
     assert raised.value.values["changed"] is True
-    wait.assert_called_once_with(client, module, "pl-1")
+    wait.assert_called_once_with(client, module, "pl-1", deadline=ANY)
     client.delete_managed_prefix_list.assert_called_once_with(PrefixListId="pl-1", aws_retry=True)
 
 
@@ -1217,3 +1225,55 @@ def test_resulting_tag_limit_fails_before_modifying_entries(check_mode):
     update.assert_not_called()
     client.create_tags.assert_not_called()
     client.modify_managed_prefix_list.assert_not_called()
+
+
+def run_recheck_and_update_waits(monotonic, waiter_results):
+    """Run ensure_present for a modifying prefix list that then needs a resize and an entry addition."""
+    entries = [{"Cidr": "10.0.0.0/8"}]
+    updated_entries = [{"Cidr": "10.0.0.0/8"}, {"Cidr": "192.0.2.0/24"}]
+    waiter = Mock()
+    waiter.wait.side_effect = waiter_results
+    module = FakeModule(
+        present_params([{"cidr": "10.0.0.0/8"}, {"cidr": "192.0.2.0/24"}], max_entries=2, wait=True, wait_timeout=60)
+    )
+    with (
+        patch.object(
+            plugin,
+            "get_current",
+            side_effect=[
+                (prefix_list(State="modify-in-progress"), entries),
+                (prefix_list(), entries),
+                (prefix_list(MaxEntries=2, Version=3), updated_entries),
+            ],
+        ),
+        patch.object(plugin, "describe_prefix_list", return_value=prefix_list(MaxEntries=2, Version=2)),
+        patch.object(plugin, "modify_prefix_list", return_value=prefix_list(MaxEntries=2, Version=2)),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "custom_waiter", return_value=waiter),
+        patch.object(wait_utils.time, "monotonic", side_effect=monotonic),
+        pytest.raises(utils.ModuleResult) as raised,
+    ):
+        plugin.ensure_present(Mock(), module, OWNER)
+
+    return raised.value, waiter
+
+
+def test_sequential_waits_share_one_wait_timeout_budget():
+    # The recheck after a modifying prefix list, the wait between update requests, and the final wait share 60s.
+    result, waiter = run_recheck_and_update_waits([100, 100, 120, 150], [None, None, None])
+
+    assert isinstance(result, ModuleExit)
+    assert [wait_call.kwargs["WaiterConfig"] for wait_call in waiter.wait.call_args_list] == [
+        wait_utils.custom_waiter_config(timeout, default_pause=1) for timeout in (60, 40, 10)
+    ]
+
+
+def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
+    result, waiter = run_recheck_and_update_waits([100, 100, 161], [None])
+
+    waiter.wait.assert_called_once()
+    assert isinstance(result, ModuleFail)
+    assert result.values == {
+        "changed": True,
+        "msg": "Unable to wait for EC2 VPC managed prefix list pl-1 to become ready",
+    }

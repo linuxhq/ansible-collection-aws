@@ -279,21 +279,26 @@ options:
   wait:
     default: true
     description:
-      - Whether to wait for cluster create, update, or delete operations.
+      - Whether to wait for the cluster create, update, or delete operations made by the module to complete.
+      - Even when O(wait=false), the module waits for a C(DELETING) cluster to be deleted before
+        recreating it, for a cluster to become C(ACTIVE) before changing or deleting it, for each
+        cluster configuration update to complete before the next update or a version update, and for
+        in-progress cluster updates to complete before deleting the cluster. These waits use
+        O(wait_delay) and are bounded by O(wait_timeout).
     type: bool
   wait_delay:
     default: 15
     description:
       - The delay in seconds between cluster status and update polling attempts.
-      - This also applies when O(wait=false), because the module still waits for a deleting cluster
-        before recreating it, for a cluster to become active before changing or deleting it, for
-        in-progress updates before deleting it, and between dependent updates.
+      - This also applies to the waits that happen even when O(wait=false).
       - This must be 1 or greater.
     type: int
   wait_timeout:
     default: 1200
     description:
       - The maximum number of seconds to wait.
+      - Also bounds the waits that happen even when O(wait=false).
+      - Sequential waits in one run share this budget.
       - This must be 1 or greater.
     type: int
   zonal_shift_config:
@@ -549,7 +554,9 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    remaining_wait_timeout,
     require_positive_wait_bounds,
+    wait_deadline,
 )
 
 # EKS can run an internal update right after a cluster becomes active, and rejects new updates until it finishes.
@@ -817,12 +824,18 @@ def describe_cluster(client, module, changed=False):
     )
 
 
-def wait_for_cluster(client, module, waiter_name, changed=False, accept_failed=False):
-    """Wait for the cluster; accept_failed ends the wait without failing when the cluster is FAILED or gone."""
+def wait_for_cluster(client, module, waiter_name, changed=False, accept_failed=False, deadline=None):
+    """Wait for the cluster; accept_failed ends the wait without failing when the cluster is FAILED or gone.
+
+    deadline limits the wait to what is left of the run's shared wait_timeout budget.
+    """
     name = module.params["name"]
+    # Botocore's waiters stop on a terminal state that rules out the target state (such as FAILED or
+    # DELETING while waiting for ACTIVE) as well as on timeouts, so the message names neither.
+    error_msg = f"Unable to wait for AWS EKS cluster {name} to become {waiter_name.replace('cluster_', '')}"
     waiter = client.get_waiter(waiter_name)
     wait_delay = module.params["wait_delay"]
-    attempts = 1 + int(module.params["wait_timeout"] / wait_delay)
+    attempts = 1 + int(remaining_wait_timeout(module, deadline, error_msg, changed=changed) / wait_delay)
 
     try:
         waiter.wait(
@@ -835,10 +848,7 @@ def wait_for_cluster(client, module, waiter_name, changed=False, accept_failed=F
             if cluster is None or cluster["status"] == "FAILED":
                 return
 
-        # Botocore's waiters stop on a terminal state that rules out the target state (such as FAILED or
-        # DELETING while waiting for ACTIVE) as well as on timeouts, so the message names neither.
-        state = waiter_name.replace("cluster_", "")
-        module.fail_json_aws(e, changed=changed, msg=f"Unable to wait for AWS EKS cluster {name} to become {state}")
+        module.fail_json_aws(e, changed=changed, msg=error_msg)
 
 
 def describe_update(client, module, update_id, changed=False):
@@ -865,10 +875,13 @@ def describe_update(client, module, update_id, changed=False):
     )
 
 
-def wait_for_update(client, module, update_id, changed=False):
+def wait_for_update(client, module, update_id, changed=False, deadline=None):
+    """Wait for a cluster update; deadline limits the wait to what is left of the run's wait_timeout budget."""
     name = module.params["name"]
     wait_delay = module.params["wait_delay"]
-    deadline = time.monotonic() + module.params["wait_timeout"]
+    if deadline is None:
+        deadline = wait_deadline(module)
+
     last_update = {}
     while time.monotonic() < deadline:
         last_update = describe_update(client, module, update_id, changed=changed)
@@ -893,10 +906,13 @@ def wait_for_update(client, module, update_id, changed=False):
     )
 
 
-def wait_for_cluster_updates(client, module):
+def wait_for_cluster_updates(client, module, deadline=None):
+    """Wait for in-progress cluster updates; deadline limits the wait to what is left of the run's budget."""
     name = module.params["name"]
     wait_delay = module.params["wait_delay"]
-    deadline = time.monotonic() + module.params["wait_timeout"]
+    if deadline is None:
+        deadline = wait_deadline(module)
+
     require_client_methods(
         module,
         client,
@@ -1005,7 +1021,11 @@ def exit_result(module, changed, cluster, state):
     )
 
 
-def ensure_present(client, module):
+def ensure_present(client, module, deadline=None):
+    # Every wait in one run, including those before the cluster is checked again, shares wait_timeout.
+    if deadline is None:
+        deadline = wait_deadline(module)
+
     name = module.params["name"]
     tags = module.params["tags"]
     version = module.params["version"]
@@ -1017,8 +1037,8 @@ def ensure_present(client, module):
         if module.check_mode:
             current = None
         else:
-            wait_for_cluster(client, module, "cluster_deleted")
-            return ensure_present(client, module)
+            wait_for_cluster(client, module, "cluster_deleted", deadline=deadline)
+            return ensure_present(client, module, deadline=deadline)
 
     if current is None:
         create_request = dict(desired, name=name)
@@ -1054,7 +1074,7 @@ def ensure_present(client, module):
         )
 
         if wait:
-            wait_for_cluster(client, module, "cluster_active", changed=True)
+            wait_for_cluster(client, module, "cluster_active", changed=True, deadline=deadline)
             cluster = describe_cluster(client, module, changed=True)
             if cluster is None:
                 module.fail_json(changed=True, msg=f"EKS cluster {name} disappeared after creation")
@@ -1062,7 +1082,7 @@ def ensure_present(client, module):
         exit_result(module, True, cluster, "present")
 
     if wait and not module.check_mode and current.get("status") != "ACTIVE":
-        wait_for_cluster(client, module, "cluster_active")
+        wait_for_cluster(client, module, "cluster_active", deadline=deadline)
         current = describe_cluster(client, module)
         if current is None:
             module.fail_json(msg=f"EKS cluster {name} disappeared while waiting for it to become active")
@@ -1172,8 +1192,8 @@ def ensure_present(client, module):
     resource_changed = cluster_changed or tags_changed
 
     if resource_changed and not module.check_mode and current.get("status") != "ACTIVE":
-        wait_for_cluster(client, module, "cluster_active")
-        return ensure_present(client, module)
+        wait_for_cluster(client, module, "cluster_active", deadline=deadline)
+        return ensure_present(client, module, deadline=deadline)
 
     if resource_changed and module.check_mode:
         exit_result(module, True, check_mode_cluster(module, current), "present")
@@ -1242,8 +1262,8 @@ def ensure_present(client, module):
         wait_for_next_update = index < len(update_requests) - 1
 
         if wait or version_changed or wait_for_next_update:
-            wait_for_update(client, module, update_id, changed=True)
-            wait_for_cluster(client, module, "cluster_active", changed=True)
+            wait_for_update(client, module, update_id, changed=True, deadline=deadline)
+            wait_for_cluster(client, module, "cluster_active", changed=True, deadline=deadline)
 
     if version_changed:
         try:
@@ -1260,8 +1280,8 @@ def ensure_present(client, module):
         update_id = update["id"]
 
         if wait:
-            wait_for_update(client, module, update_id, changed=True)
-            wait_for_cluster(client, module, "cluster_active", changed=True)
+            wait_for_update(client, module, update_id, changed=True, deadline=deadline)
+            wait_for_cluster(client, module, "cluster_active", changed=True, deadline=deadline)
 
     if tag_keys_to_unset:
         try:
@@ -1306,6 +1326,8 @@ def ensure_present(client, module):
 
 
 def ensure_absent(client, module):
+    # Every wait in one run shares wait_timeout.
+    deadline = wait_deadline(module)
     name = module.params["name"]
     current = describe_cluster(client, module)
 
@@ -1317,7 +1339,7 @@ def ensure_absent(client, module):
             exit_result(module, False, current, "absent")
 
         if not module.check_mode:
-            wait_for_cluster(client, module, "cluster_deleted")
+            wait_for_cluster(client, module, "cluster_deleted", deadline=deadline)
 
         exit_result(module, False, {}, "absent")
 
@@ -1333,13 +1355,13 @@ def ensure_absent(client, module):
 
     if current.get("status") in {"CREATING", "PENDING", "UPDATING"}:
         # A cluster that fails to create or update can still be deleted.
-        wait_for_cluster(client, module, "cluster_active", accept_failed=True)
+        wait_for_cluster(client, module, "cluster_active", accept_failed=True, deadline=deadline)
         # The cluster can disappear during the wait, and ListUpdates rejects a missing cluster.
         current = describe_cluster(client, module)
         if current is None:
             exit_result(module, False, {}, "absent")
 
-    if not wait_for_cluster_updates(client, module):
+    if not wait_for_cluster_updates(client, module, deadline=deadline):
         exit_result(module, False, {}, "absent")
 
     require_client_methods(
@@ -1356,7 +1378,7 @@ def ensure_absent(client, module):
         module.fail_json_aws(e, msg=f"Unable to delete EKS cluster {name}")
 
     if module.params["wait"]:
-        wait_for_cluster(client, module, "cluster_deleted", changed=True)
+        wait_for_cluster(client, module, "cluster_deleted", changed=True, deadline=deadline)
         exit_result(module, True, {}, "absent")
 
     # Without a wait the cluster remains in DELETING, so return its current description.

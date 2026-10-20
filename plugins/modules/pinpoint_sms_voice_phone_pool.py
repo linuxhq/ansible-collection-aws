@@ -87,7 +87,8 @@ options:
     description:
       - Whether to wait for a created, updated, or matched phone pool status to become C(ACTIVE).
       - Even when O(wait=false), the module waits for a matched pool that is not C(ACTIVE)
-        before updating its settings or tags.
+        before updating its settings or tags, and for an updated pool to become C(ACTIVE)
+        before changing its tags.
       - When O(state=absent), the module always waits for the pool to become C(ACTIVE)
         before disabling deletion protection and before deleting it.
     type: bool

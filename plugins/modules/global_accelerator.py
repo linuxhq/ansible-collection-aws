@@ -277,25 +277,29 @@ options:
       - Whether to wait for the accelerator to finish deploying after changes
         are applied, and for the accelerator deletion to complete when
         O(state=absent).
-      - When O(state=absent), the module always waits for listener and
-        endpoint group deletions and for the accelerator to be disabled,
-        because AWS deletes an accelerator only after these deploy.
       - Accelerator, listener, and endpoint group changes are applied first
         and share a single deployment wait.
+      - Even when O(wait=false), the module waits for an accelerator that is still deploying before
+        changing it or managing its listeners, for a new accelerator to deploy before creating its
+        listeners, between dependent listener changes, after deleting a listener's endpoint groups
+        before deleting the listener, and before endpoint group changes. When O(state=absent), it
+        also waits for listener and endpoint group deletions and for the accelerator to be disabled,
+        because AWS deletes an accelerator only after these deploy. These waits use O(wait_delay) and
+        are bounded by O(wait_timeout).
     default: true
     type: bool
   wait_delay:
     description:
       - The delay in seconds between accelerator status polling attempts.
-      - This also applies when O(wait=false), because the module still waits for an accelerator to
-        finish deploying before changing it, between dependent listener changes, before endpoint
-        group changes, and for listener deletions and disabling the accelerator before deleting it.
+      - This also applies to the waits that happen even when O(wait=false).
       - This must be 1 or greater.
     default: 10
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait.
+      - Also bounds the waits that happen even when O(wait=false).
+      - Sequential waits in one run share this budget.
       - This must be 1 or greater.
     default: 600
     type: int
@@ -596,6 +600,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     custom_waiter,
     require_positive_wait_bounds,
     run_waiter,
+    wait_deadline,
 )
 
 GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
@@ -798,8 +803,11 @@ def get_accelerator(client, module):
     return matches[0]
 
 
-def wait_for_accelerator(client, module, accelerator_arn, waiter_name, changed=False):
-    """Wait for an accelerator; changed reports whether it was already modified, for failure results."""
+def wait_for_accelerator(client, module, accelerator_arn, waiter_name, changed=False, deadline=None):
+    """Wait for an accelerator; changed reports whether it was already modified, for failure results.
+
+    deadline limits the wait to what is left of the run's shared wait_timeout budget.
+    """
     require_client_methods(
         module,
         client,
@@ -812,6 +820,7 @@ def wait_for_accelerator(client, module, accelerator_arn, waiter_name, changed=F
         custom_waiter(client, GLOBAL_ACCELERATOR_WAITER_MODEL_DATA, waiter_name),
         f"Timed out waiting for AWS Global Accelerator {accelerator_arn}",
         changed=changed,
+        deadline=deadline,
         AcceleratorArn=accelerator_arn,
     )
 
@@ -1256,7 +1265,7 @@ def delete_endpoint_group(client, module, endpoint_group_arn, changed=False):
         )
 
 
-def delete_listener(client, module, accelerator_arn, listener_arn, changed=False):
+def delete_listener(client, module, accelerator_arn, listener_arn, changed=False, deadline=None):
     """Delete a listener and its endpoint groups; changed reports earlier modifications, for failure results."""
     require_client_methods(
         module,
@@ -1271,7 +1280,7 @@ def delete_listener(client, module, accelerator_arn, listener_arn, changed=False
         changed = True
 
     if endpoint_groups:
-        wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True)
+        wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True, deadline=deadline)
 
     try:
         client.delete_listener(
@@ -1398,7 +1407,7 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups, mutate
     return changed, results
 
 
-def ensure_listeners(client, module, accelerator_arn, mutated=False):
+def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=None):
     """Reconcile listeners; mutated reports earlier modifications, for failure results."""
     current_listeners = []
     if accelerator_arn is not None:
@@ -1443,11 +1452,13 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False):
     ]
     if conflicting_deletes and not module.check_mode:
         for current in conflicting_deletes:
-            delete_listener(client, module, accelerator_arn, current["listener_arn"], changed=mutated)
+            delete_listener(
+                client, module, accelerator_arn, current["listener_arn"], changed=mutated, deadline=deadline
+            )
             mutated = True
             deletes.remove(current)
 
-        wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True)
+        wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True, deadline=deadline)
 
     for current, desired in matched:
         result_listeners.append((dict(current), desired))
@@ -1488,7 +1499,9 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False):
         result["listener_arn"] = listener["ListenerArn"]
 
         if any(other is not desired and listeners_overlap(current, other) for other in desired_changes):
-            wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True)
+            wait_for_accelerator(
+                client, module, accelerator_arn, "accelerator_deployed", changed=True, deadline=deadline
+            )
 
     for index, desired in enumerate(creates):
         # Predict the AWS creation default when client_affinity is omitted.
@@ -1524,9 +1537,13 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False):
                     )
 
                 current = deletes.pop(0)
-                delete_listener(client, module, accelerator_arn, current["listener_arn"], changed=mutated)
+                delete_listener(
+                    client, module, accelerator_arn, current["listener_arn"], changed=mutated, deadline=deadline
+                )
                 mutated = True
-                wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True)
+                wait_for_accelerator(
+                    client, module, accelerator_arn, "accelerator_deployed", changed=True, deadline=deadline
+                )
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
@@ -1541,7 +1558,9 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False):
 
     if not module.check_mode:
         for current in deletes:
-            delete_listener(client, module, accelerator_arn, current["listener_arn"], changed=mutated)
+            delete_listener(
+                client, module, accelerator_arn, current["listener_arn"], changed=mutated, deadline=deadline
+            )
             mutated = True
 
     if (
@@ -1549,7 +1568,7 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False):
         and not module.check_mode
         and any(item[1] and item[1]["endpoint_groups"] is not None for item in result_listeners)
     ):
-        wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True)
+        wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True, deadline=deadline)
 
     results = []
     for result, desired in result_listeners:
@@ -1572,13 +1591,15 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False):
 
 
 def ensure_absent(client, module):
+    # Every wait in one run shares wait_timeout.
+    deadline = wait_deadline(module)
     accelerator = get_accelerator(client, module)
     changed = accelerator is not None
 
     if changed and not module.check_mode:
         accelerator_arn = accelerator["AcceleratorArn"]
         if accelerator.get("Status") and accelerator.get("Status") != "DEPLOYED":
-            wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed")
+            wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", deadline=deadline)
             accelerator = get_accelerator_by_arn(client, module, accelerator_arn)
             if accelerator is None:
                 # The accelerator disappeared before this module modified anything.
@@ -1595,7 +1616,9 @@ def ensure_absent(client, module):
         # Failures after the first deletion report changed=True.
         mutated = False
         for listener in listeners:
-            delete_listener(client, module, accelerator_arn, listener["listener_arn"], changed=mutated)
+            delete_listener(
+                client, module, accelerator_arn, listener["listener_arn"], changed=mutated, deadline=deadline
+            )
             mutated = True
 
         if listeners:
@@ -1605,6 +1628,7 @@ def ensure_absent(client, module):
                 accelerator_arn,
                 "accelerator_deployed",
                 changed=True,
+                deadline=deadline,
             )
 
         if accelerator.get("Enabled"):
@@ -1628,6 +1652,7 @@ def ensure_absent(client, module):
                 accelerator_arn,
                 "accelerator_deployed",
                 changed=True,
+                deadline=deadline,
             )
 
         try:
@@ -1647,6 +1672,7 @@ def ensure_absent(client, module):
                 accelerator_arn,
                 "accelerator_deleted",
                 changed=True,
+                deadline=deadline,
             )
 
     module.exit_json(
@@ -1655,7 +1681,11 @@ def ensure_absent(client, module):
     )
 
 
-def ensure_present(client, module):
+def ensure_present(client, module, deadline=None):
+    # Every wait in one run, including the one before the accelerator is checked again, shares wait_timeout.
+    if deadline is None:
+        deadline = wait_deadline(module)
+
     tags = module.params["tags"]
     ip_addresses = module.params["ip_addresses"] or None
     desired = scrub_none_parameters(
@@ -1755,8 +1785,9 @@ def ensure_present(client, module):
             module,
             accelerator["AcceleratorArn"],
             "accelerator_deployed",
+            deadline=deadline,
         )
-        return ensure_present(client, module)
+        return ensure_present(client, module, deadline=deadline)
 
     if not module.check_mode:
         # Later writes are checked before the first change, so an older botocore fails without modifying anything.
@@ -1883,6 +1914,7 @@ def ensure_present(client, module):
                 accelerator["AcceleratorArn"],
                 "accelerator_deployed",
                 changed=True,
+                deadline=deadline,
             )
 
         listeners_changed, listeners = ensure_listeners(
@@ -1890,6 +1922,7 @@ def ensure_present(client, module):
             module,
             (accelerator or {}).get("AcceleratorArn"),
             mutated=mutated,
+            deadline=deadline,
         )
         changed = changed or listeners_changed
         mutated = mutated or (listeners_changed and not module.check_mode)
@@ -1904,6 +1937,7 @@ def ensure_present(client, module):
                 accelerator_arn,
                 "accelerator_deployed",
                 changed=True,
+                deadline=deadline,
             )
             accelerator = get_accelerator_by_arn(client, module, accelerator_arn, changed=True)
             if accelerator is None:

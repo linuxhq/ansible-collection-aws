@@ -78,17 +78,25 @@ options:
   wait:
     description:
       - Whether to wait for managed prefix list create, update, and delete operations.
+      - Even when O(wait=false), the module waits for the prefix list to become ready between the requests
+        of a create with more than 100 entries or of an update that needs several requests, and before it
+        changes or deletes a prefix list that is in a C(*-in-progress) state. When O(state=present), it also
+        waits for a prefix list in the C(delete-in-progress) state to be deleted before creating it again.
+        These waits use O(wait_delay) and are bounded by O(wait_timeout).
     default: true
     type: bool
   wait_delay:
     description:
-      - The delay between polling attempts when O(wait=true).
+      - The delay between polling attempts when O(wait=true) or while the module waits even when
+        O(wait=false).
       - This must be 1 or greater.
     default: 1
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait when O(wait=true).
+      - Also bounds the waits that happen even when O(wait=false).
+      - Sequential waits in one run share this budget.
       - This must be 1 or greater.
     default: 60
     type: int
@@ -261,6 +269,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     custom_waiter,
     require_positive_wait_bounds,
     run_waiter,
+    wait_deadline,
 )
 
 EC2_WAITER_MODEL_DATA = {
@@ -428,7 +437,7 @@ def validate_prefix_list_entries(module, entries, changed=False):
     return entries
 
 
-def create_prefix_list(client, module, owner_id, desired_prefix_list, desired_entries):
+def create_prefix_list(client, module, owner_id, desired_prefix_list, desired_entries, deadline=None):
     tags = module.params["tags"]
     request = scrub_none_parameters(
         snake_dict_to_camel_dict(
@@ -470,18 +479,18 @@ def create_prefix_list(client, module, owner_id, desired_prefix_list, desired_en
 
     # EC2 creates at most one request's worth of entries; add the rest once creation completes.
     for batch in chunks(desired_entries[MAX_ENTRIES_PER_REQUEST:], MAX_ENTRIES_PER_REQUEST):
-        wait_for_ready_state(client, module, prefix_list["PrefixListId"], changed=True)
+        wait_for_ready_state(client, module, prefix_list["PrefixListId"], changed=True, deadline=deadline)
         prefix_list = describe_prefix_list(client, module, prefix_list["PrefixListId"], changed=True)
         prefix_list = modify_prefix_list(client, module, prefix_list, changed=True, add_entries=batch)
 
     if module.params["wait"]:
-        wait_for_ready_state(client, module, prefix_list["PrefixListId"], changed=True)
+        wait_for_ready_state(client, module, prefix_list["PrefixListId"], changed=True, deadline=deadline)
         return get_current(client, module, owner_id, changed=True)
 
     return prefix_list, desired_entries
 
 
-def delete_prefix_list(client, module, prefix_list_id):
+def delete_prefix_list(client, module, prefix_list_id, deadline=None):
     require_client_methods(
         module,
         client,
@@ -509,12 +518,15 @@ def delete_prefix_list(client, module, prefix_list_id):
             prefix_list_id,
             "managed_prefix_list_deleted",
             changed=True,
+            deadline=deadline,
         )
 
     return True
 
 
 def ensure_absent(client, module, owner_id):
+    # Every wait in one run shares wait_timeout.
+    deadline = wait_deadline(module)
     current = get_customer_managed_prefix_list_by_name(client, module, owner_id)
 
     state = (current or {}).get("State")
@@ -522,12 +534,12 @@ def ensure_absent(client, module, owner_id):
     prefix_list_id = (current or {}).get("PrefixListId")
 
     if state == "delete-in-progress" and module.params["wait"] and not module.check_mode:
-        wait_for_prefix_list_state(client, module, prefix_list_id, "managed_prefix_list_deleted")
+        wait_for_prefix_list_state(client, module, prefix_list_id, "managed_prefix_list_deleted", deadline=deadline)
     elif changed and not module.check_mode:
         if state in IN_PROGRESS_STATES:
-            wait_for_ready_state(client, module, prefix_list_id)
+            wait_for_ready_state(client, module, prefix_list_id, deadline=deadline)
 
-        changed = delete_prefix_list(client, module, prefix_list_id)
+        changed = delete_prefix_list(client, module, prefix_list_id, deadline=deadline)
 
     result = {
         "changed": changed,
@@ -540,7 +552,11 @@ def ensure_absent(client, module, owner_id):
     module.exit_json(**result)
 
 
-def ensure_present(client, module, owner_id):
+def ensure_present(client, module, owner_id, deadline=None):
+    # Every wait in one run, including those before the prefix list is checked again, shares wait_timeout.
+    if deadline is None:
+        deadline = wait_deadline(module)
+
     name = module.params["name"]
     tags = module.params["tags"]
     purge_tags = module.params["purge_tags"]
@@ -555,8 +571,9 @@ def ensure_present(client, module, owner_id):
                 module,
                 current.get("PrefixListId"),
                 "managed_prefix_list_deleted",
+                deadline=deadline,
             )
-            return ensure_present(client, module, owner_id)
+            return ensure_present(client, module, owner_id, deadline=deadline)
 
     if (current or {}).get("State") == "create-failed":
         module.fail_json(
@@ -590,6 +607,7 @@ def ensure_present(client, module, owner_id):
                 owner_id,
                 desired_prefix_list,
                 desired_entries,
+                deadline=deadline,
             )
         else:
             current = snake_dict_to_camel_dict(desired_prefix_list, capitalize_first=True)
@@ -624,8 +642,8 @@ def ensure_present(client, module, owner_id):
         changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
         if (changed or wait) and not module.check_mode and current.get("State") in IN_PROGRESS_STATES:
-            wait_for_ready_state(client, module, current.get("PrefixListId"))
-            return ensure_present(client, module, owner_id)
+            wait_for_ready_state(client, module, current.get("PrefixListId"), deadline=deadline)
+            return ensure_present(client, module, owner_id, deadline=deadline)
 
         if changed and not module.check_mode:
             if entries_changed or resource_changed:
@@ -639,6 +657,7 @@ def ensure_present(client, module, owner_id):
                     current_entries,
                     desired_entries,
                     desired_prefix_list["max_entries"],
+                    deadline=deadline,
                 )
                 current = dict(current, Tags=current_tags)
                 current_prefix_list = comparable_prefix_list(current)
@@ -736,7 +755,7 @@ def get_current(client, module, owner_id, changed=False):
     return prefix_list, entries
 
 
-def update_prefix_list(client, module, owner_id, current, current_entries, desired_entries, max_entries):
+def update_prefix_list(client, module, owner_id, current, current_entries, desired_entries, max_entries, deadline=None):
     """Converge entries and size without ever removing a requested CIDR."""
     current_cidrs = {entry["cidr"] for entry in current_entries}
     desired_cidrs = {entry["cidr"] for entry in desired_entries}
@@ -768,7 +787,7 @@ def update_prefix_list(client, module, owner_id, current, current_entries, desir
     # Failures after the first modification report changed=True.
     for index, step in enumerate(steps):
         if index:
-            wait_for_ready_state(client, module, current["PrefixListId"], changed=True)
+            wait_for_ready_state(client, module, current["PrefixListId"], changed=True, deadline=deadline)
             current = describe_prefix_list(client, module, current["PrefixListId"], changed=True)
 
         current = modify_prefix_list(client, module, current, changed=index > 0, **step)
@@ -776,7 +795,7 @@ def update_prefix_list(client, module, owner_id, current, current_entries, desir
     if not module.params["wait"]:
         return current, desired_entries
 
-    wait_for_ready_state(client, module, current["PrefixListId"], changed=True)
+    wait_for_ready_state(client, module, current["PrefixListId"], changed=True, deadline=deadline)
     return get_current(client, module, owner_id, changed=True)
 
 
@@ -833,18 +852,22 @@ def modify_prefix_list(client, module, current, changed=False, **kwargs):
     )
 
 
-def wait_for_ready_state(client, module, prefix_list_id, changed=False):
+def wait_for_ready_state(client, module, prefix_list_id, changed=False, deadline=None):
     wait_for_prefix_list_state(
         client,
         module,
         prefix_list_id,
         "managed_prefix_list_ready",
         changed=changed,
+        deadline=deadline,
     )
 
 
-def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name, changed=False):
-    """Wait for a prefix list state; changed reports earlier modifications, for failure results."""
+def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name, changed=False, deadline=None):
+    """Wait for a prefix list state; changed reports earlier modifications, for failure results.
+
+    deadline limits the wait to what is left of the run's shared wait_timeout budget.
+    """
     target_state = WAITER_TARGET_STATES[waiter_name]
     require_client_methods(
         module,
@@ -858,6 +881,7 @@ def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name, chan
         custom_waiter(client, EC2_WAITER_MODEL_DATA, waiter_name),
         f"Unable to wait for EC2 VPC managed prefix list {prefix_list_id} to become {target_state}",
         changed=changed,
+        deadline=deadline,
         PrefixListIds=[prefix_list_id],
     )
 

@@ -93,18 +93,26 @@ options:
     type: str
   wait:
     description:
-      - Whether to wait for route table and route state changes to complete.
+      - Whether to wait for the route table and route changes made by the module to complete, and for a
+        C(pending) or C(deleting) route table or route that the module finds to settle.
+      - Even when O(wait=false), the module waits for a new or C(pending) route table to become
+        C(available) when O(routes) is set, and for a C(deleting) route to be removed before it creates
+        that route again. When O(state=absent), it also waits for a C(pending) route table to become
+        C(available) before deleting it. These waits use O(wait_delay) and are bounded by O(wait_timeout).
     default: true
     type: bool
   wait_delay:
     description:
-      - The delay between polling attempts when O(wait=true).
+      - The delay between polling attempts when O(wait=true) or while the module waits even when
+        O(wait=false).
       - This must be 1 or greater.
     default: 5
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait when O(wait=true).
+      - Also bounds the waits that happen even when O(wait=false).
+      - Sequential waits in one run share this budget.
       - This must be 1 or greater.
     default: 600
     type: int
@@ -296,6 +304,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
+    wait_deadline,
 )
 
 ROUTE_TABLE_TERMINAL_STATES = {"deleted"}
@@ -463,9 +472,15 @@ def wait_for_route_table(
     desired_states,
     absent_is_success=False,
     changed=False,
+    deadline=None,
 ):
-    """Wait for a route table state; changed reports earlier modifications, for failure results."""
-    deadline = time.monotonic() + module.params["wait_timeout"]
+    """Wait for a route table state; changed reports earlier modifications, for failure results.
+
+    deadline limits the wait to what is left of the run's shared wait_timeout budget.
+    """
+    if deadline is None:
+        deadline = wait_deadline(module)
+
     route_table = {}
     seen = False
     target = " or ".join(sorted(desired_states))
@@ -625,9 +640,14 @@ def check_mode_route(desired):
     return route
 
 
-def wait_for_route(client, module, transit_gateway_route_table_id, desired, changed=False):
-    """Wait for a route; changed reports earlier modifications, for failure results."""
-    deadline = time.monotonic() + module.params["wait_timeout"]
+def wait_for_route(client, module, transit_gateway_route_table_id, desired, changed=False, deadline=None):
+    """Wait for a route; changed reports earlier modifications, for failure results.
+
+    deadline limits the wait to what is left of the run's shared wait_timeout budget.
+    """
+    if deadline is None:
+        deadline = wait_deadline(module)
+
     route = {}
     seen = False
     target = "blackhole" if desired.get("blackhole") else "active"
@@ -673,9 +693,16 @@ def wait_for_route(client, module, transit_gateway_route_table_id, desired, chan
     )
 
 
-def wait_for_route_absent(client, module, transit_gateway_route_table_id, destination_cidr_block, changed=False):
-    """Wait for a route to be removed; changed reports earlier modifications, for failure results."""
-    deadline = time.monotonic() + module.params["wait_timeout"]
+def wait_for_route_absent(
+    client, module, transit_gateway_route_table_id, destination_cidr_block, changed=False, deadline=None
+):
+    """Wait for a route to be removed; changed reports earlier modifications, for failure results.
+
+    deadline limits the wait to what is left of the run's shared wait_timeout budget.
+    """
+    if deadline is None:
+        deadline = wait_deadline(module)
+
     route = {}
 
     while time.monotonic() < deadline:
@@ -699,7 +726,9 @@ def wait_for_route_absent(client, module, transit_gateway_route_table_id, destin
     )
 
 
-def ensure_route_absent(client, module, transit_gateway_route_table_id, destination_cidr_block, route, changed=False):
+def ensure_route_absent(
+    client, module, transit_gateway_route_table_id, destination_cidr_block, route, changed=False, deadline=None
+):
     """Remove the static route; route is the current route as get_route() selects it, or None.
 
     changed reports earlier modifications, for failure results.
@@ -709,7 +738,12 @@ def ensure_route_absent(client, module, transit_gateway_route_table_id, destinat
     if not route_is_static(route):
         if wait and route and route.get("State") == "deleting":
             route = wait_for_route_absent(
-                client, module, transit_gateway_route_table_id, destination_cidr_block, changed=changed
+                client,
+                module,
+                transit_gateway_route_table_id,
+                destination_cidr_block,
+                changed=changed,
+                deadline=deadline,
             )
 
         return False, route
@@ -747,7 +781,7 @@ def ensure_route_absent(client, module, transit_gateway_route_table_id, destinat
 
     if wait:
         return True, wait_for_route_absent(
-            client, module, transit_gateway_route_table_id, destination_cidr_block, changed=True
+            client, module, transit_gateway_route_table_id, destination_cidr_block, changed=True, deadline=deadline
         )
 
     # Return the route as EC2 left it; get_route() selects no route once it is deleted.
@@ -760,6 +794,8 @@ def ensure_route_absent(client, module, transit_gateway_route_table_id, destinat
 
 
 def ensure_present(client, module):
+    # Every wait in one run shares wait_timeout, so the total wait does not grow with the number of routes.
+    deadline = wait_deadline(module)
     route_table_identifier = module.params["transit_gateway_route_table_id"]
     transit_gateway_id = module.params["transit_gateway_id"]
     manage_routes = module.params["routes"] is not None
@@ -810,7 +846,7 @@ def ensure_present(client, module):
 
             if wait or manage_routes:
                 route_table = wait_for_route_table(
-                    client, module, route_table_id(route_table), {"available"}, changed=True
+                    client, module, route_table_id(route_table), {"available"}, changed=True, deadline=deadline
                 )
     elif route_table.get("State") == "deleted":
         module.fail_json(
@@ -825,7 +861,9 @@ def ensure_present(client, module):
             transit_gateway_route_table_id=route_table_id(route_table),
         )
     elif not module.check_mode and route_table.get("State") == "pending" and (wait or manage_routes):
-        route_table = wait_for_route_table(client, module, route_table_id(route_table), {"available"})
+        route_table = wait_for_route_table(
+            client, module, route_table_id(route_table), {"available"}, deadline=deadline
+        )
 
     # Failures after the first modification report changed=True.
     mutated = changed and not module.check_mode
@@ -900,6 +938,7 @@ def ensure_present(client, module):
                             changed=mutated,
                         ),
                         changed=mutated,
+                        deadline=deadline,
                     )
                 else:
                     destination_cidr_block = desired_route["destination_cidr_block"]
@@ -918,6 +957,7 @@ def ensure_present(client, module):
                                 transit_gateway_route_table_id,
                                 destination_cidr_block,
                                 changed=mutated,
+                                deadline=deadline,
                             )
 
                         current_route = None
@@ -931,6 +971,7 @@ def ensure_present(client, module):
                                 transit_gateway_route_table_id,
                                 desired_route,
                                 changed=mutated,
+                                deadline=deadline,
                             )
                     elif module.check_mode:
                         current_route_changed = True
@@ -1000,6 +1041,7 @@ def ensure_present(client, module):
                                 transit_gateway_route_table_id,
                                 desired_route,
                                 changed=True,
+                                deadline=deadline,
                             )
 
                 route_changed = route_changed or current_route_changed
@@ -1041,6 +1083,7 @@ def ensure_present(client, module):
                         destination,
                         current_route,
                         changed=mutated,
+                        deadline=deadline,
                     )[0]
                     route_changed = route_changed or purged_route_changed
                     mutated = mutated or (purged_route_changed and not module.check_mode)
@@ -1051,6 +1094,8 @@ def ensure_present(client, module):
 
 
 def ensure_absent(client, module):
+    # Every wait in one run shares wait_timeout.
+    deadline = wait_deadline(module)
     wait = module.params["wait"] and not module.check_mode
     route_table = find_route_table(client, module)
 
@@ -1065,6 +1110,7 @@ def ensure_absent(client, module):
                 route_table_id(route_table),
                 {"deleted"},
                 absent_is_success=True,
+                deadline=deadline,
             )
 
         exit_module(module, False, route_table)
@@ -1075,7 +1121,9 @@ def ensure_absent(client, module):
 
     transit_gateway_route_table_id = route_table_id(route_table)
     if route_table.get("State") == "pending":
-        route_table = wait_for_route_table(client, module, transit_gateway_route_table_id, {"available"})
+        route_table = wait_for_route_table(
+            client, module, transit_gateway_route_table_id, {"available"}, deadline=deadline
+        )
 
     require_client_methods(
         module,
@@ -1110,6 +1158,7 @@ def ensure_absent(client, module):
             {"deleted"},
             absent_is_success=True,
             changed=True,
+            deadline=deadline,
         )
 
     exit_module(module, changed, route_table)

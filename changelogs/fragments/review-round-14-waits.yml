@@ -1,0 +1,29 @@
+---
+bugfixes:
+  - ec2_transit_gateway_route_table - share one ``wait_timeout`` budget across every route table and route wait in
+    a run, so the total wait no longer grows with the number of routes.
+  - ec2_vpc_prefix_list - share one ``wait_timeout`` budget across every wait in a run, including the waits before
+    the module checks a changing or deleting prefix list again and between batched requests, and document the
+    waits that happen even when ``wait=false``.
+  - eks_cluster - share one ``wait_timeout`` budget across every cluster and update wait in a run, including the
+    wait for a deleting cluster before it is recreated and the waits before a cluster is deleted, so a multi-step
+    update no longer waits several times ``wait_timeout``.
+  - global_accelerator - share one ``wait_timeout`` budget across every accelerator wait in a run, including the
+    wait before the module checks a deploying accelerator again and the waits between listener and endpoint group
+    changes.
+  - ec2_transit_gateway_route_table - document in the ``wait`` option the prerequisite waits that happen even when
+    ``wait=false``, and that ``wait_delay`` and ``wait_timeout`` also apply to them.
+  - eks_cluster - document in the ``wait`` option the prerequisite waits that happen even when
+    ``wait=false``, and that ``wait_delay`` and ``wait_timeout`` also apply to them.
+  - global_accelerator - document in the ``wait`` option the prerequisite waits that happen even when
+    ``wait=false``, and that ``wait_delay`` and ``wait_timeout`` also apply to them.
+  - pinpoint_sms_voice_phone_pool - document in the ``wait`` option that, even when ``wait=false``, the module waits
+    for an updated pool to become ``ACTIVE`` before changing its tags.
+  - route53_resolver - document in the ``wait`` option the prerequisite waits that happen even when
+    ``wait=false``, and that ``wait_delay`` and ``wait_timeout`` also apply to them.
+  - route53_resolver_rule - document in the ``wait`` option the prerequisite waits that happen even when
+    ``wait=false``, and that ``wait_delay`` and ``wait_timeout`` also apply to them.
+  - route53_resolver_rule_associate - document in the ``wait`` option the prerequisite waits that happen even when
+    ``wait=false``, and that ``wait_delay`` and ``wait_timeout`` also apply to them.
+  - ssm_document - document in the ``wait`` option the prerequisite waits that happen even when
+    ``wait=false``, and that ``wait_delay`` and ``wait_timeout`` also apply to them.

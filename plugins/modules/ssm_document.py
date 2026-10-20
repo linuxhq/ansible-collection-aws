@@ -81,21 +81,25 @@ options:
     description:
       - Whether to wait for a created document to become active, or for a
         deleted document to be removed.
-      - An updated document version is always waited on before it is promoted
-        to the default version.
+      - Even when O(wait=false), when O(state=present) the module waits for a
+        document that is being deleted to be removed before creating it again,
+        for a document version that is still being created or updated to
+        settle before comparing it, and for an updated document version to
+        become active before it is promoted to the default version. These waits
+        use O(wait_delay) and are bounded by O(wait_timeout).
     default: true
     type: bool
   wait_delay:
     description:
       - The delay between polling attempts.
+      - This also applies to the waits that happen even when O(wait=false).
       - This must be 1 or greater.
     default: 5
     type: int
   wait_timeout:
     description:
       - The maximum number of seconds to wait.
-      - When O(state=present), this also applies while an updated document
-        version is promoted, regardless of O(wait).
+      - Also bounds the waits that happen even when O(wait=false).
       - Sequential waits in one run share this budget.
       - This must be 1 or greater.
     default: 300
