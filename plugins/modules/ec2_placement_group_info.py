@@ -21,6 +21,10 @@ options:
   group_ids:
     description:
       - EC2 placement group IDs used to limit the result set.
+      - Placement groups shared with the account are included; EC2 describes
+        them only by ID.
+      - When O(group_names) or O(filters) are also set, only groups that match
+        them are returned.
       - An ID that does not exist results in no entry; no error is raised.
     elements: str
     type: list
@@ -29,6 +33,9 @@ options:
       - EC2 placement group names used to limit the result set.
       - This is sent as the C(group-name) filter and takes precedence over a
         C(group-name) key in O(filters).
+      - EC2 accepts at most 200 filter values in each request, counted across all
+        filters, so this list is split across requests and O(filters) must contain
+        fewer than 200 values when this is set.
       - A name that does not exist results in no entry; no error is raised.
     elements: str
     type: list
@@ -116,6 +123,12 @@ placement_groups:
       type: dict
 """
 
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+except ImportError:
+    pass
+
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import is_boto3_error_code
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -124,11 +137,28 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
     ansible_dict_to_string_filter_list,
+    filter_value_batches,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+
+# EC2 returns InvalidParameterValue for an ID that never existed or is malformed,
+# and InvalidPlacementGroup.Unknown for a recently deleted group.
+GROUP_ID_NOT_FOUND_CODES = ("InvalidParameterValue", "InvalidPlacementGroup.Unknown")
+
+
+def describe_placement_group_by_id(client, module, group_id, request):
+    """Return the placement groups EC2 describes for one ID, or none when the ID does not exist."""
+    try:
+        response = client.describe_placement_groups(GroupIds=[group_id], aws_retry=True, **request)
+    except is_boto3_error_code(GROUP_ID_NOT_FOUND_CODES):
+        return []
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to describe EC2 placement group {group_id}")
+
+    return response.get("PlacementGroups", [])
 
 
 def main():
@@ -147,28 +177,34 @@ def main():
 
     # GroupNames and GroupIds fail for a group that does not exist, so names are
     # filtered by the documented group-name filter and IDs are matched locally.
-    if group_names:
-        filters["group-name"] = group_names
+    # Shared groups are described only by ID, so unmatched IDs are described one at a time.
+    requests = []
+    for batch_filters in filter_value_batches(module, filters, "group-name", group_names, "group_names"):
+        request = {}
+        if batch_filters:
+            request["Filters"] = ansible_dict_to_string_filter_list(batch_filters)
 
-    request = {}
-    if filters:
-        request["Filters"] = ansible_dict_to_string_filter_list(filters)
+        requests.append(request)
 
     require_client_methods(
         module,
         client,
         "EC2",
-        {"describe_placement_groups": tuple(request)},
+        {"describe_placement_groups": tuple(requests[0])},
     )
 
-    placement_groups = query_list(
-        module,
-        client,
-        "describe_placement_groups",
-        "PlacementGroups",
-        "Unable to describe EC2 placement groups",
-        **request,
-    )
+    placement_groups = []
+    for request in requests:
+        placement_groups.extend(
+            query_list(
+                module,
+                client,
+                "describe_placement_groups",
+                "PlacementGroups",
+                "Unable to describe EC2 placement groups",
+                **request,
+            )
+        )
 
     if any(not isinstance(placement_group, dict) for placement_group in placement_groups):
         module.fail_json(msg="EC2 returned invalid placement group information")
@@ -177,6 +213,30 @@ def main():
         placement_groups = [
             placement_group for placement_group in placement_groups if placement_group.get("GroupId") in group_ids
         ]
+        found_group_ids = {placement_group.get("GroupId") for placement_group in placement_groups}
+        unmatched_group_ids = [group_id for group_id in group_ids if group_id not in found_group_ids]
+
+        if unmatched_group_ids:
+            require_client_methods(
+                module,
+                client,
+                "EC2",
+                {"describe_placement_groups": tuple(requests[0]) + ("GroupIds",)},
+            )
+
+        for group_id in unmatched_group_ids:
+            # A group matches at most one group-name batch, so stop at the first match.
+            for request in requests:
+                shared_groups = describe_placement_group_by_id(client, module, group_id, request)
+                if any(not isinstance(placement_group, dict) for placement_group in shared_groups):
+                    module.fail_json(msg="EC2 returned invalid placement group information")
+
+                matches = [
+                    placement_group for placement_group in shared_groups if placement_group.get("GroupId") == group_id
+                ]
+                if matches:
+                    placement_groups.extend(matches)
+                    break
 
     module.exit_json(
         changed=False,

@@ -280,3 +280,57 @@ def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings():
         {"Name": "default-association-route-table", "Values": ["true"]},
         {"Name": "x-count", "Values": ["2"]},
     ]
+
+
+def test_route_table_ids_are_batched_with_the_other_filter_values():
+    route_table_ids = [f"tgw-rtb-{index}" for index in range(100)]
+    module = FakeModule(
+        {"filters": {"state": ["available"]}, "transit_gateway_route_table_ids": route_table_ids},
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(
+            plugin,
+            "query_list",
+            side_effect=lambda *args, **kwargs: [
+                {"State": "deleting", "TransitGatewayRouteTableId": kwargs["Filters"][1]["Values"][0]}
+            ],
+        ) as query,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    batches = [call.kwargs["Filters"] for call in query.call_args_list]
+    # DescribeTransitGatewayRouteTables accepts 100 filter values in total, and state uses one.
+    assert [len(batch[1]["Values"]) for batch in batches] == [99, 1]
+    assert all(batch[0] == {"Name": "state", "Values": ["available"]} for batch in batches)
+    assert [value for batch in batches for value in batch[1]["Values"]] == route_table_ids
+    assert require.call_args.args[3] == {
+        "describe_transit_gateway_route_tables": ("Filters", "MaxResults", "NextToken")
+    }
+    assert [
+        route_table["transit_gateway_route_table_id"]
+        for route_table in raised.value.values["transit_gateway_route_tables"]
+    ] == ["tgw-rtb-0", "tgw-rtb-99"]
+
+
+def test_route_table_ids_fail_when_filters_leave_no_room():
+    module = FakeModule(
+        {"filters": {"state": [str(index) for index in range(100)]}, "transit_gateway_route_table_ids": ["tgw-rtb-1"]},
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list") as query,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == (
+        "EC2 accepts at most 100 filter values in each request, so filters must contain fewer than 100 values "
+        "when transit_gateway_route_table_ids is set"
+    )
+    query.assert_not_called()

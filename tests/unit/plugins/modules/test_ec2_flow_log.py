@@ -726,3 +726,127 @@ def test_failed_later_create_batch_reports_changed():
         plugin.ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
+
+
+def test_delete_batches_flow_log_ids():
+    flow_log_ids = [f"fl-{index}" for index in range(101)]
+    client = Mock()
+    client.delete_flow_logs.return_value = {}
+    with patch.object(plugin, "require_client_methods"):
+        removed = plugin.delete_flow_logs(client, FakeModule({}), flow_log_ids)
+
+    batches = [call.kwargs["FlowLogIds"] for call in client.delete_flow_logs.call_args_list]
+    assert [len(batch) for batch in batches] == [100, 1]
+    assert removed == flow_log_ids
+
+
+@pytest.mark.parametrize(
+    ("second_response", "unsuccessful"),
+    [
+        (ClientError({"Error": {"Code": "Throttling", "Message": "no"}}, "DeleteFlowLogs"), None),
+        ({"Unsuccessful": [{"Error": {"Code": "Failed"}, "ResourceId": "fl-100"}]}, 1),
+    ],
+)
+def test_failed_later_delete_batch_reports_changed(second_response, unsuccessful):
+    client = Mock()
+    client.delete_flow_logs.side_effect = [
+        {"Unsuccessful": [{"Error": {"Code": "Failed"}, "ResourceId": "fl-0"}]},
+        second_response,
+    ]
+    with (
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.delete_flow_logs(client, FakeModule({}), [f"fl-{index}" for index in range(101)])
+
+    assert raised.value.values["changed"] is True
+    assert client.delete_flow_logs.call_count == 2
+    if unsuccessful:
+        assert [failure["resource_id"] for failure in raised.value.values["unsuccessful"]] == ["fl-0", "fl-100"]
+
+
+def test_describe_after_create_batches_flow_log_ids():
+    resource_ids = [f"vpc-{index}" for index in range(101)]
+    client = Mock()
+    client.create_flow_logs.side_effect = lambda **kwargs: {
+        "FlowLogIds": [f"fl-{resource_id}" for resource_id in kwargs["ResourceIds"]],
+        "Unsuccessful": [],
+    }
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[]),
+        patch.object(plugin, "query_list", return_value=[]) as query,
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(present_params(resource_ids=resource_ids)))
+
+    batches = [call.kwargs["FlowLogIds"] for call in query.call_args_list]
+    assert [len(batch) for batch in batches] == [100, 1]
+    assert [flow_log_id for batch in batches for flow_log_id in batch] == [f"fl-{rid}" for rid in resource_ids]
+    assert all(call.kwargs["changed"] is True for call in query.call_args_list)
+    assert raised.value.values["flow_log_ids"] == [f"fl-{rid}" for rid in resource_ids]
+
+
+def not_found_error():
+    return ClientError(
+        {"Error": {"Code": "InvalidFlowLogId.NotFound", "Message": "not found"}},
+        "DeleteFlowLogs",
+    )
+
+
+@pytest.mark.parametrize(
+    ("remaining", "expected_removed", "delete_calls"),
+    [
+        ([{"FlowLogId": "fl-live"}], ["fl-live"], 2),
+        ([], [], 1),
+    ],
+)
+def test_delete_skips_flow_logs_already_gone_when_ec2_rejects_the_request(remaining, expected_removed, delete_calls):
+    client = Mock()
+    client.delete_flow_logs.side_effect = [not_found_error(), {}]
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=remaining) as query,
+    ):
+        removed = plugin.delete_flow_logs(client, FakeModule({}), ["fl-gone", "fl-live"])
+
+    assert removed == expected_removed
+    assert query.call_args.kwargs["FlowLogIds"] == ["fl-gone", "fl-live"]
+    assert client.delete_flow_logs.call_count == delete_calls
+    if delete_calls == 2:
+        assert client.delete_flow_logs.call_args.kwargs["FlowLogIds"] == ["fl-live"]
+
+
+def test_absent_reports_unchanged_when_every_flow_log_is_already_gone():
+    client = Mock()
+    client.delete_flow_logs.side_effect = not_found_error()
+    params = dict.fromkeys(plugin.ABSENT_MATCH_FIELDS)
+    params.update({"destination_options": None, "resource_ids": ["vpc-1"]})
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[{"FlowLogId": "fl-1", "ResourceId": "vpc-1"}]),
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, FakeModule(params))
+
+    assert raised.value.values["changed"] is False
+
+
+def test_failed_retry_after_not_found_reports_earlier_deletes_as_changed():
+    client = Mock()
+    client.delete_flow_logs.side_effect = [
+        {},
+        not_found_error(),
+        ClientError({"Error": {"Code": "Throttling", "Message": "no"}}, "DeleteFlowLogs"),
+    ]
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[{"FlowLogId": "fl-100"}]) as query,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.delete_flow_logs(client, FakeModule({}), [f"fl-{index}" for index in range(102)])
+
+    assert raised.value.values["changed"] is True
+    assert query.call_args.kwargs["changed"] is True
+    assert client.delete_flow_logs.call_args.kwargs["FlowLogIds"] == ["fl-100"]

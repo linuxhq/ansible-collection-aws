@@ -217,6 +217,35 @@ def test_reconcile_ec2_tags_failures_name_resources(method, tags_to_set, tag_key
     assert raised.value.values["msg"] == message
 
 
+def test_reconcile_ec2_tags_batches_resource_ids():
+    resource_ids = [f"fl-{index}" for index in range(101)]
+    client = Mock()
+    reconcile_ec2_tags(FakeModule({}), client, resource_ids, {"new": "value"}, ["old"], "EC2 flow logs")
+
+    for method in (client.delete_tags, client.create_tags):
+        batches = [call.kwargs["Resources"] for call in method.call_args_list]
+        assert [len(batch) for batch in batches] == [100, 1]
+        assert [resource_id for batch in batches for resource_id in batch] == resource_ids
+
+
+@pytest.mark.parametrize(
+    ("method", "tags_to_set", "tag_keys_to_unset", "message"),
+    (
+        ("delete_tags", {}, ["old"], "Unable to remove tags from EC2 flow logs fl-100"),
+        ("create_tags", {"new": "value"}, [], "Unable to tag EC2 flow logs fl-100"),
+    ),
+)
+def test_reconcile_ec2_tags_later_batch_failure_reports_changed(method, tags_to_set, tag_keys_to_unset, message):
+    client = Mock()
+    getattr(client, method).side_effect = [{}, ClientError({"Error": {"Code": "Failed", "Message": "no"}}, method)]
+    resource_ids = [f"fl-{index}" for index in range(101)]
+    with pytest.raises(ModuleFail) as raised:
+        reconcile_ec2_tags(FakeModule({}), client, resource_ids, tags_to_set, tag_keys_to_unset, "EC2 flow logs")
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"] == message
+
+
 def test_valid_tag_list_is_returned_unchanged():
     tags = [{"Key": "Name", "Value": "example"}, {"Key": "Empty", "Value": ""}]
 

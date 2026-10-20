@@ -21,6 +21,7 @@ options:
   flow_log_ids:
     description:
       - EC2 flow log IDs used to limit the result set.
+      - The module sends at most 100 IDs in each request.
     elements: str
     type: list
   resource_ids:
@@ -28,6 +29,9 @@ options:
       - Resource IDs used to limit the result set.
       - This is added as a C(resource-id) EC2 flow log filter.
       - This overrides a C(resource-id) entry in O(filters).
+      - EC2 accepts at most 200 filter values in each request, counted across all
+        filters, so this list is split across requests and O(filters) must contain
+        fewer than 200 values when this is set.
     elements: str
     type: list
 extends_documentation_fragment:
@@ -158,6 +162,7 @@ flow_logs:
       type: str
 """
 
+from ansible_collections.amazon.aws.plugins.module_utils.iterators import chunks
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -166,11 +171,15 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
     ansible_dict_to_string_filter_list,
+    filter_value_batches,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+
+# The EC2 model documents 1000 flow log IDs per call, but DescribeFlowLogs returns InternalError above 100.
+MAX_FLOW_LOG_IDS_PER_REQUEST = 100
 
 
 def main():
@@ -190,31 +199,45 @@ def main():
     resource_ids = list(dict.fromkeys(module.params["resource_ids"] or []))
     filters = dict(module.params["filters"] or {})
 
-    request = {}
+    describe_parameters = []
     if flow_log_ids:
-        request["FlowLogIds"] = flow_log_ids
+        describe_parameters.append("FlowLogIds")
 
-    if resource_ids:
-        filters["resource-id"] = resource_ids
-
-    if filters:
-        request["Filter"] = ansible_dict_to_string_filter_list(filters)
+    if resource_ids or filters:
+        describe_parameters.append("Filter")
 
     require_client_methods(
         module,
         client,
         "EC2",
-        {"describe_flow_logs": tuple(request) + ("MaxResults", "NextToken")},
+        {"describe_flow_logs": tuple(describe_parameters) + ("MaxResults", "NextToken")},
     )
 
-    flow_logs = query_list(
-        module,
-        client,
-        "describe_flow_logs",
-        "FlowLogs",
-        "Unable to describe EC2 flow logs",
-        **request,
-    )
+    # Each request covers one batch of IDs and one batch of filters, so together they cover every pair.
+    # Flow log IDs do not count toward the EC2 filter value limit.
+    flow_log_id_batches = list(chunks(flow_log_ids, MAX_FLOW_LOG_IDS_PER_REQUEST)) or [None]
+    filter_batches = filter_value_batches(module, filters, "resource-id", resource_ids, "resource_ids")
+    flow_logs = []
+    for flow_log_id_batch in flow_log_id_batches:
+        for batch_filters in filter_batches:
+            request = {}
+            if flow_log_id_batch:
+                request["FlowLogIds"] = flow_log_id_batch
+
+            if batch_filters:
+                request["Filter"] = ansible_dict_to_string_filter_list(batch_filters)
+
+            flow_logs.extend(
+                query_list(
+                    module,
+                    client,
+                    "describe_flow_logs",
+                    "FlowLogs",
+                    "Unable to describe EC2 flow logs",
+                    **request,
+                )
+            )
+
     if any(not isinstance(flow_log, dict) for flow_log in flow_logs):
         module.fail_json(msg="AWS returned an invalid EC2 flow log")
 

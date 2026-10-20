@@ -25,6 +25,9 @@ options:
       - EC2 transit gateway route table IDs used to limit the result set.
       - This is sent as the C(transit-gateway-route-table-id) filter and takes
         precedence over a C(transit-gateway-route-table-id) key in O(filters).
+      - EC2 accepts at most 100 filter values in each request, counted across all
+        filters, so this list is split across requests and O(filters) must contain
+        fewer than 100 values when this is set.
       - An ID that does not exist results in no entry; no error is raised.
     elements: str
     type: list
@@ -170,11 +173,16 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
     ansible_dict_to_string_filter_list,
+    filter_value_batches,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+
+# DescribeTransitGatewayRouteTables returns FilterLimitExceeded above 100 values across all filters,
+# lower than the 200 that other EC2 describe operations accept.
+MAX_FILTER_VALUES_PER_REQUEST = 100
 
 
 def route_sort_key(route):
@@ -228,35 +236,46 @@ def main():
     filters = dict(module.params["filters"] or {})
     transit_gateway_route_table_ids = list(dict.fromkeys(module.params["transit_gateway_route_table_ids"] or []))
 
-    # TransitGatewayRouteTableIds fails for a route table that does not exist, so
-    # IDs are sent as the documented transit-gateway-route-table-id filter.
-    if transit_gateway_route_table_ids:
-        filters["transit-gateway-route-table-id"] = transit_gateway_route_table_ids
-
-    request = {}
-    if filters:
-        request["Filters"] = ansible_dict_to_string_filter_list(filters)
+    # TransitGatewayRouteTableIds fails for a route table that does not exist, so IDs are sent as the
+    # documented transit-gateway-route-table-id filter, split to stay within the filter value limit.
+    filter_batches = filter_value_batches(
+        module,
+        filters,
+        "transit-gateway-route-table-id",
+        transit_gateway_route_table_ids,
+        "transit_gateway_route_table_ids",
+        max_values=MAX_FILTER_VALUES_PER_REQUEST,
+    )
 
     require_client_methods(
         module,
         client,
         "EC2",
         {
-            "describe_transit_gateway_route_tables": tuple(request) + ("MaxResults", "NextToken"),
+            "describe_transit_gateway_route_tables": (("Filters",) if filter_batches[0] else ())
+            + ("MaxResults", "NextToken"),
         },
     )
 
-    route_tables = validate_route_tables(
-        module,
-        query_list(
-            module,
-            client,
-            "describe_transit_gateway_route_tables",
-            "TransitGatewayRouteTables",
-            "Unable to describe EC2 transit gateway route tables",
-            **request,
-        ),
-    )
+    route_tables = []
+    for batch_filters in filter_batches:
+        request = {}
+        if batch_filters:
+            request["Filters"] = ansible_dict_to_string_filter_list(batch_filters)
+
+        route_tables.extend(
+            validate_route_tables(
+                module,
+                query_list(
+                    module,
+                    client,
+                    "describe_transit_gateway_route_tables",
+                    "TransitGatewayRouteTables",
+                    "Unable to describe EC2 transit gateway route tables",
+                    **request,
+                ),
+            )
+        )
 
     if any(route_table.get("State") == "available" for route_table in route_tables):
         require_client_methods(

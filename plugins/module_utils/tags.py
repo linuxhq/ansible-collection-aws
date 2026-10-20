@@ -8,12 +8,17 @@ except ImportError:
 
 from ansible.module_utils.common.text.converters import to_native
 
+from ansible_collections.amazon.aws.plugins.module_utils.iterators import chunks
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     ansible_dict_to_boto3_tag_list,
     boto3_tag_list_to_ansible_dict,
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
+
+# EC2 documents up to 1000 resource IDs per CreateTags or DeleteTags call, but
+# returns InternalError above 100 flow log IDs.
+MAX_EC2_TAG_RESOURCES_PER_REQUEST = 100
 
 
 def require_valid_tags(module, tags, max_tags, key_max=128):
@@ -163,26 +168,32 @@ def reconcile_ec2_tags(
     if check_sdk:
         require_client_methods(module, client, "EC2", ec2_tag_methods(tags_to_set, tag_keys_to_unset), changed=changed)
 
-    identifier = ", ".join(resource_ids)
+    batches = list(chunks(resource_ids, MAX_EC2_TAG_RESOURCES_PER_REQUEST))
 
     if tag_keys_to_unset:
-        try:
-            client.delete_tags(
-                Resources=resource_ids,
-                Tags=[{"Key": key} for key in tag_keys_to_unset],
-                aws_retry=True,
-            )
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, changed=changed, msg=f"Unable to remove tags from {description} {identifier}")
+        for batch in batches:
+            try:
+                client.delete_tags(
+                    Resources=batch,
+                    Tags=[{"Key": key} for key in tag_keys_to_unset],
+                    aws_retry=True,
+                )
+            except (BotoCoreError, ClientError) as e:
+                module.fail_json_aws(
+                    e, changed=changed, msg=f"Unable to remove tags from {description} {', '.join(batch)}"
+                )
 
-        changed = True
+            changed = True
 
     if tags_to_set:
-        try:
-            client.create_tags(
-                Resources=resource_ids,
-                Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                aws_retry=True,
-            )
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, changed=changed, msg=f"Unable to tag {description} {identifier}")
+        for batch in batches:
+            try:
+                client.create_tags(
+                    Resources=batch,
+                    Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
+                    aws_retry=True,
+                )
+            except (BotoCoreError, ClientError) as e:
+                module.fail_json_aws(e, changed=changed, msg=f"Unable to tag {description} {', '.join(batch)}")
+
+            changed = True
