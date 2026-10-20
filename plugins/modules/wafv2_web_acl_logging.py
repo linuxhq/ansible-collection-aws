@@ -220,9 +220,7 @@ def ensure_present(client, module, web_acl):
         "changed": changed,
         "resource_arn": resource_arn,
         "state": "present",
-        "logging_configuration": boto3_resource_to_ansible_dict(
-            current or desired, transform_tags=False, force_tags=False
-        ),
+        "logging_configuration": boto3_resource_to_ansible_dict(current, transform_tags=False, force_tags=False),
     }
 
     module.exit_json(**result)

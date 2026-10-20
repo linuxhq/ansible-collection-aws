@@ -39,6 +39,36 @@ def get_resource_tags(client, module, resource, description):
         request["NextMarker"] = response["NextMarker"]
 
 
+def get_resources_with_tags(client, module, summaries, method, result_key, description, scope):
+    """Return (resource, tags) for each listed summary, skipping resources deleted after they were listed."""
+    resources = []
+    for summary in summaries:
+        identifier = f"{summary['Name']}/{summary['Id']}"
+        try:
+            response = getattr(client, method)(
+                Id=summary["Id"],
+                Name=summary["Name"],
+                Scope=scope,
+                aws_retry=True,
+            )
+        except is_boto3_error_code("WAFNonexistentItemException"):
+            continue
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, msg=f"Unable to get AWS WAFv2 {description} {identifier}")
+
+        resource = response.get(result_key) if isinstance(response, dict) else None
+        if not isinstance(resource, dict):
+            module.fail_json(msg=f"Unexpected response while getting AWS WAFv2 {description} {identifier}")
+
+        tags = get_resource_tags(client, module, resource, description)
+        if tags is None:
+            continue
+
+        resources.append((resource, tags))
+
+    return resources
+
+
 def require_lookup_params(module):
     """Validate the id, name, and scope options shared by WAFv2 info modules before any AWS call."""
     if module.params["id"] == "":

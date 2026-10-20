@@ -69,6 +69,48 @@ def test_errors_name_the_resource():
     assert raised.value.values["msg"] == "Unable to list tags for AWS WAFv2 IP set main/id-1"
 
 
+def test_get_resources_with_tags_skips_resources_deleted_after_listing():
+    gone = ClientError({"Error": {"Code": "WAFNonexistentItemException", "Message": "gone"}}, "GetIPSet")
+    client = Mock()
+    client.get_ip_set.side_effect = [gone, {"IPSet": RESOURCE}, {"IPSet": dict(RESOURCE, Id="id-3")}]
+    summaries = [{"Id": "id-0", "Name": "old"}, {"Id": "id-1", "Name": "main"}, {"Id": "id-3", "Name": "main"}]
+    module = FakeModule({})
+    with patch.object(wafv2, "get_resource_tags", side_effect=[{"Name": "main"}, None]) as get_tags:
+        resources = wafv2.get_resources_with_tags(
+            client, module, summaries, "get_ip_set", "IPSet", "IP set", "REGIONAL"
+        )
+
+    assert resources == [(RESOURCE, {"Name": "main"})]
+    assert client.get_ip_set.call_args_list[1].kwargs == {
+        "Id": "id-1",
+        "Name": "main",
+        "Scope": "REGIONAL",
+        "aws_retry": True,
+    }
+    assert get_tags.call_args_list[0].args == (client, module, RESOURCE, "IP set")
+
+
+@pytest.mark.parametrize(
+    ("side_effect", "message"),
+    [
+        (
+            ClientError({"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "GetWebACL"),
+            "Unable to get AWS WAFv2 web ACL main/id-1",
+        ),
+        ([{"WebACL": None}], "Unexpected response while getting AWS WAFv2 web ACL main/id-1"),
+    ],
+)
+def test_get_resources_with_tags_errors_name_the_resource(side_effect, message):
+    client = Mock()
+    client.get_web_acl.side_effect = side_effect
+    with pytest.raises(ModuleFail) as raised:
+        wafv2.get_resources_with_tags(
+            client, FakeModule({}), [RESOURCE], "get_web_acl", "WebACL", "web ACL", "REGIONAL"
+        )
+
+    assert raised.value.values["msg"] == message
+
+
 def lookup_params(**overrides):
     values = {"id": None, "name": None, "scope": "regional"}
     values.update(overrides)
