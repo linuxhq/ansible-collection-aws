@@ -174,8 +174,14 @@ def main():
         retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["Throttled"]),
     )
 
+    desired = {
+        attribute_name: str(module.params[module_key])
+        for module_key, attribute_name in MANAGED_ATTRIBUTES.items()
+        if module.params[module_key] is not None
+    }
+
     methods = {"get_sms_attributes": ()}
-    if any(module.params[key] is not None for key in MANAGED_ATTRIBUTES):
+    if desired:
         methods["set_sms_attributes"] = ("attributes",)
 
     require_client_methods(
@@ -185,21 +191,10 @@ def main():
         methods,
     )
 
-    desired = {}
-    for module_key, attribute_name in MANAGED_ATTRIBUTES.items():
-        module_value = module.params[module_key]
-
-        if module_value is None:
-            continue
-
-        desired[attribute_name] = str(module_value)
-
     current_attributes = get_sms_attributes(client, module)
 
     # GetSMSAttributes omits unset attributes, so they compare as empty strings.
-    current = {}
-    for attribute_name in desired:
-        current[attribute_name] = current_attributes.get(attribute_name) or ""
+    current = {attribute_name: current_attributes.get(attribute_name) or "" for attribute_name in desired}
 
     changed = current != desired
 
