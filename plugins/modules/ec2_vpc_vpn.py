@@ -550,7 +550,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
     compare_aws_tags,
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import scrub_none_parameters
-from ansible_collections.amazon.aws.plugins.module_utils.waiter import custom_waiter_config
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.filters import ansible_dict_to_string_filter_list
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
@@ -695,15 +694,13 @@ def find_connection(client, module, connection_id=None, changed=False):
 
 def wait_for_connection(client, module, connection_id, changed=False):
     """Wait for the connection; changed reports whether it was already modified, for failure results."""
-    try:
-        client.get_waiter("vpn_connection_available").wait(
-            VpnConnectionIds=[connection_id],
-            WaiterConfig=custom_waiter_config(module.params["wait_timeout"], default_pause=module.params["wait_delay"]),
-        )
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e, changed=changed, msg=f"Unable to wait for VPN connection {connection_id} to become available"
-        )
+    run_waiter(
+        module,
+        client.get_waiter("vpn_connection_available"),
+        f"Unable to wait for VPN connection {connection_id} to become available",
+        changed=changed,
+        VpnConnectionIds=[connection_id],
+    )
 
 
 def wait_for_connection_deleted(client, module, connection_id, changed=False):
@@ -790,11 +787,15 @@ def tunnel_deltas(module, connection):
     ):
         # Predict supplied changes until EC2 assigns the endpoints. These unresolved
         # targets are check-mode only and must never reach a modifying SDK call.
-        return [
-            (tunnel.get("outside_ip_address"), tunnel_request(tunnel))
-            for tunnel in desired_tunnels
-            if tunnel_request(tunnel)
-        ]
+        requests = [(tunnel.get("outside_ip_address"), tunnel_request(tunnel)) for tunnel in desired_tunnels]
+        return [(outside_ip, request) for outside_ip, request in requests if request]
+
+    sorted_current = []
+    if len(desired_tunnels) > 1 and not any(explicit) and current:
+        try:
+            sorted_current = sorted(current, key=lambda tunnel: int(ipaddress.ip_address(tunnel["OutsideIpAddress"])))
+        except (KeyError, ValueError):
+            module.fail_json(msg="EC2 returned an invalid tunnel outside IP address")
 
     requests = []
     for index, desired in enumerate(desired_tunnels):
@@ -807,22 +808,15 @@ def tunnel_deltas(module, connection):
 
         targets = current
         if len(desired_tunnels) > 1:
-            try:
-                targets = sorted(current, key=lambda tunnel: int(ipaddress.ip_address(tunnel["OutsideIpAddress"])))
-            except (KeyError, ValueError):
-                module.fail_json(msg="EC2 returned an invalid tunnel outside IP address")
-
-            if index >= len(targets):
+            if index >= len(sorted_current):
                 module.fail_json(msg="EC2 did not return the requested tunnel")
 
-            targets = [targets[index]]
+            targets = [sorted_current[index]]
 
         for tunnel in targets:
             requests.append(dict(desired, outside_ip_address=tunnel.get("OutsideIpAddress")))
 
     changes = []
-    selected = set()
-
     for desired in requests:
         outside_ip = desired.get("outside_ip_address")
         if not outside_ip:
@@ -833,24 +827,18 @@ def tunnel_deltas(module, connection):
             module.fail_json(msg=f"No unique tunnel with outside IP {outside_ip} on {connection['VpnConnectionId']}")
 
         tunnel = matches[0]
-        outside_ip = tunnel.get("OutsideIpAddress")
-        if not outside_ip or outside_ip in selected:
-            module.fail_json(msg="Tunnel selections must identify distinct existing outside IP addresses")
-
-        selected.add(outside_ip)
-
         delta = {}
         for field, value in tunnel_request(desired).items():
             # EC2 uses different IKE key casing in requests and responses.
             actual = tunnel.get("IkeVersions" if field == "IKEVersions" else field)
-            if field == "PreSharedKey" and (not isinstance(actual, str) or not actual):
-                module.fail_json(
-                    msg=f"Cannot compare pre_shared_key for VPN connection {connection['VpnConnectionId']} "
-                    f"tunnel {outside_ip}; EC2 did not return a usable current key. "
-                    "Omit pre_shared_key to leave it unchanged."
-                )
-
             if field == "PreSharedKey":
+                if not isinstance(actual, str) or not actual:
+                    module.fail_json(
+                        msg=f"Cannot compare pre_shared_key for VPN connection {connection['VpnConnectionId']} "
+                        f"tunnel {outside_ip}; EC2 did not return a usable current key. "
+                        "Omit pre_shared_key to leave it unchanged."
+                    )
+
                 equal = secrets.compare_digest(value.encode("utf-8"), actual.encode("utf-8"))
             elif isinstance(value, list):
                 value_type = int if field.endswith("DHGroupNumbers") else str
@@ -992,20 +980,15 @@ def desired_tags(module, current):
 
 
 def validate_configuration(module, connection=None, changed=False):
-    options = connection["Options"] if connection is not None else {}
-    static_only = (
-        (options.get("StaticRoutesOnly") or False)
-        if connection is not None
-        else (module.params["static_only"] or False)
-    )
-    transit_gateway = (
-        connection.get("TransitGatewayId") if connection is not None else module.params["transit_gateway_id"]
-    )
-    family = (
-        (options.get("TunnelInsideIpVersion") or "ipv4")
-        if connection is not None
-        else (module.params["tunnel_inside_ip_version"] or "ipv4")
-    )
+    if connection is not None:
+        options = connection["Options"]
+        static_only = options.get("StaticRoutesOnly") or False
+        transit_gateway = connection.get("TransitGatewayId")
+        family = options.get("TunnelInsideIpVersion") or "ipv4"
+    else:
+        static_only = module.params["static_only"] or False
+        transit_gateway = module.params["transit_gateway_id"]
+        family = module.params["tunnel_inside_ip_version"] or "ipv4"
 
     if module.params["routes"] and (not static_only or transit_gateway):
         module.fail_json(
@@ -1151,9 +1134,14 @@ def ensure_present(client, module, connection):
         route["DestinationCidrBlock"] for route in connection.get("Routes", []) if route.get("State") == "deleting"
     }
     routes = module.params["routes"]
-    add_routes = set(routes or []) - current_routes if routes is not None else set()
-    remove_routes = current_routes - set(routes) if routes is not None and module.params["purge_routes"] else set()
-    pending_removals = deleting_routes - set(routes) if routes is not None and module.params["purge_routes"] else set()
+    add_routes = set()
+    remove_routes = set()
+    pending_removals = set()
+    if routes is not None:
+        add_routes = set(routes) - current_routes
+        if module.params["purge_routes"]:
+            remove_routes = current_routes - set(routes)
+            pending_removals = deleting_routes - set(routes)
 
     # Requested routes were normalized by validate_inputs; validate the routes EC2 returned.
     for route in remove_routes | pending_removals:

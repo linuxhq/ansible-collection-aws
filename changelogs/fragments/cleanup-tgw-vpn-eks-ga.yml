@@ -1,0 +1,7 @@
+---
+trivial:
+  - ec2_transit_gateway_route_table, ec2_vpc_vpn, eks_cluster, eks_cluster_info, global_accelerator,
+    global_accelerator_info, pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_pool, and ssm_send_command -
+    simplify internal code without changing behavior, and share the poll sleep, tag delta, and Global Accelerator tag
+    list helpers in ``module_utils``.
+...

@@ -45,11 +45,7 @@ def require_valid_tags(module, tags, max_tags, key_max=128):
 
 def require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, max_tags, description):
     """Fail before any write when applying the tag deltas to current_tags would exceed max_tags."""
-    final_tags = dict(current_tags)
-    for key in tag_keys_to_unset:
-        final_tags.pop(key, None)
-
-    final_tags.update(tags_to_set)
+    final_tags = updated_tags(current_tags, tags_to_set, tag_keys_to_unset)
     # AWS reserves the aws: prefix, and those tags do not count against the per-resource limit.
     if sum(not key.lower().startswith("aws:") for key in final_tags) > max_tags:
         module.fail_json(msg=f"The resulting {description} tags must contain at most {max_tags} entries")
@@ -68,14 +64,19 @@ def require_valid_tag_list(module, tags, msg, changed=False):
 
 def apply_tag_deltas(resource, tags_to_set, tag_keys_to_unset):
     updated = dict(resource)
-    tags = boto3_tag_list_to_ansible_dict(updated.get("Tags", []))
+    tags = updated_tags(boto3_tag_list_to_ansible_dict(updated.get("Tags", [])), tags_to_set, tag_keys_to_unset)
+    updated["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+    return updated
 
+
+def updated_tags(current_tags, tags_to_set, tag_keys_to_unset):
+    """Return a copy of the current_tags dictionary with the tag deltas applied."""
+    tags = dict(current_tags)
     for tag_key in tag_keys_to_unset:
         tags.pop(tag_key, None)
 
     tags.update(tags_to_set)
-    updated["Tags"] = ansible_dict_to_boto3_tag_list(tags)
-    return updated
+    return tags
 
 
 def reconcile_arn_tags(module, client, resource_arn, tags_to_set, tag_keys_to_unset, description, changed=False):

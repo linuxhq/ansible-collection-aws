@@ -278,6 +278,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
+    sleep_until_next_poll,
 )
 
 
@@ -481,12 +482,7 @@ def wait_for_pool_active(client, module, pool_id, changed=False):
                 status=status,
             )
 
-        time.sleep(
-            min(
-                module.params["wait_delay"],
-                max(0, deadline - time.monotonic()),
-            )
-        )
+        sleep_until_next_poll(module, deadline)
 
     module.fail_json(
         changed=changed,

@@ -43,6 +43,11 @@ def remaining_wait_timeout(module, deadline, error_msg, changed=False):
     return timeout
 
 
+def sleep_until_next_poll(module, deadline):
+    """Sleep for wait_delay seconds, but never past deadline."""
+    time.sleep(min(module.params["wait_delay"], max(0, deadline - time.monotonic())))
+
+
 def build_waiter_factory(model_data):
     class _WaiterFactory(BaseWaiterFactory):
         @property

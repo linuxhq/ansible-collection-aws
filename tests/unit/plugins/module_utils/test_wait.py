@@ -25,6 +25,15 @@ def test_wait_bounds_are_only_required_when_waiting():
         assert raised.value.values["msg"] == f"{name} must be 1 or greater"
 
 
+@pytest.mark.parametrize(("now", "expected"), [(100, 3), (118.5, 1.5), (121, 0)])
+def test_sleep_until_next_poll_never_sleeps_past_the_deadline(now, expected):
+    module = FakeModule({"wait_delay": 3})
+    with patch.object(wait.time, "monotonic", return_value=now), patch.object(wait.time, "sleep") as sleep:
+        wait.sleep_until_next_poll(module, 120)
+
+    sleep.assert_called_once_with(expected)
+
+
 def test_custom_waiter_builds_the_named_waiter_from_the_model():
     factory = Mock()
     with patch.object(wait, "build_waiter_factory", return_value=factory) as build:

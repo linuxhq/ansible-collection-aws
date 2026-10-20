@@ -286,11 +286,10 @@ def main():
             "Unable to list AWS EKS clusters",
             **request,
         )
-
-    if not isinstance(cluster_names, list) or any(
-        not isinstance(cluster_name, str) or not cluster_name for cluster_name in cluster_names
-    ):
-        module.fail_json(msg="EKS returned an invalid cluster list")
+        if not isinstance(cluster_names, list) or any(
+            not isinstance(cluster_name, str) or not cluster_name for cluster_name in cluster_names
+        ):
+            module.fail_json(msg="EKS returned an invalid cluster list")
 
     if cluster_names:
         require_client_methods(
@@ -320,11 +319,9 @@ def main():
             )
         )
 
-    cluster_tags = [cluster.get("tags") for cluster in clusters]
-    clusters = boto3_resource_list_to_ansible_dict(clusters, transform_tags=False, force_tags=False)
-    for cluster, tags in zip(clusters, cluster_tags):
-        if tags is not None:
-            cluster["tags"] = tags
+    clusters = boto3_resource_list_to_ansible_dict(
+        clusters, transform_tags=False, force_tags=False, ignore_list=["tags"]
+    )
 
     module.exit_json(
         changed=False,

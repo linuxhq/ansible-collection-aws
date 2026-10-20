@@ -552,10 +552,12 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_cli
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_resulting_tag_limit,
     require_valid_tags,
+    updated_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     remaining_wait_timeout,
     require_positive_wait_bounds,
+    sleep_until_next_poll,
     wait_deadline,
 )
 
@@ -599,10 +601,10 @@ AUTO_MODE_FIELDS = {
     "storageConfig": ("blockStorage",),
 }
 
-CREATE_ONLY_FIELDS = [
-    "encryption_config",
-    "role_arn",
-]
+CREATE_ONLY_FIELDS = {
+    "encryption_config": "encryptionConfig",
+    "role_arn": "roleArn",
+}
 
 KUBERNETES_NETWORK_CREATE_ONLY_FIELDS = {
     "ip_family": "ipFamily",
@@ -878,7 +880,6 @@ def describe_update(client, module, update_id, changed=False):
 def wait_for_update(client, module, update_id, changed=False, deadline=None):
     """Wait for a cluster update; deadline limits the wait to what is left of the run's wait_timeout budget."""
     name = module.params["name"]
-    wait_delay = module.params["wait_delay"]
     if deadline is None:
         deadline = wait_deadline(module)
 
@@ -897,7 +898,7 @@ def wait_for_update(client, module, update_id, changed=False, deadline=None):
                 update=boto3_resource_to_ansible_dict(last_update, transform_tags=False, force_tags=False),
             )
 
-        time.sleep(min(wait_delay, max(0, deadline - time.monotonic())))
+        sleep_until_next_poll(module, deadline)
 
     module.fail_json(
         changed=changed,
@@ -909,7 +910,6 @@ def wait_for_update(client, module, update_id, changed=False, deadline=None):
 def wait_for_cluster_updates(client, module, deadline=None):
     """Wait for in-progress cluster updates; deadline limits the wait to what is left of the run's budget."""
     name = module.params["name"]
-    wait_delay = module.params["wait_delay"]
     if deadline is None:
         deadline = wait_deadline(module)
 
@@ -947,7 +947,7 @@ def wait_for_cluster_updates(client, module, deadline=None):
         if time.monotonic() >= deadline:
             module.fail_json(msg=f"Timed out waiting for AWS EKS cluster updates {', '.join(update_ids)} for {name}")
 
-        time.sleep(min(wait_delay, max(0, deadline - time.monotonic())))
+        sleep_until_next_poll(module, deadline)
 
     return True
 
@@ -997,13 +997,9 @@ def check_mode_cluster(module, current):
 
     cluster["name"] = module.params["name"]
     if tags is not None:
-        current_tags = dict(cluster.get("tags") or {})
+        current_tags = cluster.get("tags") or {}
         tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge_tags=module.params["purge_tags"])
-        for tag_key in tag_keys_to_unset:
-            current_tags.pop(tag_key, None)
-
-        current_tags.update(tags_to_set)
-        cluster["tags"] = current_tags
+        cluster["tags"] = updated_tags(current_tags, tags_to_set, tag_keys_to_unset)
 
     return cluster
 
@@ -1042,7 +1038,7 @@ def ensure_present(client, module, deadline=None):
 
     if current is None:
         create_request = dict(desired, name=name)
-        create_request = scrub_none_parameters(snake_dict_to_camel_dict(create_request, capitalize_first=False))
+        create_request = snake_dict_to_camel_dict(create_request, capitalize_first=False)
         if tags:
             create_request["tags"] = tags
 
@@ -1088,8 +1084,7 @@ def ensure_present(client, module, deadline=None):
             module.fail_json(msg=f"EKS cluster {name} disappeared while waiting for it to become active")
 
     desired_boto3 = snake_dict_to_camel_dict(desired, capitalize_first=False)
-    for field in CREATE_ONLY_FIELDS:
-        camel_field = next(iter(snake_dict_to_camel_dict({field: None}, capitalize_first=False)))
+    for field, camel_field in CREATE_ONLY_FIELDS.items():
         if desired_boto3.get(camel_field) is None:
             continue
 
@@ -1116,13 +1111,12 @@ def ensure_present(client, module, deadline=None):
         access_config = {
             "authentication_mode": access_config.get("authentication_mode"),
         }
-        if scrub_none_parameters(access_config):
+        if access_config["authentication_mode"] is not None:
             config_request["access_config"] = access_config
         else:
             config_request.pop("access_config")
 
-    if config_request:
-        config_request = scrub_none_parameters(snake_dict_to_camel_dict(config_request, capitalize_first=False))
+    config_request = snake_dict_to_camel_dict(config_request, capitalize_first=False)
 
     update_requests = []
     auto_mode_changed = False
@@ -1314,13 +1308,7 @@ def ensure_present(client, module, deadline=None):
             current = check_mode_cluster(module, current)
     elif tags_changed:
         current = dict(current)
-        current_tags = dict(current.get("tags") or {})
-
-        for tag_key in tag_keys_to_unset:
-            current_tags.pop(tag_key, None)
-
-        current_tags.update(tags_to_set)
-        current["tags"] = current_tags
+        current["tags"] = updated_tags(current.get("tags") or {}, tags_to_set, tag_keys_to_unset)
 
     exit_result(module, resource_changed, current, "present")
 
