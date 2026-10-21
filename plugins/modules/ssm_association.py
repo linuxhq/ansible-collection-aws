@@ -80,6 +80,9 @@ notes:
     the existing association's C(ApplyOnlyAtCronInterval),
     C(ScheduleOffset), and C(Duration), which AWS supports only with cron
     schedules.
+  - After an update, the module waits up to 60 seconds for
+    C(DescribeAssociation) to return the new association version, so the
+    result and later runs read the updated association.
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -225,6 +228,7 @@ state:
 
 import json
 import re
+import time
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -265,6 +269,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
 )
 
+ASSOCIATION_VERSION_DELAY = 1
+ASSOCIATION_VERSION_TIMEOUT = 60
 CRON_ONLY_PARAMETERS = ("ApplyOnlyAtCronInterval", "Duration", "ScheduleOffset")
 TARGET_DEFAULTS = {"values": []}
 
@@ -290,7 +296,8 @@ def association_description_from_response(module, response, message, changed=Fal
     return response["AssociationDescription"]
 
 
-def describe_association(client, module, association_id):
+def describe_association(client, module, association_id, changed=False):
+    """Describe an association; changed reports earlier modifications, for failure results."""
     try:
         response = client.describe_association(
             AssociationId=association_id,
@@ -301,6 +308,7 @@ def describe_association(client, module, association_id):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
+            changed=changed,
             msg=f"Unable to describe AWS Systems Manager association {association_id}",
         )
 
@@ -308,7 +316,32 @@ def describe_association(client, module, association_id):
         module,
         response,
         f"Unexpected response while describing AWS Systems Manager association {association_id}",
+        changed=changed,
     )
+
+
+def wait_for_association_version(client, module, association_id, association_version):
+    """Re-read an updated association until DescribeAssociation returns association_version.
+
+    DescribeAssociation returns the previous version for several seconds after UpdateAssociation, and a run that
+    read it would send that stale AssociationVersion, which AWS rejects.
+    """
+    deadline = time.monotonic() + ASSOCIATION_VERSION_TIMEOUT
+    while True:
+        association = describe_association(client, module, association_id, changed=True)
+        if (association or {}).get("AssociationVersion") == association_version:
+            return association
+
+        if time.monotonic() >= deadline:
+            module.fail_json(
+                changed=True,
+                msg=(
+                    f"Timed out waiting for AWS Systems Manager association {association_id} "
+                    f"to report version {association_version}"
+                ),
+            )
+
+        time.sleep(ASSOCIATION_VERSION_DELAY)
 
 
 def ensure_absent(client, module, current):
@@ -488,11 +521,15 @@ def ensure_present(client, module, current):
                 f"AWS Systems Manager did not return the updated association {name}",
                 changed=True,
             )
-            if not association.get("AssociationId"):
+            if not association.get("AssociationId") or not association.get("AssociationVersion"):
                 module.fail_json(
                     changed=True,
                     msg=f"AWS Systems Manager did not return the updated association {name}",
                 )
+
+            association = wait_for_association_version(
+                client, module, association_id, association["AssociationVersion"]
+            )
 
         elif changed and module.check_mode:
             association = dict(current)

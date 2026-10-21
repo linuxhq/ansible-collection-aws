@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - ssm_association - after updating an association, wait up to 60 seconds for ``DescribeAssociation`` to return the
+    new association version, so the result reflects the update and an immediate rerun reports no change instead of
+    failing with ``InvalidAssociationVersion`` after reading the previous version.
+...
