@@ -16,6 +16,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 UPDATE_PARAMETERS = (
     "AssociationId",
     "AssociationName",
+    "AssociationVersion",
     "DocumentVersion",
     "Name",
     "Parameters",
@@ -41,6 +42,7 @@ def params(**overrides):
 def current_association(**overrides):
     values = {
         "AssociationId": "association-1",
+        "AssociationVersion": "1",
         "DocumentVersion": "$LATEST",
         "Name": "document",
         "Parameters": {"Mode": ["safe"]},
@@ -51,7 +53,19 @@ def current_association(**overrides):
     return values
 
 
+@pytest.fixture(autouse=True)
+def sleep():
+    with patch.object(plugin.time, "sleep") as sleep:
+        yield sleep
+
+
+def read_after_update_is_current(client):
+    if client.describe_association.side_effect is None:
+        client.describe_association.side_effect = lambda **_kwargs: client.update_association.return_value
+
+
 def run_present(client, module, current):
+    read_after_update_is_current(client)
     with (
         patch.object(plugin, "get_boto3_client_method_parameters", return_value=UPDATE_PARAMETERS),
         pytest.raises((ModuleExit, ModuleFail)) as raised,
@@ -182,6 +196,7 @@ def test_existing_association_updates_schedule_and_sorted_targets():
     assert result.values["changed"]
     client.update_association.assert_called_once_with(
         AssociationId="association-1",
+        AssociationVersion="1",
         DocumentVersion="$LATEST",
         Name="document",
         Parameters={"Mode": ["safe"]},
@@ -217,6 +232,52 @@ def test_omitted_schedule_and_targets_report_no_change():
 
     assert not result.values["changed"]
     client.update_association.assert_not_called()
+
+
+def test_update_waits_until_describe_returns_the_new_version(sleep):
+    stale = {"AssociationDescription": current_association()}
+    updated = {
+        "AssociationDescription": current_association(AssociationVersion="2", ScheduleExpression="rate(2 hours)")
+    }
+    client = Mock(update_association=Mock(return_value=updated))
+    client.describe_association.side_effect = [stale, stale, updated]
+    result = run_present(client, FakeModule(params(schedule_expression="rate(2 hours)")), current_association())
+
+    assert result.values["changed"] is True
+    assert result.values["association"]["association_version"] == "2"
+    assert result.values["association"]["schedule_expression"] == "rate(2 hours)"
+    assert client.describe_association.call_count == 3
+    client.describe_association.assert_called_with(AssociationId="association-1", aws_retry=True)
+    assert sleep.call_count == 2
+
+
+def test_update_fails_when_describe_never_returns_the_new_version(sleep):
+    client = Mock(
+        update_association=Mock(return_value={"AssociationDescription": current_association(AssociationVersion="2")}),
+    )
+    client.describe_association.side_effect = lambda **_kwargs: {"AssociationDescription": current_association()}
+    module = FakeModule(params(schedule_expression="rate(2 hours)"))
+    with patch.object(plugin.time, "monotonic", side_effect=[0, 30, plugin.ASSOCIATION_VERSION_TIMEOUT]):
+        result = run_present(client, module, current_association())
+
+    assert result.values["changed"] is True
+    assert result.values["msg"] == (
+        "Timed out waiting for AWS Systems Manager association association-1 to report version 2"
+    )
+    assert sleep.call_count == 1
+
+
+def test_describe_failure_after_update_reports_changed():
+    client = Mock(
+        update_association=Mock(return_value={"AssociationDescription": current_association(AssociationVersion="2")})
+    )
+    client.describe_association.side_effect = ClientError(
+        {"Error": {"Code": "InternalServerError", "Message": "no"}}, "DescribeAssociation"
+    )
+    result = run_present(client, FakeModule(params(schedule_expression="rate(2 hours)")), current_association())
+
+    assert result.values["changed"] is True
+    assert result.values["msg"] == "Unable to describe AWS Systems Manager association association-1"
 
 
 def test_describe_missing_association_returns_none():
@@ -439,6 +500,7 @@ def test_association_status_names_are_preserved(check_mode):
 def run_update(current, **overrides):
     client = Mock()
     client.update_association.return_value = {"AssociationDescription": current_association()}
+    read_after_update_is_current(client)
     with (
         patch.object(
             plugin,
