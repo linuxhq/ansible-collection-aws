@@ -225,6 +225,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     reconcile_ssm_tags,
     require_resulting_tag_limit,
     require_valid_tags,
+    ssm_tag_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     custom_waiter,
@@ -442,11 +443,11 @@ def ensure_present(client, module):
             module.fail_json(msg=f"Unable to update AWS Systems Manager document {name}: immutable fields differ")
 
         changed = current_comparable != desired_comparable
-        if changed and module.params["document_version"] not in UPDATABLE_DOCUMENT_VERSIONS:
+        if changed and document_version not in UPDATABLE_DOCUMENT_VERSIONS:
             module.fail_json(
                 msg=(
                     f"Unable to update AWS Systems Manager document {name} version "
-                    f"{module.params['document_version']}: numbered document versions cannot be updated; "
+                    f"{document_version}: numbered document versions cannot be updated; "
                     "use $LATEST or $DEFAULT"
                 )
             )
@@ -456,7 +457,7 @@ def ensure_present(client, module):
             fail_failed_document(module, current)
 
     default_version_to_promote = None
-    if resource_changed and current is not None and module.params["document_version"] == "$DEFAULT":
+    if resource_changed and current is not None and document_version == "$DEFAULT":
         latest = current_document(client, module, include_tags=False, document_version="$LATEST", deadline=deadline)
         if comparable_document(latest) == desired_comparable:
             if latest.get("Status") == "Failed":
@@ -474,7 +475,7 @@ def ensure_present(client, module):
 
             resource_changed = False
 
-    if current is not None and not resource_changed and module.params["document_version"] == "$LATEST":
+    if current is not None and not resource_changed and document_version == "$LATEST":
         default = get_document(client, module, document_version="$DEFAULT")
         if (default or {}).get("DocumentVersion") != current.get("DocumentVersion"):
             default_version_to_promote = current.get("DocumentVersion")
@@ -592,7 +593,7 @@ def ensure_present(client, module):
 
                 current = refreshed
 
-        if current is not None and tags is not None:
+        if tags is not None:
             tags_to_set, tag_keys_to_unset = compare_aws_tags(
                 boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
                 tags,
@@ -752,21 +753,7 @@ def main():
         if tags:
             methods["create_document"] += ("Tags",)
 
-        if tags is not None:
-            methods["list_tags_for_resource"] = ("ResourceId", "ResourceType")
-            if tags:
-                methods["add_tags_to_resource"] = (
-                    "ResourceId",
-                    "ResourceType",
-                    "Tags",
-                )
-
-            if module.params["purge_tags"]:
-                methods["remove_tags_from_resource"] = (
-                    "ResourceId",
-                    "ResourceType",
-                    "TagKeys",
-                )
+        methods.update(ssm_tag_methods(tags, module.params["purge_tags"]))
 
     if state == "absent":
         methods["delete_document"] = ("Name",) + (("Force",) if module.params["force"] else ())

@@ -232,9 +232,13 @@ ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA = {
 }
 
 
+def association_identifier(module):
+    return module.params["name"] or f"{module.params['resolver_rule_id']}/{module.params['vpc_id']}"
+
+
 def ensure_absent(client, module):
     deadline = wait_deadline(module)
-    name = module.params.get("name")
+    name = module.params["name"]
     association = get_resolver_rule_association_by_rule_and_vpc(client, module)
     deleting = (association or {}).get("Status") == "DELETING"
     changed = association is not None and not deleting
@@ -282,7 +286,7 @@ def ensure_present(client, module, deadline=None):
     name = module.params["name"]
     resolver_rule_id = module.params["resolver_rule_id"]
     vpc_id = module.params["vpc_id"]
-    identifier = name or f"{resolver_rule_id}/{vpc_id}"
+    identifier = association_identifier(module)
     association = get_resolver_rule_association_by_rule_and_vpc(client, module)
     if association is not None and association.get("Status") == "DELETING":
         if module.check_mode:
@@ -423,7 +427,7 @@ def wait_for_resolver_rule_association_status(
 
     deadline limits the wait to what is left of the run's shared wait_timeout budget.
     """
-    identifier = module.params.get("name") or f"{module.params['resolver_rule_id']}/{module.params['vpc_id']}"
+    identifier = association_identifier(module)
     # The waiter fails on terminal states as well as on timeouts, so the message names neither.
     error_msg = f"Unable to wait for AWS Route53 Resolver rule association {identifier} to become {state}"
 

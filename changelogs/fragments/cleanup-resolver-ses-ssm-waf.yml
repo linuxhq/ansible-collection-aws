@@ -1,0 +1,14 @@
+---
+trivial:
+  - route53_resolver and route53_resolver_rule - share the ARN tag reconciliation and IP entry match predicate
+    in ``module_utils/route53_resolver.py``.
+  - route53_resolver_rule_associate, route53_resolver_rule_info, and ses_identity_info - reuse shared helpers
+    and define helpers before ``main()``.
+  - ses_sandbox and sns_sms_attributes - derive account detail fields and desired attributes without
+    duplicate loops.
+  - ssm_association and ssm_document - share SSM tag method checks with ``ssm_tag_methods`` and drop
+    redundant request rebuilding and conditions.
+  - ssm_send_command - use ``wait_deadline`` and one invocation normalization helper, and stop building
+    request fields that are always replaced.
+  - wafv2_ip_set_info and wafv2_web_acl_info - share the per-resource get and tag lookup in
+    ``module_utils/wafv2.py``; wafv2_web_acl_logging - drop an unreachable result fallback.

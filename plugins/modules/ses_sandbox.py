@@ -262,13 +262,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.ses import get_account
 
-ACCOUNT_DETAILS_FIELDS = (
-    "additional_contact_email_addresses",
-    "contact_language",
-    "mail_type",
-    "use_case_description",
-    "website_url",
-)
 ACCOUNT_DETAILS_REQUEST_FIELDS = (
     ("AdditionalContactEmailAddresses", "additional_contact_email_addresses"),
     ("ContactLanguage", "contact_language"),
@@ -276,6 +269,7 @@ ACCOUNT_DETAILS_REQUEST_FIELDS = (
     ("UseCaseDescription", "use_case_description"),
     ("WebsiteURL", "website_url"),
 )
+ACCOUNT_DETAILS_FIELDS = tuple(details_field for _request_field, details_field in ACCOUNT_DETAILS_REQUEST_FIELDS)
 
 
 def comparable_details(details):
@@ -388,14 +382,9 @@ def main():
             current_account = get_account(client, module, changed=True)
     elif changed and module.check_mode:
         current_account = dict(current_account)
-        current_account["details"] = dict(current_account.get("details") or {}, **desired_compared)
+        current_account["details"] = dict(current_details, **desired_compared)
 
-    result = {
-        "changed": changed,
-        "account": current_account,
-    }
-
-    module.exit_json(**result)
+    module.exit_json(changed=changed, account=current_account)
 
 
 if __name__ == "__main__":

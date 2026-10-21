@@ -116,14 +116,6 @@ scope:
   type: str
 """
 
-try:
-    from botocore.exceptions import BotoCoreError, ClientError
-except ImportError:
-    pass
-
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -132,7 +124,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
-    get_resource_tags,
+    get_resources_with_tags,
     list_resource_summaries,
     require_lookup_params,
 )
@@ -167,34 +159,10 @@ def main():
     scope = module.params["scope"].upper()
     summaries = list_resource_summaries(client, module, "list_ip_sets", "IPSets", "IP sets", scope)
 
-    ip_sets = []
-    for summary in summaries:
-        try:
-            response = client.get_ip_set(
-                Id=summary["Id"],
-                Name=summary["Name"],
-                Scope=scope,
-                aws_retry=True,
-            )
-        except is_boto3_error_code("WAFNonexistentItemException"):
-            continue
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to get AWS WAFv2 IP set {summary['Name']}/{summary['Id']}",
-            )
-
-        ip_set = response.get("IPSet") if isinstance(response, dict) else None
-        if not isinstance(ip_set, dict):
-            module.fail_json(
-                msg=f"Unexpected response while getting AWS WAFv2 IP set {summary['Name']}/{summary['Id']}"
-            )
-
-        tags = get_resource_tags(client, module, ip_set, "IP set")
-        if tags is None:
-            continue
-
-        ip_sets.append(dict(ip_set, Tags=tags))
+    ip_sets = [
+        dict(ip_set, Tags=tags)
+        for ip_set, tags in get_resources_with_tags(client, module, summaries, "get_ip_set", "IPSet", "IP set", scope)
+    ]
 
     module.exit_json(
         changed=False,

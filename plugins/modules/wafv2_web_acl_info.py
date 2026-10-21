@@ -195,17 +195,9 @@ web_acls:
 
 import json
 
-try:
-    from botocore.exceptions import BotoCoreError, ClientError
-except ImportError:
-    pass
-
 from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict
 from ansible.module_utils.common.text.converters import to_text
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -214,10 +206,17 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
-    get_resource_tags,
+    get_resources_with_tags,
     list_resource_summaries,
     require_lookup_params,
 )
+
+
+def json_default(value):
+    if isinstance(value, (bytes, bytearray)):
+        return to_text(bytes(value) if isinstance(value, bytearray) else value, errors="surrogate_or_strict")
+
+    return value.isoformat() if hasattr(value, "isoformat") else str(value)
 
 
 def association_config(config):
@@ -261,49 +260,12 @@ def main():
     scope = module.params["scope"].upper()
     summaries = list_resource_summaries(client, module, "list_web_acls", "WebACLs", "web ACLs", scope)
 
-    web_acls = []
-    for summary in summaries:
-        try:
-            response = client.get_web_acl(
-                Id=summary["Id"],
-                Name=summary["Name"],
-                Scope=scope,
-                aws_retry=True,
-            )
-        except is_boto3_error_code("WAFNonexistentItemException"):
-            continue
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to get AWS WAFv2 web ACL {summary['Name']}/{summary['Id']}",
-            )
-
-        web_acl = response.get("WebACL") if isinstance(response, dict) else None
-        if not isinstance(web_acl, dict):
-            module.fail_json(
-                msg=f"Unexpected response while getting AWS WAFv2 web ACL {summary['Name']}/{summary['Id']}"
-            )
-
-        tags = get_resource_tags(client, module, web_acl, "web ACL")
-        if tags is None:
-            continue
-
-        web_acls.append(
-            json.loads(
-                json.dumps(
-                    web_acl,
-                    default=lambda value: (
-                        to_text(
-                            bytes(value) if isinstance(value, bytearray) else value,
-                            errors="surrogate_or_strict",
-                        )
-                        if isinstance(value, (bytes, bytearray))
-                        else (value.isoformat() if hasattr(value, "isoformat") else str(value))
-                    ),
-                )
-            )
+    web_acls = [
+        dict(json.loads(json.dumps(web_acl, default=json_default)), Tags=tags)
+        for web_acl, tags in get_resources_with_tags(
+            client, module, summaries, "get_web_acl", "WebACL", "web ACL", scope
         )
-        web_acls[-1]["Tags"] = tags
+    ]
 
     module.exit_json(
         changed=False,

@@ -200,6 +200,20 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 ACTIVE_ASSOCIATION_STATUSES = ("COMPLETE", "OVERRIDDEN")
 
 
+def validate_association(module, association):
+    if not isinstance(association, dict):
+        module.fail_json(msg="list_resolver_rule_associations: AWS returned an invalid association")
+
+    resolver_rule_id = association.get("ResolverRuleId")
+    if not isinstance(resolver_rule_id, str) or not resolver_rule_id:
+        module.fail_json(msg="list_resolver_rule_associations: AWS returned an association without a rule ID")
+
+    if "VPCId" in association and not isinstance(association["VPCId"], str):
+        module.fail_json(msg="list_resolver_rule_associations: AWS returned an invalid association VPC ID")
+
+    return association
+
+
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -310,20 +324,6 @@ def main():
         changed=False,
         resolver_rules=normalized_rules,
     )
-
-
-def validate_association(module, association):
-    if not isinstance(association, dict):
-        module.fail_json(msg="list_resolver_rule_associations: AWS returned an invalid association")
-
-    resolver_rule_id = association.get("ResolverRuleId")
-    if not isinstance(resolver_rule_id, str) or not resolver_rule_id:
-        module.fail_json(msg="list_resolver_rule_associations: AWS returned an association without a rule ID")
-
-    if "VPCId" in association and not isinstance(association["VPCId"], str):
-        module.fail_json(msg="list_resolver_rule_associations: AWS returned an invalid association VPC ID")
-
-    return association
 
 
 if __name__ == "__main__":

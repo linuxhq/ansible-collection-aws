@@ -140,6 +140,22 @@ def reconcile_ssm_tags(
             module.fail_json_aws(e, changed=changed, msg=f"Unable to tag {description} {resource_id}")
 
 
+def ssm_tag_methods(tags, purge_tags):
+    """Return the SSM tag methods a tags option needs, in the form require_client_methods accepts."""
+    methods = {}
+    if tags is None:
+        return methods
+
+    methods["list_tags_for_resource"] = ("ResourceId", "ResourceType")
+    if tags:
+        methods["add_tags_to_resource"] = ("ResourceId", "ResourceType", "Tags")
+
+    if purge_tags:
+        methods["remove_tags_from_resource"] = ("ResourceId", "ResourceType", "TagKeys")
+
+    return methods
+
+
 def ec2_tag_methods(tags_to_set, tag_keys_to_unset):
     """Return the EC2 tag methods reconcile_ec2_tags calls, in the form require_client_methods accepts."""
     methods = {}

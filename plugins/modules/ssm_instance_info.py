@@ -327,9 +327,9 @@ def main():
                 )
             )
 
-        # Unlike modules that need an ID for follow-on API calls, this module
-        # can preserve the complete record for compatibility. Do not expose an
-        # invalid value in the convenience instance_ids list.
+        # The complete record is kept for compatibility, but an invalid ID is
+        # left out of the convenience instance_ids list and is never used for
+        # a connection status call.
         instance_id = instance.get("InstanceId")
         if not isinstance(instance_id, str) or not instance_id:
             module.warn(

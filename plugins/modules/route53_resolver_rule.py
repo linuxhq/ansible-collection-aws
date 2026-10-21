@@ -275,6 +275,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver impor
     comparable_ip_fields,
     comparable_ips_match,
     comparable_ips_matches,
+    reconcile_resolver_arn_tags,
     require_ip_versions,
     resolver_resource_with_tags,
     resolver_rule_has_details,
@@ -287,7 +288,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
-    reconcile_arn_tags,
     require_resulting_tag_limit,
     require_valid_tags,
 )
@@ -568,39 +568,30 @@ def ensure_present(client, module, deadline=None):
                     client, module, resolver_rule_id, "complete", changed=True, deadline=deadline
                 )
 
-            if not rules_match(comparable_rule(rule), desired):
+            current = comparable_rule(rule)
+            if not rules_match(current, desired):
                 module.fail_json(
                     msg=(
                         "AWS Route53 Resolver rule does not match the requested configuration after updating. "
                         "The rule has not been deleted; inspect the current configuration before retrying."
                     ),
                     changed=True,
-                    current=comparable_rule(rule),
+                    current=current,
                     desired=desired,
                 )
 
         rule = dict(rule, Tags=rule.get("Tags", current_tags))
         if tags is not None:
-            if tags_to_set or tag_keys_to_unset:
-                resource_arn = rule.get("Arn")
-                if not isinstance(resource_arn, str) or not resource_arn:
-                    module.fail_json(
-                        changed=resource_changed,
-                        msg=(
-                            "Unable to reconcile tags for AWS Route53 Resolver rule "
-                            f"{request['Name']}: AWS returned an invalid rule ARN"
-                        ),
-                    )
-
-                reconcile_arn_tags(
-                    module,
-                    client,
-                    resource_arn,
-                    tags_to_set,
-                    tag_keys_to_unset,
-                    "AWS Route53 Resolver rule",
-                    changed=resource_changed,
-                )
+            reconcile_resolver_arn_tags(
+                module,
+                client,
+                rule,
+                "rule",
+                request["Name"],
+                tags_to_set,
+                tag_keys_to_unset,
+                changed=resource_changed,
+            )
 
             rule = apply_tag_deltas(rule, tags_to_set, tag_keys_to_unset)
 
