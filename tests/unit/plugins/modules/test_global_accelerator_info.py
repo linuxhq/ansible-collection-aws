@@ -186,7 +186,7 @@ def test_missing_accelerator_arn_returns_an_empty_list():
 )
 def test_invalid_tag_lists_are_rejected(tags):
     with pytest.raises(ModuleFail) as raised:
-        plugin.validate_tags(FakeModule({}), tags)
+        plugin.validate_tag_list(FakeModule({}), tags)
 
     assert raised.value.values["msg"] == "Global Accelerator returned invalid tags"
     assert not raised.value.values.get("changed")
@@ -194,4 +194,4 @@ def test_invalid_tag_lists_are_rejected(tags):
 
 def test_valid_tag_lists_are_returned():
     tags = [{"Key": "Name", "Value": ""}]
-    assert plugin.validate_tags(FakeModule({}), tags) is tags
+    assert plugin.validate_tag_list(FakeModule({}), tags) is tags

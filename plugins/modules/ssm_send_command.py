@@ -407,6 +407,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
+    sleep_until_next_poll,
 )
 
 SUCCESS_STATUSES = {"Success"}
@@ -566,7 +567,6 @@ def main():
     }
 
     if wait:
-        wait_delay = module.params["wait_delay"]
         deadline = time.monotonic() + module.params["wait_timeout"]
         invocations = []
 
@@ -624,7 +624,7 @@ def main():
 
             if not commands:
                 # Run Command may not expose a newly submitted command immediately.
-                time.sleep(min(wait_delay, max(0, deadline - time.monotonic())))
+                sleep_until_next_poll(module, deadline)
                 continue
 
             command = commands[0]
@@ -720,7 +720,7 @@ def main():
                     status=command_status,
                 )
 
-            time.sleep(min(wait_delay, max(0, deadline - time.monotonic())))
+            sleep_until_next_poll(module, deadline)
         else:
             module.fail_json(
                 changed=True,

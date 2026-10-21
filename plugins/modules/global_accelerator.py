@@ -586,6 +586,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import validate_tag_list
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -593,8 +594,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     reconcile_arn_tags,
     require_resulting_tag_limit,
-    require_valid_tag_list,
     require_valid_tags,
+    updated_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     custom_waiter,
@@ -602,6 +603,16 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     run_waiter,
     wait_deadline,
 )
+
+# Scalar endpoint group settings and their request parameters.
+ENDPOINT_GROUP_SETTINGS = {
+    "health_check_interval_seconds": "HealthCheckIntervalSeconds",
+    "health_check_path": "HealthCheckPath",
+    "health_check_port": "HealthCheckPort",
+    "health_check_protocol": "HealthCheckProtocol",
+    "threshold_count": "ThresholdCount",
+    "traffic_dial_percentage": "TrafficDialPercentage",
+}
 
 GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
     "accelerator_deployed": {
@@ -684,7 +695,7 @@ def validate_listener(module, listener, changed=False):
             not isinstance(port_range, dict)
             or not isinstance(port_range.get("FromPort"), int)
             or not isinstance(port_range.get("ToPort"), int)
-            for port_range in port_ranges or []
+            for port_range in port_ranges
         )
     ):
         module.fail_json(changed=changed, msg="Global Accelerator returned an invalid listener")
@@ -724,15 +735,6 @@ def validate_endpoint_group(module, endpoint_group, expected_arn=None, expected_
         module.fail_json(changed=changed, msg="Global Accelerator returned an invalid endpoint group")
 
     return endpoint_group
-
-
-def validate_tag_list(module, tags):
-    msg = "Global Accelerator returned invalid tags"
-    require_valid_tag_list(module, tags, msg)
-    if any(not tag["Key"] for tag in tags):
-        module.fail_json(msg=msg)
-
-    return tags
 
 
 def get_accelerator_by_arn(client, module, accelerator_arn, changed=False):
@@ -866,18 +868,18 @@ def get_listeners(client, module, accelerator_arn, changed=False):
     for listener in listeners:
         port_ranges = [
             {
-                "from_port": port_range.get("FromPort"),
-                "to_port": port_range.get("ToPort"),
+                "from_port": port_range["FromPort"],
+                "to_port": port_range["ToPort"],
             }
-            for port_range in listener.get("PortRanges", [])
+            for port_range in listener["PortRanges"]
         ]
 
         normalized.append(
             {
-                "client_affinity": listener.get("ClientAffinity", "NONE"),
-                "listener_arn": listener.get("ListenerArn"),
+                "client_affinity": listener["ClientAffinity"],
+                "listener_arn": listener["ListenerArn"],
                 "port_ranges": normalized_port_ranges(port_ranges),
-                "protocol": listener.get("Protocol"),
+                "protocol": listener["Protocol"],
             }
         )
 
@@ -957,9 +959,13 @@ def listener_request(desired):
     )
 
 
+def port_ranges_overlap(left, right):
+    return left["from_port"] <= right["to_port"] and right["from_port"] <= left["to_port"]
+
+
 def listeners_overlap(first, second):
     return first.get("protocol") == second.get("protocol") and any(
-        left["from_port"] <= right["to_port"] and right["from_port"] <= left["to_port"]
+        port_ranges_overlap(left, right)
         for left in first.get("port_ranges", [])
         for right in second.get("port_ranges", [])
     )
@@ -1036,14 +1042,7 @@ def get_endpoint_groups(client, module, listener_arn, changed=False):
 
 
 def endpoint_group_requires_update(current, desired):
-    for field in (
-        "health_check_interval_seconds",
-        "health_check_path",
-        "health_check_port",
-        "health_check_protocol",
-        "threshold_count",
-        "traffic_dial_percentage",
-    ):
+    for field in ENDPOINT_GROUP_SETTINGS:
         if desired[field] is not None and desired[field] != current.get(field):
             return True
 
@@ -1096,17 +1095,9 @@ def endpoint_group_request(desired):
 
         request["EndpointConfigurations"] = configurations
 
-    if desired["health_check_interval_seconds"] is not None:
-        request["HealthCheckIntervalSeconds"] = desired["health_check_interval_seconds"]
-
-    if desired["health_check_path"] is not None:
-        request["HealthCheckPath"] = desired["health_check_path"]
-
-    if desired["health_check_port"] is not None:
-        request["HealthCheckPort"] = desired["health_check_port"]
-
-    if desired["health_check_protocol"] is not None:
-        request["HealthCheckProtocol"] = desired["health_check_protocol"]
+    for field, request_field in ENDPOINT_GROUP_SETTINGS.items():
+        if desired[field] is not None:
+            request[request_field] = desired[field]
 
     if desired["port_overrides"] is not None:
         request["PortOverrides"] = [
@@ -1116,12 +1107,6 @@ def endpoint_group_request(desired):
             }
             for item in desired["port_overrides"]
         ]
-
-    if desired["threshold_count"] is not None:
-        request["ThresholdCount"] = desired["threshold_count"]
-
-    if desired["traffic_dial_percentage"] is not None:
-        request["TrafficDialPercentage"] = desired["traffic_dial_percentage"]
 
     return request
 
@@ -1210,14 +1195,7 @@ def predicted_endpoint_group(current, desired):
     predicted = dict(current or {})
     predicted["endpoint_group_region"] = desired["endpoint_group_region"]
 
-    for field in (
-        "health_check_interval_seconds",
-        "health_check_path",
-        "health_check_port",
-        "health_check_protocol",
-        "threshold_count",
-        "traffic_dial_percentage",
-    ):
+    for field in ENDPOINT_GROUP_SETTINGS:
         if desired[field] is not None:
             predicted[field] = desired[field]
 
@@ -1956,12 +1934,7 @@ def ensure_present(client, module, deadline=None):
             )
 
         accelerator = dict(accelerator)
-
-        for tag_key in tag_keys_to_unset:
-            current_tags.pop(tag_key, None)
-
-        current_tags.update(tags_to_set)
-        accelerator["Tags"] = ansible_dict_to_boto3_tag_list(current_tags)
+        accelerator["Tags"] = ansible_dict_to_boto3_tag_list(updated_tags(current_tags, tags_to_set, tag_keys_to_unset))
 
     result_accelerator = boto3_resource_to_ansible_dict(accelerator, transform_tags=True, force_tags=False)
     if listeners is not None:
@@ -2083,134 +2056,142 @@ def main():
         supports_check_mode=True,
     )
 
-    state = module.params.get("state", "present")
+    state = module.params["state"]
     require_positive_wait_bounds(module, always=True)
 
     if len(module.params.get("name") or "") > 255:
         module.fail_json(msg="name must contain at most 255 characters")
 
-    if state == "present" and len(module.params.get("idempotency_token") or "") > 255:
-        module.fail_json(msg="idempotency_token must contain at most 255 characters")
+    if state == "present":
+        if len(module.params.get("idempotency_token") or "") > 255:
+            module.fail_json(msg="idempotency_token must contain at most 255 characters")
 
-    if state == "present" and len(module.params["ip_addresses"] or []) > 2:
-        module.fail_json(msg="ip_addresses must contain at most 2 entries")
+        if len(module.params["ip_addresses"] or []) > 2:
+            module.fail_json(msg="ip_addresses must contain at most 2 entries")
 
-    if state == "present" and any(len(address) > 45 for address in module.params["ip_addresses"] or []):
-        module.fail_json(msg="ip_addresses entries must contain at most 45 characters")
+        if any(len(address) > 45 for address in module.params["ip_addresses"] or []):
+            module.fail_json(msg="ip_addresses entries must contain at most 45 characters")
 
-    for address in module.params["ip_addresses"] or [] if state == "present" else []:
-        try:
-            ipaddress.IPv4Address(address)
-        except ipaddress.AddressValueError:
-            module.fail_json(msg=f"ip_addresses entries must be valid IPv4 addresses: {address}")
+        for address in module.params["ip_addresses"] or []:
+            try:
+                ipaddress.IPv4Address(address)
+            except ipaddress.AddressValueError:
+                module.fail_json(msg=f"ip_addresses entries must be valid IPv4 addresses: {address}")
 
-    if state == "present" and len(set(module.params["ip_addresses"] or [])) != len(module.params["ip_addresses"] or []):
-        module.fail_json(msg="ip_addresses entries must be unique")
+        if len(set(module.params["ip_addresses"] or [])) != len(module.params["ip_addresses"] or []):
+            module.fail_json(msg="ip_addresses entries must be unique")
 
-    listener_port_ranges = {}
-    if state == "present" and (
-        sum(len(listener.get("endpoint_groups") or []) for listener in module.params["listeners"] or []) > 42
-    ):
-        module.fail_json(msg="listeners must contain at most 42 endpoint groups in total")
+        listener_port_ranges = {}
+        if sum(len(listener.get("endpoint_groups") or []) for listener in module.params["listeners"] or []) > 42:
+            module.fail_json(msg="listeners must contain at most 42 endpoint groups in total")
 
-    for listener in module.params["listeners"] or [] if state == "present" else []:
-        if not listener["port_ranges"]:
-            module.fail_json(msg="listeners entries require at least one port_ranges entry")
+        for listener in module.params["listeners"] or []:
+            if not listener["port_ranges"]:
+                module.fail_json(msg="listeners entries require at least one port_ranges entry")
 
-        if len(listener["port_ranges"]) > 10:
-            module.fail_json(msg="listeners entries allow at most 10 port_ranges entries")
+            if len(listener["port_ranges"]) > 10:
+                module.fail_json(msg="listeners entries allow at most 10 port_ranges entries")
 
-        for port_range in listener["port_ranges"]:
-            if port_range["from_port"] < 1 or port_range["to_port"] > 65535:
-                module.fail_json(msg="port_ranges entries must be between 1 and 65535")
+            for port_range in listener["port_ranges"]:
+                if port_range["from_port"] < 1 or port_range["to_port"] > 65535:
+                    module.fail_json(msg="port_ranges entries must be between 1 and 65535")
 
-            if port_range["from_port"] > port_range["to_port"]:
-                module.fail_json(msg="port_ranges entries require from_port to be less than or equal to to_port")
+                if port_range["from_port"] > port_range["to_port"]:
+                    module.fail_json(msg="port_ranges entries require from_port to be less than or equal to to_port")
 
-        ordered_port_ranges = normalized_port_ranges(listener["port_ranges"])
-        protocol_port_ranges = listener_port_ranges.setdefault(listener.get("protocol"), [])
-        for port_range in ordered_port_ranges:
-            if any(
-                port_range["from_port"] <= current["to_port"] and current["from_port"] <= port_range["to_port"]
-                for current in protocol_port_ranges
-            ):
-                module.fail_json(msg="listeners port_ranges entries must not overlap")
+            ordered_port_ranges = normalized_port_ranges(listener["port_ranges"])
+            protocol_port_ranges = listener_port_ranges.setdefault(listener.get("protocol"), [])
+            for port_range in ordered_port_ranges:
+                if any(port_ranges_overlap(port_range, current) for current in protocol_port_ranges):
+                    module.fail_json(msg="listeners port_ranges entries must not overlap")
 
-            protocol_port_ranges.append(port_range)
+                protocol_port_ranges.append(port_range)
 
-        regions = set()
-        for endpoint_group in listener.get("endpoint_groups") or []:
-            region = endpoint_group["endpoint_group_region"]
+            regions = set()
+            for endpoint_group in listener.get("endpoint_groups") or []:
+                region = endpoint_group["endpoint_group_region"]
 
-            if len(region) > 255:
-                module.fail_json(msg="endpoint_group_region must contain at most 255 characters")
+                if len(region) > 255:
+                    module.fail_json(msg="endpoint_group_region must contain at most 255 characters")
 
-            if region in regions:
-                module.fail_json(msg=f"Duplicate endpoint group region {region} in endpoint_groups")
+                if region in regions:
+                    module.fail_json(msg=f"Duplicate endpoint group region {region} in endpoint_groups")
 
-            regions.add(region)
+                regions.add(region)
 
-            if len(endpoint_group.get("endpoint_configurations") or []) > 10:
-                module.fail_json(msg=f"Endpoint group {region} endpoint_configurations must contain at most 10 entries")
-
-            if len(endpoint_group.get("port_overrides") or []) > 10:
-                module.fail_json(msg=f"Endpoint group {region} port_overrides must contain at most 10 entries")
-
-            if endpoint_group.get("health_check_port") is not None and not (
-                1 <= endpoint_group["health_check_port"] <= 65535
-            ):
-                module.fail_json(msg=f"Endpoint group {region} health_check_port must be between 1 and 65535")
-
-            health_check_path = endpoint_group.get("health_check_path")
-            if health_check_path is not None and (
-                len(health_check_path) > 255 or re.fullmatch(r"/[-a-zA-Z0-9@:%_+.~#?&/=]*", health_check_path) is None
-            ):
-                module.fail_json(
-                    msg=f"Endpoint group {region} health_check_path must be a valid path of at most 255 characters"
-                )
-
-            if endpoint_group.get("threshold_count") is not None and not (1 <= endpoint_group["threshold_count"] <= 10):
-                module.fail_json(msg=f"Endpoint group {region} threshold_count must be between 1 and 10")
-
-            if endpoint_group.get("traffic_dial_percentage") is not None and not (
-                0 <= endpoint_group["traffic_dial_percentage"] <= 100
-            ):
-                module.fail_json(msg=f"Endpoint group {region} traffic_dial_percentage must be between 0 and 100")
-
-            endpoint_ids = set()
-            for configuration in endpoint_group.get("endpoint_configurations") or []:
-                endpoint_id = configuration["endpoint_id"]
-                if len(endpoint_id) > 255 or len(configuration.get("attachment_arn") or "") > 255:
+                if len(endpoint_group.get("endpoint_configurations") or []) > 10:
                     module.fail_json(
-                        msg=(
-                            f"Endpoint group {region} endpoint IDs and attachment "
-                            "ARNs must contain at most 255 characters"
+                        msg=f"Endpoint group {region} endpoint_configurations must contain at most 10 entries"
+                    )
+
+                if len(endpoint_group.get("port_overrides") or []) > 10:
+                    module.fail_json(msg=f"Endpoint group {region} port_overrides must contain at most 10 entries")
+
+                if endpoint_group.get("health_check_port") is not None and not (
+                    1 <= endpoint_group["health_check_port"] <= 65535
+                ):
+                    module.fail_json(msg=f"Endpoint group {region} health_check_port must be between 1 and 65535")
+
+                health_check_path = endpoint_group.get("health_check_path")
+                if health_check_path is not None and (
+                    len(health_check_path) > 255
+                    or re.fullmatch(r"/[-a-zA-Z0-9@:%_+.~#?&/=]*", health_check_path) is None
+                ):
+                    module.fail_json(
+                        msg=f"Endpoint group {region} health_check_path must be a valid path of at most 255 characters"
+                    )
+
+                if endpoint_group.get("threshold_count") is not None and not (
+                    1 <= endpoint_group["threshold_count"] <= 10
+                ):
+                    module.fail_json(msg=f"Endpoint group {region} threshold_count must be between 1 and 10")
+
+                if endpoint_group.get("traffic_dial_percentage") is not None and not (
+                    0 <= endpoint_group["traffic_dial_percentage"] <= 100
+                ):
+                    module.fail_json(msg=f"Endpoint group {region} traffic_dial_percentage must be between 0 and 100")
+
+                endpoint_ids = set()
+                for configuration in endpoint_group.get("endpoint_configurations") or []:
+                    endpoint_id = configuration["endpoint_id"]
+                    if len(endpoint_id) > 255 or len(configuration.get("attachment_arn") or "") > 255:
+                        module.fail_json(
+                            msg=(
+                                f"Endpoint group {region} endpoint IDs and attachment "
+                                "ARNs must contain at most 255 characters"
+                            )
                         )
-                    )
 
-                if endpoint_id in endpoint_ids:
-                    module.fail_json(
-                        msg=f"Duplicate endpoint {endpoint_id} in endpoint group {region} endpoint_configurations"
-                    )
+                    if endpoint_id in endpoint_ids:
+                        module.fail_json(
+                            msg=f"Duplicate endpoint {endpoint_id} in endpoint group {region} endpoint_configurations"
+                        )
 
-                endpoint_ids.add(endpoint_id)
+                    endpoint_ids.add(endpoint_id)
 
-                if not 0 <= configuration["weight"] <= 255:
-                    module.fail_json(
-                        msg=f"Endpoint group {region} endpoint_configurations weight must be between 0 and 255"
-                    )
+                    if not 0 <= configuration["weight"] <= 255:
+                        module.fail_json(
+                            msg=f"Endpoint group {region} endpoint_configurations weight must be between 0 and 255"
+                        )
 
-            override_listener_ports = set()
-            for port_override in endpoint_group.get("port_overrides") or []:
-                if not (1 <= port_override["listener_port"] <= 65535 and 1 <= port_override["endpoint_port"] <= 65535):
-                    module.fail_json(msg=f"Endpoint group {region} port_overrides entries must be between 1 and 65535")
+                override_listener_ports = set()
+                for port_override in endpoint_group.get("port_overrides") or []:
+                    if not (
+                        1 <= port_override["listener_port"] <= 65535 and 1 <= port_override["endpoint_port"] <= 65535
+                    ):
+                        module.fail_json(
+                            msg=f"Endpoint group {region} port_overrides entries must be between 1 and 65535"
+                        )
 
-                if port_override["listener_port"] in override_listener_ports:
-                    module.fail_json(msg=f"Endpoint group {region} port_overrides listener_port values must be unique")
+                    if port_override["listener_port"] in override_listener_ports:
+                        module.fail_json(
+                            msg=f"Endpoint group {region} port_overrides listener_port values must be unique"
+                        )
 
-                override_listener_ports.add(port_override["listener_port"])
+                    override_listener_ports.add(port_override["listener_port"])
 
-    require_valid_tags(module, module.params["tags"] if state == "present" else None, 50)
+        require_valid_tags(module, module.params["tags"], 50)
+
     client = module.client(
         "globalaccelerator",
         region="us-west-2",

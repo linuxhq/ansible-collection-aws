@@ -107,7 +107,7 @@ def test_absent_does_not_validate_unused_routes():
     module = FakeModule(
         {
             "purge_routes": True,
-            "routes": [{"destination_cidr_block": "not-a-cidr"}],
+            "routes": [{"destination_cidr_block": "not-a-cidr", "state": "present"}],
             "state": "absent",
             "tags": None,
         }
@@ -248,6 +248,7 @@ def test_changed_static_route_is_replaced_in_place():
             "routes": [
                 {
                     "destination_cidr_block": "10.0.0.0/8",
+                    "state": "present",
                     "transit_gateway_attachment_id": "tgw-attach-new",
                 }
             ],
@@ -307,6 +308,7 @@ def test_new_table_waits_before_routes_when_final_wait_is_disabled():
                 {
                     "blackhole": True,
                     "destination_cidr_block": "10.0.0.0/8",
+                    "state": "present",
                 }
             ],
             "state": "present",
@@ -381,6 +383,7 @@ def test_deleting_route_waits_before_recreation_when_final_wait_is_disabled():
                 {
                     "blackhole": True,
                     "destination_cidr_block": "10.0.0.0/8",
+                    "state": "present",
                 }
             ],
             "state": "present",
@@ -422,6 +425,7 @@ def test_routes_require_unique_destinations_and_a_target():
                     {
                         "blackhole": True,
                         "destination_cidr_block": "not-a-cidr",
+                        "state": "present",
                     }
                 ],
             ),
@@ -434,10 +438,12 @@ def test_routes_require_unique_destinations_and_a_target():
                     {
                         "blackhole": True,
                         "destination_cidr_block": "10.0.0.0/8",
+                        "state": "present",
                     },
                     {
                         "blackhole": True,
                         "destination_cidr_block": "10.0.0.0/8",
+                        "state": "present",
                     },
                 ],
             ),
@@ -450,6 +456,7 @@ def test_routes_require_unique_destinations_and_a_target():
                     {
                         "blackhole": False,
                         "destination_cidr_block": "10.0.0.0/8",
+                        "state": "present",
                     }
                 ],
             ),
@@ -462,6 +469,7 @@ def test_routes_require_unique_destinations_and_a_target():
                     {
                         "blackhole": True,
                         "destination_cidr_block": "10.0.0.0/8",
+                        "state": "present",
                         "transit_gateway_attachment_id": "tgw-attach-1",
                     }
                 ],
@@ -482,6 +490,7 @@ def test_false_blackhole_allows_attachment():
                 {
                     "blackhole": False,
                     "destination_cidr_block": "10.0.0.0/8",
+                    "state": "present",
                     "transit_gateway_attachment_id": "tgw-attach-1",
                 }
             ],
@@ -563,6 +572,7 @@ def test_purge_removes_only_undesired_static_routes():
             "routes": [
                 {
                     "destination_cidr_block": "10.0.0.0/8",
+                    "state": "present",
                     "transit_gateway_attachment_id": "tgw-attach-1",
                 }
             ],
@@ -647,7 +657,11 @@ def test_tgw_absence_waits_until_deleting_route_disappears():
 
 @pytest.mark.parametrize("case", ["pending_table", "pending_route", "deleting_route", "purge_pending_table"])
 def test_present_check_mode_skips_transition_waits(case):
-    desired = {"destination_cidr_block": "10.0.0.0/8", "transit_gateway_attachment_id": "tgw-attach-1"}
+    desired = {
+        "destination_cidr_block": "10.0.0.0/8",
+        "state": "present",
+        "transit_gateway_attachment_id": "tgw-attach-1",
+    }
     module = FakeModule(
         {
             "state": "present",
@@ -694,8 +708,12 @@ def test_check_mode_predicts_routes_on_pending_table_without_searching(purge_rou
         present_params(
             purge_routes=purge_routes,
             routes=[
-                {"destination_cidr_block": "10.0.0.0/8", "transit_gateway_attachment_id": "tgw-attach-1"},
-                {"blackhole": True, "destination_cidr_block": "10.1.0.0/16"},
+                {
+                    "destination_cidr_block": "10.0.0.0/8",
+                    "state": "present",
+                    "transit_gateway_attachment_id": "tgw-attach-1",
+                },
+                {"blackhole": True, "destination_cidr_block": "10.1.0.0/16", "state": "present"},
                 {"destination_cidr_block": "10.2.0.0/16", "state": "absent"},
             ],
             wait=True,
@@ -742,7 +760,13 @@ def test_check_mode_searches_routes_on_available_table():
     module = FakeModule(
         present_params(
             purge_routes=False,
-            routes=[{"destination_cidr_block": "10.0.0.0/8", "transit_gateway_attachment_id": "tgw-attach-1"}],
+            routes=[
+                {
+                    "destination_cidr_block": "10.0.0.0/8",
+                    "state": "present",
+                    "transit_gateway_attachment_id": "tgw-attach-1",
+                }
+            ],
         ),
         check_mode=True,
     )
@@ -904,7 +928,7 @@ def test_missing_route_is_created():
     module = FakeModule(
         present_params(
             purge_routes=False,
-            routes=[{"blackhole": True, "destination_cidr_block": "10.0.0.0/8"}],
+            routes=[{"blackhole": True, "destination_cidr_block": "10.0.0.0/8", "state": "present"}],
         )
     )
     table = {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
@@ -1016,7 +1040,7 @@ def test_route_failure_reports_whether_tags_were_changed(tags, changed):
     module = FakeModule(
         present_params(
             purge_routes=False,
-            routes=[{"blackhole": True, "destination_cidr_block": "10.0.0.0/8"}],
+            routes=[{"blackhole": True, "destination_cidr_block": "10.0.0.0/8", "state": "present"}],
             tags=tags,
         )
     )
@@ -1256,7 +1280,7 @@ def test_resulting_tag_limit_counts_the_name_tag_before_any_write(check_mode):
             name="main",
             purge_routes=False,
             purge_tags=False,
-            routes=[{"blackhole": True, "destination_cidr_block": "10.0.0.0/8"}],
+            routes=[{"blackhole": True, "destination_cidr_block": "10.0.0.0/8", "state": "present"}],
             tags={"Env": "test"},
         ),
         check_mode=check_mode,
@@ -1296,7 +1320,7 @@ def test_route_waits_share_one_wait_timeout_budget():
         }
 
     routes = [
-        {"destination_cidr_block": cidr, "transit_gateway_attachment_id": "tgw-attach-1"}
+        {"destination_cidr_block": cidr, "state": "present", "transit_gateway_attachment_id": "tgw-attach-1"}
         for cidr in ("10.0.0.0/24", "10.0.1.0/24")
     ]
     module = FakeModule(

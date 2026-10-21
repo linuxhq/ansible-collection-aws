@@ -330,6 +330,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
+    sleep_until_next_poll,
 )
 
 SETTING_OPTIONS = {
@@ -458,7 +459,6 @@ def get_phone_number(client, module, phone_number_id, changed=False):
 
 def wait_for_phone_number_active(client, module, phone_number_id, tags=None, changed=False):
     """Wait for a phone number; changed reports whether it was already modified, for failure results."""
-    wait_delay = module.params["wait_delay"]
     deadline = time.monotonic() + module.params["wait_timeout"]
     phone_number = {}
     seen = False
@@ -511,7 +511,7 @@ def wait_for_phone_number_active(client, module, phone_number_id, tags=None, cha
                 status=status,
             )
 
-        time.sleep(min(wait_delay, max(0, deadline - time.monotonic())))
+        sleep_until_next_poll(module, deadline)
 
     module.fail_json(
         changed=changed,

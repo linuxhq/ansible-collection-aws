@@ -304,6 +304,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
+    sleep_until_next_poll,
     wait_deadline,
 )
 
@@ -510,12 +511,7 @@ def wait_for_route_table(
             )
 
         seen = seen or route_table is not None
-        time.sleep(
-            min(
-                module.params["wait_delay"],
-                max(0, deadline - time.monotonic()),
-            )
-        )
+        sleep_until_next_poll(module, deadline)
 
     module.fail_json(
         changed=changed,
@@ -607,16 +603,11 @@ def desired_route_matches(route, desired):
     if desired.get("blackhole"):
         return route.get("State") == "blackhole"
 
-    attachment_ids = set()
-    for attachment in route.get("TransitGatewayAttachments", []):
-        attachment_id = attachment.get("TransitGatewayAttachmentId")
-
-        if not attachment_id:
-            continue
-
-        attachment_ids.add(attachment_id)
-
-    return desired.get("transit_gateway_attachment_id") in attachment_ids
+    return any(
+        attachment.get("TransitGatewayAttachmentId")
+        and attachment.get("TransitGatewayAttachmentId") == desired.get("transit_gateway_attachment_id")
+        for attachment in route.get("TransitGatewayAttachments", [])
+    )
 
 
 def route_is_static(route):
@@ -678,12 +669,7 @@ def wait_for_route(client, module, transit_gateway_route_table_id, desired, chan
             )
 
         seen = seen or route is not None
-        time.sleep(
-            min(
-                module.params["wait_delay"],
-                max(0, deadline - time.monotonic()),
-            )
-        )
+        sleep_until_next_poll(module, deadline)
 
     module.fail_json(
         changed=changed,
@@ -711,12 +697,7 @@ def wait_for_route_absent(
         if route is None:
             return
 
-        time.sleep(
-            min(
-                module.params["wait_delay"],
-                max(0, deadline - time.monotonic()),
-            )
-        )
+        sleep_until_next_poll(module, deadline)
 
     module.fail_json(
         changed=changed,
@@ -872,14 +853,15 @@ def ensure_present(client, module):
 
     if desired_route_table_tags or tags is not None:
         purge_tags = module.params["purge_tags"] if tags is not None else False
+        route_table_tags = current_tags(route_table)
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
-            current_tags(route_table),
+            route_table_tags,
             desired_route_table_tags,
             purge_tags=purge_tags,
         )
         require_resulting_tag_limit(
             module,
-            current_tags(route_table),
+            route_table_tags,
             tags_to_set,
             tag_keys_to_unset,
             50,
@@ -916,7 +898,7 @@ def ensure_present(client, module):
         # a pending table fails, so check mode predicts each present route as an addition.
         if module.check_mode and (not transit_gateway_route_table_id or route_table.get("State") == "pending"):
             for desired_route in desired_routes:
-                if desired_route.get("state", "present") != "present":
+                if desired_route["state"] != "present":
                     continue
 
                 routes.append(check_mode_route(desired_route))
@@ -924,7 +906,7 @@ def ensure_present(client, module):
             route_changed = bool(routes)
         else:
             for desired_route in desired_routes:
-                if desired_route.get("state", "present") == "absent":
+                if desired_route["state"] == "absent":
                     current_route_changed, current_route = ensure_route_absent(
                         client,
                         module,
@@ -1052,7 +1034,7 @@ def ensure_present(client, module):
             if purge_routes:
                 desired_destinations = set()
                 for desired_route in desired_routes:
-                    if desired_route.get("state", "present") != "present":
+                    if desired_route["state"] != "present":
                         continue
 
                     desired_destinations.add(desired_route["destination_cidr_block"])
@@ -1136,11 +1118,6 @@ def ensure_absent(client, module):
             TransitGatewayRouteTableId=transit_gateway_route_table_id,
             aws_retry=True,
         )
-        route_table = validated_route_table(
-            module,
-            response.get("TransitGatewayRouteTable") if isinstance(response, dict) else None,
-            changed=True,
-        )
     except is_boto3_error_code("InvalidRouteTableID.NotFound"):
         # The route table was already deleted elsewhere.
         exit_module(module, False, None)
@@ -1149,6 +1126,12 @@ def ensure_absent(client, module):
             e,
             msg=f"Unable to delete EC2 transit gateway route table {transit_gateway_route_table_id}",
         )
+
+    route_table = validated_route_table(
+        module,
+        response.get("TransitGatewayRouteTable") if isinstance(response, dict) else None,
+        changed=True,
+    )
 
     if wait:
         route_table = wait_for_route_table(
@@ -1245,7 +1228,7 @@ def main():
 
         destinations.add(route["destination_cidr_block"])
 
-        if route.get("state", "present") == "absent":
+        if route["state"] == "absent":
             continue
 
         if route.get("blackhole") and route.get("transit_gateway_attachment_id"):

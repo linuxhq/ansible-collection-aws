@@ -1,8 +1,10 @@
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import wait
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_send_command as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -31,12 +33,14 @@ def send_params(**overrides):
     return params
 
 
+@contextmanager
 def patch_time(*monotonic_values):
     mocked_time = SimpleNamespace(
         monotonic=Mock(side_effect=monotonic_values),
         sleep=Mock(),
     )
-    return patch.object(plugin, "time", mocked_time)
+    with patch.object(plugin, "time", mocked_time), patch.object(wait, "time", mocked_time):
+        yield mocked_time
 
 
 def test_equivalent_targets_are_sent_once():

@@ -286,11 +286,11 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import validate_tag_list
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
 
 
 def validate_accelerator(module, accelerator, expected_arn=None):
@@ -313,15 +313,6 @@ def validate_resource_list(module, resources, resource_name, arn_key):
         module.fail_json(msg=f"Global Accelerator returned an invalid {resource_name} list")
 
     return resources
-
-
-def validate_tags(module, tags):
-    msg = "Global Accelerator returned invalid tags"
-    require_valid_tag_list(module, tags, msg)
-    if any(not tag["Key"] for tag in tags):
-        module.fail_json(msg=msg)
-
-    return tags
 
 
 def main():
@@ -415,7 +406,7 @@ def main():
                 msg=f"Unable to list tags for AWS Global Accelerator {accelerator_arn}",
             )
 
-        accelerator["Tags"] = validate_tags(
+        accelerator["Tags"] = validate_tag_list(
             module,
             response.get("Tags") if isinstance(response, dict) else None,
         )
@@ -504,9 +495,7 @@ def main():
         force_tags=False,
     )
 
-    accelerator_arns = [
-        accelerator["accelerator_arn"] for accelerator in normalized_accelerators if accelerator.get("accelerator_arn")
-    ]
+    accelerator_arns = [accelerator["accelerator_arn"] for accelerator in normalized_accelerators]
 
     module.exit_json(
         accelerator_arns=accelerator_arns,

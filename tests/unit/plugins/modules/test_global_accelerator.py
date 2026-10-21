@@ -631,7 +631,7 @@ def test_provider_limits_are_rejected():
         ),
     ]
     for params, message in cases:
-        assert_module_rejects(plugin, params, message)
+        assert_module_rejects(plugin, dict(params, state="present"), message)
 
 
 def test_listener_port_ranges_must_not_overlap_across_listeners():
@@ -649,6 +649,7 @@ def test_listener_port_ranges_must_not_overlap_across_listeners():
                     "protocol": "TCP",
                 },
             ],
+            "state": "present",
         },
         "listeners port_ranges entries must not overlap",
     )
@@ -685,6 +686,7 @@ def test_endpoint_groups_reject_duplicate_regions_and_endpoints():
                     "protocol": "TCP",
                 }
             ],
+            "state": "present",
         }
         assert_module_rejects(plugin, params, message)
 
@@ -772,6 +774,7 @@ def test_endpoint_group_provider_limits_are_rejected():
                     "port_ranges": [{"from_port": 443, "to_port": 443}],
                 }
             ],
+            "state": "present",
         }
         assert_module_rejects(plugin, params, message)
 
