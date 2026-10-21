@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - acm_certificate_request - wait for a newly requested certificate to appear in the ACM certificate list
+    before returning, because the list lags the request by several seconds and an immediate rerun otherwise
+    missed the certificate and requested a duplicate.

@@ -21,6 +21,9 @@ description:
     128 characters and tag values may contain at most 256 characters.
   - Existing certificate tags are purged only when O(tags) is provided and
     O(purge_tags=true).
+  - After requesting a certificate, the module waits up to about one minute
+    for ACM to list it, so an immediate rerun reuses it instead of requesting
+    a duplicate.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -77,6 +80,7 @@ certificate_arn:
 """
 
 import re
+import time
 import uuid
 
 try:
@@ -117,6 +121,10 @@ CERTIFICATE_KEY_TYPES = [
     "EC_secp384r1",
     "EC_secp521r1",
 ]
+
+# ListCertificates lags RequestCertificate by a few seconds.
+CERTIFICATE_LIST_ATTEMPTS = 30
+CERTIFICATE_LIST_DELAY = 2
 
 
 def summary_can_match(summary, desired_names):
@@ -272,6 +280,29 @@ def request_certificate(module, client, domain_name, idempotency_token, subject_
     return certificate_arn
 
 
+def wait_for_certificate_listing(module, client, certificate_arn):
+    """Wait until ListCertificates returns a requested certificate, so an immediate rerun reuses it."""
+    for attempt in range(CERTIFICATE_LIST_ATTEMPTS):
+        if attempt:
+            time.sleep(CERTIFICATE_LIST_DELAY)
+
+        summaries = query_list(
+            module,
+            client,
+            "list_certificates",
+            "CertificateSummaryList",
+            f"Unable to list AWS Certificate Manager certificates after requesting certificate {certificate_arn}",
+            changed=True,
+        )
+        if any(isinstance(summary, dict) and summary.get("CertificateArn") == certificate_arn for summary in summaries):
+            return
+
+    module.warn(
+        f"AWS Certificate Manager did not list certificate {certificate_arn} after it was requested; "
+        "a rerun before it is listed can request another certificate"
+    )
+
+
 def ensure_certificate_tags(module, client, certificate_arn, tags, purge_tags):
     """Converge the tags on an existing certificate and return whether they changed."""
     require_client_methods(
@@ -412,6 +443,7 @@ def main():
         certificate_arn = request_certificate(
             module, client, domain_name, idempotency_token, subject_alternative_names, tags
         )
+        wait_for_certificate_listing(module, client, certificate_arn)
         changed = True
     elif tags is not None:
         changed = ensure_certificate_tags(module, client, certificate_arn, tags, purge_tags)

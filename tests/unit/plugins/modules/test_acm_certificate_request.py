@@ -12,6 +12,12 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
+@pytest.fixture(autouse=True)
+def no_sleep():
+    with patch.object(plugin.time, "sleep") as sleep:
+        yield sleep
+
+
 def test_sdk_validation_matches_used_parameters():
     client = Mock()
     client.request_certificate.return_value = {"CertificateArn": "arn:new"}
@@ -42,7 +48,7 @@ def test_sdk_validation_matches_used_parameters():
             "NextToken",
         ),
     }
-    assert query.call_args.kwargs["Includes"] == {
+    assert query.call_args_list[0].kwargs["Includes"] == {
         "keyTypes": [
             "RSA_1024",
             "RSA_2048",
@@ -650,3 +656,88 @@ def test_request_without_an_arn_reports_changed():
         plugin.main()
 
     assert raised.value.values["changed"] is True
+
+
+def test_wait_for_certificate_listing_returns_once_listed(no_sleep):
+    module = FakeModule({})
+    with patch.object(
+        plugin,
+        "query_list",
+        side_effect=[[{"CertificateArn": "arn:other"}], [{"CertificateArn": "arn:new"}]],
+    ) as query:
+        plugin.wait_for_certificate_listing(module, Mock(), "arn:new")
+
+    assert query.call_count == 2
+    assert query.call_args.kwargs == {"changed": True}
+    no_sleep.assert_called_once_with(plugin.CERTIFICATE_LIST_DELAY)
+    assert module.warnings == []
+
+
+def test_wait_for_certificate_listing_is_bounded(no_sleep):
+    module = FakeModule({})
+    with patch.object(plugin, "query_list", return_value=[]) as query:
+        plugin.wait_for_certificate_listing(module, Mock(), "arn:new")
+
+    assert query.call_count == plugin.CERTIFICATE_LIST_ATTEMPTS
+    assert no_sleep.call_count == plugin.CERTIFICATE_LIST_ATTEMPTS - 1
+    assert "arn:new" in module.warnings[0]
+
+
+def test_rerun_after_request_reuses_listed_certificate():
+    listed = {"CertificateArn": "arn:new", "DomainName": "example.com"}
+    client = Mock()
+    client.request_certificate.return_value = {"CertificateArn": "arn:new"}
+    client.describe_certificate.return_value = issued_certificate("arn:new", Status="PENDING_VALIDATION")
+    params = {
+        "domain_name": "example.com",
+        "idempotency_token": None,
+        "purge_tags": True,
+        "subject_alternative_names": None,
+        "tags": None,
+    }
+    results = []
+    # The first run requests the certificate and waits until it is listed; the rerun finds it.
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", side_effect=[[], [], [listed], [listed]]),
+    ):
+        for run in ("create", "rerun"):
+            with (
+                patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params, client=client)),
+                pytest.raises(ModuleExit) as result,
+            ):
+                plugin.main()
+
+            results.append((run, result.value.values))
+
+    assert results == [
+        ("create", {"changed": True, "certificate_arn": "arn:new"}),
+        ("rerun", {"changed": False, "certificate_arn": "arn:new"}),
+    ]
+    client.request_certificate.assert_called_once()
+
+
+def test_check_mode_predicts_request_without_waiting():
+    client = Mock()
+    module = FakeModule(
+        {
+            "domain_name": "example.com",
+            "idempotency_token": None,
+            "purge_tags": True,
+            "subject_alternative_names": None,
+            "tags": None,
+        },
+        check_mode=True,
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]) as query,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    assert result.value.values == {"changed": True}
+    query.assert_called_once()
+    client.request_certificate.assert_not_called()
