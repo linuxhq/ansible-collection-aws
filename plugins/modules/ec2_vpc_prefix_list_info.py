@@ -181,27 +181,20 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
 
 
 def validate_prefix_lists(module, prefix_lists):
     for prefix_list in prefix_lists:
-        tags = prefix_list.get("Tags") if isinstance(prefix_list, dict) else None
         if (
             not isinstance(prefix_list, dict)
             or not isinstance(prefix_list.get("PrefixListId"), str)
             or not prefix_list["PrefixListId"]
-            or (tags is not None and not isinstance(tags, list))
-            or (
-                isinstance(tags, list)
-                and any(
-                    not isinstance(tag, dict)
-                    or not isinstance(tag.get("Key"), str)
-                    or not isinstance(tag.get("Value"), str)
-                    for tag in tags
-                )
-            )
         ):
             module.fail_json(msg="EC2 returned invalid managed prefix lists")
+
+        if prefix_list.get("Tags") is not None:
+            require_valid_tag_list(module, prefix_list["Tags"], "EC2 returned invalid managed prefix lists")
 
     return prefix_lists
 

@@ -410,8 +410,7 @@ def main():
 
     if state == "present":
         ensure_present(client, module)
-
-    if state == "absent":
+    else:
         ensure_absent(client, module)
 
 

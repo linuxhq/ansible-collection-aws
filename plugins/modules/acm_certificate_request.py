@@ -131,65 +131,8 @@ def summary_can_match(summary, desired_names):
     return True
 
 
-def main():
-    module = AnsibleAWSModule(
-        argument_spec={
-            "domain_name": {"required": True, "type": "str"},
-            "idempotency_token": {"no_log": False, "type": "str"},
-            "purge_tags": {"default": True, "type": "bool"},
-            "subject_alternative_names": {"elements": "str", "type": "list"},
-            "tags": {"aliases": ["resource_tags"], "type": "dict"},
-        },
-        supports_check_mode=True,
-    )
-
-    domain_name = module.params["domain_name"]
-    normalized_domain_name = domain_name.lower()
-    idempotency_token = module.params["idempotency_token"]
-    purge_tags = module.params["purge_tags"]
-    subject_alternative_names = list(
-        dict.fromkeys(
-            name.lower()
-            for name in module.params["subject_alternative_names"] or []
-            if name.lower() != normalized_domain_name
-        )
-    )
-    tags = module.params["tags"]
-
-    if idempotency_token is not None and not re.fullmatch(r"\w{1,32}", idempotency_token, flags=re.ASCII):
-        module.fail_json(msg="ACM certificate request idempotency_token must be 1 to 32 ASCII word characters")
-
-    if len(subject_alternative_names) > 99:
-        module.fail_json(msg="subject_alternative_names must contain at most 99 additional entries")
-
-    require_valid_tags(module, tags, 50)
-
-    client = module.client("acm", retry_decorator=AWSRetry.jittered_backoff())
-
-    request_parameters = ["DomainName", "IdempotencyToken", "ValidationMethod"]
-    if subject_alternative_names:
-        request_parameters.append("SubjectAlternativeNames")
-
-    if tags:
-        request_parameters.append("Tags")
-
-    require_client_methods(
-        module,
-        client,
-        "AWS Certificate Manager",
-        {
-            "list_certificates": (
-                "CertificateStatuses",
-                "Includes",
-                "MaxItems",
-                "NextToken",
-            )
-        },
-    )
-
-    desired_names = {normalized_domain_name}
-    desired_names.update(subject_alternative_names)
-
+def find_matching_certificate(module, client, normalized_domain_name, desired_names):
+    """Return the ARN of the newest reusable DNS-validated certificate, or None."""
     summaries = query_list(
         module,
         client,
@@ -257,17 +200,13 @@ def main():
         if certificate.get("Type") != "AMAZON_ISSUED" or certificate.get("ManagedBy"):
             continue
 
-        validation_methods = set()
-        for option in certificate.get("DomainValidationOptions", []):
-            validation_methods.add(option.get("ValidationMethod"))
-
+        validation_methods = {
+            option.get("ValidationMethod") for option in certificate.get("DomainValidationOptions", [])
+        }
         if validation_methods != {"DNS"}:
             continue
 
-        certificate_names = set()
-        for name in certificate.get("SubjectAlternativeNames", []):
-            certificate_names.add(name.lower())
-
+        certificate_names = {name.lower() for name in certificate.get("SubjectAlternativeNames", [])}
         if certificate_names != desired_names:
             continue
 
@@ -283,131 +222,201 @@ def main():
                 "CreatedAt": created_at,
             }
 
-    created = matched is None
+    return matched["CertificateArn"] if matched is not None else None
 
-    if created:
-        if module.check_mode:
-            module.exit_json(changed=True)
 
+def request_certificate(module, client, domain_name, idempotency_token, subject_alternative_names, tags):
+    """Request a DNS-validated certificate and return its ARN."""
+    request_parameters = ["DomainName", "IdempotencyToken", "ValidationMethod"]
+    if subject_alternative_names:
+        request_parameters.append("SubjectAlternativeNames")
+
+    if tags:
+        request_parameters.append("Tags")
+
+    require_client_methods(
+        module,
+        client,
+        "AWS Certificate Manager",
+        {"request_certificate": tuple(request_parameters)},
+    )
+
+    if idempotency_token is None:
+        idempotency_token = uuid.uuid4().hex
+
+    request = scrub_none_parameters(
+        {
+            "DomainName": domain_name,
+            "IdempotencyToken": idempotency_token,
+            "SubjectAlternativeNames": subject_alternative_names or None,
+            "Tags": ansible_dict_to_boto3_tag_list(tags) if tags else None,
+            "ValidationMethod": "DNS",
+        }
+    )
+
+    try:
+        response = client.request_certificate(**request, aws_retry=True)
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to request AWS Certificate Manager certificate {domain_name}",
+        )
+
+    certificate_arn = response.get("CertificateArn")
+    if not certificate_arn:
+        module.fail_json(
+            changed=True,
+            msg=f"AWS Certificate Manager did not return an ARN for certificate {domain_name}",
+        )
+
+    return certificate_arn
+
+
+def ensure_certificate_tags(module, client, certificate_arn, tags, purge_tags):
+    """Converge the tags on an existing certificate and return whether they changed."""
+    require_client_methods(
+        module,
+        client,
+        "AWS Certificate Manager",
+        {"list_tags_for_certificate": ("CertificateArn",)},
+    )
+    try:
+        response = client.list_tags_for_certificate(
+            CertificateArn=certificate_arn,
+            aws_retry=True,
+        )
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(
+            e,
+            msg=f"Unable to list tags for AWS Certificate Manager certificate {certificate_arn}",
+        )
+
+    current_tags = response.get("Tags", []) if isinstance(response, dict) else None
+    if not isinstance(current_tags, list) or any(
+        not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value", ""), str)
+        for tag in current_tags
+    ):
+        module.fail_json(msg=f"AWS Certificate Manager returned invalid tags for certificate {certificate_arn}")
+
+    # ACM tags may omit Value, which is equivalent to an empty value.
+    current_tags = {tag["Key"]: tag.get("Value", "") for tag in current_tags}
+
+    tags_to_set, tag_keys_to_unset = compare_aws_tags(
+        current_tags,
+        tags,
+        purge_tags=purge_tags,
+    )
+    require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "certificate")
+
+    tag_methods = {}
+    if tag_keys_to_unset and not module.check_mode:
+        tag_methods["remove_tags_from_certificate"] = ("CertificateArn", "Tags")
+
+    if tags_to_set and not module.check_mode:
+        tag_methods["add_tags_to_certificate"] = ("CertificateArn", "Tags")
+
+    if tag_methods:
         require_client_methods(
             module,
             client,
             "AWS Certificate Manager",
-            {"request_certificate": tuple(request_parameters)},
+            tag_methods,
         )
 
-        if idempotency_token is None:
-            idempotency_token = uuid.uuid4().hex
-
-        request = scrub_none_parameters(
-            {
-                "DomainName": domain_name,
-                "IdempotencyToken": idempotency_token,
-                "SubjectAlternativeNames": subject_alternative_names or None,
-                "Tags": ansible_dict_to_boto3_tag_list(tags) if tags else None,
-                "ValidationMethod": "DNS",
-            }
-        )
-
+    if tag_keys_to_unset and not module.check_mode:
         try:
-            response = client.request_certificate(**request, aws_retry=True)
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to request AWS Certificate Manager certificate {domain_name}",
-            )
-
-        certificate_arn = response.get("CertificateArn")
-        if not certificate_arn:
-            module.fail_json(
-                changed=True,
-                msg=f"AWS Certificate Manager did not return an ARN for certificate {domain_name}",
-            )
-    else:
-        certificate_arn = matched["CertificateArn"]
-
-    changed = created
-
-    if not created and tags is not None:
-        require_client_methods(
-            module,
-            client,
-            "AWS Certificate Manager",
-            {"list_tags_for_certificate": ("CertificateArn",)},
-        )
-        try:
-            response = client.list_tags_for_certificate(
+            client.remove_tags_from_certificate(
                 CertificateArn=certificate_arn,
+                Tags=[{"Key": key} for key in tag_keys_to_unset],
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
-                msg=f"Unable to list tags for AWS Certificate Manager certificate {certificate_arn}",
+                msg=f"Unable to remove tags from AWS Certificate Manager certificate {certificate_arn}",
             )
 
-        current_tags = response.get("Tags", []) if isinstance(response, dict) else None
-        if not isinstance(current_tags, list) or any(
-            not isinstance(tag, dict)
-            or not isinstance(tag.get("Key"), str)
-            or not isinstance(tag.get("Value", ""), str)
-            for tag in current_tags
-        ):
-            module.fail_json(msg=f"AWS Certificate Manager returned invalid tags for certificate {certificate_arn}")
+    if tags_to_set and not module.check_mode:
+        try:
+            client.add_tags_to_certificate(
+                CertificateArn=certificate_arn,
+                Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
+                aws_retry=True,
+            )
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(
+                e,
+                changed=bool(tag_keys_to_unset),
+                msg=f"Unable to tag AWS Certificate Manager certificate {certificate_arn}",
+            )
 
-        # ACM tags may omit Value, which is equivalent to an empty value.
-        current_tags = {tag["Key"]: tag.get("Value", "") for tag in current_tags}
+    return bool(tags_to_set or tag_keys_to_unset)
 
-        tags_to_set, tag_keys_to_unset = compare_aws_tags(
-            current_tags,
-            tags,
-            purge_tags=purge_tags,
+
+def main():
+    module = AnsibleAWSModule(
+        argument_spec={
+            "domain_name": {"required": True, "type": "str"},
+            "idempotency_token": {"no_log": False, "type": "str"},
+            "purge_tags": {"default": True, "type": "bool"},
+            "subject_alternative_names": {"elements": "str", "type": "list"},
+            "tags": {"aliases": ["resource_tags"], "type": "dict"},
+        },
+        supports_check_mode=True,
+    )
+
+    domain_name = module.params["domain_name"]
+    normalized_domain_name = domain_name.lower()
+    idempotency_token = module.params["idempotency_token"]
+    purge_tags = module.params["purge_tags"]
+    subject_alternative_names = list(
+        dict.fromkeys(
+            name.lower()
+            for name in module.params["subject_alternative_names"] or []
+            if name.lower() != normalized_domain_name
         )
-        require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "certificate")
+    )
+    tags = module.params["tags"]
 
-        changed = bool(tags_to_set or tag_keys_to_unset)
+    if idempotency_token is not None and not re.fullmatch(r"\w{1,32}", idempotency_token, flags=re.ASCII):
+        module.fail_json(msg="ACM certificate request idempotency_token must be 1 to 32 ASCII word characters")
 
-        tag_methods = {}
-        if tag_keys_to_unset and not module.check_mode:
-            tag_methods["remove_tags_from_certificate"] = ("CertificateArn", "Tags")
+    if len(subject_alternative_names) > 99:
+        module.fail_json(msg="subject_alternative_names must contain at most 99 additional entries")
 
-        if tags_to_set and not module.check_mode:
-            tag_methods["add_tags_to_certificate"] = ("CertificateArn", "Tags")
+    require_valid_tags(module, tags, 50)
 
-        if tag_methods:
-            require_client_methods(
-                module,
-                client,
-                "AWS Certificate Manager",
-                tag_methods,
+    client = module.client("acm", retry_decorator=AWSRetry.jittered_backoff())
+
+    require_client_methods(
+        module,
+        client,
+        "AWS Certificate Manager",
+        {
+            "list_certificates": (
+                "CertificateStatuses",
+                "Includes",
+                "MaxItems",
+                "NextToken",
             )
+        },
+    )
 
-        if tag_keys_to_unset and not module.check_mode:
-            try:
-                client.remove_tags_from_certificate(
-                    CertificateArn=certificate_arn,
-                    Tags=[{"Key": key} for key in tag_keys_to_unset],
-                    aws_retry=True,
-                )
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to remove tags from AWS Certificate Manager certificate {certificate_arn}",
-                )
+    desired_names = {normalized_domain_name, *subject_alternative_names}
+    certificate_arn = find_matching_certificate(module, client, normalized_domain_name, desired_names)
 
-        if tags_to_set and not module.check_mode:
-            try:
-                client.add_tags_to_certificate(
-                    CertificateArn=certificate_arn,
-                    Tags=ansible_dict_to_boto3_tag_list(tags_to_set),
-                    aws_retry=True,
-                )
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    changed=bool(tag_keys_to_unset),
-                    msg=f"Unable to tag AWS Certificate Manager certificate {certificate_arn}",
-                )
+    if certificate_arn is None:
+        if module.check_mode:
+            module.exit_json(changed=True)
+
+        certificate_arn = request_certificate(
+            module, client, domain_name, idempotency_token, subject_alternative_names, tags
+        )
+        changed = True
+    elif tags is not None:
+        changed = ensure_certificate_tags(module, client, certificate_arn, tags, purge_tags)
+    else:
+        changed = False
 
     module.exit_json(
         changed=changed,

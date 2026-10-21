@@ -1,0 +1,10 @@
+---
+trivial:
+  - account_name, aws_account_info - normalize the account result with ``boto3_resource_to_ansible_dict``.
+  - account_region - dispatch the ``absent`` state through ``else``.
+  - acm_certificate_request - split certificate matching, requesting, and tagging into helpers.
+  - ec2_instance_metadata, ec2_serial_console - simplify option, comparison, and result construction.
+  - ec2_flow_log - reuse the shared filter value limit and ``ec2_tag_methods``, and flatten the create and tag flow.
+  - ec2_instance_type_info - reuse the shared filter value limit.
+  - ec2_vpc_prefix_list, ec2_vpc_prefix_list_info - validate returned tags with ``require_valid_tag_list``.
+...

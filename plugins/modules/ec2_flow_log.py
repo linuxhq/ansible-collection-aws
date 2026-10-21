@@ -323,21 +323,22 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.filters import MAX_FILTER_VALUES_PER_REQUEST
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
+    ec2_tag_methods,
     reconcile_ec2_tags,
     require_resulting_tag_limit,
     require_valid_tags,
 )
 
-# EC2 rejects more filter values per call, and more resource IDs per CreateFlowLogs call.
-MAX_FILTER_VALUES_PER_REQUEST = 200
 # The EC2 model documents 1000 IDs, but DeleteFlowLogs and DescribeFlowLogs return InternalError above 100.
 MAX_FLOW_LOG_IDS_PER_REQUEST = 100
+# EC2 rejects more resource IDs per CreateFlowLogs call.
 MAX_RESOURCE_IDS_PER_CREATE = 300
 MAX_TRANSIT_GATEWAY_RESOURCE_IDS_PER_CREATE = 25
 
@@ -649,12 +650,10 @@ def ensure_present(client, module):
 
     if changed and not module.check_mode:
         # Check every later operation first so an SDK gap fails before AWS is modified.
-        later_methods = {}
-        if any(tag_keys_to_unset for _flow_log, _tags_to_set, tag_keys_to_unset in tags_changed):
-            later_methods["delete_tags"] = ("Resources", "Tags")
-
-        if any(tags_to_set for _flow_log, tags_to_set, _tag_keys_to_unset in tags_changed):
-            later_methods["create_tags"] = ("Resources", "Tags")
+        later_methods = ec2_tag_methods(
+            any(tags_to_set for _flow_log, tags_to_set, _tag_keys_to_unset in tags_changed),
+            any(tag_keys_to_unset for _flow_log, _tags_to_set, tag_keys_to_unset in tags_changed),
+        )
 
         if purge_flow_log_ids:
             later_methods["delete_flow_logs"] = ("FlowLogIds",)
@@ -662,8 +661,8 @@ def ensure_present(client, module):
         if later_methods:
             require_client_methods(module, client, "EC2", later_methods)
 
-    if changed:
-        if missing_resource_ids and not module.check_mode:
+    if missing_resource_ids:
+        if not module.check_mode:
             required_create_parameters = [
                 "ClientToken",
                 "LogDestinationType",
@@ -712,9 +711,7 @@ def ensure_present(client, module):
                             )
                         )
 
-            tag_specifications = None
-            if tags is not None:
-                tag_specifications = boto3_tag_specifications(tags, types="vpc-flow-log")
+            tag_specifications = boto3_tag_specifications(tags, types="vpc-flow-log")
 
             batch_size = MAX_RESOURCE_IDS_PER_CREATE
             if resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
@@ -793,7 +790,7 @@ def ensure_present(client, module):
             )
 
             current = current + created_flow_logs
-        elif missing_resource_ids and module.check_mode:
+        else:
             for resource_id in missing_resource_ids:
                 flow_log = dict(
                     desired,
@@ -807,39 +804,39 @@ def ensure_present(client, module):
 
                 current.append(flow_log)
 
-        if tags_changed and not module.check_mode:
-            delete_groups = {}
-            create_groups = {}
-            for flow_log, tags_to_set, tag_keys_to_unset in tags_changed:
-                if tag_keys_to_unset:
-                    group = tuple(sorted(tag_keys_to_unset))
-                    delete_groups.setdefault(group, []).append(flow_log["FlowLogId"])
-
-                if tags_to_set:
-                    group = tuple(sorted(tags_to_set.items()))
-                    create_groups.setdefault(group, []).append(flow_log["FlowLogId"])
-
-            for tag_keys_to_unset, delete_resources in delete_groups.items():
-                reconcile_ec2_tags(
-                    module, client, delete_resources, {}, tag_keys_to_unset, "EC2 flow logs", changed=modified
-                )
-                modified = True
-
-            for tags_to_set, create_resources in create_groups.items():
-                reconcile_ec2_tags(
-                    module, client, create_resources, dict(tags_to_set), [], "EC2 flow logs", changed=modified
-                )
-                modified = True
-
+    if tags_changed and not module.check_mode:
+        delete_groups = {}
+        create_groups = {}
         for flow_log, tags_to_set, tag_keys_to_unset in tags_changed:
-            flow_log.update(apply_tag_deltas(flow_log, tags_to_set, tag_keys_to_unset))
+            if tag_keys_to_unset:
+                group = tuple(sorted(tag_keys_to_unset))
+                delete_groups.setdefault(group, []).append(flow_log["FlowLogId"])
 
-        # Delete superseded flow logs only after their replacements exist and are delivering.
-        if purge_flow_log_ids and not module.check_mode:
-            purge_flow_log_ids = verified_purge(module, flow_logs, current, purge_flow_log_ids, changed=modified)
-            if purge_flow_log_ids:
-                purge_flow_log_ids = delete_flow_logs(client, module, purge_flow_log_ids, changed=modified)
-                modified = modified or bool(purge_flow_log_ids)
+            if tags_to_set:
+                group = tuple(sorted(tags_to_set.items()))
+                create_groups.setdefault(group, []).append(flow_log["FlowLogId"])
+
+        for tag_keys_to_unset, delete_resources in delete_groups.items():
+            reconcile_ec2_tags(
+                module, client, delete_resources, {}, tag_keys_to_unset, "EC2 flow logs", changed=modified
+            )
+            modified = True
+
+        for tags_to_set, create_resources in create_groups.items():
+            reconcile_ec2_tags(
+                module, client, create_resources, dict(tags_to_set), [], "EC2 flow logs", changed=modified
+            )
+            modified = True
+
+    for flow_log, tags_to_set, tag_keys_to_unset in tags_changed:
+        flow_log.update(apply_tag_deltas(flow_log, tags_to_set, tag_keys_to_unset))
+
+    # Delete superseded flow logs only after their replacements exist and are delivering.
+    if purge_flow_log_ids and not module.check_mode:
+        purge_flow_log_ids = verified_purge(module, flow_logs, current, purge_flow_log_ids, changed=modified)
+        if purge_flow_log_ids:
+            purge_flow_log_ids = delete_flow_logs(client, module, purge_flow_log_ids, changed=modified)
+            modified = modified or bool(purge_flow_log_ids)
 
     if not module.check_mode:
         # Report only work AWS performed, such as flow logs that were already gone when deleted.

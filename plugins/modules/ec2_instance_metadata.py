@@ -188,15 +188,7 @@ def main():
 
     module = AnsibleAWSModule(
         argument_spec=argument_spec,
-        required_one_of=[
-            [
-                "http_endpoint",
-                "http_put_response_hop_limit",
-                "http_tokens",
-                "http_tokens_enforced",
-                "instance_metadata_tags",
-            ]
-        ],
+        required_one_of=[list(NO_PREFERENCE_BY_OPTION)],
         supports_check_mode=True,
     )
 
@@ -209,19 +201,15 @@ def main():
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
-    desired = {}
-    comparable_desired = {}
-    for option_name, no_preference_value in NO_PREFERENCE_BY_OPTION.items():
-        option_value = module.params[option_name]
-
-        if option_value is None:
-            continue
-
-        desired[option_name] = option_value
-        if option_value == no_preference_value:
-            comparable_desired[option_name] = None
-        else:
-            comparable_desired[option_name] = option_value
+    desired = {
+        option_name: module.params[option_name]
+        for option_name in NO_PREFERENCE_BY_OPTION
+        if module.params[option_name] is not None
+    }
+    comparable_desired = {
+        option_name: None if option_value == NO_PREFERENCE_BY_OPTION[option_name] else option_value
+        for option_name, option_value in desired.items()
+    }
 
     desired_update = snake_dict_to_camel_dict(desired, capitalize_first=True)
 
@@ -234,9 +222,7 @@ def main():
 
     current_account_level = get_instance_metadata_defaults(client, module)
 
-    current = {}
-    for option_name in desired:
-        current[option_name] = current_account_level.get(option_name)
+    current = {option_name: current_account_level.get(option_name) for option_name in desired}
 
     changed = current != comparable_desired
 
@@ -271,20 +257,17 @@ def main():
                     msg=f"EC2 did not confirm the instance metadata defaults change in region {module.region}",
                 )
 
-        current_account_level = dict(current_account_level)
         for option_name, option_value in comparable_desired.items():
             if option_value is None:
                 current_account_level.pop(option_name, None)
             else:
                 current_account_level[option_name] = option_value
 
-    result = {
-        "changed": changed,
-        "account_level": current_account_level,
-        "region": module.region,
-    }
-
-    module.exit_json(**result)
+    module.exit_json(
+        changed=changed,
+        account_level=current_account_level,
+        region=module.region,
+    )
 
 
 if __name__ == "__main__":
