@@ -246,7 +246,7 @@ def ensure_present(client, module):
 
         hub.pop("ResponseMetadata", None)
     elif changed and module.check_mode:
-        hub = {"notification_hub_region": region}
+        hub = {"notificationHubRegion": region}
 
     module.exit_json(
         changed=changed,

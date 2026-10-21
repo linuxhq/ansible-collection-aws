@@ -161,6 +161,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    identity_matches,
     is_last_phone_number,
     is_last_phone_number_conflict,
     last_phone_number_message,
@@ -240,15 +241,8 @@ def current_association(module, associations):
         if iso_country_code is not None and association.get("IsoCountryCode") != iso_country_code:
             continue
 
-        for identity in (
-            association.get("OriginationIdentity"),
-            association.get("OriginationIdentityArn"),
-        ):
-            if identity is None:
-                continue
-
-            if identity == module.params["origination_identity"]:
-                return association
+        if identity_matches(association, (module.params["origination_identity"],)):
+            return association
 
     return None
 

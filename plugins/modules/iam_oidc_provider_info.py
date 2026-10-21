@@ -95,7 +95,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
     get_provider_by_arn,
-    normalize_provider_url,
+    get_provider_by_url,
     validate_provider_summaries,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
@@ -154,19 +154,8 @@ def main():
         provider = get_provider(client, module, arn)
         providers = [provider] if provider else []
     elif url:
-        providers = []
-        desired_url = normalize_provider_url(url)
-
-        for arn in list_provider_arns(client, module):
-            arn_url = arn.partition(":oidc-provider/")[2]
-            if normalize_provider_url(arn_url) != desired_url:
-                continue
-
-            provider = get_provider(client, module, arn)
-
-            if provider and normalize_provider_url(provider.get("Url")) == desired_url:
-                providers.append(provider)
-                break
+        provider = get_provider_by_url(client, module, url)
+        providers = [provider] if provider else []
     else:
         providers = []
         for arn in list_provider_arns(client, module):

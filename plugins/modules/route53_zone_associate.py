@@ -158,13 +158,15 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
     boto3_resource_to_ansible_dict,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.waiter import custom_waiter_config
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.wait import require_positive_wait_bounds
+from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
+    require_positive_wait_bounds,
+    run_waiter,
+)
 
 
 def ensure_absent(client, module, hosted_zone_id):
@@ -333,17 +335,13 @@ def wait_for_change(client, module, response, hosted_zone_id):
     if not isinstance(change_id, str) or not change_id:
         module.fail_json(changed=True, msg=f"AWS Route53 did not return a change ID for hosted zone {hosted_zone_id}")
 
-    try:
-        client.get_waiter("resource_record_sets_changed").wait(
-            Id=change_id,
-            WaiterConfig=custom_waiter_config(module.params["wait_timeout"], default_pause=module.params["wait_delay"]),
-        )
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e,
-            changed=True,
-            msg=f"Unable to wait for AWS Route53 change {change_id} for hosted zone {hosted_zone_id} to become INSYNC",
-        )
+    run_waiter(
+        module,
+        client.get_waiter("resource_record_sets_changed"),
+        f"Unable to wait for AWS Route53 change {change_id} for hosted zone {hosted_zone_id} to become INSYNC",
+        changed=True,
+        Id=change_id,
+    )
 
 
 def route53_vpc(module):
@@ -359,7 +357,7 @@ def route53_vpc_list(vpcs):
             "VPCId": vpc["VPCId"],
             "VPCRegion": vpc["VPCRegion"],
         }
-        for vpc in vpcs or []
+        for vpc in vpcs
     ]
     return sorted(normalized, key=lambda vpc: (vpc["VPCId"], vpc["VPCRegion"]))
 

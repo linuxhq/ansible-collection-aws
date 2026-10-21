@@ -1,0 +1,18 @@
+---
+trivial:
+  - glue_connection_info - derive the required SDK parameters from the request instead of a parallel condition chain.
+  - iam_oidc_provider and iam_oidc_provider_info - share the provider lookup by URL in the ``iam_oidc`` module
+    utilities, and drop a redundant change flag after client ID updates.
+  - notifications_contacts - compare only the contact name, since contacts are matched by address.
+  - notifications_contacts_info - validate listed contacts only on the listing path.
+  - notifications_hub - build the check mode hub with the AWS key name.
+  - pinpoint_sms_voice_phone_number and pinpoint_sms_voice_phone_pool - validate ``tags`` inside the ``present``
+    argument checks.
+  - pinpoint_sms_voice_phone_pool - compute settings and tag changes with one helper, and report the unchanged
+    result directly when the pool disappears before deletion protection is disabled.
+  - pinpoint_sms_voice_phone_pool_associate - match origination identities with the shared helper.
+  - rds_subnet_group_info - convert each subnet group directly and capitalize AWS RDS in the short description.
+  - route53_delegation_set - drop an unreachable missing delegation set fallback.
+  - route53_zone_associate - wait for changes with the shared waiter helper and drop an unreachable empty VPC list
+    fallback.
+...

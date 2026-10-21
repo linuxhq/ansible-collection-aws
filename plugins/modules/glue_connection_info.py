@@ -262,29 +262,6 @@ def main():
     filters = module.params["filters"]
     name = module.params["name"]
 
-    required_parameters = []
-    if name and apply_override is not None:
-        required_parameters.append("ApplyOverrideForComputeEnvironment")
-
-    if catalog_id:
-        required_parameters.append("CatalogId")
-
-    if not name and filters:
-        required_parameters.append("Filter")
-
-    required_parameters.append("HidePassword")
-    if name:
-        required_parameters.append("Name")
-    else:
-        required_parameters.extend(("MaxResults", "NextToken"))
-
-    require_client_methods(
-        module,
-        client,
-        "AWS Glue",
-        {"get_connection" if name else "get_connections": tuple(required_parameters)},
-    )
-
     request = {"HidePassword": module.params["hide_password"]}
     if catalog_id:
         request["CatalogId"] = catalog_id
@@ -294,6 +271,20 @@ def main():
         if apply_override is not None:
             request["ApplyOverrideForComputeEnvironment"] = apply_override
 
+    elif filters:
+        request["Filter"] = filters
+
+    require_client_methods(
+        module,
+        client,
+        "AWS Glue",
+        {
+            "get_connection" if name else "get_connections": tuple(sorted(request))
+            + (() if name else ("MaxResults", "NextToken"))
+        },
+    )
+
+    if name:
         try:
             response = client.get_connection(**request, aws_retry=True)
         except is_boto3_error_code("EntityNotFoundException"):
@@ -308,9 +299,6 @@ def main():
 
         connections = [connection] if connection else []
     else:
-        if filters:
-            request["Filter"] = filters
-
         connections = query_list(
             module,
             client,

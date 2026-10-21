@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 import pytest
 from botocore.exceptions import ClientError
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import iam_oidc
 from ansible_collections.linuxhq.aws.plugins.modules import iam_oidc_provider_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -66,15 +67,16 @@ def test_url_filter_normalizes_scheme_and_ignores_other_arns():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
+        patch.object(iam_oidc, "require_client_methods"),
         patch.object(
-            plugin,
-            "list_provider_arns",
+            iam_oidc,
+            "query_list",
             return_value=[
-                "arn:aws:iam::1:oidc-provider/other.example.com",
-                "arn:aws:iam::1:oidc-provider/EXAMPLE.com/id",
+                {"Arn": "arn:aws:iam::1:oidc-provider/other.example.com"},
+                {"Arn": "arn:aws:iam::1:oidc-provider/EXAMPLE.com/id"},
             ],
         ),
-        patch.object(plugin, "get_provider_by_arn", return_value=provider) as get,
+        patch.object(iam_oidc, "get_provider_by_arn", return_value=provider) as get,
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()

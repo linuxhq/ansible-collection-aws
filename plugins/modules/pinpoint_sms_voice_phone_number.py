@@ -1012,7 +1012,8 @@ def main():
         if module.params["number_type"] == "SIMULATOR" and module.params["message_type"] != "TRANSACTIONAL":
             module.fail_json(msg="message_type must be TRANSACTIONAL when number_type is SIMULATOR")
 
-    require_valid_tags(module, tags if state == "present" else None, 200)
+        require_valid_tags(module, tags, 200)
+
     require_positive_wait_bounds(module, always=True)
 
     client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())

@@ -10,6 +10,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
+    require_client_methods,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
 
 
@@ -69,3 +73,38 @@ def get_provider_by_arn(client, module, arn, changed=False):
     provider.pop("ResponseMetadata", None)
     provider["OpenIDConnectProviderArn"] = arn
     return provider
+
+
+def get_provider_by_url(client, module, url):
+    desired_url = normalize_provider_url(url)
+
+    providers = validate_provider_summaries(
+        module,
+        query_list(
+            module,
+            client,
+            "list_open_id_connect_providers",
+            "OpenIDConnectProviderList",
+            "Unable to list AWS IAM OIDC providers",
+        ),
+    )
+
+    for provider_summary in providers:
+        arn = provider_summary["Arn"]
+
+        arn_url = arn.partition(":oidc-provider/")[2]
+        if normalize_provider_url(arn_url) != desired_url:
+            continue
+
+        require_client_methods(
+            module,
+            client,
+            "IAM",
+            {"get_open_id_connect_provider": ("OpenIDConnectProviderArn",)},
+        )
+        provider = get_provider_by_arn(client, module, arn)
+
+        if provider and normalize_provider_url(provider.get("Url")) == desired_url:
+            return provider
+
+    return None
