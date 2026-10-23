@@ -658,8 +658,7 @@ def ensure_present(client, module):
         if purge_flow_log_ids:
             later_methods["delete_flow_logs"] = ("FlowLogIds",)
 
-        if later_methods:
-            require_client_methods(module, client, "EC2", later_methods)
+        require_client_methods(module, client, "EC2", later_methods)
 
     if missing_resource_ids:
         if not module.check_mode:

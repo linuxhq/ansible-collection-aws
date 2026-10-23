@@ -184,14 +184,12 @@ def normalize_offer_term(offer):
     if not isinstance(offer, dict):
         return offer
 
-    result = camel_dict_to_snake_dict({key: value for key, value in offer.items() if key != "priceDimensions"})
+    result = camel_dict_to_snake_dict(offer, ignore_list=["priceDimensions"])
     dimensions = offer.get("priceDimensions")
     if isinstance(dimensions, dict):
         result["price_dimensions"] = {
             rate_code: normalize_price_dimension(dimension) for rate_code, dimension in dimensions.items()
         }
-    elif "priceDimensions" in offer:
-        result["price_dimensions"] = dimensions
 
     return result
 
@@ -200,11 +198,7 @@ def normalize_price_dimension(dimension):
     if not isinstance(dimension, dict):
         return dimension
 
-    result = camel_dict_to_snake_dict({key: value for key, value in dimension.items() if key != "pricePerUnit"})
-    if "pricePerUnit" in dimension:
-        result["price_per_unit"] = dimension["pricePerUnit"]
-
-    return result
+    return camel_dict_to_snake_dict(dimension, ignore_list=["pricePerUnit"])
 
 
 def main():

@@ -1,0 +1,5 @@
+---
+trivial:
+  - ec2_flow_log, ec2_pricing_info, ec2_transit_gateway_route_table, ec2_vpc_prefix_list, and ec2_vpc_vpn - simplify
+    internal code without changing behavior.
+...
