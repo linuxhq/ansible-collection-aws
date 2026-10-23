@@ -129,6 +129,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_resulting_tag_limit,
     require_valid_tags,
+    updated_tags,
 )
 
 # Of the calls this module makes, only DeleteEmailContact models a transient ConflictException;
@@ -137,15 +138,7 @@ DELETE_RETRY = AWSRetry.jittered_backoff(catch_extra_error_codes=["ConflictExcep
 
 
 def apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset):
-    updated = dict(contact)
-    updated_tags = dict(updated.get("tags", {}))
-
-    for tag_key in tag_keys_to_unset:
-        updated_tags.pop(tag_key, None)
-
-    updated_tags.update(tags_to_set)
-    updated["tags"] = updated_tags
-    return updated
+    return dict(contact, tags=updated_tags(contact.get("tags", {}), tags_to_set, tag_keys_to_unset))
 
 
 def validate_contact(module, contact, operation, changed=False):

@@ -23,10 +23,10 @@ def test_provider_listing_rejects_missing_arns():
     module = FakeModule({})
     providers = [{}, {"Arn": "arn:aws:iam::1:oidc-provider/example.com"}]
     with (
-        patch.object(plugin, "query_list", return_value=providers) as query_list,
+        patch.object(iam_oidc, "query_list", return_value=providers) as query_list,
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.list_provider_arns(client, module)
+        iam_oidc.list_provider_summaries(client, module)
 
     assert raised.value.values["msg"] == "Unable to list AWS IAM OIDC providers: AWS returned an invalid response"
     query_list.assert_called_once_with(
@@ -44,7 +44,7 @@ def test_empty_listing_does_not_require_provider_get():
     require_client_methods = Mock()
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "list_provider_arns", return_value=[]),
+        patch.object(plugin, "list_provider_summaries", return_value=[]),
         patch.object(plugin, "require_client_methods", require_client_methods),
         pytest.raises(ModuleExit),
     ):
@@ -94,6 +94,7 @@ def test_missing_provider_arn_returns_an_empty_list():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
+        patch.object(iam_oidc, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()

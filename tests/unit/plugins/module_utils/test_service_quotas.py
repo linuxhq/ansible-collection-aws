@@ -8,6 +8,7 @@ from botocore.exceptions import ClientError
 from ansible_collections.linuxhq.aws.plugins.module_utils.service_quotas import (
     get_quota,
     quota_from_response,
+    quota_methods,
     quota_to_ansible_dict,
 )
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule, ModuleFail
@@ -183,4 +184,18 @@ def test_quota_to_ansible_dict_preserves_metric_dimensions():
     assert quota_to_ansible_dict(quota) == {
         "quota_code": "L-1",
         "usage_metric": {"metric_name": "ResourceCount", "metric_dimensions": dimensions},
+    }
+
+
+@pytest.mark.parametrize(
+    ("context_id", "get_parameters"),
+    [
+        (None, ("QuotaCode", "ServiceCode")),
+        ("arn:resource", ("QuotaCode", "ServiceCode", "ContextId")),
+    ],
+)
+def test_quota_methods_match_get_quota_calls(context_id, get_parameters):
+    assert quota_methods(context_id) == {
+        "get_aws_default_service_quota": ("QuotaCode", "ServiceCode"),
+        "get_service_quota": get_parameters,
     }

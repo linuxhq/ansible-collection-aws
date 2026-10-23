@@ -214,6 +214,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleA
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
+    scrub_none_parameters,
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
@@ -299,20 +300,15 @@ def main():
     if name is not None:
         identity_names = [name]
     else:
-        request = {}
-        if identity_type is not None:
-            request["IdentityType"] = identity_type
-
         identity_names = query_list(
             module,
             ses_client,
             "list_identities",
             "Identities",
             "Unable to list AWS SES identities",
-            **request,
+            **scrub_none_parameters({"IdentityType": identity_type}),
         )
-
-    validate_identity_names(module, identity_names)
+        validate_identity_names(module, identity_names)
 
     for identity_name in identity_names:
         try:
@@ -329,7 +325,6 @@ def main():
             )
 
         validate_identity_details(module, details, identity_name)
-        details = details.copy()
         details.pop("ResponseMetadata", None)
         identity = boto3_resource_to_ansible_dict(
             details,

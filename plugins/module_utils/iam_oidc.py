@@ -45,6 +45,19 @@ def validate_provider_summaries(module, providers):
     return providers
 
 
+def list_provider_summaries(client, module):
+    return validate_provider_summaries(
+        module,
+        query_list(
+            module,
+            client,
+            "list_open_id_connect_providers",
+            "OpenIDConnectProviderList",
+            "Unable to list AWS IAM OIDC providers",
+        ),
+    )
+
+
 def get_provider_by_arn(client, module, arn, changed=False):
     """Describe a provider; changed reports whether it was already modified, for failure results."""
     try:
@@ -75,34 +88,27 @@ def get_provider_by_arn(client, module, arn, changed=False):
     return provider
 
 
+def get_provider(client, module, arn):
+    require_client_methods(
+        module,
+        client,
+        "IAM",
+        {"get_open_id_connect_provider": ("OpenIDConnectProviderArn",)},
+    )
+    return get_provider_by_arn(client, module, arn)
+
+
 def get_provider_by_url(client, module, url):
     desired_url = normalize_provider_url(url)
 
-    providers = validate_provider_summaries(
-        module,
-        query_list(
-            module,
-            client,
-            "list_open_id_connect_providers",
-            "OpenIDConnectProviderList",
-            "Unable to list AWS IAM OIDC providers",
-        ),
-    )
-
-    for provider_summary in providers:
+    for provider_summary in list_provider_summaries(client, module):
         arn = provider_summary["Arn"]
 
         arn_url = arn.partition(":oidc-provider/")[2]
         if normalize_provider_url(arn_url) != desired_url:
             continue
 
-        require_client_methods(
-            module,
-            client,
-            "IAM",
-            {"get_open_id_connect_provider": ("OpenIDConnectProviderArn",)},
-        )
-        provider = get_provider_by_arn(client, module, arn)
+        provider = get_provider(client, module, arn)
 
         if provider and normalize_provider_url(provider.get("Url")) == desired_url:
             return provider

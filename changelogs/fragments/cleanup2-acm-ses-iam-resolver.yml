@@ -1,0 +1,10 @@
+---
+trivial:
+  - acm_certificate_request, glue_connection_info, iam_oidc_provider, iam_oidc_provider_info, notifications_contacts,
+    route53_resolver, route53_resolver_rule, service_quota, service_quota_info, ses_identity_info, and
+    wafv2_web_acl_logging - simplify internal code without changing behavior, and share the IAM OIDC provider listing
+    and lookup and the Service Quotas method checks in ``module_utils``.
+  - route53_delegation_set, route53_delegation_set_info, route53_resolver, route53_resolver_info,
+    route53_resolver_rule, route53_resolver_rule_associate, and route53_resolver_rule_info - capitalize AWS in the
+    short descriptions, and document the route53_resolver_rule name, length, and server name indication limits.
+...

@@ -38,6 +38,18 @@ def quota_from_response(module, response, description, service_code, quota_code,
     return quota
 
 
+def quota_methods(context_id=None):
+    """Return the Service Quotas methods and parameters that get_quota calls."""
+    methods = {
+        "get_aws_default_service_quota": ("QuotaCode", "ServiceCode"),
+        "get_service_quota": ("QuotaCode", "ServiceCode"),
+    }
+    if context_id:
+        methods["get_service_quota"] += ("ContextId",)
+
+    return methods
+
+
 def get_quota(client, module, service_code, quota_code, context_id=None):
     """Return the applied quota, falling back to the resource-scope and default quotas; return None when missing.
 

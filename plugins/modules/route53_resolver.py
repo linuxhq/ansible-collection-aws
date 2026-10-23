@@ -6,7 +6,7 @@ DOCUMENTATION = r"""
 ---
 module: route53_resolver
 version_added: '1.9.0'
-short_description: Manage aws route53 resolver endpoints
+short_description: Manage AWS Route53 resolver endpoints
 description:
   - Manages AWS Route53 Resolver endpoints.
   - Compares the desired endpoint settings against the current endpoint fetched by name.
@@ -577,9 +577,9 @@ def ensure_present(client, module, deadline=None):
         "direction": module.params["direction"],
         "ip_addresses": module.params["ip_addresses"],
         "name": module.params["name"],
-        "protocols": (sorted(set(module.params["protocols"])) if module.params["protocols"] is not None else None),
+        "protocols": module.params["protocols"],
         "resolver_endpoint_type": module.params["resolver_endpoint_type"],
-        "security_group_ids": sorted(set(module.params["security_group_ids"])),
+        "security_group_ids": module.params["security_group_ids"],
     }
     endpoint = get_resolver_endpoint_by_name(client, module)
 

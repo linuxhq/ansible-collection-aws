@@ -6,7 +6,7 @@ DOCUMENTATION = r"""
 ---
 module: route53_resolver_rule
 version_added: '1.9.0'
-short_description: Manage aws route53 resolver rules
+short_description: Manage AWS Route53 resolver rules
 description:
   - Manages AWS Route53 Resolver rules.
   - Updates resolver endpoint and target IP settings for existing rules.
@@ -19,16 +19,20 @@ options:
     description:
       - The domain name for the resolver rule.
       - This is required when O(state=present).
+      - This must contain 1 to 256 characters.
     type: str
   name:
     description:
       - The resolver rule name.
+      - This must be a nonnumeric name of at most 64 letters, numbers, spaces,
+        apostrophes, hyphens, or underscores.
     required: true
     type: str
   resolver_endpoint_id:
     description:
       - The resolver endpoint ID for the rule.
       - This is required when O(state=present).
+      - This must contain 1 to 64 characters.
     type: str
   rule_type:
     description:
@@ -80,6 +84,7 @@ options:
       server_name_indication:
         description:
           - The server name indication for the target.
+          - This must contain at most 255 characters.
           - This requires botocore C(1.35.38) or later.
         type: str
     type: list
@@ -834,11 +839,7 @@ def main():
             module.fail_json(msg="target_ips must contain at least one entry")
 
         normalized_targets = [
-            json.dumps(
-                comparable_target_ip(snake_dict_to_camel_dict(scrub_none_parameters(target_ip), capitalize_first=True)),
-                sort_keys=True,
-            )
-            for target_ip in module.params["target_ips"]
+            json.dumps(comparable_target_ip(target_ip), sort_keys=True) for target_ip in module.params["target_ips"]
         ]
         if len(set(normalized_targets)) != len(normalized_targets):
             module.fail_json(msg="target_ips entries must be unique")

@@ -210,6 +210,12 @@ def ensure_absent(client, module):
     module.exit_json(**result)
 
 
+def provider_lists(desired):
+    """Return the desired client ID and thumbprint lists keyed by their IAM field names."""
+    fields = {"client_id_list": "ClientIDList", "thumbprint_list": "ThumbprintList"}
+    return {field: desired[key] for key, field in fields.items() if key in desired}
+
+
 def ensure_present(client, module):
     tags = module.params["tags"]
     url = module.params["url"]
@@ -245,13 +251,7 @@ def ensure_present(client, module):
 
     if changed and not module.check_mode:
         if current is None:
-            request = {"Url": f"https://{desired['url']}"}
-            if "client_id_list" in desired:
-                request["ClientIDList"] = desired["client_id_list"]
-
-            if "thumbprint_list" in desired:
-                request["ThumbprintList"] = desired["thumbprint_list"]
-
+            request = {"Url": f"https://{desired['url']}", **provider_lists(desired)}
             if tags:
                 request["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
@@ -415,22 +415,11 @@ def ensure_present(client, module):
                     )
 
             if provider_changed:
-                current = dict(current)
-                if "client_id_list" in desired:
-                    current["ClientIDList"] = desired["client_id_list"]
-
-                if "thumbprint_list" in desired:
-                    current["ThumbprintList"] = desired["thumbprint_list"]
+                current = dict(current, **provider_lists(desired))
 
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
-        current = dict(current or {})
-        current["Url"] = desired["url"]
-        if "client_id_list" in desired:
-            current["ClientIDList"] = desired["client_id_list"]
-
-        if "thumbprint_list" in desired:
-            current["ThumbprintList"] = desired["thumbprint_list"]
+        current = dict(current or {}, Url=desired["url"], **provider_lists(desired))
 
         if tags is not None:
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
