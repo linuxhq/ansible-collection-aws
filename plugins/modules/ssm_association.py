@@ -383,16 +383,6 @@ def ensure_present(client, module, current):
     if tags is not None:
         current = association_with_tags(client, module, current)
 
-    normalized_current = (
-        boto3_resource_to_ansible_dict(
-            current,
-            ignore_list=["TargetMaps"],
-            transform_tags=False,
-            force_tags=False,
-        )
-        if current
-        else None
-    )
     # Omitted options keep the association's current values, so only supplied options are compared and sent.
     desired_comparable = {}
     if schedule_expression is not None:
@@ -402,7 +392,13 @@ def ensure_present(client, module, current):
         desired_comparable["targets"] = comparable_targets(module.params["targets"])
 
     current_comparable = None
-    if normalized_current:
+    if current:
+        normalized_current = boto3_resource_to_ansible_dict(
+            current,
+            ignore_list=["TargetMaps"],
+            transform_tags=False,
+            force_tags=False,
+        )
         current_comparable = {
             "schedule_expression": normalized_current.get("schedule_expression"),
             "targets": comparable_targets(normalized_current.get("targets")),
@@ -438,8 +434,6 @@ def ensure_present(client, module, current):
         resource_changed = True
         if module.check_mode:
             association = desired
-            if tags is not None:
-                association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
         else:
             create_request = dict(desired)
             if tags:
@@ -465,8 +459,8 @@ def ensure_present(client, module, current):
                     msg=f"AWS Systems Manager did not return the created association {name}",
                 )
 
-            if tags is not None:
-                association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+        if tags is not None:
+            association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
     else:
         changed = (current_comparable or {}) != desired_comparable

@@ -261,7 +261,7 @@ def test_absent_waits_for_deleting_endpoint_without_deleting_again():
 
     assert not raised.value.values["changed"]
     delete.assert_not_called()
-    wait.assert_called_once_with(client, module, "rslvr-endpt-1", {"deleted"}, deadline=ANY)
+    wait.assert_called_once_with(client, module, "rslvr-endpt-1", "deleted", deadline=ANY)
 
 
 def test_delete_waits_when_requested():
@@ -270,7 +270,7 @@ def test_delete_waits_when_requested():
     with patch.object(plugin, "wait_for_resolver_endpoint_status") as wait:
         plugin.delete_resolver_endpoint(client, module, {"Id": "rslvr-endpt-1"})
 
-    wait.assert_called_once_with(client, module, "rslvr-endpt-1", {"deleted"}, changed=True, deadline=ANY)
+    wait.assert_called_once_with(client, module, "rslvr-endpt-1", "deleted", changed=True, deadline=ANY)
 
 
 def test_delete_tolerates_endpoint_disappearing():
@@ -731,7 +731,7 @@ def test_ip_reconciliation_adds_and_removes_only_differences():
         aws_retry=True,
     )
     wait_for_resolver_endpoint_status.assert_called_once_with(
-        client, module, "rslvr-1", {"settled"}, changed=True, deadline=ANY
+        client, module, "rslvr-1", "settled", changed=True, deadline=ANY
     )
     assert result["Id"] == "rslvr-1"
     assert result["IpAddresses"] == [{"SubnetId": "subnet-new"}]
@@ -861,7 +861,7 @@ def test_no_wait_change_waits_for_operational_endpoint_and_rechecks():
     ):
         plugin.ensure_present(client, module)
 
-    wait_for_status.assert_called_once_with(client, module, "rslvr-1", {"settled"}, deadline=ANY)
+    wait_for_status.assert_called_once_with(client, module, "rslvr-1", "settled", deadline=ANY)
     client.update_resolver_endpoint.assert_not_called()
     assert not raised.value.values["changed"]
 
@@ -1232,7 +1232,7 @@ def test_wait_failure_message_does_not_claim_a_timeout():
         patch.object(plugin, "run_waiter") as run_waiter,
         patch.object(plugin, "get_resolver_endpoint"),
     ):
-        plugin.wait_for_resolver_endpoint_status(Mock(), module, "rslvr-1", {"operational"})
+        plugin.wait_for_resolver_endpoint_status(Mock(), module, "rslvr-1", "operational")
 
     assert custom_waiter.call_args.args[2] == "resolver_endpoint_operational"
     assert run_waiter.call_args.args[2] == "Unable to wait for AWS Route53 Resolver endpoint main to become operational"
@@ -1260,7 +1260,7 @@ def test_failed_addresses_are_replaced_and_departing_addresses_are_ignored():
         ResolverEndpointId="rslvr-1",
         aws_retry=True,
     )
-    wait.assert_called_once_with(client, module, "rslvr-1", {"settled"}, changed=True, deadline=ANY)
+    wait.assert_called_once_with(client, module, "rslvr-1", "settled", changed=True, deadline=ANY)
 
 
 def test_failed_address_makes_an_existing_endpoint_differ():

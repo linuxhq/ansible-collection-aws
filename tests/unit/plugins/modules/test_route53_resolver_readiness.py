@@ -103,7 +103,7 @@ def test_matching_in_progress_resource_readiness(kind, wait_enabled, check_mode)
         # Endpoints settle first so an endpoint that needs action can be repaired,
         # and rules and associations accept FAILED here so they can be repaired.
         if kind == "endpoint":
-            wait.assert_called_once_with(client, module, current["Id"], {"settled"}, deadline=ANY)
+            wait.assert_called_once_with(client, module, current["Id"], "settled", deadline=ANY)
         else:
             wait.assert_called_once_with(client, module, current["Id"], "complete", allow_failed=True, deadline=ANY)
 

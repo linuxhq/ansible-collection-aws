@@ -1,0 +1,4 @@
+---
+trivial:
+  - route53_resolver and ssm_association - simplify internal code without changing behavior.
+...
