@@ -34,7 +34,7 @@ attributes:
     description: This module does not modify state.
     support: full
   diff_mode:
-    description: This module does not modify state.
+    description: Diff mode is not supported.
     support: none
 """
 

@@ -319,8 +319,6 @@ try:
 except ImportError:
     pass
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
-
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     paginated_query_with_retries,
 )
@@ -448,28 +446,27 @@ def main():
 
     pending_requests = []
 
-    try:
-        for status in ("CASE_OPENED", "PENDING"):
+    for status in ("CASE_OPENED", "PENDING"):
+        try:
             response = paginated_query_with_retries(
                 client,
                 "list_requested_service_quota_change_history_by_quota",
                 **dict(history_request, Status=status),
             )
-            requests = response_resources(module, response, "RequestedQuotas", "quota change history")
-            for request in requests:
-                validate_quota_request(module, request, service_code, quota_code, status=status)
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, msg=f"Unable to list AWS service quota change history for {identifier}")
 
-            if context_id:
-                # Resource-level history covers every resource, so keep only this context.
-                requests = [
-                    request
-                    for request in requests
-                    if (request.get("QuotaContext") or {}).get("ContextId") == context_id
-                ]
+        requests = response_resources(module, response, "RequestedQuotas", "quota change history")
+        for request in requests:
+            validate_quota_request(module, request, service_code, quota_code, status=status)
 
-            pending_requests.extend(requests)
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to list AWS service quota change history for {identifier}")
+        if context_id:
+            # Resource-level history covers every resource, so keep only this context.
+            requests = [
+                request for request in requests if (request.get("QuotaContext") or {}).get("ContextId") == context_id
+            ]
+
+        pending_requests.extend(requests)
 
     current_quota_details = quota_to_ansible_dict(current_quota)
     current_value = current_quota_details["value"]
@@ -497,22 +494,19 @@ def main():
     if changed:
         if module.check_mode:
             requested_quota = scrub_none_parameters(
-                snake_dict_to_camel_dict(
-                    {
-                        "desired_value": desired_value,
-                        "global_quota": current_quota_details.get("global_quota"),
-                        "quota_arn": current_quota_details.get("quota_arn"),
-                        "quota_code": quota_code,
-                        "quota_context": {"context_id": context_id} if context_id else None,
-                        "quota_name": current_quota_details.get("quota_name"),
-                        "quota_requested_at_level": "RESOURCE" if context_id else "ACCOUNT",
-                        "service_code": service_code,
-                        "service_name": current_quota_details.get("service_name"),
-                        "status": "PENDING",
-                        "unit": current_quota_details.get("unit"),
-                    },
-                    capitalize_first=True,
-                )
+                {
+                    "DesiredValue": desired_value,
+                    "GlobalQuota": current_quota.get("GlobalQuota"),
+                    "QuotaArn": current_quota.get("QuotaArn"),
+                    "QuotaCode": quota_code,
+                    "QuotaContext": {"ContextId": context_id} if context_id else None,
+                    "QuotaName": current_quota.get("QuotaName"),
+                    "QuotaRequestedAtLevel": "RESOURCE" if context_id else "ACCOUNT",
+                    "ServiceCode": service_code,
+                    "ServiceName": current_quota.get("ServiceName"),
+                    "Status": "PENDING",
+                    "Unit": current_quota.get("Unit"),
+                }
             )
         else:
             try:

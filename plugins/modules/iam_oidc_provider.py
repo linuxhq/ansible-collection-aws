@@ -426,13 +426,11 @@ def ensure_present(client, module):
 
     result = {
         "changed": changed,
-        "open_id_connect_provider": boto3_resource_to_ansible_dict(
-            current or {}, transform_tags=True, force_tags=False
-        ),
+        "open_id_connect_provider": boto3_resource_to_ansible_dict(current, transform_tags=True, force_tags=False),
         "state": "present",
         "url": url,
     }
-    arn = (current or {}).get("OpenIDConnectProviderArn")
+    arn = current.get("OpenIDConnectProviderArn")
 
     if arn:
         result["open_id_connect_provider_arn"] = arn

@@ -313,12 +313,8 @@ def main():
     methods = {"get_account": ()}
     if ready:
         methods["put_account_details"] = (
-            "AdditionalContactEmailAddresses",
-            "ContactLanguage",
-            "MailType",
             "ProductionAccessEnabled",
-            "UseCaseDescription",
-            "WebsiteURL",
+            *(request_field for request_field, _details_field in ACCOUNT_DETAILS_REQUEST_FIELDS),
         )
 
     require_client_methods(

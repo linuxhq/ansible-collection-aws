@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - glue_connection_info, iam_account_alias_info, iam_oidc_provider_info, iam_policy_info - describe the ``diff_mode``
+    attribute as unsupported instead of repeating the check mode description.
+trivial:
+  - iam_oidc_provider, service_quota, ses_sandbox, and wafv2_web_acl_logging - simplify internal code without changing
+    behavior.
+  - pinpoint_sms_voice_phone_number_info - document the phone number ``tags`` return as always returned.
