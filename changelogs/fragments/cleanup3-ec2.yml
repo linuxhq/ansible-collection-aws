@@ -1,0 +1,5 @@
+---
+trivial:
+  - ec2_flow_log, ec2_transit_gateway_route_table, and ec2_vpc_prefix_list - simplify internal code without changing
+    behavior, and list regional NAT gateway resources in the ec2_flow_log description.
+...

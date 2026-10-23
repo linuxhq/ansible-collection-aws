@@ -9,7 +9,7 @@ version_added: "1.9.0"
 short_description: Manage AWS EC2 flow logs
 description:
   - Creates and deletes EC2 flow logs for VPC, subnet, network interface,
-    and transit gateway resources.
+    regional NAT gateway, and transit gateway resources.
   - Manages tags on existing matching flow logs.
   - EC2 permits at most 50 tags on a flow log; tag keys may contain at most
     127 characters and tag values at most 256 characters.
@@ -399,6 +399,15 @@ def comparable_destination_options(module):
     return {key: value for key, value in (module.params["destination_options"] or {}).items() if value is not None}
 
 
+def desired_match_fields(module, fields):
+    desired = {field: module.params[field] for field in fields if module.params[field] is not None}
+    destination_options = comparable_destination_options(module)
+    if destination_options:
+        desired["destination_options"] = destination_options
+
+    return desired
+
+
 def matching_flow_logs(module, flow_logs, desired):
     resource_ids = set(normalized_resource_ids(module))
     matching = []
@@ -410,17 +419,12 @@ def matching_flow_logs(module, flow_logs, desired):
             continue
 
         normalized = boto3_resource_to_ansible_dict(flow_log, transform_tags=False, force_tags=False)
-        comparable = {}
-        for key in desired:
-            if key == "destination_options":
-                current_destination_options = normalized.get("destination_options") or {}
-                destination_options = {}
-                for option_key in desired["destination_options"]:
-                    destination_options[option_key] = current_destination_options.get(option_key)
-
-                comparable[key] = destination_options
-            else:
-                comparable[key] = normalized.get(key)
+        comparable = {key: normalized.get(key) for key in desired}
+        if "destination_options" in desired:
+            current_destination_options = normalized.get("destination_options") or {}
+            comparable["destination_options"] = {
+                option_key: current_destination_options.get(option_key) for option_key in desired["destination_options"]
+            }
 
         if comparable != desired:
             continue
@@ -566,16 +570,7 @@ def verified_purge(module, flow_logs, current, purge_flow_log_ids, changed=False
 
 def ensure_absent(client, module):
     resource_ids = normalized_resource_ids(module)
-    desired = {}
-    for field in ABSENT_MATCH_FIELDS:
-        if module.params[field] is not None:
-            desired[field] = module.params[field]
-
-    destination_options = comparable_destination_options(module)
-
-    if destination_options:
-        desired["destination_options"] = destination_options
-
+    desired = desired_match_fields(module, ABSENT_MATCH_FIELDS)
     current = matching_flow_logs(module, get_flow_logs(client, module), desired)
 
     flow_log_ids = [flow_log["FlowLogId"] for flow_log in current]
@@ -603,15 +598,8 @@ def ensure_present(client, module):
     if resource_type in TRAFFIC_TYPE_RESOURCE_TYPES:
         desired["traffic_type"] = module.params["traffic_type"] or "ALL"
 
-    for field in PRESENT_MATCH_FIELDS:
-        if module.params[field] is not None:
-            desired[field] = module.params[field]
-
+    desired.update(desired_match_fields(module, PRESENT_MATCH_FIELDS))
     destination_options = comparable_destination_options(module)
-
-    if destination_options:
-        desired["destination_options"] = destination_options
-
     flow_logs = get_flow_logs(client, module)
     current = matching_flow_logs(module, flow_logs, desired)
 
@@ -914,26 +902,19 @@ def main():
     if not resource_ids:
         module.fail_json(msg="resource_ids must contain at least one item")
 
-    if (
-        state == "present"
-        and module.params["traffic_type"] is not None
-        and resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES
-    ):
-        module.fail_json(
-            msg="traffic_type is not supported when resource_type is TransitGateway or TransitGatewayAttachment"
-        )
+    if state == "present":
+        if module.params["traffic_type"] is not None and resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
+            module.fail_json(
+                msg="traffic_type is not supported when resource_type is TransitGateway or TransitGatewayAttachment"
+            )
 
-    if (
-        state == "present"
-        and module.params["max_aggregation_interval"] == 600
-        and resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES
-    ):
-        module.fail_json(
-            msg="max_aggregation_interval must be 60 when resource_type is TransitGateway or TransitGatewayAttachment"
-        )
+        if module.params["max_aggregation_interval"] == 600 and resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
+            module.fail_json(
+                msg="max_aggregation_interval must be 60 when resource_type is TransitGateway or TransitGatewayAttachment"
+            )
 
-    if state == "present" and destination_options and module.params["log_destination_type"] != "s3":
-        module.fail_json(msg="destination_options requires log_destination_type to be s3 when state is present")
+        if destination_options and module.params["log_destination_type"] != "s3":
+            module.fail_json(msg="destination_options requires log_destination_type to be s3 when state is present")
 
     require_valid_tags(module, module.params["tags"] if state == "present" else None, 50, key_max=127)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
