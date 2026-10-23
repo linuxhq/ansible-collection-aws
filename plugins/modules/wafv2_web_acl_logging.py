@@ -216,14 +216,12 @@ def ensure_present(client, module, web_acl):
     elif changed and module.check_mode:
         current = desired
 
-    result = {
-        "changed": changed,
-        "resource_arn": resource_arn,
-        "state": "present",
-        "logging_configuration": boto3_resource_to_ansible_dict(current, transform_tags=False, force_tags=False),
-    }
-
-    module.exit_json(**result)
+    module.exit_json(
+        changed=changed,
+        resource_arn=resource_arn,
+        state="present",
+        logging_configuration=boto3_resource_to_ansible_dict(current, transform_tags=False, force_tags=False),
+    )
 
 
 def require_web_acl(client, module, web_acl):

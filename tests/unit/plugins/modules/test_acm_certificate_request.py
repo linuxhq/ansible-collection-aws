@@ -63,9 +63,9 @@ def test_sdk_validation_matches_used_parameters():
         "request_certificate": (
             "DomainName",
             "IdempotencyToken",
-            "ValidationMethod",
             "SubjectAlternativeNames",
             "Tags",
+            "ValidationMethod",
         ),
     }
 

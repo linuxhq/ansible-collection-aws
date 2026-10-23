@@ -7,8 +7,10 @@ import pytest
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import iam_oidc
 from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
+    get_provider,
     get_provider_by_arn,
     get_provider_by_url,
+    list_provider_summaries,
     normalize_provider_url,
 )
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule, ModuleFail
@@ -125,3 +127,40 @@ def test_provider_lookup_rejects_invalid_summaries():
         get_provider_by_url(Mock(), module, "https://example.com/id")
 
     assert raised.value.values["msg"] == "Unable to list AWS IAM OIDC providers: AWS returned an invalid response"
+
+
+def test_list_provider_summaries_returns_validated_summaries():
+    client = Mock()
+    module = FakeModule({})
+    providers = [{"Arn": "arn:aws:iam::1:oidc-provider/example.com"}]
+    with patch.object(iam_oidc, "query_list", return_value=providers) as query_list:
+        assert list_provider_summaries(client, module) == providers
+
+    query_list.assert_called_once_with(
+        module,
+        client,
+        "list_open_id_connect_providers",
+        "OpenIDConnectProviderList",
+        "Unable to list AWS IAM OIDC providers",
+    )
+
+
+def test_get_provider_requires_get_method_before_describing():
+    client = Mock()
+    module = FakeModule({})
+    calls = Mock()
+    calls.get_provider_by_arn.return_value = {"Url": "example.com"}
+    with (
+        patch.object(iam_oidc, "require_client_methods", calls.require_client_methods),
+        patch.object(iam_oidc, "get_provider_by_arn", calls.get_provider_by_arn),
+    ):
+        assert get_provider(client, module, "arn:provider") == {"Url": "example.com"}
+
+    assert [call[0] for call in calls.mock_calls] == ["require_client_methods", "get_provider_by_arn"]
+    calls.require_client_methods.assert_called_once_with(
+        module,
+        client,
+        "IAM",
+        {"get_open_id_connect_provider": ("OpenIDConnectProviderArn",)},
+    )
+    calls.get_provider_by_arn.assert_called_once_with(client, module, "arn:provider")

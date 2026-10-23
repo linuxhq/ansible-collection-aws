@@ -235,20 +235,6 @@ def find_matching_certificate(module, client, normalized_domain_name, desired_na
 
 def request_certificate(module, client, domain_name, idempotency_token, subject_alternative_names, tags):
     """Request a DNS-validated certificate and return its ARN."""
-    request_parameters = ["DomainName", "IdempotencyToken", "ValidationMethod"]
-    if subject_alternative_names:
-        request_parameters.append("SubjectAlternativeNames")
-
-    if tags:
-        request_parameters.append("Tags")
-
-    require_client_methods(
-        module,
-        client,
-        "AWS Certificate Manager",
-        {"request_certificate": tuple(request_parameters)},
-    )
-
     if idempotency_token is None:
         idempotency_token = uuid.uuid4().hex
 
@@ -260,6 +246,12 @@ def request_certificate(module, client, domain_name, idempotency_token, subject_
             "Tags": ansible_dict_to_boto3_tag_list(tags) if tags else None,
             "ValidationMethod": "DNS",
         }
+    )
+    require_client_methods(
+        module,
+        client,
+        "AWS Certificate Manager",
+        {"request_certificate": tuple(request)},
     )
 
     try:
@@ -339,11 +331,14 @@ def ensure_certificate_tags(module, client, certificate_arn, tags, purge_tags):
     )
     require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "certificate")
 
+    if module.check_mode:
+        return bool(tags_to_set or tag_keys_to_unset)
+
     tag_methods = {}
-    if tag_keys_to_unset and not module.check_mode:
+    if tag_keys_to_unset:
         tag_methods["remove_tags_from_certificate"] = ("CertificateArn", "Tags")
 
-    if tags_to_set and not module.check_mode:
+    if tags_to_set:
         tag_methods["add_tags_to_certificate"] = ("CertificateArn", "Tags")
 
     if tag_methods:
@@ -354,7 +349,7 @@ def ensure_certificate_tags(module, client, certificate_arn, tags, purge_tags):
             tag_methods,
         )
 
-    if tag_keys_to_unset and not module.check_mode:
+    if tag_keys_to_unset:
         try:
             client.remove_tags_from_certificate(
                 CertificateArn=certificate_arn,
@@ -367,7 +362,7 @@ def ensure_certificate_tags(module, client, certificate_arn, tags, purge_tags):
                 msg=f"Unable to remove tags from AWS Certificate Manager certificate {certificate_arn}",
             )
 
-    if tags_to_set and not module.check_mode:
+    if tags_to_set:
         try:
             client.add_tags_to_certificate(
                 CertificateArn=certificate_arn,

@@ -307,8 +307,7 @@ def main():
             "Unable to list AWS Glue connections",
             **request,
         )
-
-    connections = validate_connections(module, connections)
+        connections = validate_connections(module, connections)
 
     results = boto3_resource_list_to_ansible_dict(
         connections,

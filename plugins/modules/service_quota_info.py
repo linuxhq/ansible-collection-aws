@@ -155,6 +155,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.service_quotas import (
     get_quota,
+    quota_methods,
     quota_to_ansible_dict,
 )
 
@@ -172,14 +173,7 @@ def main():
     quota_code = module.params["quota_code"]
     service_code = module.params["service_code"]
 
-    methods = {
-        "get_aws_default_service_quota": ("QuotaCode", "ServiceCode"),
-        "get_service_quota": ("QuotaCode", "ServiceCode"),
-    }
-    if context_id:
-        methods["get_service_quota"] += ("ContextId",)
-
-    require_client_methods(module, client, "Service Quotas", methods)
+    require_client_methods(module, client, "Service Quotas", quota_methods(context_id))
 
     quota = get_quota(client, module, service_code, quota_code, context_id) or {}
 

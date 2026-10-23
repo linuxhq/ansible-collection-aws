@@ -337,6 +337,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.service_quotas import (
     get_quota,
+    quota_methods,
     quota_to_ansible_dict,
 )
 
@@ -429,13 +430,10 @@ def main():
     if context_id:
         history_request["QuotaRequestedAtLevel"] = "RESOURCE"
 
-    methods = {
-        "get_aws_default_service_quota": ("QuotaCode", "ServiceCode"),
-        "get_service_quota": tuple(quota_request),
-        "list_requested_service_quota_change_history_by_quota": (
-            ("MaxResults", "NextToken", "Status") + tuple(history_request)
-        ),
-    }
+    methods = quota_methods(context_id)
+    methods["list_requested_service_quota_change_history_by_quota"] = ("MaxResults", "NextToken", "Status") + tuple(
+        history_request
+    )
 
     if not module.check_mode:
         methods["request_service_quota_increase"] = ("DesiredValue",) + tuple(quota_request)
@@ -522,17 +520,18 @@ def main():
                     **dict(quota_request, DesiredValue=desired_value),
                     aws_retry=True,
                 )
-                requested_quota = response_resource(module, response, "RequestedQuota", "quota increase", changed=True)
-                validate_quota_request(
-                    module,
-                    requested_quota,
-                    service_code,
-                    quota_code,
-                    desired_value=desired_value,
-                    changed=True,
-                )
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(e, msg=f"Unable to request AWS service quota increase for {identifier}")
+
+            requested_quota = response_resource(module, response, "RequestedQuota", "quota increase", changed=True)
+            validate_quota_request(
+                module,
+                requested_quota,
+                service_code,
+                quota_code,
+                desired_value=desired_value,
+                changed=True,
+            )
 
     result = {
         "changed": changed,

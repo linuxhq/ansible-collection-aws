@@ -6,7 +6,7 @@ DOCUMENTATION = r"""
 ---
 module: route53_resolver_info
 version_added: '1.9.0'
-short_description: Gather information about aws route53 resolver endpoints
+short_description: Gather information about AWS Route53 resolver endpoints
 description:
   - Gathers information about AWS Route53 Resolver endpoints.
 author:
