@@ -951,7 +951,12 @@ def test_listener_replacement_retries_after_freeing_quota():
         "port_ranges": [{"from_port": 443, "to_port": 443}],
         "protocol": "TCP",
     }
-    current = {"listener_arn": "arn:old"}
+    current = {
+        "client_affinity": "NONE",
+        "listener_arn": "arn:old",
+        "port_ranges": [{"from_port": 80, "to_port": 80}],
+        "protocol": "TCP",
+    }
     module = FakeModule({"purge_listeners": True})
     with (
         patch.object(

@@ -1,0 +1,6 @@
+---
+trivial:
+  - eks_cluster, global_accelerator, and global_accelerator_info - simplify internal code without changing behavior,
+    reuse ``dict_merge`` for the eks_cluster check mode prediction, and correct the ``returned`` conditions of
+    documented return values.
+...

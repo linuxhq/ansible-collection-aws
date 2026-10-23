@@ -202,7 +202,7 @@ accelerators:
                   type: int
             endpoint_group_arn:
               description: The endpoint group ARN.
-              returned: when the endpoint group exists
+              returned: always
               type: str
             endpoint_group_region:
               description: The endpoint group region.
@@ -248,7 +248,7 @@ accelerators:
               type: float
         listener_arn:
           description: The listener ARN.
-          returned: when the listener exists
+          returned: always
           type: str
         port_ranges:
           description: The listener port ranges.
@@ -334,17 +334,15 @@ def main():
     include_endpoint_groups = module.params["include_endpoint_groups"]
     include_listeners = module.params["include_listeners"] or include_endpoint_groups
 
-    methods = {}
-    if arn is None:
-        methods["list_accelerators"] = ("MaxResults", "NextToken")
-    else:
-        methods["describe_accelerator"] = ("AcceleratorArn",)
-
-    require_client_methods(module, client, "Global Accelerator", methods)
-
     accelerators = []
 
     if arn is None:
+        require_client_methods(
+            module,
+            client,
+            "Global Accelerator",
+            {"list_accelerators": ("MaxResults", "NextToken")},
+        )
         accelerators = query_list(
             module,
             client,
@@ -359,6 +357,12 @@ def main():
             "AcceleratorArn",
         )
     else:
+        require_client_methods(
+            module,
+            client,
+            "Global Accelerator",
+            {"describe_accelerator": ("AcceleratorArn",)},
+        )
         try:
             response = client.describe_accelerator(
                 AcceleratorArn=arn,
