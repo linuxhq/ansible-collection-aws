@@ -495,7 +495,7 @@ def create_resolver_endpoint(client, module, desired, deadline=None):
             client,
             module,
             resolver_endpoint_id,
-            {"operational"},
+            "operational",
             changed=True,
             deadline=deadline,
         )
@@ -540,7 +540,7 @@ def delete_resolver_endpoint(client, module, endpoint, deadline=None):
             client,
             module,
             resolver_endpoint_id,
-            {"deleted"},
+            "deleted",
             changed=True,
             deadline=deadline,
         )
@@ -555,7 +555,7 @@ def ensure_absent(client, module):
     changed = endpoint is not None and not deleting
 
     if deleting and module.params["wait"] and not module.check_mode:
-        wait_for_resolver_endpoint_status(client, module, endpoint.get("Id"), {"deleted"}, deadline=deadline)
+        wait_for_resolver_endpoint_status(client, module, endpoint.get("Id"), "deleted", deadline=deadline)
     elif changed and not module.check_mode:
         changed = delete_resolver_endpoint(client, module, endpoint, deadline=deadline)
 
@@ -588,7 +588,7 @@ def ensure_present(client, module, deadline=None):
             if module.check_mode:
                 endpoint = None
             else:
-                wait_for_resolver_endpoint_status(client, module, endpoint.get("Id"), {"deleted"}, deadline=deadline)
+                wait_for_resolver_endpoint_status(client, module, endpoint.get("Id"), "deleted", deadline=deadline)
                 return ensure_present(client, module, deadline=deadline)
         else:
             endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint)
@@ -637,7 +637,7 @@ def ensure_present(client, module, deadline=None):
         and endpoint.get("Status")
         and endpoint.get("Status") not in ("OPERATIONAL", "ACTION_NEEDED")
     ):
-        wait_for_resolver_endpoint_status(client, module, endpoint.get("Id"), {"settled"}, deadline=deadline)
+        wait_for_resolver_endpoint_status(client, module, endpoint.get("Id"), "settled", deadline=deadline)
         return ensure_present(client, module, deadline=deadline)
 
     if current is not None:
@@ -772,7 +772,7 @@ def ensure_present(client, module, deadline=None):
                         client,
                         module,
                         endpoint.get("Id"),
-                        {"settled"} if ip_addresses_changed else {"operational"},
+                        "settled" if ip_addresses_changed else "operational",
                         changed=True,
                         deadline=deadline,
                     )
@@ -815,11 +815,6 @@ def ensure_present(client, module, deadline=None):
             if "Tags" not in endpoint:
                 endpoint = dict(endpoint, Tags=current_tags)
 
-            tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                boto3_tag_list_to_ansible_dict(endpoint.get("Tags", [])),
-                tags,
-                purge_tags=purge_tags,
-            )
             reconcile_resolver_arn_tags(
                 module,
                 client,
@@ -943,11 +938,11 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
         if index < len(changes) - 1:
             # An endpoint that still has a failed address stays ACTION_NEEDED until it is removed.
             wait_for_resolver_endpoint_status(
-                client, module, resolver_endpoint_id, {"settled"}, changed=True, deadline=deadline
+                client, module, resolver_endpoint_id, "settled", changed=True, deadline=deadline
             )
         elif module.params["wait"]:
             wait_for_resolver_endpoint_status(
-                client, module, resolver_endpoint_id, {"operational"}, changed=True, deadline=deadline
+                client, module, resolver_endpoint_id, "operational", changed=True, deadline=deadline
             )
 
     if not module.params["wait"]:
@@ -965,13 +960,11 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
     )
 
 
-def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, statuses, changed=False, deadline=None):
+def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, state, changed=False, deadline=None):
     """Wait for an endpoint status; changed reports whether the endpoint was already modified.
 
     deadline limits the wait to what is left of the run's shared wait_timeout budget.
     """
-    deleted = "deleted" in statuses
-    state = "deleted" if deleted else "settled" if "settled" in statuses else "operational"
     # The waiter fails on terminal states as well as on timeouts, so the message names neither.
     error_msg = f"Unable to wait for AWS Route53 Resolver endpoint {module.params['name']} to become {state}"
 
@@ -984,7 +977,7 @@ def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, stat
         ResolverEndpointId=resolver_endpoint_id,
     )
 
-    if deleted:
+    if state == "deleted":
         return None
 
     return get_resolver_endpoint(client, module, resolver_endpoint_id, changed=changed)
