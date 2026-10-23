@@ -434,7 +434,7 @@ accelerator:
       sample: DEPLOYED
     tags:
       description: The accelerator tags with key case preserved.
-      returned: when tags are managed or gathered
+      returned: when O(tags) is provided
       type: dict
     listeners:
       description: The accelerator listeners.
@@ -829,7 +829,7 @@ def wait_for_accelerator(client, module, accelerator_arn, waiter_name, changed=F
 
 def normalized_port_ranges(port_ranges):
     return sorted(
-        ({"from_port": item.get("from_port"), "to_port": item.get("to_port")} for item in port_ranges or []),
+        ({"from_port": item["from_port"], "to_port": item["to_port"]} for item in port_ranges),
         key=lambda item: (item["from_port"], item["to_port"]),
     )
 
@@ -964,10 +964,8 @@ def port_ranges_overlap(left, right):
 
 
 def listeners_overlap(first, second):
-    return first.get("protocol") == second.get("protocol") and any(
-        port_ranges_overlap(left, right)
-        for left in first.get("port_ranges", [])
-        for right in second.get("port_ranges", [])
+    return first["protocol"] == second["protocol"] and any(
+        port_ranges_overlap(left, right) for left in first["port_ranges"] for right in second["port_ranges"]
     )
 
 
@@ -1898,7 +1896,7 @@ def ensure_present(client, module, deadline=None):
         listeners_changed, listeners = ensure_listeners(
             client,
             module,
-            (accelerator or {}).get("AcceleratorArn"),
+            accelerator.get("AcceleratorArn"),
             mutated=mutated,
             deadline=deadline,
         )
@@ -1906,22 +1904,20 @@ def ensure_present(client, module, deadline=None):
         mutated = mutated or (listeners_changed and not module.check_mode)
 
     if module.params["wait"] and not module.check_mode and mutated:
-        accelerator_arn = (accelerator or {}).get("AcceleratorArn")
+        accelerator_arn = accelerator["AcceleratorArn"]
+        wait_for_accelerator(
+            client,
+            module,
+            accelerator_arn,
+            "accelerator_deployed",
+            changed=True,
+            deadline=deadline,
+        )
+        accelerator = get_accelerator_by_arn(client, module, accelerator_arn, changed=True)
+        if accelerator is None:
+            module.fail_json(changed=True, msg=f"AWS Global Accelerator {accelerator_arn} disappeared after update")
 
-        if accelerator_arn:
-            wait_for_accelerator(
-                client,
-                module,
-                accelerator_arn,
-                "accelerator_deployed",
-                changed=True,
-                deadline=deadline,
-            )
-            accelerator = get_accelerator_by_arn(client, module, accelerator_arn, changed=True)
-            if accelerator is None:
-                module.fail_json(changed=True, msg=f"AWS Global Accelerator {accelerator_arn} disappeared after update")
-
-    if accelerator is not None and tags is not None:
+    if tags is not None:
         if not created and not module.check_mode:
             reconcile_arn_tags(
                 module,

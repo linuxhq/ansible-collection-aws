@@ -533,7 +533,7 @@ try:
 except ImportError:
     pass
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+from ansible.module_utils.common.dict_transformations import dict_merge, snake_dict_to_camel_dict
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
@@ -961,27 +961,15 @@ def desired_cluster(module):
     return desired
 
 
-def merge_cluster_configuration(current, desired):
-    result = dict(current or {})
-    for key, value in desired.items():
-        if isinstance(value, dict):
-            result[key] = merge_cluster_configuration(result.get(key), value)
-        else:
-            result[key] = value
-
-    return result
-
-
 def check_mode_cluster(module, current):
     tags = module.params.get("tags")
-    cluster = dict(current or {})
     desired = snake_dict_to_camel_dict(desired_cluster(module), capitalize_first=False)
     # EKS never returns bootstrapSelfManagedAddons.
     desired.pop("bootstrapSelfManagedAddons", None)
     if current is not None and "accessConfig" in desired:
         desired["accessConfig"].pop("bootstrapClusterCreatorAdminPermissions", None)
 
-    cluster = merge_cluster_configuration(cluster, desired)
+    cluster = dict_merge(current or {}, desired)
     desired_logging = (desired.get("logging") or {}).get("clusterLogging")
     if desired_logging is not None and current is not None:
         log_types = {
@@ -1100,10 +1088,7 @@ def ensure_present(client, module, deadline=None):
         if value is not None and value != current_network_config.get(camel_field):
             module.fail_json(msg=f"Cannot modify kubernetes_network_config.{field} for existing EKS cluster {name}")
 
-    config_request = {}
-    for field in UPDATE_CONFIG_FIELDS:
-        if desired.get(field) is not None:
-            config_request[field] = desired[field]
+    config_request = {field: desired[field] for field in UPDATE_CONFIG_FIELDS if field in desired}
 
     access_config = config_request.get("access_config")
 
@@ -1148,21 +1133,14 @@ def ensure_present(client, module, deadline=None):
 
         if field == "resourcesVpcConfig":
             resources_vpc_config = update_request.get("resourcesVpcConfig") or {}
-            endpoint_config = {}
-            for endpoint_field in RESOURCES_VPC_CONFIG_ENDPOINT_FIELDS:
-                if endpoint_field in resources_vpc_config:
-                    endpoint_config[endpoint_field] = resources_vpc_config[endpoint_field]
-
-            network_config = {}
-            for network_field in RESOURCES_VPC_CONFIG_NETWORK_FIELDS:
-                if network_field in resources_vpc_config:
-                    network_config[network_field] = resources_vpc_config[network_field]
-
-            if endpoint_config:
-                update_requests.append({"resourcesVpcConfig": endpoint_config})
-
-            if network_config:
-                update_requests.append({"resourcesVpcConfig": network_config})
+            for vpc_config_fields in (RESOURCES_VPC_CONFIG_ENDPOINT_FIELDS, RESOURCES_VPC_CONFIG_NETWORK_FIELDS):
+                vpc_config = {
+                    vpc_config_field: resources_vpc_config[vpc_config_field]
+                    for vpc_config_field in vpc_config_fields
+                    if vpc_config_field in resources_vpc_config
+                }
+                if vpc_config:
+                    update_requests.append({"resourcesVpcConfig": vpc_config})
         else:
             update_requests.append(update_request)
 
@@ -1205,38 +1183,22 @@ def ensure_present(client, module, deadline=None):
         )
         require_nested_request_parameters(module, client, "UpdateClusterConfig", update_request)
 
+    methods = {}
     if version_changed:
-        require_client_methods(
-            module,
-            client,
-            "EKS",
-            {"update_cluster_version": ("name", "version")},
-        )
+        methods["update_cluster_version"] = ("name", "version")
 
     if (update_requests and (wait or version_changed or len(update_requests) > 1)) or (version_changed and wait):
         # Updates are waited on between and after these calls.
-        require_client_methods(
-            module,
-            client,
-            "EKS",
-            {"describe_update": ("name", "updateId")},
-        )
+        methods["describe_update"] = ("name", "updateId")
 
     if tag_keys_to_unset:
-        require_client_methods(
-            module,
-            client,
-            "EKS",
-            {"untag_resource": ("resourceArn", "tagKeys")},
-        )
+        methods["untag_resource"] = ("resourceArn", "tagKeys")
 
     if tags_to_set:
-        require_client_methods(
-            module,
-            client,
-            "EKS",
-            {"tag_resource": ("resourceArn", "tags")},
-        )
+        methods["tag_resource"] = ("resourceArn", "tags")
+
+    if methods:
+        require_client_methods(module, client, "EKS", methods)
 
     # Failures after the first successful change report changed=True.
     mutated = False
@@ -1513,14 +1475,14 @@ def main():
     )
 
     state = module.params["state"]
-    tags = module.params.get("tags")
-    require_valid_tags(module, tags if state == "present" else None, 50)
-    if state == "present" and len(module.params["encryption_config"] or []) > 1:
-        module.fail_json(msg="encryption_config must contain at most one entry")
+    if state == "present":
+        require_valid_tags(module, module.params.get("tags"), 50)
+        if len(module.params["encryption_config"] or []) > 1:
+            module.fail_json(msg="encryption_config must contain at most one entry")
 
-    for network in ("remote_node_networks", "remote_pod_networks"):
-        if state == "present" and len((module.params["remote_network_config"] or {}).get(network) or []) > 1:
-            module.fail_json(msg=f"remote_network_config.{network} must contain at most one entry")
+        for network in ("remote_node_networks", "remote_pod_networks"):
+            if len((module.params["remote_network_config"] or {}).get(network) or []) > 1:
+                module.fail_json(msg=f"remote_network_config.{network} must contain at most one entry")
 
     canonicalize_public_access_cidrs(module)
     require_positive_wait_bounds(module, always=True)
