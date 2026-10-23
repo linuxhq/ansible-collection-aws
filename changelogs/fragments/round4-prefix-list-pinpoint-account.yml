@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - ec2_vpc_prefix_list - return the prefix list tags when creating a prefix list with more than 100 entries
+    and ``wait=false``.
+trivial:
+  - notifications_contacts_info - check SDK support inside each lookup branch.
+  - pinpoint_sms_voice_phone_pool_info - document that ``origination_identities`` and ``tags`` are always
+    returned for each pool.
+...

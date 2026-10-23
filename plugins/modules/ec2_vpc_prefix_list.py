@@ -474,7 +474,11 @@ def create_prefix_list(client, module, owner_id, desired_prefix_list, desired_en
     for batch in chunks(desired_entries[MAX_ENTRIES_PER_REQUEST:], MAX_ENTRIES_PER_REQUEST):
         wait_for_ready_state(client, module, prefix_list["PrefixListId"], changed=True, deadline=deadline)
         prefix_list = describe_prefix_list(client, module, prefix_list["PrefixListId"], changed=True)
-        prefix_list = modify_prefix_list(client, module, prefix_list, changed=True, add_entries=batch)
+        # Adding entries does not change tags, and ModifyManagedPrefixList may omit them.
+        prefix_list = dict(
+            modify_prefix_list(client, module, prefix_list, changed=True, add_entries=batch),
+            Tags=prefix_list.get("Tags", []),
+        )
 
     if module.params["wait"]:
         wait_for_ready_state(client, module, prefix_list["PrefixListId"], changed=True, deadline=deadline)

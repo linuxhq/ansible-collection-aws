@@ -109,7 +109,7 @@ pools:
       type: str
     origination_identities:
       description: The origination identities associated with the pool.
-      returned: when gathered by the module
+      returned: always
       type: list
       elements: dict
       contains:
@@ -157,7 +157,7 @@ pools:
       sample: ACTIVE
     tags:
       description: The pool tags with key case preserved.
-      returned: when gathered by the module
+      returned: always
       type: dict
     two_way_enabled:
       description: Whether two-way messaging is enabled.
