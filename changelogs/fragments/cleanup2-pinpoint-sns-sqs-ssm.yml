@@ -1,0 +1,9 @@
+---
+trivial:
+  - pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_number_info, pinpoint_sms_voice_phone_pool,
+    pinpoint_sms_voice_phone_pool_associate, pinpoint_sms_voice_phone_pool_info, sns_sms_attributes,
+    sns_sms_attributes_info, sns_topic_attributes, sqs_queue_info, ssm_association, ssm_document,
+    ssm_document_info, and ssm_send_command - simplify internal code and documentation without changing behavior,
+    and share the Pinpoint SMS Voice V2 tag listing, SNS SMS attribute lookup, and SSM target validation helpers in
+    ``module_utils``.
+...

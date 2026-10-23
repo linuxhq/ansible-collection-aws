@@ -122,6 +122,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sns import get_sms_attributes
 
 MANAGED_ATTRIBUTES = {
     "default_sender_id": "DefaultSenderID",
@@ -131,22 +132,6 @@ MANAGED_ATTRIBUTES = {
     "monthly_spend_limit": "MonthlySpendLimit",
     "usage_report_s3_bucket": "UsageReportS3Bucket",
 }
-
-
-def get_sms_attributes(client, module, changed=False):
-    """Return the SMS attributes; changed reports whether they were already modified, for failure results."""
-    try:
-        response = client.get_sms_attributes(aws_retry=True)
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, changed=changed, msg="Unable to get AWS Simple Notification Service SMS attributes")
-
-    if not isinstance(response, dict) or not isinstance(response.get("attributes", {}), dict):
-        module.fail_json(
-            changed=changed,
-            msg="Unexpected response while getting AWS Simple Notification Service SMS attributes",
-        )
-
-    return response.get("attributes", {})
 
 
 def main():

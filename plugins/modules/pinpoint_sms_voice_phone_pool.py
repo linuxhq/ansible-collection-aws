@@ -6,7 +6,7 @@ DOCUMENTATION = r"""
 ---
 module: pinpoint_sms_voice_phone_pool
 version_added: '1.9.0'
-short_description: Manage aws end user messaging sms phone pools
+short_description: Manage AWS End User Messaging SMS phone pools
 description:
   - Manages AWS End User Messaging SMS phone pools.
   - This module maps to the Pinpoint SMS Voice V2 C(CreatePool) API,
@@ -267,18 +267,19 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
     identity_matches,
     is_phone_number_identity,
+    list_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_arn_tags,
     require_resulting_tag_limit,
-    require_valid_tag_list,
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     sleep_until_next_poll,
+    wait_deadline,
 )
 
 
@@ -371,26 +372,9 @@ def pool_with_tags(client, module, pool, changed=False, missing_ok=False):
     tags = {}
 
     if arn:
-        msg = f"Unable to list tags for Pinpoint SMS Voice V2 pool {arn}"
-        try:
-            response = client.list_tags_for_resource(
-                ResourceArn=arn,
-                aws_retry=True,
-            )
-        except is_boto3_error_code("ResourceNotFoundException") as e:
-            if missing_ok:
-                return None
-
-            module.fail_json_aws(e, changed=changed, msg=msg)
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, changed=changed, msg=msg)
-
-        tag_list = require_valid_tag_list(
-            module,
-            response.get("Tags", []) if isinstance(response, dict) else None,
-            f"AWS returned malformed tags for Pinpoint SMS Voice V2 pool {arn}",
-            changed=changed,
-        )
+        tag_list = list_tags(client, module, arn, "pool", changed=changed, missing_ok=missing_ok)
+        if tag_list is None:
+            return None
 
         tags = boto3_tag_list_to_ansible_dict(tag_list)
 
@@ -445,7 +429,7 @@ def get_pool_by_id(client, module, pool_id, changed=False):
 
 def wait_for_pool_active(client, module, pool_id, changed=False):
     """Wait for a pool; changed reports whether the pool was already modified, for failure results."""
-    deadline = time.monotonic() + module.params["wait_timeout"]
+    deadline = wait_deadline(module)
     pool = {}
     seen = False
 

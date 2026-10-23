@@ -11,6 +11,8 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     paginated_query_with_retries,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
+
 
 def unique_resource_ids(identifiers):
     """Return identifiers without repeats of one resource given as an ID and an ARN.
@@ -77,3 +79,31 @@ def pool_is_deleting(client, module, pool_id):
         module.fail_json(msg=f"AWS returned malformed data while describing Pinpoint SMS Voice V2 pool {pool_id}")
 
     return not pools or pools[0].get("Status") == "DELETING"
+
+
+def list_tags(client, module, arn, resource, changed=False, missing_ok=False):
+    """Return a resource's tag list; resource names it in messages, such as "pool".
+
+    changed reports whether the resource was already modified, for failure results. With missing_ok, a resource
+    deleted since it was described returns None instead of failing.
+    """
+    msg = f"Unable to list tags for Pinpoint SMS Voice V2 {resource} {arn}"
+    try:
+        response = client.list_tags_for_resource(
+            ResourceArn=arn,
+            aws_retry=True,
+        )
+    except is_boto3_error_code("ResourceNotFoundException") as e:
+        if missing_ok:
+            return None
+
+        module.fail_json_aws(e, changed=changed, msg=msg)
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, changed=changed, msg=msg)
+
+    return require_valid_tag_list(
+        module,
+        response.get("Tags", []) if isinstance(response, dict) else None,
+        f"AWS returned malformed tags for Pinpoint SMS Voice V2 {resource} {arn}",
+        changed=changed,
+    )

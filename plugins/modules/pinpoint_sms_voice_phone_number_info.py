@@ -6,7 +6,7 @@ DOCUMENTATION = r"""
 ---
 module: pinpoint_sms_voice_phone_number_info
 version_added: '1.9.0'
-short_description: Gather information about aws end user messaging sms phone numbers
+short_description: Gather information about AWS End User Messaging SMS phone numbers
 description:
   - Gathers information about AWS End User Messaging SMS phone numbers.
   - This module maps to the Pinpoint SMS Voice V2 C(DescribePhoneNumbers) API,
@@ -187,13 +187,13 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
     ansible_dict_to_string_filter_list,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    list_tags,
     unique_resource_ids,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
 
 
 def describe_phone_numbers_by_id(module, client, request):
@@ -307,24 +307,9 @@ def main():
         tags = []
 
         if arn:
-            try:
-                response = client.list_tags_for_resource(
-                    ResourceArn=arn,
-                    aws_retry=True,
-                )
-            except is_boto3_error_code("ResourceNotFoundException"):
+            tags = list_tags(client, module, arn, "phone number", missing_ok=True)
+            if tags is None:
                 continue
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to list tags for Pinpoint SMS Voice V2 phone number {arn}",
-                )
-
-            tags = require_valid_tag_list(
-                module,
-                response.get("Tags", []) if isinstance(response, dict) else None,
-                f"AWS returned malformed tags for Pinpoint SMS Voice V2 phone number {arn}",
-            )
 
         normalized_phone_numbers.append(
             boto3_resource_to_ansible_dict(
@@ -334,12 +319,11 @@ def main():
             )
         )
 
-    matching_phone_number_ids = []
-    for phone_number in normalized_phone_numbers:
-        phone_number_id = phone_number.get("phone_number_id")
-
-        if phone_number_id:
-            matching_phone_number_ids.append(phone_number_id)
+    matching_phone_number_ids = [
+        phone_number["phone_number_id"]
+        for phone_number in normalized_phone_numbers
+        if phone_number.get("phone_number_id")
+    ]
 
     module.exit_json(
         changed=False,

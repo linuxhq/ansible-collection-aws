@@ -34,10 +34,10 @@ options:
     description:
       - The document version to request from the Systems Manager
         C(GetDocument) API.
-      - Mutually exclusive with O(version_name).
       - When O(document_version) and O(version_name) are omitted, C($LATEST)
         is requested to preserve the module default behavior.
       - Documents that do not have this version are omitted from the results.
+      - Mutually exclusive with O(version_name).
     type: str
   filters:
     description:

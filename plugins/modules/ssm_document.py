@@ -689,15 +689,11 @@ def get_document(client, module, include_tags=False, document_version=None, chan
 
 
 def document_content(document):
-    if not document or document.get("Content") is None:
+    content = (document or {}).get("Content")
+    if content is None:
         return {}
 
-    content = document.get("Content")
-
-    if not isinstance(content, str):
-        return content
-
-    return json.loads(content)
+    return json.loads(content) if isinstance(content, str) else content
 
 
 def main():
