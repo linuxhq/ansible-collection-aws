@@ -6,7 +6,7 @@ DOCUMENTATION = r"""
 ---
 module: pinpoint_sms_voice_phone_number
 version_added: '1.9.0'
-short_description: Manage aws end user messaging sms phone numbers
+short_description: Manage AWS End User Messaging SMS phone numbers
 description:
   - Requests and releases AWS End User Messaging SMS origination phone numbers.
   - Without O(phone_number_id), an existing phone number matching the requested
@@ -331,6 +331,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     sleep_until_next_poll,
+    wait_deadline,
 )
 
 SETTING_OPTIONS = {
@@ -459,7 +460,7 @@ def get_phone_number(client, module, phone_number_id, changed=False):
 
 def wait_for_phone_number_active(client, module, phone_number_id, tags=None, changed=False):
     """Wait for a phone number; changed reports whether it was already modified, for failure results."""
-    deadline = time.monotonic() + module.params["wait_timeout"]
+    deadline = wait_deadline(module)
     phone_number = {}
     seen = False
 
@@ -524,17 +525,14 @@ def wait_for_phone_number_active(client, module, phone_number_id, tags=None, cha
 
 def updatable_settings_delta(module, current):
     updates = {}
-    for option, field in (
-        ("deletion_protection_enabled", "DeletionProtectionEnabled"),
-        ("international_sending_enabled", "InternationalSendingEnabled"),
-    ):
-        if module.params[option] is not None and current.get(field) != module.params[option]:
-            updates[field] = module.params[option]
+    for field, option in SETTING_OPTIONS.items():
+        desired = module.params[option]
+        if desired is None:
+            continue
 
-    # OptOutListName accepts a name or ARN; DescribePhoneNumbers returns the name.
-    opt_out_list_name = module.params["opt_out_list_name"]
-    if opt_out_list_name is not None and current.get("OptOutListName") != opt_out_list_name.rsplit("/", 1)[-1]:
-        updates["OptOutListName"] = opt_out_list_name
+        # OptOutListName accepts a name or ARN; DescribePhoneNumbers returns the name.
+        if current.get(field) != (desired.rsplit("/", 1)[-1] if field == "OptOutListName" else desired):
+            updates[field] = desired
 
     return updates
 
@@ -785,17 +783,11 @@ def ensure_present(client, module):
         if phone_number.get("Status") == "DELETED":
             continue
 
-        matched = True
-        for key, value in desired.items():
-            current_value = phone_number.get(key)
-            if key == "NumberCapabilities":
-                current_value = sorted(set(current_value or []))
-
-            if current_value != value:
-                matched = False
-                break
-
-        if not matched:
+        if any(
+            (sorted(set(phone_number.get(key) or [])) if key == "NumberCapabilities" else phone_number.get(key))
+            != value
+            for key, value in desired.items()
+        ):
             continue
 
         if name is None:

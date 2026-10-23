@@ -80,11 +80,6 @@ attributes:
       type: str
 """
 
-try:
-    from botocore.exceptions import BotoCoreError, ClientError
-except ImportError:
-    pass
-
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -94,6 +89,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.sns import get_sms_attributes
 
 
 def main():
@@ -119,18 +115,10 @@ def main():
         {"get_sms_attributes": tuple(request)},
     )
 
-    try:
-        response = client.get_sms_attributes(**request, aws_retry=True)
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg="Unable to get AWS Simple Notification Service SMS attributes")
-
-    if not isinstance(response, dict) or not isinstance(response.get("attributes", {}), dict):
-        module.fail_json(msg="Unexpected response while getting AWS Simple Notification Service SMS attributes")
+    attributes = get_sms_attributes(client, module, **request)
 
     module.exit_json(
-        attributes=boto3_resource_to_ansible_dict(
-            response.get("attributes", {}), transform_tags=False, force_tags=False
-        ),
+        attributes=boto3_resource_to_ansible_dict(attributes, transform_tags=False, force_tags=False),
         changed=False,
     )
 

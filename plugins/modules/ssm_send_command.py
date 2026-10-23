@@ -391,9 +391,6 @@ except ImportError:
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -403,8 +400,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
+    query_list,
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import require_valid_ssm_targets
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     sleep_until_next_poll,
@@ -498,15 +497,7 @@ def main():
     if len(targets) > 5:
         module.fail_json(msg="targets must contain at most 5 entries")
 
-    for target in targets:
-        if not target["key"] or not 1 <= len(target["key"]) <= 163:
-            module.fail_json(msg="targets[].key must be 1 to 163 characters")
-
-        if not target["values"]:
-            module.fail_json(msg="targets[].values must contain at least one entry")
-
-        if len(target["values"]) > 50:
-            module.fail_json(msg="targets[].values must contain at most 50 entries")
+    require_valid_ssm_targets(module, targets)
 
     require_positive_wait_bounds(module)
 
@@ -574,28 +565,17 @@ def main():
         invocations = []
 
         while time.monotonic() < deadline:
-            try:
-                commands_response = paginated_query_with_retries(
-                    client,
-                    "list_commands",
-                    CommandId=command_id,
-                )
-                invocations_response = paginated_query_with_retries(
-                    client,
-                    "list_command_invocations",
-                    CommandId=command_id,
-                    Details=True,
-                )
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    changed=True,
-                    msg=f"Unable to get AWS Systems Manager command {command_id}",
-                )
-
-            commands = commands_response.get("Commands", []) if isinstance(commands_response, dict) else None
-            invocations = (
-                invocations_response.get("CommandInvocations", []) if isinstance(invocations_response, dict) else None
+            msg = f"Unable to get AWS Systems Manager command {command_id}"
+            commands = query_list(module, client, "list_commands", "Commands", msg, changed=True, CommandId=command_id)
+            invocations = query_list(
+                module,
+                client,
+                "list_command_invocations",
+                "CommandInvocations",
+                msg,
+                changed=True,
+                CommandId=command_id,
+                Details=True,
             )
             if not isinstance(commands, list):
                 module.fail_json(

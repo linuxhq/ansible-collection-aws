@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ansible_collections.linuxhq.aws.plugins.module_utils import wait
+from ansible_collections.linuxhq.aws.plugins.module_utils import sdk, wait
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_send_command as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -143,7 +143,7 @@ def test_wait_returns_terminal_command_and_invocations():
         patch.object(plugin, "require_positive_wait_bounds"),
         patch_time(0, 1),
         patch.object(
-            plugin,
+            sdk,
             "paginated_query_with_retries",
             side_effect=[
                 {"Commands": [{"CommandId": "command-1", "Status": "Success"}]},
@@ -170,7 +170,7 @@ def test_wait_retries_empty_invocations_when_targets_exist():
         patch.object(plugin, "require_positive_wait_bounds"),
         patch_time(0, 1, 2, 3),
         patch.object(
-            plugin,
+            sdk,
             "paginated_query_with_retries",
             side_effect=[
                 {"Commands": [command]},
@@ -196,7 +196,7 @@ def test_wait_retries_when_an_invocation_has_no_status():
         patch.object(plugin, "require_positive_wait_bounds"),
         patch_time(0, 1, 2, 3),
         patch.object(
-            plugin,
+            sdk,
             "paginated_query_with_retries",
             side_effect=[
                 {"Commands": [command]},
@@ -227,7 +227,7 @@ def test_wait_retries_until_terminal_target_count_is_known():
         patch.object(plugin, "require_positive_wait_bounds"),
         patch_time(0, 1, 2, 3),
         patch.object(
-            plugin,
+            sdk,
             "paginated_query_with_retries",
             side_effect=[
                 {"Commands": [{"CommandId": "command-1", "Status": "Success"}]},
@@ -253,7 +253,7 @@ def test_failed_command_is_not_hidden_by_successful_invocations():
         patch.object(plugin, "require_positive_wait_bounds"),
         patch_time(0, 1),
         patch.object(
-            plugin,
+            sdk,
             "paginated_query_with_retries",
             side_effect=[
                 {"Commands": [{"CommandId": "command-1", "Status": "Failed"}]},
@@ -386,7 +386,7 @@ def test_rejects_malformed_wait_response():
         patch.object(plugin, "require_client_methods"),
         patch_time(0, 1),
         patch.object(
-            plugin, "paginated_query_with_retries", side_effect=[{"Commands": [None]}, {"CommandInvocations": []}]
+            sdk, "paginated_query_with_retries", side_effect=[{"Commands": [None]}, {"CommandInvocations": []}]
         ),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -406,7 +406,7 @@ def test_rejects_malformed_commands_response():
         patch.object(plugin, "require_positive_wait_bounds"),
         patch.object(plugin, "require_client_methods"),
         patch_time(0, 1),
-        patch.object(plugin, "paginated_query_with_retries", side_effect=[None, {"CommandInvocations": []}]),
+        patch.object(sdk, "paginated_query_with_retries", side_effect=[{"Commands": None}, {"CommandInvocations": []}]),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.main()
@@ -443,7 +443,7 @@ def test_wait_sleep_is_bounded_by_remaining_timeout():
         patch.object(plugin, "require_client_methods"),
         patch_time(0, 9, 9.75, 10) as mocked_time,
         patch.object(
-            plugin,
+            sdk,
             "paginated_query_with_retries",
             side_effect=[{"Commands": [{"CommandId": "command-1", "Status": "Pending"}]}, {"CommandInvocations": []}],
         ),
@@ -463,7 +463,7 @@ def test_rejects_malformed_command_status():
         patch.object(plugin, "require_client_methods"),
         patch_time(0, 1),
         patch.object(
-            plugin,
+            sdk,
             "paginated_query_with_retries",
             side_effect=[{"Commands": [{"CommandId": "command-1", "Status": []}]}, {"CommandInvocations": []}],
         ),
@@ -489,7 +489,7 @@ def test_wait_retries_when_command_has_no_status():
         patch.object(plugin, "require_client_methods"),
         patch_time(0, 1, 2, 3),
         patch.object(
-            plugin,
+            sdk,
             "paginated_query_with_retries",
             side_effect=[
                 {"Commands": [{"CommandId": "command-1"}]},
@@ -514,9 +514,9 @@ def test_rejects_malformed_invocations_response():
         patch.object(plugin, "require_client_methods"),
         patch_time(0, 1),
         patch.object(
-            plugin,
+            sdk,
             "paginated_query_with_retries",
-            side_effect=[{"Commands": [{"CommandId": "command-1", "Status": "Success"}]}, None],
+            side_effect=[{"Commands": [{"CommandId": "command-1", "Status": "Success"}]}, {"CommandInvocations": None}],
         ),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -537,7 +537,7 @@ def test_rejects_malformed_invocation_elements():
         patch.object(plugin, "require_client_methods"),
         patch_time(0, 1),
         patch.object(
-            plugin,
+            sdk,
             "paginated_query_with_retries",
             side_effect=[
                 {"Commands": [{"CommandId": "command-1", "Status": "Success"}]},
@@ -563,7 +563,7 @@ def test_rejects_malformed_invocation_status():
         patch.object(plugin, "require_client_methods"),
         patch_time(0, 1),
         patch.object(
-            plugin,
+            sdk,
             "paginated_query_with_retries",
             side_effect=[
                 {"Commands": [{"CommandId": "command-1", "Status": "Success"}]},
@@ -592,7 +592,7 @@ def test_rejects_empty_invocation_status():
         patch.object(plugin, "require_client_methods"),
         patch_time(0, 1),
         patch.object(
-            plugin,
+            sdk,
             "paginated_query_with_retries",
             side_effect=[
                 {"Commands": [{"CommandId": "command-1", "Status": "Success"}]},
@@ -638,7 +638,7 @@ def test_ssm_wait_tolerates_initially_invisible_command():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", side_effect=responses),
+        patch.object(sdk, "paginated_query_with_retries", side_effect=responses),
         patch.object(plugin.time, "sleep"),
         pytest.raises(ModuleExit),
     ):
@@ -653,7 +653,7 @@ def test_ssm_invisible_command_still_times_out():
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
         patch.object(
-            plugin,
+            sdk,
             "paginated_query_with_retries",
             side_effect=[
                 {"Commands": []},
@@ -688,7 +688,7 @@ def test_ssm_waits_for_all_target_invocations(partial_copies):
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin.time, "sleep"),
         patch.object(
-            plugin,
+            sdk,
             "paginated_query_with_retries",
             side_effect=[
                 {"Commands": [command]},

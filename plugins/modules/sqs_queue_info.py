@@ -205,10 +205,9 @@ def get_queue(client, module, queue_url):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS SQS queue {queue_url}")
 
-    if not isinstance(response, dict) or not isinstance(response.get("Attributes", {}), dict):
+    attributes = response.get("Attributes", {}) if isinstance(response, dict) else None
+    if not isinstance(attributes, dict):
         module.fail_json(msg=f"Unexpected response while getting AWS SQS queue {queue_url}")
-
-    attributes = response.get("Attributes", {})
 
     try:
         response = client.list_queue_tags(QueueUrl=queue_url, aws_retry=True)
@@ -217,11 +216,12 @@ def get_queue(client, module, queue_url):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to list AWS SQS queue tags for {queue_url}")
 
-    if not isinstance(response, dict) or not isinstance(response.get("Tags", {}), dict):
+    tags = response.get("Tags", {}) if isinstance(response, dict) else None
+    if not isinstance(tags, dict):
         module.fail_json(msg=f"Unexpected response while listing AWS SQS queue tags for {queue_url}")
 
     queue = boto3_resource_to_ansible_dict(attributes, transform_tags=False, force_tags=False)
-    queue["tags"] = response.get("Tags", {})
+    queue["tags"] = tags
 
     queue_arn = queue.get("queue_arn")
     queue["name"] = (queue_arn or queue_url.rsplit("/", 1)[-1]).split(":")[-1]
@@ -251,14 +251,20 @@ def main():
 
     client = module.client("sqs", retry_decorator=AWSRetry.jittered_backoff())
 
+    if name:
+        request = {"QueueName": name}
+        if queue_owner_aws_account_id:
+            request["QueueOwnerAWSAccountId"] = queue_owner_aws_account_id
+    else:
+        request = {"MaxResults": 1000}
+        if queue_name_prefix:
+            request["QueueNamePrefix"] = queue_name_prefix
+
     methods = {
         "get_queue_attributes": ("AttributeNames", "QueueUrl"),
         "list_queue_tags": ("QueueUrl",),
     }
-    if name:
-        methods["get_queue_url"] = ("QueueName",) + (("QueueOwnerAWSAccountId",) if queue_owner_aws_account_id else ())
-    else:
-        methods["list_queues"] = ("MaxResults",) + (("QueueNamePrefix",) if queue_name_prefix else ())
+    methods["get_queue_url" if name else "list_queues"] = tuple(request)
 
     require_client_methods(
         module,
@@ -268,10 +274,6 @@ def main():
     )
 
     if name:
-        request = {"QueueName": name}
-        if queue_owner_aws_account_id:
-            request["QueueOwnerAWSAccountId"] = queue_owner_aws_account_id
-
         try:
             response = client.get_queue_url(
                 **request,
@@ -289,10 +291,6 @@ def main():
         queue = get_queue(client, module, queue_url) if queue_url else None
         queues = [queue] if queue is not None else []
     else:
-        request = {"MaxResults": 1000}
-        if queue_name_prefix:
-            request["QueueNamePrefix"] = queue_name_prefix
-
         queue_urls = query_list(
             module,
             client,

@@ -29,7 +29,7 @@ options:
     type: str
   name:
     description:
-      - The name of the SSM document association.
+      - The name of the Systems Manager document that the association runs.
     required: true
     type: str
   schedule_expression:
@@ -261,6 +261,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
     SSM_ASSOCIATION_RESOURCE_TYPE,
     association_overview,
     list_ssm_tags,
+    require_valid_ssm_targets,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
@@ -650,15 +651,7 @@ def main():
         if targets is not None and len(comparable_targets(targets)) > 5:
             module.fail_json(msg="targets must contain at most 5 targets")
 
-        for target in targets or []:
-            if not 1 <= len(target["key"]) <= 163:
-                module.fail_json(msg="targets[].key must be 1 to 163 characters")
-
-            if not target["values"]:
-                module.fail_json(msg="targets[].values must contain at least one entry")
-
-            if len(set(target["values"])) > 50:
-                module.fail_json(msg="targets[].values must contain at most 50 entries")
+        require_valid_ssm_targets(module, targets or [])
 
         require_valid_tags(module, tags, 1000)
 

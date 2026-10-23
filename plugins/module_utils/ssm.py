@@ -32,6 +32,19 @@ def ssm_filter_list(filters, key_name="Key", values_name="Values", split_values=
     return filter_list
 
 
+def require_valid_ssm_targets(module, targets):
+    """Fail unless each target has a 1 to 163 character key and 1 to 50 distinct values."""
+    for target in targets:
+        if not target["key"] or not 1 <= len(target["key"]) <= 163:
+            module.fail_json(msg="targets[].key must be 1 to 163 characters")
+
+        if not target["values"]:
+            module.fail_json(msg="targets[].values must contain at least one entry")
+
+        if len(set(target["values"])) > 50:
+            module.fail_json(msg="targets[].values must contain at most 50 entries")
+
+
 def association_overview(overview, count_key="AssociationStatusAggregatedCount"):
     # The aggregated count is keyed by association status names, which are data rather than field names.
     if not isinstance(overview, dict):

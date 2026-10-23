@@ -6,7 +6,7 @@ DOCUMENTATION = r"""
 ---
 module: pinpoint_sms_voice_phone_pool_associate
 version_added: '1.9.0'
-short_description: Manage aws end user messaging sms phone pool associations
+short_description: Manage AWS End User Messaging SMS phone pool associations
 description:
   - Manages AWS End User Messaging SMS phone pool origination identity
     associations.
@@ -71,7 +71,7 @@ attributes:
 """
 
 EXAMPLES = r"""
-- name: Ensure phone numbers are associated with a phone pool
+- name: Ensure a phone number is associated with a phone pool
   linuxhq.aws.pinpoint_sms_voice_phone_pool_associate:
     iso_country_code: US
     origination_identity: phone-0123456789abcdef0123456789abcdef
@@ -222,9 +222,8 @@ def validate_association(module, association, require_pool=True, changed=False):
 
     if require_pool:
         expected_pool_id = module.params["pool_id"].rsplit("/", 1)[-1]
-        if association["PoolId"] != expected_pool_id or module.params["origination_identity"] not in (
-            association["OriginationIdentity"],
-            association.get("OriginationIdentityArn"),
+        if association["PoolId"] != expected_pool_id or not identity_matches(
+            association, (module.params["origination_identity"],)
         ):
             module.fail_json(
                 changed=changed,
@@ -387,12 +386,7 @@ def main():
         retry_decorator=AWSRetry.jittered_backoff(),
     )
 
-    origination_parameters = ("OriginationIdentity", "PoolId")
-    if module.params["iso_country_code"] is not None:
-        origination_parameters += ("IsoCountryCode",)
-
-    if module.params["client_token"] is not None:
-        origination_parameters += ("ClientToken",)
+    origination_parameters = tuple(association_request(module))
 
     methods = {"list_pool_origination_identities": ("PoolId", "MaxResults", "NextToken")}
     if state == "present":

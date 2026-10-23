@@ -7,6 +7,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
     association_overview,
     describe_ssm_document,
     list_ssm_tags,
+    require_valid_ssm_targets,
     ssm_filter_list,
 )
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule, ModuleFail
@@ -123,3 +124,27 @@ def test_describe_ssm_document_reports_other_errors():
         describe_ssm_document(FakeModule({}), client, "example")
 
     assert raised.value.values["msg"] == "Unable to describe AWS Systems Manager document example"
+
+
+def test_require_valid_ssm_targets_accepts_valid_targets():
+    require_valid_ssm_targets(FakeModule({}), [{"key": "tag:Role", "values": ["web"] + ["web"] * 50}])
+
+
+@pytest.mark.parametrize(
+    ("target", "msg"),
+    [
+        ({"key": None, "values": ["web"]}, "targets[].key must be 1 to 163 characters"),
+        ({"key": "", "values": ["web"]}, "targets[].key must be 1 to 163 characters"),
+        ({"key": "k" * 164, "values": ["web"]}, "targets[].key must be 1 to 163 characters"),
+        ({"key": "tag:Role", "values": []}, "targets[].values must contain at least one entry"),
+        (
+            {"key": "tag:Role", "values": [str(i) for i in range(51)]},
+            "targets[].values must contain at most 50 entries",
+        ),
+    ],
+)
+def test_require_valid_ssm_targets_rejects_invalid_targets(target, msg):
+    with pytest.raises(ModuleFail) as raised:
+        require_valid_ssm_targets(FakeModule({}), [target])
+
+    assert raised.value.values == {"msg": msg}
