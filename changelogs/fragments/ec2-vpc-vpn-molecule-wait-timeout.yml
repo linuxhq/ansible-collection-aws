@@ -1,0 +1,5 @@
+---
+trivial:
+  - ec2_vpc_vpn - give the Molecule tunnel options update 1200 seconds per operation, since AWS can take longer than
+    the 600-second default to apply tunnel changes.
+...
