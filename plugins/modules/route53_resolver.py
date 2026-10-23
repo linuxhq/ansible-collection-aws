@@ -941,7 +941,7 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
                 client, module, resolver_endpoint_id, "settled", changed=True, deadline=deadline
             )
         elif module.params["wait"]:
-            wait_for_resolver_endpoint_status(
+            endpoint = wait_for_resolver_endpoint_status(
                 client, module, resolver_endpoint_id, "operational", changed=True, deadline=deadline
             )
 
@@ -952,12 +952,7 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
         ]
         return endpoint
 
-    return resolver_endpoint_with_ip_addresses(
-        client,
-        module,
-        get_resolver_endpoint(client, module, resolver_endpoint_id, changed=True),
-        changed=True,
-    )
+    return resolver_endpoint_with_ip_addresses(client, module, endpoint, changed=True)
 
 
 def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, state, changed=False, deadline=None):
