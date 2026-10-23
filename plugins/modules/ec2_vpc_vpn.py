@@ -600,9 +600,6 @@ RESERVED_TUNNEL_IPV4_NETWORKS = {f"169.254.{index}.0/30" for index in range(6)} 
 
 
 def normalize_connection(connection):
-    if not connection:
-        return {}
-
     result = deepcopy(connection)
     result.pop("CustomerGatewayConfiguration", None)
 

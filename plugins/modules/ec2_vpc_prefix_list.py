@@ -641,7 +641,7 @@ def ensure_present(client, module, owner_id, deadline=None):
         if changed and not module.check_mode:
             if entries_changed or resource_changed:
                 # Updates do not change tags, and ModifyManagedPrefixList may omit them.
-                current_tags = current.get("Tags", [])
+                current_tag_list = current.get("Tags", [])
                 current, current_entries = update_prefix_list(
                     client,
                     module,
@@ -652,7 +652,7 @@ def ensure_present(client, module, owner_id, deadline=None):
                     desired_prefix_list["max_entries"],
                     deadline=deadline,
                 )
-                current = dict(current, Tags=current_tags)
+                current = dict(current, Tags=current_tag_list)
                 current_prefix_list = comparable_prefix_list(current)
                 if wait and current_prefix_list != desired_prefix_list:
                     module.fail_json(

@@ -552,6 +552,11 @@ def search_routes(client, module, transit_gateway_route_table_id, filters, chang
     return validated_routes(module, routes, changed=changed)
 
 
+def managed_static_route(route):
+    # Prefix list references are not managed by this module, even if one reports a destination CIDR.
+    return route.get("Type") == "static" and route.get("State") != "deleted" and not route.get("PrefixListId")
+
+
 def get_route(client, module, transit_gateway_route_table_id, destination_cidr_block, changed=False):
     routes = search_routes(
         client,
@@ -561,35 +566,20 @@ def get_route(client, module, transit_gateway_route_table_id, destination_cidr_b
         changed=changed,
     )
 
-    matching_routes = []
-    for route in routes:
-        if route.get("Type") != "static":
-            continue
-
-        if route.get("State") == "deleted":
-            continue
-
-        # Prefix list references are not managed by this module.
-        if route.get("PrefixListId"):
-            continue
-
-        matching_routes.append(route)
-
-    routes = sorted(matching_routes, key=route_sort_key)
-
-    return routes[0] if routes else None
+    return min(
+        (route for route in routes if managed_static_route(route)),
+        key=route_sort_key,
+        default=None,
+    )
 
 
 def static_routes(client, module, transit_gateway_route_table_id, changed=False):
-    return sorted(
-        search_routes(
-            client,
-            module,
-            transit_gateway_route_table_id,
-            {"type": "static"},
-            changed=changed,
-        ),
-        key=lambda route: route_destination(route) or "",
+    return search_routes(
+        client,
+        module,
+        transit_gateway_route_table_id,
+        {"type": "static"},
+        changed=changed,
     )
 
 
@@ -608,10 +598,6 @@ def desired_route_matches(route, desired):
         and attachment.get("TransitGatewayAttachmentId") == desired.get("transit_gateway_attachment_id")
         for attachment in route.get("TransitGatewayAttachments", [])
     )
-
-
-def route_is_static(route):
-    return route is not None and route.get("State") not in ROUTE_DELETED_STATES
 
 
 def check_mode_route(desired):
@@ -716,9 +702,9 @@ def ensure_route_absent(
     """
     wait = module.params["wait"] and not module.check_mode
 
-    if not route_is_static(route):
+    if route is None or route.get("State") in ROUTE_DELETED_STATES:
         if wait and route and route.get("State") == "deleting":
-            route = wait_for_route_absent(
+            wait_for_route_absent(
                 client,
                 module,
                 transit_gateway_route_table_id,
@@ -726,6 +712,7 @@ def ensure_route_absent(
                 changed=changed,
                 deadline=deadline,
             )
+            return False, None
 
         return False, route
 
@@ -761,9 +748,10 @@ def ensure_route_absent(
         )
 
     if wait:
-        return True, wait_for_route_absent(
+        wait_for_route_absent(
             client, module, transit_gateway_route_table_id, destination_cidr_block, changed=True, deadline=deadline
         )
+        return True, None
 
     # Return the route as EC2 left it; get_route() selects no route once it is deleted.
     route = validated_routes(
@@ -829,15 +817,9 @@ def ensure_present(client, module):
                 route_table = wait_for_route_table(
                     client, module, route_table_id(route_table), {"available"}, changed=True, deadline=deadline
                 )
-    elif route_table.get("State") == "deleted":
+    elif route_table["State"] in ROUTE_TABLE_DELETED_STATES:
         module.fail_json(
-            msg=f"EC2 transit gateway route table {route_table_id(route_table)} is deleted",
-            transit_gateway_route_table=normalize_route_table(route_table),
-            transit_gateway_route_table_id=route_table_id(route_table),
-        )
-    elif route_table.get("State") == "deleting":
-        module.fail_json(
-            msg=f"EC2 transit gateway route table {route_table_id(route_table)} is deleting",
+            msg=f"EC2 transit gateway route table {route_table_id(route_table)} is {route_table['State']}",
             transit_gateway_route_table=normalize_route_table(route_table),
             transit_gateway_route_table_id=route_table_id(route_table),
         )
@@ -961,7 +943,7 @@ def ensure_present(client, module):
                     else:
                         request = {
                             "DestinationCidrBlock": destination_cidr_block,
-                            "TransitGatewayRouteTableId": (transit_gateway_route_table_id),
+                            "TransitGatewayRouteTableId": transit_gateway_route_table_id,
                         }
                         if desired_route.get("blackhole"):
                             request["Blackhole"] = True
@@ -969,45 +951,32 @@ def ensure_present(client, module):
                             request["TransitGatewayAttachmentId"] = desired_route["transit_gateway_attachment_id"]
 
                         current_route_changed = True
-                        if current_route is None:
-                            require_client_methods(
-                                module,
-                                client,
-                                "EC2",
-                                {"create_transit_gateway_route": tuple(request)},
-                                changed=mutated,
-                            )
-                            try:
-                                response = client.create_transit_gateway_route(
-                                    **request,
-                                    aws_retry=True,
-                                )
-                            except (BotoCoreError, ClientError) as e:
-                                module.fail_json_aws(
-                                    e,
-                                    changed=mutated,
-                                    msg=f"Unable to create EC2 transit gateway route {destination_cidr_block}",
-                                )
+                        action = "create" if current_route is None else "replace"
+                        method_name = (
+                            "create_transit_gateway_route" if current_route is None else "replace_transit_gateway_route"
+                        )
+                        require_client_methods(
+                            module,
+                            client,
+                            "EC2",
+                            {method_name: tuple(request)},
+                            changed=mutated,
+                        )
 
-                        else:
-                            require_client_methods(
-                                module,
-                                client,
-                                "EC2",
-                                {"replace_transit_gateway_route": tuple(request)},
+                        # Resolve the method only after require_client_methods confirms it exists.
+                        method = (
+                            client.create_transit_gateway_route
+                            if current_route is None
+                            else client.replace_transit_gateway_route
+                        )
+                        try:
+                            response = method(**request, aws_retry=True)
+                        except (BotoCoreError, ClientError) as e:
+                            module.fail_json_aws(
+                                e,
                                 changed=mutated,
+                                msg=f"Unable to {action} EC2 transit gateway route {destination_cidr_block}",
                             )
-                            try:
-                                response = client.replace_transit_gateway_route(
-                                    **request,
-                                    aws_retry=True,
-                                )
-                            except (BotoCoreError, ClientError) as e:
-                                module.fail_json_aws(
-                                    e,
-                                    changed=mutated,
-                                    msg=f"Unable to replace EC2 transit gateway route {destination_cidr_block}",
-                                )
 
                         mutated = True
                         current_route = validated_routes(
@@ -1032,12 +1001,11 @@ def ensure_present(client, module):
                     routes.append(current_route)
 
             if purge_routes:
-                desired_destinations = set()
-                for desired_route in desired_routes:
-                    if desired_route["state"] != "present":
-                        continue
-
-                    desired_destinations.add(desired_route["destination_cidr_block"])
+                desired_destinations = {
+                    desired_route["destination_cidr_block"]
+                    for desired_route in desired_routes
+                    if desired_route["state"] == "present"
+                }
 
                 # Select the route for each destination as get_route() does, so purging needs no further search.
                 purge_routes_by_destination = {}
@@ -1046,11 +1014,7 @@ def ensure_present(client, module):
                     if not destination or destination in desired_destinations:
                         continue
 
-                    # Never purge prefix list references, even if one reports a destination CIDR.
-                    if current_route.get("PrefixListId"):
-                        continue
-
-                    if current_route.get("State") == "deleted":
+                    if not managed_static_route(current_route):
                         continue
 
                     selected_route = purge_routes_by_destination.get(destination)
@@ -1103,9 +1067,7 @@ def ensure_absent(client, module):
 
     transit_gateway_route_table_id = route_table_id(route_table)
     if route_table.get("State") == "pending":
-        route_table = wait_for_route_table(
-            client, module, transit_gateway_route_table_id, {"available"}, deadline=deadline
-        )
+        wait_for_route_table(client, module, transit_gateway_route_table_id, {"available"}, deadline=deadline)
 
     require_client_methods(
         module,
