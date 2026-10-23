@@ -623,7 +623,6 @@ def ensure_present(client, module, owner_id, deadline=None):
                 )
             )
 
-        changed = bool(entries_changed or resource_changed)
         tags_to_set, tag_keys_to_unset = ({}, [])
         if tags is not None:
             current_tags = boto3_tag_list_to_ansible_dict(current.get("Tags", []))
@@ -632,7 +631,7 @@ def ensure_present(client, module, owner_id, deadline=None):
                 module, current_tags, tags_to_set, tag_keys_to_unset, 50, "EC2 VPC managed prefix list"
             )
 
-        changed = bool(changed or tags_to_set or tag_keys_to_unset)
+        changed = bool(entries_changed or resource_changed or tags_to_set or tag_keys_to_unset)
 
         if (changed or wait) and not module.check_mode and current.get("State") in IN_PROGRESS_STATES:
             wait_for_ready_state(client, module, current.get("PrefixListId"), deadline=deadline)

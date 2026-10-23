@@ -359,7 +359,7 @@ def normalize_route_table(route_table):
 
 
 def normalize_routes(routes):
-    return boto3_resource_list_to_ansible_dict(routes or [], transform_tags=False, force_tags=False)
+    return boto3_resource_list_to_ansible_dict(routes, transform_tags=False, force_tags=False)
 
 
 def desired_tags(module):
@@ -373,15 +373,11 @@ def desired_tags(module):
 
 
 def current_tags(route_table):
-    return boto3_tag_list_to_ansible_dict((route_table or {}).get("Tags", []))
+    return boto3_tag_list_to_ansible_dict(route_table.get("Tags", []))
 
 
 def route_sort_key(route):
     return ROUTE_STATE_ORDER.get(route.get("State"), 99)
-
-
-def route_destination(route):
-    return route.get("DestinationCidrBlock")
 
 
 def get_route_table_by_id(client, module, transit_gateway_route_table_id, changed=False):
@@ -1010,7 +1006,7 @@ def ensure_present(client, module):
                 # Select the route for each destination as get_route() does, so purging needs no further search.
                 purge_routes_by_destination = {}
                 for current_route in static_routes(client, module, transit_gateway_route_table_id, changed=mutated):
-                    destination = route_destination(current_route)
+                    destination = current_route.get("DestinationCidrBlock")
                     if not destination or destination in desired_destinations:
                         continue
 
