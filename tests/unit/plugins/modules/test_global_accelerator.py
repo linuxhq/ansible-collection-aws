@@ -1972,23 +1972,6 @@ def test_endpoint_group_listing_failure_reports_earlier_changes(mutated):
     assert raised.value.values["changed"] is mutated
 
 
-@pytest.mark.parametrize(
-    "tags",
-    [None, [None], [{"Key": "Name"}], [{"Key": 1, "Value": "value"}], [{"Key": "", "Value": "value"}]],
-)
-def test_invalid_tag_lists_are_rejected(tags):
-    with pytest.raises(ModuleFail) as raised:
-        plugin.validate_tag_list(FakeModule({}), tags)
-
-    assert raised.value.values["msg"] == "Global Accelerator returned invalid tags"
-    assert not raised.value.values.get("changed")
-
-
-def test_valid_tag_lists_are_returned():
-    tags = [{"Key": "Name", "Value": ""}]
-    assert plugin.validate_tag_list(FakeModule({}), tags) is tags
-
-
 def tag_limit_case(check_mode, current_tags, tags):
     module = FakeModule(
         {

@@ -91,7 +91,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import contact_tags
+from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import list_contact_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -175,20 +175,11 @@ def main():
     for contact in email_contacts:
         contact = dict(contact)
 
-        try:
-            tag_response = client.list_tags_for_resource(
-                arn=contact["arn"],
-                aws_retry=True,
-            )
-        except is_boto3_error_code("ResourceNotFoundException"):
+        tags = list_contact_tags(client, module, contact["arn"], missing_ok=True)
+        if tags is None:
             continue
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to list tags for AWS Notifications contact {contact['arn']}",
-            )
 
-        contact["tags"] = contact_tags(module, tag_response, contact["arn"])
+        contact["tags"] = tags
 
         email_contacts_with_tags.append(contact)
 

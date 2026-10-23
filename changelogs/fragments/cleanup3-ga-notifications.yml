@@ -1,0 +1,6 @@
+---
+trivial:
+  - global_accelerator, global_accelerator_info, notifications_contacts, and notifications_contacts_info - share the
+    tag lookups through new ``list_accelerator_tags`` and ``list_contact_tags`` helpers and simplify internal
+    global_accelerator code without changing behavior.
+...

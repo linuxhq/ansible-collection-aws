@@ -121,7 +121,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import contact_tags
+from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import list_contact_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -230,18 +230,7 @@ def ensure_present(client, module):
             "NotificationsContacts",
             {"list_tags_for_resource": ("arn",)},
         )
-        try:
-            tag_response = client.list_tags_for_resource(
-                arn=contact["arn"],
-                aws_retry=True,
-            )
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to list tags for AWS Notifications contact {contact['arn']}",
-            )
-
-        contact["tags"] = contact_tags(module, tag_response, contact["arn"])
+        contact["tags"] = list_contact_tags(client, module, contact["arn"])
 
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
             contact["tags"],

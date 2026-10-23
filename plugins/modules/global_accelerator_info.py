@@ -286,7 +286,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import validate_tag_list
+from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import list_accelerator_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -397,23 +397,11 @@ def main():
     for accelerator in accelerators:
         accelerator_arn = accelerator["AcceleratorArn"]
 
-        try:
-            response = client.list_tags_for_resource(
-                ResourceArn=accelerator_arn,
-                aws_retry=True,
-            )
-        except is_boto3_error_code("AcceleratorNotFoundException"):
+        tags = list_accelerator_tags(client, module, accelerator_arn, missing_ok=True)
+        if tags is None:
             continue
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to list tags for AWS Global Accelerator {accelerator_arn}",
-            )
 
-        accelerator["Tags"] = validate_tag_list(
-            module,
-            response.get("Tags") if isinstance(response, dict) else None,
-        )
+        accelerator["Tags"] = tags
 
         if not include_listeners:
             available_accelerators.append(accelerator)

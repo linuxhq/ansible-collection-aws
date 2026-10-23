@@ -586,7 +586,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import validate_tag_list
+from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import list_accelerator_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -906,11 +906,9 @@ def reconcile_listeners(module, current_listeners):
 
     pending = []
     for desired in desired_listeners(module):
-        match = None
-        for current in remaining:
-            if listener_identity(current) == listener_identity(desired):
-                match = current
-                break
+        match = next(
+            (current for current in remaining if listener_identity(current) == listener_identity(desired)), None
+        )
 
         if match is None:
             pending.append(desired)
@@ -923,12 +921,10 @@ def reconcile_listeners(module, current_listeners):
             matched.append((match, desired))
 
     for desired in pending:
-        match = None
         # Only listeners that would otherwise be purged are reused for other ports.
-        for current in remaining if module.params["purge_listeners"] else []:
-            if current["protocol"] == desired["protocol"]:
-                match = current
-                break
+        match = None
+        if module.params["purge_listeners"]:
+            match = next((current for current in remaining if current["protocol"] == desired["protocol"]), None)
 
         if match is None:
             creates.append(desired)
@@ -993,8 +989,8 @@ def normalized_port_overrides(port_overrides):
     return sorted(
         (
             {
-                "endpoint_port": item.get("endpoint_port"),
-                "listener_port": item.get("listener_port"),
+                "endpoint_port": item["endpoint_port"],
+                "listener_port": item["listener_port"],
             }
             for item in port_overrides or []
         ),
@@ -1290,7 +1286,7 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups, mutate
 
         if current is None:
             changed = True
-            if module.check_mode or listener_arn is None:
+            if module.check_mode:
                 results.append(predicted_endpoint_group(None, desired))
                 continue
 
@@ -1487,7 +1483,7 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
             "protocol": desired["protocol"],
         }
 
-        if module.check_mode or accelerator_arn is None:
+        if module.check_mode:
             result_listeners.append((result, desired))
             continue
 
@@ -1691,23 +1687,7 @@ def ensure_present(client, module, deadline=None):
             "Global Accelerator",
             {"list_tags_for_resource": ("ResourceArn",)},
         )
-        try:
-            response = client.list_tags_for_resource(
-                ResourceArn=accelerator_arn,
-                aws_retry=True,
-            )
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to list tags for AWS Global Accelerator {accelerator_arn}",
-            )
-
-        current_tags = boto3_tag_list_to_ansible_dict(
-            validate_tag_list(
-                module,
-                response.get("Tags") if isinstance(response, dict) else None,
-            )
-        )
+        current_tags = boto3_tag_list_to_ansible_dict(list_accelerator_tags(client, module, accelerator_arn))
 
     current = None
     if accelerator is not None:
@@ -1722,12 +1702,12 @@ def ensure_present(client, module, deadline=None):
         }
 
         if ip_addresses is not None:
-            current_ip_addresses = []
-            for ip_set in accelerator.get("IpSets", []):
-                current_ip_addresses.extend(ip_set.get("IpAddresses", []))
-
-            current_ip_addresses = [address for address in current_ip_addresses if address in ip_addresses]
-            current["ip_addresses"] = sorted(current_ip_addresses)
+            current["ip_addresses"] = sorted(
+                address
+                for ip_set in accelerator.get("IpSets", [])
+                for address in ip_set["IpAddresses"]
+                if address in ip_addresses
+            )
             if current["ip_addresses"] != desired["ip_addresses"]:
                 module.fail_json(
                     msg=(
@@ -2059,29 +2039,31 @@ def main():
         module.fail_json(msg="name must contain at most 255 characters")
 
     if state == "present":
+        ip_addresses = module.params["ip_addresses"] or []
+        listeners = module.params["listeners"] or []
         if len(module.params.get("idempotency_token") or "") > 255:
             module.fail_json(msg="idempotency_token must contain at most 255 characters")
 
-        if len(module.params["ip_addresses"] or []) > 2:
+        if len(ip_addresses) > 2:
             module.fail_json(msg="ip_addresses must contain at most 2 entries")
 
-        if any(len(address) > 45 for address in module.params["ip_addresses"] or []):
+        if any(len(address) > 45 for address in ip_addresses):
             module.fail_json(msg="ip_addresses entries must contain at most 45 characters")
 
-        for address in module.params["ip_addresses"] or []:
+        for address in ip_addresses:
             try:
                 ipaddress.IPv4Address(address)
             except ipaddress.AddressValueError:
                 module.fail_json(msg=f"ip_addresses entries must be valid IPv4 addresses: {address}")
 
-        if len(set(module.params["ip_addresses"] or [])) != len(module.params["ip_addresses"] or []):
+        if len(set(ip_addresses)) != len(ip_addresses):
             module.fail_json(msg="ip_addresses entries must be unique")
 
         listener_port_ranges = {}
-        if sum(len(listener.get("endpoint_groups") or []) for listener in module.params["listeners"] or []) > 42:
+        if sum(len(listener.get("endpoint_groups") or []) for listener in listeners) > 42:
             module.fail_json(msg="listeners must contain at most 42 endpoint groups in total")
 
-        for listener in module.params["listeners"] or []:
+        for listener in listeners:
             if not listener["port_ranges"]:
                 module.fail_json(msg="listeners entries require at least one port_ranges entry")
 
