@@ -160,7 +160,7 @@ phone_numbers:
       sample: ACTIVE
     tags:
       description: The phone number tags with key case preserved.
-      returned: when returned by AWS
+      returned: always
       type: dict
     two_way_enabled:
       description: Whether two-way messaging is enabled.

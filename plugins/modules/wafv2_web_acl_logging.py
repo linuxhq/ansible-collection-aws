@@ -169,18 +169,6 @@ def ensure_present(client, module, web_acl):
         # A missing web ACL also returns WAFNonexistentItemException for its logging configuration.
         require_web_acl(client, module, web_acl)
 
-    current_comparable = None
-    if current:
-        normalized_current = boto3_resource_to_ansible_dict(current, transform_tags=False, force_tags=False)
-        current_comparable = {
-            "log_destination_configs": normalized_current.get("log_destination_configs") or [],
-            "resource_arn": normalized_current.get("resource_arn"),
-        }
-
-    desired_comparable = {
-        "log_destination_configs": log_destination_configs,
-        "resource_arn": resource_arn,
-    }
     desired = {
         key: current[key]
         for key in ("LoggingFilter", "LogScope", "LogType", "RedactedFields")
@@ -192,7 +180,11 @@ def ensure_present(client, module, web_acl):
             "ResourceArn": resource_arn,
         }
     )
-    changed = (current_comparable or {}) != desired_comparable
+    changed = (
+        not current
+        or (current.get("LogDestinationConfigs") or []) != log_destination_configs
+        or current.get("ResourceArn") != resource_arn
+    )
 
     if changed and not module.check_mode:
         try:
