@@ -939,6 +939,32 @@ def test_create_adds_entries_beyond_one_request_in_batches():
     wait.assert_called_once_with(client, module, "pl-1", changed=True, deadline=ANY)
 
 
+def test_create_in_batches_without_wait_keeps_the_described_tags():
+    tags = [{"Key": "Name", "Value": "x"}]
+    entries = cidrs(0, 150)
+    created = prefix_list(MaxEntries=150, State="create-in-progress", Tags=tags)
+    client = Mock(create_managed_prefix_list=Mock(return_value={"PrefixList": created}))
+    module = FakeModule({"name": "main", "tags": {"Name": "x"}, "wait": False})
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_ready_state"),
+        patch.object(plugin, "describe_prefix_list", return_value=prefix_list(MaxEntries=150, Tags=tags)),
+        # ModifyManagedPrefixList may return the prefix list without its tags.
+        patch.object(plugin, "modify_prefix_list", return_value=prefix_list(MaxEntries=150, Tags=[], Version=2)),
+    ):
+        result, result_entries = plugin.create_prefix_list(
+            client,
+            module,
+            OWNER,
+            {"address_family": "IPv4", "max_entries": 150, "prefix_list_name": "main"},
+            plugin.comparable_entries(entries),
+        )
+
+    assert result["Tags"] == tags
+    assert result["Version"] == 2
+    assert result_entries == plugin.comparable_entries(entries)
+
+
 @pytest.mark.parametrize(
     "name,state",
     [

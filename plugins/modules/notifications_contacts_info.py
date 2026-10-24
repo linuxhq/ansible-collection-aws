@@ -121,15 +121,8 @@ def main():
     client = module.client("notificationscontacts", retry_decorator=AWSRetry.jittered_backoff())
 
     arn = module.params["arn"]
-    methods = {}
     if arn:
-        methods["get_email_contact"] = ("arn",)
-    else:
-        methods["list_email_contacts"] = ("maxResults", "nextToken")
-
-    require_client_methods(module, client, "NotificationsContacts", methods)
-
-    if arn:
+        require_client_methods(module, client, "NotificationsContacts", {"get_email_contact": ("arn",)})
         try:
             response = client.get_email_contact(arn=arn, aws_retry=True)
         except is_boto3_error_code("ResourceNotFoundException"):
@@ -149,6 +142,9 @@ def main():
 
         email_contacts = [contact] if contact is not None else []
     else:
+        require_client_methods(
+            module, client, "NotificationsContacts", {"list_email_contacts": ("maxResults", "nextToken")}
+        )
         email_contacts = query_list(
             module,
             client,

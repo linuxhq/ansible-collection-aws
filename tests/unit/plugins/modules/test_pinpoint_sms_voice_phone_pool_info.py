@@ -321,3 +321,19 @@ def test_origination_identities_prefer_the_pool_arn(pool, expected_pool_id):
 
     assert paginate.call_args.kwargs["PoolId"] == expected_pool_id
     assert raised.value.values["pools"][0]["origination_identities"] == [{"origination_identity": "phone-1"}]
+
+
+def test_pools_always_return_origination_identities_and_tags():
+    module = FakeModule({"filters": None, "max_results": None, "owner": "SHARED", "pool_ids": None})
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[{"PoolId": "pool-1"}]),
+        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": []}),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    pool = raised.value.values["pools"][0]
+    assert pool["origination_identities"] == []
+    assert pool["tags"] == {}
