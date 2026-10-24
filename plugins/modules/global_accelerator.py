@@ -129,6 +129,7 @@ options:
                   - ID of the endpoint, such as an EC2 instance ID, an elastic
                     IP allocation ID, or an Application or Network Load
                     Balancer ARN.
+                  - This must not be empty.
                 required: true
                 type: str
               weight:
@@ -143,7 +144,7 @@ options:
               - AWS region of the endpoint group.
               - AWS allows one endpoint group per region for each listener,
                 so this identifies the endpoint group.
-              - This must contain at most 255 characters.
+              - This must not be empty and must contain at most 255 characters.
             required: true
             type: str
           health_check_interval_seconds:
@@ -1804,12 +1805,12 @@ def ensure_present(client, module, deadline=None):
             changed=True,
         )
     elif created and module.check_mode:
-        # Predict the AWS creation defaults for omitted settings.
+        # Predict the AWS creation defaults for omitted settings and the status a real run returns after waiting.
         accelerator = {
             "Enabled": desired.get("enabled", True),
             "IpAddressType": desired.get("ip_address_type", "IPV4"),
             "Name": desired["name"],
-            "Status": "IN_PROGRESS",
+            "Status": "DEPLOYED" if module.params["wait"] else "IN_PROGRESS",
         }
         if ip_addresses is not None:
             accelerator["IpSets"] = [{"IpAddresses": ip_addresses}]
@@ -2089,6 +2090,10 @@ def main():
             for endpoint_group in listener.get("endpoint_groups") or []:
                 region = endpoint_group["endpoint_group_region"]
 
+                # Ansible turns a null required string into "", which AWS would only reject after earlier changes.
+                if not region:
+                    module.fail_json(msg="endpoint_group_region must not be empty")
+
                 if len(region) > 255:
                     module.fail_json(msg="endpoint_group_region must contain at most 255 characters")
 
@@ -2132,6 +2137,9 @@ def main():
                 endpoint_ids = set()
                 for configuration in endpoint_group.get("endpoint_configurations") or []:
                     endpoint_id = configuration["endpoint_id"]
+                    if not endpoint_id:
+                        module.fail_json(msg=f"Endpoint group {region} endpoint_id must not be empty")
+
                     if len(endpoint_id) > 255 or len(configuration.get("attachment_arn") or "") > 255:
                         module.fail_json(
                             msg=(
