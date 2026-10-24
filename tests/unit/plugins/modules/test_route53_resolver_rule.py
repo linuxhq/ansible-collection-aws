@@ -1156,3 +1156,92 @@ def test_update_returns_the_stored_domain_name(check_mode):
     assert result.value.values["resolver_rule"]["domain_name"] == "example.com."
     assert result.value.values["resolver_rule"]["resolver_endpoint_id"] == "rslvr-out-2"
     assert client.update_resolver_rule.call_count == (0 if check_mode else 1)
+
+
+def created_rule():
+    rule = existing_rule()
+    rule.pop("Tags")
+    return rule
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("domain_name", ["example.com", "Example.COM", "example.com."])
+def test_create_returns_the_stored_domain_name_and_target_defaults(check_mode, domain_name):
+    client = Mock()
+    client.create_resolver_rule.return_value = {"ResolverRule": created_rule()}
+    module = FakeModule(rule_params(domain_name=domain_name), check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=None),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    rule = result.value.values["resolver_rule"]
+    assert result.value.values["changed"] is True
+    assert rule["domain_name"] == "example.com."
+    assert rule["target_ips"] == [{"ip": "192.0.2.1", "port": 53, "protocol": "Do53"}]
+    assert client.create_resolver_rule.call_count == (0 if check_mode else 1)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_update_returns_the_target_defaults_of_a_new_target(check_mode):
+    client = Mock()
+    updated_targets = [
+        {"Ip": "192.0.2.2", "Port": 53, "Protocol": "Do53"},
+        {"Ip": "192.0.2.3", "Port": 5353, "Protocol": "Do53"},
+    ]
+    client.update_resolver_rule.return_value = {"ResolverRule": existing_rule(TargetIps=updated_targets)}
+    module = FakeModule(
+        rule_params(
+            target_ips=[
+                {"ip": "192.0.2.2", "ipv6": None, "port": None, "protocol": None, "server_name_indication": None},
+                {"ip": "192.0.2.3", "ipv6": None, "port": 5353, "protocol": None, "server_name_indication": None},
+            ]
+        ),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=existing_rule()),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["resolver_rule"]["target_ips"] == [
+        {"ip": "192.0.2.2", "port": 53, "protocol": "Do53"},
+        {"ip": "192.0.2.3", "port": 5353, "protocol": "Do53"},
+    ]
+    assert client.update_resolver_rule.call_count == (0 if check_mode else 1)
+
+
+def test_target_defaults_fill_only_an_omitted_do53_port():
+    assert plugin.target_ips_with_aws_defaults(
+        [{"Ip": "192.0.2.1"}, {"Ip": "192.0.2.2", "Protocol": "DoH"}, {"Ip": "192.0.2.3", "Port": 0}]
+    ) == [
+        {"Ip": "192.0.2.1", "Port": 53, "Protocol": "Do53"},
+        {"Ip": "192.0.2.2", "Protocol": "DoH"},
+        {"Ip": "192.0.2.3", "Port": 0, "Protocol": "Do53"},
+    ]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("wait", [False, True])
+def test_create_without_tags_returns_tags_only_when_waiting(check_mode, wait):
+    client = Mock()
+    client.create_resolver_rule.return_value = {"ResolverRule": created_rule()}
+    module = FakeModule(rule_params(wait=wait), check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=None),
+        patch.object(plugin, "wait_for_resolver_rule_status", return_value=created_rule()),
+        patch.object(route53_resolver_utils, "query_list", return_value=[]),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    rule = result.value.values["resolver_rule"]
+    assert result.value.values["changed"] is True
+    assert client.create_resolver_rule.call_count == (0 if check_mode else 1)
+    if wait:
+        assert rule["tags"] == {}
+    else:
+        assert "tags" not in rule

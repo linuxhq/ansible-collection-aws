@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - route53_resolver - in check mode, a predicted create with O(wait=true) and no O(tags) now returns
+    an empty C(resolver_endpoint.tags), as a real run does.
+  - route53_resolver_rule - in check mode, a predicted create now returns the domain name as AWS stores
+    it, lowercased with a trailing dot, as a real run does.
+  - route53_resolver_rule - in check mode, a predicted create or update now returns the port C(53) and
+    protocol C(Do53) that AWS stores for a target that omits them, as a real run does.
+  - route53_resolver_rule - in check mode, a predicted create with O(wait=true) and no O(tags) now
+    returns an empty C(resolver_rule.tags), as a real run does.

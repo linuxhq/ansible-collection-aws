@@ -711,7 +711,8 @@ def ensure_present(client, module, deadline=None):
                 if ip_address_status(ip_address) not in FAILED_IP_ADDRESS_STATUSES
             ]
 
-        if tags is not None:
+        # A waited create lists the new endpoint's tags.
+        if tags is not None or (current is None and module.params["wait"]):
             endpoint = apply_tag_deltas(endpoint, tags_to_set, tag_keys_to_unset)
     elif current is None:
         endpoint = create_resolver_endpoint(client, module, desired, deadline=deadline)

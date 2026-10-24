@@ -531,15 +531,26 @@ def ensure_present(client, module, deadline=None):
 
     if changed and module.check_mode:
         if rule is None:
-            rule = dict(request)
+            # AWS stores the domain name lowercased with a trailing dot.
+            rule = dict(
+                request,
+                DomainName=request["DomainName"].rstrip(".").lower() + ".",
+                TargetIps=target_ips_with_aws_defaults(request["TargetIps"]),
+            )
         elif resource_changed:
             # UpdateResolverRule changes only its Config fields; domain_name and rule_type already match.
-            rule = dict(rule, **{field: request[field] for field in ("Name", "ResolverEndpointId", "TargetIps")})
+            rule = dict(
+                rule,
+                Name=request["Name"],
+                ResolverEndpointId=request["ResolverEndpointId"],
+                TargetIps=target_ips_with_aws_defaults(request["TargetIps"]),
+            )
         else:
             # A tag-only change keeps the stored values.
             rule = dict(rule)
 
-        if tags is not None:
+        # A waited create lists the new rule's tags.
+        if tags is not None or (current is None and module.params["wait"]):
             rule = apply_tag_deltas(dict(rule, Tags=current_tags), tags_to_set, tag_keys_to_unset)
     elif current is None:
         rule = create_resolver_rule(client, module, request, deadline=deadline)
@@ -678,6 +689,20 @@ def target_ips_with_current_fields(current_target_ips, target_ips):
         )
         for target_ip, match in zip(target_ips, matches)
     ]
+
+
+def target_ips_with_aws_defaults(target_ips):
+    """Fill the values AWS stores for an omitted protocol (Do53) and an omitted Do53 port (53)."""
+    predicted = []
+    for target_ip in target_ips:
+        target_ip = dict(target_ip)
+        target_ip.setdefault("Protocol", "Do53")
+        if target_ip["Protocol"] == "Do53":
+            target_ip.setdefault("Port", 53)
+
+        predicted.append(target_ip)
+
+    return predicted
 
 
 def comparable_target_ip(target_ip):
