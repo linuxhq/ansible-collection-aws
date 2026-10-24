@@ -1127,6 +1127,45 @@ def test_create_only_network_settings_fail_before_any_update(field, value, check
     client.update_cluster_config.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"role_arn": "arn:aws:iam::123456789012:role/example"}, None),
+        ({"role_arn": "arn:aws:iam::123456789012:role/other"}, "Cannot modify role_arn"),
+        (
+            {"encryption_config": [{"provider": {"key_arn": "arn:key"}, "resources": ["secrets", "configmaps"]}]},
+            None,
+        ),
+        (
+            {"encryption_config": [{"provider": {"key_arn": "arn:other"}, "resources": ["configmaps", "secrets"]}]},
+            "Cannot modify encryption_config",
+        ),
+    ],
+)
+def test_create_only_settings_compare_the_current_value(overrides, message):
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "roleArn": "arn:aws:iam::123456789012:role/example",
+        "encryptionConfig": [{"provider": {"keyArn": "arn:key"}, "resources": ["configmaps", "secrets"]}],
+    }
+    client = Mock()
+    module = FakeModule(eks_params(**overrides))
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        pytest.raises(ModuleFail if message else ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    if message:
+        assert raised.value.values["msg"] == f"{message} for existing EKS cluster example"
+    else:
+        assert raised.value.values["changed"] is False
+
+    assert client.mock_calls == []
+
+
 def test_auto_mode_load_balancing_updates_with_matching_create_only_network_settings():
     current = {
         "name": "example",

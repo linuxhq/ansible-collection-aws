@@ -676,14 +676,6 @@ def normalized(value):
     return value
 
 
-def comparable_subset(current, desired):
-    if not isinstance(desired, dict):
-        return current
-
-    current = current or {}
-    return {key: comparable_subset(current.get(key), value) for key, value in desired.items()}
-
-
 def changed(current, desired):
     return normalized(current) != normalized(desired)
 
@@ -1076,9 +1068,7 @@ def ensure_present(client, module, deadline=None):
         if desired_boto3.get(camel_field) is None:
             continue
 
-        current_value = comparable_subset(current, {camel_field: desired_boto3[camel_field]})
-
-        if changed(current_value, {camel_field: desired_boto3[camel_field]}):
+        if changed(current.get(camel_field), desired_boto3[camel_field]):
             module.fail_json(msg=f"Cannot modify {field} for existing EKS cluster {name}")
 
     # EKS rejects these after creation; failing here keeps other updates from applying first.

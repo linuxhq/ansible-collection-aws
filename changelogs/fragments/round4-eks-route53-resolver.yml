@@ -1,0 +1,5 @@
+---
+trivial:
+  - eks_cluster - compare create-only settings directly instead of through a one-key subset helper.
+  - route53_resolver - reuse the endpoint read by the final IP address wait instead of reading it again.
+...

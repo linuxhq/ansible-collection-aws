@@ -1739,3 +1739,26 @@ def test_ip_address_changes_wait_only_for_the_remaining_budget():
         )
 
     assert waiter_configs(waiter) == budget_configs(1500, 900)
+
+
+def test_ip_address_changes_with_wait_get_the_endpoint_once():
+    endpoint = {"Id": "rslvr-1", "IpAddresses": [{"IpId": "rni-old", "SubnetId": "subnet-old"}]}
+    desired = {"name": "main", "ip_addresses": [{"subnet_id": "subnet-old"}, {"subnet_id": "subnet-new"}]}
+    waited = {"Id": "rslvr-1", "Status": "OPERATIONAL"}
+    client = Mock()
+    client.get_resolver_endpoint.return_value = {"ResolverEndpoint": waited}
+    with (
+        patch.object(plugin, "custom_waiter"),
+        patch.object(plugin, "run_waiter"),
+        patch.object(
+            plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]
+        ) as enrich,
+    ):
+        result = plugin.reconcile_resolver_endpoint_ip_addresses(
+            client, FakeModule(endpoint_params(wait=True)), endpoint, desired
+        )
+
+    assert result == waited
+    client.associate_resolver_endpoint_ip_address.assert_called_once()
+    assert client.get_resolver_endpoint.call_count == 1
+    enrich.assert_called_once_with(client, ANY, waited, changed=True)
