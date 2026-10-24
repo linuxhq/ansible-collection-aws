@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - global_accelerator - predict a check-mode create with O(wait=true) as ``DEPLOYED``, the status a real run
+    returns after waiting, instead of ``IN_PROGRESS``.
+  - global_accelerator - fail before any AWS call when an endpoint group's O(listeners[].endpoint_groups[].endpoint_group_region)
+    or an endpoint's O(listeners[].endpoint_groups[].endpoint_configurations[].endpoint_id) is empty or null, instead of
+    creating the accelerator and listener before AWS rejects the endpoint group.

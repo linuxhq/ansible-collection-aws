@@ -691,6 +691,54 @@ def test_endpoint_groups_reject_duplicate_regions_and_endpoints():
         assert_module_rejects(plugin, params, message)
 
 
+@pytest.mark.parametrize(
+    "endpoint_group, message",
+    [
+        (
+            {"endpoint_configurations": [], "endpoint_group_region": ""},
+            "endpoint_group_region must not be empty",
+        ),
+        (
+            {
+                "endpoint_configurations": [
+                    {
+                        "attachment_arn": None,
+                        "client_ip_preservation_enabled": None,
+                        "endpoint_id": "",
+                        "weight": 128,
+                    }
+                ],
+                "endpoint_group_region": "us-east-1",
+            },
+            "Endpoint group us-east-1 endpoint_id must not be empty",
+        ),
+    ],
+)
+def test_empty_required_endpoint_strings_fail_before_any_aws_call(endpoint_group, message):
+    # Ansible validates a null required string suboption as "".
+    params = {
+        "ip_addresses": None,
+        "listeners": [
+            {
+                "endpoint_groups": [endpoint_group],
+                "port_ranges": [{"from_port": 443, "to_port": 443}],
+                "protocol": "TCP",
+            }
+        ],
+        "state": "present",
+    }
+    module = FakeModule(params)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(module, "client") as client_factory,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == message
+    client_factory.assert_not_called()
+
+
 def test_endpoint_group_provider_limits_are_rejected():
     base = {
         "endpoint_configurations": [],
@@ -1314,6 +1362,21 @@ def test_unchanged_accelerator_waits_for_requested_readiness(wait, check_mode):
 
     client.update_accelerator.assert_not_called()
     client.create_accelerator.assert_not_called()
+
+
+@pytest.mark.parametrize("wait, status", [(True, "DEPLOYED"), (False, "IN_PROGRESS")])
+def test_check_mode_create_predicts_the_status_a_real_run_returns(wait, status):
+    module = FakeModule(accelerator_params(wait=wait), check_mode=True)
+    client = Mock()
+    with (
+        patch.object(plugin, "get_accelerator", return_value=None),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["accelerator"]["status"] == status
+    assert client.mock_calls == []
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
