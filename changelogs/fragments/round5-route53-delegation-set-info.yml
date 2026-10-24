@@ -1,0 +1,3 @@
+---
+trivial:
+  - route53_delegation_set_info - check the SDK method and build the result inside each lookup branch.

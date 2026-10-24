@@ -103,19 +103,8 @@ def main():
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
     delegation_set_id = module.params["id"]
 
-    require_client_methods(
-        module,
-        client,
-        "Route53",
-        (
-            {"get_reusable_delegation_set": ("Id",)}
-            if delegation_set_id
-            else {"list_reusable_delegation_sets": ("Marker", "MaxItems")}
-        ),
-    )
-
-    delegation_sets = []
     if delegation_set_id:
+        require_client_methods(module, client, "Route53", {"get_reusable_delegation_set": ("Id",)})
         operation = f"Unable to get AWS Route53 reusable delegation set {delegation_set_id}"
         try:
             response = client.get_reusable_delegation_set(
@@ -123,7 +112,7 @@ def main():
                 aws_retry=True,
             )
         except is_boto3_error_code("NoSuchDelegationSet"):
-            delegation_set = None
+            delegation_sets = []
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
@@ -131,11 +120,9 @@ def main():
             )
         else:
             delegation_set = response.get("DelegationSet") if isinstance(response, dict) else None
-            validate_delegation_set(module, delegation_set, operation, delegation_set_id)
-
-        if delegation_set is not None:
-            delegation_sets.append(delegation_set)
+            delegation_sets = [validate_delegation_set(module, delegation_set, operation, delegation_set_id)]
     else:
+        require_client_methods(module, client, "Route53", {"list_reusable_delegation_sets": ("Marker", "MaxItems")})
         delegation_sets = query_list(
             module,
             client,
