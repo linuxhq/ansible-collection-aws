@@ -10,6 +10,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
     paginated_query_with_retries,
 )
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import scrub_none_parameters
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
 
@@ -41,6 +42,20 @@ def identity_matches(origination, identities):
         for key in ("OriginationIdentity", "OriginationIdentityArn")
         if origination.get(key)
     )
+
+
+def predicted_origination_identity(origination_identity, iso_country_code):
+    """Project an origination identity as AWS returns it once associated with a pool."""
+    identity = {
+        "IsoCountryCode": iso_country_code,
+        "OriginationIdentity": origination_identity,
+    }
+    # A phone number is returned by its ID; a sender ID ARN ends with its country, so it is kept as given.
+    if origination_identity.startswith("arn:") and ":phone-number/" in origination_identity:
+        identity["OriginationIdentity"] = origination_identity.rsplit("/", 1)[-1]
+        identity["OriginationIdentityArn"] = origination_identity
+
+    return scrub_none_parameters(identity)
 
 
 def is_last_phone_number(originations, identities):

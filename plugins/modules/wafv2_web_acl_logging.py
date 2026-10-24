@@ -206,7 +206,11 @@ def ensure_present(client, module, web_acl):
             )
 
     elif changed and module.check_mode:
-        current = desired
+        # A put returns the stored configuration, including the fields AWS fills in for a new one.
+        current = dict(
+            current or {"LogScope": "CUSTOMER", "LogType": "WAF_LOGS", "ManagedByFirewallManager": False},
+            **desired,
+        )
 
     module.exit_json(
         changed=changed,
