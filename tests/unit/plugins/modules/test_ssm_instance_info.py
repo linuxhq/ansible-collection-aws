@@ -73,6 +73,20 @@ def test_instance_and_ping_filters_override_and_stringify_filters():
     ]
 
 
+def test_null_filter_value_is_rejected_before_describing():
+    result, _require, query_list = run(FakeModule(params(filters={"tag:Environment": None}), client=Mock()))
+
+    assert result.values["msg"] == "filters.tag:Environment must not contain a null value"
+    query_list.assert_not_called()
+
+
+def test_instance_ids_replace_a_null_instance_ids_filter():
+    module = FakeModule(params(filters={"InstanceIds": None}, instance_ids=["i-1"]), client=Mock())
+    _result, _require, query_list = run(module, [])
+
+    assert query_list.call_args.kwargs["Filters"] == [{"Key": "InstanceIds", "Values": ["i-1"]}]
+
+
 def test_no_matching_instances_returns_empty_lists():
     result, _require, _query = run(FakeModule(params(instance_ids=["i-missing"]), client=Mock()), [])
 

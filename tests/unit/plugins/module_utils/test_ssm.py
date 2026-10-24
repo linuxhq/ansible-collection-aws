@@ -7,6 +7,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
     association_overview,
     describe_ssm_document,
     list_ssm_tags,
+    require_non_null_ssm_filter_values,
     require_valid_ssm_targets,
     ssm_filter_list,
 )
@@ -90,6 +91,18 @@ def test_ssm_filter_list_splits_values_with_custom_key_names():
         {"key": "Name", "value": "b"},
         {"key": "Status", "value": "Success"},
     ]
+
+
+@pytest.mark.parametrize("filters", [{"Owner": "Self", "tag:Env": None}, {"Owner": "Self", "tag:Env": ["a", None]}])
+def test_require_non_null_ssm_filter_values_rejects_null_values(filters):
+    with pytest.raises(ModuleFail) as raised:
+        require_non_null_ssm_filter_values(FakeModule({}), filters)
+
+    assert raised.value.values["msg"] == "filters.tag:Env must not contain a null value"
+
+
+def test_require_non_null_ssm_filter_values_accepts_scalar_and_list_values():
+    require_non_null_ssm_filter_values(FakeModule({}), {"Owner": "Self", "PlatformTypes": ["Linux", 1], "Flag": False})
 
 
 def test_describe_ssm_document_returns_the_description():

@@ -43,6 +43,7 @@ options:
     description:
       - A dict of filters to apply when listing Systems Manager documents.
       - Filter keys and values are passed to the Systems Manager C(ListDocuments) API.
+      - Filter values must not be null.
       - Mutually exclusive with O(name).
     type: dict
   name:
@@ -185,6 +186,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
     SSM_DOCUMENT_RESOURCE_TYPE,
     describe_ssm_document,
     list_ssm_tags,
+    require_non_null_ssm_filter_values,
     ssm_filter_list,
 )
 
@@ -263,6 +265,7 @@ def main():
     else:
         request = {}
         if filters:
+            require_non_null_ssm_filter_values(module, filters)
             request["Filters"] = ssm_filter_list(filters)
 
         document_identifiers = query_list(

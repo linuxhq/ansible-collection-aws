@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - ssm_document_info - fail with a clear message when a ``filters`` value is null instead of silently
+    listing documents that match the literal string ``None``.
+  - ssm_instance_info - fail with a clear message when a ``filters`` value is null instead of silently
+    describing instances that match the literal string ``None``.

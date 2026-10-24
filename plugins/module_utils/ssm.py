@@ -32,6 +32,13 @@ def ssm_filter_list(filters, key_name="Key", values_name="Values", split_values=
     return filter_list
 
 
+def require_non_null_ssm_filter_values(module, filters):
+    """Fail on a null filter value, which ssm_filter_list would otherwise send as the literal string "None"."""
+    for key, value in filters.items():
+        if any(item is None for item in (value if isinstance(value, list) else [value])):
+            module.fail_json(msg=f"filters.{key} must not contain a null value")
+
+
 def require_valid_ssm_targets(module, targets):
     """Fail unless each target has a 1 to 163 character key and 1 to 50 distinct values."""
     for target in targets:

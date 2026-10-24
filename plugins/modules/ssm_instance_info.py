@@ -31,6 +31,7 @@ options:
       - A dict of filters to apply when describing Systems Manager instances.
       - Filter names and values are passed to the SSM
         C(DescribeInstanceInformation) API.
+      - Filter values must not be null.
     type: dict
   instance_ids:
     description:
@@ -236,6 +237,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
     association_overview,
+    require_non_null_ssm_filter_values,
     ssm_filter_list,
 )
 
@@ -295,6 +297,7 @@ def main():
         filters["PingStatus"] = ping_status
 
     if filters:
+        require_non_null_ssm_filter_values(module, filters)
         request["Filters"] = ssm_filter_list(filters)
 
     methods = {"describe_instance_information": tuple(request)}
