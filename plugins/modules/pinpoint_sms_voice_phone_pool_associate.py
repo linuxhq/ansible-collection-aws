@@ -324,7 +324,8 @@ def ensure_absent(client, module):
     # AWS rejects disassociating the last phone number in a pool; only the pool module deletes pools.
     if changed and is_last_phone_number(current, (origination_identity,)):
         # A DELETING pool is treated as missing, because deleting it disassociates its numbers.
-        if pool_is_deleting(client, module, pool_id):
+        # A shared pool must be described by the ARN the caller gave.
+        if pool_is_deleting(client, module, module.params["pool_id"]):
             exit_result(module, False, None)
 
         module.fail_json(changed=False, msg=last_phone_number_message(origination_identity, pool_id))

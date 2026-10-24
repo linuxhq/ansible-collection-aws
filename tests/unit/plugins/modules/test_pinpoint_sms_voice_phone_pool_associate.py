@@ -378,7 +378,9 @@ def test_absent_fails_without_mutation_for_last_phone_number(check_mode):
     ):
         plugin.ensure_absent(client, absent_params(check_mode=check_mode))
 
-    query.assert_called_once_with(client, "describe_pools", PoolIds=["pool-1"])
+    query.assert_called_once_with(
+        client, "describe_pools", PoolIds=["arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1"]
+    )
 
     assert raised.value.values["changed"] is False
     assert raised.value.values["msg"] == plugin.last_phone_number_message("phone-1", "pool-1")
@@ -406,7 +408,9 @@ def test_absent_reports_no_change_for_last_phone_number_of_a_deleting_pool(descr
     ):
         plugin.ensure_absent(client, absent_params(check_mode=check_mode))
 
-    query.assert_called_once_with(client, "describe_pools", PoolIds=["pool-1"])
+    query.assert_called_once_with(
+        client, "describe_pools", PoolIds=["arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1"]
+    )
     assert raised.value.values == {
         "association": {},
         "changed": False,

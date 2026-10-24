@@ -567,7 +567,12 @@ def update_phone_number(client, module, current, updates):
         {"update_phone_number": ("PhoneNumberId",) + tuple(updates)},
     )
     try:
-        response = client.update_phone_number(PhoneNumberId=phone_number_id, **updates, aws_retry=True)
+        # A shared number must be addressed by the ARN the caller gave.
+        response = client.update_phone_number(
+            PhoneNumberId=module.params["phone_number_id"] or phone_number_id,
+            **updates,
+            aws_retry=True,
+        )
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to update Pinpoint SMS Voice V2 phone number {phone_number_id}")
 
@@ -832,7 +837,12 @@ def ensure_present(client, module):
             and (wait or updates or tags_to_set or tag_keys_to_unset)
         ):
             # Changes always wait for ACTIVE, even when wait=false, and are recalculated from the settled number.
-            current = wait_for_phone_number_active(client, module, current["PhoneNumberId"], tags=current.get("Tags"))
+            current = wait_for_phone_number_active(
+                client,
+                module,
+                module.params["phone_number_id"] or current["PhoneNumberId"],
+                tags=current.get("Tags"),
+            )
             current, updates, tags_to_set, tag_keys_to_unset = phone_number_changes(client, module, current)
 
         if updates and current.get("PoolId"):

@@ -644,6 +644,11 @@ def pool_changes(module, current, tags):
     return update_request, tags_to_set, tag_keys_to_unset
 
 
+def pool_reference(module, pool):
+    """Return the identifier to address a pool by; a shared pool given by ARN must be addressed by that ARN."""
+    return module.params.get("pool_id") or pool["PoolId"]
+
+
 def ensure_present(client, module):
     deletion_protection_enabled = module.params["deletion_protection_enabled"]
     message_type = module.params["message_type"]
@@ -664,7 +669,9 @@ def ensure_present(client, module):
         and current.get("Status") != "ACTIVE"
         and current.get("PoolId")
     ):
-        current = pool_with_details(client, module, wait_for_pool_active(client, module, current["PoolId"]))
+        current = pool_with_details(
+            client, module, wait_for_pool_active(client, module, pool_reference(module, current))
+        )
 
     tags = dict(module.params["tags"] or {})
     tags["Name"] = module.params["name"]
@@ -679,7 +686,9 @@ def ensure_present(client, module):
         and current.get("Status") != "ACTIVE"
         and current.get("PoolId")
     ):
-        current = pool_with_details(client, module, wait_for_pool_active(client, module, current["PoolId"]))
+        current = pool_with_details(
+            client, module, wait_for_pool_active(client, module, pool_reference(module, current))
+        )
         update_request, tags_to_set, tag_keys_to_unset = pool_changes(module, current, tags)
         changed = bool(update_request or tags_to_set or tag_keys_to_unset)
 
@@ -716,7 +725,7 @@ def ensure_present(client, module):
                 previous = current
                 try:
                     current = client.update_pool(
-                        PoolId=current["PoolId"],
+                        PoolId=pool_reference(module, current),
                         **update_request,
                         aws_retry=True,
                     )
@@ -732,7 +741,7 @@ def ensure_present(client, module):
                 current["Tags"] = previous.get("Tags", [])
 
                 if (tags_to_set or tag_keys_to_unset) and current.get("Status") != "ACTIVE":
-                    active = wait_for_pool_active(client, module, current["PoolId"], changed=True)
+                    active = wait_for_pool_active(client, module, pool_reference(module, current), changed=True)
                     active["OriginationIdentities"] = current["OriginationIdentities"]
                     active["Tags"] = current["Tags"]
                     current = active
@@ -759,11 +768,11 @@ def ensure_present(client, module):
                 current = pool_with_details(
                     client,
                     module,
-                    wait_for_pool_active(client, module, current["PoolId"], changed=True),
+                    wait_for_pool_active(client, module, pool_reference(module, current), changed=True),
                     changed=True,
                 )
             else:
-                current = get_pool_by_id(client, module, current["PoolId"], changed=True) or current
+                current = get_pool_by_id(client, module, pool_reference(module, current), changed=True) or current
     elif changed and module.check_mode:
         new_pool = current is None
         current = dict(current or {})

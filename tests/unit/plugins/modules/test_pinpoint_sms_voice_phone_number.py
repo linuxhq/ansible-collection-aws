@@ -1364,6 +1364,28 @@ def test_changes_wait_for_an_active_number_even_without_wait(status):
     assert raised.value.values["changed"] is True
 
 
+def test_number_given_by_arn_is_waited_on_and_updated_by_that_arn():
+    client = Mock()
+    client.update_phone_number.return_value = existing_number(DeletionProtectionEnabled=False)
+    module = FakeModule(phone_number_params(deletion_protection_enabled=False, phone_number_id=PHONE_NUMBER_ARN))
+    with (
+        patch.object(plugin, "get_phone_number", return_value=existing_number(Status="PENDING")),
+        patch.object(plugin, "wait_for_phone_number_active", return_value=existing_number()) as wait,
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    wait.assert_called_once_with(client, module, PHONE_NUMBER_ARN, tags=None)
+    client.update_phone_number.assert_called_once_with(
+        PhoneNumberId=PHONE_NUMBER_ARN,
+        DeletionProtectionEnabled=False,
+        aws_retry=True,
+    )
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["phone_number"]["deletion_protection_enabled"] is False
+
+
 def test_unchanged_number_does_not_wait_without_wait():
     client = Mock()
     module = FakeModule(phone_number_params(tags={"Name": "sms"}))
