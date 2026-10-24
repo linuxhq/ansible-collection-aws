@@ -148,9 +148,46 @@ def test_check_mode_returns_desired_logging_configuration():
     result = run_present(client, FakeModule(params(), check_mode=True), None)
 
     assert result.values["changed"]
-    assert result.values["logging_configuration"]["log_destination_configs"] == ["arn:log"]
+    assert result.values["logging_configuration"] == {
+        "log_destination_configs": ["arn:log"],
+        "log_scope": "CUSTOMER",
+        "log_type": "WAF_LOGS",
+        "managed_by_firewall_manager": False,
+        "resource_arn": ARN,
+    }
     client.get_web_acl.assert_called_once_with(**WEB_ACL, aws_retry=True)
     client.put_logging_configuration.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "current",
+    [
+        None,
+        {
+            "LogDestinationConfigs": ["arn:old"],
+            "LogScope": "CUSTOMER",
+            "LogType": "WAF_LOGS",
+            "LoggingFilter": {"DefaultBehavior": "KEEP", "Filters": []},
+            "ManagedByFirewallManager": False,
+            "ResourceArn": ARN,
+        },
+    ],
+)
+def test_check_mode_predicts_the_stored_configuration_a_put_returns(current):
+    stored = dict(
+        current or {"LogScope": "CUSTOMER", "LogType": "WAF_LOGS", "ManagedByFirewallManager": False},
+        LogDestinationConfigs=["arn:new"],
+        ResourceArn=ARN,
+    )
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        client.put_logging_configuration.return_value = {"LoggingConfiguration": stored}
+        results[check_mode] = run_present(
+            client, FakeModule(params(log_destination_configs=["arn:new"]), check_mode=check_mode), current
+        ).values
+
+    assert results[True] == results[False]
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

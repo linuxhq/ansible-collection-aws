@@ -419,7 +419,11 @@ def ensure_present(client, module):
 
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
-        current = dict(current or {}, Url=desired["url"], **provider_lists(desired))
+        # Mirror the real run: an existing provider keeps the URL and lists AWS returned unless a list call is made.
+        if current is None:
+            current = dict(Url=desired["url"], **provider_lists(desired))
+        elif resource_changed:
+            current = dict(current, **provider_lists(desired))
 
         if tags is not None:
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)

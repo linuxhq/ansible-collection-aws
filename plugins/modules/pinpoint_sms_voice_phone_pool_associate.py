@@ -166,6 +166,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
     is_last_phone_number_conflict,
     last_phone_number_message,
     pool_is_deleting,
+    predicted_origination_identity,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
@@ -295,13 +296,10 @@ def ensure_present(client, module):
         validate_association(module, association, changed=True)
         association.pop("ResponseMetadata", None)
     elif changed and module.check_mode:
-        association = scrub_none_parameters(
-            {
-                "IsoCountryCode": module.params["iso_country_code"],
-                "OriginationIdentity": module.params["origination_identity"],
-                # AWS returns the pool ID even when the pool is requested by ARN.
-                "PoolId": module.params["pool_id"].rsplit("/", 1)[-1],
-            }
+        association = dict(
+            predicted_origination_identity(module.params["origination_identity"], module.params["iso_country_code"]),
+            # AWS returns the pool ID even when the pool is requested by ARN.
+            PoolId=module.params["pool_id"].rsplit("/", 1)[-1],
         )
 
     exit_result(module, changed, association)
