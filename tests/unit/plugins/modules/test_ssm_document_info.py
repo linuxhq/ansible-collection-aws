@@ -109,6 +109,13 @@ def test_filter_values_are_converted_to_strings():
     assert query_list.call_args.kwargs["Filters"] == [{"Key": "Owner", "Values": ["123"]}]
 
 
+def test_null_filter_value_is_rejected_before_listing():
+    result, _require, query_list = run(FakeModule(params(filters={"tag:team": None}), client=Mock()))
+
+    assert result.values["msg"] == "filters.tag:team must not contain a null value"
+    query_list.assert_not_called()
+
+
 def test_rejects_malformed_document_identifier():
     result, _require, _query = run(FakeModule(params(), client=Mock()), [None])
 
