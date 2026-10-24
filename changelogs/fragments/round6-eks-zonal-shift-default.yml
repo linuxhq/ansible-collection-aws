@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - eks_cluster - treat a cluster that has never configured zonal shift as having zonal shift disabled, so
+    O(zonal_shift_config.enabled=false) no longer reports a change or sends a no-op update on the first run.

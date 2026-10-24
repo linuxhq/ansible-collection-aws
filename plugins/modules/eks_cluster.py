@@ -725,6 +725,14 @@ def with_auto_mode_defaults(current):
     return current
 
 
+def with_zonal_shift_default(current):
+    """Return current with an omitted zonalShiftConfig shown as disabled, as EKS omits it until it is set."""
+    current = dict(current)
+    current["zonalShiftConfig"] = dict(current.get("zonalShiftConfig") or {})
+    current["zonalShiftConfig"].setdefault("enabled", False)
+    return current
+
+
 def auto_mode_request(current, config_request):
     request = {}
     for field, path in AUTO_MODE_FIELDS.items():
@@ -1097,10 +1105,13 @@ def ensure_present(client, module, deadline=None):
     auto_mode_changed = False
     for field, value in config_request.items():
         field_request = {field: value}
-        update_request = changed_request(
-            with_auto_mode_defaults(current) if field in AUTO_MODE_FIELDS else current,
-            field_request,
-        )
+        compared = current
+        if field in AUTO_MODE_FIELDS:
+            compared = with_auto_mode_defaults(current)
+        elif field == "zonalShiftConfig":
+            compared = with_zonal_shift_default(current)
+
+        update_request = changed_request(compared, field_request)
 
         if update_request is None:
             continue
