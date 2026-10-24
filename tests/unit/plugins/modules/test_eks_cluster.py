@@ -1804,6 +1804,46 @@ def test_enabling_auto_mode_on_a_standard_cluster_sends_every_capability():
     )
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_disabled_zonal_shift_matches_a_cluster_that_never_set_it(check_mode):
+    # EKS returns zonalShiftConfig as null, which botocore drops, until zonal shift is configured.
+    current = {"name": "example", "arn": "arn:example", "status": "ACTIVE", "deletionProtection": False}
+    client = Mock()
+    module = FakeModule(eks_params(zonal_shift_config={"enabled": False}), check_mode=check_mode)
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert client.mock_calls == []
+    assert raised.value.values["changed"] is False
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_enabling_zonal_shift_on_a_cluster_that_never_set_it_sends_an_update(check_mode):
+    current = {"name": "example", "arn": "arn:example", "status": "ACTIVE", "deletionProtection": False}
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    module = FakeModule(eks_params(zonal_shift_config={"enabled": True}), check_mode=check_mode)
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    if check_mode:
+        client.update_cluster_config.assert_not_called()
+        assert raised.value.values["cluster"]["zonal_shift_config"] == {"enabled": True}
+    else:
+        client.update_cluster_config.assert_called_once_with(name="example", zonalShiftConfig={"enabled": True})
+
+
 def fake_clock():
     """Return a clock whose sleep and waiter calls advance it, and the patches that install it."""
     clock = {"now": 0}
