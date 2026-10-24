@@ -683,19 +683,23 @@ def ensure_present(client, module, deadline=None):
             )
 
     if changed and module.check_mode:
-        projected_desired = dict(desired)
-        for field in OPTIONAL_ENDPOINT_FIELDS:
-            if projected_desired[field] is None:
-                if current is None:
-                    projected_desired[field] = ENDPOINT_CREATION_DEFAULTS[field]
-                else:
-                    projected_desired.pop(field)
-
         keep_ip_addresses = current is not None and comparable_ips_match(
             current["ip_addresses"], desired_comparable["ip_addresses"]
         )
-        if keep_ip_addresses:
-            projected_desired.pop("ip_addresses")
+        if current is None:
+            projected_desired = dict(desired)
+            for field in OPTIONAL_ENDPOINT_FIELDS:
+                if projected_desired[field] is None:
+                    projected_desired[field] = ENDPOINT_CREATION_DEFAULTS[field]
+        else:
+            # Only fields an update changes replace the AWS values; direction and security groups already match.
+            projected_desired = {
+                field: desired[field]
+                for field in OPTIONAL_ENDPOINT_FIELDS
+                if desired[field] is not None and current[field] != desired[field]
+            }
+            if not keep_ip_addresses:
+                projected_desired["ip_addresses"] = desired["ip_addresses"]
 
         endpoint = dict(endpoint or {})
         endpoint.update(snake_dict_to_camel_dict(projected_desired, capitalize_first=True))
