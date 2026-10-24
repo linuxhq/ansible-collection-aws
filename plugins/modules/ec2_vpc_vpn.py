@@ -595,6 +595,9 @@ TUNNEL_CHOICES = {
     "phase2_dh_group_numbers": [2, 5, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
 }
 
+# EC2 omits a tunnel list option that was never set; its AWS default permits every choice.
+TUNNEL_DEFAULTS = {TUNNEL_FIELDS[name]: set(choices) for name, choices in TUNNEL_CHOICES.items()}
+
 
 RESERVED_TUNNEL_IPV4_NETWORKS = {f"169.254.{index}.0/30" for index in range(6)} | {"169.254.169.252/30"}
 
@@ -853,7 +856,8 @@ def tunnel_deltas(module, connection):
                         f"tunnel {outside_ip}"
                     )
 
-                equal = {item["Value"] for item in value} == {item["Value"] for item in actual or []}
+                current_values = TUNNEL_DEFAULTS[field] if actual is None else {item["Value"] for item in actual}
+                equal = {item["Value"] for item in value} == current_values
             else:
                 equal = value == actual
 
