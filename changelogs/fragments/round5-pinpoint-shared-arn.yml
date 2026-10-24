@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number - wait for and update a phone number given by ARN using that ARN, which
+    AWS requires for a shared phone number.
+  - pinpoint_sms_voice_phone_pool - wait for, update, and re-read a pool given by ARN using that ARN, which
+    AWS requires for a shared pool.
+  - pinpoint_sms_voice_phone_pool_associate - describe a pool given by ARN using that ARN before refusing to
+    disassociate its last phone number, so a shared pool is no longer mistaken for a deleted pool.
+...

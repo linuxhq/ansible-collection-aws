@@ -1,4 +1,4 @@
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 import pytest
 
@@ -1140,3 +1140,36 @@ def test_resulting_tag_limit_fails_before_updating_the_pool(check_mode):
     assert raised.value.values.get("changed", False) is False
     client.update_pool.assert_not_called()
     client.tag_resource.assert_not_called()
+
+
+@pytest.mark.parametrize("update_status", ["UPDATING", "ACTIVE"])
+def test_present_addresses_a_pool_given_by_arn_by_that_arn(update_status):
+    client = Mock()
+    client.update_pool.return_value = active_pool(
+        DeletionProtectionEnabled=True, PoolArn=POOL_ARN, Status=update_status
+    )
+    module = FakeModule(present_params(deletion_protection_enabled=True, pool_id=POOL_ARN, tags=None, wait=True))
+    settled = active_pool(DeletionProtectionEnabled=True, PoolArn=POOL_ARN)
+    with (
+        patch.object(plugin, "find_pool", return_value=active_pool(PoolArn=POOL_ARN, Status="UPDATING")),
+        patch.object(
+            plugin, "wait_for_pool_active", side_effect=[active_pool(PoolArn=POOL_ARN), settled]
+        ) as wait_for_pool_active,
+        patch.object(plugin, "pool_with_details", side_effect=lambda client, module, pool, changed=False: pool),
+        patch.object(plugin, "get_pool_by_id", return_value=settled) as get_pool_by_id,
+        patch.object(plugin, "reconcile_arn_tags"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    client.update_pool.assert_called_once_with(PoolId=POOL_ARN, DeletionProtectionEnabled=True, aws_retry=True)
+    expected_waits = [call(client, module, POOL_ARN)]
+    if update_status == "ACTIVE":
+        get_pool_by_id.assert_called_once_with(client, module, POOL_ARN, changed=True)
+    else:
+        expected_waits.append(call(client, module, POOL_ARN, changed=True))
+        get_pool_by_id.assert_not_called()
+
+    assert wait_for_pool_active.call_args_list == expected_waits
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["pool"]["deletion_protection_enabled"] is True
