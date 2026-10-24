@@ -1,6 +1,7 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import route53_delegation_set_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -32,6 +33,27 @@ def test_id_uses_get_reusable_delegation_set():
         "Route53",
         {"get_reusable_delegation_set": ("Id",)},
     )
+    client.get_reusable_delegation_set.assert_called_once_with(Id="delegation-1", aws_retry=True)
+
+
+def test_missing_id_returns_empty_list():
+    client = Mock(
+        get_reusable_delegation_set=Mock(
+            side_effect=ClientError(
+                {"Error": {"Code": "NoSuchDelegationSet", "Message": "missing"}},
+                "GetReusableDelegationSet",
+            )
+        )
+    )
+    module = FakeModule({"id": "delegation-1"}, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"changed": False, "delegation_sets": []}
     client.get_reusable_delegation_set.assert_called_once_with(Id="delegation-1", aws_retry=True)
 
 
