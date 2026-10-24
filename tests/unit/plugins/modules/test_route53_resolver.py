@@ -1762,3 +1762,49 @@ def test_ip_address_changes_with_wait_get_the_endpoint_once():
     client.associate_resolver_endpoint_ip_address.assert_called_once()
     assert client.get_resolver_endpoint.call_count == 1
     enrich.assert_called_once_with(client, ANY, waited, changed=True)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_tag_only_change_returns_the_stored_security_groups_and_protocols(check_mode):
+    client = Mock()
+    endpoint = existing_endpoint(Protocols=["DoH", "Do53"], SecurityGroupIds=["sg-b", "sg-a"])
+    module = FakeModule(
+        endpoint_params(protocols=["DoH", "Do53"], security_group_ids=["sg-b", "sg-a"], tags={"Env": "test"}),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    result = raised.value.values
+    assert result["changed"] is True
+    assert result["resolver_endpoint"]["security_group_ids"] == ["sg-b", "sg-a"]
+    assert result["resolver_endpoint"]["protocols"] == ["DoH", "Do53"]
+    assert result["resolver_endpoint"]["tags"] == {"Env": "test"}
+    client.update_resolver_endpoint.assert_not_called()
+
+
+def test_check_mode_protocol_change_keeps_the_stored_security_groups():
+    client = Mock()
+    endpoint = existing_endpoint(SecurityGroupIds=["sg-b", "sg-a"])
+    module = FakeModule(
+        endpoint_params(protocols=["DoH", "Do53"], security_group_ids=["sg-b", "sg-a"]),
+        check_mode=True,
+    )
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    result = raised.value.values
+    assert result["changed"] is True
+    assert result["resolver_endpoint"]["protocols"] == ["Do53", "DoH"]
+    assert result["resolver_endpoint"]["security_group_ids"] == ["sg-b", "sg-a"]
+    client.update_resolver_endpoint.assert_not_called()

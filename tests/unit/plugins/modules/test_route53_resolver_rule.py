@@ -1137,3 +1137,22 @@ def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
         "changed": False,
         "msg": "Unable to wait for AWS Route53 Resolver rule main to become deleted",
     }
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_update_returns_the_stored_domain_name(check_mode):
+    client = Mock()
+    client.update_resolver_rule.return_value = {"ResolverRule": existing_rule(ResolverEndpointId="rslvr-out-2")}
+    module = FakeModule(
+        rule_params(domain_name="Example.com", resolver_endpoint_id="rslvr-out-2"), check_mode=check_mode
+    )
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=existing_rule()),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["resolver_rule"]["domain_name"] == "example.com."
+    assert result.value.values["resolver_rule"]["resolver_endpoint_id"] == "rslvr-out-2"
+    assert client.update_resolver_rule.call_count == (0 if check_mode else 1)

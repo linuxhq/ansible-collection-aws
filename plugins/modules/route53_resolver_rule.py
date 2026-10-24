@@ -530,8 +530,15 @@ def ensure_present(client, module, deadline=None):
         request = dict(request, TargetIps=target_ips_with_current_fields(rule["TargetIps"], request["TargetIps"]))
 
     if changed and module.check_mode:
-        # Only a configuration change replaces the stored values; a tag-only change keeps them.
-        rule = dict(rule or {}, **request) if resource_changed else dict(rule)
+        if rule is None:
+            rule = dict(request)
+        elif resource_changed:
+            # UpdateResolverRule changes only its Config fields; domain_name and rule_type already match.
+            rule = dict(rule, **{field: request[field] for field in ("Name", "ResolverEndpointId", "TargetIps")})
+        else:
+            # A tag-only change keeps the stored values.
+            rule = dict(rule)
+
         if tags is not None:
             rule = apply_tag_deltas(dict(rule, Tags=current_tags), tags_to_set, tag_keys_to_unset)
     elif current is None:

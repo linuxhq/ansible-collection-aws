@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - route53_resolver - in check mode, an existing endpoint's predicted result now keeps the security group
+    IDs, direction, and unchanged protocols and endpoint type that AWS returned, as a real run does, instead
+    of the sorted comparison values.
+  - route53_resolver_rule - in check mode, a predicted update of an existing rule now applies only the name,
+    resolver endpoint ID, and target IPs that UpdateResolverRule changes, so the result keeps the domain name
+    and rule type that AWS stored, as a real run does.
+...
