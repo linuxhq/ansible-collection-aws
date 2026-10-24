@@ -1844,6 +1844,117 @@ def test_enabling_zonal_shift_on_a_cluster_that_never_set_it_sends_an_update(che
         client.update_cluster_config.assert_called_once_with(name="example", zonalShiftConfig={"enabled": True})
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_disabled_compute_config_without_node_pools_matches_a_standard_cluster(check_mode):
+    # EKS returns computeConfig as null, which botocore drops, on a cluster that never enabled Auto Mode.
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "kubernetesNetworkConfig": {"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": False}},
+    }
+    client = Mock()
+    module = FakeModule(eks_params(compute_config={"enabled": False, "node_pools": []}), check_mode=check_mode)
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert client.mock_calls == []
+    assert raised.value.values["changed"] is False
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_compute_config_node_pools_on_a_standard_cluster_send_an_update(check_mode):
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "kubernetesNetworkConfig": {"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": False}},
+    }
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    module = FakeModule(
+        eks_params(
+            compute_config={"enabled": True, "node_pools": ["general-purpose"], "node_role_arn": "arn:node"},
+            kubernetes_network_config={"elastic_load_balancing": {"enabled": True}},
+            storage_config={"block_storage": {"enabled": True}},
+        ),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    if check_mode:
+        client.update_cluster_config.assert_not_called()
+    else:
+        client.update_cluster_config.assert_called_once_with(
+            name="example",
+            computeConfig={"enabled": True, "nodePools": ["general-purpose"], "nodeRoleArn": "arn:node"},
+            kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
+            storageConfig={"blockStorage": {"enabled": True}},
+        )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_empty_remote_network_config_matches_a_cluster_without_remote_networks(check_mode):
+    # EKS omits remoteNetworkConfig on a cluster created without hybrid nodes.
+    current = {"name": "example", "arn": "arn:example", "status": "ACTIVE"}
+    client = Mock()
+    module = FakeModule(
+        eks_params(remote_network_config={"remote_node_networks": [], "remote_pod_networks": []}),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert client.mock_calls == []
+    assert raised.value.values["changed"] is False
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_remote_node_networks_on_a_cluster_without_remote_networks_send_the_whole_config(check_mode):
+    current = {"name": "example", "arn": "arn:example", "status": "ACTIVE"}
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    module = FakeModule(
+        eks_params(
+            remote_network_config={"remote_node_networks": [{"cidrs": ["10.80.0.0/16"]}], "remote_pod_networks": []}
+        ),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    if check_mode:
+        client.update_cluster_config.assert_not_called()
+    else:
+        client.update_cluster_config.assert_called_once_with(
+            name="example",
+            remoteNetworkConfig={"remoteNodeNetworks": [{"cidrs": ["10.80.0.0/16"]}], "remotePodNetworks": []},
+        )
+
+
 def fake_clock():
     """Return a clock whose sleep and waiter calls advance it, and the patches that install it."""
     clock = {"now": 0}
