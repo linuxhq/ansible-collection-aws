@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ec2_vpc_vpn - compare a tunnel list option that EC2 omits, because it was never set, against its AWS default
+    of every permitted value, so passing the defaults explicitly (for example O(tunnel_options[].ike_versions=[ikev1, ikev2]))
+    no longer reports a change or modifies the tunnel on the first run.
