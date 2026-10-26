@@ -13,7 +13,7 @@ description:
   - Manages static transit gateway routes in the route table.
   - This module does not manage route table associations or propagations.
   - EC2 permits at most 50 tags on a transit gateway route table; tag keys may
-    contain at most 127 characters and tag values at most 256 characters.
+    contain at most 128 characters and tag values at most 256 characters.
   - Existing tags are purged only when O(tags) is provided and
     O(purge_tags=true). When O(name) is provided without O(tags), existing tags
     other than C(Name) are retained.
@@ -1207,12 +1207,12 @@ def main():
     if state == "present":
         tags = module.params["tags"]
         name = module.params["name"]
-        require_valid_tags(module, tags, 50, key_max=127)
+        require_valid_tags(module, tags, 50)
         if name and tags is not None and tags.get("Name", name) != name:
             module.fail_json(msg="tags.Name must match name")
 
         # The Name tag counts toward the EC2 tag limit.
-        require_valid_tags(module, desired_tags(module), 50, key_max=127)
+        require_valid_tags(module, desired_tags(module), 50)
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 

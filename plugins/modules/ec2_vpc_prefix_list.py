@@ -1024,7 +1024,7 @@ def main():
 
             cidrs.add(entry["cidr"])
 
-    require_valid_tags(module, tags if state == "present" else None, 50, key_max=127)
+    require_valid_tags(module, tags if state == "present" else None, 50)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     require_client_methods(

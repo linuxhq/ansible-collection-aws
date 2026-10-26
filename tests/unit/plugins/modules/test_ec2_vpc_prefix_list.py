@@ -376,6 +376,32 @@ def test_present_entries_must_be_nonempty_and_unique():
         assert_module_rejects(plugin, params, message)
 
 
+def test_tag_keys_may_contain_128_characters_but_not_129():
+    params = {
+        "address_family": "IPv4",
+        "entries": [{"cidr": "10.0.0.0/8"}],
+        "max_entries": None,
+        "name": "main",
+        "purge_tags": True,
+        "state": "present",
+        "tags": {"k" * 128: "v"},
+        "wait": False,
+    }
+    module = FakeModule(params, client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_aws_account_id", return_value=OWNER),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once_with(module.client(), module, OWNER)
+
+    params["tags"] = {"k" * 129: "v"}
+    assert_module_rejects(plugin, params, "tag keys must contain 1 to 128 characters and values at most 256 characters")
+
+
 def test_present_waits_for_an_existing_modification_and_rechecks():
     client = Mock()
     module = FakeModule(

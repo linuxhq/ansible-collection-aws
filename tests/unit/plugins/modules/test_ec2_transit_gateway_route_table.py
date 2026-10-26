@@ -103,6 +103,31 @@ def test_name_tag_counts_toward_provider_limit():
     assert raised.value.values["msg"] == "tags must contain at most 50 entries"
 
 
+@pytest.mark.parametrize("name", [None, "main"])
+def test_tag_keys_may_contain_128_characters_but_not_129(name):
+    params = {
+        "name": name,
+        "purge_routes": False,
+        "routes": None,
+        "state": "present",
+        "tags": {"k" * 128: "v"},
+        "transit_gateway_route_table_id": None if name else "tgw-rtb-1",
+    }
+    module = FakeModule(params, client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_positive_wait_bounds"),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once_with(module.client(), module)
+
+    params["tags"] = {"k" * 129: "v"}
+    assert_module_rejects(plugin, params, "tag keys must contain 1 to 128 characters and values at most 256 characters")
+
+
 def test_absent_does_not_validate_unused_routes():
     module = FakeModule(
         {
