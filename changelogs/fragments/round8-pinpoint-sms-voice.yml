@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_pool - in check mode, predict a new pool's ``status`` as ``CREATING`` with
+    O(wait=false), the CreatePool status a real run returns, and as ``ACTIVE`` only with O(wait=true).
+  - pinpoint_sms_voice_phone_pool_associate - in check mode, return ``association.pool_arn`` for a new association
+    from the pool ARN that ListPoolOriginationIdentities reports, as the unchanged and real runs return it.
+trivial:
+  - pinpoint_sms_voice_phone_pool, pinpoint_sms_voice_phone_pool_associate, pinpoint_sms_voice_phone_pool_info -
+    document that ``phone_number`` is returned only when AWS lists it, and that the associate module returns
+    ``number_capabilities`` and ``phone_number`` only for an association that this run did not remove.

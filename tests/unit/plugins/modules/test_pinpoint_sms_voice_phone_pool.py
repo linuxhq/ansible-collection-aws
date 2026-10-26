@@ -397,6 +397,22 @@ def test_new_pool_predicts_listed_origination_identity(check_mode, origination_i
     assert client.create_pool.called is not check_mode
 
 
+@pytest.mark.parametrize("wait, expected", [(False, "CREATING"), (True, "ACTIVE")])
+def test_new_pool_check_mode_predicts_the_status_a_real_run_returns(wait, expected):
+    module = create_params("phone-1", check_mode=True)
+    module.params["wait"] = wait
+    client = Mock()
+    with (
+        patch.object(plugin, "find_pool", return_value=None),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    client.create_pool.assert_not_called()
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["pool"]["status"] == expected
+
+
 def test_check_mode_preserves_existing_empty_pool_identities():
     current = {
         "DeletionProtectionEnabled": False,

@@ -132,7 +132,7 @@ pools:
           elements: str
         phone_number:
           description: The phone number in E.164 format.
-          returned: when the origination identity is a phone number
+          returned: when returned by AWS
           type: str
     pool_arn:
       description: The pool ARN.
