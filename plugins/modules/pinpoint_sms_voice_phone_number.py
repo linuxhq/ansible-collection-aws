@@ -108,6 +108,7 @@ options:
   pool_id:
     description:
       - The pool ID or ARN to associate with the phone number.
+      - This must not be empty when provided with O(state=present).
     type: str
   registration_id:
     description:
@@ -1013,6 +1014,10 @@ def main():
 
         if module.params["number_type"] == "SIMULATOR" and module.params["message_type"] != "TRANSACTIONAL":
             module.fail_json(msg="message_type must be TRANSACTIONAL when number_type is SIMULATOR")
+
+        # AWS rejects an empty pool ID, which check mode would otherwise predict as a new request.
+        if module.params["pool_id"] is not None and not module.params["pool_id"].strip():
+            module.fail_json(msg="pool_id must not be empty")
 
         require_valid_tags(module, tags, 200)
 

@@ -1,5 +1,7 @@
 ---
 bugfixes:
+  - pinpoint_sms_voice_phone_number - with O(state=present), fail before any AWS call when O(pool_id) is empty,
+    which AWS rejects, instead of predicting a new phone number request in check mode.
   - pinpoint_sms_voice_phone_pool - in check mode, predict a new pool's ``status`` as ``CREATING`` with
     O(wait=false), the CreatePool status a real run returns, and as ``ACTIVE`` only with O(wait=true).
   - pinpoint_sms_voice_phone_pool_associate - in check mode, return ``association.pool_arn`` for a new association
