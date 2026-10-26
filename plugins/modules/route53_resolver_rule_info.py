@@ -59,6 +59,14 @@ resolver_rules:
       description: The time the rule was created.
       returned: when returned by AWS
       type: str
+    creator_request_id:
+      description: The unique string that identifies the request that created the rule.
+      returned: when returned by AWS
+      type: str
+    delegation_record:
+      description: The domain name that the delegation records of a delegate rule point to.
+      returned: when returned by AWS
+      type: str
     domain_name:
       description: The rule domain name.
       returned: always
@@ -66,6 +74,10 @@ resolver_rules:
     id:
       description: The rule ID.
       returned: always
+      type: str
+    modification_time:
+      description: The time the rule was last modified.
+      returned: when returned by AWS
       type: str
     name:
       description: The rule name.

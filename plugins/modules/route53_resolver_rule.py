@@ -61,11 +61,13 @@ options:
       ip:
         description:
           - The IPv4 address of the target.
+          - O(target_ips[].ip) or O(target_ips[].ipv6) is required.
           - Mutually exclusive with O(target_ips[].ipv6).
         type: str
       ipv6:
         description:
           - The IPv6 address of the target.
+          - O(target_ips[].ip) or O(target_ips[].ipv6) is required.
           - Mutually exclusive with O(target_ips[].ip).
         type: str
       port:
@@ -169,6 +171,10 @@ resolver_rule:
       description: The time the rule was created.
       returned: when returned by AWS
       type: str
+    creator_request_id:
+      description: The unique string that identifies the request that created the rule.
+      returned: when returned by AWS
+      type: str
     domain_name:
       description: The rule domain name.
       returned: always
@@ -176,6 +182,10 @@ resolver_rule:
     id:
       description: The rule ID.
       returned: except when check mode predicts creation
+      type: str
+    modification_time:
+      description: The time the rule was last modified.
+      returned: when returned by AWS
       type: str
     name:
       description: The rule name.
@@ -692,10 +702,16 @@ def target_ips_with_current_fields(current_target_ips, target_ips):
 
 
 def target_ips_with_aws_defaults(target_ips):
-    """Fill the values AWS stores for an omitted protocol (Do53) and an omitted Do53 port (53)."""
+    """Fill the values AWS stores for an omitted protocol (Do53) and an omitted Do53 port (53).
+
+    AWS stores an empty server name indication as no value, so it is dropped.
+    """
     predicted = []
     for target_ip in target_ips:
         target_ip = dict(target_ip)
+        if target_ip.get("ServerNameIndication") == "":
+            del target_ip["ServerNameIndication"]
+
         target_ip.setdefault("Protocol", "Do53")
         if target_ip["Protocol"] == "Do53":
             target_ip.setdefault("Port", 53)
@@ -879,6 +895,10 @@ def main():
         require_valid_tags(module, tags, 200)
 
     for target_ip in module.params["target_ips"] or []:
+        # ansible-core counts an explicit null as set for required_one_of.
+        if target_ip.get("ip") is None and target_ip.get("ipv6") is None:
+            module.fail_json(msg="target_ips entries must set ip or ipv6")
+
         if target_ip["port"] is not None and not 0 <= target_ip["port"] <= 65535:
             module.fail_json(msg="target_ips[].port must be between 0 and 65535")
 

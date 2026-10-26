@@ -8,7 +8,9 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
+    assert_documents_shape,
     assert_module_contract,
+    documented_returns,
 )
 
 
@@ -71,6 +73,13 @@ def test_empty_unfiltered_rules_skip_association_query():
 def test_module_contract():
     options = assert_module_contract(plugin)
     assert options["argument_spec"]["filters"]["type"] == "dict"
+
+
+def test_documented_returns_cover_the_sdk_shapes():
+    contains = documented_returns(plugin)["resolver_rules"]["contains"]
+    assert_documents_shape(contains, "route53resolver", "ResolverRule")
+    assert_documents_shape(contains["target_ips"]["contains"], "route53resolver", "TargetAddress")
+    assert_documents_shape(contains["associations"]["contains"], "route53resolver", "ResolverRuleAssociation")
 
 
 def test_paginated_methods_are_required():

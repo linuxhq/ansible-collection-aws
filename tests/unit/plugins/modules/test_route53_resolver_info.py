@@ -7,7 +7,9 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
+    assert_documents_shape,
     assert_module_contract,
+    documented_returns,
 )
 
 
@@ -69,6 +71,12 @@ def test_malformed_ip_address_and_tag_are_rejected():
 def test_module_contract():
     options = assert_module_contract(plugin)
     assert options["argument_spec"]["filters"]["type"] == "dict"
+
+
+def test_documented_returns_cover_the_sdk_shapes():
+    contains = documented_returns(plugin)["resolver_endpoints"]["contains"]
+    assert_documents_shape(contains, "route53resolver", "ResolverEndpoint")
+    assert_documents_shape(contains["ip_addresses"]["contains"], "route53resolver", "IpAddressResponse")
 
 
 def test_empty_endpoint_list_skips_detail_calls():

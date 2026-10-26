@@ -1,0 +1,18 @@
+---
+bugfixes:
+  - route53_resolver_rule - fail with a clear message when a O(target_ips) entry sets neither O(target_ips[].ip) nor
+    O(target_ips[].ipv6), for example an explicit null that ansible-core's C(required_one_of) accepts, instead of
+    treating the entry as matching any current target, predicting a create, or sending a target without an address.
+  - route53_resolver_rule - treat an empty O(target_ips[].server_name_indication) as no server name indication, which
+    is how AWS stores it, so the rule converges instead of being updated and failing the post-update check on every
+    run, an empty value clears a stored server name indication, and check mode no longer predicts an empty value.
+  - route53_resolver - in check mode with O(wait=true), an existing endpoint whose IP addresses change or include
+    failed addresses now returns the C(ip_address_count) that the real run re-reads after the change.
+  - route53_resolver, route53_resolver_info - document the C(creator_request_id), C(dns64_enabled),
+    C(ipv6_internet_access_enabled), C(modification_time), C(outpost_arn), C(preferred_instance_type),
+    C(rni_enhanced_metrics_enabled), and C(target_name_server_metrics_enabled) endpoint return values and the
+    C(creation_time), C(modification_time), and C(status_message) IP address return values.
+  - route53_resolver - document that the IP address C(ip_id) and C(status) return values are also absent when
+    check mode predicts a create or an IP address change.
+  - route53_resolver_rule, route53_resolver_rule_info - document the C(creator_request_id) and C(modification_time)
+    return values, and the C(delegation_record) return value of route53_resolver_rule_info.
