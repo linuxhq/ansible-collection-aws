@@ -501,6 +501,54 @@ def test_algorithms_compare_as_sets_and_ignore_omitted_fields(params, connection
     assert plugin.tunnel_deltas(FakeModule(params), connection) == []
 
 
+DEFAULT_TUNNEL_LISTS = {
+    "ike_versions": ["ikev2", "ikev1"],
+    "phase1_encryption_algorithms": ["AES256-GCM-16", "AES128-GCM-16", "AES256", "AES128"],
+    "phase2_encryption_algorithms": ["AES256-GCM-16", "AES128-GCM-16", "AES256", "AES128"],
+    "phase1_integrity_algorithms": ["SHA2-512", "SHA2-384", "SHA2-256", "SHA1"],
+    "phase2_integrity_algorithms": ["SHA2-512", "SHA2-384", "SHA2-256", "SHA1"],
+    "phase1_dh_group_numbers": [24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 2],
+    "phase2_dh_group_numbers": [24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 5, 2],
+}
+
+
+@pytest.fixture
+def default_tunnels(connection):
+    # EC2 returns only these fields for tunnels created with default options.
+    connection["Options"]["TunnelOptions"] = [
+        {"OutsideIpAddress": address, "PreSharedKey": "EXAMPLE_GENERATED_SECRET", "TunnelInsideCidr": cidr}
+        for address, cidr in (("203.0.113.1", "169.254.10.0/30"), ("203.0.113.2", "169.254.11.0/30"))
+    ]
+    return connection
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("option", sorted(DEFAULT_TUNNEL_LISTS))
+def test_omitted_tunnel_lists_match_explicit_aws_defaults(params, default_tunnels, check_mode, option):
+    params["tunnel_options"] = [{option: DEFAULT_TUNNEL_LISTS[option]}]
+    client = Mock()
+    assert ensure(client, FakeModule(params, check_mode=check_mode), default_tunnels)["changed"] is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("option", sorted(DEFAULT_TUNNEL_LISTS))
+def test_omitted_tunnel_lists_change_for_non_default_values(params, default_tunnels, option):
+    value = DEFAULT_TUNNEL_LISTS[option][:1]
+    params["tunnel_options"] = [{option: value}]
+    field = plugin.TUNNEL_FIELDS[option]
+    assert plugin.tunnel_deltas(FakeModule(params), default_tunnels) == [
+        (address, {field: [{"Value": value[0]}]}) for address in ("203.0.113.1", "203.0.113.2")
+    ]
+
+
+def test_omitted_tunnel_list_default_does_not_hide_a_returned_empty_list(params, default_tunnels):
+    default_tunnels["Options"]["TunnelOptions"][0]["IkeVersions"] = []
+    params["tunnel_options"] = [{"outside_ip_address": "203.0.113.1", "ike_versions": ["ikev1", "ikev2"]}]
+    assert plugin.tunnel_deltas(FakeModule(params), default_tunnels) == [
+        ("203.0.113.1", {"IKEVersions": [{"Value": "ikev1"}, {"Value": "ikev2"}]})
+    ]
+
+
 @pytest.mark.parametrize("check_mode", [True, False])
 @pytest.mark.parametrize("versions", [["ikev2"], ["ikev1", "ikev2"]])
 def test_ike_versions_use_sdk_response_casing_and_are_idempotent(params, connection, check_mode, versions):
