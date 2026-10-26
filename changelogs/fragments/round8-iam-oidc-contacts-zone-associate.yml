@@ -1,0 +1,13 @@
+---
+bugfixes:
+  - iam_oidc_provider - in check mode, return ``client_id_list`` and ``tags`` for a provider that would be created
+    as empty when ``client_id_list`` or ``tags`` is omitted, as IAM reports a new provider, and use the same shape
+    when a just-created provider cannot be read back yet.
+  - iam_oidc_provider - when updating a provider, return a client ID or thumbprint list that the run does not change
+    as IAM keeps it, including its order, instead of the sorted requested list.
+  - iam_oidc_provider, iam_oidc_provider_info - document ``url`` as the provider URL as IAM stores it, which keeps the
+    case and any trailing slash of the URL the provider was created with, instead of a normalized URL.
+  - notifications_contacts - fail with a parameter error instead of a Python traceback when ``name`` is explicitly
+    null with ``state=present``.
+  - route53_zone_associate - reject an empty or null ``hosted_zone_id`` or ``vpc_id`` before any AWS call instead of
+    sending an empty ID to AWS, predicting a change in check mode, or reporting an empty VPC as already absent.

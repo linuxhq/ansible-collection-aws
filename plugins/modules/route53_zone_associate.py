@@ -385,13 +385,20 @@ def main():
     if not 2 <= len(vpc_region) <= 25 or not re.fullmatch(r"[a-z]{2,4}(?:-[a-z]{1,15})+-[0-9]", vpc_region):
         module.fail_json(msg="vpc_region must be a valid AWS region name")
 
+    # ansible-core turns an explicit null for a required string into "", which identifies no zone or VPC.
+    hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]
+    if not hosted_zone_id:
+        module.fail_json(msg="hosted_zone_id must identify a hosted zone")
+
+    if not module.params["vpc_id"]:
+        module.fail_json(msg="vpc_id must not be empty")
+
     require_positive_wait_bounds(module)
 
     client = module.client(
         "route53",
         retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["PriorRequestNotComplete"]),
     )
-    hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]
     methods = {"get_hosted_zone": ("Id",)}
     if module.params["wait"]:
         methods["get_change"] = ("Id",)

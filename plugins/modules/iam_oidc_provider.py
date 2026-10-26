@@ -97,9 +97,7 @@ open_id_connect_provider:
   contains:
     client_id_list:
       description: The client IDs registered with the provider.
-      returned: >-
-        when the provider exists, or in check mode when a provider would be created and
-        O(client_id_list) is specified
+      returned: always
       type: list
       elements: str
     create_date:
@@ -122,7 +120,7 @@ open_id_connect_provider:
       type: list
       elements: str
     url:
-      description: The normalized provider URL.
+      description: The provider URL as stored by IAM, without the C(https://) prefix.
       returned: always
       type: str
 open_id_connect_provider_arn:
@@ -210,10 +208,25 @@ def ensure_absent(client, module):
     module.exit_json(**result)
 
 
-def provider_lists(desired):
-    """Return the desired client ID and thumbprint lists keyed by their IAM field names."""
+def provider_lists(desired, current_comparable=None):
+    """Return the desired client ID and thumbprint lists keyed by their IAM field names.
+
+    With current_comparable, return only the lists that differ from the existing provider's, which are the ones written.
+    """
     fields = {"client_id_list": "ClientIDList", "thumbprint_list": "ThumbprintList"}
-    return {field: desired[key] for key, field in fields.items() if key in desired}
+    return {
+        field: desired[key]
+        for key, field in fields.items()
+        if key in desired and (current_comparable is None or current_comparable[key] != desired[key])
+    }
+
+
+def new_provider(desired, tags):
+    """Return a provider being created as IAM reports it: no client IDs or tags unless they were requested."""
+    return dict(
+        {"ClientIDList": [], "Tags": ansible_dict_to_boto3_tag_list(tags or {}), "Url": desired["url"]},
+        **provider_lists(desired),
+    )
 
 
 def ensure_present(client, module):
@@ -289,7 +302,7 @@ def ensure_present(client, module):
             arn = response["OpenIDConnectProviderArn"]
 
             current = get_provider_by_arn(client, module, arn, changed=True) or dict(
-                request, OpenIDConnectProviderArn=arn, Url=desired["url"]
+                new_provider(desired, tags), OpenIDConnectProviderArn=arn
             )
         else:
             arn = current["OpenIDConnectProviderArn"]
@@ -414,16 +427,17 @@ def ensure_present(client, module):
                         msg=f"Unable to tag AWS IAM OIDC provider {url}",
                     )
 
+            # IAM keeps a list that was not written, including its order, so only the written lists are overlaid.
             if provider_changed:
-                current = dict(current, **provider_lists(desired))
+                current = dict(current, **provider_lists(desired, current_comparable))
 
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
-        # Mirror the real run: an existing provider keeps the URL and lists AWS returned unless a list call is made.
+        # Mirror the real run: an existing provider keeps the URL AWS returned and every list no call would write.
         if current is None:
-            current = dict(Url=desired["url"], **provider_lists(desired))
+            current = new_provider(desired, tags)
         elif resource_changed:
-            current = dict(current, **provider_lists(desired))
+            current = dict(current, **provider_lists(desired, current_comparable))
 
         if tags is not None:
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)

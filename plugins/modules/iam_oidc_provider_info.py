@@ -82,7 +82,7 @@ open_id_connect_providers:
       type: list
       elements: str
     url:
-      description: The normalized provider URL.
+      description: The provider URL as stored by IAM, without the C(https://) prefix.
       returned: always
       type: str
 """

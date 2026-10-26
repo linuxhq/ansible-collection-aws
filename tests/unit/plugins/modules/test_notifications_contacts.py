@@ -2,6 +2,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
+
 from ansible_collections.linuxhq.aws.plugins.modules import notifications_contacts as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -225,6 +227,16 @@ def test_contact_address_and_name_are_validated_before_api_calls():
     ]
     for params, message in cases:
         assert_module_rejects(plugin, params, message)
+
+
+def test_null_name_is_rejected_before_api_calls():
+    params = {"email_address": "ops@example.com", "name": None, "state": "present", "tags": None}
+    spec = assert_module_contract(plugin)
+    spec.pop("supports_check_mode")
+
+    # required_if counts only supplied keys, so ansible-core accepts an explicit null name.
+    assert ArgumentSpecValidator(**spec).validate(params).error_messages == []
+    assert_module_rejects(plugin, params, "state is present but all of the following are missing: name")
 
 
 def test_new_contact_omits_empty_tags():

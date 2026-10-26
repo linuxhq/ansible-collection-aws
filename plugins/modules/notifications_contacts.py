@@ -393,6 +393,9 @@ def main():
             module.fail_json(msg="email_address must be 6 to 254 characters and contain @")
 
         name = module.params["name"]
+        # required_if counts only supplied keys, so an explicit null name passes it.
+        if name is None:
+            module.fail_json(msg="state is present but all of the following are missing: name")
 
         if not 1 <= len(name) <= 64 or not re.search(r"[\w\-.~]", name):
             module.fail_json(
