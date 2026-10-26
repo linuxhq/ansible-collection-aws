@@ -74,7 +74,7 @@ def test_invalid_vpc_region_is_rejected():
     assert run_main(FakeModule(params(vpc_region="invalid"))) == "vpc_region must be a valid AWS region name"
 
 
-def test_null_required_ids_reach_the_module_as_empty_strings():
+def test_null_required_ids_are_rejected_before_aws_calls():
     captured = {}
 
     def initialize(**kwargs):
@@ -86,9 +86,17 @@ def test_null_required_ids_reach_the_module_as_empty_strings():
 
     result = ArgumentSpecValidator(captured["argument_spec"]).validate(params(hosted_zone_id=None, vpc_id=None))
 
-    assert result.error_messages == []
-    assert result.validated_parameters["hosted_zone_id"] == ""
-    assert result.validated_parameters["vpc_id"] == ""
+    # Older ansible-core releases reject a null required string; newer ones pass it on as "", which main() rejects.
+    if result.error_messages:
+        for name in ("hosted_zone_id", "vpc_id"):
+            assert any(f"'{name}'" in message for message in result.error_messages)
+    else:
+        assert (result.validated_parameters["hosted_zone_id"], result.validated_parameters["vpc_id"]) == ("", "")
+        module = FakeModule(result.validated_parameters)
+        module.client = Mock()
+
+        assert run_main(module) == "hosted_zone_id must identify a hosted zone"
+        module.client.assert_not_called()
 
 
 @pytest.mark.parametrize("state", ["absent", "present"])
