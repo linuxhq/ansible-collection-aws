@@ -711,7 +711,7 @@ def canonicalize_public_access_cidrs(module):
 
 
 def with_auto_mode_defaults(current):
-    """Return current with omitted Auto Mode blocks shown as disabled, as EKS omits them on standard clusters."""
+    """Return current with omitted Auto Mode blocks and node pools shown as disabled and empty, as EKS omits them."""
     current = dict(current)
     for field, path in AUTO_MODE_FIELDS.items():
         config = dict(current.get(field) or {})
@@ -722,6 +722,7 @@ def with_auto_mode_defaults(current):
 
         config.setdefault("enabled", False)
 
+    current["computeConfig"].setdefault("nodePools", [])
     return current
 
 
@@ -730,6 +731,15 @@ def with_zonal_shift_default(current):
     current = dict(current)
     current["zonalShiftConfig"] = dict(current.get("zonalShiftConfig") or {})
     current["zonalShiftConfig"].setdefault("enabled", False)
+    return current
+
+
+def with_remote_network_default(current):
+    """Return current with omitted remote node and pod networks shown as empty, as EKS omits them when unset."""
+    current = dict(current)
+    current["remoteNetworkConfig"] = dict(current.get("remoteNetworkConfig") or {})
+    current["remoteNetworkConfig"].setdefault("remoteNodeNetworks", [])
+    current["remoteNetworkConfig"].setdefault("remotePodNetworks", [])
     return current
 
 
@@ -1110,6 +1120,8 @@ def ensure_present(client, module, deadline=None):
             compared = with_auto_mode_defaults(current)
         elif field == "zonalShiftConfig":
             compared = with_zonal_shift_default(current)
+        elif field == "remoteNetworkConfig":
+            compared = with_remote_network_default(current)
 
         update_request = changed_request(compared, field_request)
 

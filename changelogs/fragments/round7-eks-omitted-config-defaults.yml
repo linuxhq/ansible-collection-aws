@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - eks_cluster - treat node pools that EKS omits from a cluster without Auto Mode as empty, so
+    O(compute_config.enabled=false) with an empty O(compute_config.node_pools) no longer reports a change or sends
+    a no-op update that EKS rejects.
+  - eks_cluster - treat remote node and pod networks that EKS omits from a cluster without hybrid nodes as empty, so
+    empty O(remote_network_config.remote_node_networks) and O(remote_network_config.remote_pod_networks) no longer
+    report a change or send a no-op update that EKS rejects.
