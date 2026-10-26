@@ -146,6 +146,38 @@ def test_check_mode_predicts_new_association_without_api_call():
     assert result.values["association"]["schedule_expression"] == "rate(1 hour)"
 
 
+@pytest.mark.parametrize("overrides", [{}, {"association_name": "weekly", "schedule_expression": None}])
+def test_check_mode_predicts_a_created_association_as_aws_returns_it(overrides):
+    module_params = params(tags={"Env": "test"}, **overrides)
+    # CreateAssociation fills these in for an association created without them.
+    created = {
+        "ApplyOnlyAtCronInterval": False,
+        "AssociationId": "association-1",
+        "AssociationVersion": "1",
+        "Date": "2026-10-26T15:42:09.002000-07:00",
+        "DocumentVersion": "$DEFAULT",
+        "LastUpdateAssociationDate": "2026-10-26T15:42:09.002000-07:00",
+        "Name": "document",
+        "Overview": {"DetailedStatus": "Creating", "Status": "Pending"},
+        "Targets": [{"Key": "InstanceIds", "Values": ["i-1"]}],
+    }
+    for option, field in (("association_name", "AssociationName"), ("schedule_expression", "ScheduleExpression")):
+        if module_params[option] is not None:
+            created[field] = module_params[option]
+
+    client = Mock()
+    client.create_association.return_value = {"AssociationDescription": created}
+    real = run_present(client, FakeModule(module_params), None)
+    check_client = Mock()
+    predicted = run_present(check_client, FakeModule(module_params, check_mode=True), None)
+
+    assigned = {"association_id", "date", "last_update_association_date"}
+    assert predicted.values["association"] == {
+        key: value for key, value in real.values["association"].items() if key not in assigned
+    }
+    check_client.create_association.assert_not_called()
+
+
 def test_create_uses_known_tags_without_eventual_lookup():
     client = Mock()
     client.create_association.return_value = {
@@ -623,7 +655,9 @@ def test_check_mode_rate_schedule_predicts_cleared_cron_only_fields():
     )
 
     assert result.values["changed"]
-    assert not {"apply_only_at_cron_interval", "duration", "schedule_offset"} & set(result.values["association"])
+    # DescribeAssociation returns a cleared ApplyOnlyAtCronInterval as false and omits a cleared Duration and offset.
+    assert result.values["association"]["apply_only_at_cron_interval"] is False
+    assert not {"duration", "schedule_offset"} & set(result.values["association"])
     client.update_association.assert_not_called()
 
 

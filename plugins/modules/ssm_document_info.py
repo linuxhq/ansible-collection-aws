@@ -9,9 +9,10 @@ version_added: '1.9.0'
 short_description: Gather information about AWS Systems Manager documents
 description:
   - Gathers information about AWS Systems Manager documents.
-  - Retrieves each document in O(document_format) and parses the returned
-    content as JSON when possible; other content is returned exactly as AWS
-    stores it.
+  - Retrieves each document in O(document_format). With
+    O(document_format=JSON), the returned content is parsed as JSON when
+    possible; other content, including C(YAML) written in JSON-compatible
+    syntax, is returned exactly as AWS stores it.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -191,9 +192,13 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
 )
 
 
-def content_transform(content):
+def content_transform(content, document_format):
     if content is None:
         return {}
+
+    # AWS returns YAML content as stored, so YAML written in JSON-compatible syntax must stay a string too.
+    if document_format != "JSON":
+        return content
 
     try:
         return json.loads(content)
@@ -325,7 +330,7 @@ def main():
         documents.append(
             boto3_resource_to_ansible_dict(
                 document,
-                nested_transforms={"Content": content_transform},
+                nested_transforms={"Content": lambda content: content_transform(content, document_format)},
                 transform_tags=True,
                 force_tags=False,
             )

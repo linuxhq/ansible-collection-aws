@@ -350,6 +350,31 @@ def test_deleting_document_is_predicted_as_created_in_check_mode():
     client.create_document.assert_not_called()
 
 
+@pytest.mark.parametrize("deleting", [False, True])
+@pytest.mark.parametrize("wait", [False, True])
+def test_check_mode_predicts_a_created_document_as_a_real_create_returns_it(wait, deleting):
+    existing = [document({"schemaVersion": "2.2"}, Status="Deleting")] if deleting else []
+    client = Mock()
+    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1", "Name": "example"}}
+    created = document({"schemaVersion": "2.2"}, DocumentFormat="JSON", Status="Active")
+    real, _wait, _get = run_present(client, FakeModule(params(wait=wait)), existing + [None, created])
+    check_client = Mock()
+    predicted, _wait, _get = run_present(
+        check_client, FakeModule(params(wait=wait), check_mode=True), existing or [None]
+    )
+
+    expected = dict(real.values["document"])
+    if not wait:
+        # Without a wait, a real create returns whatever status AWS reports right after CreateDocument.
+        del expected["status"]
+
+    assert predicted.values == dict(real.values, document=expected)
+    assert predicted.values["document"]["document_format"] == "JSON"
+    assert predicted.values["document"]["document_version"] == "1"
+    assert predicted.values["document"].get("status") == ("Active" if wait else None)
+    check_client.create_document.assert_not_called()
+
+
 @pytest.mark.parametrize("status", ["Creating", "Updating"])
 def test_transitional_document_is_waited_on_before_comparing(status):
     settling = document({"schemaVersion": "2.2"}, Status=status)

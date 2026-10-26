@@ -613,8 +613,15 @@ def ensure_present(client, module):
 
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
+        created = current is None
         # A promotion returns the promoted version, as a real run does.
         current = dict((latest if default_version_to_promote else current) or {})
+        if created:
+            # A created document is version 1 in JSON, and a waited create returns it once AWS reports it Active.
+            current.update({"DocumentFormat": "JSON", "DocumentVersion": "1"})
+            if module.params["wait"]:
+                current["Status"] = "Active"
+
         current.update(
             {
                 "Content": desired_comparable["content"],
