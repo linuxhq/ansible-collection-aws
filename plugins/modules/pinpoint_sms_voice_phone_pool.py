@@ -268,6 +268,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
     identity_matches,
     is_phone_number_identity,
     list_tags,
+    predicted_origination_identity,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
@@ -380,21 +381,6 @@ def pool_with_tags(client, module, pool, changed=False, missing_ok=False):
 
     pool["Tags"] = ansible_dict_to_boto3_tag_list(tags)
     return pool
-
-
-def predicted_origination_identity(module):
-    """Project the new pool's origination identity as ListPoolOriginationIdentities returns it."""
-    origination_identity = module.params["origination_identity"]
-    identity = {
-        "IsoCountryCode": module.params["iso_country_code"],
-        "OriginationIdentity": origination_identity,
-    }
-    # A phone number is listed by its ID; a sender ID ARN ends with its country, so it is kept as given.
-    if origination_identity.startswith("arn:") and ":phone-number/" in origination_identity:
-        identity["OriginationIdentity"] = origination_identity.rsplit("/", 1)[-1]
-        identity["OriginationIdentityArn"] = origination_identity
-
-    return scrub_none_parameters(identity)
 
 
 def select_pool_by_id(module, pools, pool_id, changed=False):
@@ -717,7 +703,9 @@ def ensure_present(client, module):
 
             validate_pool(module, current, "creating a pool", changed=True)
             current.pop("ResponseMetadata", None)
-            current["OriginationIdentities"] = [predicted_origination_identity(module)]
+            current["OriginationIdentities"] = [
+                predicted_origination_identity(module.params["origination_identity"], module.params["iso_country_code"])
+            ]
             current["Tags"] = request["Tags"]
             tags_to_set, tag_keys_to_unset = ({}, [])
         else:
@@ -789,7 +777,9 @@ def ensure_present(client, module):
             current["DeletionProtectionEnabled"] = False
 
         if new_pool:
-            current["OriginationIdentities"] = [predicted_origination_identity(module)]
+            current["OriginationIdentities"] = [
+                predicted_origination_identity(module.params["origination_identity"], module.params["iso_country_code"])
+            ]
 
         current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
 

@@ -3,7 +3,10 @@ from unittest.mock import Mock
 import pytest
 from botocore.exceptions import ClientError
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import list_tags
+from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    list_tags,
+    predicted_origination_identity,
+)
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule, ModuleFail
 
 ARN = "arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1"
@@ -54,3 +57,26 @@ def test_list_tags_rejects_malformed_tags(response):
         "changed": True,
         "msg": f"AWS returned malformed tags for Pinpoint SMS Voice V2 pool {ARN}",
     }
+
+
+PHONE_ARN = "arn:aws:sms-voice:us-east-1:123456789012:phone-number/phone-1"
+SENDER_ARN = "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US"
+
+
+@pytest.mark.parametrize(
+    ("origination_identity", "iso_country_code", "expected"),
+    [
+        (
+            PHONE_ARN,
+            "US",
+            {"IsoCountryCode": "US", "OriginationIdentity": "phone-1", "OriginationIdentityArn": PHONE_ARN},
+        ),
+        (SENDER_ARN, "US", {"IsoCountryCode": "US", "OriginationIdentity": SENDER_ARN}),
+        ("phone-1", "US", {"IsoCountryCode": "US", "OriginationIdentity": "phone-1"}),
+        ("sender-1", None, {"OriginationIdentity": "sender-1"}),
+    ],
+)
+def test_predicted_origination_identity_matches_the_associated_identity(
+    origination_identity, iso_country_code, expected
+):
+    assert predicted_origination_identity(origination_identity, iso_country_code) == expected

@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - iam_oidc_provider - in check mode, return an existing provider's URL, client IDs, and thumbprints as AWS
+    stores them when only tags would change, as a real run does, instead of the normalized requested values.
+  - pinpoint_sms_voice_phone_pool_associate - in check mode, predict ``association.origination_identity`` as the
+    phone number ID and ``association.origination_identity_arn`` as the ARN when ``origination_identity`` is a
+    phone number ARN, as AWS returns them, instead of the ARN as given.
+  - wafv2_web_acl_logging - in check mode, return the ``log_scope``, ``log_type``, and
+    ``managed_by_firewall_manager`` fields that a real run returns, from the current configuration or the AWS
+    defaults for a new one.

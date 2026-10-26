@@ -264,6 +264,47 @@ def test_existing_provider_reconciles_client_ids_and_thumbprints():
     )
 
 
+@pytest.mark.parametrize(
+    ("client_id_list", "expected_client_ids"),
+    [(["a", "b"], ["b", "a"]), (["a", "c"], ["a", "c"])],
+    ids=["tags-only", "client-ids"],
+)
+def test_check_mode_on_an_existing_provider_matches_the_real_run(client_id_list, expected_client_ids):
+    results = {}
+    for check_mode in (False, True):
+        module = FakeModule(
+            {
+                "client_id_list": client_id_list,
+                "purge_tags": True,
+                "tags": {"New": "x"},
+                "thumbprint_list": ["a" * 40],
+                "url": "https://example.com/id",
+            },
+            check_mode=check_mode,
+        )
+        current = {
+            "ClientIDList": ["b", "a"],
+            "OpenIDConnectProviderArn": "arn:provider",
+            "Tags": [],
+            "ThumbprintList": ["A" * 40],
+            "Url": "Example.com/id/",
+        }
+        with (
+            patch.object(plugin, "get_provider_by_url", return_value=current),
+            patch.object(plugin, "require_client_methods"),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(Mock(), module)
+
+        results[check_mode] = raised.value.values
+
+    assert results[True] == results[False]
+    provider = results[True]["open_id_connect_provider"]
+    assert provider["client_id_list"] == expected_client_ids
+    assert provider["tags"] == {"New": "x"}
+    assert provider["url"] == "Example.com/id/"
+
+
 def test_new_provider_request_deduplicates_ids_and_includes_tags():
     client = Mock()
     client.create_open_id_connect_provider.return_value = {"OpenIDConnectProviderArn": "arn:provider"}

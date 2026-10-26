@@ -173,6 +173,43 @@ def test_present_with_pool_arn_returns_the_pool_id_in_every_mode(check_mode):
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
+def test_present_with_phone_number_arn_returns_the_phone_number_id_in_every_mode(check_mode):
+    phone_arn = "arn:aws:sms-voice:us-east-1:123456789012:phone-number/phone-1"
+    client = Mock()
+    client.associate_origination_identity.return_value = {
+        "IsoCountryCode": "US",
+        "OriginationIdentity": "phone-1",
+        "OriginationIdentityArn": phone_arn,
+        "PoolId": "pool-1",
+    }
+    module = FakeModule(
+        {
+            "client_token": None,
+            "iso_country_code": "US",
+            "origination_identity": phone_arn,
+            "pool_id": "pool-1",
+            "state": "present",
+        },
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "current_associations", return_value=[]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["origination_identity"] == phone_arn
+    assert raised.value.values["association"] == {
+        "iso_country_code": "US",
+        "origination_identity": "phone-1",
+        "origination_identity_arn": phone_arn,
+        "pool_id": "pool-1",
+    }
+    assert client.associate_origination_identity.called is not check_mode
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
 def test_present_unchanged_returns_the_pool_id_and_arn(check_mode):
     client = Mock()
     pool_arn = "arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1"
