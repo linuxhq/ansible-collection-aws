@@ -1,0 +1,12 @@
+---
+bugfixes:
+  - ec2_flow_log - in check mode, a predicted create to Amazon S3 now returns all three
+    C(destination_options), filling the values EC2 stores for omitted options (C(plain-text), C(false),
+    C(false)), as a real run does.
+  - ec2_flow_log - in check mode, a predicted create now returns the C(max_aggregation_interval) that EC2
+    stores when it is omitted (C(600), or C(60) for transit gateway resource types), as a real run does.
+  - ec2_flow_log - in check mode, a predicted create without O(tags) now returns empty C(tags), as a real
+    run does.
+trivial:
+  - ec2_flow_log - build the create request once and check SDK support against its parameters instead of
+    parallel option-to-parameter maps.

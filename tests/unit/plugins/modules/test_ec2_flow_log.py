@@ -444,13 +444,115 @@ def test_check_mode_predicts_only_fields_ec2_returns():
     # EC2 flow logs carry no resource type, so the prediction omits it as real runs do.
     assert result["flow_logs"] == [
         {
+            "destination_options": {
+                "file_format": "plain-text",
+                "hive_compatible_partitions": False,
+                "per_hour_partition": False,
+            },
             "flow_log_status": "ACTIVE",
             "log_destination": "arn:aws:s3:::new-bucket",
             "log_destination_type": "s3",
+            "max_aggregation_interval": 600,
             "resource_id": "vpc-1",
+            "tags": {},
             "traffic_type": "ALL",
         }
     ]
+    client.create_flow_logs.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected"),
+    [
+        (
+            {"destination_options": {"file_format": "parquet", "hive_compatible_partitions": None}},
+            {
+                "destination_options": {
+                    "file_format": "parquet",
+                    "hive_compatible_partitions": False,
+                    "per_hour_partition": False,
+                },
+                "max_aggregation_interval": 600,
+            },
+        ),
+        ({"max_aggregation_interval": 60}, {"max_aggregation_interval": 60}),
+        ({"resource_ids": ["tgw-1"], "resource_type": "TransitGateway"}, {"max_aggregation_interval": 60}),
+        ({"tags": {"Name": "logs"}}, {"tags": {"Name": "logs"}}),
+    ],
+)
+def test_check_mode_predicts_the_values_ec2_stores_for_omitted_settings(overrides, expected):
+    result = run_present(Mock(), FakeModule(present_params(**overrides), check_mode=True), [])
+
+    flow_log = result["flow_logs"][0]
+    assert {key: flow_log.get(key) for key in expected} == expected
+
+
+def test_check_mode_predicts_no_destination_options_for_cloud_watch_logs():
+    params = present_params(log_destination=None, log_destination_type="cloud-watch-logs", log_group_name="logs")
+    result = run_present(Mock(), FakeModule(params, check_mode=True), [])
+
+    assert result["flow_logs"] == [
+        {
+            "flow_log_status": "ACTIVE",
+            "log_destination_type": "cloud-watch-logs",
+            "log_group_name": "logs",
+            "max_aggregation_interval": 600,
+            "resource_id": "vpc-1",
+            "tags": {},
+            "traffic_type": "ALL",
+        }
+    ]
+
+
+def test_create_sdk_check_covers_every_request_parameter():
+    client = Mock()
+    client.create_flow_logs.return_value = {"FlowLogIds": ["fl-new"]}
+    client.meta.service_model.operation_model.return_value.input_shape.members = {
+        "DestinationOptions": Mock(
+            members=dict.fromkeys(("FileFormat", "HiveCompatiblePartitions", "PerHourPartition"))
+        )
+    }
+    params = present_params(
+        deliver_cross_account_role="arn:aws:iam::123456789012:role/cross",
+        destination_options={"file_format": "parquet", "hive_compatible_partitions": True, "per_hour_partition": None},
+        log_format="${version}",
+        max_aggregation_interval=60,
+        tags={"Name": "logs"},
+    )
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[]),
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods") as require,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, FakeModule(params))
+
+    gated = [call.args[3]["create_flow_logs"] for call in require.call_args_list if "create_flow_logs" in call.args[3]]
+    assert client.create_flow_logs.call_count == 1
+    assert len(gated) == 1
+    assert sorted(gated[0]) == sorted(set(client.create_flow_logs.call_args.kwargs) - {"aws_retry"})
+    assert client.create_flow_logs.call_args.kwargs["DestinationOptions"] == {
+        "FileFormat": "parquet",
+        "HiveCompatiblePartitions": True,
+    }
+
+
+def test_create_fails_before_aws_when_botocore_lacks_a_destination_option():
+    client = Mock()
+    client.meta.service_model.operation_model.return_value.input_shape.members = {
+        "DestinationOptions": Mock(members={"FileFormat": None})
+    }
+    params = present_params(destination_options={"file_format": "parquet", "per_hour_partition": True})
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params))
+
+    assert raised.value.values["msg"] == (
+        "Installed botocore does not support EC2 create_flow_logs DestinationOptions parameter PerHourPartition"
+    )
     client.create_flow_logs.assert_not_called()
 
 
