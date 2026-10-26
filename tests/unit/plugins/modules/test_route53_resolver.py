@@ -1808,3 +1808,28 @@ def test_check_mode_protocol_change_keeps_the_stored_security_groups():
     assert result["resolver_endpoint"]["protocols"] == ["Do53", "DoH"]
     assert result["resolver_endpoint"]["security_group_ids"] == ["sg-b", "sg-a"]
     client.update_resolver_endpoint.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("wait", [False, True])
+def test_create_without_tags_returns_tags_only_when_waiting(check_mode, wait):
+    created = existing_endpoint()
+    created.pop("Tags")
+    module = FakeModule(endpoint_params(wait=wait), check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "create_resolver_endpoint", return_value=created) as create,
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(route53_resolver_utils, "query_list", return_value=[]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    assert raised.value.values["changed"] is True
+    assert create.call_count == (0 if check_mode else 1)
+    endpoint = raised.value.values["resolver_endpoint"]
+    if wait:
+        assert endpoint["tags"] == {}
+    else:
+        assert "tags" not in endpoint
