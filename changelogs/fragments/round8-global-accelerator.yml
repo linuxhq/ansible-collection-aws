@@ -1,0 +1,13 @@
+---
+bugfixes:
+  - global_accelerator - exit unchanged with O(state=absent) when another actor deletes the accelerator while the
+    module waits for it to finish deploying, instead of failing with a misleading timeout.
+  - global_accelerator - fail before any AWS call when O(name) or O(arn) is explicitly null and the identifiers they
+    satisfy are then missing, instead of crashing with a traceback or matching no accelerator.
+  - global_accelerator - stop comparing O(listeners[].endpoint_groups[].health_check_path) for C(TCP) health checks,
+    because AWS does not store a path for them and every run reported a change and updated the endpoint group.
+  - global_accelerator - predict a check-mode endpoint group create with the health check interval, protocol,
+    threshold, traffic dial, single-range listener health check port, C(HTTP) and C(HTTPS) default path, and empty
+    endpoint list that AWS stores, and drop a path AWS does not store for C(TCP) health checks.
+  - global_accelerator - predict a check-mode accelerator update with O(wait=false) as ``IN_PROGRESS``, the status the
+    UpdateAccelerator response returns in a real run.

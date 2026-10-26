@@ -2,6 +2,8 @@ from unittest.mock import ANY, Mock, patch
 
 import pytest
 from botocore.exceptions import WaiterError
+from botocore.session import Session
+from botocore.stub import Stubber
 
 from ansible_collections.amazon.aws.plugins.module_utils.retries import RetryingBotoClientWrapper
 
@@ -159,6 +161,63 @@ def test_absent_tolerates_accelerator_disappearing_while_waiting():
 
     assert raised.value.values == {"changed": False, "state": "absent"}
     client.delete_accelerator.assert_not_called()
+
+
+def test_absent_exits_when_the_waited_accelerator_is_deleted_elsewhere():
+    raw_client = Session().create_client(
+        "globalaccelerator",
+        region_name="us-west-2",
+        aws_access_key_id="EXAMPLE",
+        aws_secret_access_key="EXAMPLE",
+    )
+    client = RetryingBotoClientWrapper(raw_client, plugin.AWSRetry.jittered_backoff(delay=0))
+    module = FakeModule({"wait": True, "wait_delay": 1, "wait_timeout": 60})
+    request = {"AcceleratorArn": "arn:accelerator"}
+    with (
+        Stubber(raw_client) as stubber,
+        patch.object(
+            plugin,
+            "get_accelerator",
+            return_value={"AcceleratorArn": "arn:accelerator", "Enabled": False, "Status": "IN_PROGRESS"},
+        ),
+        patch.object(plugin, "require_client_methods"),
+        patch("botocore.waiter.time.sleep"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        # Another run deletes the accelerator while this one waits for it to deploy.
+        stubber.add_response("describe_accelerator", {"Accelerator": {"Status": "IN_PROGRESS"}}, request)
+        for _call in range(2):
+            stubber.add_client_error("describe_accelerator", "AcceleratorNotFoundException", expected_params=request)
+
+        plugin.ensure_absent(client, module)
+
+    stubber.assert_no_pending_responses()
+    assert raised.value.values == {"changed": False, "state": "absent"}
+
+
+@pytest.mark.parametrize(
+    "params, message",
+    [
+        ({"arn": None, "name": None, "state": "present"}, "one of the following is required: arn, name"),
+        ({"arn": None, "name": None, "state": "absent"}, "one of the following is required: arn, name"),
+        (
+            {"arn": "arn:accelerator", "name": None, "state": "present"},
+            "state is present but all of the following are missing: name",
+        ),
+    ],
+)
+def test_null_identifiers_fail_before_any_aws_call(params, message):
+    # Some ansible-core versions let an explicit null past required_if and required_one_of; the module checks the value.
+    module = FakeModule(dict(params, idempotency_token=None, ip_addresses=None, listeners=None, tags=None))
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(module, "client") as client_factory,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == message
+    client_factory.assert_not_called()
 
 
 def test_module_contract():
@@ -400,6 +459,119 @@ def test_endpoint_group_comparison_ignores_unmanaged_fields():
     assert not plugin.endpoint_group_requires_update(current, desired)
     desired["health_check_port"] = 80
     assert plugin.endpoint_group_requires_update(current, desired)
+
+
+def unset_endpoint_group(**settings):
+    desired = {
+        "endpoint_configurations": None,
+        "endpoint_group_region": "us-west-2",
+        "health_check_interval_seconds": None,
+        "health_check_path": None,
+        "health_check_port": None,
+        "health_check_protocol": None,
+        "port_overrides": None,
+        "threshold_count": None,
+        "traffic_dial_percentage": None,
+    }
+    desired.update(settings)
+    return desired
+
+
+@pytest.mark.parametrize(
+    "current_protocol, desired_protocol, path, expected",
+    [
+        # AWS stores no path for TCP health checks, so a requested one never matches.
+        ("TCP", None, "/health", False),
+        ("TCP", "TCP", "/health", False),
+        ("HTTP", None, "/health", True),
+        ("HTTP", None, "/", False),
+        ("TCP", "HTTP", "/", True),
+    ],
+)
+def test_health_check_path_is_compared_only_for_http_health_checks(current_protocol, desired_protocol, path, expected):
+    current = {"endpoint_group_region": "us-west-2", "health_check_protocol": current_protocol}
+    if current_protocol != "TCP":
+        current["health_check_path"] = "/"
+
+    desired = unset_endpoint_group(health_check_path=path, health_check_protocol=desired_protocol)
+
+    assert plugin.endpoint_group_requires_update(current, desired) is expected
+
+
+# Values from a live CreateEndpointGroup in us-west-2 for each requested setting.
+@pytest.mark.parametrize(
+    "settings, port_ranges, expected",
+    [
+        (
+            {},
+            [{"from_port": 80, "to_port": 80}],
+            {
+                "endpoint_descriptions": [],
+                "health_check_interval_seconds": 30,
+                "health_check_port": 80,
+                "health_check_protocol": "TCP",
+                "threshold_count": 3,
+                "traffic_dial_percentage": 100.0,
+            },
+        ),
+        (
+            {"threshold_count": 5, "health_check_path": "/health"},
+            [{"from_port": 8080, "to_port": 8090}],
+            {
+                "endpoint_descriptions": [],
+                "health_check_interval_seconds": 30,
+                "health_check_port": 8080,
+                "health_check_protocol": "TCP",
+                "threshold_count": 5,
+                "traffic_dial_percentage": 100.0,
+            },
+        ),
+        (
+            {"health_check_protocol": "HTTP"},
+            [{"from_port": 7000, "to_port": 7001}, {"from_port": 9000, "to_port": 9001}],
+            {
+                "endpoint_descriptions": [],
+                "health_check_interval_seconds": 30,
+                "health_check_path": "/",
+                "health_check_protocol": "HTTP",
+                "threshold_count": 3,
+                "traffic_dial_percentage": 100.0,
+            },
+        ),
+    ],
+)
+def test_check_mode_endpoint_group_create_predicts_the_stored_settings(settings, port_ranges, expected):
+    module = FakeModule({"purge_endpoint_groups": True}, check_mode=True)
+    client = Mock()
+    with patch.object(plugin, "get_endpoint_groups", return_value=[]):
+        changed, groups = plugin.ensure_endpoint_groups(
+            client,
+            module,
+            "arn:listener",
+            [unset_endpoint_group(**settings)],
+            listener_port_ranges=port_ranges,
+        )
+
+    assert changed
+    assert groups == [dict(expected, endpoint_group_region="us-west-2")]
+    client.create_endpoint_group.assert_not_called()
+
+
+def test_check_mode_listener_create_predicts_its_endpoint_group_health_check_port():
+    listener = {
+        "client_affinity": None,
+        "endpoint_groups": [unset_endpoint_group()],
+        "port_ranges": [{"from_port": 443, "to_port": 443}],
+        "protocol": "TCP",
+    }
+    module = FakeModule(
+        {"listeners": [listener], "purge_endpoint_groups": True, "purge_listeners": True}, check_mode=True
+    )
+
+    changed, listeners = plugin.ensure_listeners(Mock(), module, None)
+
+    assert changed
+    assert listeners[0]["endpoint_groups"][0]["health_check_port"] == 443
 
 
 def test_endpoint_group_attachment_does_not_require_update():
@@ -1375,6 +1547,23 @@ def test_check_mode_create_predicts_the_status_a_real_run_returns(wait, status):
         plugin.ensure_present(client, module)
 
     assert result.value.values["changed"] is True
+    assert result.value.values["accelerator"]["status"] == status
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("wait, status", [(True, "DEPLOYED"), (False, "IN_PROGRESS")])
+def test_check_mode_update_predicts_the_status_a_real_run_returns(wait, status):
+    # Without a wait, a real run returns the UpdateAccelerator response, which live reports IN_PROGRESS.
+    module = FakeModule(accelerator_params(name="renamed", wait=wait), check_mode=True)
+    client = Mock()
+    with (
+        patch.object(plugin, "get_accelerator", return_value=deployed_accelerator()),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["accelerator"]["name"] == "renamed"
     assert result.value.values["accelerator"]["status"] == status
     assert client.mock_calls == []
 
