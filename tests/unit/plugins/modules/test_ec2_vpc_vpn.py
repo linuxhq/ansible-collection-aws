@@ -1034,6 +1034,29 @@ def test_ipv4_tunnel_cidr_rejected_on_ipv6_connection(params, connection, check_
     assert client.mock_calls == []
 
 
+@pytest.mark.parametrize("option", ["local_ipv6_network_cidr", "remote_ipv6_network_cidr"])
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("existing", [True, False])
+def test_ipv6_network_cidr_rejected_on_ipv4_connection(params, connection, option, check_mode, existing):
+    # EC2 rejects these options for an IPv4 connection on create and on modify, and omits them from it.
+    params.update(customer_gateway_id="cgw-123", vpn_gateway_id="vgw-123", **{option: "::/0"})
+    client = Mock()
+    module = FakeModule(params, check_mode=check_mode)
+    plugin.validate_inputs(module)
+    with pytest.raises(ModuleFail, match=f"{option} requires tunnel_inside_ip_version=ipv6"):
+        plugin.ensure_present(client, module, connection if existing else None)
+
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("option", ["local_ipv6_network_cidr", "remote_ipv6_network_cidr"])
+def test_ipv6_network_cidr_is_valid_on_ipv6_connection(params, option):
+    params.update(transit_gateway_id="tgw-123", tunnel_inside_ip_version="ipv6", **{option: "::/0"})
+    module = FakeModule(params)
+    plugin.validate_inputs(module)
+    plugin.validate_configuration(module)
+
+
 @pytest.mark.parametrize(
     "family,option,cidr",
     [("ipv4", "tunnel_inside_cidr", "169.254.10.0/30"), ("ipv6", "tunnel_inside_ipv6_cidr", "fd00::/126")],

@@ -618,7 +618,7 @@ def test_prefix_list_waiter_accepts_completed_state(name, state):
 
 
 @pytest.mark.parametrize("state", ["create-in-progress", "modify-in-progress", "restore-in-progress"])
-@pytest.mark.parametrize("wait_enabled,check_mode", [(True, False), (False, False), (True, True)])
+@pytest.mark.parametrize("wait_enabled,check_mode", [(True, False), (False, False), (True, True), (False, True)])
 def test_matching_prefix_list_readiness(state, wait_enabled, check_mode):
     module = FakeModule(
         {
@@ -654,9 +654,81 @@ def test_matching_prefix_list_readiness(state, wait_enabled, check_mode):
     if wait_enabled and not check_mode:
         wait.assert_called_once_with(client, module, "pl-1", deadline=ANY)
         assert result.value.values["prefix_list"]["state"] == "modify-complete"
+    elif wait_enabled:
+        # Check mode predicts the state that the real run returns after waiting.
+        wait.assert_not_called()
+        assert result.value.values["prefix_list"]["state"] == state.replace("-in-progress", "-complete")
     else:
         wait.assert_not_called()
         assert result.value.values["prefix_list"]["state"] == state
+
+
+@pytest.mark.parametrize("state", sorted(plugin.IN_PROGRESS_STATES))
+def test_check_mode_change_on_an_in_progress_prefix_list_predicts_the_completed_state(state):
+    # A real run waits for the transition before changing tags, even when wait=false.
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}], tags={"Env": "test"}), check_mode=True)
+    with (
+        patch.object(plugin, "get_current", return_value=(prefix_list(State=state, Tags=[]), [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(plugin, "wait_for_ready_state") as wait,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["prefix_list"]["state"] == state.replace("-in-progress", "-complete")
+    assert result.value.values["prefix_list"]["tags"] == {"Env": "test"}
+    wait.assert_not_called()
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("wait_enabled", [True, False])
+def test_check_mode_create_without_tags_predicts_empty_tags(wait_enabled):
+    # EC2 returns Tags: [] for an untagged prefix list, in the create response and in describes.
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}], wait=wait_enabled), check_mode=True)
+    with (
+        patch.object(plugin, "get_current", return_value=(None, None)),
+        patch.object(plugin, "create_prefix_list") as create,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["prefix_list"]["tags"] == {}
+    create.assert_not_called()
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize(
+    "params,described_entries,expected_state",
+    [
+        # Entry change: ModifyManagedPrefixList leaves the list modify-in-progress until it completes.
+        ({}, [{"Cidr": "10.0.0.0/8"}, {"Cidr": "192.0.2.0/24"}], None),
+        # Resize only.
+        ({"max_entries": 1}, [{"Cidr": "10.0.0.0/8"}], None),
+        # Tag-only changes do not modify the prefix list itself.
+        ({"tags": {"Env": "test"}}, [{"Cidr": "10.0.0.0/8"}], "create-complete"),
+    ],
+)
+@pytest.mark.parametrize("wait_enabled", [True, False])
+def test_check_mode_update_predicts_the_modified_state(params, described_entries, expected_state, wait_enabled):
+    client = Mock()
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}], wait=wait_enabled, **params), check_mode=True)
+    current = prefix_list(MaxEntries=2, State="create-complete", Tags=[])
+    with (
+        patch.object(plugin, "get_current", return_value=(current, described_entries)),
+        patch.object(plugin, "update_prefix_list") as update,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["prefix_list"]["state"] == (
+        expected_state or ("modify-complete" if wait_enabled else "modify-in-progress")
+    )
+    update.assert_not_called()
+    assert client.mock_calls == []
 
 
 def test_add_entries_without_wait_returns_modified_version_and_state():

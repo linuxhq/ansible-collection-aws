@@ -1,0 +1,11 @@
+---
+bugfixes:
+  - ec2_vpc_prefix_list - a check-mode create without O(tags) now returns C(prefix_list.tags={}), as the real run does,
+    because EC2 returns an empty tag list for an untagged prefix list.
+  - ec2_vpc_prefix_list - check mode now predicts the C(*-complete) state for a prefix list in a C(*-in-progress) state
+    when the real run waits for it, that is when O(wait=true) or a change is predicted.
+  - ec2_vpc_prefix_list - check mode now predicts C(modify-complete), or C(modify-in-progress) when O(wait=false), for an
+    entry or O(max_entries) change, instead of the state before the change.
+  - ec2_vpc_vpn - O(local_ipv6_network_cidr) and O(remote_ipv6_network_cidr) now fail before any AWS call on an IPv4 VPN
+    connection, in check mode too. EC2 rejects them for such a connection, so check mode reported a change that every
+    real run failed to make.

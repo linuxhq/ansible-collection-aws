@@ -608,9 +608,8 @@ def ensure_present(client, module, owner_id, deadline=None):
             )
         else:
             current = snake_dict_to_camel_dict(desired_prefix_list, capitalize_first=True)
-            if tags is not None:
-                current["Tags"] = ansible_dict_to_boto3_tag_list(tags)
-
+            # EC2 returns Tags: [] for an untagged prefix list.
+            current["Tags"] = ansible_dict_to_boto3_tag_list(tags or {})
             current_entries = desired_entries
     else:
         current_prefix_list = comparable_prefix_list(current)
@@ -637,9 +636,13 @@ def ensure_present(client, module, owner_id, deadline=None):
 
         changed = bool(entries_changed or resource_changed or tags_to_set or tag_keys_to_unset)
 
-        if (changed or wait) and not module.check_mode and current.get("State") in IN_PROGRESS_STATES:
-            wait_for_ready_state(client, module, current.get("PrefixListId"), deadline=deadline)
-            return ensure_present(client, module, owner_id, deadline=deadline)
+        if (changed or wait) and current.get("State") in IN_PROGRESS_STATES:
+            if not module.check_mode:
+                wait_for_ready_state(client, module, current.get("PrefixListId"), deadline=deadline)
+                return ensure_present(client, module, owner_id, deadline=deadline)
+
+            # A real run first waits for the transition to complete.
+            current = dict(current, State=current["State"].replace("-in-progress", "-complete"))
 
         if changed and not module.check_mode:
             if entries_changed or resource_changed:
@@ -686,6 +689,10 @@ def ensure_present(client, module, owner_id, deadline=None):
             current.update(snake_dict_to_camel_dict(desired_prefix_list, capitalize_first=True))
             if tags is not None:
                 current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
+
+            if entries_changed or resource_changed:
+                # ModifyManagedPrefixList leaves the list modify-in-progress until it completes.
+                current["State"] = "modify-complete" if wait else "modify-in-progress"
 
             current_entries = desired_entries
 
