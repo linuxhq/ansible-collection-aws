@@ -1549,6 +1549,50 @@ def test_check_mode_predicts_removing_a_failed_address_dropped_from_the_request(
     assert client.mock_calls == []
 
 
+@pytest.mark.parametrize(
+    ("wait", "expected"),
+    [
+        # Without a wait, a real run returns the requested addresses after removing the failed one.
+        (False, [{"ip": "192.0.2.1", "subnet_id": "subnet-1"}, {"subnet_id": "subnet-2"}]),
+        # A waited run lists the remaining addresses again.
+        (
+            True,
+            [
+                {"ip": "192.0.2.1", "ip_id": "rni-1", "status": "ATTACHED", "subnet_id": "subnet-1"},
+                {"ip": "192.0.2.2", "ip_id": "rni-2", "status": "ATTACHED", "subnet_id": "subnet-2"},
+            ],
+        ),
+    ],
+)
+def test_removing_a_failed_address_predicts_the_addresses_a_real_run_returns(wait, expected):
+    params = endpoint_params(ip_addresses=[{"ip": "192.0.2.1", "subnet_id": "subnet-1"}, {"subnet_id": "subnet-2"}])
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        with (
+            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint_with_failed_address()),
+            patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+            patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+            patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=existing_endpoint()),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, FakeModule(dict(params, wait=wait), check_mode=check_mode))
+
+        results[check_mode] = raised.value.values
+        if check_mode:
+            assert client.mock_calls == []
+        else:
+            client.disassociate_resolver_endpoint_ip_address.assert_called_once_with(
+                IpAddress={"Ip": "192.0.2.3", "IpId": "rni-3", "SubnetId": "subnet-3"},
+                ResolverEndpointId="rslvr-1",
+                aws_retry=True,
+            )
+
+    for values in results.values():
+        assert values["changed"] is True
+        assert values["resolver_endpoint"]["ip_addresses"] == expected
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize(("wait", "expected_count"), [(False, 2), (True, 3)])
 def test_added_address_returns_the_count_a_waited_run_rereads(check_mode, wait, expected_count):
@@ -1593,6 +1637,50 @@ def test_replaced_failed_address_returns_the_count_a_waited_run_rereads(check_mo
 
     assert raised.value.values["changed"] is True
     assert raised.value.values["resolver_endpoint"]["ip_address_count"] == 2
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("wait", "extra_address", "status"),
+    [
+        # Live, UpdateResolverEndpoint returns the endpoint UPDATING with the new protocols.
+        (False, False, "UPDATING"),
+        # Address changes that follow an update first wait for the endpoint to settle.
+        (False, True, "OPERATIONAL"),
+        (True, False, "OPERATIONAL"),
+    ],
+)
+def test_protocol_update_predicts_the_status_a_real_run_returns(check_mode, wait, extra_address, status):
+    client = Mock()
+    client.update_resolver_endpoint.return_value = {
+        "ResolverEndpoint": existing_endpoint(Protocols=["Do53", "DoH"], Status="UPDATING")
+    }
+    ip_addresses = endpoint_params()["ip_addresses"]
+    if extra_address:
+        ip_addresses = ip_addresses + [{"ip": "192.0.2.3", "subnet_id": "subnet-3"}]
+
+    module = FakeModule(
+        endpoint_params(ip_addresses=ip_addresses, protocols=["Do53", "DoH"], wait=wait), check_mode=check_mode
+    )
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint()),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(
+            plugin, "wait_for_resolver_endpoint_status", return_value=existing_endpoint(Protocols=["Do53", "DoH"])
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["resolver_endpoint"]["protocols"] == ["Do53", "DoH"]
+    assert raised.value.values["resolver_endpoint"]["status"] == status
+    if check_mode:
+        assert client.mock_calls == []
+    else:
+        client.update_resolver_endpoint.assert_called_once()
+        assert client.associate_resolver_endpoint_ip_address.call_count == (1 if extra_address else 0)
 
 
 def test_create_wait_failure_reports_changed():

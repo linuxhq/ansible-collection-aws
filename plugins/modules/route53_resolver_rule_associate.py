@@ -321,15 +321,18 @@ def ensure_present(client, module, deadline=None):
 
     if (
         (changed or module.params["wait"])
-        and not module.check_mode
         and association is not None
         and association.get("Status")
         and association.get("Status") not in ("COMPLETE", "FAILED", "OVERRIDDEN")
     ):
-        wait_for_resolver_rule_association_status(
-            client, module, association.get("Id"), "complete", allow_failed=True, deadline=deadline
-        )
-        return ensure_present(client, module, deadline=deadline)
+        if not module.check_mode:
+            wait_for_resolver_rule_association_status(
+                client, module, association.get("Id"), "complete", allow_failed=True, deadline=deadline
+            )
+            return ensure_present(client, module, deadline=deadline)
+
+        # A real run first waits for the association to settle.
+        association = dict(association, Status="COMPLETE")
 
     if changed and not module.check_mode:
         if association is not None:
