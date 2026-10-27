@@ -342,3 +342,40 @@ def test_register_retries_conflicts():
 
     assert raised.value.values["changed"]
     assert calls == [{"notificationHubRegion": "us-east-1"}] * 2
+
+
+@pytest.mark.parametrize(
+    "listed",
+    [
+        [],
+        [{"notificationHubRegion": "us-east-2", "statusSummary": {"reason": "", "status": "DEREGISTERING"}}],
+        [{"notificationHubRegion": "us-east-2", "statusSummary": {"reason": "", "status": "INACTIVE"}}],
+    ],
+)
+def test_check_mode_register_predicts_the_registered_hub(listed):
+    # The RegisterNotificationHub response, as AWS answered live: the hub is ACTIVE at once.
+    registered = {
+        "creationTime": "2026-10-27T19:12:43.510000+00:00",
+        "lastActivationTime": "2026-10-27T19:12:43.510000+00:00",
+        "notificationHubRegion": "us-east-2",
+        "ResponseMetadata": {},
+        "statusSummary": {"reason": "", "status": "ACTIVE"},
+    }
+    results = {}
+    for check_mode in (False, True):
+        client = Mock(register_notification_hub=Mock(return_value=dict(registered)))
+        with (
+            patch.object(plugin, "list_notification_hubs", return_value=listed),
+            patch.object(plugin, "require_client_methods"),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, FakeModule({"region": "us-east-2"}, check_mode=check_mode))
+
+        assert raised.value.values["changed"] is True
+        assert client.register_notification_hub.called is not check_mode
+        results[check_mode] = raised.value.values["notification_hub"]
+
+    # AWS assigns the timestamps, so check mode cannot predict them.
+    real = {key: value for key, value in results[False].items() if key not in ("creation_time", "last_activation_time")}
+    assert results[True] == real
+    assert results[True]["status_summary"] == {"reason": "", "status": "ACTIVE"}
