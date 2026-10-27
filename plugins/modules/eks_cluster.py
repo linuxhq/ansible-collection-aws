@@ -371,17 +371,19 @@ cluster:
     - The EKS cluster. Empty when the cluster does not exist.
     - With O(state=absent), empty once the cluster is deleted. With O(wait=false), the
       cluster is returned with C(DELETING) status while AWS deletes it.
+    - A create predicted in check mode contains only C(name), C(status), C(tags), and the
+      supplied cluster settings.
   returned: always
   type: dict
   contains:
     access_config:
       description: The cluster access configuration.
-      returned: when the cluster exists
+      returned: when the cluster exists, except for a create predicted in check mode
       type: dict
       contains:
         authentication_mode:
           description: The cluster authentication mode.
-          returned: always
+          returned: always, except for a create predicted in check mode
           type: str
           sample: API_AND_CONFIG_MAP
         bootstrap_cluster_creator_admin_permissions:
@@ -390,11 +392,11 @@ cluster:
           type: bool
     arn:
       description: The cluster ARN.
-      returned: when the cluster exists
+      returned: when the cluster exists, except for a create predicted in check mode
       type: str
     certificate_authority:
       description: The certificate authority data for the cluster.
-      returned: when the cluster exists
+      returned: when the cluster exists, except for a create predicted in check mode
       type: dict
     compute_config:
       description: The EKS Auto Mode compute configuration.
@@ -402,7 +404,7 @@ cluster:
       type: dict
     created_at:
       description: The time the cluster was created.
-      returned: when the cluster exists
+      returned: when the cluster exists, except for a create predicted in check mode
       type: str
     deletion_protection:
       description: Whether deletion protection is enabled.
@@ -415,7 +417,7 @@ cluster:
       elements: dict
     endpoint:
       description: The Kubernetes API server endpoint.
-      returned: when the cluster is active
+      returned: when the cluster is active, except for a create predicted in check mode
       type: str
     identity:
       description: The identity provider information for the cluster.
@@ -423,11 +425,11 @@ cluster:
       type: dict
     kubernetes_network_config:
       description: The Kubernetes network configuration.
-      returned: when the cluster exists
+      returned: when the cluster exists, except for a create predicted in check mode
       type: dict
     logging:
       description: The control plane logging configuration.
-      returned: when the cluster exists
+      returned: when the cluster exists, except for a create predicted in check mode
       type: dict
     name:
       description: The cluster name.
@@ -435,7 +437,7 @@ cluster:
       type: str
     platform_version:
       description: The EKS platform version.
-      returned: when the cluster exists
+      returned: when the cluster exists, except for a create predicted in check mode
       type: str
     remote_network_config:
       description: The remote node and pod networks for EKS hybrid nodes.
@@ -452,20 +454,20 @@ cluster:
           type: str
         endpoint_private_access:
           description: Whether the private API server endpoint is enabled.
-          returned: always
+          returned: always, except for a create predicted in check mode
           type: bool
         endpoint_public_access:
           description: Whether the public API server endpoint is enabled.
-          returned: always
+          returned: always, except for a create predicted in check mode
           type: bool
         public_access_cidrs:
           description: The CIDR blocks that can access the public API server endpoint.
-          returned: always
+          returned: always, except for a create predicted in check mode
           type: list
           elements: str
         security_group_ids:
           description: The additional security group IDs.
-          returned: always
+          returned: always, except for a create predicted in check mode
           type: list
           elements: str
         subnet_ids:
@@ -475,7 +477,7 @@ cluster:
           elements: str
         vpc_id:
           description: The cluster VPC ID.
-          returned: always
+          returned: always, except for a create predicted in check mode
           type: str
     role_arn:
       description: The cluster IAM role ARN.
@@ -501,12 +503,12 @@ cluster:
       contains:
         support_type:
           description: The cluster support type.
-          returned: always
+          returned: always, except for a create predicted in check mode
           type: str
           sample: EXTENDED
     version:
       description: The Kubernetes version.
-      returned: when the cluster exists
+      returned: when the cluster exists, except for a create predicted in check mode
       type: str
       sample: "1.34"
     zonal_shift_config:
@@ -621,6 +623,8 @@ RESOURCES_VPC_CONFIG_NETWORK_FIELDS = [
     "securityGroupIds",
     "subnetIds",
 ]
+
+CLUSTER_TRANSITION_STATUSES = {"CREATING", "PENDING", "UPDATING"}
 
 CLUSTER_MAPPING_FIELDS = (
     "accessConfig",
@@ -971,13 +975,16 @@ def desired_cluster(module):
     return desired
 
 
-def check_mode_cluster(module, current):
+def check_mode_cluster(module, current, changes=None):
+    """Predict the cluster; changes holds the settings the run sends to an existing cluster."""
     tags = module.params.get("tags")
-    desired = snake_dict_to_camel_dict(desired_cluster(module), capitalize_first=False)
-    # EKS never returns bootstrapSelfManagedAddons.
-    desired.pop("bootstrapSelfManagedAddons", None)
-    if current is not None and "accessConfig" in desired:
-        desired["accessConfig"].pop("bootstrapClusterCreatorAdminPermissions", None)
+    if current is None:
+        desired = snake_dict_to_camel_dict(desired_cluster(module), capitalize_first=False)
+        # EKS never returns bootstrapSelfManagedAddons.
+        desired.pop("bootstrapSelfManagedAddons", None)
+    else:
+        # Settings the run leaves unchanged keep the values EKS stores.
+        desired = changes or {}
 
     cluster = dict_merge(current or {}, desired)
     desired_logging = (desired.get("logging") or {}).get("clusterLogging")
@@ -1047,7 +1054,16 @@ def ensure_present(client, module, deadline=None):
             module.fail_json(msg="resources_vpc_config.subnet_ids is required to create an EKS cluster")
 
         if module.check_mode:
-            exit_result(module, True, check_mode_cluster(module, None), "present")
+            cluster = check_mode_cluster(module, None)
+            # CreateCluster returns a CREATING cluster, and a waited create describes it once ACTIVE;
+            # both include empty tags for an untagged cluster.
+            cluster["status"] = "ACTIVE" if wait else "CREATING"
+            cluster.setdefault("tags", {})
+            if wait and "accessConfig" in cluster:
+                # Only CreateCluster returns bootstrapClusterCreatorAdminPermissions; DescribeCluster omits it.
+                cluster["accessConfig"].pop("bootstrapClusterCreatorAdminPermissions", None)
+
+            exit_result(module, True, cluster, "present")
 
         require_client_methods(
             module,
@@ -1112,6 +1128,7 @@ def ensure_present(client, module, deadline=None):
     config_request = snake_dict_to_camel_dict(config_request, capitalize_first=False)
 
     update_requests = []
+    changes = {}
     auto_mode_changed = False
     for field, value in config_request.items():
         field_request = {field: value}
@@ -1128,10 +1145,6 @@ def ensure_present(client, module, deadline=None):
         if update_request is None:
             continue
 
-        if field in AUTO_MODE_FIELDS:
-            auto_mode_changed = True
-            continue
-
         if field == "remoteNetworkConfig":
             update_request = field_request
 
@@ -1143,6 +1156,11 @@ def ensure_present(client, module, deadline=None):
                 for log_type in entry.get("types", [])
             ):
                 continue
+
+        changes.update(update_request)
+        if field in AUTO_MODE_FIELDS:
+            auto_mode_changed = True
+            continue
 
         if field == "resourcesVpcConfig":
             resources_vpc_config = update_request.get("resourcesVpcConfig") or {}
@@ -1163,6 +1181,9 @@ def ensure_present(client, module, deadline=None):
 
     config_changed = bool(update_requests)
     version_changed = version is not None and version != current.get("version")
+    if version_changed:
+        changes["version"] = version
+
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:
         tags_to_set, tag_keys_to_unset = compare_aws_tags(
@@ -1180,8 +1201,12 @@ def ensure_present(client, module, deadline=None):
         wait_for_cluster(client, module, "cluster_active", deadline=deadline)
         return ensure_present(client, module, deadline=deadline)
 
+    if module.check_mode and current.get("status") in CLUSTER_TRANSITION_STATUSES and (wait or resource_changed):
+        # The real run waits for the cluster to become ACTIVE before changing it, and when wait=true.
+        current = dict(current, status="ACTIVE")
+
     if resource_changed and module.check_mode:
-        exit_result(module, True, check_mode_cluster(module, current), "present")
+        exit_result(module, True, check_mode_cluster(module, current, changes), "present")
 
     arn = current["arn"]
 
@@ -1280,7 +1305,7 @@ def ensure_present(client, module, deadline=None):
             if current is None:
                 module.fail_json(changed=True, msg=f"EKS cluster {name} disappeared after update")
         else:
-            current = check_mode_cluster(module, current)
+            current = check_mode_cluster(module, current, changes)
     elif tags_changed:
         current = dict(current)
         current["tags"] = updated_tags(current.get("tags") or {}, tags_to_set, tag_keys_to_unset)
@@ -1316,7 +1341,7 @@ def ensure_absent(client, module):
     if module.check_mode:
         exit_result(module, True, {} if module.params["wait"] else dict(current, status="DELETING"), "absent")
 
-    if current.get("status") in {"CREATING", "PENDING", "UPDATING"}:
+    if current.get("status") in CLUSTER_TRANSITION_STATUSES:
         # A cluster that fails to create or update can still be deleted.
         wait_for_cluster(client, module, "cluster_active", accept_failed=True, deadline=deadline)
         # The cluster can disappear during the wait, and ListUpdates rejects a missing cluster.
@@ -1497,7 +1522,8 @@ def main():
             if len((module.params["remote_network_config"] or {}).get(network) or []) > 1:
                 module.fail_json(msg=f"remote_network_config.{network} must contain at most one entry")
 
-    canonicalize_public_access_cidrs(module)
+        canonicalize_public_access_cidrs(module)
+
     require_positive_wait_bounds(module, always=True)
 
     client = module.client("eks", retry_decorator=AWSRetry.jittered_backoff())

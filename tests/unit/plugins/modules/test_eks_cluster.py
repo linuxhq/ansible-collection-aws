@@ -93,6 +93,7 @@ def test_absent_does_not_validate_unused_create_options():
     params.update(
         {
             "encryption_config": [{}, {}],
+            "resources_vpc_config": {"public_access_cidrs": ["not-a-cidr"]},
             "state": "absent",
             "tags": {str(index): "" for index in range(51)},
             "version": None,
@@ -839,11 +840,172 @@ def test_check_mode_predicts_changes_without_waiting_for_active_cluster(status, 
 
     waiter.assert_not_called()
     assert result.value.values["changed"] is (tags is not None)
+    # With wait=true the real run waits for the cluster to become ACTIVE.
+    assert result.value.values["cluster"]["status"] == "ACTIVE"
+    assert current["status"] == status
     if tags is not None:
         assert result.value.values["cluster"]["tags"] == tags
 
     client.update_cluster_config.assert_not_called()
     client.tag_resource.assert_not_called()
+
+
+def run_present(module, described, client=None):
+    """Run ensure_present with describe results and waits mocked; return the client and the result."""
+    client = client or Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    client.update_cluster_version.return_value = {"update": {"id": "update-2", "status": "InProgress"}}
+    with (
+        patch.object(plugin, "describe_cluster", side_effect=described),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        patch.object(plugin, "wait_for_cluster"),
+        patch.object(plugin, "wait_for_update"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    return client, raised.value.values
+
+
+# The CreateCluster response and the ACTIVE DescribeCluster body for an untagged cluster, trimmed (live probe).
+CREATED_CLUSTER = {
+    "arn": "arn:example",
+    "name": "example",
+    "status": "CREATING",
+    "roleArn": "arn:role",
+    "resourcesVpcConfig": {"subnetIds": ["subnet-1"]},
+    "accessConfig": {"authenticationMode": "API", "bootstrapClusterCreatorAdminPermissions": True},
+    "tags": {},
+}
+DESCRIBED_CLUSTER = dict(CREATED_CLUSTER, status="ACTIVE", accessConfig={"authenticationMode": "API"})
+
+
+@pytest.mark.parametrize("wait", [True, False])
+def test_check_mode_create_predicts_the_status_tags_and_access_config_a_real_create_returns(wait):
+    params = eks_params(
+        access_config={"authentication_mode": "API", "bootstrap_cluster_creator_admin_permissions": True},
+        resources_vpc_config={"subnet_ids": ["subnet-1"]},
+        role_arn="arn:role",
+        wait=wait,
+    )
+    client = Mock(create_cluster=Mock(return_value={"cluster": CREATED_CLUSTER}))
+    client, real = run_present(FakeModule(params), [None, DESCRIBED_CLUSTER], client)
+    check_client, check = run_present(FakeModule(params, check_mode=True), [None])
+
+    assert check_client.mock_calls == []
+    assert check["changed"] is real["changed"] is True
+    predicted = {key: check["cluster"][key] for key in ("access_config", "status", "tags")}
+    assert predicted == {key: real["cluster"][key] for key in predicted}
+    assert predicted["status"] == ("ACTIVE" if wait else "CREATING")
+    assert predicted["tags"] == {}
+
+
+@pytest.mark.parametrize("wait", [True, False])
+def test_check_mode_create_predicts_supplied_tags(wait):
+    params = eks_params(
+        resources_vpc_config={"subnet_ids": ["subnet-1"]}, role_arn="arn:role", tags={"Env": "prod"}, wait=wait
+    )
+
+    check = run_present(FakeModule(params, check_mode=True), [None])[1]
+
+    assert check["cluster"]["tags"] == {"Env": "prod"}
+
+
+@pytest.mark.parametrize("wait", [True, False])
+@pytest.mark.parametrize("status", ["CREATING", "PENDING", "UPDATING"])
+def test_check_mode_predicts_the_active_status_a_real_change_waits_for(status, wait):
+    params = eks_params(tags={"Env": "prod"}, wait=wait)
+    transitioning = dict(DESCRIBED_CLUSTER, status=status)
+
+    real = run_present(FakeModule(params), [transitioning, DESCRIBED_CLUSTER, DESCRIBED_CLUSTER])[1]
+    check_client, check = run_present(FakeModule(params, check_mode=True), [transitioning])
+
+    assert check_client.mock_calls == []
+    assert check == real
+    assert check["cluster"]["status"] == "ACTIVE"
+
+
+@pytest.mark.parametrize("status", ["CREATING", "PENDING", "UPDATING"])
+def test_check_mode_keeps_a_transitional_status_when_nothing_waits(status):
+    transitioning = dict(DESCRIBED_CLUSTER, status=status)
+    params = eks_params(wait=False)
+
+    real = run_present(FakeModule(params), [transitioning])[1]
+    check = run_present(FakeModule(params, check_mode=True), [transitioning])[1]
+
+    assert check == real
+    assert check["changed"] is False
+    assert check["cluster"]["status"] == status
+
+
+# Settings that compare equal to an untagged standard cluster but are spelled differently from what EKS returns.
+EQUAL_SETTINGS = {
+    "compute_config": {"enabled": False, "node_pools": []},
+    "remote_network_config": {"remote_node_networks": [], "remote_pod_networks": []},
+    "resources_vpc_config": {"subnet_ids": ["subnet-b", "subnet-a"]},
+    "zonal_shift_config": {"enabled": False},
+}
+STANDARD_CLUSTER = dict(
+    DESCRIBED_CLUSTER,
+    kubernetesNetworkConfig={"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": False}},
+    resourcesVpcConfig={"endpointPublicAccess": True, "subnetIds": ["subnet-a", "subnet-b"]},
+)
+
+
+def test_check_mode_tag_change_keeps_the_settings_eks_stores():
+    params = eks_params(tags={"Env": "prod"}, wait=True, **EQUAL_SETTINGS)
+
+    real_client, real = run_present(FakeModule(params), [STANDARD_CLUSTER])
+    check_client, check = run_present(FakeModule(params, check_mode=True), [STANDARD_CLUSTER])
+
+    real_client.update_cluster_config.assert_not_called()
+    real_client.tag_resource.assert_called_once()
+    assert check_client.mock_calls == []
+    assert check == real
+    assert check["cluster"]["resources_vpc_config"]["subnet_ids"] == ["subnet-a", "subnet-b"]
+    assert not {"compute_config", "remote_network_config", "zonal_shift_config"} & set(check["cluster"])
+
+
+def test_unwaited_change_overlays_only_the_settings_it_sends():
+    settings = dict(EQUAL_SETTINGS)
+    settings["resources_vpc_config"] = {"endpoint_public_access": False, "subnet_ids": ["subnet-b", "subnet-a"]}
+    params = eks_params(tags={"Env": "prod"}, version="1.35", wait=False, **settings)
+    current = dict(STANDARD_CLUSTER, version="1.34")
+
+    real_client, real = run_present(FakeModule(params), [current])
+    check_client, check = run_present(FakeModule(params, check_mode=True), [current])
+
+    assert real_client.update_cluster_config.call_args_list == [
+        call(name="example", resourcesVpcConfig={"endpointPublicAccess": False})
+    ]
+    real_client.update_cluster_version.assert_called_once_with(name="example", version="1.35")
+    assert check_client.mock_calls == []
+    assert check == real
+    assert check["cluster"]["version"] == "1.35"
+    assert check["cluster"]["resources_vpc_config"] == {
+        "endpoint_public_access": False,
+        "subnet_ids": ["subnet-a", "subnet-b"],
+    }
+    assert not {"compute_config", "remote_network_config", "zonal_shift_config"} & set(check["cluster"])
+
+
+@pytest.mark.parametrize("wait", [True, False])
+def test_check_mode_create_result_omits_only_keys_documented_as_conditional(wait):
+    params = eks_params(resources_vpc_config={"subnet_ids": ["subnet-1"]}, role_arn="arn:role", wait=wait)
+    check = run_present(FakeModule(params, check_mode=True), [None])[1]
+    cluster_returns = utils.documented_returns(plugin)["cluster"]["contains"]
+
+    def assert_documented(contains, result, path):
+        for key, documented in contains.items():
+            if key not in result:
+                assert documented["returned"] != "always", f"{path}{key}"
+                assert "when the cluster exists" != documented["returned"], f"{path}{key}"
+                assert "when the cluster is active" != documented["returned"], f"{path}{key}"
+            elif "contains" in documented:
+                assert_documented(documented["contains"], result[key], f"{path}{key}.")
+
+    assert_documented(cluster_returns, check["cluster"], "")
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

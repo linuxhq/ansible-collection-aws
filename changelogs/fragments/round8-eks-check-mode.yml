@@ -1,0 +1,17 @@
+---
+bugfixes:
+  - eks_cluster - in check mode, a predicted create now returns C(cluster.status) as C(ACTIVE) with
+    O(wait=true) or C(CREATING) with O(wait=false), and empty C(cluster.tags) when O(tags) is not set,
+    as a real run does. With O(wait=true) it no longer returns
+    C(cluster.access_config.bootstrap_cluster_creator_admin_permissions), which DescribeCluster omits.
+  - eks_cluster - in check mode, an existing cluster in C(CREATING), C(PENDING), or C(UPDATING) status is
+    now returned as C(ACTIVE) when the real run would wait for it, that is with O(wait=true) or when the
+    cluster would change.
+  - eks_cluster - check mode, and a real run with O(wait=false) that changes the cluster configuration
+    or version, now return the values EKS stores for settings the run does not change, instead of the
+    supplied values (for example the stored subnet order, or no C(zonal_shift_config) for a cluster that
+    never set it).
+  - eks_cluster - O(state=absent) no longer fails on an invalid
+    O(resources_vpc_config.public_access_cidrs) entry, which deleting a cluster does not use.
+  - eks_cluster - the C(cluster) return documentation now states which keys a create predicted in check
+    mode omits.
