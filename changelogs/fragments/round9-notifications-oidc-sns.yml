@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - iam_oidc_provider - after adding or removing client IDs, return ``client_id_list`` in the order IAM keeps it,
+    the remaining client IDs in their existing order followed by the added ones, instead of the sorted requested
+    list, in both check mode and a real run.
+  - notifications_contacts - reject a ``name`` whose only letters or digits are non-ASCII, such as ``山田``, before
+    any AWS call, because AWS accepts only ASCII letters and digits for the required word character. Check mode no
+    longer predicts a create that CreateEmailContact rejects.
