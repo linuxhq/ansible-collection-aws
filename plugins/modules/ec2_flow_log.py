@@ -353,21 +353,6 @@ ABSENT_MATCH_FIELDS = (
     "traffic_type",
 )
 
-OPTIONAL_CREATE_FLOW_LOG_PARAMETER_BY_OPTION = {
-    "deliver_cross_account_role": "DeliverCrossAccountRole",
-    "deliver_logs_permission_arn": "DeliverLogsPermissionArn",
-    "log_destination": "LogDestination",
-    "log_format": "LogFormat",
-    "log_group_name": "LogGroupName",
-    "max_aggregation_interval": "MaxAggregationInterval",
-}
-
-DESTINATION_OPTION_PARAMETER_BY_OPTION = {
-    "file_format": "FileFormat",
-    "hive_compatible_partitions": "HiveCompatiblePartitions",
-    "per_hour_partition": "PerHourPartition",
-}
-
 PRESENT_MATCH_FIELDS = (
     "deliver_cross_account_role",
     "deliver_logs_permission_arn",
@@ -389,6 +374,13 @@ TRANSIT_GATEWAY_RESOURCE_TYPES = (
     "TransitGateway",
     "TransitGatewayAttachment",
 )
+
+# EC2 stores these documented defaults for omitted S3 destination options and returns all three.
+S3_DESTINATION_OPTION_DEFAULTS = {
+    "file_format": "plain-text",
+    "hive_compatible_partitions": False,
+    "per_hour_partition": False,
+}
 
 
 def normalized_resource_ids(module):
@@ -650,46 +642,26 @@ def ensure_present(client, module):
 
     if missing_resource_ids:
         if not module.check_mode:
-            required_create_parameters = [
-                "ClientToken",
-                "LogDestinationType",
-                "ResourceIds",
-                "ResourceType",
-            ]
-            if "traffic_type" in desired:
-                required_create_parameters.append("TrafficType")
-
-            if tags:
-                required_create_parameters.append("TagSpecifications")
-
-            for (
-                option_name,
-                parameter_name,
-            ) in OPTIONAL_CREATE_FLOW_LOG_PARAMETER_BY_OPTION.items():
-                if module.params[option_name] is not None:
-                    required_create_parameters.append(parameter_name)
-
-            if destination_options:
-                required_create_parameters.append("DestinationOptions")
+            base_request = snake_dict_to_camel_dict(dict(desired, resource_type=resource_type), capitalize_first=True)
+            tag_specifications = boto3_tag_specifications(tags, types="vpc-flow-log")
+            if tag_specifications is not None:
+                base_request["TagSpecifications"] = tag_specifications
 
             require_client_methods(
                 module,
                 client,
                 "EC2",
-                {"create_flow_logs": tuple(required_create_parameters)},
+                {"create_flow_logs": tuple(base_request) + ("ClientToken", "ResourceIds")},
             )
 
-            if destination_options:
+            if "DestinationOptions" in base_request:
                 destination_option_parameters = (
                     client.meta.service_model.operation_model("CreateFlowLogs")
                     .input_shape.members["DestinationOptions"]
                     .members
                 )
-                for (
-                    option_name,
-                    parameter_name,
-                ) in DESTINATION_OPTION_PARAMETER_BY_OPTION.items():
-                    if option_name in destination_options and parameter_name not in destination_option_parameters:
+                for parameter_name in sorted(base_request["DestinationOptions"]):
+                    if parameter_name not in destination_option_parameters:
                         module.fail_json(
                             msg=(
                                 "Installed botocore does not support EC2 "
@@ -698,25 +670,14 @@ def ensure_present(client, module):
                             )
                         )
 
-            tag_specifications = boto3_tag_specifications(tags, types="vpc-flow-log")
-
             batch_size = MAX_RESOURCE_IDS_PER_CREATE
             if resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
                 batch_size = MAX_TRANSIT_GATEWAY_RESOURCE_IDS_PER_CREATE
 
             created_flow_log_ids = []
             for batch in chunks(missing_resource_ids, batch_size):
-                request = dict(
-                    desired,
-                    resource_ids=batch,
-                    resource_type=resource_type,
-                )
-                request = snake_dict_to_camel_dict(request, capitalize_first=True)
                 # One token per request makes SDK retries of a request that already succeeded idempotent.
-                request["ClientToken"] = str(uuid.uuid4())
-
-                if tag_specifications is not None:
-                    request["TagSpecifications"] = tag_specifications
+                request = dict(base_request, ResourceIds=batch, ClientToken=str(uuid.uuid4()))
 
                 try:
                     response = client.create_flow_logs(**request, aws_retry=True)
@@ -778,16 +739,24 @@ def ensure_present(client, module):
 
             current = current + created_flow_logs
         else:
+            # Predict each flow log as EC2 returns it, with the values EC2 stores for omitted settings.
+            predicted = {"max_aggregation_interval": 600}
+            if resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
+                predicted["max_aggregation_interval"] = 60
+
+            predicted.update(desired)
+            if desired["log_destination_type"] == "s3":
+                predicted["destination_options"] = dict(S3_DESTINATION_OPTION_DEFAULTS, **destination_options)
+
             for resource_id in missing_resource_ids:
                 flow_log = dict(
-                    desired,
+                    predicted,
                     flow_log_status="ACTIVE",
                     resource_id=resource_id,
                 )
                 flow_log = snake_dict_to_camel_dict(flow_log, capitalize_first=True)
-
-                if tags is not None:
-                    flow_log["Tags"] = ansible_dict_to_boto3_tag_list(tags)
+                # EC2 returns an empty tag list for an untagged flow log.
+                flow_log["Tags"] = ansible_dict_to_boto3_tag_list(tags or {})
 
                 current.append(flow_log)
 
