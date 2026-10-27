@@ -1250,6 +1250,29 @@ def test_target_defaults_fill_the_port_aws_stores_for_an_omitted_one():
     ]
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_updating_rule_with_a_target_change_returns_the_complete_update_response(check_mode):
+    # Live, UpdateResolverRule returns the rule COMPLETE, so a real run returns COMPLETE even without a wait.
+    client = Mock()
+    updated = existing_rule(TargetIps=[{"Ip": "192.0.2.2", "Port": 53, "Protocol": "Do53"}])
+    client.update_resolver_rule.return_value = {"ResolverRule": updated}
+    target = {"ip": "192.0.2.2", "ipv6": None, "port": None, "protocol": None, "server_name_indication": None}
+    with (
+        patch.object(
+            plugin, "get_resolver_rule_by_name", side_effect=[existing_rule(Status="UPDATING"), existing_rule()]
+        ),
+        patch.object(plugin, "wait_for_resolver_rule_status") as wait,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, FakeModule(rule_params(target_ips=[target]), check_mode=check_mode))
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["resolver_rule"]["status"] == "COMPLETE"
+    assert result.value.values["resolver_rule"]["target_ips"] == [{"ip": "192.0.2.2", "port": 53, "protocol": "Do53"}]
+    assert wait.call_count == (0 if check_mode else 1)
+    assert client.update_resolver_rule.call_count == (0 if check_mode else 1)
+
+
 def doh_target(ip):
     return {"ip": ip, "ipv6": None, "port": None, "protocol": "DoH", "server_name_indication": None}
 
