@@ -685,6 +685,7 @@ def ensure_present(client, module, owner_id, deadline=None):
                 )
                 current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
         elif changed and module.check_mode:
+            described_max_entries = current["MaxEntries"]
             current = dict(current)
             current.update(snake_dict_to_camel_dict(desired_prefix_list, capitalize_first=True))
             if tags is not None:
@@ -693,6 +694,15 @@ def ensure_present(client, module, owner_id, deadline=None):
             if entries_changed or resource_changed:
                 # ModifyManagedPrefixList leaves the list modify-in-progress until it completes.
                 current["State"] = "modify-complete" if wait else "modify-in-progress"
+
+            # A resize response still reports the size it replaces. Without wait, a real run returns it when the
+            # resize is the last request: every shrink, and a grow without entry changes.
+            if (
+                not wait
+                and max_entries != described_max_entries
+                and (max_entries < described_max_entries or not entries_changed)
+            ):
+                current["MaxEntries"] = described_max_entries
 
             current_entries = desired_entries
 

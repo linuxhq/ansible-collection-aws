@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ec2_vpc_prefix_list - check mode with O(wait=false) now predicts the C(prefix_list.max_entries) that the real run
+    returns when a resize is its last request (a shrink, or a grow without entry changes). The ModifyManagedPrefixList
+    response still reports the size it replaces, while check mode reported the requested O(max_entries).
