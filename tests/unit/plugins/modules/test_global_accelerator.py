@@ -500,11 +500,11 @@ def test_health_check_path_is_compared_only_for_http_health_checks(current_proto
 
 # Values from a live CreateEndpointGroup in us-west-2 for each requested setting.
 @pytest.mark.parametrize(
-    "settings, port_ranges, expected",
+    "settings, default_health_check_port, expected",
     [
         (
             {},
-            [{"from_port": 80, "to_port": 80}],
+            80,
             {
                 "endpoint_descriptions": [],
                 "health_check_interval_seconds": 30,
@@ -516,7 +516,7 @@ def test_health_check_path_is_compared_only_for_http_health_checks(current_proto
         ),
         (
             {"threshold_count": 5, "health_check_path": "/health"},
-            [{"from_port": 8080, "to_port": 8090}],
+            8080,
             {
                 "endpoint_descriptions": [],
                 "health_check_interval_seconds": 30,
@@ -526,9 +526,10 @@ def test_health_check_path_is_compared_only_for_http_health_checks(current_proto
                 "traffic_dial_percentage": 100.0,
             },
         ),
+        # The default health check port is not known, as for an unchanged listener with several port ranges.
         (
             {"health_check_protocol": "HTTP"},
-            [{"from_port": 7000, "to_port": 7001}, {"from_port": 9000, "to_port": 9001}],
+            None,
             {
                 "endpoint_descriptions": [],
                 "health_check_interval_seconds": 30,
@@ -540,7 +541,7 @@ def test_health_check_path_is_compared_only_for_http_health_checks(current_proto
         ),
     ],
 )
-def test_check_mode_endpoint_group_create_predicts_the_stored_settings(settings, port_ranges, expected):
+def test_check_mode_endpoint_group_create_predicts_the_stored_settings(settings, default_health_check_port, expected):
     module = FakeModule({"purge_endpoint_groups": True}, check_mode=True)
     client = Mock()
     with patch.object(plugin, "get_endpoint_groups", return_value=[]):
@@ -549,7 +550,7 @@ def test_check_mode_endpoint_group_create_predicts_the_stored_settings(settings,
             module,
             "arn:listener",
             [unset_endpoint_group(**settings)],
-            listener_port_ranges=port_ranges,
+            default_health_check_port=default_health_check_port,
         )
 
     assert changed
@@ -572,6 +573,70 @@ def test_check_mode_listener_create_predicts_its_endpoint_group_health_check_por
 
     assert changed
     assert listeners[0]["endpoint_groups"][0]["health_check_port"] == 443
+
+
+MULTIPLE_PORT_RANGES = [{"from_port": 9000, "to_port": 9001}, {"from_port": 7000, "to_port": 7001}]
+
+
+# Live: AWS stores a listener's ranges in the order sent and checks health on the first port stored.
+@pytest.mark.parametrize(
+    "port_ranges, current_port_ranges, client_affinity, expected",
+    [
+        # A created or updated listener's ranges are sent sorted.
+        (MULTIPLE_PORT_RANGES, None, None, 7000),
+        (MULTIPLE_PORT_RANGES, [{"from_port": 5000, "to_port": 5000}], None, 7000),
+        (MULTIPLE_PORT_RANGES, plugin.normalized_port_ranges(MULTIPLE_PORT_RANGES), "SOURCE_IP", 7000),
+        # An unchanged listener's ranges are listed sorted, so their stored order is known only for a single range.
+        (MULTIPLE_PORT_RANGES, plugin.normalized_port_ranges(MULTIPLE_PORT_RANGES), None, None),
+        ([{"from_port": 443, "to_port": 443}], [{"from_port": 443, "to_port": 443}], None, 443),
+    ],
+)
+def test_check_mode_endpoint_group_create_predicts_the_health_check_port_of_listener_ranges_sent_sorted(
+    port_ranges, current_port_ranges, client_affinity, expected
+):
+    listener = {
+        "client_affinity": client_affinity,
+        "endpoint_groups": [unset_endpoint_group()],
+        "port_ranges": port_ranges,
+        "protocol": "TCP",
+    }
+    current_listeners = []
+    if current_port_ranges is not None:
+        current_listeners = [
+            {
+                "client_affinity": "NONE",
+                "listener_arn": "arn:listener",
+                "port_ranges": current_port_ranges,
+                "protocol": "TCP",
+            }
+        ]
+
+    module = FakeModule(
+        {"listeners": [listener], "purge_endpoint_groups": True, "purge_listeners": True}, check_mode=True
+    )
+    client = Mock()
+    with (
+        patch.object(plugin, "get_listeners", return_value=current_listeners),
+        patch.object(plugin, "get_endpoint_groups", return_value=[]),
+    ):
+        changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    expected_group = {
+        "endpoint_descriptions": [],
+        "endpoint_group_region": "us-west-2",
+        "health_check_interval_seconds": 30,
+        "health_check_protocol": "TCP",
+        "threshold_count": 3,
+        "traffic_dial_percentage": 100.0,
+    }
+    if expected is not None:
+        expected_group["health_check_port"] = expected
+
+    assert changed
+    assert listeners[0]["endpoint_groups"] == [expected_group]
+    client.create_endpoint_group.assert_not_called()
+    client.create_listener.assert_not_called()
+    client.update_listener.assert_not_called()
 
 
 def test_endpoint_group_attachment_does_not_require_update():
