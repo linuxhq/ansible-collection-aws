@@ -642,8 +642,16 @@ def ensure_absent(client, module):
 
         # Every write is checked before the first one, so an older botocore fails without modifying anything.
         methods = {"release_phone_number": ("PhoneNumberId",)}
+        # Older botocore requires IsoCountryCode to disassociate; DescribePhoneNumbers always returns the country.
+        disassociate_request = scrub_none_parameters(
+            {
+                "IsoCountryCode": current.get("IsoCountryCode"),
+                "OriginationIdentity": phone_number_id,
+                "PoolId": current.get("PoolId"),
+            }
+        )
         if current.get("PoolId"):
-            methods["disassociate_origination_identity"] = ("OriginationIdentity", "PoolId")
+            methods["disassociate_origination_identity"] = tuple(disassociate_request)
 
         if current.get("DeletionProtectionEnabled"):
             methods["update_phone_number"] = ("DeletionProtectionEnabled", "PhoneNumberId")
@@ -655,8 +663,7 @@ def ensure_absent(client, module):
         if current.get("PoolId"):
             try:
                 client.disassociate_origination_identity(
-                    PoolId=current["PoolId"],
-                    OriginationIdentity=phone_number_id,
+                    **disassociate_request,
                     aws_retry=True,
                 )
             except is_boto3_error_code("ResourceNotFoundException"):

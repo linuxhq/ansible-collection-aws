@@ -33,6 +33,7 @@ options:
       - Origination identity to associate with the pool.
       - This can be a phone number ID, phone number ARN, sender ID, or sender
         ID ARN.
+      - This must not be empty when O(state=present).
     required: true
     type: str
   pool_id:
@@ -380,6 +381,10 @@ def main():
         r"[A-Z]{2}", module.params["iso_country_code"]
     ):
         module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
+
+    # AWS rejects an empty origination identity, which check mode would otherwise predict as a new association.
+    if state == "present" and not module.params["origination_identity"].strip():
+        module.fail_json(msg="origination_identity must not be empty")
 
     client = module.client(
         "pinpoint-sms-voice-v2",

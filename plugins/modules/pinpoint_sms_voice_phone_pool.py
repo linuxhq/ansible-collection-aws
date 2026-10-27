@@ -55,6 +55,7 @@ options:
       - This can be a phone number ID, phone number ARN, sender ID, or sender
         ID ARN.
       - This is required when O(state=present) and O(pool_id) is not provided.
+      - This must not be empty when O(state=present) and O(pool_id) is not provided.
       - This is used only to find or create a pool when O(pool_id) is not
         provided, and is ignored when O(pool_id) is provided.
       - A pool matches when it holds this identity, its C(Name) tag equals
@@ -832,6 +833,11 @@ def main():
         tags = dict(module.params["tags"] or {})
         tags["Name"] = module.params["name"]
         require_valid_tags(module, tags, 200)
+
+        # AWS rejects an empty origination identity, which check mode would otherwise predict as a new pool.
+        # required_one_of accepts an explicit null, so a null identity is rejected the same way.
+        if module.params["pool_id"] is None and not (module.params["origination_identity"] or "").strip():
+            module.fail_json(msg="origination_identity must not be empty")
 
     require_positive_wait_bounds(module, always=True)
 
