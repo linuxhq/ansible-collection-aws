@@ -1,0 +1,17 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number - check mode now predicts a newly requested number as a real run returns it,
+    with C(status) V(ACTIVE) when O(wait=true) or V(PENDING) when O(wait=false), and with the settings AWS gives a
+    new number when the request omits them, C(deletion_protection_enabled) and C(international_sending_enabled)
+    false (the latter only where the installed botocore models it). Without O(pool_id) it also predicts
+    C(two_way_enabled) and C(self_managed_opt_outs_enabled) false and C(opt_out_list_name) C(Default); a number
+    requested into a pool takes those from the pool, so they are not predicted there.
+  - pinpoint_sms_voice_phone_number - with O(state=present), an empty or blank O(registration_id) or
+    O(opt_out_list_name) now fails before any AWS call. AWS rejects both, so check mode no longer predicts a
+    request or an update that a real run can never make.
+  - pinpoint_sms_voice_phone_pool - check mode now predicts C(shared_routes_enabled) false for a new pool, as a
+    real create returns it. A new pool inherits its other settings from the origination identity, but not shared
+    routes.
+  - pinpoint_sms_voice_phone_pool_associate - with O(state=absent), check mode now returns the association as the
+    DisassociateOriginationIdentity response does, without C(number_capabilities) and C(phone_number), instead of
+    the listed association.

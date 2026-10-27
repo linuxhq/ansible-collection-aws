@@ -91,6 +91,7 @@ options:
       - The OptOutList name or ARN to associate with the phone number.
       - When omitted for an existing number, the current OptOutList is left unchanged.
       - This cannot be changed on an existing number that is associated with a pool.
+      - This must not be empty when provided with O(state=present).
     type: str
   phone_number_id:
     description:
@@ -113,6 +114,7 @@ options:
   registration_id:
     description:
       - The registration ID or ARN to attach to the phone number request.
+      - This must not be empty when provided with O(state=present).
     type: str
   state:
     description:
@@ -337,6 +339,11 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
 
 # DescribePhoneNumbers fields that the ReleasePhoneNumber response does not model.
 RELEASE_OMITTED_FIELDS = ("DeletionProtectionEnabled", "InternationalSendingEnabled", "MessagingLimits", "PoolId")
+
+# Settings AWS gives a requested number when the request omits them, used only to predict check-mode results.
+REQUEST_CREATION_DEFAULTS = {"DeletionProtectionEnabled": False, "InternationalSendingEnabled": False}
+# Settings a number shares with its pool, which AWS gives these values only for a number requested outside a pool.
+UNPOOLED_CREATION_DEFAULTS = {"OptOutListName": "Default", "SelfManagedOptOutsEnabled": False, "TwoWayEnabled": False}
 
 SETTING_OPTIONS = {
     "DeletionProtectionEnabled": "deletion_protection_enabled",
@@ -939,8 +946,17 @@ def ensure_present(client, module):
     request = snake_dict_to_camel_dict(parameters, capitalize_first=True)
 
     if module.check_mode:
-        predicted = dict(request)
+        # A real run returns the waited DescribePhoneNumbers item or the RequestPhoneNumber response, and botocore
+        # drops the members its model lacks, so predict only the defaults that response returns.
+        modeled_fields = client.meta.service_model.shape_for(
+            "PhoneNumberInformation" if wait else "RequestPhoneNumberResult"
+        ).members
+        defaults = dict(REQUEST_CREATION_DEFAULTS, **({} if pool_id else UNPOOLED_CREATION_DEFAULTS))
+        predicted = {field: value for field, value in defaults.items() if field in modeled_fields}
+        predicted.update(request)
         predicted.pop("ClientToken", None)
+        # A real run returns ACTIVE after the wait; without it, the PENDING status RequestPhoneNumber returns.
+        predicted["Status"] = "ACTIVE" if wait else "PENDING"
         # Project IDs and names as DescribePhoneNumbers returns them, rather than the ARNs requested.
         for field in ("OptOutListName", "PoolId", "RegistrationId"):
             if field in predicted:
@@ -1037,9 +1053,10 @@ def main():
         if module.params["number_type"] == "SIMULATOR" and module.params["message_type"] != "TRANSACTIONAL":
             module.fail_json(msg="message_type must be TRANSACTIONAL when number_type is SIMULATOR")
 
-        # AWS rejects an empty pool ID, which check mode would otherwise predict as a new request.
-        if module.params["pool_id"] is not None and not module.params["pool_id"].strip():
-            module.fail_json(msg="pool_id must not be empty")
+        # AWS rejects empty identifiers, which check mode would otherwise predict as a new request or an update.
+        for option in ("opt_out_list_name", "pool_id", "registration_id"):
+            if module.params[option] is not None and not module.params[option].strip():
+                module.fail_json(msg=f"{option} must not be empty")
 
         require_valid_tags(module, tags, 200)
 

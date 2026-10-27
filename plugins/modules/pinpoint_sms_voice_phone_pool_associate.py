@@ -107,7 +107,7 @@ association:
       type: str
     number_capabilities:
       description: The origination identity's capabilities, such as V(SMS) or V(VOICE).
-      returned: when the association already existed and this run did not remove it
+      returned: with O(state=present), when the association already existed
       type: list
       elements: str
     origination_identity:
@@ -120,7 +120,7 @@ association:
       type: str
     phone_number:
       description: The phone number in E.164 format.
-      returned: when AWS lists it for an association that already existed and that this run did not remove
+      returned: when AWS lists it, with O(state=present), for an association that already existed
       type: str
     pool_arn:
       description: The pool ARN.
@@ -180,6 +180,9 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
+
+# Listed association fields that the DisassociateOriginationIdentity response does not model.
+DISASSOCIATE_OMITTED_FIELDS = ("NumberCapabilities", "PhoneNumber")
 
 
 def current_associations(client, module):
@@ -347,6 +350,10 @@ def ensure_absent(client, module):
             exit_result(module, False, None)
 
         module.fail_json(changed=False, msg=last_phone_number_message(origination_identity, pool_id))
+
+    if changed and module.check_mode:
+        # A real run returns the DisassociateOriginationIdentity response, without the listed capabilities or number.
+        association = {key: value for key, value in association.items() if key not in DISASSOCIATE_OMITTED_FIELDS}
 
     if changed and not module.check_mode:
         response = None
