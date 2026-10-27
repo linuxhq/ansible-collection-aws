@@ -106,7 +106,8 @@ options:
     type: int
 notes:
   - O(tags) accepts at most 50 entries; keys must contain 1 to 128 characters
-    and values at most 256 characters.
+    and values at most 256 characters, and both may contain only letters,
+    numbers, spaces, C(_), C(.), C(:), C(/), C(=), C(+), C(-), and C(@).
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -729,7 +730,7 @@ def main():
     )
     state = module.params["state"]
     tags = module.params["tags"]
-    require_valid_tags(module, tags if state == "present" else None, 50)
+    require_valid_tags(module, tags if state == "present" else None, 50, restricted_characters=True)
     # Updated versions are always waited on before they are promoted.
     require_positive_wait_bounds(module, always=state == "present")
     client = module.client(

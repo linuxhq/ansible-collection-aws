@@ -985,6 +985,39 @@ def test_50_tags_and_aws_reserved_tags_reach_aws():
     module.client.assert_called_once()
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "tags", [{"Team": "R&D"}, {"Team": "a,b"}, {"Team#1": "x"}], ids=["ampersand", "comma", "hash-key"]
+)
+def test_tag_characters_aws_rejects_fail_before_aws(check_mode, tags):
+    # AWS rejects these with ValidationException on create and when tagging, which an update reaches only after the
+    # new version is promoted.
+    module = FakeModule(params(tags=tags), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": "tag keys and values must contain only letters, numbers, spaces, and _ . : / = + - @"
+    }
+    module.client.assert_not_called()
+
+
+def test_tags_with_characters_aws_accepts_reach_aws():
+    module = FakeModule(params(tags={"Team": "a b_.:/=+-@é1", "日本": ""}))
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
+
+    module.client.assert_called_once()
+
+
 def waiter_configs(waiter):
     """Return the WaiterConfig that reached each wait, for comparing with the expected remaining budgets."""
     return [wait_call.kwargs["WaiterConfig"] for wait_call in waiter.wait.call_args_list]

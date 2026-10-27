@@ -101,6 +101,45 @@ def test_colliding_normalized_tag_keys_are_rejected():
     assert raised.value.values["msg"] == "tag keys must be unique after string normalization"
 
 
+RESTRICTED_CHARACTERS_MESSAGE = "tag keys and values must contain only letters, numbers, spaces, and _ . : / = + - @"
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        {"Team": "R&D"},
+        {"Team": "a,b"},
+        {"Team#1": "x"},
+        {"Team": "e\N{COMBINING ACUTE ACCENT}"},
+        {"Team": "\N{EURO SIGN}5"},
+        {"Team": "a\tb"},
+    ],
+    ids=["ampersand", "comma", "hash-key", "combining-mark", "currency-symbol", "tab"],
+)
+def test_restricted_tag_characters_are_rejected(tags):
+    # Live SSM and IAM reject each of these with a validation error naming the tag pattern; other services may not.
+    with pytest.raises(ModuleFail) as raised:
+        require_valid_tags(FakeModule({}), dict(tags), 50, restricted_characters=True)
+
+    assert raised.value.values == {"msg": RESTRICTED_CHARACTERS_MESSAGE}
+    require_valid_tags(FakeModule({}), dict(tags), 50)
+
+
+def test_restricted_tag_characters_accept_letters_numbers_separators_and_symbols():
+    # Live SSM and IAM accept each of these: \p{L}, \p{N}, and \p{Z} cover every script, not only ASCII.
+    tags = {
+        "Ctl a_.:/=+-@1": "a b_.:/=+-@1Z",
+        "\N{LATIN SMALL LETTER E WITH ACUTE}": "\N{LATIN SMALL LETTER E WITH ACUTE}",
+        "Num": "\N{ARABIC-INDIC DIGIT THREE}\N{SUPERSCRIPT TWO}",
+        "Sp": "a\N{NO-BREAK SPACE}b",
+        "Lo": "日本",
+        "aws:cloudformation:stack-name": "",
+        1: True,
+    }
+    require_valid_tags(FakeModule({}), tags, 50, restricted_characters=True)
+    assert tags["1"] == "True"
+
+
 def test_tag_deltas_do_not_mutate_source():
     resource = {"Arn": "arn:resource", "Tags": [{"Key": "old", "Value": "value"}]}
     updated = apply_tag_deltas(resource, {"new": "value"}, ["old"])

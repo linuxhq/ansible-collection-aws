@@ -51,6 +51,10 @@ options:
         and any trailing slash, and compares the host case-insensitively.
     required: true
     type: str
+notes:
+  - O(tags) accepts at most 50 entries; keys must contain 1 to 128 characters
+    and values at most 256 characters, and both may contain only letters,
+    numbers, spaces, C(_), C(.), C(:), C(/), C(=), C(+), C(-), and C(@).
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -528,7 +532,7 @@ def main():
             if not re.fullmatch(r"[0-9a-fA-F]{40}", thumbprint):
                 module.fail_json(msg=f"thumbprint_list entries must be exactly 40 hexadecimal characters: {thumbprint}")
 
-    require_valid_tags(module, module.params["tags"] if state == "present" else None, 50)
+    require_valid_tags(module, module.params["tags"] if state == "present" else None, 50, restricted_characters=True)
     client = module.client(
         "iam",
         retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConcurrentModification"]),
