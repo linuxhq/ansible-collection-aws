@@ -105,7 +105,7 @@ options:
     default: 300
     type: int
 notes:
-  - O(tags) accepts at most 1000 entries; keys must contain 1 to 128 characters
+  - O(tags) accepts at most 50 entries; keys must contain 1 to 128 characters
     and values at most 256 characters.
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -492,7 +492,7 @@ def ensure_present(client, module):
         current_tags = boto3_tag_list_to_ansible_dict((current or {}).get("Tags", []))
         tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge_tags=purge_tags)
         require_resulting_tag_limit(
-            module, current_tags, tags_to_set, tag_keys_to_unset, 1000, "AWS Systems Manager document"
+            module, current_tags, tags_to_set, tag_keys_to_unset, 50, "AWS Systems Manager document"
         )
 
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
@@ -729,7 +729,7 @@ def main():
     )
     state = module.params["state"]
     tags = module.params["tags"]
-    require_valid_tags(module, tags if state == "present" else None, 1000)
+    require_valid_tags(module, tags if state == "present" else None, 50)
     # Updated versions are always waited on before they are promoted.
     require_positive_wait_bounds(module, always=state == "present")
     client = module.client(

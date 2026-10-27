@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - ssm_document - O(tags) and the resulting document tags now accept at most 50 entries, the AWS limit per document,
+    instead of 1000. More tags now fail before any change, in check mode too. Previously a content update with 51 or
+    more tags promoted the new version and removed the old tags before AWS rejected the new tags.
+  - ssm_association - O(tags) and the resulting association tags now accept at most 50 entries, the AWS limit per
+    association, instead of 1000. More tags now fail before any change, in check mode too. Previously an update with 51
+    or more tags changed the association and removed the old tags before AWS rejected the new tags.

@@ -919,7 +919,7 @@ def test_present_creates_a_missing_document_after_describing_it():
 def test_resulting_tag_limit_fails_before_updating_the_document(check_mode):
     client = Mock()
     existing_tags = [{"Key": "aws:reserved", "Value": ""}]
-    existing_tags += [{"Key": f"old{index}", "Value": ""} for index in range(1000)]
+    existing_tags += [{"Key": f"old{index}", "Value": ""} for index in range(50)]
     current = document({"schemaVersion": "1.2"}, Tags=existing_tags)
     result, _wait, _get = run_present(
         client,
@@ -928,10 +928,61 @@ def test_resulting_tag_limit_fails_before_updating_the_document(check_mode):
     )
 
     assert isinstance(result, ModuleFail)
-    assert result.values["msg"] == "The resulting AWS Systems Manager document tags must contain at most 1000 entries"
+    assert result.values["msg"] == "The resulting AWS Systems Manager document tags must contain at most 50 entries"
     assert result.values.get("changed", False) is False
     client.update_document.assert_not_called()
     client.add_tags_to_resource.assert_not_called()
+
+
+def test_resulting_50_tags_update_the_document():
+    client = Mock()
+    client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2"}}
+    existing_tags = [{"Key": "aws:reserved", "Value": ""}]
+    existing_tags += [{"Key": f"old{index}", "Value": ""} for index in range(49)]
+    current = document({"schemaVersion": "1.2"}, Tags=existing_tags)
+    updated = document({"schemaVersion": "2.2"}, DocumentVersion="2")
+    result, _wait, _get = run_present(
+        client,
+        FakeModule(params(purge_tags=False, tags={"new": ""})),
+        [current, updated],
+    )
+
+    assert isinstance(result, ModuleExit)
+    assert result.values["changed"] is True
+    client.update_document.assert_called_once()
+    client.add_tags_to_resource.assert_called_once_with(
+        ResourceType="Document", ResourceId="example", Tags=[{"Key": "new", "Value": ""}], aws_retry=True
+    )
+    client.remove_tags_from_resource.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_more_than_50_tags_are_rejected_before_aws(check_mode):
+    # AWS rejects a 51st document tag with ValidationException on create and TooManyTagsError when tagging.
+    module = FakeModule(params(tags={f"key{index}": "" for index in range(51)}), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": "tags must contain at most 50 entries"}
+    module.client.assert_not_called()
+
+
+def test_50_tags_and_aws_reserved_tags_reach_aws():
+    tags = {f"key{index}": "" for index in range(50)}
+    tags["aws:reserved"] = ""
+    module = FakeModule(params(tags=tags))
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
+
+    module.client.assert_called_once()
 
 
 def waiter_configs(waiter):
