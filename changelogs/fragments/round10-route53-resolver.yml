@@ -1,0 +1,14 @@
+---
+bugfixes:
+  - route53_resolver - in check mode, a predicted C(INBOUND) or C(OUTBOUND) endpoint creation now returns the
+    disabled C(dns64_enabled), C(ipv6_internet_access_enabled), C(rni_enhanced_metrics_enabled), and
+    C(target_name_server_metrics_enabled) settings that AWS returns for the direction, when the installed botocore
+    models them.
+  - route53_resolver - in check mode with O(wait=true), a conversion from C(DUALSTACK) to C(IPV4) now returns the
+    IP addresses without their released IPv6 addresses, as the real run does after waiting.
+  - route53_resolver - in check mode, an endpoint that is still updating now returns the IP addresses and count of
+    the settled endpoint without departing addresses or the IPv6 addresses of a conversion to C(IPV4), when the real
+    run would wait for it to settle first.
+trivial:
+  - route53_resolver - document that new IP addresses are added before unwanted ones are removed, so AWS refuses a
+    replacement on an endpoint at the account's per-endpoint address quota with C(LimitExceededException).
