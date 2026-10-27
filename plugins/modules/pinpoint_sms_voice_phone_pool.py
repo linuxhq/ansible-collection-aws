@@ -31,6 +31,10 @@ options:
       - When provided, this must be exactly two uppercase letters.
       - This field is optional for origination identities that are not
         country-specific.
+      - AWS requires this to create a pool from a phone number, so the module
+        fails without changes, including in check mode, when this is omitted,
+        O(origination_identity) is a phone number ID or ARN, and no matching
+        pool exists.
       - This is used only to find or create a pool when O(pool_id) is not
         provided, and is ignored when O(pool_id) is provided.
     type: str
@@ -268,6 +272,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
     identity_matches,
     is_phone_number_identity,
+    is_phone_number_reference,
     list_tags,
     predicted_origination_identity,
 )
@@ -558,6 +563,11 @@ def ensure_absent(client, module):
     changed = current is not None
     response = current
 
+    if changed and module.check_mode:
+        # A real run returns the DeletePool response, which reports DELETING and does not model DeletionProtectionEnabled.
+        response = {key: value for key, value in current.items() if key != "DeletionProtectionEnabled"}
+        response["Status"] = "DELETING"
+
     if changed and not module.check_mode:
         # Failures after deletion protection is disabled report changed=True.
         mutated = False
@@ -644,6 +654,19 @@ def ensure_present(client, module):
     if current is None and module.params.get("pool_id") is not None:
         module.fail_json(msg=f"Pinpoint SMS Voice V2 pool {module.params['pool_id']} does not exist")
 
+    # AWS rejects creating a pool from a phone number without its country, which check mode would otherwise predict.
+    if (
+        current is None
+        and module.params["iso_country_code"] is None
+        and is_phone_number_reference(module.params["origination_identity"])
+    ):
+        module.fail_json(
+            msg=(
+                "iso_country_code is required to create a Pinpoint SMS Voice V2 pool from phone number "
+                f"{module.params['origination_identity']}"
+            )
+        )
+
     if current is not None and current.get("MessageType") != message_type:
         module.fail_json(
             msg=f"Cannot modify message_type for existing Pinpoint SMS Voice V2 pool {current.get('PoolId')}"
@@ -665,6 +688,16 @@ def ensure_present(client, module):
     update_request, tags_to_set, tag_keys_to_unset = pool_changes(module, current, tags)
 
     changed = current is None or bool(update_request or tags_to_set or tag_keys_to_unset)
+
+    if (
+        (wait or changed)
+        and module.check_mode
+        and current is not None
+        and current.get("Status") != "ACTIVE"
+        and current.get("PoolId")
+    ):
+        # A real run first waits for the pool to become ACTIVE.
+        current = dict(current, Status="ACTIVE")
 
     if (
         changed

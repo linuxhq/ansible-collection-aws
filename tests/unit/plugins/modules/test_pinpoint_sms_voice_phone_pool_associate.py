@@ -628,3 +628,111 @@ def test_absent_reports_other_disassociate_conflicts_from_aws():
         plugin.ensure_absent(client, absent_params())
 
     assert raised.value.values["msg"].startswith("Unable to disassociate origination identity phone-1")
+
+
+# A SIMULATOR number is listed without PhoneNumber, so only its ARN identifies it as a phone number.
+@pytest.mark.parametrize("listed", [PHONE_1, {k: v for k, v in PHONE_1.items() if k != "PhoneNumber"}])
+def test_absent_phone_number_without_country_sends_the_listed_country(listed):
+    client = Mock()
+    client.disassociate_origination_identity.return_value = {"OriginationIdentity": "phone-1", "PoolId": "pool-1"}
+    with (
+        patch.object(plugin, "current_associations", return_value=({"PoolId": "pool-1"}, [listed, PHONE_2])),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, absent_params())
+
+    # AWS rejects disassociating a phone number without its country.
+    client.disassociate_origination_identity.assert_called_once_with(
+        IsoCountryCode="US",
+        OriginationIdentity="phone-1",
+        PoolId="arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1",
+        aws_retry=True,
+    )
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["association"] == {"origination_identity": "phone-1", "pool_id": "pool-1"}
+
+
+def test_absent_sender_id_without_country_does_not_add_a_listed_country():
+    client = Mock()
+    client.disassociate_origination_identity.return_value = {"OriginationIdentity": "sender-1", "PoolId": "pool-1"}
+    sender_in_canada = dict(
+        SENDER_1, IsoCountryCode="CA", OriginationIdentityArn=SENDER_1["OriginationIdentityArn"][:-2] + "CA"
+    )
+    with (
+        patch.object(
+            plugin,
+            "current_associations",
+            return_value=({"PoolId": "pool-1"}, [PHONE_1, SENDER_1, sender_in_canada]),
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, absent_params("sender-1"))
+
+    client.disassociate_origination_identity.assert_called_once_with(
+        OriginationIdentity="sender-1",
+        PoolId="arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1",
+        aws_retry=True,
+    )
+    assert raised.value.values["changed"] is True
+
+
+def test_absent_phone_number_with_country_sends_the_given_country():
+    client = Mock()
+    client.disassociate_origination_identity.return_value = {"OriginationIdentity": "phone-1", "PoolId": "pool-1"}
+    module = absent_params()
+    module.params["iso_country_code"] = "US"
+    with (
+        patch.object(plugin, "current_associations", return_value=({"PoolId": "pool-1"}, [PHONE_1, PHONE_2])),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_absent(client, module)
+
+    client.disassociate_origination_identity.assert_called_once_with(
+        IsoCountryCode="US",
+        OriginationIdentity="phone-1",
+        PoolId="arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1",
+        aws_retry=True,
+    )
+
+
+PHONE_NUMBER_ID = "phone-720f0a64a09b4e1ebdcc8273b27bd3fc"
+PHONE_NUMBER_ARN = f"arn:aws:sms-voice:us-east-1:123456789012:phone-number/{PHONE_NUMBER_ID}"
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("origination_identity", [PHONE_NUMBER_ID, PHONE_NUMBER_ARN], ids=["id", "arn"])
+def test_present_requires_a_country_to_associate_a_phone_number(origination_identity, check_mode):
+    client = Mock()
+    module = FakeModule(
+        associate_params(iso_country_code=None, origination_identity=origination_identity), check_mode=check_mode
+    )
+    with (
+        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": [PHONE_1]}),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "msg": (
+            f"iso_country_code is required to associate phone number {origination_identity} "
+            "with Pinpoint SMS Voice V2 pool pool-1"
+        )
+    }
+    client.associate_origination_identity.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_present_existing_phone_number_association_without_a_country_is_unchanged(check_mode):
+    client = Mock()
+    listed = dict(PHONE_1, OriginationIdentity=PHONE_NUMBER_ID, OriginationIdentityArn=PHONE_NUMBER_ARN)
+    module = FakeModule(
+        associate_params(iso_country_code=None, origination_identity=PHONE_NUMBER_ID), check_mode=check_mode
+    )
+    with (
+        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": [listed]}),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+    client.associate_origination_identity.assert_not_called()

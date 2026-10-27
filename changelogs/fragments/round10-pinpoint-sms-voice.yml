@@ -1,0 +1,20 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_pool_associate - with O(state=absent) and no O(iso_country_code), send the country
+    that ListPoolOriginationIdentities lists for a phone number when disassociating it. AWS rejects
+    DisassociateOriginationIdentity for a phone number without it, and older botocore requires it, so the run
+    always failed while check mode predicted the removal. Sender IDs are unchanged.
+  - pinpoint_sms_voice_phone_pool_associate - with O(state=present), fail before associating a phone number ID
+    or ARN that is not already in the pool when O(iso_country_code) is omitted, which AWS rejects, instead of
+    predicting the association in check mode.
+  - pinpoint_sms_voice_phone_pool - with O(state=present), fail before creating a pool from a phone number ID or
+    ARN when O(iso_country_code) is omitted, which AWS rejects, instead of predicting the new pool in check mode.
+  - pinpoint_sms_voice_phone_pool - check mode now predicts C(ACTIVE) for an existing pool that is not
+    C(ACTIVE) when a real run waits for it, with O(wait=true) or any change, instead of the observed status.
+  - pinpoint_sms_voice_phone_pool - with O(state=absent), check mode now returns the pool as the DeletePool
+    response does, C(DELETING) and without C(deletion_protection_enabled), instead of the described pool.
+  - pinpoint_sms_voice_phone_number - check mode now predicts C(ACTIVE) for an existing number that is not
+    C(ACTIVE) when a real run waits for it, with O(wait=true) or any change, instead of the observed status.
+  - pinpoint_sms_voice_phone_number - with O(state=absent), check mode now returns the number as the
+    ReleasePhoneNumber response does, C(DELETED) and without C(deletion_protection_enabled),
+    C(international_sending_enabled), C(messaging_limits), or C(pool_id), instead of the described number.
