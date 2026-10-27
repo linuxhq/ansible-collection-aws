@@ -1,0 +1,12 @@
+---
+bugfixes:
+  - route53_resolver - in check mode with O(wait=false), an existing endpoint whose failed IP addresses would be
+    removed while its other addresses already match now returns the requested IP addresses, as the real run does,
+    instead of the listed addresses.
+  - route53_resolver - in check mode with O(wait=false), a O(protocols) or O(resolver_endpoint_type) update that no IP
+    address change follows now predicts the C(UPDATING) status that UpdateResolverEndpoint returns.
+  - route53_resolver, route53_resolver_rule, route53_resolver_rule_associate - in check mode, a resource that is still
+    being created or updated now returns the settled status (C(OPERATIONAL) or C(COMPLETE)) when the real run would
+    wait for it to settle first, that is with O(wait=true) or when a change is predicted.
+  - route53_resolver_rule - in check mode, a C(DoH) target without O(target_ips[].port) now predicts port C(443),
+    which is the port AWS stores for it.

@@ -686,13 +686,16 @@ def ensure_present(client, module, deadline=None):
 
     if (
         (changed or module.params["wait"])
-        and not module.check_mode
         and endpoint is not None
         and endpoint.get("Status")
         and endpoint.get("Status") not in ("OPERATIONAL", "ACTION_NEEDED")
     ):
-        wait_for_resolver_endpoint_status(client, module, endpoint.get("Id"), "settled", deadline=deadline)
-        return ensure_present(client, module, deadline=deadline)
+        if not module.check_mode:
+            wait_for_resolver_endpoint_status(client, module, endpoint.get("Id"), "settled", deadline=deadline)
+            return ensure_present(client, module, deadline=deadline)
+
+        # A real run first waits for the endpoint to settle.
+        endpoint = dict(endpoint, Status="OPERATIONAL")
 
     if current is not None:
         immutable_changes = [
@@ -737,8 +740,11 @@ def ensure_present(client, module, deadline=None):
             )
 
     if changed and module.check_mode:
-        keep_ip_addresses = current is not None and comparable_ips_match(
-            current["ip_addresses"], desired_comparable["ip_addresses"]
+        # Removing failed addresses is an address change too; without a wait it returns the requested addresses.
+        keep_ip_addresses = (
+            current is not None
+            and comparable_ips_match(current["ip_addresses"], desired_comparable["ip_addresses"])
+            and (module.params["wait"] or not has_failed_ip_addresses)
         )
         if current is None:
             projected_desired = dict(desired)
@@ -758,6 +764,14 @@ def ensure_present(client, module, deadline=None):
             # A waited run re-reads the endpoint after replacing its addresses.
             if module.params["wait"] and (has_failed_ip_addresses or not keep_ip_addresses):
                 projected_desired["ip_address_count"] = len(desired["ip_addresses"])
+
+            # Without a wait, an update that no address change follows returns the UpdateResolverEndpoint response.
+            if (
+                not module.params["wait"]
+                and keep_ip_addresses
+                and any(field in projected_desired for field in OPTIONAL_ENDPOINT_FIELDS)
+            ):
+                projected_desired["status"] = "UPDATING"
 
         endpoint = dict(endpoint or {})
         endpoint.update(snake_dict_to_camel_dict(projected_desired, capitalize_first=True))

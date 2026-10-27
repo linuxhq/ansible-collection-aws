@@ -373,6 +373,9 @@ TARGET_IP_FIELDS = (
     "protocol",
     "server_name_indication",
 )
+# Ports AWS stores for a target sent without one, used only to predict check-mode results.
+# Outbound endpoints do not support DoH-FIPS, so no DoH-FIPS target can exist.
+TARGET_DEFAULT_PORTS = {"Do53": 53, "DoH": 443}
 
 
 def desired_request(module):
@@ -517,13 +520,16 @@ def ensure_present(client, module, deadline=None):
 
     if (
         (changed or module.params["wait"])
-        and not module.check_mode
         and rule is not None
         and rule.get("Status")
         and rule.get("Status") not in ("COMPLETE", "FAILED")
     ):
-        wait_for_resolver_rule_status(client, module, rule["Id"], "complete", allow_failed=True, deadline=deadline)
-        return ensure_present(client, module, deadline=deadline)
+        if not module.check_mode:
+            wait_for_resolver_rule_status(client, module, rule["Id"], "complete", allow_failed=True, deadline=deadline)
+            return ensure_present(client, module, deadline=deadline)
+
+        # A real run first waits for the rule to settle.
+        rule = dict(rule, Status="COMPLETE")
 
     if current is not None:
         immutable_changes = [field for field in ("domain_name", "rule_type") if current[field] != desired[field]]
@@ -702,7 +708,7 @@ def target_ips_with_current_fields(current_target_ips, target_ips):
 
 
 def target_ips_with_aws_defaults(target_ips):
-    """Fill the values AWS stores for an omitted protocol (Do53) and an omitted Do53 port (53).
+    """Fill the values AWS stores for an omitted protocol (Do53) and an omitted port (53 for Do53, 443 for DoH).
 
     AWS stores an empty server name indication as no value, so it is dropped.
     """
@@ -713,8 +719,8 @@ def target_ips_with_aws_defaults(target_ips):
             del target_ip["ServerNameIndication"]
 
         target_ip.setdefault("Protocol", "Do53")
-        if target_ip["Protocol"] == "Do53":
-            target_ip.setdefault("Port", 53)
+        if target_ip["Protocol"] in TARGET_DEFAULT_PORTS:
+            target_ip.setdefault("Port", TARGET_DEFAULT_PORTS[target_ip["Protocol"]])
 
         predicted.append(target_ip)
 

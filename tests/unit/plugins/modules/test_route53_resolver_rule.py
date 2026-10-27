@@ -1233,14 +1233,48 @@ def test_update_returns_the_target_defaults_of_a_new_target(check_mode):
     assert client.update_resolver_rule.call_count == (0 if check_mode else 1)
 
 
-def test_target_defaults_fill_only_an_omitted_do53_port():
+def test_target_defaults_fill_the_port_aws_stores_for_an_omitted_one():
+    # Live, AWS stores port 53 for a Do53 target and port 443 for a DoH target sent without a port.
     assert plugin.target_ips_with_aws_defaults(
-        [{"Ip": "192.0.2.1"}, {"Ip": "192.0.2.2", "Protocol": "DoH"}, {"Ip": "192.0.2.3", "Port": 0}]
+        [
+            {"Ip": "192.0.2.1"},
+            {"Ip": "192.0.2.2", "Protocol": "DoH"},
+            {"Ip": "192.0.2.3", "Port": 0},
+            {"Ip": "192.0.2.4", "Port": 8443, "Protocol": "DoH"},
+        ]
     ) == [
         {"Ip": "192.0.2.1", "Port": 53, "Protocol": "Do53"},
-        {"Ip": "192.0.2.2", "Protocol": "DoH"},
+        {"Ip": "192.0.2.2", "Port": 443, "Protocol": "DoH"},
         {"Ip": "192.0.2.3", "Port": 0, "Protocol": "Do53"},
+        {"Ip": "192.0.2.4", "Port": 8443, "Protocol": "DoH"},
     ]
+
+
+def doh_target(ip):
+    return {"ip": ip, "ipv6": None, "port": None, "protocol": "DoH", "server_name_indication": None}
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("current", [None, existing_rule()])
+def test_doh_target_without_a_port_returns_the_port_aws_stores(check_mode, current):
+    client = Mock()
+    stored = dict(created_rule(), TargetIps=[{"Ip": "192.0.2.2", "Port": 443, "Protocol": "DoH"}])
+    client.create_resolver_rule.return_value = {"ResolverRule": stored}
+    client.update_resolver_rule.return_value = {"ResolverRule": stored}
+    module = FakeModule(rule_params(target_ips=[doh_target("192.0.2.2")]), check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["resolver_rule"]["target_ips"] == [{"ip": "192.0.2.2", "port": 443, "protocol": "DoH"}]
+    if check_mode:
+        assert client.mock_calls == []
+    else:
+        request = client.create_resolver_rule if current is None else client.update_resolver_rule
+        request.assert_called_once()
 
 
 def empty_sni_target(**overrides):
