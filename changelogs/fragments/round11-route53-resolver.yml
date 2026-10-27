@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - route53_resolver - in check mode, a predicted endpoint creation now returns C(ip_address_count) (the number of
+    requested IP addresses) and C(status), C(OPERATIONAL) with O(wait=true) or C(CREATING) with O(wait=false), as
+    the real run does.
+  - route53_resolver_rule - in check mode, a predicted rule creation now returns C(status=COMPLETE) and
+    C(share_status=NOT_SHARED), as the real run does.
+  - route53_resolver_rule_associate - in check mode, a predicted association creation or replacement now returns
+    C(status), C(COMPLETE) with O(wait=true) or C(CREATING) with O(wait=false), as the real run does.

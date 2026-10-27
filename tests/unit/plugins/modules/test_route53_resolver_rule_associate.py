@@ -467,3 +467,35 @@ def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
         "changed": False,
         "msg": "Unable to wait for AWS Route53 Resolver rule association main to become deleted",
     }
+
+
+@pytest.mark.parametrize("wait", [False, True])
+@pytest.mark.parametrize(
+    "current",
+    [None, dict(ASSOCIATION, Name="old-name"), dict(ASSOCIATION, Status="FAILED")],
+    ids=["new", "renamed", "failed"],
+)
+def test_check_mode_create_or_replacement_predicts_the_status_a_real_run_returns(current, wait):
+    # Live, AssociateResolverRule returns the association CREATING, and a waited run returns it COMPLETE.
+    created = dict(ASSOCIATION, Id="rslvr-rrassoc-2", Status="CREATING")
+
+    def wait_for_status(client, module, association_id, state, **kwargs):
+        return dict(created, Status="COMPLETE") if state == "complete" else None
+
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        client.associate_resolver_rule.return_value = {"ResolverRuleAssociation": created}
+        with (
+            patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=current),
+            patch.object(plugin, "wait_for_resolver_rule_association_status", side_effect=wait_for_status),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, FakeModule(params(wait=wait), check_mode=check_mode))
+
+        assert raised.value.values["changed"] is True
+        assert client.associate_resolver_rule.call_count == (0 if check_mode else 1)
+        results[check_mode] = raised.value.values["resolver_rule_association"]
+
+    expected = "COMPLETE" if wait else "CREATING"
+    assert results[True]["status"] == results[False]["status"] == expected

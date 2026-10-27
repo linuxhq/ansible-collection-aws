@@ -2197,3 +2197,44 @@ def test_settled_endpoint_prediction_drops_ipv6_addresses_after_a_conversion_to_
     assert predicted == addresses_without_status(results[False])
     assert all("ipv6" not in ip_address for ip_address in predicted)
     assert results[True]["status"] == results[False]["status"] == "OPERATIONAL"
+
+
+@pytest.mark.parametrize("wait", [False, True])
+def test_check_mode_create_predicts_the_status_and_address_count_a_real_run_returns(wait):
+    # Live, CreateResolverEndpoint returns the endpoint CREATING and counting every requested address, and a
+    # waited create returns it OPERATIONAL with the same count.
+    ip_addresses = [
+        {"ip": None, "ipv6": None, "subnet_id": "subnet-1"},
+        {"ip": None, "ipv6": None, "subnet_id": "subnet-1"},
+        {"ip": "192.0.2.3", "ipv6": None, "subnet_id": "subnet-2"},
+    ]
+    created = existing_endpoint(IpAddressCount=3, Status="CREATING")
+    for field in ("IpAddresses", "Tags"):
+        created.pop(field)
+
+    results = {}
+    for check_mode in (False, True):
+        client = model_client()
+        client.create_resolver_endpoint.return_value = {"ResolverEndpoint": created}
+        with (
+            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
+            patch.object(
+                plugin, "wait_for_resolver_endpoint_status", return_value=dict(created, Status="OPERATIONAL")
+            ) as wait_for_status,
+            patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+            patch.object(
+                plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: dict(args[2], Tags=[])
+            ),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(
+                client, FakeModule(endpoint_params(ip_addresses=ip_addresses, wait=wait), check_mode=check_mode)
+            )
+
+        assert raised.value.values["changed"] is True
+        assert client.create_resolver_endpoint.call_count == (0 if check_mode else 1)
+        assert wait_for_status.call_count == (1 if wait and not check_mode else 0)
+        results[check_mode] = raised.value.values["resolver_endpoint"]
+
+    for field, expected in (("ip_address_count", 3), ("status", "OPERATIONAL" if wait else "CREATING")):
+        assert results[True][field] == results[False][field] == expected

@@ -206,11 +206,11 @@ resolver_rule:
       sample: FORWARD
     share_status:
       description: Whether the rule is shared.
-      returned: except when check mode predicts creation
+      returned: always
       type: str
     status:
       description: The rule status.
-      returned: except when check mode predicts creation
+      returned: always
       type: str
       sample: COMPLETE
     status_message:
@@ -547,10 +547,13 @@ def ensure_present(client, module, deadline=None):
 
     if changed and module.check_mode:
         if rule is None:
-            # AWS stores the domain name lowercased with a trailing dot.
+            # AWS stores the domain name lowercased with a trailing dot. CreateResolverRule returns the new rule
+            # COMPLETE and not shared, so a real run returns that status with or without a wait.
             rule = dict(
                 request,
                 DomainName=request["DomainName"].rstrip(".").lower() + ".",
+                ShareStatus="NOT_SHARED",
+                Status="COMPLETE",
                 TargetIps=target_ips_with_aws_defaults(request["TargetIps"]),
             )
         elif resource_changed:

@@ -1393,3 +1393,27 @@ def test_create_without_tags_returns_tags_only_when_waiting(check_mode, wait):
         assert rule["tags"] == {}
     else:
         assert "tags" not in rule
+
+
+@pytest.mark.parametrize("wait", [False, True])
+def test_check_mode_create_predicts_the_status_a_real_run_returns(wait):
+    # Live, CreateResolverRule returns the new rule COMPLETE and NOT_SHARED, and a waited create reads the same.
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        client.create_resolver_rule.return_value = {"ResolverRule": created_rule()}
+        with (
+            patch.object(plugin, "get_resolver_rule_by_name", return_value=None),
+            patch.object(plugin, "wait_for_resolver_rule_status", return_value=created_rule()) as wait_for_status,
+            patch.object(route53_resolver_utils, "query_list", return_value=[]),
+            pytest.raises(ModuleExit) as result,
+        ):
+            plugin.ensure_present(client, FakeModule(rule_params(wait=wait), check_mode=check_mode))
+
+        assert result.value.values["changed"] is True
+        assert client.create_resolver_rule.call_count == (0 if check_mode else 1)
+        assert wait_for_status.call_count == (1 if wait and not check_mode else 0)
+        results[check_mode] = result.value.values["resolver_rule"]
+
+    for field, expected in (("share_status", "NOT_SHARED"), ("status", "COMPLETE")):
+        assert results[True][field] == results[False][field] == expected

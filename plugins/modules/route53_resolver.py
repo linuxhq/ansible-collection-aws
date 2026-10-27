@@ -206,7 +206,7 @@ resolver_endpoint:
       type: str
     ip_address_count:
       description: The number of IP addresses.
-      returned: except when check mode predicts creation
+      returned: always
       type: int
     ip_addresses:
       description: The endpoint IP addresses gathered by the module.
@@ -297,7 +297,7 @@ resolver_endpoint:
       elements: str
     status:
       description: The endpoint status.
-      returned: except when check mode predicts creation
+      returned: always
       type: str
       sample: OPERATIONAL
     status_message:
@@ -773,6 +773,11 @@ def ensure_present(client, module, deadline=None):
             for field in OPTIONAL_ENDPOINT_FIELDS:
                 if projected_desired[field] is None:
                     projected_desired[field] = ENDPOINT_CREATION_DEFAULTS[field]
+
+            # CreateResolverEndpoint returns a CREATING endpoint that counts every requested address; a waited
+            # create returns it once OPERATIONAL.
+            projected_desired["ip_address_count"] = len(desired["ip_addresses"])
+            projected_desired["status"] = "OPERATIONAL" if module.params["wait"] else "CREATING"
         else:
             # Only fields an update changes replace the AWS values; direction and security groups already match.
             projected_desired = {
