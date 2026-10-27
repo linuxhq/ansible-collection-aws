@@ -14,8 +14,13 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 
 
 def model_client():
-    """Return a mock client with the real botocore model, for check-mode predictions that read it."""
-    return Mock(meta=get_session().create_client("pinpoint-sms-voice-v2", region_name="us-east-1").meta)
+    """Return a mock client with the real botocore model, for check-mode predictions that read it.
+
+    The model is loaded without creating a client, so no credential lookup runs.
+    """
+    client = Mock()
+    client.meta.service_model = get_session().get_service_model("pinpoint-sms-voice-v2")
+    return client
 
 
 def pool_with_other_phone_number():
