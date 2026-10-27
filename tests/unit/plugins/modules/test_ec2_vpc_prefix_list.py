@@ -677,35 +677,122 @@ def test_matching_prefix_list_readiness(state, wait_enabled, check_mode):
 
     assert result.value.values["changed"] is False
     assert client.mock_calls == []
-    if wait_enabled and not check_mode:
+    if wait_enabled:
+        # Check mode waits, read-only, like a real run and returns the state it reads afterwards.
         wait.assert_called_once_with(client, module, "pl-1", deadline=ANY)
         assert result.value.values["prefix_list"]["state"] == "modify-complete"
-    elif wait_enabled:
-        # Check mode predicts the state that the real run returns after waiting.
-        wait.assert_not_called()
-        assert result.value.values["prefix_list"]["state"] == state.replace("-in-progress", "-complete")
     else:
         wait.assert_not_called()
         assert result.value.values["prefix_list"]["state"] == state
 
 
 @pytest.mark.parametrize("state", sorted(plugin.IN_PROGRESS_STATES))
-def test_check_mode_change_on_an_in_progress_prefix_list_predicts_the_completed_state(state):
+def test_check_mode_change_on_an_in_progress_prefix_list_waits_and_predicts_from_the_settled_list(state):
     # A real run waits for the transition before changing tags, even when wait=false.
     client = Mock()
     module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}], tags={"Env": "test"}), check_mode=True)
+    settled_state = state.replace("-in-progress", "-complete")
     with (
-        patch.object(plugin, "get_current", return_value=(prefix_list(State=state, Tags=[]), [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(
+            plugin,
+            "get_current",
+            side_effect=[
+                (prefix_list(State=state, Tags=[]), [{"Cidr": "10.0.0.0/8"}]),
+                (prefix_list(State=settled_state, Tags=[]), [{"Cidr": "10.0.0.0/8"}]),
+            ],
+        ) as get_current,
         patch.object(plugin, "wait_for_ready_state") as wait,
         pytest.raises(ModuleExit) as result,
     ):
         plugin.ensure_present(client, module, OWNER)
 
     assert result.value.values["changed"] is True
-    assert result.value.values["prefix_list"]["state"] == state.replace("-in-progress", "-complete")
+    assert result.value.values["prefix_list"]["state"] == settled_state
     assert result.value.values["prefix_list"]["tags"] == {"Env": "test"}
-    wait.assert_not_called()
+    wait.assert_called_once_with(client, module, "pl-1", deadline=ANY)
+    assert get_current.call_count == 2
     assert client.mock_calls == []
+
+
+TWO_CIDRS = ["10.0.0.0/8", "172.16.0.0/12"]
+THREE_CIDRS = TWO_CIDRS + ["192.0.2.0/24"]
+
+
+@pytest.mark.parametrize(
+    "in_flight_size,in_flight_cidrs,settled_size,settled_cidrs,desired_cidrs,wait_enabled,changed,waits",
+    [
+        # Live: a grow 2 -> 3 sent without wait stays modify-in-progress for about 5 s and reports size 2 until then.
+        (2, TWO_CIDRS, 3, TWO_CIDRS, TWO_CIDRS, False, False, 1),
+        (2, TWO_CIDRS, 3, TWO_CIDRS, TWO_CIDRS, True, False, 1),
+        # Live: GetManagedPrefixListEntries returns the entries from before an addition until it completes.
+        (3, TWO_CIDRS, 3, THREE_CIDRS, THREE_CIDRS, False, False, 1),
+        (3, TWO_CIDRS, 3, THREE_CIDRS, THREE_CIDRS, True, False, 1),
+        # A shrink 3 -> 2 started elsewhere while the caller wants 3: with wait, the real run waits and grows it back.
+        (3, TWO_CIDRS, 2, TWO_CIDRS, TWO_CIDRS, True, True, 1),
+        # Without wait and without a change against the described list, neither run waits.
+        (3, TWO_CIDRS, 2, TWO_CIDRS, TWO_CIDRS, False, False, 0),
+    ],
+)
+def test_check_mode_waits_for_an_in_flight_change_like_a_real_run(
+    in_flight_size, in_flight_cidrs, settled_size, settled_cidrs, desired_cidrs, wait_enabled, changed, waits
+):
+    in_flight = prefix_list(MaxEntries=in_flight_size, State="modify-in-progress", Tags=[])
+    stored = {}
+    reads = []
+
+    def get_current(*args, **kwargs):
+        # The first read sees the in-flight change; every later read sees the settled, stored list.
+        reads.append(True)
+        if len(reads) == 1:
+            return dict(in_flight), [{"Cidr": cidr} for cidr in in_flight_cidrs]
+
+        return dict(stored["prefix_list"], State="modify-complete"), [{"Cidr": cidr} for cidr in stored["cidrs"]]
+
+    def modify(client, module, current, changed=False, max_entries=None, add_entries=None, remove_entries=None):
+        # Live: the response is modify-in-progress, reports the size before the request, and omits Tags.
+        response = dict(stored["prefix_list"], State="modify-in-progress")
+        del response["Tags"]
+        if max_entries is not None:
+            stored["prefix_list"]["MaxEntries"] = max_entries
+
+        return response
+
+    def run(check_mode):
+        reads.clear()
+        stored["prefix_list"] = prefix_list(MaxEntries=settled_size, Tags=[])
+        stored["cidrs"] = list(settled_cidrs)
+        client = Mock()
+        module = FakeModule(
+            present_params(
+                [{"cidr": cidr} for cidr in desired_cidrs], max_entries=3, state="present", wait=wait_enabled
+            ),
+            check_mode=check_mode,
+        )
+        with (
+            patch.object(plugin, "get_current", side_effect=get_current),
+            patch.object(plugin, "modify_prefix_list", side_effect=modify) as modify_prefix_list,
+            patch.object(
+                plugin, "describe_prefix_list", side_effect=lambda *args, **kwargs: dict(stored["prefix_list"])
+            ),
+            patch.object(plugin, "wait_for_ready_state") as wait,
+            pytest.raises(ModuleExit) as result,
+        ):
+            plugin.ensure_present(client, module, OWNER)
+
+        return result.value.values, modify_prefix_list, wait, client, module
+
+    predicted, check_modify, check_wait, check_client, check_module = run(check_mode=True)
+    returned, real_modify = run(check_mode=False)[:2]
+
+    check_modify.assert_not_called()
+    assert check_client.mock_calls == []
+    assert check_wait.call_args_list == [call(check_client, check_module, "pl-1", deadline=ANY)] * waits
+    assert real_modify.called is changed
+    assert predicted["changed"] is returned["changed"] is changed
+    assert returned["prefix_list"]["max_entries"] == 3
+    assert returned["prefix_list"]["state"] == ("modify-complete" if waits else "modify-in-progress")
+    for key in ("entries", "max_entries", "state"):
+        assert predicted["prefix_list"][key] == returned["prefix_list"][key]
 
 
 @pytest.mark.parametrize("wait_enabled", [True, False])

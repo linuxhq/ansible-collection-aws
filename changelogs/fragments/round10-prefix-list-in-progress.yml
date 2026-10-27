@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - ec2_vpc_prefix_list - check mode with O(state=present) now waits, read-only and within O(wait_timeout), for a
+    prefix list in an in-progress state whenever a real run would wait for it, and predicts from the settled prefix
+    list. EC2 reports the entries and size from before an in-flight change until it completes, so check mode right after
+    a change made with O(wait=false) (for example a grow, which stays C(modify-in-progress) for several seconds)
+    reported C(changed=true) while the real run waited and reported C(changed=false).
