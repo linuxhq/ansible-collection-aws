@@ -196,7 +196,8 @@ options:
               listener_port:
                 description:
                   - Listener port to override.
-                  - This must be between C(1) and C(65535).
+                  - This must be between C(1) and C(65535), and within one of
+                    the listener's O(listeners[].port_ranges).
                 required: true
                 type: int
             type: list
@@ -1935,6 +1936,17 @@ def ensure_present(client, module, deadline=None):
         if "ip_address_type" in desired:
             accelerator["IpAddressType"] = desired["ip_address_type"]
 
+        # A change to IPV4 removes the dual-stack DNS name and the IPv6 addresses; live, the UpdateAccelerator response
+        # and the deployed accelerator both omit them.
+        if desired.get("ip_address_type") == "IPV4":
+            accelerator.pop("DualStackDnsName", None)
+            if accelerator.get("IpSets"):
+                accelerator["IpSets"] = [
+                    ip_set
+                    for ip_set in accelerator["IpSets"]
+                    if "IPv6" not in (ip_set.get("IpAddressFamily"), ip_set.get("IpFamily"))
+                ]
+
     # Failures after the accelerator was created or updated report changed=True.
     mutated = not module.check_mode and (created or resource_changed)
     listeners = None
@@ -2251,6 +2263,18 @@ def main():
                         )
 
                     override_listener_ports.add(port_override["listener_port"])
+
+                    # AWS rejects this endpoint group write, reached after accelerator and listener changes.
+                    if not any(
+                        port_range["from_port"] <= port_override["listener_port"] <= port_range["to_port"]
+                        for port_range in listener["port_ranges"]
+                    ):
+                        module.fail_json(
+                            msg=(
+                                f"Endpoint group {region} port_overrides listener_port "
+                                f"{port_override['listener_port']} must be within the listener's port_ranges"
+                            )
+                        )
 
         require_valid_tags(module, module.params["tags"], 50)
 
