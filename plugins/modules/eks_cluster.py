@@ -161,6 +161,8 @@ options:
     description:
       - The remote node and pod networks for EKS hybrid nodes.
       - The supplied configuration is sent as a whole when it differs from the cluster.
+      - When creating a cluster, a configuration without remote node or pod networks is treated the same as
+        omitting this option.
       - This requires botocore C(1.35.72) or later, and C(1.37.24) or later to update an existing cluster.
     suboptions:
       remote_node_networks:
@@ -217,12 +219,14 @@ options:
       security_group_ids:
         description:
           - Security group IDs for the cross-account elastic network interfaces.
+          - Entries must not be empty.
         elements: str
         type: list
       subnet_ids:
         description:
           - Subnet IDs for the cluster.
           - Required when creating a cluster.
+          - Entries must not be empty.
         elements: str
         type: list
     type: dict
@@ -230,6 +234,7 @@ options:
     description:
       - ARN of the IAM role used by the EKS cluster.
       - Required when creating a cluster.
+      - This must not be empty when specified.
       - This can only be set when creating a cluster.
       - The module fails if this differs from the existing cluster.
     type: str
@@ -966,11 +971,16 @@ def wait_for_cluster_updates(client, module, deadline=None):
     return True
 
 
-def desired_cluster(module):
+def desired_cluster(module, create=False):
     desired = scrub_none_parameters({field: module.params[field] for field in CREATE_FIELDS})
 
     if desired.get("encryption_config") == []:
         del desired["encryption_config"]
+
+    # EKS rejects a create whose remoteNetworkConfig has no remote node networks; empty lists mean none.
+    # An update still sends them, because that is how EKS removes existing remote networks.
+    if create and not any((desired.get("remote_network_config") or {}).values()):
+        desired.pop("remote_network_config", None)
 
     return desired
 
@@ -979,7 +989,7 @@ def check_mode_cluster(module, current, changes=None):
     """Predict the cluster; changes holds the settings the run sends to an existing cluster."""
     tags = module.params.get("tags")
     if current is None:
-        desired = snake_dict_to_camel_dict(desired_cluster(module), capitalize_first=False)
+        desired = snake_dict_to_camel_dict(desired_cluster(module, create=True), capitalize_first=False)
         # EKS never returns bootstrapSelfManagedAddons.
         desired.pop("bootstrapSelfManagedAddons", None)
     else:
@@ -1042,7 +1052,7 @@ def ensure_present(client, module, deadline=None):
             return ensure_present(client, module, deadline=deadline)
 
     if current is None:
-        create_request = dict(desired, name=name)
+        create_request = dict(desired_cluster(module, create=True), name=name)
         create_request = snake_dict_to_camel_dict(create_request, capitalize_first=False)
         if tags:
             create_request["tags"] = tags
@@ -1521,6 +1531,15 @@ def main():
         for network in ("remote_node_networks", "remote_pod_networks"):
             if len((module.params["remote_network_config"] or {}).get(network) or []) > 1:
                 module.fail_json(msg=f"remote_network_config.{network} must contain at most one entry")
+
+        # EKS rejects these, but check mode would predict success, and a blank network entry reaches EKS after other
+        # updates.
+        if module.params["role_arn"] == "":
+            module.fail_json(msg="role_arn must not be empty")
+
+        for field in ("security_group_ids", "subnet_ids"):
+            if "" in ((module.params["resources_vpc_config"] or {}).get(field) or []):
+                module.fail_json(msg=f"resources_vpc_config.{field} must not contain empty entries")
 
         canonicalize_public_access_cidrs(module)
 

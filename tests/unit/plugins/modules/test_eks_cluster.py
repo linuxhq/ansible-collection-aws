@@ -2117,6 +2117,111 @@ def test_remote_node_networks_on_a_cluster_without_remote_networks_send_the_whol
         )
 
 
+@pytest.mark.parametrize("wait", [True, False])
+@pytest.mark.parametrize(
+    "remote_network_config",
+    [
+        {"remote_node_networks": [], "remote_pod_networks": []},
+        {"remote_node_networks": [], "remote_pod_networks": None},
+        {"remote_node_networks": None, "remote_pod_networks": None},
+    ],
+)
+def test_create_omits_a_remote_network_config_without_networks(remote_network_config, wait):
+    # CreateCluster rejects remoteNetworkConfig without remote node networks (live), so empty lists mean none.
+    params = eks_params(
+        remote_network_config=remote_network_config,
+        resources_vpc_config={"subnet_ids": ["subnet-1"]},
+        role_arn="arn:role",
+        wait=wait,
+    )
+    client = Mock(create_cluster=Mock(return_value={"cluster": CREATED_CLUSTER}))
+    client, real = run_present(FakeModule(params), [None, DESCRIBED_CLUSTER], client)
+    check_client, check = run_present(FakeModule(params, check_mode=True), [None])
+
+    client.create_cluster.assert_called_once_with(
+        name="example",
+        resourcesVpcConfig={"subnetIds": ["subnet-1"]},
+        roleArn="arn:role",
+        aws_retry=True,
+    )
+    assert check_client.mock_calls == []
+    assert check["changed"] is real["changed"] is True
+    assert "remote_network_config" not in real["cluster"]
+    assert "remote_network_config" not in check["cluster"]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_create_sends_a_remote_network_config_with_networks_as_supplied(check_mode):
+    params = eks_params(
+        remote_network_config={"remote_node_networks": [{"cidrs": ["10.80.0.0/16"]}], "remote_pod_networks": []},
+        resources_vpc_config={"subnet_ids": ["subnet-1"]},
+        role_arn="arn:role",
+    )
+    client = Mock(create_cluster=Mock(return_value={"cluster": CREATED_CLUSTER}))
+    client, result = run_present(FakeModule(params, check_mode=check_mode), [None], client)
+
+    assert result["changed"] is True
+    if check_mode:
+        assert client.mock_calls == []
+        assert result["cluster"]["remote_network_config"] == {
+            "remote_node_networks": [{"cidrs": ["10.80.0.0/16"]}],
+            "remote_pod_networks": [],
+        }
+    else:
+        assert client.create_cluster.call_args.kwargs["remoteNetworkConfig"] == {
+            "remoteNodeNetworks": [{"cidrs": ["10.80.0.0/16"]}],
+            "remotePodNetworks": [],
+        }
+
+
+def test_empty_remote_network_lists_still_remove_the_remote_networks_of_an_existing_cluster():
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "remoteNetworkConfig": {"remoteNodeNetworks": [{"cidrs": ["10.80.0.0/16"]}], "remotePodNetworks": []},
+    }
+    params = eks_params(remote_network_config={"remote_node_networks": [], "remote_pod_networks": []})
+
+    client, result = run_present(FakeModule(params), [current])
+
+    assert result["changed"] is True
+    client.update_cluster_config.assert_called_once_with(
+        name="example",
+        remoteNetworkConfig={"remoteNodeNetworks": [], "remotePodNetworks": []},
+    )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "overrides, message",
+    [
+        ({"role_arn": ""}, "role_arn must not be empty"),
+        (
+            {"resources_vpc_config": {"subnet_ids": ["subnet-1", ""]}},
+            "resources_vpc_config.subnet_ids must not contain empty entries",
+        ),
+        (
+            {"resources_vpc_config": {"security_group_ids": ["sg-1", ""], "subnet_ids": ["subnet-1"]}},
+            "resources_vpc_config.security_group_ids must not contain empty entries",
+        ),
+    ],
+)
+def test_empty_role_arn_and_network_ids_fail_before_any_aws_call(overrides, message, check_mode):
+    # EKS rejects them (live), but only after check mode predicted success or other updates were applied.
+    params = eks_params(state="present", **overrides)
+    module = FakeModule(params, check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == message
+    module.client.assert_not_called()
+
+
 def fake_clock():
     """Return a clock whose sleep and waiter calls advance it, and the patches that install it."""
     clock = {"now": 0}
