@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - ec2_flow_log - in check mode with O(purge_flow_logs=true), a flow log that already matches but reports failed
+    delivery or is not active now fails the run as a real run does, instead of predicting the deletion of the
+    superseded flow logs.
+  - ec2_flow_log - a flow log create that EC2 rejects now fails before any AWS change and in check mode, instead of
+    being predicted in check mode. This covers a create to CloudWatch Logs without O(deliver_logs_permission_arn) or
+    without O(log_group_name) or O(log_destination), and a create to S3 or Kinesis Data Firehose without
+    O(log_destination). Flow logs that already match are still left unchanged without these options.

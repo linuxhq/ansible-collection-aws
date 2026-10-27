@@ -27,6 +27,8 @@ options:
   deliver_logs_permission_arn:
     description:
       - The ARN of the IAM role that permits delivery to CloudWatch Logs.
+      - This is required to create flow logs when O(log_destination_type) is C(cloud-watch-logs), the default
+        when O(state=present).
     type: str
   destination_options:
     description:
@@ -55,6 +57,9 @@ options:
     description:
       - The ARN of the destination for flow log data.
       - This is commonly used with S3, CloudWatch Logs, or Kinesis Data Firehose destinations.
+      - This is required to create flow logs when O(log_destination_type) is C(s3) or C(kinesis-data-firehose).
+      - When O(log_destination_type) is C(cloud-watch-logs), this or O(log_group_name) is required to create
+        flow logs.
       - This is mutually exclusive with O(log_group_name).
     type: str
   log_destination_type:
@@ -73,6 +78,8 @@ options:
   log_group_name:
     description:
       - The CloudWatch Logs log group name for flow log data.
+      - When O(log_destination_type) is C(cloud-watch-logs), this or O(log_destination) is required to create
+        flow logs.
       - This is mutually exclusive with O(log_destination).
     type: str
   max_aggregation_interval:
@@ -545,7 +552,8 @@ def verified_purge(module, flow_logs, current, purge_flow_log_ids, changed=False
             replacement_errors={
                 flow_log["FlowLogId"]: flow_log.get("DeliverLogsErrorMessage")
                 for flow_log in replacements
-                if flow_log["FlowLogId"] in failed
+                # Flow logs predicted in check mode have no ID.
+                if flow_log.get("FlowLogId") in failed
             },
         )
 
@@ -559,6 +567,32 @@ def verified_purge(module, flow_logs, current, purge_flow_log_ids, changed=False
         return []
 
     return purge_flow_log_ids
+
+
+def require_create_parameters(module, desired):
+    """Fail before any write when EC2 would reject creating flow logs with the desired settings."""
+    log_destination_type = desired["log_destination_type"]
+    if log_destination_type == "cloud-watch-logs":
+        if "deliver_logs_permission_arn" not in desired:
+            module.fail_json(
+                msg=(
+                    "deliver_logs_permission_arn is required to create flow logs "
+                    "when log_destination_type is cloud-watch-logs"
+                )
+            )
+
+        if "log_destination" not in desired and "log_group_name" not in desired:
+            module.fail_json(
+                msg=(
+                    "log_group_name or log_destination is required to create flow logs "
+                    "when log_destination_type is cloud-watch-logs"
+                )
+            )
+
+    elif "log_destination" not in desired:
+        module.fail_json(
+            msg=f"log_destination is required to create flow logs when log_destination_type is {log_destination_type}"
+        )
 
 
 def ensure_absent(client, module):
@@ -610,6 +644,8 @@ def ensure_present(client, module):
 
     matched_resource_ids = {flow_log.get("ResourceId") for flow_log in current}
     missing_resource_ids = [resource_id for resource_id in resource_ids if resource_id not in matched_resource_ids]
+    if missing_resource_ids:
+        require_create_parameters(module, desired)
 
     tags_changed = []
     if tags is not None:
@@ -795,9 +831,9 @@ def ensure_present(client, module):
         flow_log.update(apply_tag_deltas(flow_log, tags_to_set, tag_keys_to_unset))
 
     # Delete superseded flow logs only after their replacements exist and are delivering.
-    if purge_flow_log_ids and not module.check_mode:
+    if purge_flow_log_ids:
         purge_flow_log_ids = verified_purge(module, flow_logs, current, purge_flow_log_ids, changed=modified)
-        if purge_flow_log_ids:
+        if purge_flow_log_ids and not module.check_mode:
             purge_flow_log_ids = delete_flow_logs(client, module, purge_flow_log_ids, changed=modified)
             modified = modified or bool(purge_flow_log_ids)
 
