@@ -339,7 +339,7 @@ def test_entry_replacement_is_one_request_before_shrinking():
 
 
 def test_present_entries_must_be_nonempty_and_unique():
-    base = {"address_family": "IPv4", "state": "present", "tags": None}
+    base = {"address_family": "IPv4", "name": "main", "state": "present", "tags": None}
     cases = [
         (
             dict(base, entries=[]),
@@ -374,6 +374,55 @@ def test_present_entries_must_be_nonempty_and_unique():
     ]
     for params, message in cases:
         assert_module_rejects(plugin, params, message)
+
+
+def main_params(**overrides):
+    params = {
+        "address_family": "IPv4",
+        "entries": [{"cidr": "192.0.2.0/24"}],
+        "max_entries": None,
+        "name": "main",
+        "purge_tags": True,
+        "state": "present",
+        "tags": None,
+        "wait": True,
+    }
+    params.update(overrides)
+    return params
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("name", ["", " "])
+def test_present_rejects_a_blank_name_before_any_aws_call(name, check_mode):
+    # EC2 rejects both (InvalidParameterValue, MissingParameter); check mode predicted a new prefix list.
+    client = Mock()
+    module = FakeModule(main_params(name=name), check_mode=check_mode, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(module, "client") as connect,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == "name must not be empty"
+    connect.assert_not_called()
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("name", ["", " "])
+def test_absent_with_a_blank_name_still_looks_up_the_prefix_list(name, check_mode):
+    client = Mock()
+    module = FakeModule(main_params(name=name, state="absent"), check_mode=check_mode, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_aws_account_id", return_value=OWNER),
+        patch.object(plugin, "ensure_absent") as ensure_absent,
+    ):
+        plugin.main()
+
+    ensure_absent.assert_called_once_with(client, module, OWNER)
 
 
 def test_tag_keys_may_contain_128_characters_but_not_129():
