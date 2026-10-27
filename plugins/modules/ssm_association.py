@@ -70,7 +70,7 @@ options:
         type: list
     type: list
 notes:
-  - O(tags) accepts at most 1000 entries; keys must contain 1 to 128 characters
+  - O(tags) accepts at most 50 entries; keys must contain 1 to 128 characters
     and values at most 256 characters.
   - Updates send every field of the existing association because
     C(UpdateAssociation) clears omitted fields. botocore older than 1.42.54
@@ -426,7 +426,7 @@ def ensure_present(client, module, current):
         current_tags = boto3_tag_list_to_ansible_dict((current or {}).get("Tags", []))
         tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge_tags=purge_tags)
         require_resulting_tag_limit(
-            module, current_tags, tags_to_set, tag_keys_to_unset, 1000, "AWS Systems Manager association"
+            module, current_tags, tags_to_set, tag_keys_to_unset, 50, "AWS Systems Manager association"
         )
 
     if current is None:
@@ -657,7 +657,7 @@ def main():
 
         require_valid_ssm_targets(module, targets or [])
 
-        require_valid_tags(module, tags, 1000)
+        require_valid_tags(module, tags, 50)
 
     client = module.client(
         "ssm",
