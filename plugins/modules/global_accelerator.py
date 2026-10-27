@@ -161,6 +161,8 @@ options:
               - This must start with C(/), contain only AWS-supported path
                 characters, and contain at most 255 characters.
               - When omitted, AWS applies its default.
+              - AWS does not store a path for C(TCP) health checks, so this is
+                not compared when the health check protocol is C(TCP).
             type: str
           health_check_port:
             description:
@@ -615,6 +617,14 @@ ENDPOINT_GROUP_SETTINGS = {
     "traffic_dial_percentage": "TrafficDialPercentage",
 }
 
+# AWS stores these values for endpoint group settings that a create omits.
+ENDPOINT_GROUP_CREATE_DEFAULTS = {
+    "health_check_interval_seconds": 30,
+    "health_check_protocol": "TCP",
+    "threshold_count": 3,
+    "traffic_dial_percentage": 100.0,
+}
+
 GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
     "accelerator_deployed": {
         "delay": 10,
@@ -640,6 +650,31 @@ GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
         "maxAttempts": 60,
         "operation": "DescribeAccelerator",
         "acceptors": [
+            {
+                "expected": "AcceleratorNotFoundException",
+                "matcher": "error",
+                "state": "success",
+            },
+            {
+                "argument": "Accelerator.Status",
+                "expected": "IN_PROGRESS",
+                "matcher": "path",
+                "state": "retry",
+            },
+        ],
+    },
+    # An accelerator that another actor is deleting is gone instead of deployed when the wait ends.
+    "accelerator_deployed_or_deleted": {
+        "delay": 10,
+        "maxAttempts": 60,
+        "operation": "DescribeAccelerator",
+        "acceptors": [
+            {
+                "argument": "Accelerator.Status",
+                "expected": "DEPLOYED",
+                "matcher": "path",
+                "state": "success",
+            },
             {
                 "expected": "AcceleratorNotFoundException",
                 "matcher": "error",
@@ -1037,7 +1072,12 @@ def get_endpoint_groups(client, module, listener_arn, changed=False):
 
 
 def endpoint_group_requires_update(current, desired):
+    # AWS stores no health check path for TCP health checks, so a requested path never matches one.
+    tcp_health_check = (desired["health_check_protocol"] or current.get("health_check_protocol")) == "TCP"
     for field in ENDPOINT_GROUP_SETTINGS:
+        if field == "health_check_path" and tcp_health_check:
+            continue
+
         if desired[field] is not None and desired[field] != current.get(field):
             return True
 
@@ -1186,13 +1226,27 @@ def require_endpoint_group_writes(module, client):
             require_endpoint_configuration_parameters(module, client, method_name, operation_name, request)
 
 
-def predicted_endpoint_group(current, desired):
-    predicted = dict(current or {})
+def predicted_endpoint_group(current, desired, listener_port_ranges=None):
+    if current is None:
+        # AWS returns an empty endpoint list for a group created without endpoints.
+        predicted = dict(ENDPOINT_GROUP_CREATE_DEFAULTS, endpoint_descriptions=[])
+        # AWS checks health on the listener's first port; with several ranges their stored order is not known.
+        if listener_port_ranges is not None and len(listener_port_ranges) == 1:
+            predicted["health_check_port"] = listener_port_ranges[0]["from_port"]
+    else:
+        predicted = dict(current)
+
     predicted["endpoint_group_region"] = desired["endpoint_group_region"]
 
     for field in ENDPOINT_GROUP_SETTINGS:
         if desired[field] is not None:
             predicted[field] = desired[field]
+
+    # AWS stores a health check path only for HTTP and HTTPS health checks, and defaults it to /.
+    if predicted.get("health_check_protocol") == "TCP":
+        predicted.pop("health_check_path", None)
+    elif predicted.get("health_check_protocol") in ("HTTP", "HTTPS"):
+        predicted.setdefault("health_check_path", "/")
 
     if desired["port_overrides"] is not None:
         predicted["port_overrides"] = normalized_port_overrides(desired["port_overrides"])
@@ -1270,8 +1324,11 @@ def delete_listener(client, module, accelerator_arn, listener_arn, changed=False
         )
 
 
-def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups, mutated=False):
-    """Reconcile endpoint groups; mutated reports earlier modifications, for failure results."""
+def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups, mutated=False, listener_port_ranges=None):
+    """Reconcile endpoint groups; mutated reports earlier modifications, for failure results.
+
+    listener_port_ranges are the listener's port ranges, used to predict a created group's default health check port.
+    """
     current_by_region = {}
     if listener_arn is not None:
         for endpoint_group in get_endpoint_groups(client, module, listener_arn, changed=mutated):
@@ -1288,7 +1345,7 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups, mutate
         if current is None:
             changed = True
             if module.check_mode:
-                results.append(predicted_endpoint_group(None, desired))
+                results.append(predicted_endpoint_group(None, desired, listener_port_ranges))
                 continue
 
             request = endpoint_group_request(desired)
@@ -1552,6 +1609,7 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
                 result.get("listener_arn"),
                 desired["endpoint_groups"],
                 mutated=mutated,
+                listener_port_ranges=result["port_ranges"],
             )
             changed = changed or endpoint_groups_changed
             mutated = mutated or (endpoint_groups_changed and not module.check_mode)
@@ -1572,7 +1630,7 @@ def ensure_absent(client, module):
     if changed and not module.check_mode:
         accelerator_arn = accelerator["AcceleratorArn"]
         if accelerator.get("Status") and accelerator.get("Status") != "DEPLOYED":
-            wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", deadline=deadline)
+            wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed_or_deleted", deadline=deadline)
             accelerator = get_accelerator_by_arn(client, module, accelerator_arn)
             if accelerator is None:
                 # The accelerator disappeared before this module modified anything.
@@ -1852,6 +1910,10 @@ def ensure_present(client, module, deadline=None):
         )
     elif resource_changed and module.check_mode:
         accelerator = dict(accelerator)
+        # Without a wait, a real run returns the UpdateAccelerator response, which reports the change deploying.
+        if not module.params["wait"]:
+            accelerator["Status"] = "IN_PROGRESS"
+
         accelerator["Name"] = desired["name"]
         if "enabled" in desired:
             accelerator["Enabled"] = desired["enabled"]
@@ -2177,6 +2239,13 @@ def main():
                     override_listener_ports.add(port_override["listener_port"])
 
         require_valid_tags(module, module.params["tags"], 50)
+
+    # Some ansible-core versions let an explicit null past required_if and required_one_of; fail as if it were omitted.
+    if module.params.get("arn") is None and module.params.get("name") is None:
+        module.fail_json(msg="one of the following is required: arn, name")
+
+    if state == "present" and module.params.get("name") is None:
+        module.fail_json(msg="state is present but all of the following are missing: name")
 
     client = module.client(
         "globalaccelerator",
