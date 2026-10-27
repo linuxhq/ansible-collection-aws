@@ -27,12 +27,26 @@ def test_tag_limits_are_rejected():
     module = FakeModule({})
     for tags, message in (
         ({"one": "", "two": ""}, "tags must contain at most 1 entries"),
-        ({"long": "v" * 257}, "tag keys must contain 1 to 3 characters and values at most 256 characters"),
+        ({"long": "v" * 257}, "tag keys must contain 1 to 128 characters and values at most 256 characters"),
     ):
         with pytest.raises(ModuleFail) as raised:
-            require_valid_tags(module, tags, 1, key_max=3)
+            require_valid_tags(module, tags, 1)
 
         assert raised.value.values["msg"] == message
+
+
+def test_tag_keys_up_to_128_characters_and_values_up_to_256_characters_are_accepted():
+    tags = {"k" * 128: "v" * 256}
+    require_valid_tags(FakeModule({}), tags, 50)
+    assert tags == {"k" * 128: "v" * 256}
+
+
+@pytest.mark.parametrize("key", ["", "k" * 129])
+def test_tag_keys_outside_1_to_128_characters_are_rejected(key):
+    with pytest.raises(ModuleFail) as raised:
+        require_valid_tags(FakeModule({}), {key: "v"}, 50)
+
+    assert raised.value.values["msg"] == "tag keys must contain 1 to 128 characters and values at most 256 characters"
 
 
 def test_aws_reserved_tags_do_not_count_against_the_limit():

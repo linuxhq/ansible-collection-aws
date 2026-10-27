@@ -494,6 +494,17 @@ def test_tags_validate_including_name_before_any_aws_call(params):
     plugin.validate_inputs(FakeModule(params))
 
 
+def test_tag_keys_may_contain_128_characters_but_not_129(params):
+    params["tags"] = {"k" * 128: "v"}
+    plugin.validate_inputs(FakeModule(params))
+
+    params["tags"] = {"k" * 129: "v"}
+    with pytest.raises(ModuleFail) as raised:
+        plugin.validate_inputs(FakeModule(params))
+
+    assert raised.value.values["msg"] == "tag keys must contain 1 to 128 characters and values at most 256 characters"
+
+
 def test_algorithms_compare_as_sets_and_ignore_omitted_fields(params, connection):
     params["tunnel_options"] = [
         {"outside_ip_address": "203.0.113.1", "phase1_encryption_algorithms": ["AES256", "AES128", "AES128"]}

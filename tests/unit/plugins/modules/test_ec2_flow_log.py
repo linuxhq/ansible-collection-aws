@@ -245,6 +245,34 @@ def test_invalid_resource_and_destination_combinations_are_rejected():
         assert_module_rejects(plugin, params, message)
 
 
+def test_tag_keys_may_contain_128_characters_but_not_129():
+    params = dict.fromkeys(plugin.PRESENT_MATCH_FIELDS)
+    params.update(
+        {
+            "destination_options": None,
+            "log_destination_type": None,
+            "purge_tags": True,
+            "resource_ids": ["vpc-1"],
+            "resource_type": "VPC",
+            "state": "present",
+            "tags": {"k" * 128: "v"},
+            "traffic_type": None,
+        }
+    )
+    module = FakeModule(params, client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once_with(module.client(), module)
+
+    params["tags"] = {"k" * 129: "v"}
+    assert_module_rejects(plugin, params, "tag keys must contain 1 to 128 characters and values at most 256 characters")
+
+
 def test_partial_create_failure_is_not_reported_as_success():
     client = Mock()
     client.create_flow_logs.return_value = {"Unsuccessful": [{"Error": {"Code": "LimitExceeded"}}]}

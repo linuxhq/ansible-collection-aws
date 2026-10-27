@@ -973,7 +973,7 @@ def desired_tags(module, current):
     if tags is None:
         return {}, []
 
-    require_valid_tags(module, tags, 50, key_max=127)
+    require_valid_tags(module, tags, 50)
     current_tags = boto3_tag_list_to_ansible_dict(current.get("Tags") or [])
     tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge)
     require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "VPN connection")

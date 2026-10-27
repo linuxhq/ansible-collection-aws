@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - ec2_flow_log - accept tag keys of up to 128 characters, the EC2 limit, instead of failing a valid 128-character
+    key before any AWS call.
+  - ec2_transit_gateway_route_table - accept tag keys of up to 128 characters, the EC2 limit, instead of failing a
+    valid 128-character key before any AWS call.
+  - ec2_vpc_prefix_list - accept tag keys of up to 128 characters, the EC2 limit, instead of failing a valid
+    128-character key before any AWS call.
+  - ec2_vpc_vpn - accept tag keys of up to 128 characters, the EC2 limit, instead of failing a valid 128-character
+    key before any AWS call.

@@ -21,7 +21,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_cli
 MAX_EC2_TAG_RESOURCES_PER_REQUEST = 100
 
 
-def require_valid_tags(module, tags, max_tags, key_max=128):
+def require_valid_tags(module, tags, max_tags):
     if tags is None:
         return
 
@@ -39,8 +39,8 @@ def require_valid_tags(module, tags, max_tags, key_max=128):
     if sum(not key.lower().startswith("aws:") for key in tags) > max_tags:
         module.fail_json(msg=f"tags must contain at most {max_tags} entries")
 
-    if any(not 1 <= len(key) <= key_max or len(value) > 256 for key, value in tags.items()):
-        module.fail_json(msg=f"tag keys must contain 1 to {key_max} characters and values at most 256 characters")
+    if any(not 1 <= len(key) <= 128 or len(value) > 256 for key, value in tags.items()):
+        module.fail_json(msg="tag keys must contain 1 to 128 characters and values at most 256 characters")
 
 
 def require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, max_tags, description):
