@@ -53,9 +53,23 @@ def test_module_contract():
 
 
 def test_content_transform_returns_json_unchanged_and_text_as_is():
-    assert plugin.content_transform('{"schemaVersion":"2.2"}') == {"schemaVersion": "2.2"}
-    assert plugin.content_transform("not-json") == "not-json"
-    assert plugin.content_transform(None) == {}
+    assert plugin.content_transform('{"schemaVersion":"2.2"}', "JSON") == {"schemaVersion": "2.2"}
+    assert plugin.content_transform("not-json", "JSON") == "not-json"
+    assert plugin.content_transform(None, "JSON") == {}
+
+
+@pytest.mark.parametrize("document_format", ["TEXT", "YAML"])
+def test_yaml_and_text_content_is_returned_as_a_string_even_in_json_syntax(document_format):
+    # AWS returns a YAML document written in JSON-compatible syntax exactly as it was stored.
+    content = '{"schemaVersion":"2.2","mainSteps":[]}'
+    client = Mock()
+    client.describe_document.return_value = described(document_format)
+    client.get_document.return_value = {"Content": content, "DocumentFormat": document_format, "Name": "example"}
+    client.list_tags_for_resource.return_value = {"TagList": []}
+    result, _require, _query = run(FakeModule(params(name="example", document_format=document_format), client=client))
+
+    assert result.values["document"]["content"] == content
+    assert plugin.content_transform(None, document_format) == {}
 
 
 def test_empty_name_is_rejected():

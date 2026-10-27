@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - ssm_document - a check-mode create now predicts C(document_version) C(1) and C(document_format) C(JSON), plus
+    C(status) C(Active) when O(wait=true), as a real create returns them.
+  - ssm_association - a check-mode create now predicts the C(association_version), C(document_version),
+    C(apply_only_at_cron_interval), and C(overview) values that AWS returns for a new association.
+  - ssm_association - a check-mode switch from a cron schedule to another schedule now predicts
+    C(apply_only_at_cron_interval=false), as AWS reports it after the update, instead of omitting it.
+  - ssm_document_info - content requested as C(YAML) or C(TEXT) is now always returned as a string, including YAML
+    written in JSON-compatible syntax, which was previously parsed into a dictionary.

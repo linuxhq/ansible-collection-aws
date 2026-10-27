@@ -433,7 +433,14 @@ def ensure_present(client, module, current):
         changed = True
         resource_changed = True
         if module.check_mode:
-            association = desired
+            # The module sends none of these, so AWS creates version 1 on the default document version, pending.
+            association = dict(
+                desired,
+                ApplyOnlyAtCronInterval=False,
+                AssociationVersion="1",
+                DocumentVersion="$DEFAULT",
+                Overview={"DetailedStatus": "Creating", "Status": "Pending"},
+            )
         else:
             create_request = dict(desired)
             if tags:
@@ -527,6 +534,9 @@ def ensure_present(client, module, current):
             if clears_cron_only_parameters:
                 for parameter in CRON_ONLY_PARAMETERS:
                     association.pop(parameter, None)
+
+                # AWS reports a cleared ApplyOnlyAtCronInterval as false rather than omitting it.
+                association["ApplyOnlyAtCronInterval"] = False
         else:
             association = current
 
