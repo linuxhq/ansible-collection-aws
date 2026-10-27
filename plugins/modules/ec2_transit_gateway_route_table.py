@@ -43,6 +43,7 @@ options:
   routes:
     description:
       - Static transit gateway routes to manage in the route table.
+      - Ignored when O(state=absent).
       - Requires botocore 1.42.37 or later.
     elements: dict
     suboptions:
@@ -169,7 +170,7 @@ RETURN = r"""
 routes:
   description:
     - The static routes for the destinations in O(routes) after module execution.
-  returned: when O(routes) is supplied
+  returned: when O(state=present) and O(routes) is supplied
   type: list
   elements: dict
   contains:
@@ -1058,12 +1059,21 @@ def ensure_absent(client, module):
                 absent_is_success=True,
                 deadline=deadline,
             )
+        elif module.check_mode and module.params["wait"]:
+            # EC2 stops returning a deleted route table, so a real run's wait finds no table.
+            route_table = None
 
         exit_module(module, False, route_table)
 
     changed = True
     if module.check_mode:
-        exit_module(module, changed, dict(route_table, State="deleted"))
+        # DeleteTransitGatewayRouteTable returns the table as deleting without its tags, and a waited
+        # delete finds no table once EC2 stops returning it.
+        if module.params["wait"]:
+            exit_module(module, changed, None)
+
+        route_table = {key: value for key, value in route_table.items() if key != "Tags"}
+        exit_module(module, changed, dict(route_table, State="deleting"))
 
     transit_gateway_route_table_id = route_table_id(route_table)
     if route_table.get("State") == "pending":
