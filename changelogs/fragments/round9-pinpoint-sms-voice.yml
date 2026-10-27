@@ -1,0 +1,11 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number - with O(state=absent), send the phone number's ``IsoCountryCode`` when
+    disassociating it from its pool. AWS rejects DisassociateOriginationIdentity for a phone number without it,
+    and older botocore requires it, so releasing a phone number that was in an existing pool failed.
+  - pinpoint_sms_voice_phone_pool - with O(state=present) and no O(pool_id), fail before any AWS call when
+    O(origination_identity) is empty, blank, or null, which AWS rejects, instead of predicting a new pool in
+    check mode.
+  - pinpoint_sms_voice_phone_pool_associate - with O(state=present), fail before any AWS call when
+    O(origination_identity) is empty or blank, which AWS rejects, instead of predicting a new association in
+    check mode.

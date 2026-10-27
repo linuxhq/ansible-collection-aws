@@ -622,6 +622,39 @@ def test_absent_removes_pool_and_deletion_protection_before_release():
     assert raised.value.values["changed"]
 
 
+def test_absent_disassociates_with_the_phone_number_country():
+    """Older botocore models require IsoCountryCode, so the number's own country is sent and gated."""
+    client = Mock()
+    client.release_phone_number.return_value = {"PhoneNumberId": "phone-1", "Status": "DELETED"}
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
+    with (
+        patch.object(
+            plugin, "get_phone_number", return_value=existing_number(DeletionProtectionEnabled=False, PoolId="pool-1")
+        ),
+        patch.object(
+            plugin, "wait_for_phone_number_active", return_value=existing_number(DeletionProtectionEnabled=False)
+        ),
+        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(plugin, "require_client_methods") as require,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert sorted(require.call_args_list[-1].args[3]["disassociate_origination_identity"]) == [
+        "IsoCountryCode",
+        "OriginationIdentity",
+        "PoolId",
+    ]
+    client.disassociate_origination_identity.assert_called_once_with(
+        IsoCountryCode="US",
+        OriginationIdentity="phone-1",
+        PoolId="pool-1",
+        aws_retry=True,
+    )
+    client.release_phone_number.assert_called_once_with(PhoneNumberId="phone-1", aws_retry=True)
+    assert raised.value.values["changed"] is True
+
+
 def test_absent_tolerates_disappearing_prerequisites():
     missing = plugin.ClientError(
         {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},

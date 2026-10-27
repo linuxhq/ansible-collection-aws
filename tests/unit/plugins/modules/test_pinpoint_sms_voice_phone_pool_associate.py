@@ -373,6 +373,56 @@ def test_rejects_lowercase_country_code():
     assert "uppercase" in raised.value.values["msg"]
 
 
+def associate_params(**overrides):
+    params = {
+        "client_token": None,
+        "iso_country_code": "US",
+        "origination_identity": "phone-1",
+        "pool_id": "pool-1",
+        "state": "present",
+    }
+    params.update(overrides)
+    return params
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("origination_identity", ["", "  "])
+def test_present_rejects_empty_origination_identity_before_any_aws_call(origination_identity, check_mode):
+    client = Mock()
+    module = FakeModule(
+        associate_params(origination_identity=origination_identity), check_mode=check_mode, client=client
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(module, "client") as connect,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == "origination_identity must not be empty"
+    connect.assert_not_called()
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_absent_with_empty_origination_identity_still_reports_no_association(check_mode):
+    client = Mock()
+    module = FakeModule(associate_params(origination_identity="", state="absent"), check_mode=check_mode, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": [PHONE_1, PHONE_2]}
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["association"] == {}
+    client.disassociate_origination_identity.assert_not_called()
+
+
 def pool_not_found():
     return plugin.ClientError(
         {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},

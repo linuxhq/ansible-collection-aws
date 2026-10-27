@@ -123,6 +123,58 @@ def test_name_tag_counts_toward_provider_limit():
     assert raised.value.values["msg"] == "tags must contain at most 200 entries"
 
 
+def main_params(**overrides):
+    params = {
+        "client_token": None,
+        "deletion_protection_enabled": None,
+        "iso_country_code": "US",
+        "message_type": "TRANSACTIONAL",
+        "name": "main",
+        "origination_identity": "phone-1",
+        "pool_id": None,
+        "purge_tags": True,
+        "state": "present",
+        "tags": None,
+        "wait": False,
+        "wait_delay": 5,
+        "wait_timeout": 300,
+    }
+    params.update(overrides)
+    return params
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("origination_identity", ["", "  ", None])
+def test_present_rejects_empty_origination_identity_before_any_aws_call(origination_identity, check_mode):
+    client = Mock()
+    module = FakeModule(main_params(origination_identity=origination_identity), check_mode=check_mode, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(module, "client") as connect,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == "origination_identity must not be empty"
+    connect.assert_not_called()
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("state", ["absent", "present"])
+def test_explicit_pool_id_ignores_an_empty_origination_identity(state):
+    module = FakeModule(main_params(origination_identity="", pool_id="pool-1", state=state), client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_absent") as ensure_absent,
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    assert ensure_present.called is (state == "present")
+    assert ensure_absent.called is (state == "absent")
+
+
 def test_existing_pool_rejects_message_type_change():
     module = FakeModule(
         {
