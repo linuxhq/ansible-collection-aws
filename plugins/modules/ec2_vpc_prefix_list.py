@@ -83,6 +83,10 @@ options:
         changes or deletes a prefix list that is in a C(*-in-progress) state. When O(state=present), it also
         waits for a prefix list in the C(delete-in-progress) state to be deleted before creating it again.
         These waits use O(wait_delay) and are bounded by O(wait_timeout).
+      - When O(state=present), check mode also waits for a prefix list in a C(*-in-progress) state to become
+        ready whenever a real run would wait for it, because EC2 reports the entries and size from before
+        the change until it completes. This wait only reads the prefix list, uses O(wait_delay), and is
+        bounded by O(wait_timeout).
     default: true
     type: bool
   wait_delay:
@@ -95,7 +99,8 @@ options:
   wait_timeout:
     description:
       - The maximum number of seconds to wait when O(wait=true).
-      - Also bounds the waits that happen even when O(wait=false).
+      - Also bounds the waits that happen even when O(wait=false), and the check-mode wait for a prefix
+        list in a C(*-in-progress) state.
       - Sequential waits in one run share this budget.
       - This must be 1 or greater.
     default: 60
@@ -637,12 +642,10 @@ def ensure_present(client, module, owner_id, deadline=None):
         changed = bool(entries_changed or resource_changed or tags_to_set or tag_keys_to_unset)
 
         if (changed or wait) and current.get("State") in IN_PROGRESS_STATES:
-            if not module.check_mode:
-                wait_for_ready_state(client, module, current.get("PrefixListId"), deadline=deadline)
-                return ensure_present(client, module, owner_id, deadline=deadline)
-
-            # A real run first waits for the transition to complete.
-            current = dict(current, State=current["State"].replace("-in-progress", "-complete"))
+            # EC2 reports the entries and size from before an in-flight change until it completes. Waiting only
+            # reads the prefix list, so check mode compares the same settled prefix list as a real run.
+            wait_for_ready_state(client, module, current.get("PrefixListId"), deadline=deadline)
+            return ensure_present(client, module, owner_id, deadline=deadline)
 
         if changed and not module.check_mode:
             if entries_changed or resource_changed:
