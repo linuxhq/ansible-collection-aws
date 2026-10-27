@@ -57,16 +57,33 @@ def test_get_region_opt_status_rejects_missing_status():
 
 
 @pytest.mark.parametrize(
-    "state, previous, wait, predicted",
+    "state, previous, wait, predicted, changed",
     [
-        ("present", "DISABLED", True, "ENABLED"),
-        ("present", "DISABLED", False, "ENABLING"),
-        ("absent", "ENABLED", True, "DISABLED"),
-        ("absent", "ENABLED", False, "DISABLING"),
+        ("present", "DISABLED", True, "ENABLED", True),
+        ("present", "DISABLED", False, "ENABLING", True),
+        ("absent", "ENABLED", True, "DISABLED", True),
+        ("absent", "ENABLED", False, "DISABLING", True),
+        # A real run with wait=true also waits for a pending transition in the requested direction.
+        ("present", "ENABLING", True, "ENABLED", False),
+        ("present", "ENABLING", False, "ENABLING", False),
+        ("present", "ENABLED", True, "ENABLED", False),
+        ("absent", "DISABLING", True, "DISABLED", False),
+        ("absent", "DISABLING", False, "DISABLING", False),
+        ("absent", "DISABLED", True, "DISABLED", False),
     ],
 )
-def test_check_mode_predicts_region_status(state, previous, wait, predicted):
-    module = FakeModule({"name": "af-south-1", "wait": wait}, check_mode=True)
+def test_check_mode_predicts_region_status(state, previous, wait, predicted, changed):
+    module = FakeModule(
+        {
+            "account_id": None,
+            "name": "af-south-1",
+            "state": state,
+            "wait": wait,
+            "wait_delay": 30,
+            "wait_timeout": 1800,
+        },
+        check_mode=True,
+    )
     client = Mock()
     with (
         patch.object(plugin, "get_region_opt_status", return_value=previous) as get_status,
@@ -81,7 +98,34 @@ def test_check_mode_predicts_region_status(state, previous, wait, predicted):
     client.disable_region.assert_not_called()
     assert raised.value.values["previous_region_opt_status"] == previous
     assert raised.value.values["region_opt_status"] == predicted
-    assert raised.value.values["changed"]
+    assert raised.value.values["changed"] is changed
+
+
+@pytest.mark.parametrize(
+    ("state", "statuses", "waiter_name"),
+    [
+        ("present", ["ENABLING", "ENABLED"], "region_enabled"),
+        ("absent", ["DISABLING", "DISABLED"], "region_disabled"),
+    ],
+)
+def test_pending_transition_in_the_requested_direction_waits_for_the_steady_status(state, statuses, waiter_name):
+    module = FakeModule(
+        {"account_id": None, "name": "af-south-1", "state": state, "wait": True, "wait_delay": 30, "wait_timeout": 1800}
+    )
+    client = Mock()
+    client.get_region_opt_status.side_effect = [{"RegionOptStatus": status} for status in statuses]
+    with (
+        patch.object(plugin, "custom_waiter") as custom_waiter,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        getattr(plugin, f"ensure_{state}")(client, module)
+
+    custom_waiter.assert_called_once_with(client, plugin.ACCOUNT_REGION_WAITER_MODEL_DATA, waiter_name)
+    custom_waiter.return_value.wait.assert_called_once()
+    client.enable_region.assert_not_called()
+    client.disable_region.assert_not_called()
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["region_opt_status"] == statuses[-1]
 
 
 def test_default_region_cannot_be_disabled():
