@@ -27,6 +27,7 @@ options:
       - The name is matched exactly; C(*) and C(?) are not wildcards.
       - When O(tags) contains C(Name), its value must match this value.
       - Required when O(transit_gateway_route_table_id) is omitted.
+      - This must not be empty when specified.
     type: str
   purge_routes:
     description:
@@ -85,11 +86,13 @@ options:
     description:
       - The transit gateway ID for the route table.
       - Required when O(transit_gateway_route_table_id) is omitted.
+      - This must not be empty when specified.
     type: str
   transit_gateway_route_table_id:
     description:
       - The transit gateway route table ID.
       - Required when O(transit_gateway_id) or O(name) is omitted.
+      - This must not be empty when specified.
     type: str
   wait:
     description:
@@ -781,7 +784,8 @@ def ensure_present(client, module):
         changed = True
         if module.check_mode:
             route_table = {
-                "State": "available",
+                # EC2 creates the table as pending; a real run waits for it only when wait=true or routes are set.
+                "State": "available" if module.params["wait"] or manage_routes else "pending",
                 "Tags": ansible_dict_to_boto3_tag_list(desired_tags(module)),
                 "TransitGatewayId": transit_gateway_id,
                 "TransitGatewayRouteTableId": "",
@@ -1162,6 +1166,17 @@ def main():
         ],
         supports_check_mode=True,
     )
+
+    # required_one_of accepts an explicit null or empty identifier, which would widen the route table lookup.
+    for option in ("name", "transit_gateway_id", "transit_gateway_route_table_id"):
+        if module.params[option] == "":
+            module.fail_json(msg=f"{option} must not be empty")
+
+    if module.params["transit_gateway_route_table_id"] is None and None in (
+        module.params["name"],
+        module.params["transit_gateway_id"],
+    ):
+        module.fail_json(msg="name and transit_gateway_id are required when transit_gateway_route_table_id is omitted")
 
     state = module.params["state"]
     routes = module.params["routes"] if state == "present" else None

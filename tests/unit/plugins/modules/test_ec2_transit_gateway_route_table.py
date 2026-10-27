@@ -91,6 +91,8 @@ def test_name_tag_counts_toward_provider_limit():
             "routes": None,
             "state": "present",
             "tags": {str(index): "" for index in range(50)},
+            "transit_gateway_id": "tgw-1",
+            "transit_gateway_route_table_id": None,
         }
     )
     with (
@@ -131,10 +133,13 @@ def test_tag_keys_may_contain_128_characters_but_not_129(name):
 def test_absent_does_not_validate_unused_routes():
     module = FakeModule(
         {
+            "name": None,
             "purge_routes": True,
             "routes": [{"destination_cidr_block": "not-a-cidr", "state": "present"}],
             "state": "absent",
             "tags": None,
+            "transit_gateway_id": None,
+            "transit_gateway_route_table_id": "tgw-rtb-1",
         }
     )
     with (
@@ -152,7 +157,7 @@ def test_create_without_tags_does_not_gate_tag_specifications():
     client = Mock()
     module = FakeModule(
         {
-            "name": None,
+            "name": "main",
             "purge_routes": False,
             "purge_tags": True,
             "routes": None,
@@ -217,6 +222,77 @@ def test_name_only_create_does_not_gate_separate_tag_api():
             "TransitGatewayRouteTableIds",
         )
     }
+
+
+def identifier_params(state, **identifiers):
+    """Present every identifier as Ansible does, with None for those the task leaves unset."""
+    return present_params(
+        state=state,
+        **dict({"name": None, "transit_gateway_id": None, "transit_gateway_route_table_id": None}, **identifiers),
+    )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("state", ["absent", "present"])
+@pytest.mark.parametrize(
+    "identifiers, message",
+    [
+        ({"transit_gateway_route_table_id": ""}, "transit_gateway_route_table_id must not be empty"),
+        (
+            {"name": "main", "transit_gateway_id": "tgw-1", "transit_gateway_route_table_id": ""},
+            "transit_gateway_route_table_id must not be empty",
+        ),
+        ({"name": "", "transit_gateway_id": "tgw-1"}, "name must not be empty"),
+        ({"name": "", "transit_gateway_route_table_id": "tgw-rtb-1"}, "name must not be empty"),
+        ({"name": "main", "transit_gateway_id": ""}, "transit_gateway_id must not be empty"),
+        (
+            {"transit_gateway_id": "", "transit_gateway_route_table_id": "tgw-rtb-1"},
+            "transit_gateway_id must not be empty",
+        ),
+        ({}, "name and transit_gateway_id are required when transit_gateway_route_table_id is omitted"),
+        ({"name": "main"}, "name and transit_gateway_id are required when transit_gateway_route_table_id is omitted"),
+        (
+            {"transit_gateway_id": "tgw-1"},
+            "name and transit_gateway_id are required when transit_gateway_route_table_id is omitted",
+        ),
+    ],
+)
+def test_empty_or_null_identifiers_fail_before_any_aws_call(identifiers, message, state, check_mode):
+    # required_one_of accepts these explicit nulls and empty strings, and each one would drop a lookup filter
+    # so that state=absent, or a route purge, could act on an unrelated route table.
+    module = FakeModule(identifier_params(state, **identifiers), check_mode=check_mode)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(module, "client", side_effect=AssertionError("Unexpected client")),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == message
+
+
+@pytest.mark.parametrize("state", ["absent", "present"])
+@pytest.mark.parametrize(
+    "identifiers",
+    [
+        {"transit_gateway_route_table_id": "tgw-rtb-1"},
+        {"transit_gateway_id": "tgw-1", "transit_gateway_route_table_id": "tgw-rtb-1"},
+        {"name": "main", "transit_gateway_route_table_id": "tgw-rtb-1"},
+        {"name": "main", "transit_gateway_id": "tgw-1", "transit_gateway_route_table_id": "tgw-rtb-1"},
+        {"name": "main", "transit_gateway_id": "tgw-1"},
+    ],
+)
+def test_supplied_identifiers_reach_the_route_table_lookup(identifiers, state):
+    client = Mock()
+    module = FakeModule(identifier_params(state, **identifiers), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, f"ensure_{state}") as ensure,
+    ):
+        plugin.main()
+
+    ensure.assert_called_once_with(client, module)
 
 
 def test_static_route_matches_attachment():
@@ -359,6 +435,47 @@ def test_new_table_waits_before_routes_when_final_wait_is_disabled():
     wait.assert_called_once_with(client, module, "tgw-rtb-1", {"available"}, changed=True, deadline=ANY)
 
 
+@pytest.mark.parametrize(
+    "wait, routes, state", [(True, None, "available"), (False, [], "available"), (False, None, "pending")]
+)
+def test_check_mode_create_predicts_the_state_a_real_create_returns(wait, routes, state):
+    # CreateTransitGatewayRouteTable returns the table as pending, with the tags it was created with (live probe).
+    created = {
+        "State": "pending",
+        "Tags": [{"Key": "Name", "Value": "main"}],
+        "TransitGatewayId": "tgw-1",
+        "TransitGatewayRouteTableId": "tgw-rtb-1",
+    }
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        client.create_transit_gateway_route_table.return_value = {"TransitGatewayRouteTable": created}
+        module = FakeModule(
+            present_params(
+                name="main",
+                purge_routes=False,
+                routes=routes,
+                transit_gateway_id="tgw-1",
+                transit_gateway_route_table_id=None,
+                wait=wait,
+            ),
+            check_mode=check_mode,
+            client=client,
+        )
+        with (
+            patch.object(plugin, "find_route_table", return_value=None),
+            patch.object(plugin, "wait_for_route_table", return_value=dict(created, State="available")),
+            patch.object(plugin, "require_client_methods"),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        results[check_mode] = raised.value.values["transit_gateway_route_table"]["state"]
+        client.create_tags.assert_not_called()
+
+    assert results == {False: state, True: state}
+
+
 def test_absent_waits_for_pending_table_when_final_wait_is_disabled():
     client = Mock(
         delete_transit_gateway_route_table=Mock(
@@ -441,7 +558,13 @@ def test_deleting_route_waits_before_recreation_when_final_wait_is_disabled():
 
 
 def test_routes_require_unique_destinations_and_a_target():
-    base = {"purge_routes": False, "state": "present"}
+    base = {
+        "name": None,
+        "purge_routes": False,
+        "state": "present",
+        "transit_gateway_id": None,
+        "transit_gateway_route_table_id": "tgw-rtb-1",
+    }
     cases = [
         (
             dict(
@@ -521,6 +644,8 @@ def test_false_blackhole_allows_attachment():
             ],
             "state": "present",
             "tags": None,
+            "transit_gateway_id": None,
+            "transit_gateway_route_table_id": "tgw-rtb-1",
         }
     )
     with (

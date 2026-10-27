@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - ec2_transit_gateway_route_table - fail before any AWS call when O(name), O(transit_gateway_id), or
+    O(transit_gateway_route_table_id) is an empty string, or when O(transit_gateway_route_table_id) is omitted or null
+    and O(name) or O(transit_gateway_id) is null. These values passed the required options check but dropped a
+    lookup filter, so O(state=absent) could delete, and a route purge could change, an unrelated route table.
+  - ec2_transit_gateway_route_table - in check mode, predict ``transit_gateway_route_table.state`` as ``pending``
+    for a create with O(wait=false) and no O(routes), as EC2 returns a new route table, instead of ``available``.
