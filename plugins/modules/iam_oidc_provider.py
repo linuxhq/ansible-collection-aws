@@ -221,6 +221,29 @@ def provider_lists(desired, current_comparable=None):
     }
 
 
+def client_id_changes(current, desired):
+    """Return the client IDs to remove and to add, each sorted, which is the order they are written in."""
+    current_client_ids = set(current.get("ClientIDList") or [])
+    desired_client_ids = set(desired["client_id_list"])
+    return sorted(current_client_ids - desired_client_ids), sorted(desired_client_ids - current_client_ids)
+
+
+def updated_provider(current, desired, current_comparable):
+    """Return an existing provider as IAM reports it after the lists that differ are written.
+
+    IAM keeps a list that is not written. It removes a client ID in place and appends an added one, so the remaining
+    client IDs keep their order and the added ones follow in the order they are added.
+    """
+    written = provider_lists(desired, current_comparable)
+    if "ClientIDList" in written:
+        removed_client_ids, added_client_ids = client_id_changes(current, desired)
+        written["ClientIDList"] = [
+            client_id for client_id in current.get("ClientIDList") or [] if client_id not in removed_client_ids
+        ] + added_client_ids
+
+    return dict(current, **written)
+
+
 def new_provider(desired, tags):
     """Return a provider being created as IAM reports it: no client IDs or tags unless they were requested."""
     return dict(
@@ -314,11 +337,9 @@ def ensure_present(client, module):
                 "thumbprint_list" in desired and current_comparable["thumbprint_list"] != desired["thumbprint_list"]
             )
             current_client_ids = set(current.get("ClientIDList") or [])
-            removed_client_ids, added_client_ids = [], []
-            if client_ids_changed:
-                desired_client_ids = set(desired["client_id_list"])
-                removed_client_ids = sorted(current_client_ids - desired_client_ids)
-                added_client_ids = sorted(desired_client_ids - current_client_ids)
+            removed_client_ids, added_client_ids = (
+                client_id_changes(current, desired) if client_ids_changed else ([], [])
+            )
 
             # Every write is checked before the first one, so an older botocore fails without modifying anything.
             methods = {}
@@ -427,9 +448,8 @@ def ensure_present(client, module):
                         msg=f"Unable to tag AWS IAM OIDC provider {url}",
                     )
 
-            # IAM keeps a list that was not written, including its order, so only the written lists are overlaid.
             if provider_changed:
-                current = dict(current, **provider_lists(desired, current_comparable))
+                current = updated_provider(current, desired, current_comparable)
 
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
@@ -437,7 +457,7 @@ def ensure_present(client, module):
         if current is None:
             current = new_provider(desired, tags)
         elif resource_changed:
-            current = dict(current, **provider_lists(desired, current_comparable))
+            current = updated_provider(current, desired, current_comparable)
 
         if tags is not None:
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)

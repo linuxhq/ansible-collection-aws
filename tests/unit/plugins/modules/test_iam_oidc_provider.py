@@ -653,14 +653,15 @@ def test_create_fallback_reports_the_provider_as_iam_creates_it():
         (
             ["a", "b", "c"],
             ["A" * 40, "F" * 40],
-            {"client_id_list": ["a", "b", "c"], "thumbprint_list": ["f" * 40, "a" * 40]},
+            {"client_id_list": ["b", "a", "c"], "thumbprint_list": ["f" * 40, "a" * 40]},
         ),
         (["a", "b"], ["c" * 40], {"client_id_list": ["b", "a"], "thumbprint_list": ["c" * 40]}),
     ],
     ids=["client-ids-written", "thumbprints-written"],
 )
 def test_update_returns_an_unwritten_list_as_iam_keeps_it(check_mode, client_id_list, thumbprint_list, expected):
-    # IAM keeps the order of a list that no call writes, so that list is returned as IAM reported it.
+    # IAM keeps the order of a list that no call writes, so that list is returned as IAM reported it. Written client
+    # IDs are returned as IAM keeps them: the remaining IDs in their order, then the added ones.
     client = Mock()
     current = oidc_provider(ClientIDList=["b", "a"], Tags=[], ThumbprintList=["f" * 40, "a" * 40])
     module = FakeModule(
@@ -678,3 +679,50 @@ def test_update_returns_an_unwritten_list_as_iam_keeps_it(check_mode, client_id_
     assert {key: provider[key] for key in expected} == expected
     assert client.add_client_id_to_open_id_connect_provider.called is (not check_mode and "c" in client_id_list)
     assert client.update_open_id_connect_provider_thumbprint.called is (not check_mode and "c" * 40 in thumbprint_list)
+
+
+APPS = [f"app-{index:02}" for index in range(100)]
+
+
+@pytest.mark.parametrize(
+    ("current_client_ids", "client_id_list"),
+    [
+        (["z"], ["a", "z"]),
+        (["z", "a"], ["0", "a"]),
+        (["sts.amazonaws.com", "old", "api"], ["web", "api", "sts.amazonaws.com", "cli"]),
+        (APPS[::-1], [app for app in APPS if app not in ("app-10", "app-50")] + ["new-b", "new-a"]),
+        (APPS[98::-1], [app for app in APPS[:99] if app not in ("app-10", "app-50")] + ["new-b", "new-a"]),
+    ],
+    ids=["add", "replace", "add-and-remove", "at-capacity", "near-capacity"],
+)
+def test_written_client_ids_are_returned_in_the_order_iam_keeps(current_client_ids, client_id_list):
+    # Live IAM removes a client ID in place and appends an added one, for example [z] + add a -> [z, a].
+    stored = list(current_client_ids)
+
+    def add(**kwargs):
+        assert len(stored) < 100
+        stored.append(kwargs["ClientID"])
+
+    def remove(**kwargs):
+        stored.remove(kwargs["ClientID"])
+
+    current = oidc_provider(ClientIDList=current_client_ids, Tags=[])
+    results = {}
+    for check_mode in (True, False):
+        client = Mock(
+            add_client_id_to_open_id_connect_provider=Mock(side_effect=add),
+            remove_client_id_from_open_id_connect_provider=Mock(side_effect=remove),
+        )
+        with (
+            patch.object(plugin, "get_provider_by_url", return_value=current),
+            patch.object(plugin, "require_client_methods"),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, FakeModule(oidc_params(client_id_list=client_id_list), check_mode=check_mode))
+
+        results[check_mode] = raised.value.values
+
+    assert sorted(stored) == sorted(client_id_list)
+    assert stored != sorted(stored)
+    assert results[False]["open_id_connect_provider"]["client_id_list"] == stored
+    assert results[True] == results[False]

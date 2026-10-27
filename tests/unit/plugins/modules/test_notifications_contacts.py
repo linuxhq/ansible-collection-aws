@@ -13,6 +13,11 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     assert_module_rejects,
 )
 
+NAME_MESSAGE = (
+    "name must be 1 to 64 characters and contain at least "
+    "one ASCII letter, ASCII digit, underscore, hyphen, period, or tilde"
+)
+
 
 def test_absent_reports_unchanged_for_contact_disappearing_during_delete():
     client = Mock()
@@ -222,11 +227,33 @@ def test_contact_address_and_name_are_validated_before_api_calls():
         ),
         (
             dict(base, email_address="ops@example.com", name=" "),
-            "name must be 1 to 64 characters and contain at least one letter, digit, underscore, hyphen, period, or tilde",
+            NAME_MESSAGE,
         ),
     ]
     for params, message in cases:
         assert_module_rejects(plugin, params, message)
+
+
+@pytest.mark.parametrize("name", ["山田", "é", "²", "٣", "山田 é"])
+def test_name_without_an_ascii_word_character_is_rejected_before_api_calls(name):
+    # CreateEmailContact rejects these names with a ValidationException: AWS matches its \w against ASCII only.
+    params = {"email_address": "ops@example.com", "name": name, "purge_tags": True, "state": "present", "tags": None}
+    assert_module_rejects(plugin, params, NAME_MESSAGE)
+
+
+@pytest.mark.parametrize("name", ["山田a", "é-", "~", "_", "Z", "7"])
+def test_name_with_one_ascii_word_character_or_symbol_is_accepted(name):
+    module = FakeModule(
+        {"email_address": "ops@example.com", "name": name, "purge_tags": True, "state": "present", "tags": None}
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once()
 
 
 def test_null_name_is_rejected_before_api_calls():

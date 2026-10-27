@@ -21,8 +21,8 @@ options:
   name:
     description:
       - The notifications contact name.
-      - This must be 1 to 64 characters and contain at least one letter,
-        digit, or one of C(_), C(-), C(.), or C(~).
+      - This must be 1 to 64 characters and contain at least one ASCII letter,
+        ASCII digit, or one of C(_), C(-), C(.), or C(~).
       - Changing the name of an existing contact fails without modifying the contact.
       - This is required when O(state=present).
     type: str
@@ -397,11 +397,12 @@ def main():
         if name is None:
             module.fail_json(msg="state is present but all of the following are missing: name")
 
-        if not 1 <= len(name) <= 64 or not re.search(r"[\w\-.~]", name):
+        # AWS matches the API's \w against ASCII word characters only.
+        if not 1 <= len(name) <= 64 or not re.search(r"[\w\-.~]", name, flags=re.ASCII):
             module.fail_json(
                 msg=(
                     "name must be 1 to 64 characters and contain at least "
-                    "one letter, digit, underscore, hyphen, period, or tilde"
+                    "one ASCII letter, ASCII digit, underscore, hyphen, period, or tilde"
                 )
             )
 
