@@ -190,7 +190,7 @@ pool:
           elements: str
         phone_number:
           description: The phone number in E.164 format.
-          returned: when the origination identity is a phone number
+          returned: when AWS lists it, so not for a pool created with O(wait=false) or predicted in check mode
           type: str
     pool_arn:
       description: The pool ARN.
@@ -767,7 +767,8 @@ def ensure_present(client, module):
         current.update(
             {
                 "MessageType": message_type,
-                "Status": current.get("Status") or "ACTIVE",
+                # A new pool is ACTIVE after the wait; without it, a real run returns the CreatePool status.
+                "Status": current.get("Status") or ("ACTIVE" if wait else "CREATING"),
             }
         )
         if deletion_protection_enabled is not None:

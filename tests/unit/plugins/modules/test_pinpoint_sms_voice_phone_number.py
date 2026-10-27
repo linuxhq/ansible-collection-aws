@@ -131,6 +131,27 @@ def test_simulator_numbers_require_transactional_messages():
     assert "must be TRANSACTIONAL" in raised.value.values["msg"]
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("pool_id", ["", "  "])
+def test_present_rejects_empty_pool_id_before_any_aws_call(pool_id, check_mode):
+    client = Mock()
+    module = FakeModule(
+        dict(phone_number_params(pool_id=pool_id), wait_delay=5, wait_timeout=300),
+        check_mode=check_mode,
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(module, "client") as connect,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == "pool_id must not be empty"
+    connect.assert_not_called()
+    assert client.mock_calls == []
+
+
 def test_existing_number_matches_capabilities_without_order():
     client = Mock()
     module = FakeModule(

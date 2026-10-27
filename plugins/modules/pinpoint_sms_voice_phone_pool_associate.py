@@ -100,7 +100,7 @@ association:
       type: str
     number_capabilities:
       description: The origination identity's capabilities, such as V(SMS) or V(VOICE).
-      returned: when the association already existed
+      returned: when the association already existed and this run did not remove it
       type: list
       elements: str
     origination_identity:
@@ -113,7 +113,7 @@ association:
       type: str
     phone_number:
       description: The phone number in E.164 format.
-      returned: when the association already existed and the origination identity is a phone number
+      returned: when AWS lists it for an association that already existed and that this run did not remove
       type: str
     pool_arn:
       description: The pool ARN.
@@ -174,6 +174,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 
 
 def current_associations(client, module):
+    """Return the pool fields the listing reports once, and the pool's associations with those fields added."""
     try:
         response = paginated_query_with_retries(
             client,
@@ -184,7 +185,7 @@ def current_associations(client, module):
         if module.params["state"] == "present":
             module.fail_json(msg=f"Pinpoint SMS Voice V2 pool {module.params['pool_id']} does not exist")
 
-        return []
+        return {}, []
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
@@ -206,7 +207,7 @@ def current_associations(client, module):
         }
     )
 
-    return [dict(association, **pool) for association in associations]
+    return pool, [dict(association, **pool) for association in associations]
 
 
 def validate_association(module, association, require_pool=True, changed=False):
@@ -272,7 +273,7 @@ def exit_result(module, changed, association):
 
 
 def ensure_present(client, module):
-    current = current_associations(client, module)
+    pool, current = current_associations(client, module)
     association = current_association(module, current)
     changed = association is None
 
@@ -296,10 +297,10 @@ def ensure_present(client, module):
         validate_association(module, association, changed=True)
         association.pop("ResponseMetadata", None)
     elif changed and module.check_mode:
+        # AWS returns the pool ID even when the pool is requested by ARN, and the pool ARN the listing reports.
         association = dict(
             predicted_origination_identity(module.params["origination_identity"], module.params["iso_country_code"]),
-            # AWS returns the pool ID even when the pool is requested by ARN.
-            PoolId=module.params["pool_id"].rsplit("/", 1)[-1],
+            **pool,
         )
 
     exit_result(module, changed, association)
@@ -313,7 +314,7 @@ def disassociate_failure_message(module):
 
 
 def ensure_absent(client, module):
-    current = current_associations(client, module)
+    current = current_associations(client, module)[1]
     association = current_association(module, current)
     changed = association is not None
     origination_identity = module.params["origination_identity"]
