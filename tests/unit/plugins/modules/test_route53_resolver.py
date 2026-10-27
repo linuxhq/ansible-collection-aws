@@ -554,7 +554,7 @@ def test_check_mode_predicts_aws_defaults_for_a_new_endpoint():
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(Mock(), module)
+        plugin.ensure_present(model_client(), module)
 
     endpoint = raised.value.values["resolver_endpoint"]
     assert endpoint["protocols"] == ["Do53"]
@@ -1966,7 +1966,7 @@ def test_create_without_tags_returns_tags_only_when_waiting(check_mode, wait):
         patch.object(route53_resolver_utils, "query_list", return_value=[]),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(Mock(), module)
+        plugin.ensure_present(model_client(), module)
 
     assert raised.value.values["changed"] is True
     assert create.call_count == (0 if check_mode else 1)
@@ -1975,3 +1975,225 @@ def test_create_without_tags_returns_tags_only_when_waiting(check_mode, wait):
         assert endpoint["tags"] == {}
     else:
         assert "tags" not in endpoint
+
+
+def model_client():
+    """Return a mock client with the real botocore route53resolver model, for predictions that read it."""
+    return Mock(meta=get_session().create_client("route53resolver", region_name="us-east-1").meta)
+
+
+# Live CreateResolverEndpoint and GetResolverEndpoint responses return these settings for a new endpoint.
+LIVE_CREATED_ENDPOINT_SETTINGS = {
+    "INBOUND": {"Dns64Enabled": False, "RniEnhancedMetricsEnabled": False},
+    "OUTBOUND": {
+        "Ipv6InternetAccessEnabled": False,
+        "RniEnhancedMetricsEnabled": False,
+        "TargetNameServerMetricsEnabled": False,
+    },
+}
+
+
+def created_endpoint_settings(client, check_mode, **params):
+    """Run a create and return the *_enabled settings of the resulting endpoint."""
+    direction = params.get("direction", "OUTBOUND")
+    created = dict(
+        existing_endpoint(Direction=direction, Status="CREATING"), **LIVE_CREATED_ENDPOINT_SETTINGS[direction]
+    )
+    created.pop("Tags")
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
+        patch.object(plugin, "create_resolver_endpoint", return_value=created) as create,
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: dict(args[2], Tags=[])),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(endpoint_params(**params), check_mode=check_mode))
+
+    assert raised.value.values["changed"] is True
+    assert create.call_count == (0 if check_mode else 1)
+    endpoint = raised.value.values["resolver_endpoint"]
+    return {field: value for field, value in endpoint.items() if field.endswith("_enabled")}
+
+
+@pytest.mark.parametrize("wait", [False, True])
+@pytest.mark.parametrize("direction", ["INBOUND", "OUTBOUND"])
+def test_check_mode_create_predicts_the_settings_a_real_run_returns(direction, wait):
+    predicted = created_endpoint_settings(model_client(), True, direction=direction, wait=wait)
+
+    assert predicted
+    assert predicted == created_endpoint_settings(model_client(), False, direction=direction, wait=wait)
+
+
+def test_check_mode_create_predicts_only_settings_the_installed_model_returns():
+    # botocore drops response members that its model does not define.
+    client = Mock()
+    client.meta.service_model.shape_for.return_value.members = {"Id": Mock(), "RniEnhancedMetricsEnabled": Mock()}
+
+    assert created_endpoint_settings(client, True) == {"rni_enhanced_metrics_enabled": False}
+    client.meta.service_model.shape_for.assert_called_once_with("ResolverEndpoint")
+
+
+def test_check_mode_create_predicts_no_settings_for_an_unprobed_direction():
+    module = FakeModule(endpoint_params(direction="INBOUND_DELEGATION"), check_mode=True)
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(model_client(), module)
+
+    endpoint = raised.value.values["resolver_endpoint"]
+    assert endpoint["direction"] == "INBOUND_DELEGATION"
+    assert not [field for field in endpoint if field.endswith("_enabled")]
+
+
+@pytest.mark.parametrize("wait", [False, True])
+def test_conversion_to_ipv4_predicts_the_addresses_a_real_run_returns(wait):
+    dual_stack_addresses = [
+        dict(ip_address, Ipv6=f"2001:db8::{index}")
+        for index, ip_address in enumerate(existing_endpoint()["IpAddresses"], start=1)
+    ]
+
+    def with_ip_addresses(client, module, endpoint, changed=False):
+        # Live, the addresses keep their IPv6 addresses until a conversion to IPV4 settles.
+        ip_addresses = existing_endpoint()["IpAddresses"]
+        if endpoint["ResolverEndpointType"] == "DUALSTACK" or endpoint["Status"] == "UPDATING":
+            ip_addresses = dual_stack_addresses
+
+        return dict(endpoint, IpAddresses=ip_addresses)
+
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        client.update_resolver_endpoint.return_value = {"ResolverEndpoint": existing_endpoint(Status="UPDATING")}
+        module = FakeModule(endpoint_params(resolver_endpoint_type="IPV4", wait=wait), check_mode=check_mode)
+        with (
+            patch.object(
+                plugin,
+                "get_resolver_endpoint_by_name",
+                return_value=existing_endpoint(ResolverEndpointType="DUALSTACK"),
+            ),
+            patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=with_ip_addresses),
+            patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+            patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=existing_endpoint()),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        results[check_mode] = raised.value.values
+        if check_mode:
+            assert client.mock_calls == []
+        else:
+            client.update_resolver_endpoint.assert_called_once_with(
+                ResolverEndpointId="rslvr-1", ResolverEndpointType="IPV4", aws_retry=True
+            )
+
+    for values in results.values():
+        assert values["changed"] is True
+        assert values["resolver_endpoint"]["resolver_endpoint_type"] == "IPV4"
+
+    predicted = results[True]["resolver_endpoint"]["ip_addresses"]
+    assert predicted == results[False]["resolver_endpoint"]["ip_addresses"]
+    assert all(("ipv6" in ip_address) is not wait for ip_address in predicted)
+
+
+def test_replacement_at_the_address_quota_fails_before_removing_an_address():
+    current = [
+        {"Ip": f"192.0.2.{index}", "IpId": f"rni-{index}", "SubnetId": "subnet-1", "Status": "ATTACHED"}
+        for index in range(1, 7)
+    ]
+    desired = {
+        "name": "main",
+        "ip_addresses": [{"ip": f"192.0.2.{index}", "subnet_id": "subnet-1"} for index in (1, 2, 3, 4, 5, 7)],
+    }
+    client = Mock()
+    # Live, an endpoint at the default quota of 6 addresses refuses a seventh; additions run before removals.
+    client.associate_resolver_endpoint_ip_address.side_effect = plugin.ClientError(
+        {
+            "Error": {
+                "Code": "LimitExceededException",
+                "Message": "[RSLVR-00309] Account '123456789012' has exceeded 'max-enis-per-resolver-endpoint'.",
+            }
+        },
+        "AssociateResolverEndpointIpAddress",
+    )
+    with (
+        patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.reconcile_resolver_endpoint_ip_addresses(
+            client, FakeModule(endpoint_params()), {"Id": "rslvr-1", "IpAddresses": current}, desired
+        )
+
+    assert raised.value.values == {
+        "changed": False,
+        "msg": "Unable to reconcile AWS Route53 Resolver endpoint IP addresses for main",
+    }
+    client.associate_resolver_endpoint_ip_address.assert_called_once()
+    client.disassociate_resolver_endpoint_ip_address.assert_not_called()
+    wait.assert_not_called()
+
+
+@pytest.mark.parametrize("status", sorted(plugin.DEPARTING_IP_ADDRESS_STATUSES))
+def test_settled_endpoint_prediction_drops_departing_addresses(status):
+    # Live, an unwaited removal leaves the endpoint UPDATING, listing and counting the departing address.
+    departing = {"Ip": "192.0.2.3", "IpId": "rni-3", "SubnetId": "subnet-2", "Status": status}
+    updating = existing_endpoint(
+        IpAddressCount=3, IpAddresses=existing_endpoint()["IpAddresses"] + [departing], Status="UPDATING"
+    )
+    settled = existing_endpoint(IpAddressCount=2)
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        with (
+            patch.object(plugin, "get_resolver_endpoint_by_name", side_effect=[updating, settled]),
+            patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+            patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+            patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=settled) as wait,
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, FakeModule(endpoint_params(wait=True), check_mode=check_mode))
+
+        results[check_mode] = raised.value.values
+        assert wait.call_count == (0 if check_mode else 1)
+        assert client.mock_calls == []
+
+    assert results[True] == results[False]
+    assert results[True]["changed"] is False
+    assert results[True]["resolver_endpoint"]["ip_address_count"] == 2
+    assert len(results[True]["resolver_endpoint"]["ip_addresses"]) == 2
+
+
+def test_settled_endpoint_prediction_drops_ipv6_addresses_after_a_conversion_to_ipv4():
+    # Live, an unwaited conversion to IPV4 lists the addresses UPDATING with their IPv6 addresses until it settles.
+    converting = existing_endpoint(
+        IpAddresses=[
+            dict(ip_address, Ipv6=f"2001:db8::{index}", Status="UPDATING")
+            for index, ip_address in enumerate(existing_endpoint()["IpAddresses"], start=1)
+        ],
+        Status="UPDATING",
+    )
+    results = {}
+    for check_mode in (False, True):
+        with (
+            patch.object(plugin, "get_resolver_endpoint_by_name", side_effect=[converting, existing_endpoint()]),
+            patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+            patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+            patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=existing_endpoint()),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(Mock(), FakeModule(endpoint_params(wait=True), check_mode=check_mode))
+
+        assert raised.value.values["changed"] is False
+        results[check_mode] = raised.value.values["resolver_endpoint"]
+
+    def addresses_without_status(endpoint):
+        # Per-address statuses of an endpoint that is still changing are not predicted.
+        return [
+            {field: value for field, value in ip_address.items() if field != "status"}
+            for ip_address in endpoint["ip_addresses"]
+        ]
+
+    predicted = addresses_without_status(results[True])
+    assert predicted == addresses_without_status(results[False])
+    assert all("ipv6" not in ip_address for ip_address in predicted)
+    assert results[True]["status"] == results[False]["status"] == "OPERATIONAL"

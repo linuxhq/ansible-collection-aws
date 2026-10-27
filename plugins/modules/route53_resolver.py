@@ -32,6 +32,9 @@ options:
       - The resolver endpoint IP address definitions.
       - This is required when O(state=present).
       - This must contain 2 to 20 entries.
+      - New addresses are added before unwanted ones are removed. On an endpoint that already has as many addresses
+        as the account's per-endpoint quota allows (6 by default), AWS therefore refuses a replacement with
+        C(LimitExceededException); remove the unwanted address in a separate run first.
     elements: dict
     suboptions:
       ip:
@@ -486,6 +489,15 @@ IP_ADDRESS_COMPARISON_FIELDS = ("ip", "ipv6", "subnet_id")
 OPTIONAL_ENDPOINT_FIELDS = ("protocols", "resolver_endpoint_type")
 # AWS creation defaults for OPTIONAL_ENDPOINT_FIELDS, used only to predict check-mode results.
 ENDPOINT_CREATION_DEFAULTS = {"protocols": ["Do53"], "resolver_endpoint_type": "IPV4"}
+# Settings the module does not manage, which AWS returns disabled for a new endpoint of each direction.
+UNMANAGED_ENDPOINT_CREATION_DEFAULTS = {
+    "INBOUND": {"Dns64Enabled": False, "RniEnhancedMetricsEnabled": False},
+    "OUTBOUND": {
+        "Ipv6InternetAccessEnabled": False,
+        "RniEnhancedMetricsEnabled": False,
+        "TargetNameServerMetricsEnabled": False,
+    },
+}
 IP_ADDRESS_REQUEST_FIELDS = ("ip", "ip_id", "ipv6", "subnet_id")
 # Addresses that never became usable or lost their network interface; they are replaced.
 FAILED_IP_ADDRESS_STATUSES = {
@@ -694,8 +706,18 @@ def ensure_present(client, module, deadline=None):
             wait_for_resolver_endpoint_status(client, module, endpoint.get("Id"), "settled", deadline=deadline)
             return ensure_present(client, module, deadline=deadline)
 
-        # A real run first waits for the endpoint to settle.
-        endpoint = dict(endpoint, Status="OPERATIONAL")
+        # A real run first waits for the endpoint to settle and lists it again. By then departing addresses are
+        # gone, and a conversion to IPV4 has released the IPv6 addresses.
+        ip_addresses = endpoint.get("IpAddresses") or []
+        settled_ip_addresses = [
+            ip_address_without_ipv6(ip_address) if endpoint.get("ResolverEndpointType") == "IPV4" else ip_address
+            for ip_address in ip_addresses
+            if ip_address_status(ip_address) not in DEPARTING_IP_ADDRESS_STATUSES
+        ]
+        endpoint = dict(endpoint, IpAddresses=settled_ip_addresses, Status="OPERATIONAL")
+        if isinstance(endpoint.get("IpAddressCount"), int):
+            # The count includes departing addresses until they are removed.
+            endpoint["IpAddressCount"] -= len(ip_addresses) - len(settled_ip_addresses)
 
     if current is not None:
         immutable_changes = [
@@ -774,11 +796,23 @@ def ensure_present(client, module, deadline=None):
                 projected_desired["status"] = "UPDATING"
 
         endpoint = dict(endpoint or {})
+        if current is None:
+            # botocore drops response members its model lacks, so predict only those a real run returns.
+            modeled_fields = client.meta.service_model.shape_for("ResolverEndpoint").members
+            endpoint.update(
+                {
+                    field: value
+                    for field, value in UNMANAGED_ENDPOINT_CREATION_DEFAULTS.get(desired["direction"], {}).items()
+                    if field in modeled_fields
+                }
+            )
+
         endpoint.update(snake_dict_to_camel_dict(projected_desired, capitalize_first=True))
         if keep_ip_addresses:
-            # Failed addresses would be removed.
+            # Failed addresses would be removed; a waited conversion to IPV4 lists them without IPv6 addresses.
+            release_ipv6 = module.params["wait"] and projected_desired.get("resolver_endpoint_type") == "IPV4"
             endpoint["IpAddresses"] = [
-                ip_address
+                ip_address_without_ipv6(ip_address) if release_ipv6 else ip_address
                 for ip_address in endpoint.get("IpAddresses") or []
                 if ip_address_status(ip_address) not in FAILED_IP_ADDRESS_STATUSES
             ]
@@ -1089,6 +1123,10 @@ def dual_stack_ip_addresses(endpoint, desired_ip_addresses):
 
 def ip_address_status(ip_address):
     return ip_address.get("Status") or ip_address.get("status")
+
+
+def ip_address_without_ipv6(ip_address):
+    return {field: value for field, value in ip_address.items() if field != "Ipv6"}
 
 
 def usable_ip_addresses(ip_addresses):
