@@ -35,7 +35,7 @@ options:
     description: The IPv4 CIDR on the customer gateway side. AWS defaults to C(0.0.0.0/0).
     type: str
   local_ipv6_network_cidr:
-    description: The IPv6 CIDR on the customer gateway side. AWS defaults to C(::/0).
+    description: The IPv6 CIDR on the customer gateway side. AWS defaults to C(::/0). Requires an IPv6 VPN connection.
     type: str
   name:
     description:
@@ -52,7 +52,7 @@ options:
     description: The IPv4 CIDR on the AWS side. AWS defaults to C(0.0.0.0/0).
     type: str
   remote_ipv6_network_cidr:
-    description: The IPv6 CIDR on the AWS side. AWS defaults to C(::/0).
+    description: The IPv6 CIDR on the AWS side. AWS defaults to C(::/0). Requires an IPv6 VPN connection.
     type: str
   routes:
     description:
@@ -1006,6 +1006,11 @@ def validate_configuration(module, connection=None, changed=False):
 
         if tunnel.get("tunnel_inside_ipv6_cidr") is not None and family != "ipv6":
             module.fail_json(changed=changed, msg="tunnel_inside_ipv6_cidr requires tunnel_inside_ip_version=ipv6")
+
+    # EC2 rejects IPv6 network CIDRs on an IPv4 connection, and omits them from it.
+    for name in ("local_ipv6_network_cidr", "remote_ipv6_network_cidr"):
+        if module.params[name] is not None and family != "ipv6":
+            module.fail_json(changed=changed, msg=f"{name} requires tunnel_inside_ip_version=ipv6")
 
     if connection is not None:
         immutable = {
