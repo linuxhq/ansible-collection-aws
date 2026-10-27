@@ -6,6 +6,8 @@ import pytest
 from botocore.exceptions import ClientError
 from botocore.session import Session
 
+from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
+
 from ansible_collections.amazon.aws.plugins.module_utils.waiter import custom_waiter_config
 
 from ansible_collections.linuxhq.aws.plugins.modules import route53_zone_associate as plugin
@@ -70,6 +72,48 @@ def test_module_contract():
 
 def test_invalid_vpc_region_is_rejected():
     assert run_main(FakeModule(params(vpc_region="invalid"))) == "vpc_region must be a valid AWS region name"
+
+
+def test_null_required_ids_are_rejected_before_aws_calls():
+    captured = {}
+
+    def initialize(**kwargs):
+        captured.update(kwargs)
+        raise ModuleInitialized
+
+    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
+        plugin.main()
+
+    result = ArgumentSpecValidator(captured["argument_spec"]).validate(params(hosted_zone_id=None, vpc_id=None))
+
+    # Older ansible-core releases reject a null required string; newer ones pass it on as "", which main() rejects.
+    if result.error_messages:
+        for name in ("hosted_zone_id", "vpc_id"):
+            assert any(f"'{name}'" in message for message in result.error_messages)
+    else:
+        assert (result.validated_parameters["hosted_zone_id"], result.validated_parameters["vpc_id"]) == ("", "")
+        module = FakeModule(result.validated_parameters)
+        module.client = Mock()
+
+        assert run_main(module) == "hosted_zone_id must identify a hosted zone"
+        module.client.assert_not_called()
+
+
+@pytest.mark.parametrize("state", ["absent", "present"])
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"hosted_zone_id": ""}, "hosted_zone_id must identify a hosted zone"),
+        ({"hosted_zone_id": "/hostedzone/"}, "hosted_zone_id must identify a hosted zone"),
+        ({"vpc_id": ""}, "vpc_id must not be empty"),
+    ],
+)
+def test_empty_zone_or_vpc_id_is_rejected_before_aws_calls(state, overrides, message):
+    module = FakeModule(params(state=state, **overrides))
+    module.client = Mock()
+
+    assert run_main(module) == message
+    module.client.assert_not_called()
 
 
 def test_every_modeled_vpc_region_is_accepted():

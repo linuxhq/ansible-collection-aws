@@ -587,3 +587,94 @@ def test_read_failure_after_create_reports_changed():
 
     assert raised.value.values["msg"] == "Unable to get AWS IAM OIDC provider arn:provider"
     assert raised.value.values["changed"] is True
+
+
+@pytest.mark.parametrize("tags", [None, {}, {"Name": "x"}], ids=["no-tags", "empty-tags", "tags"])
+@pytest.mark.parametrize("client_id_list", [None, ["sts.amazonaws.com"]], ids=["no-client-ids", "client-ids"])
+def test_check_mode_create_matches_the_real_create(client_id_list, tags):
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        client.create_open_id_connect_provider.return_value = {"OpenIDConnectProviderArn": "arn:provider"}
+        # IAM reports an empty ClientIDList and Tags list for a provider created without them.
+        client.get_open_id_connect_provider.return_value = {
+            "ClientIDList": client_id_list or [],
+            "CreateDate": "2026-10-26T00:00:00+00:00",
+            "Tags": [{"Key": key, "Value": value} for key, value in (tags or {}).items()],
+            "ThumbprintList": ["a" * 40],
+            "Url": "example.com/id",
+        }
+        module = FakeModule(
+            oidc_params(client_id_list=client_id_list, tags=tags, thumbprint_list=["A" * 40]),
+            check_mode=check_mode,
+        )
+        with (
+            patch.object(plugin, "get_provider_by_url", return_value=None),
+            patch.object(plugin, "require_client_methods"),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        results[check_mode] = raised.value.values
+
+    real = results[False]
+    assert real.pop("open_id_connect_provider_arn") == "arn:provider"
+    assert real["open_id_connect_provider"].pop("open_id_connect_provider_arn") == "arn:provider"
+    assert real["open_id_connect_provider"].pop("create_date")
+    assert results[True] == real
+    assert real["open_id_connect_provider"]["client_id_list"] == (client_id_list or [])
+    assert real["open_id_connect_provider"]["tags"] == (tags or {})
+
+
+def test_create_fallback_reports_the_provider_as_iam_creates_it():
+    client = Mock()
+    client.create_open_id_connect_provider.return_value = {"OpenIDConnectProviderArn": "arn:provider"}
+    with (
+        patch.object(plugin, "get_provider_by_url", return_value=None),
+        patch.object(plugin, "get_provider_by_arn", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(oidc_params(thumbprint_list=["a" * 40])))
+
+    assert raised.value.values["open_id_connect_provider"] == {
+        "client_id_list": [],
+        "open_id_connect_provider_arn": "arn:provider",
+        "tags": {},
+        "thumbprint_list": ["a" * 40],
+        "url": "example.com/id",
+    }
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("client_id_list", "thumbprint_list", "expected"),
+    [
+        (
+            ["a", "b", "c"],
+            ["A" * 40, "F" * 40],
+            {"client_id_list": ["a", "b", "c"], "thumbprint_list": ["f" * 40, "a" * 40]},
+        ),
+        (["a", "b"], ["c" * 40], {"client_id_list": ["b", "a"], "thumbprint_list": ["c" * 40]}),
+    ],
+    ids=["client-ids-written", "thumbprints-written"],
+)
+def test_update_returns_an_unwritten_list_as_iam_keeps_it(check_mode, client_id_list, thumbprint_list, expected):
+    # IAM keeps the order of a list that no call writes, so that list is returned as IAM reported it.
+    client = Mock()
+    current = oidc_provider(ClientIDList=["b", "a"], Tags=[], ThumbprintList=["f" * 40, "a" * 40])
+    module = FakeModule(
+        oidc_params(client_id_list=client_id_list, thumbprint_list=thumbprint_list), check_mode=check_mode
+    )
+    with (
+        patch.object(plugin, "get_provider_by_url", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    provider = raised.value.values["open_id_connect_provider"]
+    assert raised.value.values["changed"] is True
+    assert {key: provider[key] for key in expected} == expected
+    assert client.add_client_id_to_open_id_connect_provider.called is (not check_mode and "c" in client_id_list)
+    assert client.update_open_id_connect_provider_thumbprint.called is (not check_mode and "c" * 40 in thumbprint_list)
