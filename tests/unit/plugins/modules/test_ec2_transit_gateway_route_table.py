@@ -113,6 +113,7 @@ def test_tag_keys_may_contain_128_characters_but_not_129(name):
         "routes": None,
         "state": "present",
         "tags": {"k" * 128: "v"},
+        "transit_gateway_id": "tgw-1" if name else None,
         "transit_gateway_route_table_id": None if name else "tgw-rtb-1",
     }
     module = FakeModule(params, client=Mock())
