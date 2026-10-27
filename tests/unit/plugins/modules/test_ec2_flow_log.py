@@ -532,6 +532,55 @@ def test_check_mode_predicts_no_destination_options_for_cloud_watch_logs():
     ]
 
 
+@pytest.mark.parametrize(
+    ("log_destination_type", "log_destination", "log_group_name"),
+    [
+        ("cloud-watch-logs", "arn:aws:logs:us-west-2:123456789012:log-group:flow", "flow"),
+        ("cloud-watch-logs", "arn:aws:logs:us-west-2:123456789012:log-group:flow:*", "flow"),
+        (None, "arn:aws:logs:us-west-2:123456789012:log-group:flow/vpc:*", "flow/vpc"),
+        (
+            "cloud-watch-logs",
+            "arn:aws-us-gov:logs:us-gov-west-1:123456789012:log-group:/aws/vpc/flow-logs:*",
+            "/aws/vpc/flow-logs",
+        ),
+    ],
+)
+def test_check_mode_predicts_the_log_group_name_of_a_log_group_arn(
+    log_destination_type, log_destination, log_group_name
+):
+    params = present_params(log_destination=log_destination, log_destination_type=log_destination_type)
+    result = run_present(Mock(), FakeModule(params, check_mode=True), [])
+
+    # EC2 returns the destination as sent plus the log group name without the ":*" suffix.
+    assert result["flow_logs"] == [
+        {
+            "flow_log_status": "ACTIVE",
+            "log_destination": log_destination,
+            "log_destination_type": "cloud-watch-logs",
+            "log_group_name": log_group_name,
+            "max_aggregation_interval": 600,
+            "resource_id": "vpc-1",
+            "tags": {},
+            "traffic_type": "ALL",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("log_destination_type", "log_destination"),
+    [
+        ("cloud-watch-logs", "arn:aws:firehose:us-west-2:123456789012:deliverystream:flow"),
+        ("cloud-watch-logs", "flow"),
+        ("kinesis-data-firehose", "arn:aws:logs:us-west-2:123456789012:log-group:flow"),
+    ],
+)
+def test_check_mode_predicts_no_log_group_name_for_other_destinations(log_destination_type, log_destination):
+    params = present_params(log_destination=log_destination, log_destination_type=log_destination_type)
+    result = run_present(Mock(), FakeModule(params, check_mode=True), [])
+
+    assert "log_group_name" not in result["flow_logs"][0]
+
+
 def test_create_sdk_check_covers_every_request_parameter():
     client = Mock()
     client.create_flow_logs.return_value = {"FlowLogIds": ["fl-new"]}
