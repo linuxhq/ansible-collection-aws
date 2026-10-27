@@ -14,6 +14,8 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     assert_module_rejects,
 )
 
+ROLE_ARN = "arn:aws:iam::123456789012:role/flow-logs"
+
 
 def test_sdk_validation_matches_flow_log_requests():
     params = dict.fromkeys(plugin.PRESENT_MATCH_FIELDS)
@@ -279,7 +281,9 @@ def test_partial_create_failure_is_not_reported_as_success():
     params = dict.fromkeys(plugin.PRESENT_MATCH_FIELDS)
     params.update(
         {
+            "deliver_logs_permission_arn": ROLE_ARN,
             "destination_options": None,
+            "log_group_name": "flow",
             "log_destination_type": None,
             "purge_tags": True,
             "resource_ids": ["vpc-1"],
@@ -307,7 +311,9 @@ def test_create_rejects_invalid_flow_log_ids():
     params = dict.fromkeys(plugin.PRESENT_MATCH_FIELDS)
     params.update(
         {
+            "deliver_logs_permission_arn": ROLE_ARN,
             "destination_options": None,
+            "log_group_name": "flow",
             "log_destination_type": None,
             "purge_tags": True,
             "resource_ids": ["vpc-1"],
@@ -334,7 +340,9 @@ def test_create_rejects_invalid_described_flow_log():
     params = dict.fromkeys(plugin.PRESENT_MATCH_FIELDS)
     params.update(
         {
+            "deliver_logs_permission_arn": ROLE_ARN,
             "destination_options": None,
+            "log_group_name": "flow",
             "log_destination_type": None,
             "purge_tags": True,
             "resource_ids": ["vpc-1"],
@@ -364,7 +372,9 @@ def test_create_result_keeps_ids_missing_from_eventually_consistent_describe():
     params = dict.fromkeys(plugin.PRESENT_MATCH_FIELDS)
     params.update(
         {
+            "deliver_logs_permission_arn": ROLE_ARN,
             "destination_options": None,
+            "log_group_name": "flow",
             "log_destination_type": None,
             "purge_tags": True,
             "resource_ids": ["vpc-1"],
@@ -516,11 +526,17 @@ def test_check_mode_predicts_the_values_ec2_stores_for_omitted_settings(override
 
 
 def test_check_mode_predicts_no_destination_options_for_cloud_watch_logs():
-    params = present_params(log_destination=None, log_destination_type="cloud-watch-logs", log_group_name="logs")
+    params = present_params(
+        deliver_logs_permission_arn=ROLE_ARN,
+        log_destination=None,
+        log_destination_type="cloud-watch-logs",
+        log_group_name="logs",
+    )
     result = run_present(Mock(), FakeModule(params, check_mode=True), [])
 
     assert result["flow_logs"] == [
         {
+            "deliver_logs_permission_arn": ROLE_ARN,
             "flow_log_status": "ACTIVE",
             "log_destination_type": "cloud-watch-logs",
             "log_group_name": "logs",
@@ -548,12 +564,17 @@ def test_check_mode_predicts_no_destination_options_for_cloud_watch_logs():
 def test_check_mode_predicts_the_log_group_name_of_a_log_group_arn(
     log_destination_type, log_destination, log_group_name
 ):
-    params = present_params(log_destination=log_destination, log_destination_type=log_destination_type)
+    params = present_params(
+        deliver_logs_permission_arn=ROLE_ARN,
+        log_destination=log_destination,
+        log_destination_type=log_destination_type,
+    )
     result = run_present(Mock(), FakeModule(params, check_mode=True), [])
 
     # EC2 returns the destination as sent plus the log group name without the ":*" suffix.
     assert result["flow_logs"] == [
         {
+            "deliver_logs_permission_arn": ROLE_ARN,
             "flow_log_status": "ACTIVE",
             "log_destination": log_destination,
             "log_destination_type": "cloud-watch-logs",
@@ -576,6 +597,9 @@ def test_check_mode_predicts_the_log_group_name_of_a_log_group_arn(
 )
 def test_check_mode_predicts_no_log_group_name_for_other_destinations(log_destination_type, log_destination):
     params = present_params(log_destination=log_destination, log_destination_type=log_destination_type)
+    if log_destination_type == "cloud-watch-logs":
+        params["deliver_logs_permission_arn"] = ROLE_ARN
+
     result = run_present(Mock(), FakeModule(params, check_mode=True), [])
 
     assert "log_group_name" not in result["flow_logs"][0]
@@ -693,6 +717,131 @@ def test_purge_keeps_old_flow_logs_when_a_replacement_fails_delivery():
     assert raised.value.values["replacement_errors"] == {"fl-new": "Access error"}
     assert raised.value.values["changed"] is True
     client.delete_flow_logs.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("resource_ids", "superseded"), [(["vpc-1"], "fl-old"), (["vpc-1", "vpc-2"], "fl-old, fl-old-2")]
+)
+def test_purge_keeps_old_flow_logs_when_a_matching_flow_log_fails_delivery(resource_ids, superseded, check_mode):
+    # The flow log that already matches on vpc-1 is not delivering logs; vpc-2 needs a new flow log.
+    matching = dict(
+        OLD_FLOW_LOG,
+        DeliverLogsErrorMessage="Access error",
+        DeliverLogsStatus="FAILED",
+        FlowLogId="fl-match",
+        FlowLogStatus="ACTIVE",
+        LogDestination="arn:aws:s3:::new-bucket",
+    )
+    flow_logs = [matching, dict(OLD_FLOW_LOG)]
+    if "vpc-2" in resource_ids:
+        flow_logs.append(dict(OLD_FLOW_LOG, FlowLogId="fl-old-2", ResourceId="vpc-2"))
+
+    client = Mock()
+    client.create_flow_logs.return_value = {"FlowLogIds": ["fl-new"]}
+    created = {"FlowLogId": "fl-new", "FlowLogStatus": "ACTIVE", "ResourceId": "vpc-2"}
+    module = FakeModule(present_params(purge_flow_logs=True, resource_ids=resource_ids), check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=flow_logs),
+        patch.object(plugin, "query_list", return_value=[created]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    # Check mode fails as the real run does instead of predicting the deletion.
+    creates = "vpc-2" in resource_ids and not check_mode
+    assert raised.value.values == {
+        "changed": creates,
+        "msg": f"Replacement EC2 flow logs fl-match are not delivering logs; superseded flow logs {superseded} were kept",
+        "replacement_errors": {"fl-match": "Access error"},
+    }
+    assert client.create_flow_logs.called is creates
+    client.delete_flow_logs.assert_not_called()
+
+
+CREATE_SETTING_MESSAGES = {
+    "cloud-watch-logs-role": (
+        "deliver_logs_permission_arn is required to create flow logs when log_destination_type is cloud-watch-logs"
+    ),
+    "cloud-watch-logs-destination": (
+        "log_group_name or log_destination is required to create flow logs when log_destination_type is cloud-watch-logs"
+    ),
+    "kinesis-data-firehose": (
+        "log_destination is required to create flow logs when log_destination_type is kinesis-data-firehose"
+    ),
+    "s3": "log_destination is required to create flow logs when log_destination_type is s3",
+}
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"log_destination_type": None, "log_group_name": "flow"}, "cloud-watch-logs-role"),
+        (
+            {
+                "log_destination": "arn:aws:logs:us-west-2:123456789012:log-group:flow",
+                "log_destination_type": "cloud-watch-logs",
+            },
+            "cloud-watch-logs-role",
+        ),
+        ({"log_destination_type": None}, "cloud-watch-logs-role"),
+        ({"deliver_logs_permission_arn": ROLE_ARN, "log_destination_type": None}, "cloud-watch-logs-destination"),
+        (
+            {"deliver_logs_permission_arn": ROLE_ARN, "log_destination_type": "cloud-watch-logs"},
+            "cloud-watch-logs-destination",
+        ),
+        ({"log_destination_type": "s3"}, "s3"),
+        ({"log_destination_type": "s3", "log_group_name": "flow"}, "s3"),
+        ({"log_destination_type": "kinesis-data-firehose"}, "kinesis-data-firehose"),
+        ({"log_destination_type": "kinesis-data-firehose", "log_group_name": "flow"}, "kinesis-data-firehose"),
+    ],
+)
+def test_create_without_settings_ec2_requires_fails_before_aws(overrides, message, check_mode):
+    params = present_params(log_destination=None)
+    params.update(overrides)
+    client = Mock()
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[]),
+        patch.object(plugin, "require_client_methods") as require,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    # EC2 rejects these CreateFlowLogs requests with InvalidParameter.
+    assert raised.value.values == {"msg": CREATE_SETTING_MESSAGES[message]}
+    assert client.method_calls == []
+    require.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("overrides", "existing"),
+    [
+        (
+            {"log_destination_type": None, "log_group_name": "flow"},
+            {
+                "DeliverLogsPermissionArn": ROLE_ARN,
+                "FlowLogId": "fl-match",
+                "LogDestinationType": "cloud-watch-logs",
+                "LogGroupName": "flow",
+                "ResourceId": "vpc-1",
+                "TrafficType": "ALL",
+            },
+        ),
+        ({"log_destination_type": "s3"}, OLD_FLOW_LOG),
+    ],
+)
+def test_existing_matching_flow_logs_need_no_create_settings(overrides, existing, check_mode):
+    params = present_params(log_destination=None)
+    params.update(overrides)
+    client = Mock()
+    result = run_present(client, FakeModule(params, check_mode=check_mode), [dict(existing)])
+
+    assert result["changed"] is False
+    assert result["flow_log_ids"] == [existing["FlowLogId"]]
+    client.create_flow_logs.assert_not_called()
 
 
 def test_purge_waits_for_a_later_run_when_a_replacement_is_not_described_yet():
