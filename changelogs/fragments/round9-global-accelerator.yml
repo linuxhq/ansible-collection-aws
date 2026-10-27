@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - global_accelerator - predict the health check port of a check-mode endpoint group create on a listener with
+    several port ranges that the run creates or updates, because the module sends those ranges sorted and AWS checks
+    health on the first port sent.

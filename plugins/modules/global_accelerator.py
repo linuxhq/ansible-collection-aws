@@ -1226,13 +1226,12 @@ def require_endpoint_group_writes(module, client):
             require_endpoint_configuration_parameters(module, client, method_name, operation_name, request)
 
 
-def predicted_endpoint_group(current, desired, listener_port_ranges=None):
+def predicted_endpoint_group(current, desired, default_health_check_port=None):
     if current is None:
         # AWS returns an empty endpoint list for a group created without endpoints.
         predicted = dict(ENDPOINT_GROUP_CREATE_DEFAULTS, endpoint_descriptions=[])
-        # AWS checks health on the listener's first port; with several ranges their stored order is not known.
-        if listener_port_ranges is not None and len(listener_port_ranges) == 1:
-            predicted["health_check_port"] = listener_port_ranges[0]["from_port"]
+        if default_health_check_port is not None:
+            predicted["health_check_port"] = default_health_check_port
     else:
         predicted = dict(current)
 
@@ -1324,10 +1323,13 @@ def delete_listener(client, module, accelerator_arn, listener_arn, changed=False
         )
 
 
-def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups, mutated=False, listener_port_ranges=None):
+def ensure_endpoint_groups(
+    client, module, listener_arn, endpoint_groups, mutated=False, default_health_check_port=None
+):
     """Reconcile endpoint groups; mutated reports earlier modifications, for failure results.
 
-    listener_port_ranges are the listener's port ranges, used to predict a created group's default health check port.
+    default_health_check_port is the port AWS checks health on when a created group omits health_check_port, if it is
+    known, for check-mode predictions.
     """
     current_by_region = {}
     if listener_arn is not None:
@@ -1345,7 +1347,7 @@ def ensure_endpoint_groups(client, module, listener_arn, endpoint_groups, mutate
         if current is None:
             changed = True
             if module.check_mode:
-                results.append(predicted_endpoint_group(None, desired, listener_port_ranges))
+                results.append(predicted_endpoint_group(None, desired, default_health_check_port))
                 continue
 
             request = endpoint_group_request(desired)
@@ -1490,8 +1492,9 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
 
         wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True, deadline=deadline)
 
+    # Each entry also records whether this run sends the listener's port ranges, which it sends sorted.
     for current, desired in matched:
-        result_listeners.append((dict(current), desired))
+        result_listeners.append((dict(current), desired, False))
 
     for current, desired in updates:
         listener_arn = current["listener_arn"]
@@ -1501,7 +1504,7 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
             "port_ranges": desired["port_ranges"],
             "protocol": desired["protocol"],
         }
-        result_listeners.append((result, desired))
+        result_listeners.append((result, desired, True))
 
         if module.check_mode:
             continue
@@ -1542,7 +1545,7 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
         }
 
         if module.check_mode:
-            result_listeners.append((result, desired))
+            result_listeners.append((result, desired, True))
             continue
 
         request = create_requests[index]
@@ -1584,7 +1587,7 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
         mutated = True
         result["client_affinity"] = listener["ClientAffinity"]
         result["listener_arn"] = listener["ListenerArn"]
-        result_listeners.append((result, desired))
+        result_listeners.append((result, desired, True))
 
     if not module.check_mode:
         for current in deletes:
@@ -1601,15 +1604,22 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
         wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True, deadline=deadline)
 
     results = []
-    for result, desired in result_listeners:
+    for result, desired, port_ranges_sent in result_listeners:
         if desired is not None and desired["endpoint_groups"] is not None:
+            # AWS checks health on the first port of the listener's ranges in the order it stores them, which is the
+            # order they were sent in. get_listeners sorts listed ranges, so an unchanged listener's order is known
+            # only for a single range.
+            default_health_check_port = None
+            if port_ranges_sent or len(result["port_ranges"]) == 1:
+                default_health_check_port = result["port_ranges"][0]["from_port"]
+
             endpoint_groups_changed, endpoint_groups = ensure_endpoint_groups(
                 client,
                 module,
                 result.get("listener_arn"),
                 desired["endpoint_groups"],
                 mutated=mutated,
-                listener_port_ranges=result["port_ranges"],
+                default_health_check_port=default_health_check_port,
             )
             changed = changed or endpoint_groups_changed
             mutated = mutated or (endpoint_groups_changed and not module.check_mode)
