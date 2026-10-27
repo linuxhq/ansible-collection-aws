@@ -1,0 +1,14 @@
+---
+bugfixes:
+  - ssm_document - O(tags) keys and values may now contain only letters, numbers, spaces, C(_), C(.), C(:), C(/),
+    C(=), C(+), C(-), and C(@), the characters AWS accepts. Other characters now fail before any change, in check mode
+    too. Previously check mode reported success, and a content update promoted the new version and removed old tags
+    before AWS rejected the tags.
+  - ssm_association - O(tags) keys and values may now contain only letters, numbers, spaces, C(_), C(.), C(:), C(/),
+    C(=), C(+), C(-), and C(@), the characters AWS accepts. Other characters now fail before any change, in check mode
+    too. Previously check mode reported success, and an update changed the association and removed old tags before AWS
+    rejected the tags.
+  - iam_oidc_provider - O(tags) keys and values may now contain only letters, numbers, spaces, C(_), C(.), C(:), C(/),
+    C(=), C(+), C(-), and C(@), the characters IAM accepts. Other characters now fail before any change, in check mode
+    too. Previously check mode reported success, and an update changed the client IDs, thumbprints, and old tags before
+    IAM rejected the tags.

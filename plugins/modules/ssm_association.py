@@ -71,7 +71,8 @@ options:
     type: list
 notes:
   - O(tags) accepts at most 50 entries; keys must contain 1 to 128 characters
-    and values at most 256 characters.
+    and values at most 256 characters, and both may contain only letters,
+    numbers, spaces, C(_), C(.), C(:), C(/), C(=), C(+), C(-), and C(@).
   - Updates send every field of the existing association because
     C(UpdateAssociation) clears omitted fields. botocore older than 1.42.54
     does not model C(AssociationDispatchAssumeRole), so updating an
@@ -657,7 +658,7 @@ def main():
 
         require_valid_ssm_targets(module, targets or [])
 
-        require_valid_tags(module, tags, 50)
+        require_valid_tags(module, tags, 50, restricted_characters=True)
 
     client = module.client(
         "ssm",

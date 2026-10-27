@@ -1,6 +1,8 @@
 # Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
+import unicodedata
+
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -19,9 +21,16 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_cli
 # EC2 documents up to 1000 resource IDs per CreateTags or DeleteTags call, but
 # returns InternalError above 100 flow log IDs.
 MAX_EC2_TAG_RESOURCES_PER_REQUEST = 100
+# Besides letters, separators, and numbers, the SSM and IAM tag pattern [\p{L}\p{Z}\p{N}_.:/=+\-@] allows these.
+RESTRICTED_TAG_SYMBOLS = "_.:/=+-@"
 
 
-def require_valid_tags(module, tags, max_tags):
+def require_valid_tags(module, tags, max_tags, restricted_characters=False):
+    """Fail unless tags are non-null, unique as strings, at most max_tags, and within the AWS lengths.
+
+    Keys and values are normalized to strings in place. restricted_characters also requires the characters of the SSM
+    and IAM tag pattern, which AWS enforces on every tag write.
+    """
     if tags is None:
         return
 
@@ -41,6 +50,14 @@ def require_valid_tags(module, tags, max_tags):
 
     if any(not 1 <= len(key) <= 128 or len(value) > 256 for key, value in tags.items()):
         module.fail_json(msg="tag keys must contain 1 to 128 characters and values at most 256 characters")
+
+    # Python re has no \p{..} classes, so the Unicode general category stands in for \p{L}, \p{N}, and \p{Z}.
+    if restricted_characters and any(
+        unicodedata.category(char)[0] not in "LNZ" and char not in RESTRICTED_TAG_SYMBOLS
+        for key, value in tags.items()
+        for char in key + value
+    ):
+        module.fail_json(msg="tag keys and values must contain only letters, numbers, spaces, and _ . : / = + - @")
 
 
 def require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, max_tags, description):

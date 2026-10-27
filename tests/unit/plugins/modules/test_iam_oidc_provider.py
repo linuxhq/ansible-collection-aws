@@ -8,6 +8,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
+    ModuleInitialized,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -554,6 +555,39 @@ def test_tag_limit_without_purge_fails_before_any_change(check_mode):
     assert raised.value.values.get("changed", False) is False
     client.add_client_id_to_open_id_connect_provider.assert_not_called()
     client.tag_open_id_connect_provider.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "tags", [{"Team": "R&D"}, {"Team": "a,b"}, {"Team#1": "x"}], ids=["ampersand", "comma", "hash-key"]
+)
+def test_tag_characters_aws_rejects_fail_before_aws(check_mode, tags):
+    # IAM rejects these with ValidationError on create and when tagging, which an update reaches only after the client
+    # IDs, thumbprints, and purged tags are written.
+    module = FakeModule(oidc_params(client_id_list=["keep", "new"], state="present", tags=tags), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": "tag keys and values must contain only letters, numbers, spaces, and _ . : / = + - @"
+    }
+    module.client.assert_not_called()
+
+
+def test_tags_with_characters_aws_accepts_reach_aws():
+    module = FakeModule(oidc_params(state="present", tags={"Team": "a b_.:/=+-@é1", "日本": ""}))
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
+
+    module.client.assert_called_once()
 
 
 def test_aws_reserved_tags_do_not_count_against_the_tag_limit():
