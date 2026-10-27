@@ -951,6 +951,68 @@ def test_absent_check_mode_skips_deleting_table_wait():
     assert client.mock_calls == []
 
 
+def run_absent(found, wait, check_mode):
+    # Live probe: DeleteTransitGatewayRouteTable returns the table as deleting without its tags, and
+    # DescribeTransitGatewayRouteTables goes from deleting straight to InvalidRouteTableID.NotFound.
+    client = Mock()
+    client.delete_transit_gateway_route_table.return_value = {
+        "TransitGatewayRouteTable": {
+            "CreationTime": "2026-10-27T15:56:56+00:00",
+            "DefaultAssociationRouteTable": False,
+            "DefaultPropagationRouteTable": False,
+            "State": "deleting",
+            "TransitGatewayId": "tgw-1",
+            "TransitGatewayRouteTableId": "tgw-rtb-1",
+        }
+    }
+    module = FakeModule(
+        present_params(
+            routes=[{"destination_cidr_block": "10.0.0.0/8", "state": "present"}],
+            state="absent",
+            wait=wait,
+        ),
+        check_mode=check_mode,
+        client=client,
+    )
+    with (
+        patch.object(plugin, "find_route_table", return_value=found),
+        patch.object(plugin, "get_route_table_by_id", return_value=None) as describe,
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    return raised.value.values, client, describe
+
+
+@pytest.mark.parametrize("state", ["available", "deleting"])
+@pytest.mark.parametrize("wait", [True, False])
+def test_check_mode_absent_predicts_the_result_a_real_delete_returns(wait, state):
+    found = {
+        "CreationTime": "2026-10-27T15:56:56+00:00",
+        "DefaultAssociationRouteTable": False,
+        "DefaultPropagationRouteTable": False,
+        "State": state,
+        "Tags": [{"Key": "Name", "Value": "main"}],
+        "TransitGatewayId": "tgw-1",
+        "TransitGatewayRouteTableId": "tgw-rtb-1",
+    }
+
+    real, real_client, real_describe = run_absent(found, wait, check_mode=False)
+    check, check_client, check_describe = run_absent(found, wait, check_mode=True)
+
+    assert check == real
+    assert real["changed"] is check["changed"] is (state == "available")
+    assert real_client.delete_transit_gateway_route_table.call_count == int(state == "available")
+    assert real_describe.call_count == int(wait)
+    assert check_client.mock_calls == []
+    check_describe.assert_not_called()
+    # A waited delete finds no table; otherwise the result is the table as EC2 returned it.
+    assert ("transit_gateway_route_table_id" in real) is not wait
+    # routes are ignored when state=absent.
+    assert "routes" not in real
+
+
 def test_absent_check_mode_skips_deleting_route_wait():
     module = FakeModule({"wait": True}, check_mode=True)
     client = Mock()

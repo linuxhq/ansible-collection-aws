@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - ec2_transit_gateway_route_table - in check mode with O(state=absent), predict the result a real run returns.
+    With O(wait=true), return no ``transit_gateway_route_table`` or ``transit_gateway_route_table_id``, because EC2
+    stops returning the deleted table, including for a table that is already ``deleting``. With O(wait=false),
+    predict the table as ``deleting`` without its tags, as DeleteTransitGatewayRouteTable returns it, instead of
+    ``deleted``.
+  - ec2_transit_gateway_route_table - document that O(routes) is ignored and the ``routes`` result is not returned
+    when O(state=absent).
