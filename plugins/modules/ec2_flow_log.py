@@ -307,6 +307,7 @@ except ImportError:
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 
+from ansible_collections.amazon.aws.plugins.module_utils.arn import parse_aws_arn
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import is_boto3_error_code
 from ansible_collections.amazon.aws.plugins.module_utils.iterators import chunks
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
@@ -747,6 +748,12 @@ def ensure_present(client, module):
             predicted.update(desired)
             if desired["log_destination_type"] == "s3":
                 predicted["destination_options"] = dict(S3_DESTINATION_OPTION_DEFAULTS, **destination_options)
+
+            if desired["log_destination_type"] == "cloud-watch-logs" and "log_destination" in desired:
+                arn = parse_aws_arn(desired["log_destination"]) or {}
+                if arn.get("service") == "logs" and arn.get("resource_type") == "log-group":
+                    # EC2 also returns the log group name, without the ":*" suffix, for a log group ARN destination.
+                    predicted["log_group_name"] = arn["resource_id"].split(":")[0]
 
             for resource_id in missing_resource_ids:
                 flow_log = dict(

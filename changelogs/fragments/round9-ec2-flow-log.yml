@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - ec2_flow_log - in check mode, a predicted create to CloudWatch Logs given as an O(log_destination) log
+    group ARN now returns the C(log_group_name) that EC2 derives from the ARN, as a real run does.
