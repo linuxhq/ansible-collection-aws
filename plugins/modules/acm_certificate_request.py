@@ -18,7 +18,9 @@ description:
     return C(ManagedBy), so such a certificate can be reused if it otherwise
     matches.
   - ACM permits at most 50 tags on a certificate; tag keys must contain 1 to
-    128 characters and tag values may contain at most 256 characters.
+    128 characters and tag values may contain at most 256 characters, and both
+    may contain only letters, numbers, spaces, C(_), C(.), C(:), C(/), C(=),
+    C(+), C(-), and C(@).
   - Existing certificate tags are purged only when O(tags) is provided and
     O(purge_tags=true).
   - After requesting a certificate, the module waits up to about one minute
@@ -410,7 +412,7 @@ def main():
     if len(subject_alternative_names) > 99:
         module.fail_json(msg="subject_alternative_names must contain at most 99 additional entries")
 
-    require_valid_tags(module, tags, 50)
+    require_valid_tags(module, tags, 50, restricted_characters=True)
 
     client = module.client("acm", retry_decorator=AWSRetry.jittered_backoff())
 

@@ -21,15 +21,15 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_cli
 # EC2 documents up to 1000 resource IDs per CreateTags or DeleteTags call, but
 # returns InternalError above 100 flow log IDs.
 MAX_EC2_TAG_RESOURCES_PER_REQUEST = 100
-# Besides letters, separators, and numbers, the SSM and IAM tag pattern [\p{L}\p{Z}\p{N}_.:/=+\-@] allows these.
+# Besides letters, separators, and numbers, the SSM, IAM, and ACM tag pattern [\p{L}\p{Z}\p{N}_.:/=+\-@] allows these.
 RESTRICTED_TAG_SYMBOLS = "_.:/=+-@"
 
 
 def require_valid_tags(module, tags, max_tags, restricted_characters=False):
     """Fail unless tags are non-null, unique as strings, at most max_tags, and within the AWS lengths.
 
-    Keys and values are normalized to strings in place. restricted_characters also requires the characters of the SSM
-    and IAM tag pattern, which AWS enforces on every tag write.
+    Keys and values are normalized to strings in place. restricted_characters also requires the characters of the SSM,
+    IAM, and ACM tag pattern, which AWS enforces on every tag write.
     """
     if tags is None:
         return

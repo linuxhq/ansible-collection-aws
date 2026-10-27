@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - acm_certificate_request - O(tags) keys and values may now contain only letters, numbers, spaces, C(_), C(.), C(:),
+    C(/), C(=), C(+), C(-), and C(@), the characters ACM accepts. Other characters now fail before any change, in check
+    mode too. Previously check mode reported success, and a real run either had the certificate request rejected or
+    removed an existing certificate's purged tags before ACM rejected the new ones.
