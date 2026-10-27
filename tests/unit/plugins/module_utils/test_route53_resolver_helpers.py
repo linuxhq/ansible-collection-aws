@@ -281,6 +281,15 @@ def test_comparable_ip_entry_matches_requires_every_desired_field():
     assert not comparable_ip_entry_matches(current, {"ipv6": "2001:db8::1"})
 
 
+def test_comparable_ip_entry_matches_treats_an_empty_desired_value_as_absent():
+    current = {"ip": "192.0.2.1", "port": 53}
+    assert comparable_ip_entry_matches(current, {"ip": "192.0.2.1", "server_name_indication": ""})
+    assert comparable_ip_entry_matches(dict(current, server_name_indication=""), {"server_name_indication": ""})
+    assert not comparable_ip_entry_matches(
+        dict(current, server_name_indication="dns.example.com"), {"server_name_indication": ""}
+    )
+
+
 def test_reconcile_resolver_arn_tags_skips_empty_deltas():
     with patch.object(route53_resolver_utils, "reconcile_arn_tags") as reconcile:
         reconcile_resolver_arn_tags(FakeModule({}), Mock(), {}, "rule", "main", {}, [])

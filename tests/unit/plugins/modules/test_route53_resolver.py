@@ -14,8 +14,10 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
+    assert_documents_shape,
     assert_module_contract,
     assert_module_rejects,
+    documented_returns,
 )
 
 
@@ -306,6 +308,12 @@ def test_absent_reports_unchanged_when_endpoint_is_already_gone():
 
 def test_module_contract():
     assert_module_contract(plugin)
+
+
+def test_documented_returns_cover_the_sdk_shapes():
+    contains = documented_returns(plugin)["resolver_endpoint"]["contains"]
+    assert_documents_shape(contains, "route53resolver", "ResolverEndpoint")
+    assert_documents_shape(contains["ip_addresses"]["contains"], "route53resolver", "IpAddressResponse")
 
 
 def test_absent_rejects_invalid_name():
@@ -1539,6 +1547,52 @@ def test_check_mode_predicts_removing_a_failed_address_dropped_from_the_request(
         "192.0.2.2",
     ]
     assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(("wait", "expected_count"), [(False, 2), (True, 3)])
+def test_added_address_returns_the_count_a_waited_run_rereads(check_mode, wait, expected_count):
+    added = {"Ip": "192.0.2.3", "IpId": "rni-3", "SubnetId": "subnet-3", "Status": "ATTACHED"}
+    waited = existing_endpoint(IpAddressCount=3)
+    del waited["IpAddresses"], waited["Tags"]
+
+    def with_ip_addresses(client, module, endpoint, changed=False):
+        ip_addresses = existing_endpoint()["IpAddresses"]
+        if endpoint["IpAddressCount"] == 3:
+            ip_addresses.append(added)
+
+        return dict(endpoint, IpAddresses=ip_addresses)
+
+    ip_addresses = endpoint_params()["ip_addresses"] + [{"ip": "192.0.2.3", "subnet_id": "subnet-3"}]
+    module = FakeModule(endpoint_params(ip_addresses=ip_addresses, wait=wait), check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint(IpAddressCount=2)),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=with_ip_addresses),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=waited),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["resolver_endpoint"]["ip_address_count"] == expected_count
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_replaced_failed_address_returns_the_count_a_waited_run_rereads(check_mode):
+    listed = dict(endpoint_with_failed_address(), IpAddressCount=3)
+    waited = existing_endpoint(IpAddressCount=2)
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=listed),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=waited),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(Mock(), FakeModule(endpoint_params(wait=True), check_mode=check_mode))
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["resolver_endpoint"]["ip_address_count"] == 2
 
 
 def test_create_wait_failure_reports_changed():

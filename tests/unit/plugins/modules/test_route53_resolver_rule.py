@@ -14,8 +14,10 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
+    assert_documents_shape,
     assert_module_contract,
     assert_module_rejects,
+    documented_returns,
 )
 
 
@@ -173,6 +175,13 @@ def test_module_contract():
     options = assert_module_contract(plugin)
     assert options["argument_spec"]["rule_type"]["choices"] == ["FORWARD"]
     assert options["argument_spec"]["target_ips"]["required_one_of"] == [["ip", "ipv6"]]
+
+
+def test_documented_returns_cover_the_forward_rule_fields():
+    contains = documented_returns(plugin)["resolver_rule"]["contains"]
+    # Only FORWARD rules are managed, so the DELEGATE rule delegation_record is never returned.
+    assert {"creator_request_id", "modification_time"} <= set(contains)
+    assert_documents_shape(contains["target_ips"]["contains"], "route53resolver", "TargetAddress")
 
 
 def test_rule_type_choices_are_sdk_values():
@@ -377,6 +386,16 @@ def test_target_ip_versions_are_rejected():
             },
             message,
         )
+
+
+def test_target_without_an_address_is_rejected():
+    spec = assert_module_contract(plugin)
+    spec.pop("supports_check_mode")
+    # ansible-core's required_one_of counts an explicit null as set, so this passes argument validation.
+    result = ArgumentSpecValidator(**spec).validate(rule_params(target_ips=[{"ip": None, "port": 53}]))
+
+    assert not result.error_messages
+    assert_module_rejects(plugin, result.validated_parameters, "target_ips entries must set ip or ipv6")
 
 
 def test_rule_comparison_normalizes_domain_without_adding_target_defaults():
@@ -1222,6 +1241,78 @@ def test_target_defaults_fill_only_an_omitted_do53_port():
         {"Ip": "192.0.2.2", "Protocol": "DoH"},
         {"Ip": "192.0.2.3", "Port": 0, "Protocol": "Do53"},
     ]
+
+
+def empty_sni_target(**overrides):
+    target = {"ip": "192.0.2.1", "ipv6": None, "port": None, "protocol": None, "server_name_indication": ""}
+    target.update(overrides)
+    return target
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_empty_server_name_indication_matches_a_target_without_one(check_mode):
+    # AWS stores an empty server name indication as no value.
+    client = Mock()
+    module = FakeModule(rule_params(target_ips=[empty_sni_target()]), check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=existing_rule()),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is False
+    assert result.value.values["resolver_rule"]["target_ips"] == [{"ip": "192.0.2.1", "port": 53, "protocol": "Do53"}]
+    assert not client.mock_calls
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_empty_server_name_indication_clears_a_stored_one(check_mode):
+    client = Mock()
+    stored = {"Ip": "192.0.2.1", "Port": 443, "Protocol": "DoH", "ServerNameIndication": "dns.example.com"}
+    cleared = {"Ip": "192.0.2.1", "Port": 443, "Protocol": "DoH"}
+    client.update_resolver_rule.return_value = {"ResolverRule": existing_rule(TargetIps=[cleared])}
+    module = FakeModule(rule_params(target_ips=[empty_sni_target(port=443, protocol="DoH")]), check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=existing_rule(TargetIps=[stored])),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["resolver_rule"]["target_ips"] == [{"ip": "192.0.2.1", "port": 443, "protocol": "DoH"}]
+    if check_mode:
+        client.update_resolver_rule.assert_not_called()
+    else:
+        client.update_resolver_rule.assert_called_once_with(
+            Config={
+                "Name": "main",
+                "ResolverEndpointId": "rslvr-out-1",
+                "TargetIps": [dict(cleared, ServerNameIndication="")],
+            },
+            ResolverRuleId="rslvr-rr-1",
+            aws_retry=True,
+        )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_create_with_an_empty_server_name_indication_returns_the_stored_target(check_mode):
+    client = Mock()
+    client.create_resolver_rule.return_value = {"ResolverRule": created_rule()}
+    module = FakeModule(rule_params(target_ips=[empty_sni_target()]), check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=None),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    assert result.value.values["resolver_rule"]["target_ips"] == [{"ip": "192.0.2.1", "port": 53, "protocol": "Do53"}]
+    if check_mode:
+        client.create_resolver_rule.assert_not_called()
+    else:
+        assert client.create_resolver_rule.call_args.kwargs["TargetIps"] == [
+            {"Ip": "192.0.2.1", "ServerNameIndication": ""}
+        ]
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

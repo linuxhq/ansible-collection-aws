@@ -180,11 +180,19 @@ resolver_endpoint:
       description: The time the endpoint was created.
       returned: when returned by AWS
       type: str
+    creator_request_id:
+      description: The unique string that identifies the request that created the endpoint.
+      returned: when returned by AWS
+      type: str
     direction:
       description: The endpoint direction.
       returned: always
       type: str
       sample: OUTBOUND
+    dns64_enabled:
+      description: Whether DNS64 is enabled for the inbound endpoint.
+      returned: when returned by AWS
+      type: bool
     host_vpc_id:
       description: The VPC the endpoint is in.
       returned: except when check mode predicts creation
@@ -203,29 +211,67 @@ resolver_endpoint:
       type: list
       elements: dict
       contains:
+        creation_time:
+          description: The time the IP address was created.
+          returned: >-
+            when read from AWS, which is skipped after a create or IP address change without waiting
+            and when check mode predicts either
+          type: str
         ip:
           description: The IPv4 address.
           returned: when assigned
           type: str
         ip_id:
           description: The IP address ID.
-          returned: when read from AWS, which is skipped after a create or IP address change without waiting
+          returned: >-
+            when read from AWS, which is skipped after a create or IP address change without waiting
+            and when check mode predicts either
           type: str
         ipv6:
           description: The IPv6 address.
           returned: when assigned
           type: str
+        modification_time:
+          description: The time the IP address was last modified.
+          returned: >-
+            when read from AWS, which is skipped after a create or IP address change without waiting
+            and when check mode predicts either
+          type: str
         status:
           description: The IP address status.
-          returned: when read from AWS, which is skipped after a create or IP address change without waiting
+          returned: >-
+            when read from AWS, which is skipped after a create or IP address change without waiting
+            and when check mode predicts either
+          type: str
+        status_message:
+          description: Details about the IP address status.
+          returned: >-
+            when read from AWS, which is skipped after a create or IP address change without waiting
+            and when check mode predicts either
           type: str
         subnet_id:
           description: The subnet ID.
           returned: always
           type: str
+    ipv6_internet_access_enabled:
+      description: Whether the outbound endpoint can forward queries to public IPv6 targets.
+      returned: when returned by AWS
+      type: bool
+    modification_time:
+      description: The time the endpoint was last modified.
+      returned: when returned by AWS
+      type: str
     name:
       description: The endpoint name.
       returned: always
+      type: str
+    outpost_arn:
+      description: The ARN of the Outpost the endpoint is on.
+      returned: when returned by AWS
+      type: str
+    preferred_instance_type:
+      description: The EC2 instance type of the endpoint on an Outpost.
+      returned: when returned by AWS
       type: str
     protocols:
       description: The endpoint protocols.
@@ -237,6 +283,10 @@ resolver_endpoint:
       returned: always
       type: str
       sample: IPV4
+    rni_enhanced_metrics_enabled:
+      description: Whether CloudWatch metrics are published for each endpoint IP address.
+      returned: when returned by AWS
+      type: bool
     security_group_ids:
       description: The endpoint security group IDs.
       returned: always
@@ -255,6 +305,10 @@ resolver_endpoint:
       description: The endpoint tags with key case preserved.
       returned: when gathered by the module
       type: dict
+    target_name_server_metrics_enabled:
+      description: Whether CloudWatch metrics are published for each target name server of the outbound endpoint.
+      returned: when returned by AWS
+      type: bool
 resolver_endpoint_id:
   description:
     - The resolver endpoint ID.
@@ -700,6 +754,10 @@ def ensure_present(client, module, deadline=None):
             }
             if not keep_ip_addresses:
                 projected_desired["ip_addresses"] = desired["ip_addresses"]
+
+            # A waited run re-reads the endpoint after replacing its addresses.
+            if module.params["wait"] and (has_failed_ip_addresses or not keep_ip_addresses):
+                projected_desired["ip_address_count"] = len(desired["ip_addresses"])
 
         endpoint = dict(endpoint or {})
         endpoint.update(snake_dict_to_camel_dict(projected_desired, capitalize_first=True))

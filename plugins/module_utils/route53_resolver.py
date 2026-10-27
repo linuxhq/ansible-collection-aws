@@ -30,8 +30,13 @@ def comparable_ip_fields(item, fields):
 
 
 def comparable_ip_entry_matches(current, desired):
-    """Return whether a comparable current entry has every field a comparable desired entry sets."""
-    return all(current.get(field) == value for field, value in desired.items())
+    """Return whether a comparable current entry has every field a comparable desired entry sets.
+
+    AWS omits empty strings, so an empty desired value matches an absent current one.
+    """
+    return all(
+        current.get(field) == value or (value == "" and field not in current) for field, value in desired.items()
+    )
 
 
 def comparable_ips_match(current, desired):
