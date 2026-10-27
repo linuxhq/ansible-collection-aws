@@ -249,6 +249,30 @@ def test_listeners_reject_malformed_response_items():
     assert raised.value.values["msg"] == "Global Accelerator returned an invalid listener"
 
 
+def test_listeners_keep_the_listed_port_range_order():
+    # Live: ListListeners returns the ranges in the order they were sent and stored.
+    listed = {
+        "ClientAffinity": "NONE",
+        "ListenerArn": "arn:listener",
+        "PortRanges": [{"FromPort": 9000, "ToPort": 9001}, {"FromPort": 80, "ToPort": 81}],
+        "Protocol": "TCP",
+    }
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[listed]),
+    ):
+        listeners = plugin.get_listeners(Mock(), FakeModule({}), "arn:accelerator")
+
+    assert listeners == [
+        {
+            "client_affinity": "NONE",
+            "listener_arn": "arn:listener",
+            "port_ranges": [{"from_port": 9000, "to_port": 9001}, {"from_port": 80, "to_port": 81}],
+            "protocol": "TCP",
+        }
+    ]
+
+
 def test_main_defers_sdk_validation_until_an_api_is_needed():
     endpoint_group = {
         "endpoint_configurations": None,
@@ -526,7 +550,7 @@ def test_health_check_path_is_compared_only_for_http_health_checks(current_proto
                 "traffic_dial_percentage": 100.0,
             },
         ),
-        # The default health check port is not known, as for an unchanged listener with several port ranges.
+        # Without a known default health check port, none is predicted.
         (
             {"health_check_protocol": "HTTP"},
             None,
@@ -578,7 +602,8 @@ def test_check_mode_listener_create_predicts_its_endpoint_group_health_check_por
 MULTIPLE_PORT_RANGES = [{"from_port": 9000, "to_port": 9001}, {"from_port": 7000, "to_port": 7001}]
 
 
-# Live: AWS stores a listener's ranges in the order sent and checks health on the first port stored.
+# Live: AWS stores a listener's ranges in the order sent, lists them in that order, and checks health on the first
+# port stored.
 @pytest.mark.parametrize(
     "port_ranges, current_port_ranges, client_affinity, expected",
     [
@@ -586,12 +611,15 @@ MULTIPLE_PORT_RANGES = [{"from_port": 9000, "to_port": 9001}, {"from_port": 7000
         (MULTIPLE_PORT_RANGES, None, None, 7000),
         (MULTIPLE_PORT_RANGES, [{"from_port": 5000, "to_port": 5000}], None, 7000),
         (MULTIPLE_PORT_RANGES, plugin.normalized_port_ranges(MULTIPLE_PORT_RANGES), "SOURCE_IP", 7000),
-        # An unchanged listener's ranges are listed sorted, so their stored order is known only for a single range.
-        (MULTIPLE_PORT_RANGES, plugin.normalized_port_ranges(MULTIPLE_PORT_RANGES), None, None),
+        (MULTIPLE_PORT_RANGES, MULTIPLE_PORT_RANGES, "SOURCE_IP", 7000),
+        # An unchanged listener keeps the order in which AWS lists its ranges.
+        (MULTIPLE_PORT_RANGES, plugin.normalized_port_ranges(MULTIPLE_PORT_RANGES), None, 7000),
+        (MULTIPLE_PORT_RANGES, MULTIPLE_PORT_RANGES, None, 9000),
+        (plugin.normalized_port_ranges(MULTIPLE_PORT_RANGES), MULTIPLE_PORT_RANGES, None, 9000),
         ([{"from_port": 443, "to_port": 443}], [{"from_port": 443, "to_port": 443}], None, 443),
     ],
 )
-def test_check_mode_endpoint_group_create_predicts_the_health_check_port_of_listener_ranges_sent_sorted(
+def test_check_mode_endpoint_group_create_predicts_the_health_check_port_of_the_first_stored_listener_range(
     port_ranges, current_port_ranges, client_affinity, expected
 ):
     listener = {
@@ -621,19 +649,20 @@ def test_check_mode_endpoint_group_create_predicts_the_health_check_port_of_list
     ):
         changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
 
-    expected_group = {
-        "endpoint_descriptions": [],
-        "endpoint_group_region": "us-west-2",
-        "health_check_interval_seconds": 30,
-        "health_check_protocol": "TCP",
-        "threshold_count": 3,
-        "traffic_dial_percentage": 100.0,
-    }
-    if expected is not None:
-        expected_group["health_check_port"] = expected
-
     assert changed
-    assert listeners[0]["endpoint_groups"] == [expected_group]
+    assert listeners[0]["endpoint_groups"] == [
+        {
+            "endpoint_descriptions": [],
+            "endpoint_group_region": "us-west-2",
+            "health_check_interval_seconds": 30,
+            "health_check_port": expected,
+            "health_check_protocol": "TCP",
+            "threshold_count": 3,
+            "traffic_dial_percentage": 100.0,
+        }
+    ]
+    # Listener ranges are returned sorted, whatever order AWS lists them in.
+    assert listeners[0]["port_ranges"] == plugin.normalized_port_ranges(port_ranges)
     client.create_endpoint_group.assert_not_called()
     client.create_listener.assert_not_called()
     client.update_listener.assert_not_called()
@@ -754,6 +783,39 @@ def test_listener_creation_without_purge_leaves_unlisted_listeners_unchanged(che
         created["listener_arn"] = "arn:new"
 
     assert listeners == [current, created]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_unchanged_listeners_listed_unsorted_match_and_return_sorted_ranges(check_mode):
+    listed_ranges = [{"from_port": 9000, "to_port": 9001}, {"from_port": 80, "to_port": 81}]
+    current = [
+        {"client_affinity": "NONE", "listener_arn": "arn:tcp", "port_ranges": listed_ranges, "protocol": "TCP"},
+        {"client_affinity": "NONE", "listener_arn": "arn:udp", "port_ranges": listed_ranges, "protocol": "UDP"},
+    ]
+    desired = {
+        "client_affinity": None,
+        "endpoint_groups": None,
+        "port_ranges": listed_ranges,
+        "protocol": "TCP",
+    }
+    module = FakeModule(
+        {"listeners": [desired], "purge_endpoint_groups": True, "purge_listeners": False},
+        check_mode=check_mode,
+    )
+    client = Mock()
+    with (
+        patch.object(plugin, "get_listeners", return_value=current),
+        patch.object(plugin, "wait_for_accelerator") as waiter,
+    ):
+        changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    sorted_ranges = [{"from_port": 80, "to_port": 81}, {"from_port": 9000, "to_port": 9001}]
+    assert not changed
+    assert listeners == [dict(listener, port_ranges=sorted_ranges) for listener in current]
+    client.create_listener.assert_not_called()
+    client.update_listener.assert_not_called()
+    client.delete_listener.assert_not_called()
+    waiter.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -1559,7 +1621,7 @@ def test_circular_listener_dependencies_fail_before_mutation(check_mode):
     client.create_listener.assert_not_called()
 
 
-@pytest.mark.parametrize("wait, check_mode", [(True, False), (False, False), (True, True)])
+@pytest.mark.parametrize("wait, check_mode", [(True, False), (False, False), (True, True), (False, True)])
 def test_unchanged_accelerator_waits_for_requested_readiness(wait, check_mode):
     module = FakeModule(
         {
@@ -1590,7 +1652,8 @@ def test_unchanged_accelerator_waits_for_requested_readiness(wait, check_mode):
 
     should_wait = wait and not check_mode
     assert result.value.values["changed"] is False
-    assert result.value.values["accelerator"]["status"] == ("DEPLOYED" if should_wait else "IN_PROGRESS")
+    # Check mode predicts the status a real run returns after its wait.
+    assert result.value.values["accelerator"]["status"] == ("DEPLOYED" if wait else "IN_PROGRESS")
     assert read.call_count == (2 if should_wait else 1)
     if should_wait:
         waiter.assert_called_once_with(client, module, "arn:accelerator", "accelerator_deployed", deadline=ANY)
@@ -1599,6 +1662,41 @@ def test_unchanged_accelerator_waits_for_requested_readiness(wait, check_mode):
 
     client.update_accelerator.assert_not_called()
     client.create_accelerator.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "overrides, status",
+    [
+        # A real run waits for a deploying accelerator before any change, and checks it again.
+        ({"tags": {"team": "edge"}}, "DEPLOYED"),
+        ({"tags": {"team": "edge"}, "wait": True}, "DEPLOYED"),
+        ({"listeners": []}, "DEPLOYED"),
+        ({"name": "renamed", "wait": True}, "DEPLOYED"),
+        # Without a wait, a real run returns the UpdateAccelerator response, which live reports IN_PROGRESS.
+        ({"name": "renamed"}, "IN_PROGRESS"),
+        # Nothing to change and no wait requested: a real run returns the observed status.
+        ({}, "IN_PROGRESS"),
+    ],
+)
+def test_check_mode_predicts_the_status_a_real_run_returns_for_a_deploying_accelerator(overrides, status):
+    module = FakeModule(accelerator_params(**overrides), check_mode=True)
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"Tags": []}
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_accelerator", return_value=deployed_accelerator(Status="IN_PROGRESS")) as read,
+        patch.object(plugin, "get_listeners", return_value=[]),
+        patch.object(plugin, "wait_for_accelerator") as waiter,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["accelerator"]["status"] == status
+    read.assert_called_once()
+    waiter.assert_not_called()
+    assert [name for name, unused_args, unused_kwargs in client.mock_calls] == (
+        ["list_tags_for_resource"] if "tags" in overrides else []
+    )
 
 
 @pytest.mark.parametrize("wait, status", [(True, "DEPLOYED"), (False, "IN_PROGRESS")])
@@ -2192,6 +2290,7 @@ def test_deployment_wait_failure_after_create_reports_changed():
 
 def accelerator_params(**overrides):
     params = {
+        "arn": None,
         "enabled": None,
         "idempotency_token": None,
         "ip_address_type": None,

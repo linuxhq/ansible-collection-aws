@@ -1,0 +1,12 @@
+---
+bugfixes:
+  - account_region - in check mode with O(wait=true), a region already C(ENABLING) with O(state=present), or
+    C(DISABLING) with O(state=absent), now predicts the steady status (C(ENABLED) or C(DISABLED)) that the real run
+    returns after waiting, instead of the observed pending status.
+  - global_accelerator - in check mode, an existing accelerator that is still deploying now returns the C(DEPLOYED)
+    status that the real run returns after its wait, when the real run would wait first, that is with O(wait=true),
+    with O(listeners), or when a change is predicted. A predicted accelerator update with O(wait=false) still returns
+    C(IN_PROGRESS).
+  - global_accelerator - in check mode, an endpoint group created without
+    O(listeners[].endpoint_groups[].health_check_port) on an unchanged listener with several port ranges now predicts
+    the health check port, the first port of the ranges in the order AWS stores and lists them.

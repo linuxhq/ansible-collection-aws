@@ -305,11 +305,11 @@ def ensure_present(client, module):
                 msg=f"Unable to enable AWS account region {region_name}",
             )
 
-    if changed and module.check_mode:
+    settles = module.params["wait"] and (changed or previous_status not in PRESENT_STEADY_STATUSES)
+    if module.check_mode and (changed or settles):
+        # A real run with wait=true waits for the steady status, also for a pending transition it did not request.
         current_status = "ENABLED" if module.params["wait"] else "ENABLING"
-    elif (
-        module.params["wait"] and not module.check_mode and (changed or previous_status not in PRESENT_STEADY_STATUSES)
-    ):
+    elif settles:
         current_status = wait_for_status(
             client,
             module,
@@ -360,9 +360,11 @@ def ensure_absent(client, module):
                 msg=f"Unable to disable AWS account region {region_name}",
             )
 
-    if changed and module.check_mode:
+    settles = module.params["wait"] and (changed or previous_status not in ABSENT_STEADY_STATUSES)
+    if module.check_mode and (changed or settles):
+        # A real run with wait=true waits for the steady status, also for a pending transition it did not request.
         current_status = "DISABLED" if module.params["wait"] else "DISABLING"
-    elif module.params["wait"] and not module.check_mode and (changed or previous_status not in ABSENT_STEADY_STATUSES):
+    elif settles:
         current_status = wait_for_status(
             client,
             module,
