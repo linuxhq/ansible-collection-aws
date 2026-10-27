@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - eks_cluster - a new cluster no longer sends an O(remote_network_config) without remote node or pod networks, which
+    CreateCluster rejects; such a configuration is now treated the same as omitting the option when creating a cluster,
+    as it already was when updating one, and check mode predicts the create without it.
+  - eks_cluster - an empty O(role_arn), or an empty entry in O(resources_vpc_config.subnet_ids) or
+    O(resources_vpc_config.security_group_ids), now fails before any AWS call, in check mode too. Previously check mode
+    predicted success, and on an existing cluster a blank network entry was sent only after the other updates in the
+    same run had been applied.
