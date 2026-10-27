@@ -27,6 +27,12 @@ options:
       - When provided, this must be exactly two uppercase letters.
       - This is optional for origination identities that are not
         country-specific.
+      - AWS requires this to associate a phone number, so with
+        O(state=present) the module fails without changes, including in check
+        mode, when this is omitted and O(origination_identity) is a phone
+        number ID or ARN that is not yet associated with the pool.
+      - With O(state=absent), when this is omitted for a phone number, the
+        country AWS lists for it in the pool is used.
     type: str
   origination_identity:
     description:
@@ -165,6 +171,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
     identity_matches,
     is_last_phone_number,
     is_last_phone_number_conflict,
+    is_phone_number_identity,
+    is_phone_number_reference,
     last_phone_number_message,
     pool_is_deleting,
     predicted_origination_identity,
@@ -274,9 +282,19 @@ def exit_result(module, changed, association):
 
 
 def ensure_present(client, module):
+    origination_identity = module.params["origination_identity"]
     pool, current = current_associations(client, module)
     association = current_association(module, current)
     changed = association is None
+
+    # AWS rejects associating a phone number without its country, which check mode would otherwise predict.
+    if changed and module.params["iso_country_code"] is None and is_phone_number_reference(origination_identity):
+        module.fail_json(
+            msg=(
+                f"iso_country_code is required to associate phone number {origination_identity} "
+                f"with Pinpoint SMS Voice V2 pool {module.params['pool_id']}"
+            )
+        )
 
     if changed and not module.check_mode:
         try:
@@ -332,10 +350,14 @@ def ensure_absent(client, module):
 
     if changed and not module.check_mode:
         response = None
+        request = association_request(module)
+        # AWS requires a phone number's country to disassociate it, and lists a phone number under its only country.
+        if "IsoCountryCode" not in request and is_phone_number_identity(association):
+            request = scrub_none_parameters(dict(request, IsoCountryCode=association.get("IsoCountryCode")))
 
         try:
             response = client.disassociate_origination_identity(
-                **association_request(module),
+                **request,
                 aws_retry=True,
             )
         except is_boto3_error_code("ResourceNotFoundException"):

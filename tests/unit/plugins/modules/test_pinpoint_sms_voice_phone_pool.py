@@ -425,18 +425,23 @@ SENDER_ARN = "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US"
 
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize(
-    ("origination_identity", "expected"),
+    ("origination_identity", "iso_country_code", "expected"),
     [
-        (PHONE_ARN, {"origination_identity": "phone-1", "origination_identity_arn": PHONE_ARN}),
-        (SENDER_ARN, {"origination_identity": SENDER_ARN}),
-        ("phone-1", {"origination_identity": "phone-1"}),
+        # AWS requires a phone number's country to create a pool from it.
+        (
+            PHONE_ARN,
+            "US",
+            {"iso_country_code": "US", "origination_identity": "phone-1", "origination_identity_arn": PHONE_ARN},
+        ),
+        (SENDER_ARN, None, {"origination_identity": SENDER_ARN}),
+        ("phone-1", None, {"origination_identity": "phone-1"}),
     ],
     ids=["phone-number-arn", "sender-id-arn", "id"],
 )
-def test_new_pool_predicts_listed_origination_identity(check_mode, origination_identity, expected):
+def test_new_pool_predicts_listed_origination_identity(check_mode, origination_identity, iso_country_code, expected):
     client = Mock()
     client.create_pool.return_value = {"MessageType": "TRANSACTIONAL", "PoolId": "pool-2", "Status": "CREATING"}
-    module = create_params(origination_identity, check_mode=check_mode)
+    module = create_params(origination_identity, check_mode=check_mode, iso_country_code=iso_country_code)
     with (
         patch.object(plugin, "find_pool", return_value=None),
         patch.object(plugin, "require_client_methods"),
@@ -1241,3 +1246,136 @@ def test_present_addresses_a_pool_given_by_arn_by_that_arn(update_status):
     assert wait_for_pool_active.call_args_list == expected_waits
     assert raised.value.values["changed"] is True
     assert raised.value.values["pool"]["deletion_protection_enabled"] is True
+
+
+def run_present_on_creating_pool(check_mode, **overrides):
+    """Run ensure_present on an existing CREATING pool that becomes ACTIVE whenever a real run waits for it."""
+    client = Mock()
+    client.update_pool.return_value = active_pool(DeletionProtectionEnabled=True)
+    module = FakeModule(main_params(name="primary", pool_id="pool-1", **overrides), check_mode=check_mode)
+    with (
+        patch.object(plugin, "find_pool", return_value=active_pool(Status="CREATING")),
+        patch.object(plugin, "wait_for_pool_active", return_value=active_pool()) as wait_for_pool_active,
+        patch.object(plugin, "pool_with_details", side_effect=lambda client, module, pool, changed=False: pool),
+        patch.object(plugin, "get_pool_by_id", return_value=active_pool(DeletionProtectionEnabled=True)),
+        patch.object(plugin, "reconcile_arn_tags"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    return raised.value.values, wait_for_pool_active.called
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"wait": True},
+        {"tags": {"Env": "test"}, "wait": False},
+        {"tags": {"Env": "test"}, "wait": True},
+        {"deletion_protection_enabled": True, "wait": False},
+        {"deletion_protection_enabled": True, "wait": True},
+    ],
+    ids=["unchanged-wait", "tags-no-wait", "tags-wait", "update-no-wait", "update-wait"],
+)
+def test_check_mode_predicts_the_active_status_a_real_run_waits_for(overrides):
+    real, real_waited = run_present_on_creating_pool(False, **overrides)
+    check, check_waited = run_present_on_creating_pool(True, **overrides)
+
+    assert real_waited is True
+    assert check_waited is False
+    assert real["pool"]["status"] == "ACTIVE"
+    assert check["pool"]["status"] == real["pool"]["status"]
+    assert check["changed"] is real["changed"]
+
+
+def test_unchanged_creating_pool_without_wait_keeps_the_observed_status():
+    # Without a change, wait=false does not wait, so both modes return the observed status.
+    for check_mode in (False, True):
+        result, waited = run_present_on_creating_pool(check_mode, wait=False)
+        assert waited is False
+        assert result["changed"] is False
+        assert result["pool"]["status"] == "CREATING"
+
+
+DESCRIBED_POOL = {
+    "CreatedTimestamp": "2026-10-27T12:16:56-07:00",
+    "DeletionProtectionEnabled": False,
+    "MessageType": "TRANSACTIONAL",
+    "OptOutListName": "Default",
+    "PoolArn": POOL_ARN,
+    "PoolId": "pool-1",
+    "SelfManagedOptOutsEnabled": False,
+    "SharedRoutesEnabled": False,
+    "Status": "ACTIVE",
+    "TwoWayEnabled": False,
+}
+
+
+@pytest.mark.parametrize("wait", [False, True])
+@pytest.mark.parametrize("deletion_protection_enabled", [False, True])
+def test_absent_check_mode_predicts_the_delete_pool_response(deletion_protection_enabled, wait):
+    described = dict(DESCRIBED_POOL, DeletionProtectionEnabled=deletion_protection_enabled)
+    # Live, DeletePool returns DELETING and every DescribePools field except DeletionProtectionEnabled.
+    deleted = {key: value for key, value in DESCRIBED_POOL.items() if key != "DeletionProtectionEnabled"}
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        client.update_pool.return_value = dict(DESCRIBED_POOL)
+        client.delete_pool.return_value = dict(deleted, Status="DELETING")
+        module = FakeModule(main_params(pool_id="pool-1", state="absent", wait=wait), check_mode=check_mode)
+        with (
+            patch.object(plugin, "describe_pools", return_value=[dict(described)]),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_absent(client, module)
+
+        assert client.delete_pool.called is not check_mode
+        assert client.update_pool.called is (deletion_protection_enabled and not check_mode)
+        results[check_mode] = raised.value.values
+
+    assert results[True] == results[False]
+    assert results[True]["pool"]["status"] == "DELETING"
+    assert "deletion_protection_enabled" not in results[True]["pool"]
+
+
+PHONE_NUMBER_ID = "phone-720f0a64a09b4e1ebdcc8273b27bd3fc"
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "origination_identity",
+    [PHONE_NUMBER_ID, f"arn:aws:sms-voice:us-east-1:123456789012:phone-number/{PHONE_NUMBER_ID}"],
+    ids=["id", "arn"],
+)
+def test_new_pool_from_a_phone_number_requires_a_country_before_any_write(origination_identity, check_mode):
+    client = Mock()
+    module = FakeModule(
+        main_params(iso_country_code=None, origination_identity=origination_identity), check_mode=check_mode
+    )
+    with (
+        patch.object(plugin, "find_pool", return_value=None),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "msg": (
+            "iso_country_code is required to create a Pinpoint SMS Voice V2 pool from phone number "
+            f"{origination_identity}"
+        )
+    }
+    assert client.mock_calls == []
+
+
+def test_existing_pool_holding_a_phone_number_is_adopted_without_a_country():
+    client = Mock()
+    module = FakeModule(main_params(iso_country_code=None, name="primary", origination_identity=PHONE_NUMBER_ID))
+    with (
+        patch.object(plugin, "find_pool", return_value=active_pool()),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["pool_id"] == "pool-1"
+    client.create_pool.assert_not_called()

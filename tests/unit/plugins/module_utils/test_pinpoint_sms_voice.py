@@ -4,6 +4,7 @@ import pytest
 from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    is_phone_number_reference,
     list_tags,
     predicted_origination_identity,
 )
@@ -80,3 +81,21 @@ def test_predicted_origination_identity_matches_the_associated_identity(
     origination_identity, iso_country_code, expected
 ):
     assert predicted_origination_identity(origination_identity, iso_country_code) == expected
+
+
+@pytest.mark.parametrize(
+    ("origination_identity", "expected"),
+    [
+        ("phone-720f0a64a09b4e1ebdcc8273b27bd3fc", True),
+        (PHONE_ARN, True),
+        # A sender ID has at most 11 characters, so even one that starts with "phone-" is not a phone number ID.
+        ("phone-1", False),
+        ("phone-12345", False),
+        ("sender-1", False),
+        (SENDER_ARN, False),
+        ("phone-720F0A64A09B4E1EBDCC8273B27BD3FC", False),
+        ("arn:aws:sms-voice:us-east-1:123456789012:phone-number", False),
+    ],
+)
+def test_phone_number_reference_matches_only_phone_number_ids_and_arns(origination_identity, expected):
+    assert is_phone_number_reference(origination_identity) is expected

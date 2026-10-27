@@ -1,6 +1,8 @@
 # Copyright: Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
+import re
+
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -33,6 +35,17 @@ def is_phone_number_identity(origination):
     """Return whether a ListPoolOriginationIdentities item is a phone number rather than a sender ID."""
     arn = origination.get("OriginationIdentityArn")
     return isinstance(origination.get("PhoneNumber"), str) or (isinstance(arn, str) and ":phone-number/" in arn)
+
+
+def is_phone_number_reference(origination_identity):
+    """Return whether a requested origination identity is a phone number ARN or an ID of the form AWS assigns them.
+
+    A sender ID has at most 11 characters, so it never matches the 38-character phone number ID form.
+    """
+    if origination_identity.startswith("arn:"):
+        return ":phone-number/" in origination_identity
+
+    return re.fullmatch(r"phone-[0-9a-f]{32}", origination_identity) is not None
 
 
 def identity_matches(origination, identities):

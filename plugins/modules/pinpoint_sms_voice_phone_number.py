@@ -335,6 +335,9 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     wait_deadline,
 )
 
+# DescribePhoneNumbers fields that the ReleasePhoneNumber response does not model.
+RELEASE_OMITTED_FIELDS = ("DeletionProtectionEnabled", "InternationalSendingEnabled", "MessagingLimits", "PoolId")
+
 SETTING_OPTIONS = {
     "DeletionProtectionEnabled": "deletion_protection_enabled",
     "InternationalSendingEnabled": "international_sending_enabled",
@@ -630,6 +633,11 @@ def ensure_absent(client, module):
     if changed and module.check_mode and current.get("PoolId"):
         require_not_last_pool_phone_number(client, module, current)
 
+    if changed and module.check_mode:
+        # A real run returns the ReleasePhoneNumber response, which reports the number DELETED.
+        response = {key: value for key, value in current.items() if key not in RELEASE_OMITTED_FIELDS}
+        response["Status"] = "DELETED"
+
     if changed and not module.check_mode:
         if current.get("Status") != "ACTIVE":
             current = wait_for_phone_number_active(client, module, phone_number_id)
@@ -852,6 +860,13 @@ def ensure_present(client, module):
                 tags=current.get("Tags"),
             )
             current, updates, tags_to_set, tag_keys_to_unset = phone_number_changes(client, module, current)
+        elif (
+            module.check_mode
+            and current.get("Status") != "ACTIVE"
+            and (wait or updates or tags_to_set or tag_keys_to_unset)
+        ):
+            # A real run first waits for the number to become ACTIVE.
+            current = dict(current, Status="ACTIVE")
 
         if updates and current.get("PoolId"):
             options = ", ".join(SETTING_OPTIONS[field] for field in updates)

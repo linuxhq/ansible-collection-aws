@@ -1697,3 +1697,132 @@ def test_resulting_tag_limit_fails_before_updating_settings(check_mode):
     assert raised.value.values.get("changed", False) is False
     client.update_phone_number.assert_not_called()
     client.tag_resource.assert_not_called()
+
+
+def settled_number(client, module, phone_number_id, tags=None, changed=False):
+    """Stand in for wait_for_phone_number_active: the number becomes ACTIVE, with the tags it was given."""
+    number = existing_number(PhoneNumberArn=PHONE_NUMBER_ARN)
+    if tags is not None:
+        number["Tags"] = tags
+
+    return number
+
+
+def run_present_on_transitional_number(check_mode, status, **overrides):
+    client = Mock()
+    client.update_phone_number.return_value = existing_number(DeletionProtectionEnabled=False)
+    module = FakeModule(phone_number_params(wait_delay=1, wait_timeout=1, **overrides), check_mode=check_mode)
+    with (
+        patch.object(
+            plugin, "query_list", return_value=[existing_number(PhoneNumberArn=PHONE_NUMBER_ARN, Status=status)]
+        ),
+        patch.object(plugin, "phone_number_tags", return_value={"Name": "sms"}),
+        patch.object(plugin, "wait_for_phone_number_active", side_effect=settled_number) as wait,
+        patch.object(plugin, "reconcile_arn_tags"),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    return raised.value.values, wait.called
+
+
+@pytest.mark.parametrize("status", ["ASSOCIATING", "DISASSOCIATING", "PENDING"])
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"wait": True},
+        {"deletion_protection_enabled": False, "wait": False},
+        {"tags": {"Env": "test", "Name": "sms"}, "wait": False},
+        {"deletion_protection_enabled": False, "tags": {"Env": "test", "Name": "sms"}, "wait": True},
+    ],
+    ids=["unchanged-wait", "update-no-wait", "tags-no-wait", "update-tags-wait"],
+)
+def test_check_mode_predicts_the_active_number_a_real_run_waits_for(status, overrides):
+    real, real_waited = run_present_on_transitional_number(False, status, **overrides)
+    check, check_waited = run_present_on_transitional_number(True, status, **overrides)
+
+    assert real_waited is True
+    assert check_waited is False
+    assert real["phone_number"]["status"] == "ACTIVE"
+    assert check == real
+
+
+def test_unchanged_transitional_number_without_wait_keeps_the_observed_status():
+    # Without a change, wait=false does not wait, so both modes return the observed status.
+    for check_mode in (False, True):
+        result, waited = run_present_on_transitional_number(check_mode, "PENDING")
+        assert waited is False
+        assert result["changed"] is False
+        assert result["phone_number"]["status"] == "PENDING"
+
+
+DESCRIBED_NUMBER = {
+    "CreatedTimestamp": "2026-10-27T12:16:28-07:00",
+    "DeletionProtectionEnabled": False,
+    "InternationalSendingEnabled": False,
+    "IsoCountryCode": "US",
+    "MessageType": "TRANSACTIONAL",
+    "MessagingLimits": {"RateLimits": {"SMS": 1}},
+    "MonthlyLeasingPrice": "1.00",
+    "NumberCapabilities": ["SMS"],
+    "NumberType": "SIMULATOR",
+    "OptOutListName": "Default",
+    "PhoneNumber": "+19015550195",
+    "PhoneNumberArn": PHONE_NUMBER_ARN,
+    "PhoneNumberId": "phone-1",
+    "SelfManagedOptOutsEnabled": False,
+    "Status": "ACTIVE",
+    "TwoWayEnabled": False,
+}
+# Live, ReleasePhoneNumber returns DELETED without these DescribePhoneNumbers fields, and its model has no PoolId.
+RELEASED_NUMBER = dict(
+    {
+        key: value
+        for key, value in DESCRIBED_NUMBER.items()
+        if key not in ("DeletionProtectionEnabled", "InternationalSendingEnabled", "MessagingLimits")
+    },
+    Status="DELETED",
+)
+
+
+@pytest.mark.parametrize("deletion_protection_enabled", [False, True])
+@pytest.mark.parametrize("pool_id", [None, "pool-1"], ids=["unpooled", "pooled"])
+def test_absent_check_mode_predicts_the_release_response(pool_id, deletion_protection_enabled):
+    described = dict(DESCRIBED_NUMBER, DeletionProtectionEnabled=deletion_protection_enabled)
+    if pool_id:
+        described["PoolId"] = pool_id
+
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        client.update_phone_number.return_value = dict(DESCRIBED_NUMBER)
+        client.release_phone_number.return_value = dict(RELEASED_NUMBER)
+        module = FakeModule(
+            phone_number_params(phone_number_id="phone-1", state="absent", wait_delay=1, wait_timeout=1),
+            check_mode=check_mode,
+        )
+        with (
+            patch.object(plugin, "get_phone_number", return_value=dict(described)),
+            # Disassociating the number removes only its pool.
+            patch.object(
+                plugin,
+                "wait_for_phone_number_active",
+                return_value={key: value for key, value in described.items() if key != "PoolId"},
+            ),
+            patch.object(
+                plugin, "paginated_query_with_retries", side_effect=pool_query(pool_with_other_phone_number(), None)
+            ),
+            patch.object(plugin, "require_client_methods"),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_absent(client, module)
+
+        assert client.release_phone_number.called is not check_mode
+        assert client.disassociate_origination_identity.called is bool(pool_id and not check_mode)
+        assert client.update_phone_number.called is (deletion_protection_enabled and not check_mode)
+        results[check_mode] = raised.value.values
+
+    assert results[True] == results[False]
+    assert results[True]["phone_number"]["status"] == "DELETED"
+    assert "pool_id" not in results[True]["phone_number"]
