@@ -753,8 +753,73 @@ def test_check_mode_update_predicts_the_modified_state(params, described_entries
     assert result.value.values["prefix_list"]["state"] == (
         expected_state or ("modify-complete" if wait_enabled else "modify-in-progress")
     )
+    # Without wait, the real run returns the shrink response, which still reports the described size.
+    assert result.value.values["prefix_list"]["max_entries"] == (params.get("max_entries", 2) if wait_enabled else 2)
     update.assert_not_called()
     assert client.mock_calls == []
+
+
+@pytest.mark.parametrize(
+    "described_size,described_cidrs,max_entries,desired_cidrs,resize_is_last",
+    [
+        # Grow only.
+        (2, ["10.0.0.0/8", "172.16.0.0/12"], 3, ["10.0.0.0/8", "172.16.0.0/12"], True),
+        # Shrink only.
+        (3, ["10.0.0.0/8", "172.16.0.0/12"], 2, ["10.0.0.0/8", "172.16.0.0/12"], True),
+        # Entry change, then shrink.
+        (2, ["10.0.0.0/8", "172.16.0.0/12"], 1, ["10.0.0.0/8"], True),
+        # Grow, then entry change.
+        (1, ["172.16.0.0/12"], 2, ["10.0.0.0/8", "172.16.0.0/12"], False),
+        # Entry change only.
+        (2, ["172.16.0.0/12"], 2, ["10.0.0.0/8"], False),
+    ],
+)
+def test_check_mode_without_wait_predicts_the_size_a_real_run_returns(
+    described_size, described_cidrs, max_entries, desired_cidrs, resize_is_last
+):
+    described = prefix_list(MaxEntries=described_size, Tags=[])
+    stored = {}
+
+    def modify(client, module, current, changed=False, max_entries=None, add_entries=None, remove_entries=None):
+        # Live: the response is modify-in-progress, reports the size before the request, and omits Tags.
+        response = dict(stored, State="modify-in-progress")
+        del response["Tags"]
+        if max_entries is None:
+            stored["Version"] += 1
+        else:
+            stored["MaxEntries"] = max_entries
+
+        return response
+
+    def run(check_mode):
+        stored.clear()
+        stored.update(described)
+        module = FakeModule(
+            present_params([{"cidr": cidr} for cidr in desired_cidrs], max_entries=max_entries, state="present"),
+            check_mode=check_mode,
+        )
+        with (
+            patch.object(plugin, "get_current", return_value=(described, [{"Cidr": cidr} for cidr in described_cidrs])),
+            patch.object(plugin, "modify_prefix_list", side_effect=modify) as modify_prefix_list,
+            patch.object(plugin, "describe_prefix_list", side_effect=lambda *args, **kwargs: dict(stored)),
+            patch.object(plugin, "wait_for_ready_state"),
+            pytest.raises(ModuleExit) as result,
+        ):
+            plugin.ensure_present(Mock(), module, OWNER)
+
+        return result.value.values, modify_prefix_list
+
+    predicted, check_modify = run(check_mode=True)
+    returned, real_modify = run(check_mode=False)
+
+    check_modify.assert_not_called()
+    assert ("max_entries" in real_modify.call_args.kwargs) is resize_is_last
+    assert returned["prefix_list"]["max_entries"] == (described_size if resize_is_last else max_entries)
+    assert returned["prefix_list"]["state"] == "modify-in-progress"
+    for key in ("max_entries", "state"):
+        assert predicted["prefix_list"][key] == returned["prefix_list"][key]
+
+    assert predicted["changed"] is returned["changed"] is True
 
 
 def test_add_entries_without_wait_returns_modified_version_and_state():
