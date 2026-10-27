@@ -10,6 +10,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules import utils
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleExit,
     ModuleFail,
+    ModuleInitialized,
     assert_module_contract,
 )
 
@@ -321,7 +322,7 @@ def test_vpc_endpoint_and_network_changes_use_separate_updates():
             "purge_tags": True,
             "resources_vpc_config": {
                 "endpoint_public_access": False,
-                "subnet_ids": ["subnet-new"],
+                "subnet_ids": ["subnet-new-a", "subnet-new-b"],
             },
             "tags": None,
             "wait": False,
@@ -333,7 +334,7 @@ def test_vpc_endpoint_and_network_changes_use_separate_updates():
         "name": "example",
         "resourcesVpcConfig": {
             "endpointPublicAccess": True,
-            "subnetIds": ["subnet-old"],
+            "subnetIds": ["subnet-old-a", "subnet-old-b"],
         },
         "status": "ACTIVE",
     }
@@ -355,7 +356,7 @@ def test_vpc_endpoint_and_network_changes_use_separate_updates():
         },
         {
             "name": "example",
-            "resourcesVpcConfig": {"subnetIds": ["subnet-new"]},
+            "resourcesVpcConfig": {"subnetIds": ["subnet-new-a", "subnet-new-b"]},
         },
     ]
     assert require.call_args_list == [
@@ -387,7 +388,7 @@ def test_vpc_endpoint_and_network_changes_use_separate_updates():
     wait_for_update.assert_called_once_with(client, module, "update-1", changed=True, deadline=ANY)
     assert raised.value.values["cluster"]["resources_vpc_config"] == {
         "endpoint_public_access": False,
-        "subnet_ids": ["subnet-new"],
+        "subnet_ids": ["subnet-new-a", "subnet-new-b"],
     }
 
 
@@ -572,7 +573,7 @@ def test_deleting_cluster_waits_then_recreates():
         {
             "name": "example",
             "purge_tags": True,
-            "resources_vpc_config": {"subnet_ids": ["subnet-1"]},
+            "resources_vpc_config": {"subnet_ids": ["subnet-1", "subnet-2"]},
             "role_arn": "arn:role",
             "tags": None,
             "wait": False,
@@ -653,7 +654,7 @@ def test_new_cluster_requires_role_and_subnets():
         (
             dict(
                 base,
-                resources_vpc_config={"subnet_ids": ["subnet-1"]},
+                resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
                 role_arn=None,
             ),
             "role_arn is required",
@@ -874,7 +875,7 @@ CREATED_CLUSTER = {
     "name": "example",
     "status": "CREATING",
     "roleArn": "arn:role",
-    "resourcesVpcConfig": {"subnetIds": ["subnet-1"]},
+    "resourcesVpcConfig": {"subnetIds": ["subnet-1", "subnet-2"]},
     "accessConfig": {"authenticationMode": "API", "bootstrapClusterCreatorAdminPermissions": True},
     "tags": {},
 }
@@ -885,7 +886,7 @@ DESCRIBED_CLUSTER = dict(CREATED_CLUSTER, status="ACTIVE", accessConfig={"authen
 def test_check_mode_create_predicts_the_status_tags_and_access_config_a_real_create_returns(wait):
     params = eks_params(
         access_config={"authentication_mode": "API", "bootstrap_cluster_creator_admin_permissions": True},
-        resources_vpc_config={"subnet_ids": ["subnet-1"]},
+        resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
         role_arn="arn:role",
         wait=wait,
     )
@@ -904,7 +905,10 @@ def test_check_mode_create_predicts_the_status_tags_and_access_config_a_real_cre
 @pytest.mark.parametrize("wait", [True, False])
 def test_check_mode_create_predicts_supplied_tags(wait):
     params = eks_params(
-        resources_vpc_config={"subnet_ids": ["subnet-1"]}, role_arn="arn:role", tags={"Env": "prod"}, wait=wait
+        resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
+        role_arn="arn:role",
+        tags={"Env": "prod"},
+        wait=wait,
     )
 
     check = run_present(FakeModule(params, check_mode=True), [None])[1]
@@ -992,7 +996,7 @@ def test_unwaited_change_overlays_only_the_settings_it_sends():
 
 @pytest.mark.parametrize("wait", [True, False])
 def test_check_mode_create_result_omits_only_keys_documented_as_conditional(wait):
-    params = eks_params(resources_vpc_config={"subnet_ids": ["subnet-1"]}, role_arn="arn:role", wait=wait)
+    params = eks_params(resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]}, role_arn="arn:role", wait=wait)
     check = run_present(FakeModule(params, check_mode=True), [None])[1]
     cluster_returns = utils.documented_returns(plugin)["cluster"]["contains"]
 
@@ -1551,7 +1555,7 @@ def test_check_mode_create_omits_unreturned_bootstrap_setting():
     module = FakeModule(
         eks_params(
             bootstrap_self_managed_addons=True,
-            resources_vpc_config={"subnet_ids": ["subnet-1"]},
+            resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
             role_arn="arn:role",
         ),
         check_mode=True,
@@ -1570,7 +1574,7 @@ def test_failure_after_create_reports_changed():
     client.create_cluster.return_value = {"cluster": {"arn": "arn:example", "name": "example", "status": "CREATING"}}
     module = FakeModule(
         eks_params(
-            resources_vpc_config={"subnet_ids": ["subnet-1"]},
+            resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
             role_arn="arn:role",
             wait=True,
             wait_delay=15,
@@ -2130,7 +2134,7 @@ def test_create_omits_a_remote_network_config_without_networks(remote_network_co
     # CreateCluster rejects remoteNetworkConfig without remote node networks (live), so empty lists mean none.
     params = eks_params(
         remote_network_config=remote_network_config,
-        resources_vpc_config={"subnet_ids": ["subnet-1"]},
+        resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
         role_arn="arn:role",
         wait=wait,
     )
@@ -2140,7 +2144,7 @@ def test_create_omits_a_remote_network_config_without_networks(remote_network_co
 
     client.create_cluster.assert_called_once_with(
         name="example",
-        resourcesVpcConfig={"subnetIds": ["subnet-1"]},
+        resourcesVpcConfig={"subnetIds": ["subnet-1", "subnet-2"]},
         roleArn="arn:role",
         aws_retry=True,
     )
@@ -2154,7 +2158,7 @@ def test_create_omits_a_remote_network_config_without_networks(remote_network_co
 def test_create_sends_a_remote_network_config_with_networks_as_supplied(check_mode):
     params = eks_params(
         remote_network_config={"remote_node_networks": [{"cidrs": ["10.80.0.0/16"]}], "remote_pod_networks": []},
-        resources_vpc_config={"subnet_ids": ["subnet-1"]},
+        resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
         role_arn="arn:role",
     )
     client = Mock(create_cluster=Mock(return_value={"cluster": CREATED_CLUSTER}))
@@ -2192,6 +2196,95 @@ def test_empty_remote_network_lists_still_remove_the_remote_networks_of_an_exist
     )
 
 
+NODE_NETWORKS = [{"cidrs": ["10.80.0.0/16"]}]
+POD_NETWORKS = [{"cidrs": ["10.81.0.0/16"]}]
+
+
+@pytest.mark.parametrize("wait", [True, False])
+@pytest.mark.parametrize(
+    "current_config, remote_network_config, described_config",
+    [
+        # DescribeCluster omits remoteNetworkConfig once both lists are removed (live).
+        (
+            {"remoteNodeNetworks": NODE_NETWORKS, "remotePodNetworks": POD_NETWORKS},
+            {"remote_node_networks": [], "remote_pod_networks": []},
+            None,
+        ),
+        # DescribeCluster omits an empty remotePodNetworks (live).
+        (
+            None,
+            {"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": []},
+            {"remoteNodeNetworks": NODE_NETWORKS},
+        ),
+        # UpdateClusterConfig keeps the node networks when they are omitted (live).
+        (
+            {"remoteNodeNetworks": NODE_NETWORKS, "remotePodNetworks": [{"cidrs": ["10.82.0.0/16"]}]},
+            {"remote_node_networks": None, "remote_pod_networks": POD_NETWORKS},
+            {"remoteNodeNetworks": NODE_NETWORKS, "remotePodNetworks": POD_NETWORKS},
+        ),
+    ],
+    ids=["remove", "nodes-with-empty-pods", "pods-only"],
+)
+def test_remote_network_update_predicts_the_configuration_eks_returns(
+    current_config, remote_network_config, described_config, wait
+):
+    def cluster(config):
+        return dict(STANDARD_CLUSTER, remoteNetworkConfig=config) if config is not None else STANDARD_CLUSTER
+
+    params = eks_params(remote_network_config=remote_network_config, wait=wait)
+
+    client, real = run_present(FakeModule(params), [cluster(current_config), cluster(described_config)])
+    check_client, check = run_present(FakeModule(params, check_mode=True), [cluster(current_config)])
+
+    client.update_cluster_config.assert_called_once()
+    assert check_client.mock_calls == []
+    assert check == real
+    if described_config is None:
+        assert "remote_network_config" not in check["cluster"]
+    else:
+        assert check["cluster"]["remote_network_config"] == plugin.boto3_resource_to_ansible_dict(
+            described_config, force_tags=False
+        )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "current_config, remote_network_config",
+    [
+        # UpdateClusterConfig: "remoteNodeNetworks can only be empty if the remotePodNetworks is also empty" (live).
+        (
+            {"remoteNodeNetworks": NODE_NETWORKS, "remotePodNetworks": POD_NETWORKS},
+            {"remote_node_networks": [], "remote_pod_networks": None},
+        ),
+        ({"remoteNodeNetworks": NODE_NETWORKS}, {"remote_node_networks": [], "remote_pod_networks": None}),
+        (
+            {"remoteNodeNetworks": NODE_NETWORKS, "remotePodNetworks": POD_NETWORKS},
+            {"remote_node_networks": [], "remote_pod_networks": POD_NETWORKS},
+        ),
+        # UpdateClusterConfig: "Remote node networks must be provided" (live).
+        (None, {"remote_node_networks": None, "remote_pod_networks": POD_NETWORKS}),
+    ],
+    ids=["remove-nodes-keep-pods", "remove-nodes-omit-pods", "remove-nodes-send-pods", "pods-without-nodes"],
+)
+def test_remote_pod_networks_without_remote_node_networks_fail_before_any_update(
+    current_config, remote_network_config, check_mode
+):
+    # The deletion protection update would otherwise be applied first.
+    current = dict(STANDARD_CLUSTER, remoteNetworkConfig=current_config) if current_config else STANDARD_CLUSTER
+    params = eks_params(deletion_protection=True, remote_network_config=remote_network_config)
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values == {
+        "msg": "remote_network_config.remote_pod_networks must be an empty list when no remote node networks remain"
+    }
+    assert client.mock_calls == []
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize(
     "overrides, message",
@@ -2202,13 +2295,15 @@ def test_empty_remote_network_lists_still_remove_the_remote_networks_of_an_exist
             "resources_vpc_config.subnet_ids must not contain empty entries",
         ),
         (
-            {"resources_vpc_config": {"security_group_ids": ["sg-1", ""], "subnet_ids": ["subnet-1"]}},
+            {"resources_vpc_config": {"security_group_ids": ["sg-1", ""], "subnet_ids": ["subnet-1", "subnet-2"]}},
             "resources_vpc_config.security_group_ids must not contain empty entries",
         ),
+        ({"version": ""}, "version must not be empty"),
     ],
 )
-def test_empty_role_arn_and_network_ids_fail_before_any_aws_call(overrides, message, check_mode):
-    # EKS rejects them (live), but only after check mode predicted success or other updates were applied.
+def test_empty_role_arn_version_and_network_ids_fail_before_any_aws_call(overrides, message, check_mode):
+    # EKS rejects them (live), but only after check mode predicted success or other updates were applied. A cluster
+    # always has a version, so an empty one would also never converge.
     params = eks_params(state="present", **overrides)
     module = FakeModule(params, check_mode=check_mode)
     module.client = Mock()
@@ -2220,6 +2315,77 @@ def test_empty_role_arn_and_network_ids_fail_before_any_aws_call(overrides, mess
 
     assert raised.value.values["msg"] == message
     module.client.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("subnet_ids", [["subnet-1"], ["subnet-1", "subnet-1"]])
+def test_create_with_fewer_than_two_distinct_subnets_fails_before_any_aws_call(subnet_ids, check_mode):
+    # CreateCluster rejects it with "Subnets specified must be in at least two different AZs" (live).
+    params = eks_params(resources_vpc_config={"subnet_ids": subnet_ids}, role_arn="arn:role", wait=True)
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=None),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values == {"msg": "resources_vpc_config.subnet_ids must contain at least two distinct subnets"}
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("status", ["ACTIVE", "UPDATING"])
+@pytest.mark.parametrize("subnet_ids", [[], ["subnet-a"], ["subnet-a", "subnet-a"]])
+def test_subnet_change_to_fewer_than_two_distinct_subnets_fails_before_any_update(subnet_ids, status, check_mode):
+    # UpdateClusterConfig rejects it (live), after the deletion protection update had already been applied. It also
+    # fails before the wait for an UPDATING cluster to become ACTIVE that precedes any change.
+    current = dict(STANDARD_CLUSTER, status=status)
+    params = eks_params(deletion_protection=True, resources_vpc_config={"subnet_ids": subnet_ids}, wait=False)
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "wait_for_cluster") as wait_for_cluster,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values == {"msg": "resources_vpc_config.subnet_ids must contain at least two distinct subnets"}
+    assert client.mock_calls == []
+    wait_for_cluster.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "tags", [{"Team": "R&D"}, {"Team": "a,b"}, {"Team#1": "x"}], ids=["ampersand", "comma", "hash-key"]
+)
+def test_tag_characters_aws_rejects_fail_before_aws(check_mode, tags):
+    # EKS TagResource rejects these with BadRequestException (live), which an update reaches only after its
+    # configuration and version updates and the removal of purged tags.
+    module = FakeModule(eks_params(deletion_protection=True, state="present", tags=tags), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": "tag keys and values must contain only letters, numbers, spaces, and _ . : / = + - @"
+    }
+    module.client.assert_not_called()
+
+
+def test_tags_with_characters_aws_accepts_reach_aws():
+    # EKS TagResource accepts these (live).
+    module = FakeModule(eks_params(state="present", tags={"Team": "a b_.:/=+-@é1", "日本": "٣²"}))
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
+
+    module.client.assert_called_once()
 
 
 def fake_clock():
@@ -2257,7 +2423,7 @@ def test_update_waits_share_one_wait_timeout_budget():
 
     module = FakeModule(
         eks_params(
-            resources_vpc_config={"endpoint_public_access": False, "subnet_ids": ["subnet-new"]},
+            resources_vpc_config={"endpoint_public_access": False, "subnet_ids": ["subnet-new-a", "subnet-new-b"]},
             wait=True,
             wait_delay=10,
             wait_timeout=100,
@@ -2266,7 +2432,7 @@ def test_update_waits_share_one_wait_timeout_budget():
     current = {
         "arn": "arn:example",
         "name": "example",
-        "resourcesVpcConfig": {"endpointPublicAccess": True, "subnetIds": ["subnet-old"]},
+        "resourcesVpcConfig": {"endpointPublicAccess": True, "subnetIds": ["subnet-old-a", "subnet-old-b"]},
         "status": "ACTIVE",
     }
     with (
@@ -2299,7 +2465,7 @@ def test_recreating_a_deleting_cluster_shares_one_wait_timeout_budget():
     client.create_cluster.return_value = {"cluster": {"arn": "arn:example", "name": "example", "status": "CREATING"}}
     module = FakeModule(
         eks_params(
-            resources_vpc_config={"subnet_ids": ["subnet-1"]},
+            resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
             role_arn="arn:role",
             wait=True,
             wait_delay=10,

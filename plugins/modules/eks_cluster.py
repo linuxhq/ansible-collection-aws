@@ -163,6 +163,9 @@ options:
       - The supplied configuration is sent as a whole when it differs from the cluster.
       - When creating a cluster, a configuration without remote node or pod networks is treated the same as
         omitting this option.
+      - When updating a cluster, AWS keeps the existing networks of an omitted list. To remove the remote
+        networks, set both O(remote_network_config.remote_node_networks) and
+        O(remote_network_config.remote_pod_networks) to empty lists.
       - This requires botocore C(1.35.72) or later, and C(1.37.24) or later to update an existing cluster.
     suboptions:
       remote_node_networks:
@@ -180,6 +183,7 @@ options:
       remote_pod_networks:
         description:
           - The remote pod networks. This must contain at most one entry.
+          - When updating a cluster that is left without remote node networks, this must be an empty list.
         elements: dict
         suboptions:
           cidrs:
@@ -227,6 +231,8 @@ options:
           - Subnet IDs for the cluster.
           - Required when creating a cluster.
           - Entries must not be empty.
+          - When creating a cluster or changing its subnets, this must contain at least two distinct subnets, and
+            AWS requires them to be in different Availability Zones.
         elements: str
         type: list
     type: dict
@@ -280,6 +286,7 @@ options:
       - Kubernetes version.
       - Quote the version in playbooks so YAML does not parse values such as
         V(1.30) as the float C(1.3).
+      - This must not be empty when specified.
     type: str
   wait:
     default: true
@@ -316,6 +323,10 @@ options:
           - Whether zonal shift is enabled.
         type: bool
     type: dict
+notes:
+  - O(tags) accepts at most 50 entries; keys must contain 1 to 128 characters
+    and values at most 256 characters, and both may contain only letters,
+    numbers, spaces, C(_), C(.), C(:), C(/), C(=), C(+), C(-), and C(@).
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -1010,6 +1021,14 @@ def check_mode_cluster(module, current, changes=None):
             if enabled in log_types.values()
         ]
 
+    if current is not None and "remoteNetworkConfig" in desired:
+        # EKS omits empty remote node and pod networks, and the whole configuration once both are removed.
+        remote_network_config = {key: value for key, value in cluster["remoteNetworkConfig"].items() if value}
+        if remote_network_config:
+            cluster["remoteNetworkConfig"] = remote_network_config
+        else:
+            del cluster["remoteNetworkConfig"]
+
     cluster["name"] = module.params["name"]
     if tags is not None:
         current_tags = cluster.get("tags") or {}
@@ -1062,6 +1081,10 @@ def ensure_present(client, module, deadline=None):
 
         if not (create_request.get("resourcesVpcConfig") or {}).get("subnetIds"):
             module.fail_json(msg="resources_vpc_config.subnet_ids is required to create an EKS cluster")
+
+        # EKS requires subnets in at least two Availability Zones.
+        if len(set(create_request["resourcesVpcConfig"]["subnetIds"])) < 2:
+            module.fail_json(msg="resources_vpc_config.subnet_ids must contain at least two distinct subnets")
 
         if module.check_mode:
             cluster = check_mode_cluster(module, None)
@@ -1184,6 +1207,23 @@ def ensure_present(client, module, deadline=None):
                     update_requests.append({"resourcesVpcConfig": vpc_config})
         else:
             update_requests.append(update_request)
+
+    # EKS requires subnets in at least two Availability Zones; failing here keeps other updates from applying first.
+    subnet_ids = (changes.get("resourcesVpcConfig") or {}).get("subnetIds")
+    if subnet_ids is not None and len(set(subnet_ids)) < 2:
+        module.fail_json(msg="resources_vpc_config.subnet_ids must contain at least two distinct subnets")
+
+    # EKS keeps the cluster's networks for an omitted list, rejects remote pod networks without remote node networks,
+    # and accepts empty remote node networks only together with empty remote pod networks.
+    remote_network_config = changes.get("remoteNetworkConfig")
+    if remote_network_config is not None:
+        node_networks = remote_network_config.get(
+            "remoteNodeNetworks", (current.get("remoteNetworkConfig") or {}).get("remoteNodeNetworks")
+        )
+        if not node_networks and remote_network_config.get("remotePodNetworks") != []:
+            module.fail_json(
+                msg="remote_network_config.remote_pod_networks must be an empty list when no remote node networks remain"
+            )
 
     if auto_mode_changed:
         # EKS requires compute, load balancing, and storage enablement in one request.
@@ -1524,7 +1564,7 @@ def main():
 
     state = module.params["state"]
     if state == "present":
-        require_valid_tags(module, module.params.get("tags"), 50)
+        require_valid_tags(module, module.params.get("tags"), 50, restricted_characters=True)
         if len(module.params["encryption_config"] or []) > 1:
             module.fail_json(msg="encryption_config must contain at most one entry")
 
@@ -1532,10 +1572,11 @@ def main():
             if len((module.params["remote_network_config"] or {}).get(network) or []) > 1:
                 module.fail_json(msg=f"remote_network_config.{network} must contain at most one entry")
 
-        # EKS rejects these, but check mode would predict success, and a blank network entry reaches EKS after other
-        # updates.
-        if module.params["role_arn"] == "":
-            module.fail_json(msg="role_arn must not be empty")
+        # EKS rejects these, but check mode would predict success, and a blank network entry or version reaches EKS
+        # after other updates.
+        for field in ("role_arn", "version"):
+            if module.params[field] == "":
+                module.fail_json(msg=f"{field} must not be empty")
 
         for field in ("security_group_ids", "subnet_ids"):
             if "" in ((module.params["resources_vpc_config"] or {}).get(field) or []):

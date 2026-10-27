@@ -1,0 +1,17 @@
+---
+bugfixes:
+  - eks_cluster - O(resources_vpc_config.subnet_ids) with fewer than two distinct subnets now fails before any AWS call
+    when it would create a cluster or change its subnets, in check mode too. EKS rejects it, but check mode predicted
+    success, and on an existing cluster the subnet change was sent only after other updates in the same run had been
+    applied.
+  - eks_cluster - an empty O(version) now fails before any AWS call, in check mode too. EKS rejects it, but check mode
+    predicted success, and on an existing cluster it was sent only after the configuration updates in the same run had
+    been applied.
+  - eks_cluster - O(tags) keys and values with characters other than letters, numbers, spaces, and C(_.:/=+-@), which
+    EKS rejects, now fail before any AWS call, in check mode too. Previously check mode predicted success, and a real
+    update applied its configuration and version updates before EKS rejected the tag.
+  - eks_cluster - updating O(remote_network_config) so that remote pod networks are not an empty list while no remote
+    node networks remain now fails before any AWS call, in check mode too. EKS rejects such an update, but check mode
+    predicted success and a real run could fail after other updates had been applied.
+  - eks_cluster - check mode and O(wait=false) results of a O(remote_network_config) update now omit empty remote node
+    and pod network lists, and the whole configuration once both are removed, as EKS returns the cluster.
