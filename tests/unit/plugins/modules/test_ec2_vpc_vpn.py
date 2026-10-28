@@ -774,6 +774,30 @@ def test_create_check_mode_validates_and_does_not_invent_an_id(params):
         plugin.ensure_present(client, FakeModule(params, check_mode=True), None)
 
 
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("blank", ["", " "])
+@pytest.mark.parametrize(
+    "gateways",
+    [
+        {"customer_gateway_id": None, "vpn_gateway_id": "vgw-123"},
+        {"customer_gateway_id": "cgw-123", "vpn_gateway_id": None},
+        {"customer_gateway_id": "cgw-123", "transit_gateway_id": None},
+    ],
+    ids=["customer_gateway_id", "vpn_gateway_id", "transit_gateway_id"],
+)
+def test_create_rejects_blank_gateway_ids_before_any_aws_call(params, check_mode, blank, gateways):
+    # No gateway has a blank ID, so EC2 can never create the connection that check mode would predict.
+    params.update({name: blank if value is None else value for name, value in gateways.items()})
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), None)
+
+    assert raised.value.values == {
+        "msg": "Creation requires name, customer_gateway_id, and either vpn_gateway_id or transit_gateway_id"
+    }
+    assert client.mock_calls == []
+
+
 @pytest.mark.parametrize(
     "overrides",
     [

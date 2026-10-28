@@ -1036,10 +1036,11 @@ def create_connection(client, module):
             "use name instead of the selector to create a VPN connection."
         )
 
+    # EC2 treats a whitespace-only gateway ID as omitted, so it counts as missing here too.
     if (
         not module.params["name"]
-        or not module.params["customer_gateway_id"]
-        or not (module.params["vpn_gateway_id"] or module.params["transit_gateway_id"])
+        or not (module.params["customer_gateway_id"] or "").strip()
+        or not (module.params["vpn_gateway_id"] or module.params["transit_gateway_id"] or "").strip()
     ):
         module.fail_json(
             msg="Creation requires name, customer_gateway_id, and either vpn_gateway_id or transit_gateway_id"
