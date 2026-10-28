@@ -189,10 +189,8 @@ routes:
       type: str
       sample: active
     transit_gateway_attachments:
-      description:
-        - The attachments that the route sends traffic to.
-        - An empty list for a blackhole route predicted in check mode.
-      returned: when the route has attachments, or when the route is predicted in check mode
+      description: The attachments that the route sends traffic to.
+      returned: when the route has attachments
       type: list
       elements: dict
       contains:
@@ -236,11 +234,11 @@ transit_gateway_route_table:
       type: str
     default_association_route_table:
       description: Whether this is the default association route table for the transit gateway.
-      returned: always, except for a create predicted in check mode
+      returned: always
       type: bool
     default_propagation_route_table:
       description: Whether this is the default propagation route table for the transit gateway.
-      returned: always, except for a create predicted in check mode
+      returned: always
       type: bool
     state:
       description: The route table state.
@@ -601,10 +599,10 @@ def desired_route_matches(route, desired):
 
 
 def check_mode_route(desired):
+    # EC2 returns a blackhole route without TransitGatewayAttachments.
     route = {
         "DestinationCidrBlock": desired["destination_cidr_block"],
         "State": "blackhole" if desired.get("blackhole") else "active",
-        "TransitGatewayAttachments": [],
         "Type": "static",
     }
     if desired.get("transit_gateway_attachment_id"):
@@ -787,6 +785,9 @@ def ensure_present(client, module):
             route_table = {
                 # EC2 creates the table as pending; a real run waits for it only when wait=true or routes are set.
                 "State": "available" if module.params["wait"] or manage_routes else "pending",
+                # A new route table is never the transit gateway's default association or propagation table.
+                "DefaultAssociationRouteTable": False,
+                "DefaultPropagationRouteTable": False,
                 "Tags": ansible_dict_to_boto3_tag_list(desired_tags(module)),
                 "TransitGatewayId": transit_gateway_id,
                 "TransitGatewayRouteTableId": "",

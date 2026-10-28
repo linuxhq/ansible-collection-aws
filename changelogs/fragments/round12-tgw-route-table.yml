@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - ec2_transit_gateway_route_table - a route table create predicted in check mode now returns
+    ``default_association_route_table`` and ``default_propagation_route_table`` as ``false``, as every real create
+    returns them. CreateTransitGatewayRouteTable cannot make the new table a default.
+  - ec2_transit_gateway_route_table - a blackhole route predicted in check mode no longer returns
+    ``transit_gateway_attachments`` as an empty list. EC2 returns a blackhole route without attachments, both when it
+    creates the route and when it lists it.

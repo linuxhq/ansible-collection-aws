@@ -307,12 +307,58 @@ def test_static_route_matches_attachment():
 
 
 def test_check_mode_builds_blackhole_route():
+    # EC2 returns a blackhole route without TransitGatewayAttachments (live probe).
     assert plugin.check_mode_route({"blackhole": True, "destination_cidr_block": "10.0.0.0/8"}) == {
         "DestinationCidrBlock": "10.0.0.0/8",
         "State": "blackhole",
-        "TransitGatewayAttachments": [],
         "Type": "static",
     }
+
+
+def test_check_mode_builds_attachment_route():
+    desired = {"destination_cidr_block": "10.0.0.0/8", "transit_gateway_attachment_id": "tgw-attach-1"}
+    assert plugin.check_mode_route(desired) == {
+        "DestinationCidrBlock": "10.0.0.0/8",
+        "State": "active",
+        "TransitGatewayAttachments": [{"TransitGatewayAttachmentId": "tgw-attach-1"}],
+        "Type": "static",
+    }
+
+
+@pytest.mark.parametrize("wait", [True, False])
+def test_check_mode_blackhole_route_predicts_the_route_a_real_create_returns(wait):
+    # Live probe: CreateTransitGatewayRoute and SearchTransitGatewayRoutes both return a blackhole route
+    # without TransitGatewayAttachments.
+    created = {"DestinationCidrBlock": "10.0.0.0/8", "State": "blackhole", "Type": "static"}
+    table = {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        client.create_transit_gateway_route.return_value = {"Route": created}
+        module = FakeModule(
+            present_params(
+                purge_routes=False,
+                routes=[{"blackhole": True, "destination_cidr_block": "10.0.0.0/8", "state": "present"}],
+                wait=wait,
+            ),
+            check_mode=check_mode,
+            client=client,
+        )
+        with (
+            patch.object(plugin, "find_route_table", return_value=table),
+            patch.object(plugin, "get_route", return_value=None),
+            patch.object(plugin, "wait_for_route", return_value=dict(created)) as wait_for_route,
+            patch.object(plugin, "require_client_methods"),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        results[check_mode] = raised.value.values
+        assert client.create_transit_gateway_route.call_count == int(not check_mode)
+        assert wait_for_route.call_count == int(wait and not check_mode)
+
+    assert results[True] == results[False]
+    assert results[True]["routes"] == [{"destination_cidr_block": "10.0.0.0/8", "state": "blackhole", "type": "static"}]
 
 
 def test_get_route_selects_only_live_static_routes():
@@ -439,9 +485,13 @@ def test_new_table_waits_before_routes_when_final_wait_is_disabled():
 @pytest.mark.parametrize(
     "wait, routes, state", [(True, None, "available"), (False, [], "available"), (False, None, "pending")]
 )
-def test_check_mode_create_predicts_the_state_a_real_create_returns(wait, routes, state):
-    # CreateTransitGatewayRouteTable returns the table as pending, with the tags it was created with (live probe).
+def test_check_mode_create_predicts_the_table_a_real_create_returns(wait, routes, state):
+    # CreateTransitGatewayRouteTable returns the table as pending, with the tags it was created with and both
+    # default route table flags false (live probe).
     created = {
+        "CreationTime": "2026-10-26T23:34:55+00:00",
+        "DefaultAssociationRouteTable": False,
+        "DefaultPropagationRouteTable": False,
         "State": "pending",
         "Tags": [{"Key": "Name", "Value": "main"}],
         "TransitGatewayId": "tgw-1",
@@ -471,10 +521,19 @@ def test_check_mode_create_predicts_the_state_a_real_create_returns(wait, routes
         ):
             plugin.ensure_present(client, module)
 
-        results[check_mode] = raised.value.values["transit_gateway_route_table"]["state"]
+        results[check_mode] = raised.value.values["transit_gateway_route_table"]
         client.create_tags.assert_not_called()
 
-    assert results == {False: state, True: state}
+    real, check = results[False], results[True]
+    assert real["state"] == check["state"] == state
+    assert real["default_association_route_table"] is check["default_association_route_table"] is False
+    assert real["default_propagation_route_table"] is check["default_propagation_route_table"] is False
+    # A check-mode create has no creation time or route table ID yet.
+    unknown = {"creation_time", "transit_gateway_route_table_id"}
+    assert {key: value for key, value in check.items() if key not in unknown} == {
+        key: value for key, value in real.items() if key not in unknown
+    }
+    assert check["transit_gateway_route_table_id"] == ""
 
 
 def test_absent_waits_for_pending_table_when_final_wait_is_disabled():
