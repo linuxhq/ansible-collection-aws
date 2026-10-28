@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - global_accelerator - fail before any change when a O(listeners[].endpoint_groups[].port_overrides[].listener_port)
+    is outside its listener's O(listeners[].port_ranges). AWS rejects such an endpoint group create or update, which
+    a real run reached only after creating or updating the accelerator and its listeners, while check mode predicted
+    success.
+  - global_accelerator - in check mode, a change from C(DUAL_STACK) to C(IPV4) now returns the accelerator without
+    C(dual_stack_dns_name) and its IPv6 C(ip_sets) entry, as a real run returns it with or without O(wait).

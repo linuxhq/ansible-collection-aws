@@ -954,6 +954,102 @@ def test_listener_port_ranges_must_not_overlap_across_listeners():
     )
 
 
+def present_params(listeners):
+    return {
+        "arn": None,
+        "enabled": None,
+        "idempotency_token": None,
+        "ip_address_type": None,
+        "ip_addresses": None,
+        "listeners": listeners,
+        "name": "example",
+        "purge_endpoint_groups": True,
+        "purge_listeners": True,
+        "purge_tags": True,
+        "state": "present",
+        "tags": None,
+        "wait": True,
+    }
+
+
+def test_listeners_with_different_protocols_may_share_ports():
+    # Live: AWS accepts a UDP 53 listener next to a TCP 53 listener on the same accelerator.
+    listeners = [
+        {
+            "client_affinity": None,
+            "endpoint_groups": None,
+            "port_ranges": [{"from_port": 53, "to_port": 53}],
+            "protocol": protocol,
+        }
+        for protocol in ("TCP", "UDP")
+    ]
+    module = FakeModule(present_params(listeners))
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(module, "client"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once()
+
+
+def port_override_listeners(listener_port):
+    endpoint_group = {
+        "endpoint_configurations": None,
+        "endpoint_group_region": "us-east-1",
+        "health_check_interval_seconds": None,
+        "health_check_path": None,
+        "health_check_port": None,
+        "health_check_protocol": None,
+        "port_overrides": [{"endpoint_port": 8080, "listener_port": listener_port}],
+        "threshold_count": None,
+        "traffic_dial_percentage": None,
+    }
+    return [
+        {
+            "client_affinity": None,
+            "endpoint_groups": [endpoint_group],
+            "port_ranges": [{"from_port": 443, "to_port": 443}, {"from_port": 80, "to_port": 81}],
+            "protocol": "TCP",
+        }
+    ]
+
+
+@pytest.mark.parametrize("listener_port", [79, 82, 442, 444])
+def test_port_override_outside_the_listener_port_ranges_fails_before_any_aws_call(listener_port):
+    # Live: Create/UpdateEndpointGroup reject such an override with InvalidArgumentException, which a real run reaches
+    # only after creating or updating the accelerator and its listeners.
+    module = FakeModule(present_params(port_override_listeners(listener_port)))
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(module, "client") as client_factory,
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == (
+        f"Endpoint group us-east-1 port_overrides listener_port {listener_port} "
+        "must be within the listener's port_ranges"
+    )
+    client_factory.assert_not_called()
+    ensure_present.assert_not_called()
+
+
+@pytest.mark.parametrize("listener_port", [80, 81, 443])
+def test_port_override_within_any_listener_port_range_is_accepted(listener_port):
+    module = FakeModule(present_params(port_override_listeners(listener_port)))
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(module, "client"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once()
+
+
 def test_endpoint_groups_reject_duplicate_regions_and_endpoints():
     endpoint = {
         "attachment_arn": None,
@@ -1110,6 +1206,13 @@ def test_endpoint_group_provider_limits_are_rejected():
                 ],
             ),
             "Endpoint group us-east-1 port_overrides listener_port values must be unique",
+        ),
+        (
+            dict(
+                base,
+                port_overrides=[{"endpoint_port": 8080, "listener_port": 80}],
+            ),
+            "Endpoint group us-east-1 port_overrides listener_port 80 must be within the listener's port_ranges",
         ),
     ]
     for endpoint_group, message in cases:
@@ -1963,6 +2066,44 @@ def test_check_mode_enabled_change_preserves_matching_ip_sets(family, addresses)
         {"ip_family": item["IpFamily"], "ip_addresses": item["IpAddresses"]} for item in ip_sets
     ]
     assert current["Enabled"] is True
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("wait, status", [(True, "DEPLOYED"), (False, "IN_PROGRESS")])
+@pytest.mark.parametrize("family_keys", [("IpAddressFamily", "IpFamily"), ("IpAddressFamily",), ("IpFamily",)])
+def test_check_mode_change_to_ipv4_drops_the_dual_stack_name_and_ipv6_addresses(wait, status, family_keys):
+    # Live: the UpdateAccelerator response and the deployed accelerator both omit DualStackDnsName and the IPv6 set.
+    def ip_set(family, addresses):
+        return dict({key: family for key in family_keys}, IpAddresses=addresses)
+
+    current = deployed_accelerator(
+        DnsName="a1234567890abcdef.awsglobalaccelerator.com",
+        DualStackDnsName="a1234567890abcdef.dualstack.awsglobalaccelerator.com",
+        Enabled=False,
+        IpAddressType="DUAL_STACK",
+        IpSets=[ip_set("IPv4", ["192.0.2.1", "192.0.2.2"]), ip_set("IPv6", ["2001:db8::1", "2001:db8::2"])],
+    )
+    module = FakeModule(accelerator_params(ip_address_type="IPV4", wait=wait), check_mode=True)
+    client = Mock()
+    with (
+        patch.object(plugin, "get_accelerator", return_value=current),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    accelerator = result.value.values["accelerator"]
+    assert result.value.values["changed"] is True
+    assert accelerator["dns_name"] == "a1234567890abcdef.awsglobalaccelerator.com"
+    assert "dual_stack_dns_name" not in accelerator
+    assert accelerator["ip_address_type"] == "IPV4"
+    returned_keys = {"IpAddressFamily": "ip_address_family", "IpFamily": "ip_family"}
+    assert accelerator["ip_sets"] == [
+        dict({returned_keys[key]: "IPv4" for key in family_keys}, ip_addresses=["192.0.2.1", "192.0.2.2"])
+    ]
+    assert accelerator["status"] == status
+    assert current["IpAddressType"] == "DUAL_STACK"
+    assert "DualStackDnsName" in current
+    assert len(current["IpSets"]) == 2
     assert client.mock_calls == []
 
 
