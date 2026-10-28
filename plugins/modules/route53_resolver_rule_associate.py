@@ -117,7 +117,7 @@ resolver_rule_association:
       type: str
     status:
       description: The association status.
-      returned: except for a create or replacement predicted in check mode
+      returned: always
       type: str
       sample: COMPLETE
     status_message:
@@ -398,8 +398,10 @@ def ensure_present(client, module, deadline=None):
                 deadline=deadline,
             )
     elif changed and module.check_mode:
+        # AssociateResolverRule returns a CREATING association; a waited run returns it once COMPLETE.
         association = {
             "ResolverRuleId": resolver_rule_id,
+            "Status": "COMPLETE" if module.params["wait"] else "CREATING",
             "VPCId": vpc_id,
         }
         if desired_association["name"] is not None:
