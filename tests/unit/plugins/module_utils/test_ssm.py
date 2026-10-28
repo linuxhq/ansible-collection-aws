@@ -141,6 +141,7 @@ def test_describe_ssm_document_reports_other_errors():
 
 def test_require_valid_ssm_targets_accepts_valid_targets():
     require_valid_ssm_targets(FakeModule({}), [{"key": "tag:Role", "values": ["web"] + ["web"] * 50}])
+    require_valid_ssm_targets(FakeModule({}), [{"key": "k" * 163, "values": ["web"]}])
 
 
 @pytest.mark.parametrize(
@@ -148,6 +149,8 @@ def test_require_valid_ssm_targets_accepts_valid_targets():
     [
         ({"key": None, "values": ["web"]}, "targets[].key must be 1 to 163 characters"),
         ({"key": "", "values": ["web"]}, "targets[].key must be 1 to 163 characters"),
+        # AWS refuses a blank target key with InvalidTarget.
+        ({"key": " ", "values": ["web"]}, "targets[].key must be 1 to 163 characters"),
         ({"key": "k" * 164, "values": ["web"]}, "targets[].key must be 1 to 163 characters"),
         ({"key": "tag:Role", "values": []}, "targets[].values must contain at least one entry"),
         (

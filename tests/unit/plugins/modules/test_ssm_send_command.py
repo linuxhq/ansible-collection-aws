@@ -97,7 +97,23 @@ def test_provider_limits_are_rejected():
             {"timeout_seconds": None, "instance_ids": [f"i-{index}" for index in range(51)], "targets": []},
             "instance_ids must contain at most 50 entries",
         ),
+        (
+            {"document_name": " ", "timeout_seconds": None, "instance_ids": ["i-1"], "targets": []},
+            "document_name must not be empty",
+        ),
         ({"timeout_seconds": None, "instance_ids": [""], "targets": []}, "instance_ids must not contain empty entries"),
+        (
+            {"timeout_seconds": None, "instance_ids": [" "], "targets": []},
+            "instance_ids must not contain empty entries",
+        ),
+        (
+            {"timeout_seconds": None, "instance_ids": ["i-1", "  "], "targets": []},
+            "instance_ids must not contain empty entries",
+        ),
+        (
+            {"timeout_seconds": None, "instance_ids": [], "targets": [{"key": " ", "values": ["i-1"]}]},
+            "targets[].key must be 1 to 163 characters",
+        ),
         (
             {
                 "timeout_seconds": None,
@@ -621,6 +637,36 @@ def test_check_mode_rejects_invalid_options():
         plugin.main()
 
     assert raised.value.values["msg"] == "timeout_seconds must be between 30 and 2592000"
+    module.client.assert_not_called()
+    require.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"document_name": " "}, "document_name must not be empty"),
+        ({"instance_ids": [" "]}, "instance_ids must not contain empty entries"),
+        ({"instance_ids": ["i-1", "  "]}, "instance_ids must not contain empty entries"),
+        (
+            {"instance_ids": None, "targets": [{"key": " ", "values": ["i-1"]}]},
+            "targets[].key must be 1 to 163 characters",
+        ),
+    ],
+    ids=["document-name", "instance-id", "second-instance-id", "target-key"],
+)
+def test_check_mode_rejects_blank_values_before_aws(overrides, message):
+    # SendCommand accepts no blank document name, instance ID or target key, so check mode must not report a send.
+    module = FakeModule(send_params(**overrides), check_mode=True)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_positive_wait_bounds"),
+        patch.object(plugin, "require_client_methods") as require,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": message}
     module.client.assert_not_called()
     require.assert_not_called()
 

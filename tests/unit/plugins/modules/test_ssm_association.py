@@ -411,12 +411,17 @@ def test_association_name_requires_sdk_support_on_create():
             {"association_name": "has space"},
             "association_name must be 3 to 128 letters, numbers, underscores, hyphens, or periods",
         ),
+        ({"name": ""}, "name must not be empty"),
+        ({"name": " "}, "name must not be empty"),
         ({"schedule_expression": ""}, "schedule_expression must be 1 to 256 characters"),
+        ({"schedule_expression": " "}, "schedule_expression must be 1 to 256 characters"),
+        ({"schedule_expression": "x" * 257}, "schedule_expression must be 1 to 256 characters"),
         (
             {"targets": [{"key": f"tag:Role{index}", "values": ["web"]} for index in range(6)]},
             "targets must contain at most 5 targets",
         ),
         ({"targets": [{"key": "", "values": ["web"]}]}, "targets[].key must be 1 to 163 characters"),
+        ({"targets": [{"key": " ", "values": ["web"]}]}, "targets[].key must be 1 to 163 characters"),
         (
             {"targets": [{"key": "tag:Role", "values": [f"role-{index}" for index in range(51)]}]},
             "targets[].values must contain at most 50 entries",
@@ -449,6 +454,51 @@ def test_empty_targets_are_rejected_before_aws(check_mode):
         "msg": "targets must contain at least one entry; omit targets to keep the current targets",
     }
     module.client.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"name": " "}, "name must not be empty"),
+        ({"schedule_expression": " "}, "schedule_expression must be 1 to 256 characters"),
+        ({"targets": [{"key": " ", "values": ["web"]}]}, "targets[].key must be 1 to 163 characters"),
+    ],
+    ids=["name", "schedule", "target-key"],
+)
+def test_blank_present_inputs_are_rejected_before_aws(overrides, message, check_mode):
+    # A blank name matches no association, and AWS refuses all three on create, so check mode must not predict one.
+    module = FakeModule(params(**overrides), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": message}
+    module.client.assert_not_called()
+
+
+def test_longest_schedule_and_target_key_are_accepted():
+    module = FakeModule(params(schedule_expression="r" * 256, targets=[{"key": "k" * 163, "values": ["web"]}]))
+    result, _require_client_methods = run_main(module, [])
+
+    assert isinstance(result, ModuleExit)
+
+
+def test_absent_with_a_blank_name_still_looks_up_associations():
+    module = FakeModule(params(name=" ", state="absent"), client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]) as query_list,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert query_list.call_args.kwargs["AssociationFilterList"] == [{"key": "Name", "value": " "}]
+    assert raised.value.values == {"changed": False, "name": " ", "state": "absent"}
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
