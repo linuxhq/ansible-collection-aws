@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - notifications_hub - in check mode, a predicted hub registration now returns C(status_summary) with the
+    C(ACTIVE) status and empty reason that RegisterNotificationHub returns, as a real run does.
+  - notifications_contacts - in check mode, a predicted contact creation now returns the C(inactive) C(status) that
+    AWS gives a new contact, as a real run does. A real run that cannot read the new contact back also returns it.

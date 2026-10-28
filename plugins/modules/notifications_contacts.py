@@ -205,9 +205,11 @@ def ensure_present(client, module):
     name = module.params["name"]
     tags = module.params["tags"]
     contact = get_contact_by_address(client, module)
+    # A new contact is inactive until its address is activated.
     desired_contact = {
         "address": email_address,
         "name": name,
+        "status": "inactive",
     }
     # The contact is matched by address, so only a missing contact needs creating.
     resource_changed = contact is None

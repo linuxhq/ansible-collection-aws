@@ -316,7 +316,45 @@ def test_new_contact_tolerates_post_create_lookup_race():
         "address": "ops@example.com",
         "arn": "arn:new",
         "name": "Operations",
+        "status": "inactive",
     }
+
+
+@pytest.mark.parametrize("tags", [None, {}, {"team": "ops"}])
+def test_check_mode_create_predicts_the_created_contact(tags):
+    # GetEmailContact right after CreateEmailContact, as AWS answered live: a new contact is inactive.
+    created = {
+        "address": "ops@example.com",
+        "arn": "arn:new",
+        "creationTime": "2026-10-27T15:57:04.273000+00:00",
+        "name": "Operations",
+        "status": "inactive",
+        "updateTime": "2026-10-27T15:57:04.273000+00:00",
+    }
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        client.create_email_contact.return_value = {"arn": "arn:new"}
+        client.get_email_contact.return_value = {"emailContact": dict(created)}
+        module = FakeModule(
+            {"email_address": "ops@example.com", "name": "Operations", "purge_tags": True, "tags": tags},
+            check_mode=check_mode,
+        )
+        with (
+            patch.object(plugin, "get_contact_by_address", return_value=None),
+            patch.object(plugin, "require_client_methods"),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        assert raised.value.values["changed"] is True
+        assert client.create_email_contact.called is not check_mode
+        results[check_mode] = raised.value.values["email_contact"]
+
+    # AWS assigns the ARN and the timestamps, so check mode cannot predict them.
+    real = {key: value for key, value in results[False].items() if key not in ("arn", "creation_time", "update_time")}
+    assert results[True] == real
+    assert results[True]["status"] == "inactive"
 
 
 def test_converged_contact_does_not_require_unused_operations():

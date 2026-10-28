@@ -246,7 +246,8 @@ def ensure_present(client, module):
 
         hub.pop("ResponseMetadata", None)
     elif changed and module.check_mode:
-        hub = {"notificationHubRegion": region}
+        # RegisterNotificationHub returns the hub already ACTIVE, with an empty reason.
+        hub = {"notificationHubRegion": region, "statusSummary": {"status": "ACTIVE", "reason": ""}}
 
     module.exit_json(
         changed=changed,
