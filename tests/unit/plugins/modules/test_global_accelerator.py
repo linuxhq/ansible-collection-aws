@@ -1050,6 +1050,90 @@ def test_port_override_within_any_listener_port_range_is_accepted(listener_port)
     ensure_present.assert_called_once()
 
 
+EIP_ALLOCATION_ID = "eipalloc-0123456789abcdef0"
+EIP_ARN = f"arn:aws:ec2:us-west-2:123456789012:elastic-ip/{EIP_ALLOCATION_ID}"
+
+
+def client_ip_preservation_listeners(endpoint_id, client_ip_preservation_enabled):
+    endpoint_group = {
+        "endpoint_configurations": [
+            {
+                "attachment_arn": None,
+                "client_ip_preservation_enabled": client_ip_preservation_enabled,
+                "endpoint_id": endpoint_id,
+                "weight": 128,
+            }
+        ],
+        "endpoint_group_region": "us-west-2",
+        "health_check_interval_seconds": None,
+        "health_check_path": None,
+        "health_check_port": None,
+        "health_check_protocol": None,
+        "port_overrides": None,
+        "threshold_count": None,
+        "traffic_dial_percentage": None,
+    }
+    return [
+        {
+            "client_affinity": None,
+            "endpoint_groups": [endpoint_group],
+            "port_ranges": [{"from_port": 443, "to_port": 443}],
+            "protocol": "TCP",
+        }
+    ]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("endpoint_id", [EIP_ALLOCATION_ID, EIP_ARN], ids=["allocation-id", "arn"])
+def test_client_ip_preservation_on_an_elastic_ip_endpoint_fails_before_any_aws_call(check_mode, endpoint_id):
+    # Live: Create/UpdateEndpointGroup reject it for an Elastic IP address given by allocation ID or by ARN with
+    # InvalidArgumentException, which a real run reaches only after creating or updating the accelerator and listeners.
+    module = FakeModule(
+        present_params(client_ip_preservation_listeners(endpoint_id, True)),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(module, "client") as client_factory,
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": (
+            f"Endpoint group us-west-2 endpoint {endpoint_id} is an Elastic IP address, "
+            "which does not support client_ip_preservation_enabled=true"
+        )
+    }
+    client_factory.assert_not_called()
+    ensure_present.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("endpoint_id", "client_ip_preservation_enabled"),
+    [
+        (EIP_ALLOCATION_ID, False),
+        (EIP_ALLOCATION_ID, None),
+        (EIP_ARN, False),
+        ("i-0123456789abcdef0", True),
+        ("arn:aws:ec2:us-west-2:123456789012:instance/i-0123456789abcdef0", True),
+        ("arn:aws:elasticloadbalancing:us-west-2:123456789012:loadbalancer/app/example/0123456789abcdef", True),
+    ],
+    ids=["eip-false", "eip-omitted", "eip-arn-false", "instance", "instance-arn", "load-balancer"],
+)
+def test_client_ip_preservation_is_left_to_aws_for_other_endpoints(endpoint_id, client_ip_preservation_enabled):
+    module = FakeModule(present_params(client_ip_preservation_listeners(endpoint_id, client_ip_preservation_enabled)))
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(module, "client"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once()
+
+
 def test_endpoint_groups_reject_duplicate_regions_and_endpoints():
     endpoint = {
         "attachment_arn": None,
@@ -2622,6 +2706,42 @@ def test_tag_limit_allows_up_to_fifty_user_tags(check_mode, current_tags, new_ta
     else:
         tagger.assert_called_once()
         client.update_accelerator.assert_called_once()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "tags", [{"Team": "R&D"}, {"Team": "a,b"}, {"Team#1": "x"}], ids=["ampersand", "comma", "hash-key"]
+)
+def test_tag_characters_aws_rejects_fail_before_any_aws_call(check_mode, tags):
+    # Live: TagResource rejects these with InvalidArgumentException, which an update reaches only after its accelerator,
+    # listener, and endpoint group writes and the removal of purged tags.
+    module = FakeModule(dict(present_params(None), tags=tags), check_mode=check_mode)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(module, "client") as client_factory,
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": "tag keys and values must contain only letters, numbers, spaces, and _ . : / = + - @"
+    }
+    client_factory.assert_not_called()
+    ensure_present.assert_not_called()
+
+
+def test_tags_with_characters_aws_accepts_reach_aws():
+    # Live: TagResource accepts these.
+    module = FakeModule(dict(present_params(None), tags={"Team": "a b_.:/=+-@é1", "日本": "٣²"}))
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(module, "client"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once()
 
 
 def run_recheck_and_update_waits(monotonic, waiter_results):

@@ -123,6 +123,8 @@ options:
                     endpoint.
                   - When omitted, AWS applies the default for the endpoint
                     type.
+                  - AWS does not support C(true) for Elastic IP address
+                    endpoints, whether given by allocation ID or by ARN.
                 type: bool
               endpoint_id:
                 description:
@@ -307,6 +309,10 @@ options:
       - This must be 1 or greater.
     default: 600
     type: int
+notes:
+  - O(tags) accepts at most 50 entries; keys must contain 1 to 128 characters
+    and values at most 256 characters, and both may contain only letters,
+    numbers, spaces, C(_), C(.), C(:), C(/), C(=), C(+), C(-), and C(@).
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -575,6 +581,7 @@ except ImportError:
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 
+from ansible_collections.amazon.aws.plugins.module_utils.arn import parse_aws_arn
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
@@ -2248,6 +2255,20 @@ def main():
                             msg=f"Endpoint group {region} endpoint_configurations weight must be between 0 and 255"
                         )
 
+                    # AWS rejects this endpoint group write, reached after accelerator and listener changes, for an
+                    # Elastic IP address given by allocation ID or by ARN.
+                    endpoint_arn = parse_aws_arn(endpoint_id) or {}
+                    if configuration.get("client_ip_preservation_enabled") and (
+                        endpoint_id.startswith("eipalloc-")
+                        or (endpoint_arn.get("service") == "ec2" and endpoint_arn.get("resource_type") == "elastic-ip")
+                    ):
+                        module.fail_json(
+                            msg=(
+                                f"Endpoint group {region} endpoint {endpoint_id} is an Elastic IP address, "
+                                "which does not support client_ip_preservation_enabled=true"
+                            )
+                        )
+
                 override_listener_ports = set()
                 for port_override in endpoint_group.get("port_overrides") or []:
                     if not (
@@ -2276,7 +2297,7 @@ def main():
                             )
                         )
 
-        require_valid_tags(module, module.params["tags"], 50)
+        require_valid_tags(module, module.params["tags"], 50, restricted_characters=True)
 
     # Some ansible-core versions let an explicit null past required_if and required_one_of; fail as if it were omitted.
     if module.params.get("arn") is None and module.params.get("name") is None:

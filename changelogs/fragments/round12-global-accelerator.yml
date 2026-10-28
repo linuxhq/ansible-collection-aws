@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - global_accelerator - O(listeners[].endpoint_groups[].endpoint_configurations[].client_ip_preservation_enabled=true)
+    on an Elastic IP address endpoint, given by allocation ID or by ARN, now fails before any AWS call, in check mode
+    too. AWS rejects it on the endpoint group create or update, which a real run reached only after creating or
+    updating the accelerator and its listeners, while check mode predicted success.
+  - global_accelerator - O(tags) keys and values with characters other than letters, numbers, spaces, and
+    C(_.:/=+-@), which Global Accelerator rejects, now fail before any AWS call, in check mode too. Previously check
+    mode predicted success, and a real update applied its accelerator, listener, and endpoint group changes and removed
+    purged tags before Global Accelerator rejected the tag.
