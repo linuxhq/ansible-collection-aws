@@ -211,6 +211,23 @@ def test_tags_with_characters_aws_accepts_reach_aws():
     ensure_present.assert_called_once_with(client, module)
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_name_tag_overridden_by_name_is_not_checked_for_characters(check_mode):
+    # name replaces the Name entry in tags, so its rejected characters never reach AWS.
+    client = Mock()
+    module = FakeModule(
+        main_params(name="primary", tags={"Name": "R&D", "Team": "ops"}), check_mode=check_mode, client=client
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once_with(client, module)
+
+
 @pytest.mark.parametrize("state", ["absent", "present"])
 def test_explicit_pool_id_ignores_an_empty_origination_identity(state):
     module = FakeModule(main_params(origination_identity="", pool_id="pool-1", state=state), client=Mock())

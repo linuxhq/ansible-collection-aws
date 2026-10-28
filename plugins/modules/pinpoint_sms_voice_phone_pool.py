@@ -866,9 +866,10 @@ def main():
         if iso_country_code is not None and not re.fullmatch(r"[A-Z]{2}", iso_country_code):
             module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
 
-        require_valid_tags(module, module.params["tags"], 200, restricted_characters=True)
+        require_valid_tags(module, module.params["tags"], 200)
         tags = dict(module.params["tags"] or {})
         tags["Name"] = module.params["name"]
+        # Check characters only on the tags sent to AWS, after name replaces any Name entry in tags.
         require_valid_tags(module, tags, 200, restricted_characters=True)
 
         # AWS rejects an empty origination identity, which check mode would otherwise predict as a new pool.
