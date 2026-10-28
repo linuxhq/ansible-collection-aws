@@ -1379,3 +1379,53 @@ def test_existing_pool_holding_a_phone_number_is_adopted_without_a_country():
     assert raised.value.values["changed"] is False
     assert raised.value.values["pool_id"] == "pool-1"
     client.create_pool.assert_not_called()
+
+
+# Settings a new pool inherits from its origination identity, and values AWS assigns, which check mode cannot predict.
+UNPREDICTED_NEW_POOL_FIELDS = {
+    "created_timestamp",
+    "opt_out_list_name",
+    "pool_arn",
+    "pool_id",
+    "self_managed_opt_outs_enabled",
+    "two_way_enabled",
+}
+
+
+def create_new_pool(check_mode, wait):
+    """Create a pool from a phone number; a real run gets the live CreatePool response and, waiting, DescribePools."""
+    client = Mock()
+    # Live, CreatePool returned CREATING with every DescribePools field and the requested tags.
+    client.create_pool.return_value = dict(DESCRIBED_POOL, Status="CREATING", Tags=[{"Key": "Name", "Value": "main"}])
+    module = FakeModule(main_params(origination_identity=PHONE_NUMBER_ID, wait=wait), check_mode=check_mode)
+    with (
+        patch.object(plugin, "find_pool", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_pool_active", return_value=dict(DESCRIBED_POOL)) as wait_for_pool_active,
+        patch.object(
+            plugin,
+            "pool_with_details",
+            side_effect=lambda client, module, pool, changed=False: dict(pool, Tags=[{"Key": "Name", "Value": "main"}]),
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert client.create_pool.called is not check_mode
+    assert wait_for_pool_active.called is (wait and not check_mode)
+    return raised.value.values["pool"]
+
+
+@pytest.mark.parametrize("wait", [False, True])
+def test_new_pool_check_mode_predicts_the_settings_a_real_create_returns(wait):
+    real = create_new_pool(False, wait)
+    predicted = create_new_pool(True, wait)
+
+    # test_new_pool_predicts_listed_origination_identity covers the predicted origination identity.
+    predicted.pop("origination_identities")
+    real.pop("origination_identities", None)
+    assert {key: real.get(key) for key in predicted} == predicted
+    assert set(real) - set(predicted) == UNPREDICTED_NEW_POOL_FIELDS
+    # Shared routes are not inherited from the origination identity, and AWS disables them on a new pool.
+    assert predicted["shared_routes_enabled"] is False

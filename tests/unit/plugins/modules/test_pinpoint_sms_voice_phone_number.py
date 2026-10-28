@@ -1,6 +1,7 @@
 from unittest.mock import Mock, call, patch
 
 import pytest
+from botocore.session import get_session
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import pinpoint_sms_voice
 from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_phone_number as plugin
@@ -10,6 +11,16 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleFail,
     assert_module_contract,
 )
+
+
+def model_client():
+    """Return a mock client with the real botocore model, for check-mode predictions that read it.
+
+    The model is loaded without creating a client, so no credential lookup runs.
+    """
+    client = Mock()
+    client.meta.service_model = get_session().get_service_model("pinpoint-sms-voice-v2")
+    return client
 
 
 def pool_with_other_phone_number():
@@ -28,7 +39,7 @@ def test_module_contract():
 
 
 def test_accepts_four_capabilities():
-    client = Mock()
+    client = model_client()
     module = FakeModule(
         {
             "client_token": None,
@@ -78,7 +89,7 @@ def test_accepts_four_capabilities():
 
 
 def test_capability_limit_counts_unique_values():
-    client = Mock()
+    client = model_client()
     module = FakeModule(
         {
             "client_token": None,
@@ -132,11 +143,13 @@ def test_simulator_numbers_require_transactional_messages():
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("pool_id", ["", "  "])
-def test_present_rejects_empty_pool_id_before_any_aws_call(pool_id, check_mode):
+@pytest.mark.parametrize("value", ["", "  "])
+@pytest.mark.parametrize("option", ["opt_out_list_name", "pool_id", "registration_id"])
+def test_present_rejects_empty_identifiers_before_any_aws_call(option, value, check_mode):
+    # AWS rejects each of them empty or blank, so check mode must not predict a request or an update with one.
     client = Mock()
     module = FakeModule(
-        dict(phone_number_params(pool_id=pool_id), wait_delay=5, wait_timeout=300),
+        dict(phone_number_params(**{option: value}), wait_delay=5, wait_timeout=300),
         check_mode=check_mode,
         client=client,
     )
@@ -147,9 +160,35 @@ def test_present_rejects_empty_pool_id_before_any_aws_call(pool_id, check_mode):
     ):
         plugin.main()
 
-    assert raised.value.values["msg"] == "pool_id must not be empty"
+    assert raised.value.values["msg"] == f"{option} must not be empty"
     connect.assert_not_called()
     assert client.mock_calls == []
+
+
+def test_absent_ignores_empty_identifiers_used_only_with_present():
+    client = Mock()
+    module = FakeModule(
+        dict(
+            phone_number_params(
+                opt_out_list_name="",
+                phone_number_id="phone-1",
+                pool_id="",
+                registration_id="",
+                state="absent",
+            ),
+            wait_delay=5,
+            wait_timeout=300,
+        ),
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_absent") as ensure_absent,
+    ):
+        plugin.main()
+
+    ensure_absent.assert_called_once_with(client, module)
 
 
 def test_existing_number_matches_capabilities_without_order():
@@ -306,7 +345,7 @@ def test_check_mode_does_not_wait_for_existing_number():
 
 
 def test_check_mode_projects_deduplicated_request_without_client_token():
-    client = Mock()
+    client = model_client()
     module = FakeModule(
         {
             "client_token": "secret-token",
@@ -1291,7 +1330,7 @@ def test_name_matched_number_converges_tags_instead_of_requesting(tags, purge_ta
 
 
 def test_number_without_the_requested_name_is_not_adopted():
-    client = Mock()
+    client = model_client()
     module = FakeModule(phone_number_params(tags={"Name": "missing"}), check_mode=True)
     with (
         patch.object(plugin, "query_list", return_value=[existing_number(PhoneNumberArn="arn:phone-1")]),
@@ -1639,7 +1678,7 @@ def test_absent_reports_other_disassociate_conflicts_from_aws():
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_new_number_with_arns_returns_ids_and_names_in_every_mode(check_mode):
-    client = Mock()
+    client = model_client()
     client.request_phone_number.return_value = existing_number(
         OptOutListName="list-1",
         PoolId="pool-1",
@@ -1826,3 +1865,102 @@ def test_absent_check_mode_predicts_the_release_response(pool_id, deletion_prote
     assert results[True] == results[False]
     assert results[True]["phone_number"]["status"] == "DELETED"
     assert "pool_id" not in results[True]["phone_number"]
+
+
+# Live, RequestPhoneNumber returned these for an untagged SIMULATOR request, without a Tags key. A number requested
+# into a pool took the pool's opt-out list, here a non-default one, instead of "Default".
+LIVE_REQUESTED_NUMBERS = {
+    "unpooled": {
+        "CreatedTimestamp": "2026-10-27T15:16:47-07:00",
+        "DeletionProtectionEnabled": False,
+        "InternationalSendingEnabled": False,
+        "IsoCountryCode": "US",
+        "MessageType": "TRANSACTIONAL",
+        "MonthlyLeasingPrice": "1.00",
+        "NumberCapabilities": ["SMS"],
+        "NumberType": "SIMULATOR",
+        "OptOutListName": "Default",
+        "PhoneNumber": "+14255556430",
+        "PhoneNumberArn": PHONE_NUMBER_ARN,
+        "PhoneNumberId": "phone-1",
+        "SelfManagedOptOutsEnabled": False,
+        "Status": "PENDING",
+        "TwoWayEnabled": False,
+    },
+}
+LIVE_REQUESTED_NUMBERS["pooled"] = dict(LIVE_REQUESTED_NUMBERS["unpooled"], OptOutListName="list-1", PoolId="pool-1")
+# AWS assigns these to a new number, so check mode cannot predict them.
+ASSIGNED_NUMBER_FIELDS = {
+    "created_timestamp",
+    "monthly_leasing_price",
+    "phone_number",
+    "phone_number_arn",
+    "phone_number_id",
+}
+# A number requested into a pool takes these from the pool.
+POOL_SHARED_NUMBER_FIELDS = {"opt_out_list_name", "self_managed_opt_outs_enabled", "two_way_enabled"}
+# Members that botocore 1.36.10 does not model in RequestPhoneNumberResult or PhoneNumberInformation.
+LEGACY_UNMODELED_MEMBERS = ("InternationalSendingEnabled", "MessagingLimits")
+
+
+def model_members(shape, legacy):
+    members = get_session().get_service_model("pinpoint-sms-voice-v2").shape_for(shape).members
+    return {member: value for member, value in members.items() if not (legacy and member in LEGACY_UNMODELED_MEMBERS)}
+
+
+def request_new_number(check_mode, legacy, pool_id, wait):
+    """Request an untagged number and return the result; botocore drops the response members its model lacks."""
+    client = Mock()
+    client.meta.service_model.shape_for.side_effect = lambda shape: Mock(members=model_members(shape, legacy))
+    requested = LIVE_REQUESTED_NUMBERS["pooled" if pool_id else "unpooled"]
+    response_members = model_members("RequestPhoneNumberResult", legacy)
+    client.request_phone_number.return_value = {
+        key: value for key, value in requested.items() if key in response_members
+    }
+    described = dict(requested, MessagingLimits={"RateLimits": {"SMS": 1}}, Status="ACTIVE")
+    described_members = model_members("PhoneNumberInformation", legacy)
+    module = FakeModule(
+        phone_number_params(number_type="SIMULATOR", pool_id=pool_id, wait=wait, wait_delay=1, wait_timeout=1),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "wait_for_phone_number_active",
+            return_value={key: value for key, value in described.items() if key in described_members},
+        ) as wait_for_active,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert client.request_phone_number.called is not check_mode
+    assert wait_for_active.called is (wait and not check_mode)
+    if check_mode:
+        # The prediction follows the model of the response that the real run returns.
+        client.meta.service_model.shape_for.assert_called_once_with(
+            "PhoneNumberInformation" if wait else "RequestPhoneNumberResult"
+        )
+
+    return raised.value.values["phone_number"]
+
+
+@pytest.mark.parametrize("legacy", [False, True], ids=["current-botocore", "botocore-1.36"])
+@pytest.mark.parametrize("pool_id", [None, "pool-1"], ids=["unpooled", "pooled"])
+@pytest.mark.parametrize("wait", [False, True])
+def test_check_mode_new_number_predicts_what_a_real_request_returns(wait, pool_id, legacy):
+    real = request_new_number(False, legacy, pool_id, wait)
+    predicted = request_new_number(True, legacy, pool_id, wait)
+
+    # Every predicted value is the real one, and only values AWS assigns or the pool shares are left out.
+    assert {key: real.get(key) for key in predicted} == predicted
+    unpredicted = ASSIGNED_NUMBER_FIELDS | (POOL_SHARED_NUMBER_FIELDS if pool_id else set())
+    if wait and not legacy:
+        unpredicted.add("messaging_limits")
+
+    assert set(real) - set(predicted) == unpredicted
+    assert predicted["status"] == ("ACTIVE" if wait else "PENDING")
+    assert predicted["deletion_protection_enabled"] is False
+    assert ("international_sending_enabled" in predicted) is not legacy

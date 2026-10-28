@@ -736,3 +736,53 @@ def test_present_existing_phone_number_association_without_a_country_is_unchange
 
     assert raised.value.values["changed"] is False
     client.associate_origination_identity.assert_not_called()
+
+
+POOL_1_ARN = "arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1"
+
+
+@pytest.mark.parametrize("iso_country_code", [None, "US"])
+@pytest.mark.parametrize("phone_number", [None, "+12065550100"], ids=["simulator", "listed-number"])
+def test_absent_check_mode_predicts_the_disassociate_response(phone_number, iso_country_code):
+    listed = dict(PHONE_1, NumberCapabilities=["SMS"], PhoneNumber=phone_number)
+    if phone_number is None:
+        listed.pop("PhoneNumber")
+
+    listing = {
+        "OriginationIdentities": [listed, dict(PHONE_2, NumberCapabilities=["SMS"])],
+        "PoolArn": POOL_1_ARN,
+        "PoolId": "pool-1",
+    }
+    # Live, DisassociateOriginationIdentity returned the listed identity and the pool, without capabilities.
+    disassociated = {
+        "IsoCountryCode": "US",
+        "OriginationIdentity": "phone-1",
+        "OriginationIdentityArn": PHONE_1["OriginationIdentityArn"],
+        "PoolArn": POOL_1_ARN,
+        "PoolId": "pool-1",
+    }
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        client.disassociate_origination_identity.return_value = dict(disassociated)
+        module = absent_params(check_mode=check_mode)
+        module.params["iso_country_code"] = iso_country_code
+        with (
+            patch.object(plugin, "paginated_query_with_retries", return_value=listing),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_absent(client, module)
+
+        assert client.disassociate_origination_identity.called is not check_mode
+        client.delete_pool.assert_not_called()
+        results[check_mode] = raised.value.values
+
+    assert results[True] == results[False]
+    assert results[True]["changed"] is True
+    assert results[True]["association"] == {
+        "iso_country_code": "US",
+        "origination_identity": "phone-1",
+        "origination_identity_arn": PHONE_1["OriginationIdentityArn"],
+        "pool_arn": POOL_1_ARN,
+        "pool_id": "pool-1",
+    }

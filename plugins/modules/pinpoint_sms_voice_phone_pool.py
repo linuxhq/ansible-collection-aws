@@ -812,6 +812,8 @@ def ensure_present(client, module):
             current["DeletionProtectionEnabled"] = False
 
         if new_pool:
+            # A new pool inherits its other settings from the origination identity, but not shared routes.
+            current["SharedRoutesEnabled"] = False
             current["OriginationIdentities"] = [
                 predicted_origination_identity(module.params["origination_identity"], module.params["iso_country_code"])
             ]
