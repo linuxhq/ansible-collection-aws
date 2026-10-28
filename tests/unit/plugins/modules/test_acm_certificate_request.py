@@ -605,6 +605,52 @@ def test_rejects_merged_tags_over_the_limit_before_any_write(check_mode):
     client.remove_tags_from_certificate.assert_not_called()
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "tags", [{"Team": "R&D"}, {"Team": "a,b"}, {"Team#1": "x"}], ids=["ampersand", "comma", "hash-key"]
+)
+def test_tag_characters_aws_rejects_fail_before_aws(check_mode, tags):
+    # ACM rejects these with ValidationException on request and when tagging, which an existing certificate reaches
+    # only after its purged tags are removed.
+    module = FakeModule(
+        {
+            "domain_name": "example.com",
+            "idempotency_token": None,
+            "purge_tags": True,
+            "subject_alternative_names": None,
+            "tags": tags,
+        },
+        check_mode=check_mode,
+    )
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": "tag keys and values must contain only letters, numbers, spaces, and _ . : / = + - @"
+    }
+    module.client.assert_not_called()
+
+
+def test_tags_with_characters_aws_accepts_are_added():
+    client = Mock()
+    client.list_tags_for_certificate.return_value = {"Tags": []}
+
+    result = run_tagged_request(client, {"Team": "a b_.:/=+-@é1", "日本": ""})
+
+    assert result["changed"] is True
+    client.add_tags_to_certificate.assert_called_once()
+    request = client.add_tags_to_certificate.call_args.kwargs
+    assert request["CertificateArn"] == "arn:match"
+    assert sorted(request["Tags"], key=lambda tag: tag["Key"]) == [
+        {"Key": "Team", "Value": "a b_.:/=+-@é1"},
+        {"Key": "日本", "Value": ""},
+    ]
+
+
 def test_tag_limit_ignores_aws_reserved_tags():
     client = Mock()
     client.list_tags_for_certificate.return_value = {
