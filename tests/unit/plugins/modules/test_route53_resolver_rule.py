@@ -14,6 +14,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
+    ModuleInitialized,
     assert_documents_shape,
     assert_module_contract,
     assert_module_rejects,
@@ -1417,3 +1418,37 @@ def test_check_mode_create_predicts_the_status_a_real_run_returns(wait):
 
     for field, expected in (("share_status", "NOT_SHARED"), ("status", "COMPLETE")):
         assert results[True][field] == results[False][field] == expected
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "tags", [{"Team": "R&D"}, {"Team": "a,b"}, {"Team#1": "x"}], ids=["ampersand", "comma", "hash-key"]
+)
+def test_tag_characters_aws_rejects_fail_before_aws(check_mode, tags):
+    # Route 53 Resolver TagResource rejects these with InvalidParameterException (live), which an update reaches only
+    # after UpdateResolverRule and the removal of purged tags.
+    module = FakeModule(rule_params(tags=tags), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": "tag keys and values must contain only letters, numbers, spaces, and _ . : / = + - @"
+    }
+    module.client.assert_not_called()
+
+
+def test_tags_with_characters_aws_accepts_reach_aws():
+    # Route 53 Resolver TagResource accepts these (live).
+    module = FakeModule(rule_params(tags={"Team": "a b_.:/=+-@é1", "日本": "٣²"}))
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
+
+    module.client.assert_called_once()

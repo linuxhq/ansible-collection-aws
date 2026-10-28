@@ -14,6 +14,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
+    ModuleInitialized,
     assert_documents_shape,
     assert_module_contract,
     assert_module_rejects,
@@ -1139,6 +1140,13 @@ def existing_endpoint(**overrides):
     return endpoint
 
 
+def in_flight_endpoint(**overrides):
+    """Return the endpoint as an IP address change response returns it (live: UPDATING, no addresses or tags)."""
+    endpoint = existing_endpoint(StatusMessage="Updating the Resolver Endpoint", Status="UPDATING", **overrides)
+    del endpoint["IpAddresses"], endpoint["Tags"]
+    return endpoint
+
+
 IP_ADDRESS_STATUS_CLASSES = {
     "ATTACHED": "kept",
     "ATTACHING": "kept",
@@ -1594,11 +1602,23 @@ def test_removing_a_failed_address_predicts_the_addresses_a_real_run_returns(wai
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize(("wait", "expected_count"), [(False, 2), (True, 3)])
-def test_added_address_returns_the_count_a_waited_run_rereads(check_mode, wait, expected_count):
+@pytest.mark.parametrize(
+    ("wait", "expected_status"),
+    [
+        # Live, AssociateResolverEndpointIpAddress returns the endpoint UPDATING and already counting the address.
+        (False, "UPDATING"),
+        # A waited run gets the endpoint again once it is OPERATIONAL.
+        (True, "OPERATIONAL"),
+    ],
+)
+def test_added_address_returns_the_status_and_count_a_real_run_returns(check_mode, wait, expected_status):
     added = {"Ip": "192.0.2.3", "IpId": "rni-3", "SubnetId": "subnet-3", "Status": "ATTACHED"}
     waited = existing_endpoint(IpAddressCount=3)
     del waited["IpAddresses"], waited["Tags"]
+    client = Mock()
+    client.associate_resolver_endpoint_ip_address.return_value = {
+        "ResolverEndpoint": in_flight_endpoint(IpAddressCount=3)
+    }
 
     def with_ip_addresses(client, module, endpoint, changed=False):
         ip_addresses = existing_endpoint()["IpAddresses"]
@@ -1616,10 +1636,13 @@ def test_added_address_returns_the_count_a_waited_run_rereads(check_mode, wait, 
         patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=waited),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(Mock(), module)
+        plugin.ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
-    assert raised.value.values["resolver_endpoint"]["ip_address_count"] == expected_count
+    assert raised.value.values["resolver_endpoint"]["ip_address_count"] == 3
+    assert raised.value.values["resolver_endpoint"]["status"] == expected_status
+    if check_mode:
+        assert client.mock_calls == []
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -1645,8 +1668,9 @@ def test_replaced_failed_address_returns_the_count_a_waited_run_rereads(check_mo
     [
         # Live, UpdateResolverEndpoint returns the endpoint UPDATING with the new protocols.
         (False, False, "UPDATING"),
-        # Address changes that follow an update first wait for the endpoint to settle.
-        (False, True, "OPERATIONAL"),
+        # Address changes that follow an update wait for the endpoint to settle first; live, the unwaited address
+        # change then returns the endpoint UPDATING again.
+        (False, True, "UPDATING"),
         (True, False, "OPERATIONAL"),
     ],
 )
@@ -1654,6 +1678,9 @@ def test_protocol_update_predicts_the_status_a_real_run_returns(check_mode, wait
     client = Mock()
     client.update_resolver_endpoint.return_value = {
         "ResolverEndpoint": existing_endpoint(Protocols=["Do53", "DoH"], Status="UPDATING")
+    }
+    client.associate_resolver_endpoint_ip_address.return_value = {
+        "ResolverEndpoint": in_flight_endpoint(IpAddressCount=3, Protocols=["Do53", "DoH"])
     }
     ip_addresses = endpoint_params()["ip_addresses"]
     if extra_address:
@@ -1985,6 +2012,7 @@ def model_client():
 # Live CreateResolverEndpoint and GetResolverEndpoint responses return these settings for a new endpoint.
 LIVE_CREATED_ENDPOINT_SETTINGS = {
     "INBOUND": {"Dns64Enabled": False, "RniEnhancedMetricsEnabled": False},
+    "INBOUND_DELEGATION": {"Dns64Enabled": False, "RniEnhancedMetricsEnabled": False},
     "OUTBOUND": {
         "Ipv6InternetAccessEnabled": False,
         "RniEnhancedMetricsEnabled": False,
@@ -2016,7 +2044,7 @@ def created_endpoint_settings(client, check_mode, **params):
 
 
 @pytest.mark.parametrize("wait", [False, True])
-@pytest.mark.parametrize("direction", ["INBOUND", "OUTBOUND"])
+@pytest.mark.parametrize("direction", ["INBOUND", "INBOUND_DELEGATION", "OUTBOUND"])
 def test_check_mode_create_predicts_the_settings_a_real_run_returns(direction, wait):
     predicted = created_endpoint_settings(model_client(), True, direction=direction, wait=wait)
 
@@ -2031,19 +2059,6 @@ def test_check_mode_create_predicts_only_settings_the_installed_model_returns():
 
     assert created_endpoint_settings(client, True) == {"rni_enhanced_metrics_enabled": False}
     client.meta.service_model.shape_for.assert_called_once_with("ResolverEndpoint")
-
-
-def test_check_mode_create_predicts_no_settings_for_an_unprobed_direction():
-    module = FakeModule(endpoint_params(direction="INBOUND_DELEGATION"), check_mode=True)
-    with (
-        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.ensure_present(model_client(), module)
-
-    endpoint = raised.value.values["resolver_endpoint"]
-    assert endpoint["direction"] == "INBOUND_DELEGATION"
-    assert not [field for field in endpoint if field.endswith("_enabled")]
 
 
 @pytest.mark.parametrize("wait", [False, True])
@@ -2238,3 +2253,189 @@ def test_check_mode_create_predicts_the_status_and_address_count_a_real_run_retu
 
     for field, expected in (("ip_address_count", 3), ("status", "OPERATIONAL" if wait else "CREATING")):
         assert results[True][field] == results[False][field] == expected
+
+
+@pytest.mark.parametrize(
+    ("current_ips", "requested_ips", "operations"),
+    [
+        # Live, AssociateResolverEndpointIpAddress returns UPDATING and counts the new address at once.
+        (["192.0.2.1", "192.0.2.2"], ["192.0.2.1", "192.0.2.2", "192.0.2.3"], ["add"]),
+        # Live, DisassociateResolverEndpointIpAddress returns UPDATING and counts the address until it is gone.
+        (["192.0.2.1", "192.0.2.2", "192.0.2.3"], ["192.0.2.1", "192.0.2.2"], ["remove"]),
+        # A replacement adds first, waits for the endpoint to settle, and returns the removal's response.
+        (["192.0.2.1", "192.0.2.2"], ["192.0.2.1", "192.0.2.3"], ["add", "remove"]),
+    ],
+    ids=["add", "remove", "replace"],
+)
+def test_unwaited_address_change_returns_the_last_change_response(current_ips, requested_ips, operations):
+    current = existing_endpoint(
+        IpAddressCount=len(current_ips),
+        IpAddresses=[
+            {"Ip": ip, "IpId": f"rni-{ip[-1]}", "SubnetId": f"subnet-{ip[-1]}", "Status": "ATTACHED"}
+            for ip in current_ips
+        ],
+        StatusMessage="This Resolver Endpoint is operational.",
+    )
+    params = endpoint_params(ip_addresses=[{"ip": ip, "subnet_id": f"subnet-{ip[-1]}"} for ip in requested_ips])
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        client.associate_resolver_endpoint_ip_address.return_value = {
+            "ResolverEndpoint": in_flight_endpoint(IpAddressCount=len(current_ips) + 1)
+        }
+        client.disassociate_resolver_endpoint_ip_address.return_value = {
+            "ResolverEndpoint": in_flight_endpoint(IpAddressCount=len(current_ips) + operations.count("add"))
+        }
+        with (
+            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
+            patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+            patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+            patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=current) as wait_for_status,
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+        assert raised.value.values["changed"] is True
+        results[check_mode] = raised.value.values["resolver_endpoint"]
+        if check_mode:
+            assert client.mock_calls == []
+        else:
+            assert client.associate_resolver_endpoint_ip_address.call_count == operations.count("add")
+            assert client.disassociate_resolver_endpoint_ip_address.call_count == operations.count("remove")
+            assert wait_for_status.call_count == len(operations) - 1
+            assert results[False]["status_message"] == "Updating the Resolver Endpoint"
+
+    expected_count = len(requested_ips) + (1 if operations[-1] == "remove" else 0)
+    for field, expected in (("ip_address_count", expected_count), ("status", "UPDATING")):
+        assert results[True][field] == results[False][field] == expected
+
+    assert results[True]["ip_addresses"] == results[False]["ip_addresses"]
+
+
+def test_unwaited_address_change_with_a_lean_response_keeps_the_endpoint_read_before_it():
+    client = Mock()
+    client.associate_resolver_endpoint_ip_address.return_value = {}
+    params = endpoint_params(ip_addresses=endpoint_params()["ip_addresses"] + [{"ip": "192.0.2.3", "subnet_id": "s"}])
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint(IpAddressCount=2)),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "wait_for_resolver_endpoint_status") as wait_for_status,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params))
+
+    endpoint = raised.value.values["resolver_endpoint"]
+    assert (endpoint["status"], endpoint["ip_address_count"], len(endpoint["ip_addresses"])) == ("OPERATIONAL", 2, 3)
+    client.associate_resolver_endpoint_ip_address.assert_called_once()
+    wait_for_status.assert_not_called()
+
+
+def test_unwaited_address_change_rejects_a_response_for_another_endpoint():
+    client = Mock()
+    client.associate_resolver_endpoint_ip_address.return_value = {"ResolverEndpoint": in_flight_endpoint(Id="rslvr-2")}
+    params = endpoint_params(ip_addresses=endpoint_params()["ip_addresses"] + [{"ip": "192.0.2.3", "subnet_id": "s"}])
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint()),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params))
+
+    assert raised.value.values == {
+        "changed": True,
+        "msg": "associate_resolver_endpoint_ip_address: AWS returned an unexpected resolver endpoint ID rslvr-2",
+    }
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("extra_address", "status", "count"),
+    [
+        # The conversion gives both addresses their requested IPv6 addresses, so no address change follows.
+        (False, "OPERATIONAL", 2),
+        # Only the extra address is added after the conversion.
+        (True, "UPDATING", 3),
+    ],
+)
+def test_unwaited_conversion_to_dual_stack_predicts_the_address_changes_after_it(
+    check_mode, extra_address, status, count
+):
+    requested = [
+        {"ip": "192.0.2.1", "ipv6": "2001:db8::1", "subnet_id": "subnet-1"},
+        {"ip": "192.0.2.2", "ipv6": "2001:db8::2", "subnet_id": "subnet-2"},
+    ]
+    if extra_address:
+        requested.append({"ip": "192.0.2.3", "ipv6": "2001:db8::3", "subnet_id": "subnet-3"})
+
+    converted = existing_endpoint(IpAddressCount=2, ResolverEndpointType="DUALSTACK")
+    del converted["IpAddresses"], converted["Tags"]
+
+    def with_ip_addresses(client, module, endpoint, changed=False):
+        if endpoint["ResolverEndpointType"] != "DUALSTACK":
+            return endpoint
+
+        ip_addresses = [
+            dict(ip_address, Ipv6=f"2001:db8::{index}")
+            for index, ip_address in enumerate(existing_endpoint()["IpAddresses"], start=1)
+        ]
+        return dict(endpoint, IpAddresses=ip_addresses)
+
+    client = Mock()
+    client.update_resolver_endpoint.return_value = {"ResolverEndpoint": dict(converted, Status="UPDATING")}
+    client.associate_resolver_endpoint_ip_address.return_value = {
+        "ResolverEndpoint": in_flight_endpoint(IpAddressCount=3, ResolverEndpointType="DUALSTACK")
+    }
+    params = endpoint_params(ip_addresses=requested, resolver_endpoint_type="DUALSTACK")
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint(IpAddressCount=2)),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=with_ip_addresses),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=converted),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    endpoint = raised.value.values["resolver_endpoint"]
+    assert (endpoint["status"], endpoint["ip_address_count"]) == (status, count)
+    if check_mode:
+        assert client.mock_calls == []
+    else:
+        client.update_resolver_endpoint.assert_called_once()
+        assert client.associate_resolver_endpoint_ip_address.call_count == (1 if extra_address else 0)
+        client.disassociate_resolver_endpoint_ip_address.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "tags", [{"Team": "R&D"}, {"Team": "a,b"}, {"Team#1": "x"}], ids=["ampersand", "comma", "hash-key"]
+)
+def test_tag_characters_aws_rejects_fail_before_aws(check_mode, tags):
+    # Route 53 Resolver TagResource rejects these with InvalidParameterException (live), which an update reaches only
+    # after its endpoint and address changes and the removal of purged tags.
+    module = FakeModule(endpoint_params(state="present", tags=tags), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": "tag keys and values must contain only letters, numbers, spaces, and _ . : / = + - @"
+    }
+    module.client.assert_not_called()
+
+
+def test_tags_with_characters_aws_accepts_reach_aws():
+    # Route 53 Resolver TagResource accepts these (live).
+    module = FakeModule(endpoint_params(state="present", tags={"Team": "a b_.:/=+-@é1", "日本": "٣²"}))
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
+
+    module.client.assert_called_once()
