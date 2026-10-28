@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ec2_vpc_prefix_list - an empty or blank O(name) with O(state=present) now fails before any AWS call, in check mode
+    too. Previously check mode predicted a new prefix list, and the real run failed when EC2 rejected the name at
+    CreateManagedPrefixList.

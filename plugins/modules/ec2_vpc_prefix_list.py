@@ -65,6 +65,7 @@ options:
     description:
       - The managed prefix list name.
       - The name is matched exactly; C(*) and C(?) are not wildcards.
+      - This must not be empty when O(state=present).
     required: true
     type: str
   state:
@@ -1010,6 +1011,10 @@ def main():
     tags = module.params["tags"]
 
     if state == "present":
+        # EC2 rejects a blank name, which check mode would otherwise predict as a new prefix list.
+        if not module.params["name"].strip():
+            module.fail_json(msg="name must not be empty")
+
         if not entries:
             module.fail_json(msg="entries must contain at least one item when state=present")
 
