@@ -22,7 +22,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_cli
 # returns InternalError above 100 flow log IDs.
 MAX_EC2_TAG_RESOURCES_PER_REQUEST = 100
 # Besides letters, separators, and numbers, the SSM, IAM, and ACM tag pattern [\p{L}\p{Z}\p{N}_.:/=+\-@] allows these.
-# EKS enforces the same characters without a model pattern.
+# EKS, Notifications Contacts, and Pinpoint SMS Voice V2 enforce the same characters without a model pattern.
 RESTRICTED_TAG_SYMBOLS = "_.:/=+-@"
 
 
@@ -30,7 +30,8 @@ def require_valid_tags(module, tags, max_tags, restricted_characters=False):
     """Fail unless tags are non-null, unique as strings, at most max_tags, and within the AWS lengths.
 
     Keys and values are normalized to strings in place. restricted_characters also requires the characters of the SSM,
-    IAM, and ACM tag pattern, which those services and EKS enforce on every tag write.
+    IAM, and ACM tag pattern, which those services, EKS, Notifications Contacts, and Pinpoint SMS Voice V2 enforce on
+    every tag write.
     """
     if tags is None:
         return

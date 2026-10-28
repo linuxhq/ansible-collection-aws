@@ -148,7 +148,8 @@ options:
     type: int
 notes:
   - O(tags) accepts at most 200 entries; keys must contain 1 to 128 characters
-    and values at most 256 characters.
+    and values at most 256 characters, and both may contain only letters,
+    numbers, spaces, C(_), C(.), C(:), C(/), C(=), C(+), C(-), and C(@).
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -1058,7 +1059,7 @@ def main():
             if module.params[option] is not None and not module.params[option].strip():
                 module.fail_json(msg=f"{option} must not be empty")
 
-        require_valid_tags(module, tags, 200)
+        require_valid_tags(module, tags, 200, restricted_characters=True)
 
     require_positive_wait_bounds(module, always=True)
 

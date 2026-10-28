@@ -165,6 +165,56 @@ def test_present_rejects_empty_identifiers_before_any_aws_call(option, value, ch
     assert client.mock_calls == []
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("phone_number_id", [None, "phone-1"])
+@pytest.mark.parametrize(
+    "tags",
+    [{"Team": "R&D"}, {"Team": "a,b"}, {"Team#1": "x"}, {"Team": "a\nb"}],
+    ids=["ampersand", "comma", "hash-key", "newline"],
+)
+def test_tag_characters_aws_rejects_fail_before_any_aws_call(check_mode, phone_number_id, tags):
+    # Pinpoint TagResource rejects these with ValidationException (live), which an existing number reaches only after
+    # UpdatePhoneNumber and the removal of purged tags.
+    client = Mock()
+    module = FakeModule(
+        dict(
+            phone_number_params(deletion_protection_enabled=False, phone_number_id=phone_number_id, tags=tags),
+            wait_delay=5,
+            wait_timeout=300,
+        ),
+        check_mode=check_mode,
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(module, "client") as connect,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": "tag keys and values must contain only letters, numbers, spaces, and _ . : / = + - @"
+    }
+    connect.assert_not_called()
+    assert client.mock_calls == []
+
+
+def test_tags_with_characters_aws_accepts_reach_aws():
+    # Pinpoint TagResource accepts these (live).
+    tags = {"Name": "a b_.:/=+-@é1", "日本": "٣²", "Sp": "a\u00a0b"}
+    client = Mock()
+    module = FakeModule(dict(phone_number_params(tags=tags), wait_delay=5, wait_timeout=300), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once_with(client, module)
+    assert module.params["tags"] == tags
+
+
 def test_absent_ignores_empty_identifiers_used_only_with_present():
     client = Mock()
     module = FakeModule(

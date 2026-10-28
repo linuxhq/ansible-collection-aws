@@ -467,3 +467,55 @@ def test_resulting_tag_limit_fails_before_tagging(check_mode):
     assert raised.value.values.get("changed", False) is False
     client.tag_resource.assert_not_called()
     client.untag_resource.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "tags",
+    [{"Team": "R&D"}, {"Team": "a,b"}, {"Team#1": "x"}, {"Team": "a\nb"}],
+    ids=["ampersand", "comma", "hash-key", "newline"],
+)
+def test_tag_characters_aws_rejects_fail_before_aws(check_mode, tags):
+    # Notifications Contacts TagResource rejects these with BadRequestException (live), which an existing contact
+    # with a tag to purge reaches only after UntagResource has removed that tag.
+    client = Mock()
+    module = FakeModule(
+        {
+            "email_address": "ops@example.com",
+            "name": "Operations",
+            "purge_tags": True,
+            "state": "present",
+            "tags": tags,
+        },
+        check_mode=check_mode,
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(module, "client") as connect,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": "tag keys and values must contain only letters, numbers, spaces, and _ . : / = + - @"
+    }
+    connect.assert_not_called()
+    assert client.mock_calls == []
+
+
+def test_tags_with_characters_aws_accepts_reach_aws():
+    # Notifications Contacts TagResource accepts these (live).
+    tags = {"Team": "a b_.:/=+-@é1", "日本": "٣²", "Sp": "a\u00a0b"}
+    module = FakeModule(
+        {"email_address": "ops@example.com", "name": "Operations", "purge_tags": True, "state": "present", "tags": tags}
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once()
+    assert module.params["tags"] == tags

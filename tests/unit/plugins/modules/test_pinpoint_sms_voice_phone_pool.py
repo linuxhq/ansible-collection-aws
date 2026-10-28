@@ -160,6 +160,57 @@ def test_present_rejects_empty_origination_identity_before_any_aws_call(originat
     assert client.mock_calls == []
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("pool_id", [None, "pool-1"])
+@pytest.mark.parametrize(
+    ("name", "tags"),
+    [
+        ("main", {"Team": "R&D"}),
+        ("main", {"Team": "a,b"}),
+        ("main", {"Team#1": "x"}),
+        ("main", {"Team": "a\nb"}),
+        ("R&D", None),
+    ],
+    ids=["ampersand", "comma", "hash-key", "newline", "name"],
+)
+def test_tag_characters_aws_rejects_fail_before_any_aws_call(check_mode, pool_id, name, tags):
+    # Pinpoint TagResource rejects these with ValidationException (live), which an existing pool reaches only after
+    # UpdatePool and the removal of purged tags. The Name tag comes from name.
+    client = Mock()
+    module = FakeModule(
+        main_params(deletion_protection_enabled=True, name=name, pool_id=pool_id, tags=tags),
+        check_mode=check_mode,
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(module, "client") as connect,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": "tag keys and values must contain only letters, numbers, spaces, and _ . : / = + - @"
+    }
+    connect.assert_not_called()
+    assert client.mock_calls == []
+
+
+def test_tags_with_characters_aws_accepts_reach_aws():
+    # Pinpoint TagResource accepts these (live).
+    tags = {"Team": "a b_.:/=+-@é1", "日本": "٣²", "Sp": "a\u00a0b"}
+    client = Mock()
+    module = FakeModule(main_params(name="プール é_.:/=+-@1", tags=tags), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once_with(client, module)
+
+
 @pytest.mark.parametrize("state", ["absent", "present"])
 def test_explicit_pool_id_ignores_an_empty_origination_identity(state):
     module = FakeModule(main_params(origination_identity="", pool_id="pool-1", state=state), client=Mock())
