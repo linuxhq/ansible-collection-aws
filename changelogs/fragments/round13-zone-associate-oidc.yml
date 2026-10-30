@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - route53_zone_associate - a whitespace-only O(hosted_zone_id) (bare or after C(/hostedzone/)) or O(vpc_id) now fails
+    before any AWS call, in check mode too and with either O(state), as an empty one already did. Check mode predicted
+    an association with the blank VPC that AWS rejects in the real run, and O(state=absent) reported no change instead
+    of failing.
