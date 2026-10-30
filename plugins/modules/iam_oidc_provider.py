@@ -46,7 +46,7 @@ options:
     description:
       - The OIDC provider URL.
       - The URL must begin with C(https://) when O(state=present).
-      - The URL must be at most 255 characters and identify a host.
+      - The URL must be at most 255 characters and identify a host that is not empty or whitespace-only.
       - Matching against an existing provider ignores the C(https://) prefix
         and any trailing slash, and compares the host case-insensitively.
     required: true
@@ -504,8 +504,9 @@ def main():
         if not module.params["url"].lower().startswith("https://"):
             module.fail_json(msg="url must begin with https://")
 
+        # IAM rejects a whitespace-only host, which identifies no provider either.
         normalized_url = normalize_provider_url(module.params["url"])
-        if not normalized_url or not normalized_url.partition("/")[0]:
+        if not normalized_url or not normalized_url.partition("/")[0].strip():
             module.fail_json(msg="url must identify an OIDC provider host")
 
         if len(module.params["url"]) > 255:
