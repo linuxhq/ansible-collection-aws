@@ -1,0 +1,13 @@
+---
+bugfixes:
+  - global_accelerator - an endpoint group whose Elastic IP address or EC2 instance endpoint is given by ARN now
+    converges. AWS lists such an endpoint in the accelerator's account under its allocation ID or instance ID, so every
+    run, in check mode too, reported a change and a real run sent an endpoint group update. The ID is still sent to AWS
+    as given, and check mode now predicts the ID AWS lists.
+  - global_accelerator - an endpoint group that names one Elastic IP address or EC2 instance both by ID and by ARN now
+    fails before any AWS call as a duplicate endpoint, in check mode too. AWS keeps one endpoint with the weight of the
+    last entry, so check mode predicted two endpoints and differing weights never converged.
+  - global_accelerator - a blank O(listeners[].endpoint_groups[].endpoint_group_region) or
+    O(listeners[].endpoint_groups[].endpoint_configurations[].endpoint_id) now fails before any AWS call, in check
+    mode too, as an empty one already did. AWS rejects it only on the endpoint group write, which a real run reached
+    after its accelerator and listener writes, while check mode predicted success.

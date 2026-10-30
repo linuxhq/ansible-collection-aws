@@ -131,7 +131,13 @@ options:
                   - ID of the endpoint, such as an EC2 instance ID, an elastic
                     IP allocation ID, or an Application or Network Load
                     Balancer ARN.
-                  - This must not be empty.
+                  - The ID is sent to AWS as given. AWS lists an Elastic IP
+                    address or EC2 instance in the accelerator's account that
+                    is given by ARN under its allocation ID or instance ID, so
+                    the module treats the ARN and the ID as the same endpoint,
+                    and an endpoint group must not name one endpoint in both
+                    forms.
+                  - This must not be empty or blank.
                 required: true
                 type: str
               weight:
@@ -146,7 +152,8 @@ options:
               - AWS region of the endpoint group.
               - AWS allows one endpoint group per region for each listener,
                 so this identifies the endpoint group.
-              - This must not be empty and must contain at most 255 characters.
+              - This must not be empty or blank and must contain at most 255
+                characters.
             required: true
             type: str
           health_check_interval_seconds:
@@ -1083,6 +1090,49 @@ def get_endpoint_groups(client, module, listener_arn, changed=False):
     return sorted(normalized, key=lambda item: item["endpoint_group_region"])
 
 
+def ec2_endpoint_arn(endpoint_id, resource_types=("elastic-ip", "instance")):
+    """Return the parsed ARN when an endpoint ID is the ARN of an EC2 resource of one of resource_types, otherwise None.
+
+    Live, AWS lists a same-account Elastic IP address or EC2 instance given by ARN under its allocation or instance ID.
+    """
+    endpoint_arn = parse_aws_arn(endpoint_id)
+    if endpoint_arn and endpoint_arn["service"] == "ec2" and endpoint_arn["resource_type"] in resource_types:
+        return endpoint_arn
+
+    return None
+
+
+def endpoint_key(endpoint_id):
+    """Return the ID that identifies a requested endpoint: the resource ID of an EC2 ARN, otherwise the ID as given."""
+    endpoint_arn = ec2_endpoint_arn(endpoint_id)
+    return endpoint_id if endpoint_arn is None else endpoint_arn["resource_id"]
+
+
+def listed_endpoint(current_endpoints, endpoint_id):
+    """Return the listed endpoint that a requested endpoint ID refers to, or None.
+
+    An ID listed as given always matches, and an EC2 ARN also matches its resource ID.
+    """
+    if endpoint_id in current_endpoints:
+        return current_endpoints[endpoint_id]
+
+    return current_endpoints.get(endpoint_key(endpoint_id))
+
+
+def predicted_endpoint_id(current_endpoints, endpoint_id, account_id):
+    """Predict the ID AWS lists for a requested endpoint; account_id is the accelerator's account, when known."""
+    listed = listed_endpoint(current_endpoints, endpoint_id)
+    if listed is not None:
+        return listed["endpoint_id"]
+
+    # What AWS lists for another account's resource given by ARN is unknown, so it is predicted as given.
+    endpoint_arn = ec2_endpoint_arn(endpoint_id)
+    if endpoint_arn is not None and account_id is not None and endpoint_arn["account_id"] == account_id:
+        return endpoint_arn["resource_id"]
+
+    return endpoint_id
+
+
 def endpoint_group_requires_update(current, desired):
     # AWS stores no health check path for TCP health checks, so a requested path never matches one.
     tcp_health_check = (desired["health_check_protocol"] or current.get("health_check_protocol")) == "TCP"
@@ -1103,14 +1153,13 @@ def endpoint_group_requires_update(current, desired):
         current_endpoints = {
             endpoint.get("endpoint_id"): endpoint for endpoint in current.get("endpoint_descriptions", [])
         }
-        desired_ids = {configuration["endpoint_id"] for configuration in desired["endpoint_configurations"]}
-
-        if desired_ids != set(current_endpoints):
-            return True
-
+        matched_ids = set()
         for configuration in desired["endpoint_configurations"]:
-            endpoint = current_endpoints[configuration["endpoint_id"]]
+            endpoint = listed_endpoint(current_endpoints, configuration["endpoint_id"])
+            if endpoint is None:
+                return True
 
+            matched_ids.add(endpoint.get("endpoint_id"))
             if configuration["weight"] != endpoint.get("weight"):
                 return True
 
@@ -1118,6 +1167,9 @@ def endpoint_group_requires_update(current, desired):
                 "client_ip_preservation_enabled"
             ] != endpoint.get("client_ip_preservation_enabled"):
                 return True
+
+        if matched_ids != set(current_endpoints):
+            return True
 
     return False
 
@@ -1238,7 +1290,8 @@ def require_endpoint_group_writes(module, client):
             require_endpoint_configuration_parameters(module, client, method_name, operation_name, request)
 
 
-def predicted_endpoint_group(current, desired, default_health_check_port=None):
+def predicted_endpoint_group(current, desired, default_health_check_port=None, account_id=None):
+    """Predict an endpoint group; account_id is the accelerator's account, when known."""
     if current is None:
         # AWS returns an empty endpoint list for a group created without endpoints.
         predicted = dict(ENDPOINT_GROUP_CREATE_DEFAULTS, endpoint_descriptions=[])
@@ -1263,10 +1316,13 @@ def predicted_endpoint_group(current, desired, default_health_check_port=None):
         predicted["port_overrides"] = normalized_port_overrides(desired["port_overrides"])
 
     if desired["endpoint_configurations"] is not None:
+        current_endpoints = {
+            endpoint.get("endpoint_id"): endpoint for endpoint in (current or {}).get("endpoint_descriptions", [])
+        }
         endpoint_descriptions = []
         for configuration in desired["endpoint_configurations"]:
             endpoint = {
-                "endpoint_id": configuration["endpoint_id"],
+                "endpoint_id": predicted_endpoint_id(current_endpoints, configuration["endpoint_id"], account_id),
                 "weight": configuration["weight"],
             }
             if configuration["client_ip_preservation_enabled"] is not None:
@@ -1336,13 +1392,14 @@ def delete_listener(client, module, accelerator_arn, listener_arn, changed=False
 
 
 def ensure_endpoint_groups(
-    client, module, listener_arn, endpoint_groups, mutated=False, default_health_check_port=None
+    client, module, listener_arn, endpoint_groups, mutated=False, default_health_check_port=None, accelerator_arn=None
 ):
     """Reconcile endpoint groups; mutated reports earlier modifications, for failure results.
 
     default_health_check_port is the port AWS checks health on when a created group omits health_check_port, if it is
-    known, for check-mode predictions.
+    known, and accelerator_arn the ARN of an existing accelerator, for check-mode predictions.
     """
+    account_id = (parse_aws_arn(accelerator_arn) or {}).get("account_id") if accelerator_arn else None
     current_by_region = {}
     if listener_arn is not None:
         for endpoint_group in get_endpoint_groups(client, module, listener_arn, changed=mutated):
@@ -1359,7 +1416,7 @@ def ensure_endpoint_groups(
         if current is None:
             changed = True
             if module.check_mode:
-                results.append(predicted_endpoint_group(None, desired, default_health_check_port))
+                results.append(predicted_endpoint_group(None, desired, default_health_check_port, account_id))
                 continue
 
             request = endpoint_group_request(desired)
@@ -1398,7 +1455,7 @@ def ensure_endpoint_groups(
         elif endpoint_group_requires_update(current, desired):
             changed = True
             if module.check_mode:
-                results.append(predicted_endpoint_group(current, desired))
+                results.append(predicted_endpoint_group(current, desired, account_id=account_id))
                 continue
 
             endpoint_group_arn = current["endpoint_group_arn"]
@@ -1628,6 +1685,7 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
                 desired["endpoint_groups"],
                 mutated=mutated,
                 default_health_check_port=default_health_check_port,
+                accelerator_arn=accelerator_arn,
             )
             changed = changed or endpoint_groups_changed
             mutated = mutated or (endpoint_groups_changed and not module.check_mode)
@@ -2185,8 +2243,9 @@ def main():
             for endpoint_group in listener.get("endpoint_groups") or []:
                 region = endpoint_group["endpoint_group_region"]
 
-                # Ansible turns a null required string into "", which AWS would only reject after earlier changes.
-                if not region:
+                # Ansible turns a null required string into "". AWS rejects an empty or blank region only after earlier
+                # changes.
+                if not region.strip():
                     module.fail_json(msg="endpoint_group_region must not be empty")
 
                 if len(region) > 255:
@@ -2232,7 +2291,7 @@ def main():
                 endpoint_ids = set()
                 for configuration in endpoint_group.get("endpoint_configurations") or []:
                     endpoint_id = configuration["endpoint_id"]
-                    if not endpoint_id:
+                    if not endpoint_id.strip():
                         module.fail_json(msg=f"Endpoint group {region} endpoint_id must not be empty")
 
                     if len(endpoint_id) > 255 or len(configuration.get("attachment_arn") or "") > 255:
@@ -2243,12 +2302,14 @@ def main():
                             )
                         )
 
-                    if endpoint_id in endpoint_ids:
+                    # An EC2 ARN names the same endpoint as its resource ID: live, AWS keeps one endpoint, with the
+                    # weight of the last entry, for an Elastic IP address given both by allocation ID and by ARN.
+                    if endpoint_key(endpoint_id) in endpoint_ids:
                         module.fail_json(
                             msg=f"Duplicate endpoint {endpoint_id} in endpoint group {region} endpoint_configurations"
                         )
 
-                    endpoint_ids.add(endpoint_id)
+                    endpoint_ids.add(endpoint_key(endpoint_id))
 
                     if not 0 <= configuration["weight"] <= 255:
                         module.fail_json(
@@ -2257,10 +2318,9 @@ def main():
 
                     # AWS rejects this endpoint group write, reached after accelerator and listener changes, for an
                     # Elastic IP address given by allocation ID or by ARN.
-                    endpoint_arn = parse_aws_arn(endpoint_id) or {}
                     if configuration.get("client_ip_preservation_enabled") and (
                         endpoint_id.startswith("eipalloc-")
-                        or (endpoint_arn.get("service") == "ec2" and endpoint_arn.get("resource_type") == "elastic-ip")
+                        or ec2_endpoint_arn(endpoint_id, ("elastic-ip",)) is not None
                     ):
                         module.fail_json(
                             msg=(
