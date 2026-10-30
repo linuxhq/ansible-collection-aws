@@ -1,0 +1,15 @@
+---
+bugfixes:
+  - notifications_contacts - O(tags) keys and values may now contain only letters, numbers, spaces, C(_), C(.), C(:),
+    C(/), C(=), C(+), C(-), and C(@), the characters AWS Notifications Contacts accepts. Other characters now fail
+    before any AWS call, in check mode too. Previously check mode predicted success, and a real run on an existing
+    contact removed its purged tags before AWS rejected the new ones.
+  - pinpoint_sms_voice_phone_number - O(tags) keys and values may now contain only letters, numbers, spaces, C(_),
+    C(.), C(:), C(/), C(=), C(+), C(-), and C(@), the characters Pinpoint SMS Voice V2 accepts. Other characters now
+    fail before any AWS call, in check mode too. Previously check mode predicted success, and a real run on an existing
+    number applied its setting updates and removed its purged tags before AWS rejected the new ones.
+  - pinpoint_sms_voice_phone_pool - O(tags) keys and values, and O(name), which is used as the C(Name) tag, may now
+    contain only letters, numbers, spaces, C(_), C(.), C(:), C(/), C(=), C(+), C(-), and C(@), the characters Pinpoint
+    SMS Voice V2 accepts. Other characters now fail before any AWS call, in check mode too. Previously check mode
+    predicted success, and a real run on an existing pool applied its setting updates and removed its purged tags before
+    AWS rejected the new ones.

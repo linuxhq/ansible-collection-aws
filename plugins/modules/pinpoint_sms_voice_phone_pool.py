@@ -111,10 +111,12 @@ options:
     type: int
 notes:
   - O(tags) accepts at most 200 entries; keys must contain 1 to 128 characters
-    and values at most 256 characters.
+    and values at most 256 characters, and both may contain only letters,
+    numbers, spaces, C(_), C(.), C(:), C(/), C(=), C(+), C(-), and C(@).
   - The module always manages the C(Name) tag from O(name), even when O(tags)
-    is omitted. This tag overrides any C(Name) entry in O(tags) and counts
-    toward the 200-tag limit. Other tags are left unchanged when O(tags) is omitted.
+    is omitted. This tag overrides any C(Name) entry in O(tags), counts
+    toward the 200-tag limit, and follows the same value rules. Other tags are
+    left unchanged when O(tags) is omitted.
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -867,7 +869,8 @@ def main():
         require_valid_tags(module, module.params["tags"], 200)
         tags = dict(module.params["tags"] or {})
         tags["Name"] = module.params["name"]
-        require_valid_tags(module, tags, 200)
+        # Check characters only on the tags sent to AWS, after name replaces any Name entry in tags.
+        require_valid_tags(module, tags, 200, restricted_characters=True)
 
         # AWS rejects an empty origination identity, which check mode would otherwise predict as a new pool.
         # required_one_of accepts an explicit null, so a null identity is rejected the same way.

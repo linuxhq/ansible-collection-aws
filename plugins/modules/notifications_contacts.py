@@ -34,6 +34,10 @@ options:
       - present
     default: present
     type: str
+notes:
+  - O(tags) accepts at most 200 entries; keys must contain 1 to 128 characters
+    and values at most 256 characters, and both may contain only letters,
+    numbers, spaces, C(_), C(.), C(:), C(/), C(=), C(+), C(-), and C(@).
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -408,7 +412,7 @@ def main():
                 )
             )
 
-    require_valid_tags(module, module.params["tags"] if state == "present" else None, 200)
+    require_valid_tags(module, module.params["tags"] if state == "present" else None, 200, restricted_characters=True)
     client = module.client(
         "notificationscontacts",
         retry_decorator=AWSRetry.jittered_backoff(),
