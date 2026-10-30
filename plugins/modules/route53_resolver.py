@@ -50,7 +50,7 @@ options:
       subnet_id:
         description:
           - The subnet ID for the endpoint IP address.
-          - This must contain 1 to 32 characters.
+          - This must contain 1 to 32 characters and must not be blank.
         required: true
         type: str
     type: list
@@ -87,7 +87,7 @@ options:
     description:
       - The security group IDs for the resolver endpoint.
       - This is required when O(state=present).
-      - Entries must contain 1 to 64 characters.
+      - Entries must contain 1 to 64 characters and must not be blank.
     elements: str
     type: list
   state:
@@ -1363,7 +1363,8 @@ def main():
         if not module.params["security_group_ids"]:
             module.fail_json(msg="security_group_ids must contain at least one entry")
 
-        if any(not 1 <= len(group_id) <= 64 for group_id in module.params["security_group_ids"]):
+        # AWS reads a whitespace-only ID as empty and refuses it, while check mode would predict success.
+        if any(not group_id.strip() or len(group_id) > 64 for group_id in module.params["security_group_ids"]):
             module.fail_json(msg="security_group_ids entries must contain 1 to 64 characters")
 
         for entry in module.params["ip_addresses"]:
@@ -1376,7 +1377,8 @@ def main():
                     msg="ip_addresses entries with both ip and ipv6 require resolver_endpoint_type=DUALSTACK"
                 )
 
-            if not 1 <= len(entry["subnet_id"]) <= 32:
+            # Likewise for subnet IDs; on an update, AWS refuses the address only after adding the ones before it.
+            if not entry["subnet_id"].strip() or len(entry["subnet_id"]) > 32:
                 module.fail_json(msg="ip_addresses[].subnet_id must contain 1 to 32 characters")
 
             require_ip_versions(module, entry, "ip_addresses")

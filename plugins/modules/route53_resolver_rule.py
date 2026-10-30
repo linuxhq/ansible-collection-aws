@@ -19,7 +19,7 @@ options:
     description:
       - The domain name for the resolver rule.
       - This is required when O(state=present).
-      - This must contain 1 to 256 characters.
+      - This must contain 1 to 256 characters and must not be blank.
     type: str
   name:
     description:
@@ -32,7 +32,7 @@ options:
     description:
       - The resolver endpoint ID for the rule.
       - This is required when O(state=present).
-      - This must contain 1 to 64 characters.
+      - This must contain 1 to 64 characters and must not be blank.
     type: str
   rule_type:
     description:
@@ -887,10 +887,11 @@ def main():
         module.fail_json(msg="name must be a valid resolver rule name of at most 64 characters")
 
     if state == "present":
-        if not 1 <= len(module.params["domain_name"]) <= 256:
+        # AWS refuses whitespace-only values, while check mode would predict success.
+        if not module.params["domain_name"].strip() or len(module.params["domain_name"]) > 256:
             module.fail_json(msg="domain_name must contain 1 to 256 characters")
 
-        if not 1 <= len(module.params["resolver_endpoint_id"]) <= 64:
+        if not module.params["resolver_endpoint_id"].strip() or len(module.params["resolver_endpoint_id"]) > 64:
             module.fail_json(msg="resolver_endpoint_id must contain 1 to 64 characters")
 
         if not module.params["target_ips"]:

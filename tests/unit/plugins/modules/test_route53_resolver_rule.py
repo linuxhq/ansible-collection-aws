@@ -349,6 +349,32 @@ def test_replacement_sensitive_limits_are_rejected():
         assert_module_rejects(plugin, params, message)
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("blank", ["", " "])
+@pytest.mark.parametrize(
+    "option,message",
+    [
+        ("domain_name", "domain_name must contain 1 to 256 characters"),
+        ("resolver_endpoint_id", "resolver_endpoint_id must contain 1 to 64 characters"),
+    ],
+)
+def test_blank_values_are_rejected_before_any_aws_call(check_mode, blank, option, message):
+    # Live: CreateResolverRule refuses a whitespace-only domain name or endpoint ID, and UpdateResolverRule keeps the
+    # current endpoint for a whitespace-only one, so that run and every rerun failed after the update.
+    module = FakeModule(rule_params(**{option: blank}), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": message}
+    module.client.assert_not_called()
+    ensure_present.assert_not_called()
+
+
 def test_target_port_bounds_are_rejected():
     assert_module_rejects(
         plugin,

@@ -381,6 +381,39 @@ def test_present_rejects_invalid_name_before_api_calls():
     assert "valid resolver rule association name" in raised.value.values["msg"]
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("blank", ["", " "])
+@pytest.mark.parametrize("option", ["resolver_rule_id", "vpc_id"])
+def test_present_rejects_blank_ids_before_any_aws_call(check_mode, blank, option):
+    # Live: the lookup matches nothing for a whitespace-only ID and AssociateResolverRule refuses it, so check mode
+    # predicted a new association.
+    module = FakeModule(params(**{option: blank}), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": f"{option} must not be empty"}
+    module.client.assert_not_called()
+    ensure_present.assert_not_called()
+
+
+@pytest.mark.parametrize("option", ["resolver_rule_id", "vpc_id"])
+def test_absent_does_not_check_blank_ids(option):
+    module = FakeModule(params(**{option: " ", "state": "absent"}))
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_absent") as ensure_absent,
+    ):
+        plugin.main()
+
+    ensure_absent.assert_called_once()
+
+
 def test_association_that_fails_after_creation_reports_changed():
     client = Mock()
     client.associate_resolver_rule.return_value = {"ResolverRuleAssociation": dict(ASSOCIATION, Status="CREATING")}

@@ -25,6 +25,7 @@ options:
   resolver_rule_id:
     description:
       - The resolver rule ID to associate.
+      - This must not be empty when O(state=present).
     required: true
     type: str
   state:
@@ -38,6 +39,7 @@ options:
   vpc_id:
     description:
       - The VPC ID to associate with the resolver rule.
+      - This must not be empty when O(state=present).
     required: true
     type: str
   wait:
@@ -603,6 +605,13 @@ def main():
     name = module.params["name"]
     if state == "present" and name is not None and not valid_resolver_name(name):
         module.fail_json(msg="name must be a valid resolver rule association name of at most 64 characters")
+
+    if state == "present":
+        # The association lookup matches nothing for a whitespace-only ID and AWS refuses to associate it, while
+        # check mode would predict a new association.
+        for option in ("resolver_rule_id", "vpc_id"):
+            if not module.params[option].strip():
+                module.fail_json(msg=f"{option} must not be empty")
 
     require_positive_wait_bounds(module, always=state == "present")
 

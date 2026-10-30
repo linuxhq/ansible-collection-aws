@@ -1,0 +1,13 @@
+---
+bugfixes:
+  - route53_resolver - a whitespace-only O(security_group_ids) entry or O(ip_addresses[].subnet_id) now fails the
+    existing length checks before any AWS call, in check mode too, as an empty one already did. AWS reads these IDs as
+    empty and refuses them, but check mode predicted success, and on an existing endpoint a real run first added the
+    addresses requested before the blank subnet and then failed with them in place.
+  - route53_resolver_rule - a whitespace-only O(domain_name) or O(resolver_endpoint_id) now fails the existing length
+    checks before any AWS call, in check mode too, as an empty one already did. AWS refuses these values when creating
+    a rule, and when updating one it keeps the current endpoint for a whitespace-only O(resolver_endpoint_id), so the
+    run and every rerun failed after the update, while check mode predicted success.
+  - route53_resolver_rule_associate - with O(state=present), an empty or whitespace-only O(resolver_rule_id) or
+    O(vpc_id) now fails before any AWS call, in check mode too. The association lookup matches nothing for a
+    whitespace-only ID and AWS refuses to associate it, but check mode predicted a new association.
