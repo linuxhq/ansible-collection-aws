@@ -971,6 +971,47 @@ def test_more_than_50_tags_are_rejected_before_aws(check_mode):
     module.client.assert_not_called()
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"content": None}, "state is present but all of the following are missing: content"),
+        ({"document_type": None}, "state is present but all of the following are missing: document_type"),
+        (
+            {"content": None, "document_type": None},
+            "state is present but all of the following are missing: content, document_type",
+        ),
+        ({"document_type": ""}, "document_type must not be empty"),
+        ({"document_type": " "}, "document_type must not be empty"),
+    ],
+    ids=["null-content", "null-type", "null-both", "empty-type", "blank-type"],
+)
+def test_null_or_blank_present_inputs_are_rejected_before_aws(overrides, message, check_mode):
+    # required_if passes an explicit null; CreateDocument refuses Content "null" and a blank DocumentType.
+    module = FakeModule(params(**overrides), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": message}
+    module.client.assert_not_called()
+
+
+def test_absent_ignores_null_content_and_document_type():
+    module = FakeModule(params(content=None, document_type=None, state="absent"))
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
+
+    module.client.assert_called_once()
+
+
 def test_50_tags_and_aws_reserved_tags_reach_aws():
     tags = {f"key{index}": "" for index in range(50)}
     tags["aws:reserved"] = ""

@@ -41,6 +41,7 @@ options:
     description:
       - The Systems Manager document type to create.
       - Required when O(state=present).
+      - This must not be empty when O(state=present).
     type: str
   document_version:
     description:
@@ -730,6 +731,17 @@ def main():
     )
     state = module.params["state"]
     tags = module.params["tags"]
+
+    if state == "present":
+        # required_if counts only supplied keys, so an explicit null passes it.
+        missing = [option for option in ("content", "document_type") if module.params[option] is None]
+        if missing:
+            module.fail_json(msg=f"state is present but all of the following are missing: {', '.join(missing)}")
+
+        # AWS rejects a blank document type, which check mode would otherwise predict as a new document.
+        if not module.params["document_type"].strip():
+            module.fail_json(msg="document_type must not be empty")
+
     require_valid_tags(module, tags if state == "present" else None, 50, restricted_characters=True)
     # Updated versions are always waited on before they are promoted.
     require_positive_wait_bounds(module, always=state == "present")

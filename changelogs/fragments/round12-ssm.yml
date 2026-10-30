@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - ssm_document - with O(state=present), an explicit null O(content) or O(document_type), or an empty or blank
+    O(document_type), now fails before any AWS call, in check mode too. Previously check mode predicted a new or
+    updated document, and the real run failed when AWS refused the content or document type.
+  - ssm_association - with O(state=present), an empty or blank O(name), or a blank O(schedule_expression) or
+    O(targets[].key), now fails before any AWS call, in check mode too. Previously check mode predicted a new or
+    updated association that AWS refuses, and an empty O(name) failed only at the association lookup.
+  - ssm_send_command - a blank O(document_name), O(instance_ids) entry or O(targets[].key) now fails before any AWS
+    call, as an empty one already did. Previously check mode reported a command that AWS refuses to send.

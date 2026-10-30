@@ -30,12 +30,13 @@ options:
   name:
     description:
       - The name of the Systems Manager document that the association runs.
+      - This must not be empty when O(state=present).
     required: true
     type: str
   schedule_expression:
     description:
       - The cron or rate expression that defines the association schedule.
-      - This must be 1 to 256 characters.
+      - This must be 1 to 256 characters and must not be blank.
       - When omitted, an existing association keeps its current schedule, and a
         new association runs once.
     type: str
@@ -58,7 +59,7 @@ options:
       key:
         description:
           - The target key.
-          - This must be 1 to 163 characters.
+          - This must be 1 to 163 characters and must not be blank.
         required: true
         type: str
       values:
@@ -643,7 +644,12 @@ def main():
         module.fail_json(msg="association_name must be 3 to 128 letters, numbers, underscores, hyphens, or periods")
 
     if state == "present":
-        if schedule_expression is not None and not 1 <= len(schedule_expression) <= 256:
+        # A blank document name matches no association, so check mode would predict a create AWS refuses.
+        if not name.strip():
+            module.fail_json(msg="name must not be empty")
+
+        # AWS refuses a blank schedule (InvalidSchedule), so it counts as empty.
+        if schedule_expression is not None and (not schedule_expression.strip() or len(schedule_expression) > 256):
             module.fail_json(msg="schedule_expression must be 1 to 256 characters")
 
         # SSM rejects an empty target list, so omitting targets is the only way to keep them.

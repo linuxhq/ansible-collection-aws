@@ -65,7 +65,7 @@ options:
       key:
         description:
           - The target key.
-          - This must be 1 to 163 characters.
+          - This must be 1 to 163 characters and must not be blank.
         required: true
         type: str
       values:
@@ -471,7 +471,8 @@ def main():
     )
 
     document_name = module.params["document_name"]
-    if not document_name:
+    # AWS accepts no blank document name or instance ID, so whitespace-only values count as empty.
+    if not (document_name or "").strip():
         module.fail_json(msg="document_name must not be empty")
 
     timeout_seconds = module.params["timeout_seconds"]
@@ -491,7 +492,7 @@ def main():
     if len(instance_ids) > 50:
         module.fail_json(msg="instance_ids must contain at most 50 entries")
 
-    if any(not instance_id for instance_id in instance_ids):
+    if any(not (instance_id or "").strip() for instance_id in instance_ids):
         module.fail_json(msg="instance_ids must not contain empty entries")
 
     if len(targets) > 5:

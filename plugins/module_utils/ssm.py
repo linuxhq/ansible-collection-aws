@@ -40,9 +40,11 @@ def require_non_null_ssm_filter_values(module, filters):
 
 
 def require_valid_ssm_targets(module, targets):
-    """Fail unless each target has a 1 to 163 character key and 1 to 50 distinct values."""
+    """Fail unless each target has a 1 to 163 character, non-blank key and 1 to 50 distinct values."""
     for target in targets:
-        if not target["key"] or not 1 <= len(target["key"]) <= 163:
+        key = target["key"] or ""
+        # AWS refuses a blank target key (InvalidTarget), so it counts as empty.
+        if not key.strip() or len(key) > 163:
             module.fail_json(msg="targets[].key must be 1 to 163 characters")
 
         if not target["values"]:
