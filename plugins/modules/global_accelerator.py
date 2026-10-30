@@ -132,11 +132,12 @@ options:
                     IP allocation ID, or an Application or Network Load
                     Balancer ARN.
                   - The ID is sent to AWS as given. AWS lists an Elastic IP
-                    address or EC2 instance in the accelerator's account that
-                    is given by ARN under its allocation ID or instance ID, so
-                    the module treats the ARN and the ID as the same endpoint,
-                    and an endpoint group must not name one endpoint in both
-                    forms.
+                    address or EC2 instance in the accelerator's account and
+                    the endpoint group's region that is given by ARN under its
+                    allocation ID or instance ID, so the module treats that ARN
+                    and the ID as the same endpoint.
+                  - An endpoint group must not name one Elastic IP address or
+                    EC2 instance both by ID and by ARN.
                   - This must not be empty or blank.
                 required: true
                 type: str
@@ -1091,10 +1092,7 @@ def get_endpoint_groups(client, module, listener_arn, changed=False):
 
 
 def ec2_endpoint_arn(endpoint_id, resource_types=("elastic-ip", "instance")):
-    """Return the parsed ARN when an endpoint ID is the ARN of an EC2 resource of one of resource_types, otherwise None.
-
-    Live, AWS lists a same-account Elastic IP address or EC2 instance given by ARN under its allocation or instance ID.
-    """
+    """Return the parsed ARN when an endpoint ID is the ARN of an EC2 resource of one of resource_types, otherwise None."""
     endpoint_arn = parse_aws_arn(endpoint_id)
     if endpoint_arn and endpoint_arn["service"] == "ec2" and endpoint_arn["resource_type"] in resource_types:
         return endpoint_arn
@@ -1108,32 +1106,35 @@ def endpoint_key(endpoint_id):
     return endpoint_id if endpoint_arn is None else endpoint_arn["resource_id"]
 
 
-def listed_endpoint(current_endpoints, endpoint_id):
-    """Return the listed endpoint that a requested endpoint ID refers to, or None.
+def listed_endpoint_id(endpoint_id, scope):
+    """Return the ID AWS lists for a requested endpoint ID.
 
-    An ID listed as given always matches, and an EC2 ARN also matches its resource ID.
+    scope is the partition and account of the accelerator and the region of the endpoint group, when the accelerator
+    exists. Live, AWS lists an Elastic IP address or EC2 instance in that scope given by ARN under its allocation ID or
+    instance ID. What it lists for an ARN outside that scope is unknown, so that ARN, like any other ID, is kept as given.
     """
-    if endpoint_id in current_endpoints:
-        return current_endpoints[endpoint_id]
-
-    return current_endpoints.get(endpoint_key(endpoint_id))
-
-
-def predicted_endpoint_id(current_endpoints, endpoint_id, account_id):
-    """Predict the ID AWS lists for a requested endpoint; account_id is the accelerator's account, when known."""
-    listed = listed_endpoint(current_endpoints, endpoint_id)
-    if listed is not None:
-        return listed["endpoint_id"]
-
-    # What AWS lists for another account's resource given by ARN is unknown, so it is predicted as given.
     endpoint_arn = ec2_endpoint_arn(endpoint_id)
-    if endpoint_arn is not None and account_id is not None and endpoint_arn["account_id"] == account_id:
+    if (
+        endpoint_arn is not None
+        and scope is not None
+        and (endpoint_arn["partition"], endpoint_arn["account_id"], endpoint_arn["region"]) == scope
+    ):
         return endpoint_arn["resource_id"]
 
     return endpoint_id
 
 
-def endpoint_group_requires_update(current, desired):
+def endpoint_group_scope(accelerator_arn, region):
+    """Return the scope listed_endpoint_id needs, or None without an accelerator ARN."""
+    accelerator = parse_aws_arn(accelerator_arn) if accelerator_arn else None
+    if accelerator is None:
+        return None
+
+    return (accelerator["partition"], accelerator["account_id"], region)
+
+
+def endpoint_group_requires_update(current, desired, scope=None):
+    """Compare an endpoint group with the request; scope is as for listed_endpoint_id."""
     # AWS stores no health check path for TCP health checks, so a requested path never matches one.
     tcp_health_check = (desired["health_check_protocol"] or current.get("health_check_protocol")) == "TCP"
     for field in ENDPOINT_GROUP_SETTINGS:
@@ -1155,11 +1156,15 @@ def endpoint_group_requires_update(current, desired):
         }
         matched_ids = set()
         for configuration in desired["endpoint_configurations"]:
-            endpoint = listed_endpoint(current_endpoints, configuration["endpoint_id"])
+            endpoint_id = configuration["endpoint_id"]
+            if endpoint_id not in current_endpoints:
+                endpoint_id = listed_endpoint_id(endpoint_id, scope)
+
+            endpoint = current_endpoints.get(endpoint_id)
             if endpoint is None:
                 return True
 
-            matched_ids.add(endpoint.get("endpoint_id"))
+            matched_ids.add(endpoint_id)
             if configuration["weight"] != endpoint.get("weight"):
                 return True
 
@@ -1290,8 +1295,8 @@ def require_endpoint_group_writes(module, client):
             require_endpoint_configuration_parameters(module, client, method_name, operation_name, request)
 
 
-def predicted_endpoint_group(current, desired, default_health_check_port=None, account_id=None):
-    """Predict an endpoint group; account_id is the accelerator's account, when known."""
+def predicted_endpoint_group(current, desired, default_health_check_port=None, scope=None):
+    """Predict an endpoint group; scope is as for listed_endpoint_id."""
     if current is None:
         # AWS returns an empty endpoint list for a group created without endpoints.
         predicted = dict(ENDPOINT_GROUP_CREATE_DEFAULTS, endpoint_descriptions=[])
@@ -1316,13 +1321,16 @@ def predicted_endpoint_group(current, desired, default_health_check_port=None, a
         predicted["port_overrides"] = normalized_port_overrides(desired["port_overrides"])
 
     if desired["endpoint_configurations"] is not None:
-        current_endpoints = {
-            endpoint.get("endpoint_id"): endpoint for endpoint in (current or {}).get("endpoint_descriptions", [])
-        }
+        current_ids = {endpoint.get("endpoint_id") for endpoint in (current or {}).get("endpoint_descriptions", [])}
         endpoint_descriptions = []
         for configuration in desired["endpoint_configurations"]:
+            # An endpoint listed under the requested ID keeps it.
+            endpoint_id = configuration["endpoint_id"]
+            if endpoint_id not in current_ids:
+                endpoint_id = listed_endpoint_id(endpoint_id, scope)
+
             endpoint = {
-                "endpoint_id": predicted_endpoint_id(current_endpoints, configuration["endpoint_id"], account_id),
+                "endpoint_id": endpoint_id,
                 "weight": configuration["weight"],
             }
             if configuration["client_ip_preservation_enabled"] is not None:
@@ -1397,9 +1405,9 @@ def ensure_endpoint_groups(
     """Reconcile endpoint groups; mutated reports earlier modifications, for failure results.
 
     default_health_check_port is the port AWS checks health on when a created group omits health_check_port, if it is
-    known, and accelerator_arn the ARN of an existing accelerator, for check-mode predictions.
+    known, for check-mode predictions. accelerator_arn is the ARN of the accelerator, when it exists, which decides the
+    IDs AWS lists endpoints given by ARN under.
     """
-    account_id = (parse_aws_arn(accelerator_arn) or {}).get("account_id") if accelerator_arn else None
     current_by_region = {}
     if listener_arn is not None:
         for endpoint_group in get_endpoint_groups(client, module, listener_arn, changed=mutated):
@@ -1410,13 +1418,14 @@ def ensure_endpoint_groups(
 
     for desired in endpoint_groups:
         region = desired["endpoint_group_region"]
+        scope = endpoint_group_scope(accelerator_arn, region)
 
         current = current_by_region.pop(region, None)
 
         if current is None:
             changed = True
             if module.check_mode:
-                results.append(predicted_endpoint_group(None, desired, default_health_check_port, account_id))
+                results.append(predicted_endpoint_group(None, desired, default_health_check_port, scope))
                 continue
 
             request = endpoint_group_request(desired)
@@ -1452,10 +1461,10 @@ def ensure_endpoint_groups(
                     force_tags=False,
                 )
             )
-        elif endpoint_group_requires_update(current, desired):
+        elif endpoint_group_requires_update(current, desired, scope):
             changed = True
             if module.check_mode:
-                results.append(predicted_endpoint_group(current, desired, account_id=account_id))
+                results.append(predicted_endpoint_group(current, desired, scope=scope))
                 continue
 
             endpoint_group_arn = current["endpoint_group_arn"]

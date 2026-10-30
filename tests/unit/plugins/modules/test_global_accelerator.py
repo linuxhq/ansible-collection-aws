@@ -1140,6 +1140,8 @@ OTHER_ACCOUNT_EIP_ARN = f"arn:aws:ec2:us-west-2:111122223333:elastic-ip/{EIP_ALL
 INSTANCE_ID = "i-0123456789abcdef0"
 INSTANCE_ARN = f"arn:aws:ec2:us-west-2:123456789012:instance/{INSTANCE_ID}"
 LOAD_BALANCER_ARN = "arn:aws:elasticloadbalancing:us-west-2:123456789012:loadbalancer/app/example/0123456789abcdef"
+# The partition and account of ACCELERATOR_ARN, and the region of the endpoint groups below.
+SCOPE = ("aws", "123456789012", "us-west-2")
 
 
 def endpoint_group_response(*endpoint_ids, weight=128):
@@ -1221,7 +1223,36 @@ def test_an_ec2_arn_matches_its_listed_resource_id(listed_ids, endpoint_ids, wei
     current = listed_endpoint_group(*listed_ids)
     desired = endpoint_group_with(*endpoint_ids, weight=weight)
 
-    assert plugin.endpoint_group_requires_update(current, desired) is expected
+    assert plugin.endpoint_group_requires_update(current, desired, SCOPE) is expected
+
+
+# What AWS lists for an EC2 ARN outside the accelerator's partition and account or the group's region is unknown, so it
+# matches only as given.
+@pytest.mark.parametrize(
+    "endpoint_id, scope",
+    [
+        (OTHER_ACCOUNT_EIP_ARN, SCOPE),
+        (f"arn:aws:ec2:us-east-1:123456789012:elastic-ip/{EIP_ALLOCATION_ID}", SCOPE),
+        (f"arn:aws-cn:ec2:us-west-2:123456789012:elastic-ip/{EIP_ALLOCATION_ID}", SCOPE),
+        (f"arn:aws:ec2:us-west-2:111122223333:instance/{INSTANCE_ID}", SCOPE),
+        (EIP_ARN, None),
+    ],
+    ids=["other-account", "other-region", "other-partition", "other-account-instance", "no-accelerator"],
+)
+def test_an_ec2_arn_outside_the_accelerator_scope_matches_only_as_given(endpoint_id, scope):
+    resource_id = endpoint_id.rsplit("/", 1)[1]
+
+    assert plugin.endpoint_group_requires_update(
+        listed_endpoint_group(resource_id), endpoint_group_with(endpoint_id), scope
+    )
+    assert not plugin.endpoint_group_requires_update(
+        listed_endpoint_group(endpoint_id), endpoint_group_with(endpoint_id), scope
+    )
+
+
+def test_the_scope_is_the_accelerator_partition_and_account_and_the_group_region():
+    assert plugin.endpoint_group_scope(ACCELERATOR_ARN, "us-west-2") == SCOPE
+    assert plugin.endpoint_group_scope(None, "us-west-2") is None
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -1239,6 +1270,36 @@ def test_an_ec2_endpoint_group_requested_by_arn_converges(check_mode, listed_id,
 
     assert changed is False
     assert groups == [current]
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_listener_reconciliation_passes_the_accelerator_to_endpoint_group_matching(check_mode):
+    listener = {
+        "client_affinity": None,
+        "endpoint_groups": [endpoint_group_with(EIP_ARN)],
+        "port_ranges": [{"from_port": 443, "to_port": 443}],
+        "protocol": "TCP",
+    }
+    current_listener = {
+        "client_affinity": "NONE",
+        "listener_arn": "arn:listener",
+        "port_ranges": [{"from_port": 443, "to_port": 443}],
+        "protocol": "TCP",
+    }
+    current = listed_endpoint_group(EIP_ALLOCATION_ID)
+    module = FakeModule(
+        {"listeners": [listener], "purge_endpoint_groups": True, "purge_listeners": True}, check_mode=check_mode
+    )
+    client = Mock()
+    with (
+        patch.object(plugin, "get_listeners", return_value=[current_listener]),
+        patch.object(plugin, "get_endpoint_groups", return_value=[current]),
+    ):
+        changed, listeners = plugin.ensure_listeners(client, module, ACCELERATOR_ARN)
+
+    assert changed is False
+    assert listeners[0]["endpoint_groups"] == [current]
     assert client.mock_calls == []
 
 
@@ -1307,8 +1368,14 @@ def test_a_create_sends_the_requested_arn_and_check_mode_predicts_the_listed_id(
         (ACCELERATOR_ARN, None, EIP_ARN, EIP_ALLOCATION_ID),
         # A new accelerator has no ARN yet, so its account is unknown.
         (None, None, EIP_ARN, EIP_ARN),
-        # What AWS lists for another account's address is unknown.
+        # What AWS lists for another account's or region's address is unknown.
         (ACCELERATOR_ARN, "arn:listener", OTHER_ACCOUNT_EIP_ARN, OTHER_ACCOUNT_EIP_ARN),
+        (
+            ACCELERATOR_ARN,
+            "arn:listener",
+            f"arn:aws:ec2:us-east-1:123456789012:elastic-ip/{EIP_ALLOCATION_ID}",
+            f"arn:aws:ec2:us-east-1:123456789012:elastic-ip/{EIP_ALLOCATION_ID}",
+        ),
         (ACCELERATOR_ARN, "arn:listener", EIP_ALLOCATION_ID, EIP_ALLOCATION_ID),
         (ACCELERATOR_ARN, "arn:listener", INSTANCE_ARN, INSTANCE_ID),
         (ACCELERATOR_ARN, "arn:listener", LOAD_BALANCER_ARN, LOAD_BALANCER_ARN),
@@ -1318,6 +1385,7 @@ def test_a_create_sends_the_requested_arn_and_check_mode_predicts_the_listed_id(
         "new-listener",
         "new-accelerator",
         "other-account",
+        "other-region",
         "allocation-id",
         "instance",
         "load-balancer",
