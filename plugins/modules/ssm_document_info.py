@@ -100,12 +100,25 @@ document:
   returned: always
   type: dict
   contains:
+    attachments_content:
+      description: The document attachments, including their names, locations, and sizes.
+      returned: when the document has attachments
+      type: list
+      elements: dict
     content:
       description:
         - Document content, parsed from JSON when possible and returned exactly as AWS stores it.
         - Content in the YAML or TEXT format is returned as a string.
       returned: when a document is returned
       type: raw
+    created_date:
+      description: The date the document was created.
+      returned: when available
+      type: str
+    display_name:
+      description: The friendly name of the document version.
+      returned: when configured
+      type: str
     document_format:
       description: Document format.
       returned: when a document is returned
@@ -122,10 +135,31 @@ document:
       description: Document name.
       returned: when a document is returned
       type: str
+    requires:
+      description: The documents that this document requires.
+      returned: when configured
+      type: list
+      elements: dict
+    review_status:
+      description: The review status of the document version.
+      returned: when returned by AWS
+      type: str
+    status:
+      description: Document status.
+      returned: when available
+      type: str
+    status_information:
+      description: Details about the document status, such as why it failed.
+      returned: when returned by AWS
+      type: str
     tags:
       description: Document tags.
       returned: when a document is returned
       type: dict
+    version_name:
+      description: The version name of the document version.
+      returned: when configured
+      type: str
 documents:
   description:
     - The AWS Systems Manager documents.
@@ -134,12 +168,25 @@ documents:
   type: list
   elements: dict
   contains:
+    attachments_content:
+      description: The document attachments, including their names, locations, and sizes.
+      returned: when the document has attachments
+      type: list
+      elements: dict
     content:
       description:
         - Document content, parsed from JSON when possible and returned exactly as AWS stores it.
         - Content in the YAML or TEXT format is returned as a string.
       returned: always
       type: raw
+    created_date:
+      description: The date the document was created.
+      returned: when available
+      type: str
+    display_name:
+      description: The friendly name of the document version.
+      returned: when configured
+      type: str
     document_format:
       description: Document format.
       returned: always
@@ -156,10 +203,31 @@ documents:
       description: Document name.
       returned: always
       type: str
+    requires:
+      description: The documents that this document requires.
+      returned: when configured
+      type: list
+      elements: dict
+    review_status:
+      description: The review status of the document version.
+      returned: when returned by AWS
+      type: str
+    status:
+      description: Document status.
+      returned: when available
+      type: str
+    status_information:
+      description: Details about the document status, such as why it failed.
+      returned: when returned by AWS
+      type: str
     tags:
       description: Document tags.
       returned: always
       type: dict
+    version_name:
+      description: The version name of the document version.
+      returned: when configured
+      type: str
 """
 
 import json

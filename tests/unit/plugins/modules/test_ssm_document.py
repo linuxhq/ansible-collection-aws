@@ -13,6 +13,8 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleExit,
     ModuleFail,
     ModuleInitialized,
+    assert_documents_shape,
+    documented_returns,
 )
 
 
@@ -87,6 +89,11 @@ def test_module_contract():
     assert spec["force"]["default"] is False
     assert spec["wait"]["default"] is True
     assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
+
+
+def test_documented_returns_cover_the_sdk_shape():
+    # The document is the GetDocument response with every member AWS sends.
+    assert_documents_shape(documented_returns(plugin)["document"]["contains"], "ssm", "GetDocumentResult")
 
 
 def test_document_content_accepts_json_or_mapping():

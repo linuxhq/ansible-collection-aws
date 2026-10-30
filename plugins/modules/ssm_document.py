@@ -147,14 +147,31 @@ RETURN = r"""
 document:
   description:
     - The current AWS Systems Manager document after module execution.
+    - When the document read after a create or update does not return the
+      requested content, the result is built from the AWS create or update
+      response instead, and can also contain the other document description
+      fields that AWS returns there.
   returned: when state is present
   type: dict
   contains:
+    attachments_content:
+      description: The document attachments, including their names, locations, and sizes.
+      returned: when the document has attachments
+      type: list
+      elements: dict
     content:
       description:
         - Document content, parsed from JSON and returned exactly as AWS stores it.
       returned: always
       type: dict
+    created_date:
+      description: The date the document was created.
+      returned: when available
+      type: str
+    display_name:
+      description: The friendly name of the document version.
+      returned: when configured
+      type: str
     document_format:
       description: Document format.
       returned: when available
@@ -171,6 +188,15 @@ document:
       description: Document name.
       returned: always
       type: str
+    requires:
+      description: The documents that this document requires.
+      returned: when configured
+      type: list
+      elements: dict
+    review_status:
+      description: The review status of the document version.
+      returned: when returned by AWS
+      type: str
     status:
       description: Document status.
       returned: when available
@@ -183,6 +209,10 @@ document:
       description: Document tags.
       returned: when O(tags) is supplied
       type: dict
+    version_name:
+      description: The version name of the document version.
+      returned: when configured
+      type: str
 name:
   description: The managed Systems Manager document name.
   returned: always

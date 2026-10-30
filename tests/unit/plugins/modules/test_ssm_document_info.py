@@ -12,6 +12,8 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleExit,
     ModuleFail,
     ModuleInitialized,
+    assert_documents_shape,
+    documented_returns,
 )
 
 
@@ -50,6 +52,12 @@ def test_module_contract():
     assert captured["supports_check_mode"]
     assert len(captured["mutually_exclusive"]) == 2
     assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
+
+
+@pytest.mark.parametrize("key", ["document", "documents"])
+def test_documented_returns_cover_the_sdk_shape(key):
+    # Each document is the GetDocument response with every member AWS sends.
+    assert_documents_shape(documented_returns(plugin)[key]["contains"], "ssm", "GetDocumentResult")
 
 
 def test_content_transform_returns_json_unchanged_and_text_as_is():

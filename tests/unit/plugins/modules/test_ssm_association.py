@@ -11,6 +11,8 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleExit,
     ModuleFail,
     ModuleInitialized,
+    assert_documents_shape,
+    documented_returns,
 )
 
 UPDATE_PARAMETERS = (
@@ -112,6 +114,11 @@ def test_module_contract():
     assert "required_if" not in captured
     assert captured["argument_spec"]["association_name"] == {"type": "str"}
     assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
+
+
+def test_documented_returns_cover_the_sdk_shape():
+    # The association is returned from CreateAssociation and DescribeAssociation with every member AWS sends.
+    assert_documents_shape(documented_returns(plugin)["association"]["contains"], "ssm", "AssociationDescription")
 
 
 def test_targets_apply_defaults_and_ignore_order():

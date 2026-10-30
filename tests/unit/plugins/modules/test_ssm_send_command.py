@@ -671,6 +671,61 @@ def test_check_mode_rejects_blank_values_before_aws(overrides, message):
     require.assert_not_called()
 
 
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"max_concurrency": ""}, "max_concurrency must not be empty"),
+        ({"max_concurrency": " "}, "max_concurrency must not be empty"),
+        ({"max_errors": ""}, "max_errors must not be empty"),
+        ({"max_errors": "\t"}, "max_errors must not be empty"),
+        ({"parameters": {"commands": None}}, "parameters must not contain a null value"),
+        ({"parameters": {"commands": ["echo", None]}}, "parameters must not contain a null value"),
+    ],
+    ids=["empty-concurrency", "blank-concurrency", "empty-errors", "blank-errors", "null-value", "null-entry"],
+)
+def test_rejects_values_send_command_refuses_before_aws(overrides, message, check_mode):
+    # botocore or AWS refuses these on the only write, so check mode must not report a send for them.
+    module = FakeModule(send_params(**overrides), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_positive_wait_bounds"),
+        patch.object(plugin, "require_client_methods") as require,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": message}
+    module.client.assert_not_called()
+    require.assert_not_called()
+
+
+def test_rate_controls_and_empty_parameter_lists_are_sent_unchanged():
+    client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1", "Status": "Pending"}}))
+    module = FakeModule(
+        send_params(max_concurrency="10%", max_errors="0", parameters={"commands": [], "workingDirectory": [""]}),
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_positive_wait_bounds"),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"]
+    client.send_command.assert_called_once_with(
+        DocumentName="AWS-RunShellScript",
+        InstanceIds=["i-1"],
+        MaxConcurrency="10%",
+        MaxErrors="0",
+        Parameters={"commands": [], "workingDirectory": [""]},
+        aws_retry=True,
+    )
+
+
 def test_ssm_wait_tolerates_initially_invisible_command():
     client = Mock()
     client.send_command.return_value = {"Command": {"CommandId": "command-1", "Status": "Pending"}}
