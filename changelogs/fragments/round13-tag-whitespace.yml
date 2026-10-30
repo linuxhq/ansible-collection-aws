@@ -1,0 +1,17 @@
+---
+bugfixes:
+  - ec2_flow_log, ec2_transit_gateway_route_table, ec2_vpc_prefix_list, ec2_vpc_vpn - an O(tags) key made only of
+    whitespace now fails with "tag keys must not be blank" before any AWS call, in check mode too. EC2 rejects such a
+    key, so check mode predicted success and a real run failed at the tag write, after any earlier change of that run.
+  - ec2_flow_log, ec2_transit_gateway_route_table, ec2_vpc_prefix_list, ec2_vpc_vpn - an O(tags) value made only of
+    spaces, tabs, carriage returns, and line feeds is now sent, compared, and returned as an empty value, which is what
+    EC2 stores. Previously every run reported a tag change, and check mode predicted the value as written.
+  - ec2_transit_gateway_route_table - with O(state=present), an O(name) made only of spaces, tabs, carriage returns,
+    and line feeds now fails with "name must not be empty" before any AWS call. EC2 stores such a C(Name) tag as an
+    empty value, so the route table could never be found by its name again and every run created another one.
+  - ec2_vpc_prefix_list - an O(entries[].description) made only of whitespace is now the same as omitting it, as EC2
+    stores no such description. Previously a rerun failed with InvalidPrefixListModification, and check mode predicted
+    the description as written.
+  - ssm_document - creating a document with an O(tags) key made only of whitespace (no-break spaces count as text) now
+    fails before any AWS write, in check mode too, as AWS CreateDocument rejects such a key. Tagging an existing
+    document still accepts it, as AddTagsToResource does.

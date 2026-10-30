@@ -185,6 +185,9 @@ notes:
   - This rewritten implementation was introduced in collection release 2.4.0.
   - Results exclude customer gateway XML and pre-shared keys, including AWS-generated keys.
   - O(name) owns the Name tag even when O(tags) is omitted or empty.
+  - O(tags) keys must not be blank. EC2 stores a tag value made only of spaces,
+    tabs, carriage returns, and line feeds as an empty value, so such a value is
+    sent, compared, and returned as empty.
   - All CIDRs must be canonical network addresses without host bits set.
 """
 
@@ -973,7 +976,7 @@ def desired_tags(module, current):
     if tags is None:
         return {}, []
 
-    require_valid_tags(module, tags, 50)
+    require_valid_tags(module, tags, 50, ec2=True)
     current_tags = boto3_tag_list_to_ansible_dict(current.get("Tags") or [])
     tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge)
     require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "VPN connection")

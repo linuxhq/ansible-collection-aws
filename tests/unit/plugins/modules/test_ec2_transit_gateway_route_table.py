@@ -1285,6 +1285,89 @@ def test_name_tag_must_match_name():
     assert raised.value.values["msg"] == "tags.Name must match name"
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", [" ", "\t", "\N{IDEOGRAPHIC SPACE}"])
+def test_blank_tag_keys_fail_before_any_aws_call(key, check_mode):
+    # Live: EC2 rejects them (InvalidParameterValue), after any route table create of the same run.
+    module = FakeModule(present_params(name="main", tags={key: "x"}), check_mode=check_mode)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_positive_wait_bounds"),
+        patch.object(module, "client", side_effect=AssertionError("Unexpected client")),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": "tag keys must not be blank"}
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("name", [" ", "\t\n\r"])
+@pytest.mark.parametrize(
+    "identifiers",
+    [{"transit_gateway_id": "tgw-1", "transit_gateway_route_table_id": None}, {}],
+    ids=["by-name", "by-id"],
+)
+def test_present_rejects_a_name_ec2_stores_as_an_empty_tag(identifiers, name, check_mode):
+    # Live: EC2 stores a tag value made only of spaces, tabs, and line breaks as "", so a Name tag of this name could
+    # never be found again and every run would create another route table.
+    module = FakeModule(present_params(name=name, **identifiers), check_mode=check_mode)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_positive_wait_bounds"),
+        patch.object(module, "client", side_effect=AssertionError("Unexpected client")),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": "name must not be empty"}
+
+
+@pytest.mark.parametrize(
+    "name, state",
+    [(" ", "absent"), ("\N{NO-BREAK SPACE}", "absent"), ("\N{NO-BREAK SPACE}", "present")],
+)
+def test_absent_blank_names_and_stored_names_reach_the_route_table_lookup(name, state):
+    # Absent only looks the name up, and EC2 stores a no-break space Name tag as sent.
+    client = Mock()
+    module = FakeModule(present_params(name=name, state=state), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_positive_wait_bounds"),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, f"ensure_{state}") as ensure,
+    ):
+        plugin.main()
+
+    ensure.assert_called_once_with(client, module)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_blank_tag_values_match_the_empty_value_ec2_stores(check_mode):
+    # Live: EC2 stores a tag value made only of spaces, tabs, and line breaks as "", and padded values as sent.
+    client = Mock()
+    module = FakeModule(
+        present_params(name="main", tags={"Blank": " ", "Pad": "x "}), check_mode=check_mode, client=client
+    )
+    table = {
+        "State": "available",
+        "Tags": [{"Key": "Blank", "Value": ""}, {"Key": "Name", "Value": "main"}, {"Key": "Pad", "Value": "x "}],
+        "TransitGatewayRouteTableId": "tgw-rtb-1",
+    }
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_positive_wait_bounds"),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "find_route_table", return_value=table),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    assert result.value.values["changed"] is False
+    client.create_tags.assert_not_called()
+    client.delete_tags.assert_not_called()
+
+
 def test_route_table_wait_timeout_names_target_state():
     module = FakeModule({"wait_delay": 1, "wait_timeout": 1})
     with (

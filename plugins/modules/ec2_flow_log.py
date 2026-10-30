@@ -13,6 +13,9 @@ description:
   - Manages tags on existing matching flow logs.
   - EC2 permits at most 50 tags on a flow log; tag keys may contain at most
     128 characters and tag values at most 256 characters.
+  - Tag keys must not be blank. EC2 stores a tag value made only of spaces, tabs,
+    carriage returns, and line feeds as an empty value, so such a value is sent,
+    compared, and returned as empty.
   - Existing flow log tags are purged only when O(tags) is provided and
     O(purge_tags=true).
   - EC2 flow logs cannot be modified. When settings change, the module creates a new flow log; set
@@ -945,7 +948,7 @@ def main():
         if destination_options and module.params["log_destination_type"] != "s3":
             module.fail_json(msg="destination_options requires log_destination_type to be s3 when state is present")
 
-    require_valid_tags(module, module.params["tags"] if state == "present" else None, 50)
+    require_valid_tags(module, module.params["tags"] if state == "present" else None, 50, ec2=True)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
     describe_parameters = ["Filter", "MaxResults", "NextToken"]
     if state == "present":

@@ -277,6 +277,47 @@ def test_tag_keys_may_contain_128_characters_but_not_129():
     assert_module_rejects(plugin, params, "tag keys must contain 1 to 128 characters and values at most 256 characters")
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", [" ", "\t", "\N{IDEOGRAPHIC SPACE}"])
+def test_blank_tag_keys_fail_before_aws(key, check_mode):
+    # Live: EC2 rejects them (InvalidParameterValue), after any flow log create or delete of the same run.
+    module = FakeModule(present_params(tags={key: "x"}), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "get_flow_logs") as get_flow_logs,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": "tag keys must not be blank"}
+    module.client.assert_not_called()
+    get_flow_logs.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_blank_tag_values_match_the_empty_value_ec2_stores(check_mode):
+    # Live: EC2 stores a tag value made only of spaces, tabs, and line breaks as "", and padded values as sent.
+    matching = dict(
+        OLD_FLOW_LOG,
+        LogDestination="arn:aws:s3:::new-bucket",
+        Tags=[{"Key": "Blank", "Value": ""}, {"Key": "Pad", "Value": "x "}],
+    )
+    client = Mock()
+    module = FakeModule(present_params(tags={"Blank": " \n", "Pad": "x "}), check_mode=check_mode, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_flow_logs", return_value=[matching]),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    assert result.value.values["changed"] is False
+    assert result.value.values["flow_logs"][0]["tags"] == {"Blank": "", "Pad": "x "}
+    client.create_tags.assert_not_called()
+
+
 def test_partial_create_failure_is_not_reported_as_success():
     client = Mock()
     client.create_flow_logs.return_value = {"Unsuccessful": [{"Error": {"Code": "LimitExceeded"}}]}

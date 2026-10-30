@@ -36,8 +36,8 @@ options:
       - This list must contain at least one entry, and entry CIDR blocks must
         be unique.
       - Entries without O(entries[].description) have no description.
-      - An empty O(entries[].description) is the same as omitting it, since
-        EC2 does not store empty descriptions.
+      - An empty O(entries[].description), or one made only of whitespace, is the
+        same as omitting it, since EC2 does not store such descriptions.
     elements: dict
     suboptions:
       cidr:
@@ -118,6 +118,10 @@ attributes:
   diff_mode:
     description: Diff mode is not supported.
     support: none
+notes:
+  - O(tags) keys must not be blank. EC2 stores a tag value made only of spaces,
+    tabs, carriage returns, and line feeds as an empty value, so such a value is
+    sent, compared, and returned as empty.
 """
 
 EXAMPLES = r"""
@@ -266,6 +270,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    EC2_BLANK_CHARACTERS,
     apply_tag_deltas,
     reconcile_ec2_tags,
     require_resulting_tag_limit,
@@ -1027,6 +1032,10 @@ def main():
             if len(entry.get("description") or "") > 255:
                 module.fail_json(msg="entries[].description must contain at most 255 characters")
 
+            # EC2 stores no description made only of whitespace, so, like an empty one, it is never sent or compared.
+            if not (entry.get("description") or "").strip(EC2_BLANK_CHARACTERS):
+                entry["description"] = None
+
             try:
                 cidr = ipaddress.ip_network(entry["cidr"])
             except ValueError:
@@ -1049,7 +1058,7 @@ def main():
 
             cidrs.add(entry["cidr"])
 
-    require_valid_tags(module, tags if state == "present" else None, 50)
+    require_valid_tags(module, tags if state == "present" else None, 50, ec2=True)
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     require_client_methods(

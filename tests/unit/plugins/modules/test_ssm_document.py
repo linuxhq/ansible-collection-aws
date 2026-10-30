@@ -1059,6 +1059,53 @@ def test_tags_with_characters_aws_accepts_reach_aws():
     module.client.assert_called_once()
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", [" ", "   ", "\N{IDEOGRAPHIC SPACE}", " \N{EM SPACE}\N{LINE SEPARATOR} "])
+def test_create_rejects_blank_tag_keys_before_any_write(key, check_mode):
+    # Live: CreateDocument rejects them (ValidationException "tag key can't be whitespaces only"), so check mode
+    # would predict a document that no real run can create.
+    client = Mock()
+    result, _wait, _get = run_present(client, FakeModule(params(tags={key: "x"}), check_mode=check_mode), [None, None])
+
+    assert isinstance(result, ModuleFail)
+    assert result.values == {"msg": "tag keys must not be blank when creating an AWS Systems Manager document"}
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize(
+    "key", ["\N{NO-BREAK SPACE}", "\N{FIGURE SPACE}", "\N{NARROW NO-BREAK SPACE}", " \N{NO-BREAK SPACE} "]
+)
+def test_create_sends_tag_keys_with_no_break_spaces(key):
+    # Live: CreateDocument counts no-break spaces as text and stores these keys as sent.
+    client = Mock()
+    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1", "Name": "example"}}
+    result, _wait, _get = run_present(client, FakeModule(params(tags={key: "x"})), [None, None])
+
+    assert result.values["changed"] is True
+    assert client.create_document.call_args.kwargs["Tags"] == [{"Key": key, "Value": "x"}]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_existing_document_still_accepts_blank_tag_keys(check_mode):
+    # Live: AddTagsToResource accepts a whitespace-only key, and ListTagsForResource returns it as sent.
+    client = Mock()
+    current = document({"schemaVersion": "2.2"}, Tags=[])
+    result, _wait, _get = run_present(
+        client, FakeModule(params(tags={" ": "x"}), check_mode=check_mode), [current, current]
+    )
+
+    assert result.values["changed"] is True
+    assert result.values["document"]["tags"] == {" ": "x"}
+    if check_mode:
+        client.add_tags_to_resource.assert_not_called()
+    else:
+        client.add_tags_to_resource.assert_called_once_with(
+            ResourceType="Document", ResourceId="example", Tags=[{"Key": " ", "Value": "x"}], aws_retry=True
+        )
+
+    client.create_document.assert_not_called()
+
+
 def waiter_configs(waiter):
     """Return the WaiterConfig that reached each wait, for comparing with the expected remaining budgets."""
     return [wait_call.kwargs["WaiterConfig"] for wait_call in waiter.wait.call_args_list]

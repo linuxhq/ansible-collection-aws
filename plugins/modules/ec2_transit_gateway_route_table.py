@@ -14,6 +14,9 @@ description:
   - This module does not manage route table associations or propagations.
   - EC2 permits at most 50 tags on a transit gateway route table; tag keys may
     contain at most 128 characters and tag values at most 256 characters.
+  - Tag keys must not be blank. EC2 stores a tag value made only of spaces, tabs,
+    carriage returns, and line feeds as an empty value, so such a value is sent,
+    compared, and returned as empty.
   - Existing tags are purged only when O(tags) is provided and
     O(purge_tags=true). When O(name) is provided without O(tags), existing tags
     other than C(Name) are retained.
@@ -28,6 +31,9 @@ options:
       - When O(tags) contains C(Name), its value must match this value.
       - Required when O(transit_gateway_route_table_id) is omitted.
       - This must not be empty when specified.
+      - When O(state=present), this must not be made only of spaces, tabs,
+        carriage returns, and line feeds, because EC2 stores such a C(Name) tag
+        as an empty value.
     type: str
   purge_routes:
     description:
@@ -299,6 +305,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    EC2_BLANK_TAG_VALUE_CHARACTERS,
     apply_tag_deltas,
     reconcile_ec2_tags,
     require_resulting_tag_limit,
@@ -1233,12 +1240,16 @@ def main():
     if state == "present":
         tags = module.params["tags"]
         name = module.params["name"]
-        require_valid_tags(module, tags, 50)
+        # EC2 would store the Name tag as "", so the route table could never be found by this name again.
+        if name is not None and not name.strip(EC2_BLANK_TAG_VALUE_CHARACTERS):
+            module.fail_json(msg="name must not be empty")
+
+        require_valid_tags(module, tags, 50, ec2=True)
         if name and tags is not None and tags.get("Name", name) != name:
             module.fail_json(msg="tags.Name must match name")
 
         # The Name tag counts toward the EC2 tag limit.
-        require_valid_tags(module, desired_tags(module), 50)
+        require_valid_tags(module, desired_tags(module), 50, ec2=True)
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
