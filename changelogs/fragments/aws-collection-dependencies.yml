@@ -1,0 +1,3 @@
+---
+minor_changes:
+  - Update amazon.aws to 11.5.0 and community.aws to 11.2.0.
