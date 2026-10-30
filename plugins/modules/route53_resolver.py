@@ -124,7 +124,8 @@ options:
     type: int
 notes:
   - O(tags) accepts at most 200 entries; keys must contain 1 to 128 characters
-    and values at most 256 characters.
+    and values at most 256 characters, and both may contain only letters,
+    numbers, spaces, C(_), C(.), C(:), C(/), C(=), C(+), C(-), and C(@).
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -492,6 +493,7 @@ ENDPOINT_CREATION_DEFAULTS = {"protocols": ["Do53"], "resolver_endpoint_type": "
 # Settings the module does not manage, which AWS returns disabled for a new endpoint of each direction.
 UNMANAGED_ENDPOINT_CREATION_DEFAULTS = {
     "INBOUND": {"Dns64Enabled": False, "RniEnhancedMetricsEnabled": False},
+    "INBOUND_DELEGATION": {"Dns64Enabled": False, "RniEnhancedMetricsEnabled": False},
     "OUTBOUND": {
         "Ipv6InternetAccessEnabled": False,
         "RniEnhancedMetricsEnabled": False,
@@ -800,6 +802,23 @@ def ensure_present(client, module, deadline=None):
             ):
                 projected_desired["status"] = "UPDATING"
 
+            # Without a wait, address changes return the last change's response: UPDATING, counting an added address
+            # at once and a removed one until it is gone. The response after removing a failed address is unproven.
+            if not module.params["wait"] and not keep_ip_addresses:
+                listed_ip_addresses = endpoint.get("IpAddresses") or []
+                if projected_desired.get("resolver_endpoint_type") == "DUALSTACK":
+                    listed_ip_addresses = ip_addresses_with_requested_ipv6(endpoint, desired["ip_addresses"])
+
+                changes = ip_address_changes(listed_ip_addresses, desired["ip_addresses"])
+                last_operation, last_ip_address = changes[-1] if changes else (None, None)
+                if last_operation == "add" or (
+                    last_operation == "remove" and ip_address_status(last_ip_address) not in FAILED_IP_ADDRESS_STATUSES
+                ):
+                    projected_desired["ip_address_count"] = len(desired["ip_addresses"]) + (
+                        1 if last_operation == "remove" else 0
+                    )
+                    projected_desired["status"] = "UPDATING"
+
         endpoint = dict(endpoint or {})
         if current is None:
             # botocore drops response members its model lacks, so predict only those a real run returns.
@@ -977,15 +996,12 @@ def ensure_present(client, module, deadline=None):
     module.exit_json(**result)
 
 
-def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, changed=False, deadline=None):
-    """Replace endpoint IP addresses; changed reports whether the endpoint was already modified."""
-    resolver_endpoint_id = endpoint.get("Id")
-    listed_ip_addresses = endpoint.get("IpAddresses") or []
+def ip_address_changes(listed_ip_addresses, desired_ip_addresses):
+    """Return the ordered ("add" | "remove", address) changes that turn the listed addresses into the desired ones."""
     failed_ip_addresses = [
         ip_address for ip_address in listed_ip_addresses if ip_address_status(ip_address) in FAILED_IP_ADDRESS_STATUSES
     ]
     current_ip_addresses = usable_ip_addresses(listed_ip_addresses)
-    desired_ip_addresses = desired["ip_addresses"]
 
     remaining = list(current_ip_addresses)
     ip_addresses_to_add = []
@@ -1018,6 +1034,14 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
             changes.append(("remove", ip_addresses_to_remove.pop(0)))
             address_count -= 1
 
+    return changes
+
+
+def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, changed=False, deadline=None):
+    """Replace endpoint IP addresses; changed reports whether the endpoint was already modified."""
+    resolver_endpoint_id = endpoint.get("Id")
+    desired_ip_addresses = desired["ip_addresses"]
+    changes = ip_address_changes(endpoint.get("IpAddresses") or [], desired_ip_addresses)
     if not changes:
         return endpoint
 
@@ -1033,13 +1057,15 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
         try:
             request_ip_address = snake_dict_to_camel_dict(ip_address, capitalize_first=True)
             if operation == "add":
-                client.associate_resolver_endpoint_ip_address(
+                operation_name = "associate_resolver_endpoint_ip_address"
+                response = client.associate_resolver_endpoint_ip_address(
                     IpAddress=request_ip_address,
                     ResolverEndpointId=resolver_endpoint_id,
                     aws_retry=True,
                 )
             else:
-                client.disassociate_resolver_endpoint_ip_address(
+                operation_name = "disassociate_resolver_endpoint_ip_address"
+                response = client.disassociate_resolver_endpoint_ip_address(
                     IpAddress=request_ip_address,
                     ResolverEndpointId=resolver_endpoint_id,
                     aws_retry=True,
@@ -1060,6 +1086,14 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
             endpoint = wait_for_resolver_endpoint_status(
                 client, module, resolver_endpoint_id, "operational", changed=True, deadline=deadline
             )
+        else:
+            # Without a wait, the last change's response is the current endpoint, which is UPDATING and still counts
+            # an address it removes.
+            changed_endpoint = response.get("ResolverEndpoint") if isinstance(response, dict) else None
+            if isinstance(changed_endpoint, dict) and changed_endpoint.get("Id"):
+                endpoint = validate_resolver_endpoint(
+                    module, changed_endpoint, operation_name, expected_id=resolver_endpoint_id, changed=True
+                )
 
     if not module.params["wait"]:
         endpoint = dict(endpoint)
@@ -1124,6 +1158,21 @@ def dual_stack_ip_addresses(endpoint, desired_ip_addresses):
                 break
 
     return requests
+
+
+def ip_addresses_with_requested_ipv6(endpoint, desired_ip_addresses):
+    """Return the listed addresses with the IPv6 addresses that a conversion to DUALSTACK requests for them."""
+    requested_ipv6 = {
+        request["IpId"]: request["Ipv6"] for request in dual_stack_ip_addresses(endpoint, desired_ip_addresses)
+    }
+    return [
+        (
+            dict(ip_address, Ipv6=requested_ipv6[ip_address["IpId"]])
+            if ip_address.get("IpId") in requested_ipv6
+            else ip_address
+        )
+        for ip_address in endpoint.get("IpAddresses") or []
+    ]
 
 
 def ip_address_status(ip_address):
@@ -1332,7 +1381,7 @@ def main():
 
             require_ip_versions(module, entry, "ip_addresses")
 
-        require_valid_tags(module, tags, 200)
+        require_valid_tags(module, tags, 200, restricted_characters=True)
 
     require_positive_wait_bounds(module, always=state == "present")
 

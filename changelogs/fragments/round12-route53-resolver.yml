@@ -1,0 +1,12 @@
+---
+bugfixes:
+  - route53_resolver, route53_resolver_rule - O(tags) keys and values with characters other than letters, numbers,
+    spaces, and C(_.:/=+-@), which Route 53 Resolver rejects, now fail before any AWS call, in check mode too.
+    Previously check mode predicted success, and a real update applied its endpoint, address or rule changes and
+    removed purged tags before the tag write was rejected.
+  - route53_resolver - check mode now predicts C(dns64_enabled) and C(rni_enhanced_metrics_enabled) as V(false) for a
+    new V(INBOUND_DELEGATION) endpoint, as AWS returns them on create.
+  - route53_resolver - with O(wait=false), an IP address change now returns the endpoint from the last
+    AssociateResolverEndpointIpAddress or DisassociateResolverEndpointIpAddress response, which is V(UPDATING) and
+    still counts an address being removed, instead of the endpoint status and address count read before the change.
+    Check mode predicts the same status and count.

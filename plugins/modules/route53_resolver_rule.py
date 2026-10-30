@@ -115,7 +115,8 @@ options:
     type: int
 notes:
   - O(tags) accepts at most 200 entries; keys must contain 1 to 128 characters
-    and values at most 256 characters.
+    and values at most 256 characters, and both may contain only letters,
+    numbers, spaces, C(_), C(.), C(:), C(/), C(=), C(+), C(-), and C(@).
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -901,7 +902,7 @@ def main():
         if len(set(normalized_targets)) != len(normalized_targets):
             module.fail_json(msg="target_ips entries must be unique")
 
-        require_valid_tags(module, tags, 200)
+        require_valid_tags(module, tags, 200, restricted_characters=True)
 
     for target_ip in module.params["target_ips"] or []:
         # ansible-core counts an explicit null as set for required_one_of.
