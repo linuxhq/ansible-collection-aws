@@ -1,0 +1,12 @@
+---
+bugfixes:
+  - eks_cluster - a O(remote_network_config.remote_node_networks[].cidrs) or
+    O(remote_network_config.remote_pod_networks[].cidrs) list that is empty or contains an empty entry now fails before
+    any AWS call, in check mode too. EKS rejects it, but check mode predicted success, and on an existing cluster the
+    remote network update was sent only after other updates in the same run had been applied.
+  - eks_cluster - an empty O(resources_vpc_config.public_access_cidrs) list now fails before any AWS call, in check mode
+    too. EKS rejects it, but check mode predicted success, and on an existing cluster the endpoint update was sent only
+    after other updates in the same run had been applied.
+  - eks_cluster - creating a cluster with O(remote_network_config.remote_pod_networks) set to an empty list next to
+    remote node networks no longer fails. CreateCluster rejects an empty remote pod network list, so the module now
+    omits it, and check mode predicts the configuration EKS returns.

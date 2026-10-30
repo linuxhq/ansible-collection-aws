@@ -161,8 +161,9 @@ options:
     description:
       - The remote node and pod networks for EKS hybrid nodes.
       - The supplied configuration is sent as a whole when it differs from the cluster.
-      - When creating a cluster, a configuration without remote node or pod networks is treated the same as
-        omitting this option.
+      - When creating a cluster, an empty O(remote_network_config.remote_node_networks) or
+        O(remote_network_config.remote_pod_networks) list is treated the same as omitting that list, and a
+        configuration without remote node or pod networks is treated the same as omitting this option.
       - When updating a cluster, AWS keeps the existing networks of an omitted list. To remove the remote
         networks, set both O(remote_network_config.remote_node_networks) and
         O(remote_network_config.remote_pod_networks) to empty lists.
@@ -176,6 +177,7 @@ options:
           cidrs:
             description:
               - The CIDR blocks of the remote node network.
+              - This must contain at least one CIDR block, and entries must not be empty.
             elements: str
             required: true
             type: list
@@ -189,6 +191,7 @@ options:
           cidrs:
             description:
               - The CIDR blocks of the remote pod network.
+              - This must contain at least one CIDR block, and entries must not be empty.
             elements: str
             required: true
             type: list
@@ -215,6 +218,7 @@ options:
       public_access_cidrs:
         description:
           - CIDR blocks that can access the public Kubernetes API endpoint.
+          - This must not be empty when specified.
           - Each CIDR block is converted to its canonical form, as EKS stores it, for example V(203.0.113.5/24)
             becomes V(203.0.113.0/24).
           - This requires botocore C(1.12.117) or later.
@@ -988,10 +992,15 @@ def desired_cluster(module, create=False):
     if desired.get("encryption_config") == []:
         del desired["encryption_config"]
 
-    # EKS rejects a create whose remoteNetworkConfig has no remote node networks; empty lists mean none.
-    # An update still sends them, because that is how EKS removes existing remote networks.
-    if create and not any((desired.get("remote_network_config") or {}).values()):
-        desired.pop("remote_network_config", None)
+    # CreateCluster rejects an empty remote node or pod network list, so an empty list means none, and a configuration
+    # without networks is omitted. An update still sends empty lists, because that is how EKS removes existing remote
+    # networks.
+    if create and "remote_network_config" in desired:
+        remote_network_config = {key: value for key, value in desired["remote_network_config"].items() if value}
+        if remote_network_config:
+            desired["remote_network_config"] = remote_network_config
+        else:
+            del desired["remote_network_config"]
 
     return desired
 
@@ -1569,8 +1578,16 @@ def main():
             module.fail_json(msg="encryption_config must contain at most one entry")
 
         for network in ("remote_node_networks", "remote_pod_networks"):
-            if len((module.params["remote_network_config"] or {}).get(network) or []) > 1:
+            entries = (module.params["remote_network_config"] or {}).get(network) or []
+            if len(entries) > 1:
                 module.fail_json(msg=f"remote_network_config.{network} must contain at most one entry")
+
+            # EKS rejects these, but check mode would predict success, and on an update they reach EKS after other
+            # updates.
+            if any(not entry["cidrs"] or "" in entry["cidrs"] for entry in entries):
+                module.fail_json(
+                    msg=f"remote_network_config.{network}[].cidrs must not be empty or contain empty entries"
+                )
 
         # EKS rejects these, but check mode would predict success, and a blank network entry or version reaches EKS
         # after other updates.
@@ -1581,6 +1598,9 @@ def main():
         for field in ("security_group_ids", "subnet_ids"):
             if "" in ((module.params["resources_vpc_config"] or {}).get(field) or []):
                 module.fail_json(msg=f"resources_vpc_config.{field} must not contain empty entries")
+
+        if (module.params["resources_vpc_config"] or {}).get("public_access_cidrs") == []:
+            module.fail_json(msg="resources_vpc_config.public_access_cidrs must not be empty")
 
         canonicalize_public_access_cidrs(module)
 

@@ -2127,6 +2127,7 @@ def test_remote_node_networks_on_a_cluster_without_remote_networks_send_the_whol
     [
         {"remote_node_networks": [], "remote_pod_networks": []},
         {"remote_node_networks": [], "remote_pod_networks": None},
+        {"remote_node_networks": None, "remote_pod_networks": []},
         {"remote_node_networks": None, "remote_pod_networks": None},
     ],
 )
@@ -2154,28 +2155,46 @@ def test_create_omits_a_remote_network_config_without_networks(remote_network_co
     assert "remote_network_config" not in check["cluster"]
 
 
-@pytest.mark.parametrize("check_mode", [False, True])
-def test_create_sends_a_remote_network_config_with_networks_as_supplied(check_mode):
+@pytest.mark.parametrize("wait", [True, False])
+@pytest.mark.parametrize(
+    "remote_network_config, expected",
+    [
+        # CreateCluster rejects an empty remotePodNetworks list: "Remote pod network can't be empty" (live).
+        (
+            {"remote_node_networks": [{"cidrs": ["10.80.0.0/16"]}], "remote_pod_networks": []},
+            {"remoteNodeNetworks": [{"cidrs": ["10.80.0.0/16"]}]},
+        ),
+        (
+            {
+                "remote_node_networks": [{"cidrs": ["10.80.0.0/16"]}],
+                "remote_pod_networks": [{"cidrs": ["10.81.0.0/16"]}],
+            },
+            {"remoteNodeNetworks": [{"cidrs": ["10.80.0.0/16"]}], "remotePodNetworks": [{"cidrs": ["10.81.0.0/16"]}]},
+        ),
+    ],
+    ids=["empty-pods", "nodes-and-pods"],
+)
+def test_create_sends_remote_networks_without_empty_lists(remote_network_config, expected, wait):
     params = eks_params(
-        remote_network_config={"remote_node_networks": [{"cidrs": ["10.80.0.0/16"]}], "remote_pod_networks": []},
+        remote_network_config=remote_network_config,
         resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
         role_arn="arn:role",
+        wait=wait,
     )
-    client = Mock(create_cluster=Mock(return_value={"cluster": CREATED_CLUSTER}))
-    client, result = run_present(FakeModule(params, check_mode=check_mode), [None], client)
+    # CreateCluster and DescribeCluster return only the remote network lists the create sent (live).
+    created = dict(CREATED_CLUSTER, remoteNetworkConfig=expected)
+    described = dict(DESCRIBED_CLUSTER, remoteNetworkConfig=expected)
+    client = Mock(create_cluster=Mock(return_value={"cluster": created}))
+    client, real = run_present(FakeModule(params), [None, described], client)
+    check_client, check = run_present(FakeModule(params, check_mode=True), [None])
 
-    assert result["changed"] is True
-    if check_mode:
-        assert client.mock_calls == []
-        assert result["cluster"]["remote_network_config"] == {
-            "remote_node_networks": [{"cidrs": ["10.80.0.0/16"]}],
-            "remote_pod_networks": [],
-        }
-    else:
-        assert client.create_cluster.call_args.kwargs["remoteNetworkConfig"] == {
-            "remoteNodeNetworks": [{"cidrs": ["10.80.0.0/16"]}],
-            "remotePodNetworks": [],
-        }
+    assert client.create_cluster.call_args.kwargs["remoteNetworkConfig"] == expected
+    assert check_client.mock_calls == []
+    assert check["changed"] is real["changed"] is True
+    assert check["cluster"]["remote_network_config"] == real["cluster"]["remote_network_config"]
+    assert check["cluster"]["remote_network_config"] == plugin.boto3_resource_to_ansible_dict(
+        expected, force_tags=False
+    )
 
 
 def test_empty_remote_network_lists_still_remove_the_remote_networks_of_an_existing_cluster():
@@ -2299,6 +2318,11 @@ def test_remote_pod_networks_without_remote_node_networks_fail_before_any_update
             "resources_vpc_config.security_group_ids must not contain empty entries",
         ),
         ({"version": ""}, "version must not be empty"),
+        # EKS: "The publicAccessCidrs list should not be empty." (live, on create and update).
+        (
+            {"deletion_protection": True, "resources_vpc_config": {"public_access_cidrs": []}},
+            "resources_vpc_config.public_access_cidrs must not be empty",
+        ),
     ],
 )
 def test_empty_role_arn_version_and_network_ids_fail_before_any_aws_call(overrides, message, check_mode):
@@ -2315,6 +2339,43 @@ def test_empty_role_arn_version_and_network_ids_fail_before_any_aws_call(overrid
 
     assert raised.value.values["msg"] == message
     module.client.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("network", ["remote_node_networks", "remote_pod_networks"])
+@pytest.mark.parametrize("cidrs", [[], [""], ["10.82.0.0/16", ""]], ids=["empty", "blank", "blank-entry"])
+def test_remote_network_cidrs_that_are_empty_or_blank_fail_before_any_aws_call(cidrs, network, check_mode):
+    # EKS rejects them on create and update (live: "CIDRs can not be null or empty when specifying
+    # remoteNodeNetworks." and "Invalid remote node network:  is not a valid CIDR"), and an update sends them only
+    # after the deletion protection update.
+    config = {"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": POD_NETWORKS}
+    config[network] = [{"cidrs": cidrs}]
+    params = eks_params(deletion_protection=True, remote_network_config=config, state="present")
+    module = FakeModule(params, check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": f"remote_network_config.{network}[].cidrs must not be empty or contain empty entries"
+    }
+    module.client.assert_not_called()
+
+
+def test_remote_network_cidrs_reach_aws():
+    config = {"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": POD_NETWORKS}
+    module = FakeModule(eks_params(remote_network_config=config, state="present"))
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
+
+    module.client.assert_called_once()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
