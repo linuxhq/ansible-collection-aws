@@ -2304,6 +2304,184 @@ def test_remote_pod_networks_without_remote_node_networks_fail_before_any_update
     assert client.mock_calls == []
 
 
+# A cluster created through the API without access_config (live).
+CONFIG_MAP_CLUSTER = dict(STANDARD_CLUSTER, accessConfig={"authenticationMode": "CONFIG_MAP"}, deletionProtection=False)
+
+
+def access_config_params(authentication_mode):
+    return {"authentication_mode": authentication_mode, "bootstrap_cluster_creator_admin_permissions": True}
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("access_config", [None, access_config_params("CONFIG_MAP")], ids=["omitted", "config-map"])
+def test_remote_networks_on_a_config_map_cluster_fail_before_any_update(access_config, check_mode):
+    # UpdateClusterConfig: "Authentication Mode must be API_AND_CONFIG_MAP or API when remoteNetworkConfig is
+    # specified" (live), after the deletion protection update had already been applied.
+    params = eks_params(
+        access_config=access_config,
+        deletion_protection=True,
+        remote_network_config={"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": None},
+    )
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=CONFIG_MAP_CLUSTER),
+        patch.object(plugin, "wait_for_cluster") as wait_for_cluster,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values == {
+        "msg": "remote_network_config requires access_config.authentication_mode API or API_AND_CONFIG_MAP"
+    }
+    assert client.mock_calls == []
+    wait_for_cluster.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_remote_networks_follow_an_access_change_away_from_config_map(check_mode):
+    # The access update is the first update and is waited on before the remote network update.
+    params = eks_params(
+        access_config=access_config_params("API_AND_CONFIG_MAP"),
+        deletion_protection=True,
+        remote_network_config={"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": None},
+    )
+
+    client, result = run_present(FakeModule(params, check_mode=check_mode), [CONFIG_MAP_CLUSTER])
+
+    assert result["changed"] is True
+    assert result["cluster"]["access_config"] == {"authentication_mode": "API_AND_CONFIG_MAP"}
+    assert result["cluster"]["remote_network_config"] == {"remote_node_networks": NODE_NETWORKS}
+    if check_mode:
+        assert client.mock_calls == []
+    else:
+        assert client.update_cluster_config.call_args_list == [
+            call(name="example", accessConfig={"authenticationMode": "API_AND_CONFIG_MAP"}),
+            call(name="example", deletionProtection=True),
+            call(name="example", remoteNetworkConfig={"remoteNodeNetworks": NODE_NETWORKS}),
+        ]
+
+
+def vpc_config_params(**values):
+    config = dict.fromkeys(
+        ["endpoint_private_access", "endpoint_public_access", "public_access_cidrs", "security_group_ids", "subnet_ids"]
+    )
+    config.update(values)
+    return config
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("cidrs", [["0.0.0.0/0", "::/0"], ["2001:db8::/32"]], ids=["mixed", "ipv6"])
+def test_ipv6_public_access_cidrs_on_an_ipv4_cluster_fail_before_any_update(cidrs, check_mode):
+    # UpdateClusterConfig and CreateCluster: "Invalid CIDR: IPv6 CIDR block [::/0] is not supported. An IPv4 cluster or
+    # an IPv6 cluster created before October 2024 only supports IPv4 CIDR blocks for the publicAccessCidrs parameter."
+    # (live); the endpoint update follows the deletion protection update.
+    params = eks_params(deletion_protection=True, resources_vpc_config=vpc_config_params(public_access_cidrs=cidrs))
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=CONFIG_MAP_CLUSTER),
+        patch.object(plugin, "wait_for_cluster") as wait_for_cluster,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values == {
+        "msg": "resources_vpc_config.public_access_cidrs must not contain IPv6 CIDR blocks for an IPv4 cluster"
+    }
+    assert client.mock_calls == []
+    wait_for_cluster.assert_not_called()
+
+
+def test_ipv6_public_access_cidrs_reach_aws_for_an_ipv6_cluster():
+    # IPv6 clusters made after October 2024 accept them (model).
+    cidrs = ["0.0.0.0/0", "::/0"]
+    current = dict(
+        STANDARD_CLUSTER, kubernetesNetworkConfig={"ipFamily": "ipv6", "elasticLoadBalancing": {"enabled": False}}
+    )
+    params = eks_params(deletion_protection=True, resources_vpc_config=vpc_config_params(public_access_cidrs=cidrs))
+
+    client, result = run_present(FakeModule(params), [current])
+
+    assert result["changed"] is True
+    assert client.update_cluster_config.call_args_list == [
+        call(name="example", deletionProtection=True),
+        call(name="example", resourcesVpcConfig={"publicAccessCidrs": cidrs}),
+    ]
+
+
+def test_ipv6_public_access_cidrs_on_create_are_left_to_aws():
+    # CreateCluster rejects them for an IPv4 cluster before it creates anything (live).
+    cidrs = ["0.0.0.0/0", "::/0"]
+    params = eks_params(
+        resources_vpc_config=vpc_config_params(public_access_cidrs=cidrs, subnet_ids=["subnet-1", "subnet-2"]),
+        role_arn="arn:role",
+    )
+    client = Mock(create_cluster=Mock(return_value={"cluster": CREATED_CLUSTER}))
+
+    client, result = run_present(FakeModule(params), [None], client)
+
+    assert result["changed"] is True
+    assert client.create_cluster.call_args.kwargs["resourcesVpcConfig"]["publicAccessCidrs"] == cidrs
+
+
+def cluster_with_endpoints(public, private):
+    return dict(
+        STANDARD_CLUSTER,
+        resourcesVpcConfig={
+            "endpointPrivateAccess": private,
+            "endpointPublicAccess": public,
+            "subnetIds": ["subnet-a", "subnet-b"],
+        },
+    )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "current, endpoints",
+    [
+        (cluster_with_endpoints(public=True, private=False), {"endpoint_public_access": False}),
+        (cluster_with_endpoints(public=False, private=True), {"endpoint_private_access": False}),
+        (
+            cluster_with_endpoints(public=True, private=True),
+            {"endpoint_private_access": False, "endpoint_public_access": False},
+        ),
+    ],
+    ids=["public-off", "private-off", "both-off"],
+)
+def test_disabling_both_api_server_endpoints_fails_before_any_update(current, endpoints, check_mode):
+    # UpdateClusterConfig: "Both private and public endpoint access cannot be false" (live), after the deletion
+    # protection update had already been applied.
+    params = eks_params(deletion_protection=True, resources_vpc_config=vpc_config_params(**endpoints))
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "wait_for_cluster") as wait_for_cluster,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values == {
+        "msg": (
+            "resources_vpc_config.endpoint_public_access and resources_vpc_config.endpoint_private_access "
+            "must not both be false"
+        )
+    }
+    assert client.mock_calls == []
+    wait_for_cluster.assert_not_called()
+
+
+def test_disabling_one_api_server_endpoint_while_enabling_the_other_reaches_aws():
+    params = eks_params(
+        resources_vpc_config=vpc_config_params(endpoint_private_access=True, endpoint_public_access=False)
+    )
+
+    client, result = run_present(FakeModule(params), [cluster_with_endpoints(public=True, private=False)])
+
+    assert result["changed"] is True
+    client.update_cluster_config.assert_called_once_with(
+        name="example", resourcesVpcConfig={"endpointPrivateAccess": True, "endpointPublicAccess": False}
+    )
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize(
     "overrides, message",

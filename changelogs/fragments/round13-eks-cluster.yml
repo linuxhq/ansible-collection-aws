@@ -1,0 +1,14 @@
+---
+bugfixes:
+  - eks_cluster - a O(remote_network_config) change on an existing cluster whose authentication mode is C(CONFIG_MAP)
+    now fails before any AWS call, in check mode too, unless the same task changes
+    O(access_config.authentication_mode) to C(API_AND_CONFIG_MAP) or C(API). EKS rejects remote networks on a
+    C(CONFIG_MAP) cluster, but check mode predicted success, and the remote network update was sent only after the
+    deletion protection or logging updates in the same run had been applied.
+  - eks_cluster - IPv6 CIDR blocks in O(resources_vpc_config.public_access_cidrs) for an existing IPv4 cluster now
+    fail before any AWS call, in check mode too. EKS rejects them, but check mode predicted success, and the endpoint
+    update was sent only after other updates in the same run had been applied.
+  - eks_cluster - an update that would leave both O(resources_vpc_config.endpoint_public_access) and
+    O(resources_vpc_config.endpoint_private_access) disabled now fails before any AWS call, in check mode too. EKS
+    rejects it, but check mode predicted success, and the endpoint update was sent only after other updates in the
+    same run had been applied.

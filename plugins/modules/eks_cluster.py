@@ -167,6 +167,9 @@ options:
       - When updating a cluster, AWS keeps the existing networks of an omitted list. To remove the remote
         networks, set both O(remote_network_config.remote_node_networks) and
         O(remote_network_config.remote_pod_networks) to empty lists.
+      - AWS accepts remote networks only on a cluster whose O(access_config.authentication_mode) is C(API) or
+        C(API_AND_CONFIG_MAP). When updating a cluster, an authentication mode change in the same task is applied
+        first.
       - This requires botocore C(1.35.72) or later, and C(1.37.24) or later to update an existing cluster.
     suboptions:
       remote_node_networks:
@@ -206,6 +209,7 @@ options:
           - Whether the Kubernetes API server private endpoint is enabled.
           - When omitted while creating a cluster, AWS uses its default value.
           - When omitted while updating a cluster, the existing value is left unchanged.
+          - AWS rejects disabling both the private and the public endpoint.
           - This requires botocore C(1.12.117) or later.
         type: bool
       endpoint_public_access:
@@ -213,12 +217,14 @@ options:
           - Whether the Kubernetes API server public endpoint is enabled.
           - When omitted while creating a cluster, AWS uses its default value.
           - When omitted while updating a cluster, the existing value is left unchanged.
+          - AWS rejects disabling both the private and the public endpoint.
           - This requires botocore C(1.12.117) or later.
         type: bool
       public_access_cidrs:
         description:
           - CIDR blocks that can access the public Kubernetes API endpoint.
           - This must not be empty when specified.
+          - AWS rejects IPv6 CIDR blocks for an IPv4 cluster.
           - Each CIDR block is converted to its canonical form, as EKS stores it, for example V(203.0.113.5/24)
             becomes V(203.0.113.0/24).
           - This requires botocore C(1.12.117) or later.
@@ -1218,9 +1224,33 @@ def ensure_present(client, module, deadline=None):
             update_requests.append(update_request)
 
     # EKS requires subnets in at least two Availability Zones; failing here keeps other updates from applying first.
-    subnet_ids = (changes.get("resourcesVpcConfig") or {}).get("subnetIds")
+    vpc_config_changes = changes.get("resourcesVpcConfig") or {}
+    subnet_ids = vpc_config_changes.get("subnetIds")
     if subnet_ids is not None and len(set(subnet_ids)) < 2:
         module.fail_json(msg="resources_vpc_config.subnet_ids must contain at least two distinct subnets")
+
+    # EKS rejects IPv6 public access CIDR blocks on an IPv4 cluster; main() already checked that the entries parse.
+    if (current.get("kubernetesNetworkConfig") or {}).get("ipFamily") == "ipv4" and any(
+        ipaddress.ip_network(cidr, strict=False).version == 6
+        for cidr in vpc_config_changes.get("publicAccessCidrs") or []
+    ):
+        module.fail_json(
+            msg="resources_vpc_config.public_access_cidrs must not contain IPv6 CIDR blocks for an IPv4 cluster"
+        )
+
+    # EKS rejects disabling both API server endpoints; an endpoint the run leaves alone keeps the cluster's value.
+    if {"endpointPrivateAccess", "endpointPublicAccess"} & set(vpc_config_changes):
+        endpoint_access = dict(current.get("resourcesVpcConfig") or {}, **vpc_config_changes)
+        if (
+            endpoint_access.get("endpointPrivateAccess") is False
+            and endpoint_access.get("endpointPublicAccess") is False
+        ):
+            module.fail_json(
+                msg=(
+                    "resources_vpc_config.endpoint_public_access and resources_vpc_config.endpoint_private_access "
+                    "must not both be false"
+                )
+            )
 
     # EKS keeps the cluster's networks for an omitted list, rejects remote pod networks without remote node networks,
     # and accepts empty remote node networks only together with empty remote pod networks.
@@ -1232,6 +1262,13 @@ def ensure_present(client, module, deadline=None):
         if not node_networks and remote_network_config.get("remotePodNetworks") != []:
             module.fail_json(
                 msg="remote_network_config.remote_pod_networks must be an empty list when no remote node networks remain"
+            )
+
+        # EKS rejects remote networks on a CONFIG_MAP cluster; an access change in the same run is applied first.
+        cluster_access_config = changes.get("accessConfig") or current.get("accessConfig") or {}
+        if cluster_access_config.get("authenticationMode") == "CONFIG_MAP":
+            module.fail_json(
+                msg="remote_network_config requires access_config.authentication_mode API or API_AND_CONFIG_MAP"
             )
 
     if auto_mode_changed:
