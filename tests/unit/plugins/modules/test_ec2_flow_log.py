@@ -210,16 +210,18 @@ def test_identical_tag_changes_are_batched_across_flow_logs():
 
 
 def test_invalid_resource_and_destination_combinations_are_rejected():
-    base = {
-        "destination_options": None,
-        "log_destination_type": None,
-        "max_aggregation_interval": None,
-        "resource_ids": ["tgw-1"],
-        "resource_type": "TransitGateway",
-        "state": "present",
-        "tags": None,
-        "traffic_type": None,
-    }
+    base = dict.fromkeys(plugin.PRESENT_MATCH_FIELDS)
+    base.update(
+        {
+            "destination_options": None,
+            "log_destination_type": None,
+            "resource_ids": ["tgw-1"],
+            "resource_type": "TransitGateway",
+            "state": "present",
+            "tags": None,
+            "traffic_type": None,
+        }
+    )
     cases = [
         (
             dict(base, resource_ids=[]),
@@ -813,6 +815,67 @@ def test_create_without_settings_ec2_requires_fails_before_aws(overrides, messag
     assert raised.value.values == {"msg": CREATE_SETTING_MESSAGES[message]}
     assert client.method_calls == []
     require.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"deliver_cross_account_role": ""}, "deliver_cross_account_role must not be empty"),
+        ({"deliver_cross_account_role": " "}, "deliver_cross_account_role must not be empty"),
+        (
+            {
+                "deliver_logs_permission_arn": "",
+                "log_destination": None,
+                "log_destination_type": None,
+                "log_group_name": "flow",
+            },
+            "deliver_logs_permission_arn must not be empty",
+        ),
+        (
+            {
+                "deliver_logs_permission_arn": ROLE_ARN,
+                "log_destination": None,
+                "log_destination_type": None,
+                "log_group_name": " ",
+            },
+            "log_group_name must not be empty",
+        ),
+        ({"log_destination": ""}, "log_destination must not be empty"),
+        ({"log_format": ""}, "log_format must not be empty"),
+        ({"log_format": " "}, "log_format must not be empty"),
+    ],
+)
+def test_blank_present_values_fail_before_aws(overrides, message, check_mode):
+    # EC2 rejects these, or accepts a whitespace-only value without storing it, so no flow log ever matches them and
+    # check mode would predict a create and the purge of the existing flow log. A rerun after a whitespace-only value
+    # was accepted would fail with FlowLogAlreadyExists.
+    module = FakeModule(present_params(purge_flow_logs=True, **overrides), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_flow_logs", return_value=[dict(OLD_FLOW_LOG)]) as get_flow_logs,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": message}
+    module.client.assert_not_called()
+    get_flow_logs.assert_not_called()
+
+
+def test_blank_values_still_only_narrow_absent_matches():
+    params = present_params(deliver_cross_account_role="", log_format=" ", state="absent")
+    module = FakeModule(params, client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_absent") as ensure_absent,
+    ):
+        plugin.main()
+
+    ensure_absent.assert_called_once_with(module.client(), module)
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

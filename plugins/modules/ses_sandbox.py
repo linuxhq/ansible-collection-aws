@@ -25,6 +25,7 @@ options:
     description:
       - Additional contact email addresses to associate with the request.
       - This must contain at most 4 email addresses.
+      - Entries must not be empty.
       - An empty list leaves existing contact addresses unchanged.
     default: []
     elements: str
@@ -297,6 +298,10 @@ def main():
 
     if len(set(module.params["additional_contact_email_addresses"])) > 4:
         module.fail_json(msg="additional_contact_email_addresses must contain at most 4 addresses")
+
+    # AWS rejects blank addresses, which check mode would otherwise predict as submitted account details.
+    if any(not address.strip() for address in module.params["additional_contact_email_addresses"]):
+        module.fail_json(msg="additional_contact_email_addresses must not contain empty entries")
 
     use_case_description = module.params["use_case_description"]
     website_url = module.params["website_url"]

@@ -23,12 +23,14 @@ options:
   deliver_cross_account_role:
     description:
       - The ARN of the IAM role that permits delivery to a cross-account destination.
+      - This must not be empty when O(state=present).
     type: str
   deliver_logs_permission_arn:
     description:
       - The ARN of the IAM role that permits delivery to CloudWatch Logs.
       - This is required to create flow logs when O(log_destination_type) is C(cloud-watch-logs), the default
         when O(state=present).
+      - This must not be empty when O(state=present).
     type: str
   destination_options:
     description:
@@ -61,6 +63,7 @@ options:
       - When O(log_destination_type) is C(cloud-watch-logs), this or O(log_group_name) is required to create
         flow logs.
       - This is mutually exclusive with O(log_group_name).
+      - This must not be empty when O(state=present).
     type: str
   log_destination_type:
     description:
@@ -74,6 +77,7 @@ options:
   log_format:
     description:
       - The fields to include in flow log records.
+      - This must not be empty when O(state=present).
     type: str
   log_group_name:
     description:
@@ -81,6 +85,7 @@ options:
       - When O(log_destination_type) is C(cloud-watch-logs), this or O(log_destination) is required to create
         flow logs.
       - This is mutually exclusive with O(log_destination).
+      - This must not be empty when O(state=present).
     type: str
   max_aggregation_interval:
     description:
@@ -915,6 +920,18 @@ def main():
         module.fail_json(msg="resource_ids must contain at least one item")
 
     if state == "present":
+        # EC2 rejects these blank values, or accepts a whitespace-only value without storing it, so no flow log ever
+        # matches them, and check mode would predict new flow logs and a purge.
+        for option in (
+            "deliver_cross_account_role",
+            "deliver_logs_permission_arn",
+            "log_destination",
+            "log_format",
+            "log_group_name",
+        ):
+            if module.params[option] is not None and not module.params[option].strip():
+                module.fail_json(msg=f"{option} must not be empty")
+
         if module.params["traffic_type"] is not None and resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
             module.fail_json(
                 msg="traffic_type is not supported when resource_type is TransitGateway or TransitGatewayAttachment"

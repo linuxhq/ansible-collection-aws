@@ -152,6 +152,42 @@ def test_rejects_too_many_subject_alternative_names():
     assert "at most 99" in raised.value.values["msg"]
 
 
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize(
+    ("domain_name", "subject_alternative_names", "message"),
+    [
+        ("", None, "domain_name must not be empty"),
+        (" ", None, "domain_name must not be empty"),
+        ("example.com", ["www.example.com", ""], "subject_alternative_names must not contain empty entries"),
+        ("example.com", [" "], "subject_alternative_names must not contain empty entries"),
+    ],
+)
+def test_rejects_blank_names_before_api_calls(check_mode, domain_name, subject_alternative_names, message):
+    # A blank name never matches a certificate, so check mode would predict a request that ACM rejects.
+    module = FakeModule(
+        {
+            "domain_name": domain_name,
+            "idempotency_token": None,
+            "purge_tags": True,
+            "subject_alternative_names": subject_alternative_names,
+            "tags": None,
+        },
+        check_mode=check_mode,
+    )
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]) as query,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": message}
+    module.client.assert_not_called()
+    query.assert_not_called()
+
+
 def test_reuses_the_newest_matching_dns_certificate():
     client = Mock()
     client.describe_certificate.side_effect = [

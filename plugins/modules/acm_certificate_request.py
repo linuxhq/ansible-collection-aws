@@ -32,6 +32,7 @@ options:
   domain_name:
     description:
       - Fully qualified domain name for the certificate.
+      - This must not be empty.
     required: true
     type: str
   idempotency_token:
@@ -46,6 +47,7 @@ options:
   subject_alternative_names:
     description:
       - Subject alternative names for the certificate.
+      - Entries must not be empty.
       - This must contain at most 99 additional entries after normalization because ACM allows 100 domain names including O(domain_name).
     elements: str
     type: list
@@ -405,6 +407,13 @@ def main():
         )
     )
     tags = module.params["tags"]
+
+    # ACM rejects blank names, which check mode would otherwise predict as a new certificate request.
+    if not domain_name.strip():
+        module.fail_json(msg="domain_name must not be empty")
+
+    if any(not name.strip() for name in subject_alternative_names):
+        module.fail_json(msg="subject_alternative_names must not contain empty entries")
 
     if idempotency_token is not None and not re.fullmatch(r"\w{1,32}", idempotency_token, flags=re.ASCII):
         module.fail_json(msg="ACM certificate request idempotency_token must be 1 to 32 ASCII word characters")
