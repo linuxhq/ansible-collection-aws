@@ -7,7 +7,9 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
+    assert_documents_shape,
     assert_module_contract,
+    documented_returns,
 )
 
 
@@ -15,6 +17,13 @@ def test_module_contract():
     options = assert_module_contract(plugin)
     assert options["mutually_exclusive"] == [["owner", "phone_number_ids"]]
     assert "default" not in options["argument_spec"]["owner"]
+
+
+def test_documented_returns_cover_the_sdk_shape():
+    # Each phone number is a DescribePhoneNumbers item with every member AWS sends.
+    assert_documents_shape(
+        documented_returns(plugin)["phone_numbers"]["contains"], "pinpoint-sms-voice-v2", "PhoneNumberInformation"
+    )
 
 
 def test_ids_do_not_send_the_implicit_owner():
