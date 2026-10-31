@@ -1,0 +1,16 @@
+---
+bugfixes:
+  - ssm_send_command - a null O(parameters) value or list entry, or an empty or blank O(max_concurrency) or
+    O(max_errors), now fails before any AWS call, in check mode too. Previously check mode reported a command that
+    botocore or AWS refuses to send.
+  - ssm_association - document the ``alarm_configuration``, ``apply_only_at_cron_interval``,
+    ``association_dispatch_assume_role``, ``automation_target_parameter_name``, ``calendar_names``,
+    ``compliance_severity``, ``duration``, ``instance_id``, ``last_successful_execution_date``, ``max_concurrency``,
+    ``max_errors``, ``output_location``, ``schedule_offset``, ``status``, ``sync_compliance``, ``target_locations``,
+    ``target_maps``, and ``triggered_alarms`` fields of the returned ``association``.
+  - ssm_document - document the ``attachments_content``, ``created_date``, ``display_name``, ``requires``,
+    ``review_status``, and ``version_name`` fields of the returned ``document``, and that a result built from the
+    create or update response can contain other document description fields.
+  - ssm_document_info - document the ``attachments_content``, ``created_date``, ``display_name``, ``requires``,
+    ``review_status``, ``status``, ``status_information``, and ``version_name`` fields of the returned ``document``
+    and ``documents``.

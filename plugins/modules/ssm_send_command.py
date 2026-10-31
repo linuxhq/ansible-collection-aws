@@ -37,16 +37,19 @@ options:
   max_concurrency:
     description:
       - The maximum number of managed nodes that are allowed to run the command at the same time.
+      - This must not be empty when specified.
     type: str
   max_errors:
     description:
       - The maximum number of errors allowed before the command stops sending to additional targets.
+      - This must not be empty when specified.
     type: str
   parameters:
     description:
       - The document parameters to pass to the command.
       - Each value must be a list of strings, as the Systems Manager
         C(SendCommand) API requires.
+      - Values and their list entries must not be null.
       - AWS treats parameter values as sensitive, so Ansible masks them in the
         module's output and logs.
     default: {}
@@ -499,6 +502,18 @@ def main():
         module.fail_json(msg="targets must contain at most 5 entries")
 
     require_valid_ssm_targets(module, targets)
+
+    # SendCommand accepts no blank rate control (botocore min length 1, then the AWS pattern), so it counts as empty.
+    for option in ("max_concurrency", "max_errors"):
+        if module.params[option] is not None and not module.params[option].strip():
+            module.fail_json(msg=f"{option} must not be empty")
+
+    # botocore rejects a null parameter value or list entry, so check mode must not report a send for it.
+    if any(
+        values is None or (isinstance(values, list) and any(value is None for value in values))
+        for values in module.params["parameters"].values()
+    ):
+        module.fail_json(msg="parameters must not contain a null value")
 
     require_positive_wait_bounds(module)
 

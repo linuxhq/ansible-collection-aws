@@ -134,6 +134,33 @@ association:
   returned: when state is present
   type: dict
   contains:
+    alarm_configuration:
+      description: The CloudWatch alarm configuration applied to the association.
+      returned: when configured
+      type: dict
+      contains:
+        alarms:
+          description: The CloudWatch alarms in the configuration.
+          returned: always
+          type: list
+          elements: dict
+          contains:
+            name:
+              description: CloudWatch alarm name.
+              returned: always
+              type: str
+        ignore_poll_alarm_failure:
+          description: Whether the association keeps running when AWS cannot retrieve the alarm status.
+          returned: when available
+          type: bool
+    apply_only_at_cron_interval:
+      description: Whether the association runs only at its cron interval, rather than also immediately after it is created.
+      returned: when available
+      type: bool
+    association_dispatch_assume_role:
+      description: The IAM role that State Manager assumes to dispatch the association.
+      returned: when configured
+      type: str
     association_id:
       description: Association identifier.
       returned: when available
@@ -146,6 +173,19 @@ association:
       description: Association version.
       returned: when available
       type: str
+    automation_target_parameter_name:
+      description: The Automation runbook parameter that the association uses to branch out to its targets.
+      returned: when configured
+      type: str
+    calendar_names:
+      description: The names or ARNs of the Change Calendar documents that gate the association.
+      returned: when configured
+      type: list
+      elements: str
+    compliance_severity:
+      description: The severity level assigned to the association.
+      returned: when configured
+      type: str
     date:
       description: The date the association was created.
       returned: when available
@@ -154,18 +194,60 @@ association:
       description: The document version the association uses.
       returned: when available
       type: str
+    duration:
+      description: The number of hours the association can run on its targets.
+      returned: when configured
+      type: int
+    instance_id:
+      description: The managed node ID.
+      returned: when available
+      type: str
     last_execution_date:
       description: The date the association last ran.
+      returned: when available
+      type: str
+    last_successful_execution_date:
+      description: The date the association last ran successfully.
       returned: when available
       type: str
     last_update_association_date:
       description: The date the association was last updated.
       returned: when available
       type: str
+    max_concurrency:
+      description: The maximum number of targets allowed to run the association at the same time.
+      returned: when configured
+      type: str
+    max_errors:
+      description: The number of errors allowed before the association stops running on additional targets.
+      returned: when configured
+      type: str
     name:
       description: SSM document name.
       returned: always
       type: str
+    output_location:
+      description: The S3 location where the association stores its output.
+      returned: when configured
+      type: dict
+      contains:
+        s3_location:
+          description: The S3 bucket location for the association output.
+          returned: when available
+          type: dict
+          contains:
+            output_s3_bucket_name:
+              description: S3 bucket name.
+              returned: when available
+              type: str
+            output_s3_key_prefix:
+              description: S3 key prefix.
+              returned: when available
+              type: str
+            output_s3_region:
+              description: AWS region containing the S3 bucket.
+              returned: when available
+              type: str
     overview:
       description: The association status overview.
       returned: when available
@@ -196,10 +278,51 @@ association:
       description: Association schedule expression.
       returned: when configured
       type: str
+    schedule_offset:
+      description: The number of days to wait after the scheduled day to run the association.
+      returned: when configured
+      type: int
+    status:
+      description: The association status details, such as the status name and the reason for it.
+      returned: when available
+      type: dict
+      contains:
+        additional_info:
+          description: A user-defined string.
+          returned: when available
+          type: str
+        date:
+          description: The date the status changed.
+          returned: always
+          type: str
+        message:
+          description: The reason for the status.
+          returned: always
+          type: str
+        name:
+          description: The status.
+          returned: always
+          type: str
+    sync_compliance:
+      description: The mode for generating association compliance, such as C(AUTO) or C(MANUAL).
+      returned: when configured
+      type: str
     tags:
       description: Association tags.
       returned: when O(tags) is supplied
       type: dict
+    target_locations:
+      description: The AWS accounts and regions where the association runs.
+      returned: when configured
+      type: list
+      elements: dict
+    target_maps:
+      description:
+        - Mappings of document parameters to target resources.
+        - Parameter names and target values are returned as AWS returns them.
+      returned: when configured
+      type: list
+      elements: dict
     targets:
       description:
         - Association targets.
@@ -214,6 +337,11 @@ association:
           description: Target key.
           returned: always
           type: str
+    triggered_alarms:
+      description: The CloudWatch alarms that were triggered while the association ran.
+      returned: when available
+      type: list
+      elements: dict
 association_id:
   description: The AWS Systems Manager association identifier.
   returned: when an association exists
