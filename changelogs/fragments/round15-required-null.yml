@@ -1,0 +1,13 @@
+---
+bugfixes:
+  - ec2_vpc_vpn - an explicit null O(name), O(vpn_connection_id) or O(filters), given as the only selector, now fails
+    with the message ansible-core gives when all three are omitted, before any AWS call and in check mode too.
+    ansible-core's required_one_of check counts only supplied keys, so the null passed it and the module failed with a
+    Python traceback.
+  - pinpoint_sms_voice_phone_number - with O(state=present), an explicit null O(iso_country_code) now fails with the
+    message ansible-core gives when the option is omitted, before any AWS call and in check mode too. ansible-core's
+    required_if check counts only supplied keys, so the null passed it and the module failed with a Python traceback.
+  - route53_resolver_rule - with O(state=present), an explicit null O(domain_name) or O(resolver_endpoint_id) now fails
+    with the message ansible-core gives when the option is omitted, before any AWS call and in check mode too.
+    ansible-core's required_if check counts only supplied keys, so the null passed it and the module failed with a
+    Python traceback.

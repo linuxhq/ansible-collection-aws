@@ -425,6 +425,52 @@ def test_target_without_an_address_is_rejected():
     assert_module_rejects(plugin, result.validated_parameters, "target_ips entries must set ip or ipv6")
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "options",
+    [("domain_name",), ("resolver_endpoint_id",), ("domain_name", "resolver_endpoint_id")],
+    ids=["domain_name", "resolver_endpoint_id", "both"],
+)
+def test_null_present_inputs_are_rejected_before_any_aws_call(check_mode, options):
+    spec = assert_module_contract(plugin)
+    spec.pop("supports_check_mode")
+    # required_if counts only supplied keys, so ansible-core accepts these explicit nulls and keeps them None.
+    result = ArgumentSpecValidator(**spec).validate(
+        rule_params(target_ips=[{"ip": "192.0.2.1"}], **dict.fromkeys(options))
+    )
+
+    assert not result.error_messages
+    assert all(result.validated_parameters[option] is None for option in options)
+
+    module = FakeModule(result.validated_parameters, check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": f"state is present but all of the following are missing: {', '.join(options)}"
+    }
+    module.client.assert_not_called()
+    ensure_present.assert_not_called()
+
+
+def test_absent_ignores_null_present_inputs():
+    module = FakeModule(rule_params(domain_name=None, resolver_endpoint_id=None, state="absent"))
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_absent") as ensure_absent,
+    ):
+        plugin.main()
+
+    ensure_absent.assert_called_once_with(module.client.return_value, module)
+
+
 def test_rule_comparison_normalizes_domain_without_adding_target_defaults():
     assert plugin.comparable_rule(
         {

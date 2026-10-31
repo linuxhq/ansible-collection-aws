@@ -3,6 +3,8 @@ from unittest.mock import Mock, call, patch
 import pytest
 from botocore.session import get_session
 
+from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
+
 from ansible_collections.linuxhq.aws.plugins.module_utils import pinpoint_sms_voice
 from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_phone_number as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -174,6 +176,30 @@ def test_present_rejects_empty_identifiers_before_any_aws_call(option, value, ch
     assert raised.value.values["msg"] == f"{option} must not be empty"
     connect.assert_not_called()
     assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_null_iso_country_code_is_rejected_before_any_aws_call(check_mode):
+    spec = assert_module_contract(plugin)
+    spec.pop("supports_check_mode")
+    # required_if counts only supplied keys, so ansible-core accepts an explicit null and keeps it None.
+    result = ArgumentSpecValidator(**spec).validate(phone_number_params(iso_country_code=None))
+
+    assert not result.error_messages
+    assert result.validated_parameters["iso_country_code"] is None
+
+    module = FakeModule(result.validated_parameters, check_mode=check_mode)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(module, "client") as connect,
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": "state is present but all of the following are missing: iso_country_code"}
+    connect.assert_not_called()
+    ensure_present.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

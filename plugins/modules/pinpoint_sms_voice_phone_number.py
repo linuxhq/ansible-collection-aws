@@ -1070,6 +1070,10 @@ def main():
     tags = module.params["tags"]
 
     if state == "present":
+        # required_if counts only supplied keys, so an explicit null passes it.
+        if module.params["iso_country_code"] is None:
+            module.fail_json(msg="state is present but all of the following are missing: iso_country_code")
+
         if not re.fullmatch(r"[A-Z]{2}", module.params["iso_country_code"]):
             module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
 

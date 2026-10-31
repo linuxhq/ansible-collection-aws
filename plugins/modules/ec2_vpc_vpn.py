@@ -1408,6 +1408,10 @@ def main():
     )
     validate_inputs(module)
 
+    # required_one_of counts only supplied keys, so an explicit null passes it.
+    if all(module.params[option] is None for option in ("name", "vpn_connection_id", "filters")):
+        module.fail_json(msg="one of the following is required: name, vpn_connection_id, filters")
+
     # A previous modification can still be settling when the connection waiter succeeds.
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["IncorrectState"]))
     connection = find_connection(client, module)

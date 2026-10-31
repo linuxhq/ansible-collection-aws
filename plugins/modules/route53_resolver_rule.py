@@ -887,6 +887,11 @@ def main():
         module.fail_json(msg="name must be a valid resolver rule name of at most 64 characters")
 
     if state == "present":
+        # required_if counts only supplied keys, so an explicit null passes it.
+        missing = [option for option in ("domain_name", "resolver_endpoint_id") if module.params[option] is None]
+        if missing:
+            module.fail_json(msg=f"state is present but all of the following are missing: {', '.join(missing)}")
+
         # AWS refuses whitespace-only values, while check mode would predict success.
         if not module.params["domain_name"].strip() or len(module.params["domain_name"]) > 256:
             module.fail_json(msg="domain_name must contain 1 to 256 characters")
