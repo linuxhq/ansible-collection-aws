@@ -407,6 +407,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import require_valid_ssm_targets
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     sleep_until_next_poll,
@@ -475,8 +476,7 @@ def main():
 
     document_name = module.params["document_name"]
     # AWS accepts no blank document name or instance ID, so whitespace-only values count as empty.
-    if not (document_name or "").strip():
-        module.fail_json(msg="document_name must not be empty")
+    require_non_blank(module, document_name or "", "document_name")
 
     timeout_seconds = module.params["timeout_seconds"]
     instance_ids = list(dict.fromkeys(module.params["instance_ids"] or []))
@@ -495,8 +495,7 @@ def main():
     if len(instance_ids) > 50:
         module.fail_json(msg="instance_ids must contain at most 50 entries")
 
-    if any(not (instance_id or "").strip() for instance_id in instance_ids):
-        module.fail_json(msg="instance_ids must not contain empty entries")
+    require_non_blank(module, [instance_id or "" for instance_id in instance_ids], "instance_ids")
 
     if len(targets) > 5:
         module.fail_json(msg="targets must contain at most 5 entries")
@@ -505,8 +504,7 @@ def main():
 
     # SendCommand accepts no blank rate control (botocore min length 1, then the AWS pattern), so it counts as empty.
     for option in ("max_concurrency", "max_errors"):
-        if module.params[option] is not None and not module.params[option].strip():
-            module.fail_json(msg=f"{option} must not be empty")
+        require_non_blank(module, module.params[option], option)
 
     # botocore rejects a null parameter value or list entry, so check mode must not report a send for it.
     if any(

@@ -277,6 +277,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tag_list,
     require_valid_tags,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     custom_waiter,
     require_positive_wait_bounds,
@@ -1017,8 +1018,7 @@ def main():
 
     if state == "present":
         # EC2 rejects a blank name, which check mode would otherwise predict as a new prefix list.
-        if not module.params["name"].strip():
-            module.fail_json(msg="name must not be empty")
+        require_non_blank(module, module.params["name"], "name")
 
         if not entries:
             module.fail_json(msg="entries must contain at least one item when state=present")

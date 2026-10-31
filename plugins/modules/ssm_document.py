@@ -262,6 +262,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
     ssm_tag_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     custom_waiter,
     require_positive_wait_bounds,
@@ -780,8 +781,7 @@ def main():
             module.fail_json(msg=f"state is present but all of the following are missing: {', '.join(missing)}")
 
         # AWS rejects a blank document type, which check mode would otherwise predict as a new document.
-        if not module.params["document_type"].strip():
-            module.fail_json(msg="document_type must not be empty")
+        require_non_blank(module, module.params["document_type"], "document_type")
 
     require_valid_tags(module, tags if state == "present" else None, 50, restricted_characters=True)
     # Updated versions are always waited on before they are promoted.

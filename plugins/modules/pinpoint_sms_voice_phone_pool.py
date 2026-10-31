@@ -285,6 +285,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_resulting_tag_limit,
     require_valid_tags,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     sleep_until_next_poll,
@@ -874,8 +875,8 @@ def main():
 
         # AWS rejects an empty origination identity, which check mode would otherwise predict as a new pool.
         # required_one_of accepts an explicit null, so a null identity is rejected the same way.
-        if module.params["pool_id"] is None and not (module.params["origination_identity"] or "").strip():
-            module.fail_json(msg="origination_identity must not be empty")
+        if module.params["pool_id"] is None:
+            require_non_blank(module, module.params["origination_identity"] or "", "origination_identity")
 
     require_positive_wait_bounds(module, always=True)
 

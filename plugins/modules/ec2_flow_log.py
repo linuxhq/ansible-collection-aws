@@ -352,6 +352,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_resulting_tag_limit,
     require_valid_tags,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
 # The EC2 model documents 1000 IDs, but DeleteFlowLogs and DescribeFlowLogs return InternalError above 100.
 MAX_FLOW_LOG_IDS_PER_REQUEST = 100
@@ -938,8 +939,7 @@ def main():
             "log_format",
             "log_group_name",
         ):
-            if module.params[option] is not None and not module.params[option].strip():
-                module.fail_json(msg=f"{option} must not be empty")
+            require_non_blank(module, module.params[option], option)
 
         if module.params["traffic_type"] is not None and resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
             module.fail_json(
