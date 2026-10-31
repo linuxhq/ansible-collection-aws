@@ -1,0 +1,12 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number - document the ``messaging_limits``, ``two_way_channel_arn``, and
+    ``two_way_channel_role`` fields of the returned ``phone_number``, and that ``messaging_limits`` map keys are
+    returned in snake_case.
+  - pinpoint_sms_voice_phone_number_info - document the ``messaging_limits``, ``two_way_channel_arn``, and
+    ``two_way_channel_role`` fields of the returned ``phone_numbers``, and that ``messaging_limits`` map keys are
+    returned in snake_case.
+  - pinpoint_sms_voice_phone_pool - document the ``two_way_channel_arn`` and ``two_way_channel_role`` fields of the
+    returned ``pool``.
+  - pinpoint_sms_voice_phone_pool_info - document the ``two_way_channel_arn`` and ``two_way_channel_role`` fields of
+    the returned ``pools``.

@@ -159,6 +159,14 @@ pools:
       description: The pool tags with key case preserved.
       returned: always
       type: dict
+    two_way_channel_arn:
+      description: The ARN of the two-way channel that receives incoming messages.
+      returned: when returned by AWS
+      type: str
+    two_way_channel_role:
+      description: The ARN of the IAM role a service assumes to post incoming messages.
+      returned: when returned by AWS
+      type: str
     two_way_enabled:
       description: Whether two-way messaging is enabled.
       returned: when returned by AWS
