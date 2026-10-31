@@ -9,7 +9,9 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
+    assert_documents_shape,
     assert_module_contract,
+    documented_returns,
 )
 
 
@@ -36,6 +38,15 @@ def pool_with_other_phone_number():
 def test_module_contract():
     options = assert_module_contract(plugin)
     assert len(options["required_if"]) == 2
+
+
+@pytest.mark.parametrize(
+    "shape_name",
+    ["PhoneNumberInformation", "RequestPhoneNumberResult", "UpdatePhoneNumberResult", "ReleasePhoneNumberResult"],
+)
+def test_documented_returns_cover_the_sdk_shape(shape_name):
+    # A DescribePhoneNumbers item or a request, update or release response, with every member AWS sends.
+    assert_documents_shape(documented_returns(plugin)["phone_number"]["contains"], "pinpoint-sms-voice-v2", shape_name)
 
 
 def test_accepts_four_capabilities():

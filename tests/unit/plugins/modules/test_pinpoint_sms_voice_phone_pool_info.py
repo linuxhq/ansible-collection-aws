@@ -7,7 +7,9 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
+    assert_documents_shape,
     assert_module_contract,
+    documented_returns,
 )
 
 
@@ -15,6 +17,11 @@ def test_module_contract():
     options = assert_module_contract(plugin)
     assert options["mutually_exclusive"] == [["owner", "pool_ids"]]
     assert "default" not in options["argument_spec"]["owner"]
+
+
+def test_documented_returns_cover_the_sdk_shape():
+    # Each pool is a DescribePools item with every member AWS sends.
+    assert_documents_shape(documented_returns(plugin)["pools"]["contains"], "pinpoint-sms-voice-v2", "PoolInformation")
 
 
 def test_ids_do_not_send_the_implicit_owner():

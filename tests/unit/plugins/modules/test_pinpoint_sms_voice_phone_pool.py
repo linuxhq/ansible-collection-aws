@@ -7,7 +7,9 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
+    assert_documents_shape,
     assert_module_contract,
+    documented_returns,
 )
 
 
@@ -18,6 +20,12 @@ def test_module_contract():
         ("state", "absent", ["pool_id"]),
     ]
     assert options["required_one_of"] == [("origination_identity", "pool_id")]
+
+
+@pytest.mark.parametrize("shape_name", ["PoolInformation", "CreatePoolResult", "UpdatePoolResult", "DeletePoolResult"])
+def test_documented_returns_cover_the_sdk_shape(shape_name):
+    # The pool is a DescribePools item or a create, update or delete response with every member AWS sends.
+    assert_documents_shape(documented_returns(plugin)["pool"]["contains"], "pinpoint-sms-voice-v2", shape_name)
 
 
 def test_optional_create_parameters_are_not_gated_when_omitted():

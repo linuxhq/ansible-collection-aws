@@ -217,6 +217,22 @@ phone_number:
       description: The type of messages sent from the phone number.
       returned: when returned by AWS
       type: str
+    messaging_limits:
+      description:
+        - The messaging limits that apply to the phone number.
+        - Map keys are converted to snake_case like other keys, so C(SMS) is
+          returned as C(sms) and C(T-MOBILE) as C(t-mobile).
+      returned: when returned by AWS
+      type: dict
+      contains:
+        daily_message_caps:
+          description: The advisory maximum number of messages that can be sent per day, keyed by carrier.
+          returned: when a daily message cap applies
+          type: dict
+        rate_limits:
+          description: The maximum send rate in messages per second, keyed by capability.
+          returned: when returned by AWS
+          type: dict
     monthly_leasing_price:
       description: The monthly price to lease the phone number.
       returned: when returned by AWS
@@ -267,6 +283,14 @@ phone_number:
       description: The phone number tags with key case preserved.
       returned: when O(tags) is provided and O(state=present)
       type: dict
+    two_way_channel_arn:
+      description: The ARN of the two-way channel that receives incoming messages.
+      returned: when returned by AWS
+      type: str
+    two_way_channel_role:
+      description: The ARN of the IAM role a service assumes to post incoming messages.
+      returned: when returned by AWS
+      type: str
     two_way_enabled:
       description: Whether two-way messaging is enabled.
       returned: when returned by AWS
