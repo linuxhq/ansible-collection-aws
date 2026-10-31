@@ -437,6 +437,70 @@ def test_endpoint_list_limits_are_rejected():
         assert_module_rejects(plugin, params, message)
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("blank", ["", " "])
+@pytest.mark.parametrize(
+    "option,message",
+    [
+        ("security_group_ids", "security_group_ids entries must contain 1 to 64 characters"),
+        ("subnet_id", "ip_addresses[].subnet_id must contain 1 to 32 characters"),
+    ],
+)
+def test_blank_identifiers_are_rejected_before_any_aws_call(check_mode, blank, option, message):
+    # Live: AWS reads a whitespace-only security group or subnet ID as empty and refuses it.
+    ip_addresses = [
+        {"ip": "192.0.2.1", "ipv6": None, "subnet_id": "subnet-1"},
+        {"ip": None, "ipv6": None, "subnet_id": blank if option == "subnet_id" else "subnet-2"},
+    ]
+    security_group_ids = ["sg-1", blank] if option == "security_group_ids" else ["sg-1"]
+    module = FakeModule(
+        endpoint_params(ip_addresses=ip_addresses, security_group_ids=security_group_ids, state="present"),
+        check_mode=check_mode,
+    )
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": message}
+    module.client.assert_not_called()
+    ensure_present.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_blank_subnet_is_rejected_before_an_existing_endpoint_gains_an_address(check_mode):
+    # Live: a real run added the explicit address first and only then had "Subnet ID cannot be empty" refused, so it
+    # failed with changed=true and an extra address, while check mode predicted success.
+    client = Mock()
+    module = FakeModule(
+        endpoint_params(
+            ip_addresses=[
+                {"ip": "192.0.2.11", "ipv6": None, "subnet_id": "subnet-1"},
+                {"ip": None, "ipv6": None, "subnet_id": " "},
+            ],
+            state="present",
+        ),
+        check_mode=check_mode,
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint()),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=existing_endpoint()),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": "ip_addresses[].subnet_id must contain 1 to 32 characters"}
+    assert client.mock_calls == []
+
+
 def test_subnet_only_entries_may_share_a_subnet():
     module = FakeModule(
         endpoint_params(
