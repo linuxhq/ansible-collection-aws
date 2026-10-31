@@ -562,6 +562,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_resulting_tag_limit,
     require_valid_tags,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     custom_waiter,
     require_positive_wait_bounds,
@@ -896,8 +897,7 @@ def validate_network(module, value, name, version):
 def validate_inputs(module):
     require_positive_wait_bounds(module, always=True)
 
-    if module.params["name"] is not None and not module.params["name"].strip():
-        module.fail_json(msg="name must not be empty")
+    require_non_blank(module, module.params["name"], "name")
 
     if module.params["filters"] is not None and not module.params["filters"]:
         module.fail_json(msg="filters must not be empty")

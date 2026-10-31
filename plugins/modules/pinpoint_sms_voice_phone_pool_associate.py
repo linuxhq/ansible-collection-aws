@@ -180,6 +180,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
 # Listed association fields that the DisassociateOriginationIdentity response does not model.
 DISASSOCIATE_OMITTED_FIELDS = ("NumberCapabilities", "PhoneNumber")
@@ -412,8 +413,8 @@ def main():
         module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
 
     # AWS rejects an empty origination identity, which check mode would otherwise predict as a new association.
-    if state == "present" and not module.params["origination_identity"].strip():
-        module.fail_json(msg="origination_identity must not be empty")
+    if state == "present":
+        require_non_blank(module, module.params["origination_identity"], "origination_identity")
 
     client = module.client(
         "pinpoint-sms-voice-v2",

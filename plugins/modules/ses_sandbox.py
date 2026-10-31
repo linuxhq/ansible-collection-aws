@@ -262,6 +262,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.ses import get_account
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
 ACCOUNT_DETAILS_REQUEST_FIELDS = (
     ("AdditionalContactEmailAddresses", "additional_contact_email_addresses"),
@@ -300,16 +301,12 @@ def main():
         module.fail_json(msg="additional_contact_email_addresses must contain at most 4 addresses")
 
     # AWS rejects blank addresses, which check mode would otherwise predict as submitted account details.
-    if any(not address.strip() for address in module.params["additional_contact_email_addresses"]):
-        module.fail_json(msg="additional_contact_email_addresses must not contain empty entries")
+    require_non_blank(module, module.params["additional_contact_email_addresses"], "additional_contact_email_addresses")
 
     use_case_description = module.params["use_case_description"]
     website_url = module.params["website_url"]
-    if website_url is not None and not website_url.strip():
-        module.fail_json(msg="website_url must be a non-empty string")
-
-    if use_case_description is not None and not use_case_description.strip():
-        module.fail_json(msg="use_case_description must be a non-empty string")
+    require_non_blank(module, website_url, "website_url")
+    require_non_blank(module, use_case_description, "use_case_description")
 
     ready = website_url is not None
 

@@ -1,0 +1,9 @@
+---
+minor_changes:
+  - ses_sandbox - blank ``website_url`` and ``use_case_description`` values now fail with ``must not be empty``
+    instead of ``must be a non-empty string``, the wording the other blank-value checks use.
+trivial:
+  - acm_certificate_request, ec2_flow_log, ec2_vpc_prefix_list, ec2_vpc_vpn, pinpoint_sms_voice_phone_number,
+    pinpoint_sms_voice_phone_pool, pinpoint_sms_voice_phone_pool_associate, route53_resolver_rule_associate,
+    route53_zone_associate, ses_sandbox, ssm_association, ssm_document, and ssm_send_command - reject blank
+    values with the shared ``require_non_blank`` helper in ``module_utils/validation.py``.

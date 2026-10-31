@@ -400,6 +400,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
     ssm_tag_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
 ASSOCIATION_VERSION_DELAY = 1
 ASSOCIATION_VERSION_TIMEOUT = 60
@@ -773,8 +774,7 @@ def main():
 
     if state == "present":
         # A blank document name matches no association, so check mode would predict a create AWS refuses.
-        if not name.strip():
-            module.fail_json(msg="name must not be empty")
+        require_non_blank(module, name, "name")
 
         # AWS refuses a blank schedule (InvalidSchedule), so it counts as empty.
         if schedule_expression is not None and (not schedule_expression.strip() or len(schedule_expression) > 256):

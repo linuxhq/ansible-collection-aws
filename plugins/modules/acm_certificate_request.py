@@ -113,6 +113,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_resulting_tag_limit,
     require_valid_tags,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
 # Keep this list synchronized with ACM's CertificateKeyAlgorithm model so
 # list_certificates does not omit certificates that use non-default key types.
@@ -409,11 +410,8 @@ def main():
     tags = module.params["tags"]
 
     # ACM rejects blank names, which check mode would otherwise predict as a new certificate request.
-    if not domain_name.strip():
-        module.fail_json(msg="domain_name must not be empty")
-
-    if any(not name.strip() for name in subject_alternative_names):
-        module.fail_json(msg="subject_alternative_names must not contain empty entries")
+    require_non_blank(module, domain_name, "domain_name")
+    require_non_blank(module, subject_alternative_names, "subject_alternative_names")
 
     if idempotency_token is not None and not re.fullmatch(r"\w{1,32}", idempotency_token, flags=re.ASCII):
         module.fail_json(msg="ACM certificate request idempotency_token must be 1 to 32 ASCII word characters")

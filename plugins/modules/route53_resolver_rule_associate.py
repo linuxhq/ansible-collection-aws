@@ -162,6 +162,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     custom_waiter,
     require_positive_wait_bounds,
@@ -610,8 +611,7 @@ def main():
         # The association lookup matches nothing for a whitespace-only ID and AWS refuses to associate it, while
         # check mode would predict a new association.
         for option in ("resolver_rule_id", "vpc_id"):
-            if not module.params[option].strip():
-                module.fail_json(msg=f"{option} must not be empty")
+            require_non_blank(module, module.params[option], option)
 
     require_positive_wait_bounds(module, always=state == "present")
 
