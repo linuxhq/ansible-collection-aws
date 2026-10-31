@@ -110,8 +110,8 @@ def test_rejects_more_than_four_contact_addresses():
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
-        ({"website_url": " "}, "website_url must be a non-empty string"),
-        ({"use_case_description": " "}, "use_case_description must be a non-empty string"),
+        ({"website_url": " "}, "website_url must not be empty"),
+        ({"use_case_description": " "}, "use_case_description must not be empty"),
     ],
 )
 def test_rejects_blank_application_details_before_api_calls(overrides, message):

@@ -332,6 +332,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tag_list,
     require_valid_tags,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     sleep_until_next_poll,
@@ -1056,8 +1057,7 @@ def main():
 
         # AWS rejects empty identifiers, which check mode would otherwise predict as a new request or an update.
         for option in ("opt_out_list_name", "pool_id", "registration_id"):
-            if module.params[option] is not None and not module.params[option].strip():
-                module.fail_json(msg=f"{option} must not be empty")
+            require_non_blank(module, module.params[option], option)
 
         require_valid_tags(module, tags, 200, restricted_characters=True)
 
