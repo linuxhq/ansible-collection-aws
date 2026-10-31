@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - iam_oidc_provider - with O(state=present), a O(url) whose host is whitespace-only, such as C(https:// ), now fails
+    with "url must identify an OIDC provider host" before any AWS call, in check mode too, as an empty host already
+    did. Check mode predicted a new provider that IAM rejects on create.
+  - route53_zone_associate - a whitespace-only O(hosted_zone_id) (bare or after C(/hostedzone/)) or O(vpc_id) now fails
+    before any AWS call, in check mode too and with either O(state), as an empty one already did. Check mode predicted
+    an association with the blank VPC that AWS rejects in the real run, and O(state=absent) reported no change instead
+    of failing.

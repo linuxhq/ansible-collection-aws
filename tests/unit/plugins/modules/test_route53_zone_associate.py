@@ -99,17 +99,23 @@ def test_null_required_ids_are_rejected_before_aws_calls():
         module.client.assert_not_called()
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("state", ["absent", "present"])
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
         ({"hosted_zone_id": ""}, "hosted_zone_id must identify a hosted zone"),
+        ({"hosted_zone_id": " "}, "hosted_zone_id must identify a hosted zone"),
         ({"hosted_zone_id": "/hostedzone/"}, "hosted_zone_id must identify a hosted zone"),
+        ({"hosted_zone_id": "/hostedzone/ "}, "hosted_zone_id must identify a hosted zone"),
         ({"vpc_id": ""}, "vpc_id must not be empty"),
+        ({"vpc_id": " "}, "vpc_id must not be empty"),
+        ({"vpc_id": "\t"}, "vpc_id must not be empty"),
     ],
 )
-def test_empty_zone_or_vpc_id_is_rejected_before_aws_calls(state, overrides, message):
-    module = FakeModule(params(state=state, **overrides))
+def test_empty_or_blank_zone_or_vpc_id_is_rejected_before_aws_calls(check_mode, state, overrides, message):
+    # No hosted zone or VPC has a blank ID, so check mode must not predict an association that AWS rejects.
+    module = FakeModule(params(state=state, **overrides), check_mode=check_mode)
     module.client = Mock()
 
     assert run_main(module) == message

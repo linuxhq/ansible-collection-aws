@@ -20,6 +20,7 @@ options:
     description:
       - The private hosted zone ID.
       - This accepts a bare ID or the full C(/hostedzone/ID) path.
+      - The ID must not be empty.
       - When O(state=present), the hosted zone must exist and be private.
     required: true
     type: str
@@ -34,6 +35,7 @@ options:
   vpc_id:
     description:
       - The VPC ID to associate with the hosted zone.
+      - This must not be empty.
     required: true
     type: str
   vpc_region:
@@ -385,12 +387,13 @@ def main():
     if not 2 <= len(vpc_region) <= 25 or not re.fullmatch(r"[a-z]{2,4}(?:-[a-z]{1,15})+-[0-9]", vpc_region):
         module.fail_json(msg="vpc_region must be a valid AWS region name")
 
-    # ansible-core turns an explicit null for a required string into "", which identifies no zone or VPC.
+    # ansible-core turns an explicit null for a required string into "", and like a whitespace-only value it
+    # identifies no zone or VPC.
     hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]
-    if not hosted_zone_id:
+    if not hosted_zone_id.strip():
         module.fail_json(msg="hosted_zone_id must identify a hosted zone")
 
-    if not module.params["vpc_id"]:
+    if not module.params["vpc_id"].strip():
         module.fail_json(msg="vpc_id must not be empty")
 
     require_positive_wait_bounds(module)
