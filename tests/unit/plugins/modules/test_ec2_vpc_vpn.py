@@ -869,6 +869,30 @@ def test_invalid_inputs_fail_locally(params, overrides):
         plugin.validate_inputs(FakeModule(params))
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("state", ["present", "absent"])
+@pytest.mark.parametrize("option", ["name", "vpn_connection_id", "filters"])
+def test_null_selector_is_rejected_before_any_aws_call(module_spec, option, state, check_mode):
+    spec = dict(module_spec)
+    spec.pop("supports_check_mode")
+    # required_one_of counts only supplied keys, so ansible-core accepts an explicit null and keeps it None.
+    result = ArgumentSpecValidator(**spec).validate({option: None, "state": state})
+
+    assert not result.error_messages
+    assert result.validated_parameters[option] is None
+
+    module = FakeModule(result.validated_parameters, check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": "one of the following is required: name, vpn_connection_id, filters"}
+    module.client.assert_not_called()
+
+
 @pytest.mark.parametrize("state,changed", [("available", True), ("deleting", False)])
 def test_delete_is_idempotent_and_waits(params, connection, state, changed, sdk_checks):
     connection["State"] = state
