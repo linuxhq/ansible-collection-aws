@@ -1134,6 +1134,296 @@ def test_client_ip_preservation_is_left_to_aws_for_other_endpoints(endpoint_id, 
     ensure_present.assert_called_once()
 
 
+ACCELERATOR_ARN = "arn:aws:globalaccelerator::123456789012:accelerator/01234567-89ab-cdef-0123-456789abcdef"
+OTHER_ALLOCATION_ID = "eipalloc-0fedcba9876543210"
+OTHER_ACCOUNT_EIP_ARN = f"arn:aws:ec2:us-west-2:111122223333:elastic-ip/{EIP_ALLOCATION_ID}"
+INSTANCE_ID = "i-0123456789abcdef0"
+INSTANCE_ARN = f"arn:aws:ec2:us-west-2:123456789012:instance/{INSTANCE_ID}"
+LOAD_BALANCER_ARN = "arn:aws:elasticloadbalancing:us-west-2:123456789012:loadbalancer/app/example/0123456789abcdef"
+# The partition and account of ACCELERATOR_ARN, and the region of the endpoint groups below.
+SCOPE = ("aws", "123456789012", "us-west-2")
+
+
+def endpoint_group_response(*endpoint_ids, weight=128):
+    """An endpoint group as AWS returned it live for Elastic IP address endpoints, whichever form created them."""
+    return {
+        "EndpointDescriptions": [
+            {
+                "ClientIPPreservationEnabled": False,
+                "EndpointId": endpoint_id,
+                "HealthState": "UNHEALTHY",
+                "Weight": weight,
+            }
+            for endpoint_id in endpoint_ids
+        ],
+        "EndpointGroupArn": "arn:group",
+        "EndpointGroupRegion": "us-west-2",
+        "HealthCheckIntervalSeconds": 30,
+        "HealthCheckPort": 443,
+        "HealthCheckProtocol": "TCP",
+        "ThresholdCount": 3,
+        "TrafficDialPercentage": 100.0,
+    }
+
+
+def listed_endpoint_group(*endpoint_ids, weight=128):
+    return plugin.boto3_resource_to_ansible_dict(
+        endpoint_group_response(*endpoint_ids, weight=weight), transform_tags=False, force_tags=False
+    )
+
+
+def endpoint_group_with(*endpoint_ids, weight=128):
+    return unset_endpoint_group(
+        endpoint_configurations=[
+            {
+                "attachment_arn": None,
+                "client_ip_preservation_enabled": None,
+                "endpoint_id": endpoint_id,
+                "weight": weight,
+            }
+            for endpoint_id in endpoint_ids
+        ]
+    )
+
+
+# Live: AWS accepts a same-account Elastic IP address or EC2 instance given by ARN, but stores and lists it by
+# allocation ID or instance ID.
+@pytest.mark.parametrize(
+    "listed_ids, endpoint_ids, weight, expected",
+    [
+        ([EIP_ALLOCATION_ID], [EIP_ARN], 128, False),
+        ([EIP_ALLOCATION_ID], [EIP_ALLOCATION_ID], 128, False),
+        ([EIP_ARN], [EIP_ARN], 128, False),
+        ([EIP_ALLOCATION_ID], [EIP_ARN], 200, True),
+        ([EIP_ALLOCATION_ID], [f"arn:aws:ec2:us-west-2:123456789012:elastic-ip/{OTHER_ALLOCATION_ID}"], 128, True),
+        ([EIP_ALLOCATION_ID, OTHER_ALLOCATION_ID], [EIP_ARN], 128, True),
+        ([EIP_ALLOCATION_ID], [EIP_ARN, OTHER_ALLOCATION_ID], 128, True),
+        ([EIP_ALLOCATION_ID, OTHER_ALLOCATION_ID], [EIP_ARN, OTHER_ALLOCATION_ID], 128, False),
+        ([INSTANCE_ID], [INSTANCE_ARN], 128, False),
+        ([INSTANCE_ID], [INSTANCE_ARN], 200, True),
+        ([LOAD_BALANCER_ARN], [LOAD_BALANCER_ARN], 128, False),
+        ([INSTANCE_ID], [f"arn:aws:ec2:us-west-2:123456789012:volume/{INSTANCE_ID}"], 128, True),
+    ],
+    ids=[
+        "listed-id",
+        "same-id",
+        "listed-arn",
+        "weight",
+        "other-allocation-arn",
+        "extra-listed",
+        "missing-listed",
+        "mixed-forms",
+        "instance",
+        "instance-weight",
+        "load-balancer",
+        "other-ec2-resource-type",
+    ],
+)
+def test_an_ec2_arn_matches_its_listed_resource_id(listed_ids, endpoint_ids, weight, expected):
+    current = listed_endpoint_group(*listed_ids)
+    desired = endpoint_group_with(*endpoint_ids, weight=weight)
+
+    assert plugin.endpoint_group_requires_update(current, desired, SCOPE) is expected
+
+
+# What AWS lists for an EC2 ARN outside the accelerator's partition and account or the group's region is unknown, so it
+# matches only as given.
+@pytest.mark.parametrize(
+    "endpoint_id, scope",
+    [
+        (OTHER_ACCOUNT_EIP_ARN, SCOPE),
+        (f"arn:aws:ec2:us-east-1:123456789012:elastic-ip/{EIP_ALLOCATION_ID}", SCOPE),
+        (f"arn:aws-cn:ec2:us-west-2:123456789012:elastic-ip/{EIP_ALLOCATION_ID}", SCOPE),
+        (f"arn:aws:ec2:us-west-2:111122223333:instance/{INSTANCE_ID}", SCOPE),
+        (EIP_ARN, None),
+    ],
+    ids=["other-account", "other-region", "other-partition", "other-account-instance", "no-accelerator"],
+)
+def test_an_ec2_arn_outside_the_accelerator_scope_matches_only_as_given(endpoint_id, scope):
+    resource_id = endpoint_id.rsplit("/", 1)[1]
+
+    assert plugin.endpoint_group_requires_update(
+        listed_endpoint_group(resource_id), endpoint_group_with(endpoint_id), scope
+    )
+    assert not plugin.endpoint_group_requires_update(
+        listed_endpoint_group(endpoint_id), endpoint_group_with(endpoint_id), scope
+    )
+
+
+def test_the_scope_is_the_accelerator_partition_and_account_and_the_group_region():
+    assert plugin.endpoint_group_scope(ACCELERATOR_ARN, "us-west-2") == SCOPE
+    assert plugin.endpoint_group_scope(None, "us-west-2") is None
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "listed_id, endpoint_id", [(EIP_ALLOCATION_ID, EIP_ARN), (INSTANCE_ID, INSTANCE_ARN)], ids=["eip", "instance"]
+)
+def test_an_ec2_endpoint_group_requested_by_arn_converges(check_mode, listed_id, endpoint_id):
+    current = listed_endpoint_group(listed_id)
+    client = Mock()
+    module = FakeModule({"purge_endpoint_groups": True}, check_mode=check_mode)
+    with patch.object(plugin, "get_endpoint_groups", return_value=[current]):
+        changed, groups = plugin.ensure_endpoint_groups(
+            client, module, "arn:listener", [endpoint_group_with(endpoint_id)], accelerator_arn=ACCELERATOR_ARN
+        )
+
+    assert changed is False
+    assert groups == [current]
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_listener_reconciliation_passes_the_accelerator_to_endpoint_group_matching(check_mode):
+    listener = {
+        "client_affinity": None,
+        "endpoint_groups": [endpoint_group_with(EIP_ARN)],
+        "port_ranges": [{"from_port": 443, "to_port": 443}],
+        "protocol": "TCP",
+    }
+    current_listener = {
+        "client_affinity": "NONE",
+        "listener_arn": "arn:listener",
+        "port_ranges": [{"from_port": 443, "to_port": 443}],
+        "protocol": "TCP",
+    }
+    current = listed_endpoint_group(EIP_ALLOCATION_ID)
+    module = FakeModule(
+        {"listeners": [listener], "purge_endpoint_groups": True, "purge_listeners": True}, check_mode=check_mode
+    )
+    client = Mock()
+    with (
+        patch.object(plugin, "get_listeners", return_value=[current_listener]),
+        patch.object(plugin, "get_endpoint_groups", return_value=[current]),
+    ):
+        changed, listeners = plugin.ensure_listeners(client, module, ACCELERATOR_ARN)
+
+    assert changed is False
+    assert listeners[0]["endpoint_groups"] == [current]
+    assert client.mock_calls == []
+
+
+def run_endpoint_group_change(check_mode, current, desired, response):
+    client = Mock()
+    client.create_endpoint_group.return_value = {"EndpointGroup": response}
+    client.update_endpoint_group.return_value = {"EndpointGroup": response}
+    module = FakeModule({"purge_endpoint_groups": True}, check_mode=check_mode)
+    with patch.object(plugin, "get_endpoint_groups", return_value=[current] if current else []):
+        changed, groups = plugin.ensure_endpoint_groups(
+            client, module, "arn:listener", [desired], accelerator_arn=ACCELERATOR_ARN
+        )
+
+    assert changed
+    return client, groups[0]
+
+
+def test_an_update_sends_the_requested_arn_and_check_mode_predicts_the_listed_id():
+    current = listed_endpoint_group(EIP_ALLOCATION_ID)
+    desired = endpoint_group_with(EIP_ARN, weight=200)
+    # Live: UpdateEndpointGroup given the ARN returns the endpoint under its allocation ID.
+    response = endpoint_group_response(EIP_ALLOCATION_ID, weight=200)
+
+    client, real = run_endpoint_group_change(False, current, desired, response)
+    check_client, predicted = run_endpoint_group_change(True, current, desired, response)
+
+    client.update_endpoint_group.assert_called_once_with(
+        EndpointConfigurations=[{"EndpointId": EIP_ARN, "Weight": 200}],
+        EndpointGroupArn="arn:group",
+        aws_retry=True,
+    )
+    assert real == listed_endpoint_group(EIP_ALLOCATION_ID, weight=200)
+    assert check_client.mock_calls == []
+    # Check mode does not predict the health state or the client IP preservation default (carry-over).
+    assert predicted["endpoint_descriptions"] == [{"endpoint_id": EIP_ALLOCATION_ID, "weight": 200}]
+    assert dict(predicted, endpoint_descriptions=None) == dict(real, endpoint_descriptions=None)
+
+
+def test_a_create_sends_the_requested_arn_and_check_mode_predicts_the_listed_id():
+    desired = unset_endpoint_group(
+        endpoint_configurations=endpoint_group_with(EIP_ARN)["endpoint_configurations"], health_check_port=443
+    )
+    # Live: CreateEndpointGroup given the ARN returns the endpoint under its allocation ID.
+    response = endpoint_group_response(EIP_ALLOCATION_ID)
+
+    client, real = run_endpoint_group_change(False, None, desired, response)
+    check_client, predicted = run_endpoint_group_change(True, None, desired, response)
+
+    assert client.create_endpoint_group.call_args.kwargs["EndpointConfigurations"] == [
+        {"EndpointId": EIP_ARN, "Weight": 128}
+    ]
+    assert real == listed_endpoint_group(EIP_ALLOCATION_ID)
+    assert check_client.mock_calls == []
+    assert predicted["endpoint_descriptions"] == [{"endpoint_id": EIP_ALLOCATION_ID, "weight": 128}]
+    # AWS assigns the group ARN on create.
+    unpredicted = ("endpoint_descriptions", "endpoint_group_arn")
+    assert {key: value for key, value in predicted.items() if key not in unpredicted} == {
+        key: value for key, value in real.items() if key not in unpredicted
+    }
+
+
+@pytest.mark.parametrize(
+    "accelerator_arn, listener_arn, endpoint_id, expected",
+    [
+        (ACCELERATOR_ARN, "arn:listener", EIP_ARN, EIP_ALLOCATION_ID),
+        (ACCELERATOR_ARN, None, EIP_ARN, EIP_ALLOCATION_ID),
+        # A new accelerator has no ARN yet, so its account is unknown.
+        (None, None, EIP_ARN, EIP_ARN),
+        # What AWS lists for another account's or region's address is unknown.
+        (ACCELERATOR_ARN, "arn:listener", OTHER_ACCOUNT_EIP_ARN, OTHER_ACCOUNT_EIP_ARN),
+        (
+            ACCELERATOR_ARN,
+            "arn:listener",
+            f"arn:aws:ec2:us-east-1:123456789012:elastic-ip/{EIP_ALLOCATION_ID}",
+            f"arn:aws:ec2:us-east-1:123456789012:elastic-ip/{EIP_ALLOCATION_ID}",
+        ),
+        (ACCELERATOR_ARN, "arn:listener", EIP_ALLOCATION_ID, EIP_ALLOCATION_ID),
+        (ACCELERATOR_ARN, "arn:listener", INSTANCE_ARN, INSTANCE_ID),
+        (ACCELERATOR_ARN, "arn:listener", LOAD_BALANCER_ARN, LOAD_BALANCER_ARN),
+    ],
+    ids=[
+        "existing-listener",
+        "new-listener",
+        "new-accelerator",
+        "other-account",
+        "other-region",
+        "allocation-id",
+        "instance",
+        "load-balancer",
+    ],
+)
+def test_check_mode_create_predicts_the_listed_id_of_an_ec2_arn(accelerator_arn, listener_arn, endpoint_id, expected):
+    listener = {
+        "client_affinity": None,
+        "endpoint_groups": [endpoint_group_with(endpoint_id)],
+        "port_ranges": [{"from_port": 443, "to_port": 443}],
+        "protocol": "TCP",
+    }
+    current_listeners = []
+    if listener_arn is not None:
+        current_listeners = [
+            {
+                "client_affinity": "NONE",
+                "listener_arn": listener_arn,
+                "port_ranges": [{"from_port": 443, "to_port": 443}],
+                "protocol": "TCP",
+            }
+        ]
+
+    module = FakeModule(
+        {"listeners": [listener], "purge_endpoint_groups": True, "purge_listeners": True}, check_mode=True
+    )
+    client = Mock()
+    with (
+        patch.object(plugin, "get_listeners", return_value=current_listeners),
+        patch.object(plugin, "get_endpoint_groups", return_value=[]),
+    ):
+        changed, listeners = plugin.ensure_listeners(client, module, accelerator_arn)
+
+    assert changed
+    assert listeners[0]["endpoint_groups"][0]["endpoint_descriptions"] == [{"endpoint_id": expected, "weight": 128}]
+    assert client.mock_calls == []
+
+
 def test_endpoint_groups_reject_duplicate_regions_and_endpoints():
     endpoint = {
         "attachment_arn": None,
@@ -1170,11 +1460,74 @@ def test_endpoint_groups_reject_duplicate_regions_and_endpoints():
         assert_module_rejects(plugin, params, message)
 
 
+def endpoint_listeners(*endpoint_ids):
+    return [
+        {
+            "client_affinity": None,
+            "endpoint_groups": [endpoint_group_with(*endpoint_ids)],
+            "port_ranges": [{"from_port": 443, "to_port": 443}],
+            "protocol": "TCP",
+        }
+    ]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "endpoint_ids",
+    [[EIP_ALLOCATION_ID, EIP_ARN], [EIP_ARN, EIP_ALLOCATION_ID], [INSTANCE_ARN, INSTANCE_ID]],
+    ids=["eip-id-then-arn", "eip-arn-then-id", "instance-arn-then-id"],
+)
+def test_an_ec2_endpoint_named_by_id_and_by_arn_fails_before_any_aws_call(check_mode, endpoint_ids):
+    # Live: AWS keeps one endpoint, with the weight of the last entry, for an Elastic IP address given in both forms,
+    # so check mode would predict two endpoints and differing weights would never converge.
+    module = FakeModule(present_params(endpoint_listeners(*endpoint_ids)), check_mode=check_mode)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(module, "client") as client_factory,
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": f"Duplicate endpoint {endpoint_ids[1]} in endpoint group us-west-2 endpoint_configurations"
+    }
+    client_factory.assert_not_called()
+    ensure_present.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "endpoint_ids",
+    [[EIP_ARN, OTHER_ALLOCATION_ID], [INSTANCE_ARN, EIP_ARN], [INSTANCE_ID, LOAD_BALANCER_ARN]],
+    ids=["two-addresses", "instance-and-address", "instance-and-load-balancer"],
+)
+def test_distinct_ec2_endpoints_are_not_duplicates(endpoint_ids):
+    module = FakeModule(present_params(endpoint_listeners(*endpoint_ids)))
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(module, "client"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once()
+
+
 @pytest.mark.parametrize(
     "endpoint_group, message",
     [
         (
             {"endpoint_configurations": [], "endpoint_group_region": ""},
+            "endpoint_group_region must not be empty",
+        ),
+        # Live: CreateEndpointGroup rejects a region " " (InvalidArgumentException), which a real run reaches only
+        # after its accelerator and listener writes.
+        (
+            {"endpoint_configurations": [], "endpoint_group_region": " "},
+            "endpoint_group_region must not be empty",
+        ),
+        (
+            {"endpoint_configurations": [], "endpoint_group_region": "\t"},
             "endpoint_group_region must not be empty",
         ),
         (
@@ -1191,31 +1544,60 @@ def test_endpoint_groups_reject_duplicate_regions_and_endpoints():
             },
             "Endpoint group us-east-1 endpoint_id must not be empty",
         ),
+        # Live: CreateEndpointGroup rejects an endpoint ID " " (InvalidArgumentException) after the same writes.
+        (
+            {
+                "endpoint_configurations": [
+                    {
+                        "attachment_arn": None,
+                        "client_ip_preservation_enabled": None,
+                        "endpoint_id": " ",
+                        "weight": 128,
+                    }
+                ],
+                "endpoint_group_region": "us-east-1",
+            },
+            "Endpoint group us-east-1 endpoint_id must not be empty",
+        ),
+        (
+            {
+                "endpoint_configurations": [
+                    {
+                        "attachment_arn": None,
+                        "client_ip_preservation_enabled": None,
+                        "endpoint_id": "\t",
+                        "weight": 128,
+                    }
+                ],
+                "endpoint_group_region": "us-east-1",
+            },
+            "Endpoint group us-east-1 endpoint_id must not be empty",
+        ),
     ],
+    ids=["empty-region", "space-region", "tab-region", "empty-endpoint", "space-endpoint", "tab-endpoint"],
 )
 def test_empty_required_endpoint_strings_fail_before_any_aws_call(endpoint_group, message):
     # Ansible validates a null required string suboption as "".
-    params = {
-        "ip_addresses": None,
-        "listeners": [
-            {
-                "endpoint_groups": [endpoint_group],
-                "port_ranges": [{"from_port": 443, "to_port": 443}],
-                "protocol": "TCP",
-            }
-        ],
-        "state": "present",
-    }
-    module = FakeModule(params)
+    listeners = [
+        {
+            "client_affinity": None,
+            "endpoint_groups": [unset_endpoint_group(**endpoint_group)],
+            "port_ranges": [{"from_port": 443, "to_port": 443}],
+            "protocol": "TCP",
+        }
+    ]
+    module = FakeModule(present_params(listeners))
     with (
         patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
         patch.object(module, "client") as client_factory,
+        patch.object(plugin, "ensure_present") as ensure_present,
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.main()
 
     assert raised.value.values["msg"] == message
     client_factory.assert_not_called()
+    ensure_present.assert_not_called()
 
 
 def test_endpoint_group_provider_limits_are_rejected():
