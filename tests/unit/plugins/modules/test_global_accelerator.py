@@ -1988,6 +1988,121 @@ def test_listener_create_retries_reuse_the_token():
     assert first.kwargs["IdempotencyToken"] == second.kwargs["IdempotencyToken"]
 
 
+def test_listener_writes_release_conflicts_then_update_then_create_with_one_token_each():
+    def listener(arn, protocol, port, affinity="NONE"):
+        return {
+            "client_affinity": affinity,
+            "listener_arn": arn,
+            "port_ranges": [{"from_port": port, "to_port": port}],
+            "protocol": protocol,
+        }
+
+    def wanted(protocol, start, end, affinity=None):
+        return {
+            "client_affinity": affinity,
+            "endpoint_groups": None,
+            "port_ranges": [{"from_port": start, "to_port": end}],
+            "protocol": protocol,
+        }
+
+    current = [
+        listener("arn:a", "TCP", 80),
+        listener("arn:b", "TCP", 81),
+        listener("arn:c", "UDP", 53, "SOURCE_IP"),
+        listener("arn:d", "TCP", 9000),
+    ]
+    desired = [
+        wanted("TCP", 80, 81),
+        wanted("UDP", 53, 54),
+        wanted("UDP", 500, 500, "SOURCE_IP"),
+        wanted("UDP", 4500, 4500),
+    ]
+    events = []
+    quota_errors = [
+        plugin.ClientError({"Error": {"Code": "LimitExceededException", "Message": "full"}}, "CreateListener")
+    ]
+
+    def update(**request):
+        events.append(("update_listener", request))
+        return {"Listener": request}
+
+    def create(**request):
+        events.append(("create_listener", request))
+        if request["PortRanges"][0]["FromPort"] == 4500 and quota_errors:
+            raise quota_errors.pop()
+
+        return {"Listener": dict(request, ClientAffinity=request.get("ClientAffinity", "NONE"), ListenerArn="arn:new")}
+
+    client = Mock()
+    client.update_listener.side_effect = update
+    client.create_listener.side_effect = create
+    module = FakeModule({"listeners": desired, "purge_listeners": True})
+    with (
+        patch.object(plugin, "get_listeners", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "delete_listener", side_effect=lambda c, m, a, arn, **kw: events.append(("delete", arn))),
+        patch.object(plugin, "wait_for_accelerator", side_effect=lambda *args, **kwargs: events.append(("wait",))),
+        patch.object(plugin.uuid, "uuid4", side_effect=["token-0", "token-1"]) as uuid4,
+    ):
+        changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    assert changed
+    assert uuid4.call_count == 2
+    udp_4500 = {
+        "AcceleratorArn": "arn:accelerator",
+        "IdempotencyToken": "token-1",
+        "PortRanges": [{"FromPort": 4500, "ToPort": 4500}],
+        "Protocol": "UDP",
+        "aws_retry": True,
+    }
+    assert events == [
+        # The obsolete listener holding a desired port goes first; the unrelated one only when the quota needs it.
+        ("delete", "arn:b"),
+        ("wait",),
+        (
+            "update_listener",
+            {
+                "ClientAffinity": "NONE",
+                "ListenerArn": "arn:a",
+                "PortRanges": [{"FromPort": 80, "ToPort": 81}],
+                "Protocol": "TCP",
+                "aws_retry": True,
+            },
+        ),
+        (
+            "update_listener",
+            {
+                "ClientAffinity": "SOURCE_IP",
+                "ListenerArn": "arn:c",
+                "PortRanges": [{"FromPort": 53, "ToPort": 54}],
+                "Protocol": "UDP",
+                "aws_retry": True,
+            },
+        ),
+        (
+            "create_listener",
+            {
+                "AcceleratorArn": "arn:accelerator",
+                "ClientAffinity": "SOURCE_IP",
+                "IdempotencyToken": "token-0",
+                "PortRanges": [{"FromPort": 500, "ToPort": 500}],
+                "Protocol": "UDP",
+                "aws_retry": True,
+            },
+        ),
+        ("create_listener", udp_4500),
+        ("delete", "arn:d"),
+        ("wait",),
+        ("create_listener", udp_4500),
+    ]
+    assert [(item["protocol"], item["client_affinity"]) for item in listeners] == [
+        ("TCP", "NONE"),
+        ("UDP", "SOURCE_IP"),
+        ("UDP", "SOURCE_IP"),
+        ("UDP", "NONE"),
+    ]
+
+
 def test_endpoint_group_creates_with_identical_inputs_use_unique_tokens():
     client = Mock()
     client.create_endpoint_group.return_value = {
