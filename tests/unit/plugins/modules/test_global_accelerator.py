@@ -746,6 +746,205 @@ def test_listener_reconciliation_keeps_unlisted_listeners_without_purge():
     assert deletes == []
 
 
+def listed_listeners(ports_by_arn):
+    """Build TCP listeners in the listener ARN order get_listeners returns."""
+    return [review_listener(arn, *ports_by_arn[arn]) for arn in sorted(ports_by_arn)]
+
+
+def single_range(listener):
+    port_range = listener["port_ranges"][0]
+    return (port_range["from_port"], port_range["to_port"])
+
+
+@pytest.mark.parametrize("reverse", [False, True], ids=["listed", "reversed"])
+@pytest.mark.parametrize(
+    ("ports_by_arn", "entries", "expected_updates", "expected_creates"),
+    [
+        # Listener ARNs end in random IDs, so both ARN orders occur; one of them used to cross the pairing.
+        (
+            {"arn:a": (80, 80), "arn:b": (443, 443)},
+            [(80, 81), (443, 444)],
+            {"arn:a": (80, 81), "arn:b": (443, 444)},
+            [],
+        ),
+        (
+            {"arn:a": (443, 443), "arn:b": (80, 80)},
+            [(80, 81), (443, 444)],
+            {"arn:a": (443, 444), "arn:b": (80, 81)},
+            [],
+        ),
+        (
+            {"arn:a": (80, 81), "arn:b": (90, 91)},
+            [(89, 91), (80, 82)],
+            {"arn:a": (80, 82), "arn:b": (89, 91)},
+            [],
+        ),
+        # The most shared ports win over the lower ARN; the disjoint entry falls back to the listener left.
+        (
+            {"arn:a": (80, 81), "arn:b": (82, 85)},
+            [(81, 84), (9000, 9000)],
+            {"arn:a": (9000, 9000), "arn:b": (81, 84)},
+            [],
+        ),
+        # An entry sharing as many ports with two listeners takes the lowest listener ARN.
+        (
+            {"arn:a": (82, 83), "arn:b": (80, 81)},
+            [(81, 82), (9000, 9000)],
+            {"arn:a": (81, 82), "arn:b": (9000, 9000)},
+            [],
+        ),
+        # A listener goes to the entry sharing the most ports with it, and the other entry is created.
+        (
+            {"arn:a": (80, 89)},
+            [(80, 81), (84, 89)],
+            {"arn:a": (84, 89)},
+            [(80, 81)],
+        ),
+        # A listener sharing as many ports with two entries goes to the entry with the lowest ports.
+        (
+            {"arn:a": (80, 83)},
+            [(82, 83), (80, 81)],
+            {"arn:a": (80, 81)},
+            [(82, 83)],
+        ),
+    ],
+)
+def test_listener_reconciliation_reuses_the_listener_sharing_the_most_ports(
+    ports_by_arn, entries, expected_updates, expected_creates, reverse
+):
+    current = listed_listeners(ports_by_arn)
+    entries = list(reversed(entries)) if reverse else entries
+    module = FakeModule({"listeners": [review_desired(*ports) for ports in entries], "purge_listeners": True})
+
+    matched, updates, creates, deletes = plugin.reconcile_listeners(module, current)
+
+    assert {current["listener_arn"]: single_range(desired) for current, desired in updates} == expected_updates
+    assert [single_range(desired) for desired in creates] == expected_creates
+    assert matched == []
+    assert deletes == []
+
+
+def test_listener_reconciliation_without_purge_never_reuses_an_overlapping_listener():
+    current = [review_listener("arn:listener", 80, 80)]
+    module = FakeModule({"listeners": [review_desired(80, 81)], "purge_listeners": False})
+
+    matched, updates, creates, deletes = plugin.reconcile_listeners(module, current)
+
+    assert matched == [(current[0], None)]
+    assert updates == []
+    assert creates == [review_desired(80, 81)]
+    assert deletes == []
+
+
+def updated_listener_response(**request):
+    return {
+        "Listener": {
+            "ClientAffinity": request["ClientAffinity"],
+            "ListenerArn": request["ListenerArn"],
+            "PortRanges": request["PortRanges"],
+            "Protocol": request["Protocol"],
+        }
+    }
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("arns", [("arn:a", "arn:b"), ("arn:b", "arn:a")], ids=["http-first", "https-first"])
+def test_overlapping_listener_moves_update_their_own_listeners(check_mode, arns):
+    http_arn, https_arn = arns
+    current = listed_listeners({http_arn: (80, 80), https_arn: (443, 443)})
+    module = FakeModule(
+        {
+            "listeners": [review_desired(80, 81), review_desired(443, 444)],
+            "purge_endpoint_groups": True,
+            "purge_listeners": True,
+        },
+        check_mode=check_mode,
+    )
+    client = Mock()
+    active = {item["listener_arn"]: item for item in current}
+
+    def update(**request):
+        # AWS rejects ports that another listener of the protocol still holds.
+        target = review_listener(
+            request["ListenerArn"], request["PortRanges"][0]["FromPort"], request["PortRanges"][0]["ToPort"]
+        )
+        assert not any(
+            plugin.listeners_overlap(target, other) for arn, other in active.items() if arn != target["listener_arn"]
+        )
+        active[target["listener_arn"]] = target
+        return updated_listener_response(**request)
+
+    client.update_listener.side_effect = update
+    with (
+        patch.object(plugin, "get_listeners", return_value=current),
+        patch.object(plugin, "wait_for_accelerator"),
+        patch.object(plugin, "delete_listener") as delete,
+    ):
+        changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    # Check mode returns what the real run returns.
+    assert changed
+    assert listeners == [review_listener(http_arn, 80, 81), review_listener(https_arn, 443, 444)]
+    assert client.update_listener.call_count == (0 if check_mode else 2)
+    client.create_listener.assert_not_called()
+    delete.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("arns", [("arn:a", "arn:b"), ("arn:b", "arn:a")], ids=["http-first", "https-first"])
+@pytest.mark.parametrize("other_ports", [(80, 81), (8080, 8080)], ids=["overlapping", "disjoint"])
+def test_unmanaged_endpoint_groups_stay_on_the_listener_whose_ports_overlap(check_mode, arns, other_ports):
+    http_arn, https_arn = arns
+    current = listed_listeners({http_arn: (80, 80), https_arn: (443, 443)})
+    # The 443-444 entry leaves its endpoint groups unmanaged; the other entry removes every group of its listener.
+    entries = [review_desired(443, 444), dict(review_desired(*other_ports), endpoint_groups=[])]
+    endpoint_groups = {
+        http_arn: [],
+        https_arn: [{"endpoint_group_arn": "arn:group", "endpoint_group_region": "us-east-1"}],
+    }
+    module = FakeModule(
+        {"listeners": entries, "purge_endpoint_groups": True, "purge_listeners": True},
+        check_mode=check_mode,
+    )
+    client = Mock()
+    client.update_listener.side_effect = updated_listener_response
+    with (
+        patch.object(plugin, "get_listeners", return_value=current),
+        patch.object(
+            plugin,
+            "get_endpoint_groups",
+            side_effect=lambda client, module, listener_arn, changed=False: endpoint_groups[listener_arn],
+        ) as get_endpoint_groups,
+        patch.object(plugin, "delete_endpoint_group") as delete_endpoint_group,
+        patch.object(plugin, "wait_for_accelerator"),
+        patch.object(plugin, "delete_listener") as delete_listener,
+    ):
+        changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    delete_endpoint_group.assert_not_called()
+    delete_listener.assert_not_called()
+    assert changed
+    assert {single_range(listener): listener["listener_arn"] for listener in listeners} == {
+        (443, 444): https_arn,
+        other_ports: http_arn,
+    }
+    assert [listener.get("endpoint_groups") for listener in listeners] == (
+        [[], None] if other_ports < (443, 444) else [None, []]
+    )
+    assert [call.args[2] for call in get_endpoint_groups.call_args_list] == [http_arn]
+    if check_mode:
+        client.update_listener.assert_not_called()
+    else:
+        assert sorted(
+            (call.kwargs["ListenerArn"], call.kwargs["PortRanges"]) for call in client.update_listener.call_args_list
+        ) == sorted(
+            [
+                (https_arn, [{"FromPort": 443, "ToPort": 444}]),
+                (http_arn, [{"FromPort": other_ports[0], "ToPort": other_ports[1]}]),
+            ]
+        )
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_listener_creation_without_purge_leaves_unlisted_listeners_unchanged(check_mode):
     current = review_listener("arn:listener", 443, 443)
@@ -2288,18 +2487,26 @@ def test_listener_writes_are_checked_for_every_possible_change(listeners, purge_
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_circular_listener_dependencies_fail_before_mutation(check_mode):
-    current = [review_listener("arn:a", 80, 81), review_listener("arn:b", 90, 91)]
-    desired = [review_desired(89, 91), review_desired(80, 82)]
-    module = FakeModule({"listeners": desired, "purge_listeners": True}, check_mode=check_mode)
+@pytest.mark.parametrize("arns", [("arn:a", "arn:b"), ("arn:b", "arn:a")])
+def test_circular_listener_dependencies_fail_before_mutation(check_mode, arns):
+    # Each entry shares a port with both listeners, so every pairing needs a port the other listener still holds.
+    current = listed_listeners({arns[0]: (80, 81), arns[1]: (82, 83)})
+    split = dict(
+        review_desired(80, 80), port_ranges=[{"from_port": 80, "to_port": 80}, {"from_port": 83, "to_port": 83}]
+    )
+    desired = [review_desired(81, 82), split]
+    module = FakeModule(
+        {"listeners": desired, "purge_endpoint_groups": True, "purge_listeners": True}, check_mode=check_mode
+    )
     client = Mock()
     with (
         patch.object(plugin, "get_listeners", return_value=current),
         patch.object(plugin, "delete_listener") as delete,
-        pytest.raises(ModuleFail, match="circular port dependencies"),
+        pytest.raises(ModuleFail, match="circular port dependencies") as raised,
     ):
         plugin.ensure_listeners(client, module, "arn:accelerator")
 
+    assert raised.value.values["changed"] is False
     delete.assert_not_called()
     client.update_listener.assert_not_called()
     client.create_listener.assert_not_called()

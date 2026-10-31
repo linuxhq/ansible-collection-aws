@@ -17,6 +17,16 @@ description:
     remaining entries update existing listeners with the same protocol in
     place, new listeners are created for the rest, and existing listeners not
     present in O(listeners) are deleted, including their endpoint groups.
+  - Those remaining entries first update listeners whose ports they overlap,
+    pairing the entry and listener that share the most ports, then the lowest
+    listener ARN, then the entry with the lowest ports. The others update the
+    remaining listeners of their protocol in O(listeners) order, lowest
+    listener ARN first.
+  - Listeners have no name or tags, so an entry that overlaps no remaining
+    listener, such as port C(80) changed to C(81), can update a different
+    listener of its protocol, which keeps its endpoint groups when
+    O(listeners[].endpoint_groups) is omitted. To keep a listener through such
+    a change, first apply ports that overlap both, such as C(80-81).
   - When O(purge_listeners=false), remaining entries always create new
     listeners and existing listeners not present in O(listeners) are left
     unchanged; the module fails before any listener change when a new
@@ -976,8 +986,22 @@ def reconcile_listeners(module, current_listeners):
         else:
             matched.append((match, desired))
 
+    # Only listeners that would otherwise be purged are reused for other ports.
+    if module.params["purge_listeners"]:
+        # Listeners have no name or tags, so overlapping ports pair entries first: the most shared ports, then the
+        # lowest listener ARN, then the entry with the lowest ports.
+        overlapping = sorted(
+            ((current, desired) for current in remaining for desired in pending if listeners_overlap(current, desired)),
+            key=lambda pair: (-shared_port_count(*pair), pair[0]["listener_arn"], listener_identity(pair[1])),
+        )
+        for current, desired in overlapping:
+            if current in remaining and desired in pending:
+                remaining.remove(current)
+                pending.remove(desired)
+                updates.append((current, desired))
+
     for desired in pending:
-        # Only listeners that would otherwise be purged are reused for other ports.
+        # Entries that overlap no remaining listener reuse the first remaining one of their protocol.
         match = None
         if module.params["purge_listeners"]:
             match = next((current for current in remaining if current["protocol"] == desired["protocol"]), None)
@@ -1018,6 +1042,14 @@ def port_ranges_overlap(left, right):
 def listeners_overlap(first, second):
     return first["protocol"] == second["protocol"] and any(
         port_ranges_overlap(left, right) for left in first["port_ranges"] for right in second["port_ranges"]
+    )
+
+
+def shared_port_count(first, second):
+    return sum(
+        max(0, min(left["to_port"], right["to_port"]) - max(left["from_port"], right["from_port"]) + 1)
+        for left in first["port_ranges"]
+        for right in second["port_ranges"]
     )
 
 
