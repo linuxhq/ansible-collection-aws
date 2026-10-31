@@ -505,6 +505,53 @@ def test_tag_keys_may_contain_128_characters_but_not_129(params):
     assert raised.value.values["msg"] == "tag keys must contain 1 to 128 characters and values at most 256 characters"
 
 
+@pytest.mark.parametrize("key", [" ", "\t", "\N{IDEOGRAPHIC SPACE}"])
+def test_blank_tag_keys_fail_before_any_aws_call(params, key):
+    # Live: EC2 CreateTags rejects them (InvalidParameterValue), after any option, tunnel, or route change.
+    params["tags"] = {key: "x"}
+    client = Mock()
+    module = FakeModule(params, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(module, "client") as connect,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": "tag keys must not be blank"}
+    connect.assert_not_called()
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+def test_blank_tag_values_match_the_empty_value_ec2_stores(params, connection, check_mode):
+    # Live: EC2 stores a tag value made only of spaces, tabs, and line breaks as "", and padded values as sent.
+    connection["Tags"].extend([{"Key": "Blank", "Value": ""}, {"Key": "Pad", "Value": " x "}])
+    params.update(tags={"Blank": " \t", "OwnerTeam": "NetworkOps", "Pad": " x "})
+    client = Mock()
+    result = ensure(client, FakeModule(params, check_mode=check_mode), connection)
+    assert result["changed"] is False
+    assert result["vpn_connection"]["tags"]["Blank"] == ""
+    assert client.mock_calls == []
+
+
+def test_creation_sends_blank_tag_values_as_ec2_stores_them(params, connection):
+    params.update(customer_gateway_id="cgw-123", vpn_gateway_id="vgw-123", tags={"Blank": " ", "Pad": "x "})
+    client = Mock()
+    client.create_vpn_connection.return_value = {"VpnConnection": connection}
+    client.describe_vpn_connections.return_value = {"VpnConnections": [connection]}
+    with patch.object(plugin, "wait_for_connection"):
+        ensure(client, FakeModule(params), None)
+
+    (specification,) = client.create_vpn_connection.call_args.kwargs["TagSpecifications"]
+    assert specification["ResourceType"] == "vpn-connection"
+    assert sorted(specification["Tags"], key=lambda tag: tag["Key"]) == [
+        {"Key": "Blank", "Value": ""},
+        {"Key": "Name", "Value": "branch"},
+        {"Key": "Pad", "Value": "x "},
+    ]
+
+
 def test_algorithms_compare_as_sets_and_ignore_omitted_fields(params, connection):
     params["tunnel_options"] = [
         {"outside_ip_address": "203.0.113.1", "phase1_encryption_algorithms": ["AES256", "AES128", "AES128"]}

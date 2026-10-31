@@ -1101,6 +1101,157 @@ def test_empty_description_clears_a_description_without_sending_it():
     )
 
 
+# Live: EC2 stores no description, and rejects a tag key, made only of any of these.
+BLANK_TEXT = [
+    " ",
+    "   ",
+    "\t\n\r",
+    "\N{NEXT LINE}",
+    "\N{NO-BREAK SPACE}",
+    "\N{FIGURE SPACE}",
+    "\N{IDEOGRAPHIC SPACE}",
+    " \N{LINE SEPARATOR}\N{PARAGRAPH SEPARATOR} ",
+]
+
+
+def run_present_main(params, current, described_entries, check_mode=False, client=None):
+    """Run main() through ensure_present for a prefix list that get_current reads; return the result and mocks."""
+    module = FakeModule(main_params(**dict({"wait": False}, **params)), check_mode=check_mode, client=client or Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_aws_account_id", return_value=OWNER),
+        patch.object(plugin, "get_current", return_value=(current, described_entries)),
+        patch.object(plugin, "modify_prefix_list", return_value=prefix_list(Version=2)) as modify,
+        patch.object(plugin, "reconcile_ec2_tags") as reconcile,
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    return result.value.values, modify, reconcile
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("description", BLANK_TEXT)
+def test_whitespace_description_matches_an_entry_without_description(description, check_mode):
+    # Live: EC2 stores no description for one made only of whitespace, and re-adding the CIDR with it is rejected
+    # (InvalidPrefixListModification: an entry with the CIDR and description (null) already exists).
+    result, modify, _reconcile = run_present_main(
+        {"entries": [{"cidr": "10.0.0.0/8", "description": description}]},
+        prefix_list(),
+        [{"Cidr": "10.0.0.0/8"}],
+        check_mode=check_mode,
+    )
+
+    assert result["changed"] is False
+    assert result["prefix_list"]["entries"] == [{"cidr": "10.0.0.0/8"}]
+    modify.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_whitespace_description_clears_a_description_without_sending_it(check_mode):
+    current = prefix_list()
+    result, modify, _reconcile = run_present_main(
+        {"entries": [{"cidr": "10.0.0.0/8", "description": " "}]},
+        current,
+        [{"Cidr": "10.0.0.0/8", "Description": "old"}],
+        check_mode=check_mode,
+    )
+
+    assert result["changed"] is True
+    assert result["prefix_list"]["entries"] == [{"cidr": "10.0.0.0/8"}]
+    if check_mode:
+        modify.assert_not_called()
+    else:
+        modify.assert_called_once_with(
+            ANY, ANY, current, changed=False, add_entries=[{"cidr": "10.0.0.0/8"}], remove_entries=None
+        )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_create_sends_and_predicts_descriptions_and_tag_values_as_ec2_stores_them(check_mode):
+    # Live: EC2 drops a whitespace-only description and stores a tag value of only spaces, tabs, and line breaks as "".
+    # It stores padded descriptions and values, and other whitespace values, as sent; \x0b is invalid XML it rejects.
+    client = Mock()
+    client.create_managed_prefix_list.return_value = {
+        "PrefixList": prefix_list(MaxEntries=5, State="create-in-progress")
+    }
+    result, _modify, _reconcile = run_present_main(
+        {
+            "entries": [
+                {"cidr": "10.0.0.0/8", "description": " \t"},
+                {"cidr": "172.16.0.0/12", "description": "web "},
+                {"cidr": "192.0.2.0/24", "description": "\N{ZERO WIDTH SPACE}"},
+                {"cidr": "198.51.100.0/24", "description": "\x0b"},
+                {"cidr": "203.0.113.0/24"},
+            ],
+            "tags": {"Blank": " \t\n\r", "Nbsp": "\N{NO-BREAK SPACE}", "Pad": " x "},
+        },
+        None,
+        None,
+        check_mode=check_mode,
+        client=client,
+    )
+
+    expected_entries = [
+        {"cidr": "10.0.0.0/8"},
+        {"cidr": "172.16.0.0/12", "description": "web "},
+        {"cidr": "192.0.2.0/24", "description": "\N{ZERO WIDTH SPACE}"},
+        {"cidr": "198.51.100.0/24", "description": "\x0b"},
+        {"cidr": "203.0.113.0/24"},
+    ]
+    expected_tags = {"Blank": "", "Nbsp": "\N{NO-BREAK SPACE}", "Pad": " x "}
+    assert result["changed"] is True
+    assert result["prefix_list"]["entries"] == expected_entries
+    if check_mode:
+        assert result["prefix_list"]["tags"] == expected_tags
+        client.create_managed_prefix_list.assert_not_called()
+    else:
+        request = client.create_managed_prefix_list.call_args.kwargs
+        assert request["Entries"] == [
+            {"Cidr": entry["cidr"], **({"Description": entry["description"]} if "description" in entry else {})}
+            for entry in expected_entries
+        ]
+        assert request["TagSpecifications"] == [
+            {
+                "ResourceType": "prefix-list",
+                "Tags": [{"Key": key, "Value": value} for key, value in expected_tags.items()],
+            }
+        ]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", BLANK_TEXT)
+def test_blank_tag_keys_are_rejected_before_any_aws_call(key, check_mode):
+    # Live: EC2 rejects them (InvalidParameterValue), after any entry or size change of the same run.
+    client = Mock()
+    module = FakeModule(main_params(tags={key: "x"}), check_mode=check_mode, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(module, "client") as connect,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": "tag keys must not be blank"}
+    connect.assert_not_called()
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_blank_tag_values_match_the_empty_value_ec2_stores(check_mode):
+    result, _modify, reconcile = run_present_main(
+        {"tags": {"Env": " ", "Pad": "x "}},
+        prefix_list(Tags=[{"Key": "Env", "Value": ""}, {"Key": "Pad", "Value": "x "}]),
+        [{"Cidr": "192.0.2.0/24"}],
+        check_mode=check_mode,
+    )
+
+    assert result["changed"] is False
+    assert result["prefix_list"]["tags"] == {"Env": "", "Pad": "x "}
+    reconcile.assert_not_called()
+
+
 def test_omitted_max_entries_never_shrinks_an_existing_prefix_list():
     client = Mock()
     module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}]))

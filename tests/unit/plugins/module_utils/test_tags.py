@@ -140,6 +140,68 @@ def test_restricted_tag_characters_accept_letters_numbers_separators_and_symbols
     assert tags["1"] == "True"
 
 
+def test_ec2_blank_characters_are_the_xml_valid_python_whitespace():
+    # Live: EC2 rejects a tag key made only of any of these and stores no such prefix list description. It rejects
+    # the other str.isspace() characters anywhere as invalid XML (InvalidCharacter).
+    whitespace = {chr(code) for code in range(0x110000) if chr(code).isspace()}
+    assert set(tag_utils.EC2_BLANK_CHARACTERS) == whitespace - set("\x0b\x0c\x1c\x1d\x1e\x1f")
+
+
+@pytest.mark.parametrize(
+    "key",
+    [" ", "   ", "\t", "\n\r", "\N{NO-BREAK SPACE}", "\N{FIGURE SPACE}", "\N{IDEOGRAPHIC SPACE}", " \N{EM SPACE} "],
+)
+def test_ec2_blank_tag_keys_are_rejected(key):
+    with pytest.raises(ModuleFail) as raised:
+        require_valid_tags(FakeModule({}), {key: "x"}, 50, ec2=True)
+
+    assert raised.value.values == {"msg": "tag keys must not be blank"}
+    # Other services keep accepting them; live SSM AddTagsToResource stores " " as sent.
+    require_valid_tags(FakeModule({}), {key: "x"}, 50)
+
+
+def test_ec2_tag_keys_with_text_or_invalid_xml_whitespace_are_not_blank():
+    # Live: EC2 stores these keys as sent, except \x0b, which it rejects as invalid XML rather than as blank.
+    tags = {" pad ": "v", "\N{ZERO WIDTH SPACE}": "v", "\N{ZERO WIDTH NO-BREAK SPACE}": "v", "\x0b": "v"}
+    require_valid_tags(FakeModule({}), tags, 50, ec2=True)
+    assert tags == {" pad ": "v", "\N{ZERO WIDTH SPACE}": "v", "\N{ZERO WIDTH NO-BREAK SPACE}": "v", "\x0b": "v"}
+
+
+def test_ec2_tag_values_of_only_spaces_tabs_and_line_breaks_become_empty():
+    # Live: EC2 stores these values as "", and every other value as sent.
+    tags = {
+        "space": " ",
+        "spaces": "   ",
+        "mixed": " \t\n\r",
+        "empty": "",
+        "padded": " x ",
+        "nbsp": "\N{NO-BREAK SPACE}",
+        "nel": "\N{NEXT LINE}",
+        "ideographic": "\N{IDEOGRAPHIC SPACE}",
+        "vt": "\x0b",
+        1: True,
+    }
+    require_valid_tags(FakeModule({}), tags, 50, ec2=True)
+    assert tags == {
+        "space": "",
+        "spaces": "",
+        "mixed": "",
+        "empty": "",
+        "padded": " x ",
+        "nbsp": "\N{NO-BREAK SPACE}",
+        "nel": "\N{NEXT LINE}",
+        "ideographic": "\N{IDEOGRAPHIC SPACE}",
+        "vt": "\x0b",
+        "1": "True",
+    }
+
+
+def test_tag_values_are_kept_without_ec2():
+    tags = {"space": " ", "padded": " x "}
+    require_valid_tags(FakeModule({}), tags, 50)
+    assert tags == {"space": " ", "padded": " x "}
+
+
 def test_tag_deltas_do_not_mutate_source():
     resource = {"Arn": "arn:resource", "Tags": [{"Key": "old", "Value": "value"}]}
     updated = apply_tag_deltas(resource, {"new": "value"}, ["old"])

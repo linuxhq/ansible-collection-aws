@@ -25,14 +25,24 @@ MAX_EC2_TAG_RESOURCES_PER_REQUEST = 100
 # EKS, Global Accelerator, Notifications Contacts, Pinpoint SMS Voice V2, and Route 53 Resolver enforce the same
 # characters without a model pattern.
 RESTRICTED_TAG_SYMBOLS = "_.:/=+-@"
+# EC2 treats a tag key or a prefix list entry description made only of these characters as blank: it rejects the key
+# and stores no description. They are the str.isspace() characters except \x0b, \x0c, and \x1c-\x1f, which EC2 rejects
+# anywhere as invalid XML.
+EC2_BLANK_CHARACTERS = (
+    "\t\n\r \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a"
+    "\u2028\u2029\u202f\u205f\u3000"
+)
+# EC2 stores a tag value made only of these characters as "", and every other value as sent.
+EC2_BLANK_TAG_VALUE_CHARACTERS = " \t\n\r"
 
 
-def require_valid_tags(module, tags, max_tags, restricted_characters=False):
+def require_valid_tags(module, tags, max_tags, restricted_characters=False, ec2=False):
     """Fail unless tags are non-null, unique as strings, at most max_tags, and within the AWS lengths.
 
     Keys and values are normalized to strings in place. restricted_characters also requires the characters of the SSM,
     IAM, and ACM tag pattern, which those services, EKS, Global Accelerator, Notifications Contacts, Pinpoint SMS Voice
-    V2, and Route 53 Resolver enforce on every tag write.
+    V2, and Route 53 Resolver enforce on every tag write. ec2 also rejects the blank keys EC2 refuses, and replaces each
+    value EC2 stores as "" with "", so requests, comparisons, and check-mode results use the stored value.
     """
     if tags is None:
         return
@@ -53,6 +63,12 @@ def require_valid_tags(module, tags, max_tags, restricted_characters=False):
 
     if any(not 1 <= len(key) <= 128 or len(value) > 256 for key, value in tags.items()):
         module.fail_json(msg="tag keys must contain 1 to 128 characters and values at most 256 characters")
+
+    if ec2:
+        if any(not key.strip(EC2_BLANK_CHARACTERS) for key in tags):
+            module.fail_json(msg="tag keys must not be blank")
+
+        tags.update({key: "" for key, value in tags.items() if not value.strip(EC2_BLANK_TAG_VALUE_CHARACTERS)})
 
     # Python re has no \p{..} classes, so the Unicode general category stands in for \p{L}, \p{N}, and \p{Z}.
     if restricted_characters and any(

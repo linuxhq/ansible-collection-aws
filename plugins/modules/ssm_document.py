@@ -109,6 +109,9 @@ notes:
   - O(tags) accepts at most 50 entries; keys must contain 1 to 128 characters
     and values at most 256 characters, and both may contain only letters,
     numbers, spaces, C(_), C(.), C(:), C(/), C(=), C(+), C(-), and C(@).
+  - When the document is created, O(tags) keys must not be made only of
+    whitespace, because AWS rejects them; no-break spaces count as text. Tags
+    added to an existing document accept such keys.
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -292,6 +295,9 @@ SSM_DOCUMENT_WAITER_MODEL_DATA = {
 }
 TRANSITIONAL_STATUSES = ("Creating", "Updating")
 UPDATABLE_DOCUMENT_VERSIONS = ("$DEFAULT", "$LATEST")
+# CreateDocument rejects a tag key made only of whitespace but counts these no-break spaces as text. AddTagsToResource
+# accepts and stores a blank key, so only a create rejects one.
+NO_BREAK_SPACES = "\xa0\u2007\u202f"
 
 
 def document_description_from_response(module, response, message):
@@ -466,6 +472,11 @@ def ensure_present(client, module):
     if current is None and document_version not in UPDATABLE_DOCUMENT_VERSIONS + ("1",):
         # A created document has only version 1, so a later numbered version can never exist.
         module.fail_json(changed=False, msg=f"AWS Systems Manager document {name} has no version {document_version}")
+
+    if current is None and any(
+        all(char.isspace() and char not in NO_BREAK_SPACES for char in key) for key in tags or {}
+    ):
+        module.fail_json(msg="tag keys must not be blank when creating an AWS Systems Manager document")
 
     if current is None:
         changed = True
