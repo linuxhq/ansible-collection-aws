@@ -1537,26 +1537,7 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
                 f"{current['listener_arn']}",
             )
 
-    # Build every listener write before releasing any ports.
-    update_requests = {}
-    create_requests = []
-    if not module.check_mode:
-        for current, desired in updates:
-            # UpdateListener documents NONE as the ClientAffinity default, so the current value is kept explicitly.
-            request = listener_request(
-                dict(desired, client_affinity=desired["client_affinity"] or current["client_affinity"])
-            )
-            request["ListenerArn"] = current["listener_arn"]
-            update_requests[current["listener_arn"]] = request
-
-        for desired in creates:
-            request = listener_request(desired)
-            request["AcceleratorArn"] = accelerator_arn
-            # A fixed token would replay an earlier create, even one modified since; AWSRetry reuses this one.
-            request["IdempotencyToken"] = str(uuid.uuid4())
-            create_requests.append(request)
-
-    # Release only obsolete listeners that block the validated writes.
+    # Release only obsolete listeners whose ports the listener writes need.
     conflicting_deletes = [
         current for current in deletes if any(listeners_overlap(current, desired) for desired in desired_changes)
     ]
@@ -1590,7 +1571,9 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
         if module.check_mode:
             continue
 
-        request = update_requests[listener_arn]
+        # UpdateListener documents NONE as the ClientAffinity default, so the current value is kept explicitly.
+        request = listener_request(dict(desired, client_affinity=result["client_affinity"]))
+        request["ListenerArn"] = listener_arn
         try:
             response = client.update_listener(
                 **request,
@@ -1617,7 +1600,7 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
                 client, module, accelerator_arn, "accelerator_deployed", changed=True, deadline=deadline
             )
 
-    for index, desired in enumerate(creates):
+    for desired in creates:
         # Predict the AWS creation default when client_affinity is omitted.
         result = {
             "client_affinity": desired["client_affinity"] or "NONE",
@@ -1629,7 +1612,11 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
             result_listeners.append((result, desired, desired["port_ranges"][0]["from_port"]))
             continue
 
-        request = create_requests[index]
+        request = listener_request(desired)
+        request["AcceleratorArn"] = accelerator_arn
+        # A fixed token would replay an earlier create, even one modified since; AWSRetry and the quota retry below reuse
+        # this one.
+        request["IdempotencyToken"] = str(uuid.uuid4())
         while True:
             try:
                 response = client.create_listener(

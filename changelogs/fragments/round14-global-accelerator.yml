@@ -1,0 +1,5 @@
+---
+trivial:
+  - global_accelerator - build each listener update and create request just before it is sent instead of building them
+    all before releasing conflicting ports, a step left over from the SDK checks that now run before the first change,
+    without changing the requests, their order, or the idempotency token each create reuses across retries.
