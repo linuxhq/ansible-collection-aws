@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - ec2_flow_log - an O(log_format) with more than one space or a tab between fields now matches the flow log EC2
+    stored. EC2 stores each run of spaces and tabs as one space, so every later run predicted a new flow log and, with
+    O(purge_flow_logs=true), the deletion of the flow log it had created, then failed with C(FlowLogAlreadyExists), and
+    O(state=absent) never removed that flow log. The module now matches, creates, and predicts the format as EC2
+    stores it.

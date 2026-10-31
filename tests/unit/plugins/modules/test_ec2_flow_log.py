@@ -607,6 +607,70 @@ def test_check_mode_predicts_no_log_group_name_for_other_destinations(log_destin
     assert "log_group_name" not in result["flow_logs"][0]
 
 
+@pytest.mark.parametrize(
+    ("log_format", "expected"),
+    [
+        ("${version} ${srcaddr}", "${version} ${srcaddr}"),
+        ("${version}  ${srcaddr}    ${dstaddr}", "${version} ${srcaddr} ${dstaddr}"),
+        ("${version}\t${srcaddr}", "${version} ${srcaddr}"),
+        ("${version} \t ${srcaddr}", "${version} ${srcaddr}"),
+        # EC2 rejects leading and trailing whitespace, and still rejects the single space kept here.
+        ("\t${version}  ${srcaddr}\t", " ${version} ${srcaddr} "),
+        ("${version} ${srcaddr}\n", "${version} ${srcaddr}\n"),
+    ],
+)
+def test_log_format_uses_the_spacing_ec2_stores(log_format, expected):
+    module = SimpleNamespace(params=present_params(log_format=log_format))
+
+    assert plugin.desired_match_fields(module, plugin.PRESENT_MATCH_FIELDS)["log_format"] == expected
+    assert plugin.desired_match_fields(module, plugin.ABSENT_MATCH_FIELDS)["log_format"] == expected
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_log_format_with_extra_spacing_matches_the_flow_log_ec2_stored(check_mode):
+    # EC2 stores "${version}  ${srcaddr}" as "${version} ${srcaddr}" and refuses the same create again with
+    # FlowLogAlreadyExists, so a rerun must match the stored flow log instead of creating or purging.
+    stored = dict(OLD_FLOW_LOG, FlowLogId="fl-match", LogDestination="arn:aws:s3:::new-bucket")
+    stored["LogFormat"] = "${version} ${srcaddr}"
+    client = Mock()
+    params = present_params(log_format="${version}  ${srcaddr}", purge_flow_logs=True)
+    result = run_present(client, FakeModule(params, check_mode=check_mode), [stored])
+
+    assert result["changed"] is False
+    assert result["deleted_flow_log_ids"] == []
+    assert result["flow_log_ids"] == ["fl-match"]
+    client.create_flow_logs.assert_not_called()
+    client.delete_flow_logs.assert_not_called()
+
+
+def test_log_format_with_extra_spacing_is_created_and_predicted_as_ec2_stores_it():
+    client = Mock()
+    run_present(client, FakeModule(present_params(log_format="${version}\t ${srcaddr}")), [])
+
+    assert client.create_flow_logs.call_args.kwargs["LogFormat"] == "${version} ${srcaddr}"
+
+    result = run_present(Mock(), FakeModule(present_params(log_format="${version}\t ${srcaddr}"), check_mode=True), [])
+
+    assert result["flow_logs"][0]["log_format"] == "${version} ${srcaddr}"
+
+
+def test_absent_log_format_with_extra_spacing_deletes_the_flow_log_ec2_stored():
+    client = Mock()
+    client.delete_flow_logs.return_value = {}
+    stored = dict(OLD_FLOW_LOG, LogFormat="${version} ${srcaddr}")
+    module = FakeModule(present_params(log_destination=None, log_format="${version}  ${srcaddr}", state="absent"))
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[stored]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["flow_log_ids"] == ["fl-old"]
+    client.delete_flow_logs.assert_called_once_with(FlowLogIds=["fl-old"], aws_retry=True)
+
+
 def test_create_sdk_check_covers_every_request_parameter():
     client = Mock()
     client.create_flow_logs.return_value = {"FlowLogIds": ["fl-new"]}

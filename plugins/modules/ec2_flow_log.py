@@ -310,6 +310,7 @@ state:
   type: str
 """
 
+import re
 import uuid
 
 try:
@@ -406,6 +407,11 @@ def comparable_destination_options(module):
 
 def desired_match_fields(module, fields):
     desired = {field: module.params[field] for field in fields if module.params[field] is not None}
+    if "log_format" in desired:
+        # EC2 stores a log format with each run of spaces and tabs between fields replaced by one space. It rejects
+        # leading and trailing whitespace; such a run becomes one space here, which EC2 still rejects.
+        desired["log_format"] = re.sub(r"[ \t]+", " ", desired["log_format"])
+
     destination_options = comparable_destination_options(module)
     if destination_options:
         desired["destination_options"] = destination_options
