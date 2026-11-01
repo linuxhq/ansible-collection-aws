@@ -16,7 +16,8 @@
   ansible.builtin.set_fact:
     _pinpoint_sms_voice_phone_number_info_list:
       "{{ __pinpoint_sms_voice_phone_number_info_query.phone_numbers |
-          d([]) }}"
+          d([]) |
+          selectattr('tags.Name', 'defined') }}"
 
 - name: Ensure dict of aws end user messaging sms phone numbers is generated
   tags:

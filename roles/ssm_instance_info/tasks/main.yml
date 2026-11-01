@@ -16,7 +16,8 @@
   ansible.builtin.set_fact:
     _ssm_instance_info_list:
       "{{ __ssm_instance_info_query.instances |
-          d([]) }}"
+          d([]) |
+          selectattr('instance_id', 'defined') }}"
 
 - name: Ensure dict of aws systems manager instances is generated
   tags:

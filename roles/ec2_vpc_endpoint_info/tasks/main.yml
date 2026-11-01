@@ -21,6 +21,7 @@
               map('items2dict') |
               map('community.general.dict_kv', 'tags')) |
           map('combine') |
+          selectattr('tags.Name', 'defined') |
           list }}"
 
 - name: Ensure dict of aws virtual private cloud endpoints is generated

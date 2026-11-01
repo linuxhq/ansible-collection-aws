@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - ec2_vpc_endpoint_info, pinpoint_sms_voice_phone_number_info, pinpoint_sms_voice_phone_pool_info,
+    route53_resolver_info, route53_resolver_rule_info and ssm_instance_info roles - leave resources without the dict key
+    (a ``Name`` tag, a ``name`` or an ``instance_id``) out of the published list and dict. Before, one such resource
+    shifted every later key in the dict onto the wrong resource.
