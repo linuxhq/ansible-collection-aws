@@ -49,6 +49,7 @@ provisioner:
               "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id }}"
             transit_gateway_id:
               "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+            tunnel_bandwidth: large
 
           - name: molecule-01
             customer_gateway_id:
@@ -78,6 +79,9 @@ provisioner:
               "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id }}"
             transit_gateway_id:
               "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+            pre_shared_key_storage: SecretsManager
+            tunnel_bandwidth: large
+            wait_timeout: 1200
 
           - name: molecule-01
             customer_gateway_id:
@@ -85,7 +89,9 @@ provisioner:
             transit_gateway_id:
               "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
             local_ipv4_network_cidr: 10.20.0.0/16
+            pre_shared_key_storage: Standard
             static_only: true
+            tunnel_bandwidth: standard
             wait_timeout: 1200
             tunnel_options:
               - phase1_encryption_algorithms: [AES128]
