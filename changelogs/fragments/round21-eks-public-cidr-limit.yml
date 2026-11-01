@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - eks_cluster - more than 40 distinct O(resources_vpc_config.public_access_cidrs) blocks now fail before any AWS call,
+    in check mode too. EKS accepts at most 40 per cluster, on create and update ("The publicAccessCidrs list should
+    not be larger than 40."), but check mode predicted success, and on an existing cluster the real run sent them only
+    after an earlier access, deletion protection, logging or remote network update, so it could fail with changed=true.

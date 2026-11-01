@@ -2423,6 +2423,71 @@ def test_ipv6_public_access_cidrs_on_create_are_left_to_aws():
     assert client.create_cluster.call_args.kwargs["resourcesVpcConfig"]["publicAccessCidrs"] == cidrs
 
 
+def public_cidrs(count):
+    return [f"52.0.{index}.0/24" for index in range(count)]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("cidrs", [public_cidrs(41), public_cidrs(41) + ["52.0.0.5/24"]], ids=["41", "41-and-repeat"])
+def test_more_than_forty_public_access_cidrs_fail_before_any_aws_call(cidrs, check_mode):
+    # CreateCluster: "The publicAccessCidrs list should not be larger than 40." (live); the quota applies on create and
+    # update, and an update sends the endpoint settings after the deletion protection update.
+    params = eks_params(
+        deletion_protection=True, resources_vpc_config=vpc_config_params(public_access_cidrs=cidrs), state="present"
+    )
+    module = FakeModule(params, check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": "resources_vpc_config.public_access_cidrs must contain at most 40 CIDR blocks"
+    }
+    module.client.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "cidrs", [public_cidrs(40), public_cidrs(40) + ["52.0.0.5/24"]], ids=["40", "40-blocks-and-repeat"]
+)
+def test_forty_public_access_cidr_blocks_reach_aws(cidrs):
+    params = eks_params(resources_vpc_config=vpc_config_params(public_access_cidrs=cidrs), state="present")
+    module = FakeModule(params)
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
+
+    module.client.assert_called_once()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_repeated_public_access_cidr_beyond_forty_entries_matches_the_cluster(check_mode):
+    # The cluster comparison ignores repeats, so a list whose 40 distinct blocks match the cluster converges.
+    current = dict(STANDARD_CLUSTER, resourcesVpcConfig=dict(STANDARD_CLUSTER["resourcesVpcConfig"]))
+    current["resourcesVpcConfig"]["publicAccessCidrs"] = public_cidrs(40)
+    params = eks_params(
+        resources_vpc_config=vpc_config_params(public_access_cidrs=public_cidrs(40) + ["52.0.0.5/24"]),
+        state="present",
+    )
+    module = FakeModule(params, check_mode=check_mode)
+    module.client = Mock(return_value=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is False
+    module.client.return_value.update_cluster_config.assert_not_called()
+
+
 def cluster_with_endpoints(public, private):
     return dict(
         STANDARD_CLUSTER,

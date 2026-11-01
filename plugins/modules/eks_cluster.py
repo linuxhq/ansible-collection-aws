@@ -224,6 +224,7 @@ options:
         description:
           - CIDR blocks that can access the public Kubernetes API endpoint.
           - This must not be empty when specified.
+          - This must contain at most 40 CIDR blocks.
           - AWS rejects IPv6 CIDR blocks for an IPv4 cluster.
           - Each CIDR block is converted to its canonical form, as EKS stores it, for example V(203.0.113.5/24)
             becomes V(203.0.113.0/24).
@@ -1640,6 +1641,11 @@ def main():
             module.fail_json(msg="resources_vpc_config.public_access_cidrs must not be empty")
 
         canonicalize_public_access_cidrs(module)
+
+        # EKS rejects more than 40, but check mode would predict success, and on an update they reach EKS after other
+        # updates. A repeated block counts once, as in the cluster comparison, so a list matching the cluster converges.
+        if len(set((module.params["resources_vpc_config"] or {}).get("public_access_cidrs") or [])) > 40:
+            module.fail_json(msg="resources_vpc_config.public_access_cidrs must contain at most 40 CIDR blocks")
 
     require_positive_wait_bounds(module, always=True)
 
