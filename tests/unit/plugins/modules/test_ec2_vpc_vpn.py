@@ -255,8 +255,10 @@ def test_module_argument_defaults(module_spec):
         "purge_tags": True,
         "routes": None,
         "state": "present",
+        "pre_shared_key_storage": None,
         "static_only": None,
         "tags": None,
+        "tunnel_bandwidth": None,
         "tunnel_options": None,
         "wait_delay": 15,
         "wait_timeout": 600,
@@ -1684,4 +1686,381 @@ def test_resulting_tag_limit_fails_before_any_write(params, connection, check_mo
 
     assert raised.value.values["msg"] == "The resulting VPN connection tags must contain at most 50 entries"
     assert raised.value.values.get("changed", False) is False
+    assert client.mock_calls == []
+
+
+@pytest.fixture
+def transit_connection(connection):
+    connection.pop("VpnGatewayId")
+    connection["TransitGatewayId"] = "tgw-123"
+    connection["Options"]["TunnelBandwidth"] = "standard"
+    return connection
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("current", ["standard", "large", None])
+@pytest.mark.parametrize("desired", ["standard", "large"])
+def test_tunnel_bandwidth_converges_and_reruns_without_change(params, transit_connection, check_mode, current, desired):
+    # Live: EC2 returns TunnelBandwidth for every connection; the model documents standard when it is unset.
+    if current is None:
+        transit_connection["Options"].pop("TunnelBandwidth")
+    else:
+        transit_connection["Options"]["TunnelBandwidth"] = current
+
+    params["tunnel_bandwidth"] = desired
+    updated = deepcopy(transit_connection)
+    updated["Options"]["TunnelBandwidth"] = desired
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [updated]}
+    changed = desired != (current or "standard")
+    with patch.object(plugin, "wait_for_connection") as waiter:
+        result = ensure(client, FakeModule(params, check_mode=check_mode), transit_connection)
+
+    assert result["changed"] is changed
+    if check_mode or not changed:
+        assert client.mock_calls == []
+        assert result["vpn_connection"] == plugin.normalize_connection(transit_connection)
+    else:
+        client.modify_vpn_connection_options.assert_called_once_with(
+            VpnConnectionId="vpn-123", TunnelBandwidth=desired, aws_retry=True
+        )
+        waiter.assert_called_once_with(client, ANY, "vpn-123", changed=True)
+        assert result["vpn_connection"]["options"]["tunnel_bandwidth"] == desired
+
+    client.reset_mock()
+    assert ensure(client, FakeModule(params, check_mode=check_mode), updated)["changed"] is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("current", ["standard", "large", None])
+def test_omitted_tunnel_bandwidth_leaves_connection_unchanged(params, transit_connection, current):
+    if current is None:
+        transit_connection["Options"].pop("TunnelBandwidth")
+    else:
+        transit_connection["Options"]["TunnelBandwidth"] = current
+
+    client = Mock()
+    assert ensure(client, FakeModule(params), transit_connection)["changed"] is False
+    assert client.mock_calls == []
+
+
+def test_tunnel_bandwidth_and_cidr_change_in_one_request(params, transit_connection, sdk_checks):
+    params.update(tunnel_bandwidth="large", local_ipv4_network_cidr="10.20.0.0/16")
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [transit_connection]}
+    with patch.object(plugin, "wait_for_connection"):
+        assert ensure(client, FakeModule(params), transit_connection)["changed"]
+
+    client.modify_vpn_connection_options.assert_called_once_with(
+        VpnConnectionId="vpn-123", LocalIpv4NetworkCidr="10.20.0.0/16", TunnelBandwidth="large", aws_retry=True
+    )
+    request = dict(client.modify_vpn_connection_options.call_args.kwargs)
+    request.pop("aws_retry")
+    validate_parameters(
+        request, Session().get_service_model("ec2").operation_model("ModifyVpnConnectionOptions").input_shape
+    )
+    (checked,) = [call.args[3] for call in sdk_checks.call_args_list if "modify_vpn_connection_options" in call.args[3]]
+    assert set(checked["modify_vpn_connection_options"]) == set(request)
+
+
+def test_creation_sends_tunnel_bandwidth_without_a_follow_up_change(params, transit_connection):
+    params.update(customer_gateway_id="cgw-123", transit_gateway_id="tgw-123", tunnel_bandwidth="large")
+    created = deepcopy(transit_connection)
+    created["Options"]["TunnelBandwidth"] = "large"
+    client = Mock()
+    client.create_vpn_connection.return_value = {"VpnConnection": created}
+    client.describe_vpn_connections.return_value = {"VpnConnections": [created]}
+    with patch.object(plugin, "wait_for_connection"):
+        result = ensure(client, FakeModule(params), None)
+
+    assert result["changed"] is True
+    assert result["vpn_connection"]["options"]["tunnel_bandwidth"] == "large"
+    request = dict(client.create_vpn_connection.call_args.kwargs)
+    assert request.pop("aws_retry") is True
+    assert request["Options"] == {"TunnelBandwidth": "large"}
+    validate_parameters(request, Session().get_service_model("ec2").operation_model("CreateVpnConnection").input_shape)
+    client.modify_vpn_connection_options.assert_not_called()
+
+
+def test_region_rejecting_a_tunnel_bandwidth_change_leaves_the_connection_unchanged(params, transit_connection):
+    # Live (us-west-2): ModifyVpnConnectionOptions rejects any TunnelBandwidth, alone or with a CIDR change.
+    params.update(tunnel_bandwidth="large", local_ipv4_network_cidr="10.20.0.0/16", tags={"Env": "test"})
+    client = Mock()
+    client.modify_vpn_connection_options.side_effect = ClientError(
+        {"Error": {"Code": "UnsupportedOperation", "Message": "TunnelBandwidth parameter is not supported"}},
+        "ModifyVpnConnectionOptions",
+    )
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params), transit_connection)
+
+    assert raised.value.values == {"changed": False, "msg": "Unable to modify options for VPN connection vpn-123"}
+    assert [call[0] for call in client.mock_calls] == ["modify_vpn_connection_options"]
+
+
+def test_unsupported_tunnel_bandwidth_update_fails_before_any_write(params, transit_connection, sdk_checks):
+    # botocore 1.40.71 to 1.43.2 can create with TunnelBandwidth but cannot send it to ModifyVpnConnectionOptions.
+    params.update(tunnel_bandwidth="large", tags={"Env": "test"})
+
+    def require(module, client, service, methods, changed=False):
+        if "TunnelBandwidth" in methods.get("modify_vpn_connection_options", ()):
+            module.fail_json(changed=changed, msg="Unsupported TunnelBandwidth")
+
+    sdk_checks.side_effect = require
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params), transit_connection)
+
+    assert raised.value.values == {"changed": False, "msg": "Unsupported TunnelBandwidth"}
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("state", ["present", "absent"])
+@pytest.mark.parametrize(
+    "option, value, version",
+    [
+        ("tunnel_bandwidth", "standard", "1.40.71"),
+        ("tunnel_bandwidth", "large", "1.40.71"),
+        ("pre_shared_key_storage", "Standard", "1.38.24"),
+        ("pre_shared_key_storage", "SecretsManager", "1.38.24"),
+        ("tunnel_bandwidth", None, None),
+    ],
+)
+def test_new_options_require_botocore_only_when_supplied(params, state, option, value, version):
+    params.update({"state": state, option: value})
+    module = FakeModule(params)
+    module.require_botocore_at_least = Mock(side_effect=ModuleFail({"msg": "botocore"}))
+    if state == "present" and value is not None:
+        with pytest.raises(ModuleFail, match="botocore"):
+            plugin.validate_inputs(module)
+
+        module.require_botocore_at_least.assert_called_once_with(version, reason=f"for {option}")
+    else:
+        plugin.validate_inputs(module)
+        module.require_botocore_at_least.assert_not_called()
+
+
+def stored_in_secrets_manager(connection, *addresses):
+    # Live: EC2 omits PreSharedKey from a tunnel that stores it in Secrets Manager and returns the secret ARN.
+    for tunnel in connection["Options"]["TunnelOptions"]:
+        if tunnel["OutsideIpAddress"] in addresses:
+            tunnel.pop("PreSharedKey")
+
+    connection["PreSharedKeyArn"] = "arn:aws:secretsmanager:us-east-1:123456789012:secret:s2svpn!vpn-123-EXAMPLE"
+    return connection
+
+
+@pytest.mark.parametrize(
+    "stored, storage, targets",
+    [
+        ((), "Standard", []),
+        ((), "SecretsManager", ["203.0.113.1", "203.0.113.2"]),
+        (("203.0.113.2",), "Standard", ["203.0.113.2"]),
+        (("203.0.113.2",), "SecretsManager", ["203.0.113.1"]),
+        (("203.0.113.1", "203.0.113.2"), "SecretsManager", []),
+        (("203.0.113.1", "203.0.113.2"), "Standard", ["203.0.113.1", "203.0.113.2"]),
+        ((), None, []),
+    ],
+)
+def test_storage_targets_compare_each_tunnel(params, connection, stored, storage, targets):
+    if stored:
+        stored_in_secrets_manager(connection, *stored)
+
+    params["pre_shared_key_storage"] = storage
+    assert plugin.storage_targets(FakeModule(params), connection) == targets
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("storage", ["Standard", "SecretsManager"])
+def test_key_storage_converges_per_tunnel_and_reruns_without_change(params, connection, check_mode, storage):
+    # Live: a tunnel keeps its key when its storage changes, and the secret ARN stays after both move to Standard.
+    secrets_manager = stored_in_secrets_manager(deepcopy(connection), "203.0.113.1", "203.0.113.2")
+    standard = dict(deepcopy(connection), PreSharedKeyArn=secrets_manager["PreSharedKeyArn"])
+    current, updated = (secrets_manager, standard) if storage == "Standard" else (standard, secrets_manager)
+    params["pre_shared_key_storage"] = storage
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [updated]}
+    with patch.object(plugin, "wait_for_connection") as waiter:
+        client.attach_mock(waiter, "wait_connection")
+        result = ensure(client, FakeModule(params, check_mode=check_mode), current)
+
+    assert result["changed"] is True
+    if check_mode:
+        assert client.mock_calls == []
+        assert result["vpn_connection"] == plugin.normalize_connection(current)
+    else:
+        assert [call[0] for call in client.mock_calls] == [
+            "modify_vpn_tunnel_options",
+            "wait_connection",
+            "modify_vpn_tunnel_options",
+            "wait_connection",
+            "describe_vpn_connections",
+        ]
+        shape = Session().get_service_model("ec2").operation_model("ModifyVpnTunnelOptions").input_shape
+        for call, address in zip(client.modify_vpn_tunnel_options.call_args_list, ["203.0.113.1", "203.0.113.2"]):
+            assert call.kwargs == {
+                "VpnConnectionId": "vpn-123",
+                "VpnTunnelOutsideIpAddress": address,
+                "TunnelOptions": {},
+                "PreSharedKeyStorage": storage,
+                "aws_retry": True,
+            }
+            validate_parameters({key: value for key, value in call.kwargs.items() if key != "aws_retry"}, shape)
+
+        assert result["vpn_connection"] == plugin.normalize_connection(updated)
+
+    client.reset_mock()
+    assert ensure(client, FakeModule(params, check_mode=check_mode), updated)["changed"] is False
+    assert client.mock_calls == []
+
+
+def test_key_storage_change_joins_the_tunnels_other_changes(params, connection, sdk_checks):
+    params.update(
+        pre_shared_key_storage="SecretsManager",
+        tunnel_options=[{"outside_ip_address": "203.0.113.2", "phase1_encryption_algorithms": ["AES256"]}],
+    )
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [connection]}
+    with patch.object(plugin, "wait_for_connection"):
+        assert ensure(client, FakeModule(params), connection)["changed"]
+
+    assert [call.kwargs for call in client.modify_vpn_tunnel_options.call_args_list] == [
+        {
+            "VpnConnectionId": "vpn-123",
+            "VpnTunnelOutsideIpAddress": "203.0.113.2",
+            "TunnelOptions": {"Phase1EncryptionAlgorithms": [{"Value": "AES256"}]},
+            "PreSharedKeyStorage": "SecretsManager",
+            "aws_retry": True,
+        },
+        {
+            "VpnConnectionId": "vpn-123",
+            "VpnTunnelOutsideIpAddress": "203.0.113.1",
+            "TunnelOptions": {},
+            "PreSharedKeyStorage": "SecretsManager",
+            "aws_retry": True,
+        },
+    ]
+    (checked,) = [call.args[3] for call in sdk_checks.call_args_list if "modify_vpn_tunnel_options" in call.args[3]]
+    assert checked["modify_vpn_tunnel_options"] == (
+        "TunnelOptions",
+        "VpnConnectionId",
+        "VpnTunnelOutsideIpAddress",
+        "PreSharedKeyStorage",
+    )
+    sdk.require_client_methods(FakeModule({}), Session().create_client("ec2", region_name="us-east-1"), "EC2", checked)
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+def test_moving_a_key_out_of_secrets_manager_sets_the_supplied_key(params, connection, check_mode):
+    # Live: ModifyVpnTunnelOptions accepts PreSharedKey with PreSharedKeyStorage=Standard and returns the new key.
+    stored_in_secrets_manager(connection, "203.0.113.2")
+    params.update(
+        pre_shared_key_storage="Standard",
+        tunnel_options=[{"outside_ip_address": "203.0.113.2", "pre_shared_key": "EXAMPLE_REPLACEMENT"}],
+    )
+    updated = deepcopy(connection)
+    updated["Options"]["TunnelOptions"][1]["PreSharedKey"] = "EXAMPLE_REPLACEMENT"
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [updated]}
+    with patch.object(plugin, "wait_for_connection"):
+        assert ensure(client, FakeModule(params, check_mode=check_mode), connection)["changed"] is True
+
+    if check_mode:
+        assert client.mock_calls == []
+    else:
+        client.modify_vpn_tunnel_options.assert_called_once_with(
+            VpnConnectionId="vpn-123",
+            VpnTunnelOutsideIpAddress="203.0.113.2",
+            TunnelOptions={"PreSharedKey": "EXAMPLE_REPLACEMENT"},
+            PreSharedKeyStorage="Standard",
+            aws_retry=True,
+        )
+
+    client.reset_mock()
+    assert ensure(client, FakeModule(params, check_mode=check_mode), updated)["changed"] is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+def test_key_in_secrets_manager_without_storage_option_still_cannot_be_compared(params, connection, check_mode):
+    stored_in_secrets_manager(connection, "203.0.113.1")
+    params["tunnel_options"] = [{"outside_ip_address": "203.0.113.1", "pre_shared_key": "EXAMPLE_REPLACEMENT"}]
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), connection)
+
+    assert "EXAMPLE_REPLACEMENT" not in str(raised.value)
+    assert raised.value.values["msg"].endswith(
+        "Omit pre_shared_key to leave it unchanged, or set pre_shared_key_storage=Standard to replace it."
+    )
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("existing", [True, False])
+def test_explicit_key_with_secrets_manager_storage_fails_before_any_aws_call(params, connection, check_mode, existing):
+    # Live: CreateVpnConnection stores supplied keys in the secret, but EC2 never returns them, so reruns could not compare.
+    params.update(
+        customer_gateway_id="cgw-123",
+        vpn_gateway_id="vgw-123",
+        pre_shared_key_storage="SecretsManager",
+        tunnel_options=[{"pre_shared_key": "EXAMPLE_DESIRED_SECRET"}],
+    )
+    module = FakeModule(params, check_mode=check_mode)
+    module.require_botocore_at_least = Mock()
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.validate_inputs(module)
+        plugin.ensure_present(client, module, connection if existing else None)
+
+    assert raised.value.values == {
+        "msg": "tunnel_options[].pre_shared_key cannot be used with pre_shared_key_storage=SecretsManager because "
+        "EC2 does not return keys stored in Secrets Manager for comparison"
+    }
+    assert client.mock_calls == []
+
+
+def test_creation_sends_key_storage_without_a_follow_up_change(params, connection, sdk_checks):
+    params.update(customer_gateway_id="cgw-123", vpn_gateway_id="vgw-123", pre_shared_key_storage="SecretsManager")
+    # Live: the CreateVpnConnection response omits both the keys and the secret ARN while pending.
+    created = deepcopy(connection)
+    created["State"] = "pending"
+    for tunnel in created["Options"]["TunnelOptions"]:
+        tunnel.pop("PreSharedKey")
+
+    available = stored_in_secrets_manager(deepcopy(connection), "203.0.113.1", "203.0.113.2")
+    client = Mock()
+    client.create_vpn_connection.return_value = {"VpnConnection": created}
+    client.describe_vpn_connections.return_value = {"VpnConnections": [available]}
+    with patch.object(plugin, "wait_for_connection"):
+        result = ensure(client, FakeModule(params), None)
+
+    assert result["changed"] is True
+    assert result["vpn_connection"]["pre_shared_key_arn"] == available["PreSharedKeyArn"]
+    request = dict(client.create_vpn_connection.call_args.kwargs)
+    assert request.pop("aws_retry") is True
+    assert request["PreSharedKeyStorage"] == "SecretsManager"
+    validate_parameters(request, Session().get_service_model("ec2").operation_model("CreateVpnConnection").input_shape)
+    checked = sdk_checks.call_args_list[0].args[3]
+    assert set(checked["create_vpn_connection"]) == set(request)
+    client.modify_vpn_tunnel_options.assert_not_called()
+
+
+@pytest.mark.parametrize("current", [None, [], [{"OutsideIpAddress": "203.0.113.1"}, {}]])
+def test_pending_vpn_check_mode_predicts_unresolved_key_storage(params, connection, current):
+    connection["State"] = "pending"
+    connection["Options"]["TunnelOptions"] = current
+    params["pre_shared_key_storage"] = "Standard"
+    client = Mock()
+    assert ensure(client, FakeModule(params, check_mode=True), connection)["changed"] is True
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+def test_key_storage_without_returned_tunnels_fails_before_any_write(params, connection, check_mode):
+    connection["Options"]["TunnelOptions"] = None
+    params.update(pre_shared_key_storage="Standard", local_ipv4_network_cidr="10.20.0.0/16")
+    client = Mock()
+    with pytest.raises(ModuleFail, match="EC2 did not return the requested tunnels"):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), connection)
+
     assert client.mock_calls == []
