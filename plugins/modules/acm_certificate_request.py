@@ -162,7 +162,12 @@ def find_matching_certificate(module, client, normalized_domain_name, desired_na
             module.fail_json(msg="AWS Certificate Manager returned an invalid certificate summary")
 
         summary_domain_name = summary.get("DomainName")
-        if not isinstance(summary_domain_name, str) or not summary_domain_name:
+        # The key-type filter also lists certificates without a domain name, such as
+        # imported ones with no common name or DNS name; they cannot match.
+        if summary_domain_name is None:
+            continue
+
+        if not isinstance(summary_domain_name, str):
             module.fail_json(msg="AWS Certificate Manager returned an invalid certificate summary")
 
         if summary_domain_name.lower() != normalized_domain_name:
