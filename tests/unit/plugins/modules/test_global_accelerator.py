@@ -1,3 +1,4 @@
+import itertools
 from unittest.mock import ANY, Mock, patch
 
 import pytest
@@ -807,9 +808,29 @@ def single_range(listener):
             {"arn:a": (80, 81)},
             [(82, 83)],
         ),
+        # As many entries as possible get a listener they overlap, even when one pair shares more ports: 1-10 updated
+        # to 2-11 would leave 1 to 11-12, and each update would need ports the other listener still holds.
+        (
+            {"arn:a": (1, 10), "arn:b": (11, 12)},
+            [(1, 1), (2, 11)],
+            {"arn:a": (1, 1), "arn:b": (2, 11)},
+            [],
+        ),
+        (
+            {"arn:a": (11, 12), "arn:b": (1, 10)},
+            [(1, 1), (2, 11)],
+            {"arn:a": (2, 11), "arn:b": (1, 1)},
+            [],
+        ),
+        (
+            {"arn:a": (80, 84), "arn:b": (85, 86)},
+            [(82, 85), (80, 81)],
+            {"arn:a": (80, 81), "arn:b": (82, 85)},
+            [],
+        ),
     ],
 )
-def test_listener_reconciliation_reuses_the_listener_sharing_the_most_ports(
+def test_listener_reconciliation_pairs_entries_with_the_listeners_they_overlap(
     ports_by_arn, entries, expected_updates, expected_creates, reverse
 ):
     current = listed_listeners(ports_by_arn)
@@ -822,6 +843,35 @@ def test_listener_reconciliation_reuses_the_listener_sharing_the_most_ports(
     assert [single_range(desired) for desired in creates] == expected_creates
     assert matched == []
     assert deletes == []
+
+
+def disjoint_range_lists(last_port, size):
+    """Yield every sorted list of 1 to size disjoint port ranges between port 1 and last_port."""
+    ranges = [(start, end) for start in range(1, last_port + 1) for end in range(start, last_port + 1)]
+    for count in range(1, size + 1):
+        for chosen in itertools.combinations(ranges, count):
+            if all(left[1] < right[0] for left, right in itertools.pairwise(chosen)):
+                yield list(chosen)
+
+
+@pytest.mark.parametrize("reverse_entries", [False, True], ids=["listed", "reversed"])
+@pytest.mark.parametrize("reverse_arns", [False, True], ids=["arns-ascending", "arns-descending"])
+def test_single_range_listener_moves_never_have_circular_dependencies(reverse_arns, reverse_entries):
+    module = FakeModule({"listeners": [], "purge_listeners": True})
+    circular = []
+    for listener_ranges in disjoint_range_lists(5, 3):
+        arns = [f"arn:{index}" for index in range(len(listener_ranges))]
+        current = listed_listeners(dict(zip(reversed(arns) if reverse_arns else arns, listener_ranges)))
+        for entry_ranges in disjoint_range_lists(5, 3):
+            entries = list(reversed(entry_ranges)) if reverse_entries else entry_ranges
+            module.params["listeners"] = [review_desired(*ports) for ports in entries]
+            updates = plugin.reconcile_listeners(module, current)[1]
+            try:
+                plugin.ordered_listener_updates(module, updates)
+            except ModuleFail:
+                circular.append((listener_ranges, entries))
+
+    assert circular == []
 
 
 def test_listener_reconciliation_without_purge_never_reuses_an_overlapping_listener():
