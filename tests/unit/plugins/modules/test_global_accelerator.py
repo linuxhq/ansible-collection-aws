@@ -1,4 +1,5 @@
 import itertools
+import random
 from unittest.mock import ANY, Mock, patch
 
 import pytest
@@ -872,6 +873,78 @@ def test_single_range_listener_moves_never_have_circular_dependencies(reverse_ar
                 circular.append((listener_ranges, entries))
 
     assert circular == []
+
+
+def multi_range_desired(*ranges):
+    return dict(review_desired(*ranges[0]), port_ranges=[{"from_port": start, "to_port": end} for start, end in ranges])
+
+
+@pytest.mark.parametrize("arns", list(itertools.permutations(["arn:a", "arn:b", "arn:c"])))
+def test_listener_reconciliation_skips_pairs_that_leave_circular_dependencies(arns):
+    # 1-10 and 11-20 share the most ports with X and Y, but each of those updates needs a port the other listener still
+    # holds; updating 30 to Y instead lets 11-20 be deleted first.
+    low_arn, single_arn, high_arn = arns
+    current = listed_listeners({low_arn: (1, 10), single_arn: (30, 30), high_arn: (11, 20)})
+    x = multi_range_desired((1, 9), (11, 11))
+    y = multi_range_desired((10, 10), (12, 20), (30, 30))
+    module = FakeModule({"listeners": [x, y], "purge_listeners": True})
+
+    matched, updates, creates, deletes = plugin.reconcile_listeners(module, current)
+
+    assert {current["listener_arn"]: desired["port_ranges"] for current, desired in updates} == {
+        low_arn: x["port_ranges"],
+        single_arn: y["port_ranges"],
+    }
+    assert [current["listener_arn"] for current in deletes] == [high_arn]
+    assert matched == []
+    assert creates == []
+    assert plugin.listener_update_order(updates) is not None
+
+
+def random_port_ranges(generator, ports, count):
+    """Split up to count disjoint port ranges, taken from ports, into groups of one to three ranges."""
+    starts = sorted(generator.sample(ports, min(len(ports), 2 * count)))
+    ranges = [(starts[index], starts[index + 1]) for index in range(0, len(starts) - 1, 2)]
+    generator.shuffle(ranges)
+    groups = []
+    while ranges:
+        size = generator.randint(1, min(3, len(ranges)))
+        groups.append(sorted(ranges[:size]))
+        ranges = ranges[size:]
+
+    return groups
+
+
+def test_listener_reconciliation_never_fails_where_the_protocol_pairing_alone_succeeds():
+    generator = random.Random(0)
+    regressions = []
+    for unused_case in range(3000):
+        listener_groups = random_port_ranges(generator, range(1, 13), generator.randint(1, 6))
+        entry_groups = random_port_ranges(generator, range(1, 13), generator.randint(1, 6))
+        arns = generator.sample(range(10), len(listener_groups))
+        current = sorted(
+            (
+                dict(review_listener(f"arn:{arn}", 0, 0), port_ranges=multi_range_desired(*ranges)["port_ranges"])
+                for arn, ranges in zip(arns, listener_groups)
+            ),
+            key=lambda item: item["listener_arn"],
+        )
+        entries = [multi_range_desired(*ranges) for ranges in entry_groups]
+        module = FakeModule({"listeners": entries, "purge_listeners": True})
+
+        # The rule before overlap pairing: exact matches, then entries in order take the first remaining listener.
+        exact = {plugin.listener_identity(item) for item in current} & {
+            plugin.listener_identity(item) for item in entries
+        }
+        protocol_pairs = plugin.protocol_listener_pairs(
+            [item for item in current if plugin.listener_identity(item) not in exact],
+            [item for item in entries if plugin.listener_identity(item) not in exact],
+        )[0]
+        updates = plugin.reconcile_listeners(module, current)[1]
+        if plugin.listener_update_order(protocol_pairs) is not None and plugin.listener_update_order(updates) is None:
+            regressions.append((listener_groups, arns, entry_groups))
+
+    assert regressions == []
 
 
 def test_listener_reconciliation_without_purge_never_reuses_an_overlapping_listener():
