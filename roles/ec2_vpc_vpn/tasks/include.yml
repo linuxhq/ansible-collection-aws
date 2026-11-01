@@ -9,6 +9,7 @@
     local_ipv4_network_cidr: "{{ _vpn.local_ipv4_network_cidr | d(omit) }}"
     local_ipv6_network_cidr: "{{ _vpn.local_ipv6_network_cidr | d(omit) }}"
     name: "{{ _vpn.name }}"
+    pre_shared_key_storage: "{{ _vpn.pre_shared_key_storage | d(omit) }}"
     purge_routes: "{{ _vpn.purge_routes | d(true) }}"
     purge_tags: "{{ _vpn.purge_tags | d(true) }}"
     remote_ipv4_network_cidr: "{{ _vpn.remote_ipv4_network_cidr | d(omit) }}"
@@ -18,6 +19,7 @@
     static_only: "{{ _vpn.static_only | d(omit) }}"
     tags: "{{ _vpn.tags | d(omit) }}"
     transit_gateway_id: "{{ _vpn.transit_gateway_id | d(omit) }}"
+    tunnel_bandwidth: "{{ _vpn.tunnel_bandwidth | d(omit) }}"
     tunnel_inside_ip_version: "{{ _vpn.tunnel_inside_ip_version | d(omit) }}"
     tunnel_options: "{{ _vpn.tunnel_options | d(omit) }}"
     validate_certs: true

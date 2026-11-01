@@ -44,6 +44,24 @@ options:
       - Supply one of O(name), O(vpn_connection_id), or O(filters).
       - Mutually exclusive with O(vpn_connection_id) and O(filters).
     type: str
+  pre_shared_key_storage:
+    description:
+      - Where the tunnel pre-shared keys are stored. C(Standard) stores them in the Site-to-Site VPN service.
+        C(SecretsManager) stores them in an AWS Secrets Manager secret that EC2 creates and manages, returned as
+        RV(vpn_connection.pre_shared_key_arn).
+      - AWS defaults to C(Standard) on creation. When omitted, an existing connection is unchanged.
+      - EC2 stores keys per tunnel. On an existing connection, each tunnel whose key is stored elsewhere is updated
+        in turn and keeps its key, unless O(tunnel_options[].pre_shared_key) replaces it.
+      - The module infers a tunnel's storage from EC2 returning its key, which EC2 omits only for a key stored in
+        Secrets Manager.
+      - EC2 creates the secret when a tunnel first stores its key there and deletes it with the connection. Moving
+        every key back to C(Standard) leaves the empty secret and its ARN until the connection is deleted.
+      - C(SecretsManager) cannot be used with O(tunnel_options[].pre_shared_key), because EC2 does not return keys
+        stored in Secrets Manager for comparison.
+      - Requires botocore 1.38.24 or later.
+    type: str
+    choices: [Standard, SecretsManager]
+    version_added: "2.6.0"
   purge_routes:
     description: Remove routes not included in O(routes), when O(routes) is supplied.
     type: bool
@@ -75,6 +93,18 @@ options:
       - The transit gateway ID. Required for creation unless O(vpn_gateway_id) is supplied.
       - Mutually exclusive with O(vpn_gateway_id).
     type: str
+  tunnel_bandwidth:
+    description:
+      - The bandwidth of each tunnel. C(standard) supports up to 1.25 Gbps per tunnel and C(large) up to 5 Gbps.
+      - AWS defaults to C(standard) on creation. When omitted, an existing connection is unchanged.
+      - C(large) requires a connection attached to a transit gateway or Cloud WAN. EC2 rejects it for a virtual
+        private gateway.
+      - A change on an existing connection is sent with the other connection options. In Regions where EC2 does
+        not support changing the bandwidth, EC2 rejects the request and the connection is left unchanged.
+      - Requires botocore 1.40.71 or later, and botocore 1.43.3 or later to change it on an existing connection.
+    type: str
+    choices: [standard, large]
+    version_added: "2.6.0"
   tunnel_inside_ip_version:
     description:
       - The tunnel address family. AWS defaults to IPv4 on creation.
@@ -135,7 +165,9 @@ options:
           - A pre-shared key of 8 to 64 alphanumeric, period, or underscore characters, not starting with zero.
           - A single shared tunnel options entry applies the same pre-shared key to both tunnels.
           - Updates require EC2 to return the current key for comparison. If it is unavailable, the module fails before mutation.
-          - Omit this option to leave the key unchanged, including when it is stored in Secrets Manager.
+          - EC2 does not return a key stored in Secrets Manager. Omit this option to leave such a key unchanged, or set
+            O(pre_shared_key_storage=Standard) to move the key out of Secrets Manager and set it in the same update.
+          - Cannot be used with O(pre_shared_key_storage=SecretsManager).
         type: str
       tunnel_inside_cidr:
         description: An unreserved IPv4 /30 network in C(169.254.0.0/16).
@@ -176,7 +208,8 @@ attributes:
   check_mode:
     description:
       - Predicts changes without mutating AWS. Returns current state for updates and an empty dictionary for creation or deletion.
-      - Conservatively predicts supplied tunnel settings as changed while a pending VPN has unallocated endpoints.
+      - Conservatively predicts supplied tunnel settings and O(pre_shared_key_storage) as changed while a pending VPN
+        has unallocated endpoints.
     support: full
   diff_mode:
     description: Diff mode is not supported.
@@ -206,6 +239,14 @@ EXAMPLES = r"""
       - ike_versions: [ikev2]
         phase1_encryption_algorithms: [AES256]
         phase2_encryption_algorithms: [AES256]
+
+- name: Create a large-bandwidth transit gateway VPN with keys in Secrets Manager
+  linuxhq.aws.ec2_vpc_vpn:
+    name: datacenter
+    customer_gateway_id: cgw-0123456789abcdef0
+    transit_gateway_id: tgw-0123456789abcdef0
+    tunnel_bandwidth: large
+    pre_shared_key_storage: SecretsManager
 
 - name: Update encryption on an existing tunnel
   linuxhq.aws.ec2_vpc_vpn:
@@ -272,7 +313,10 @@ vpn_connection:
       returned: when provided by EC2
       type: str
     pre_shared_key_arn:
-      description: The ARN referencing the stored pre-shared key, not the key value.
+      description:
+        - The ARN of the Secrets Manager secret that EC2 created for the pre-shared keys, not a key value.
+        - EC2 keeps returning it after every tunnel moves its key out of Secrets Manager, so it does not show
+          where the keys are stored.
       returned: when provided by EC2
       type: str
     vgw_telemetry:
@@ -765,6 +809,42 @@ def valid_pre_shared_key(value):
     return isinstance(value, str) and bool(re.fullmatch(r"[A-Za-z0-9._]{8,64}", value)) and not value.startswith("0")
 
 
+def endpoints_unassigned(connection):
+    current = connection["Options"].get("TunnelOptions") or []
+    return connection["State"] == "pending" and (
+        len(current) < 2 or any(not tunnel.get("OutsideIpAddress") for tunnel in current)
+    )
+
+
+def storage_targets(module, connection):
+    """Return the outside IPs of tunnels whose keys are not stored as pre_shared_key_storage requests."""
+    storage = module.params["pre_shared_key_storage"]
+    if storage is None:
+        return []
+
+    if module.check_mode and endpoints_unassigned(connection):
+        # As in tunnel_deltas, an unresolved target that must never reach a modifying SDK call.
+        return [None]
+
+    current = connection["Options"].get("TunnelOptions") or []
+    if not current:
+        module.fail_json(msg="EC2 did not return the requested tunnels")
+
+    targets = []
+    for tunnel in current:
+        # Live: EC2 returns a tunnel's key only while the VPN service stores it, never from Secrets Manager.
+        key = tunnel.get("PreSharedKey")
+        if ("Standard" if isinstance(key, str) and key else "SecretsManager") == storage:
+            continue
+
+        if not tunnel.get("OutsideIpAddress"):
+            module.fail_json(msg="EC2 did not return a tunnel outside IP address")
+
+        targets.append(tunnel["OutsideIpAddress"])
+
+    return targets
+
+
 def tunnel_deltas(module, connection):
     current = connection["Options"].get("TunnelOptions") or []
     desired_tunnels = module.params["tunnel_options"] or []
@@ -784,11 +864,7 @@ def tunnel_deltas(module, connection):
     ):
         module.fail_json(msg="Select a specific tunnel when updating a tunnel inside CIDR")
 
-    if (
-        module.check_mode
-        and connection["State"] == "pending"
-        and (len(current) < 2 or any(not tunnel.get("OutsideIpAddress") for tunnel in current))
-    ):
+    if module.check_mode and endpoints_unassigned(connection):
         # Predict supplied changes until EC2 assigns the endpoints. These unresolved
         # targets are check-mode only and must never reach a modifying SDK call.
         requests = [(tunnel.get("outside_ip_address"), tunnel_request(tunnel)) for tunnel in desired_tunnels]
@@ -836,14 +912,17 @@ def tunnel_deltas(module, connection):
             # EC2 uses different IKE key casing in requests and responses.
             actual = tunnel.get("IkeVersions" if field == "IKEVersions" else field)
             if field == "PreSharedKey":
-                if not isinstance(actual, str) or not actual:
+                usable = isinstance(actual, str) and bool(actual)
+                if not usable and module.params["pre_shared_key_storage"] != "Standard":
                     module.fail_json(
                         msg=f"Cannot compare pre_shared_key for VPN connection {connection['VpnConnectionId']} "
                         f"tunnel {outside_ip}; EC2 did not return a usable current key. "
-                        "Omit pre_shared_key to leave it unchanged."
+                        "Omit pre_shared_key to leave it unchanged, or set pre_shared_key_storage=Standard "
+                        "to replace it."
                     )
 
-                equal = secrets.compare_digest(value.encode("utf-8"), actual.encode("utf-8"))
+                # Live: the update that moves a key out of Secrets Manager also sets the supplied key.
+                equal = usable and secrets.compare_digest(value.encode("utf-8"), actual.encode("utf-8"))
             elif isinstance(value, list):
                 value_type = int if field.endswith("DHGroupNumbers") else str
                 if actual is not None and (
@@ -908,6 +987,13 @@ def validate_inputs(module):
     if module.params["state"] == "absent":
         return
 
+    # Older botocore cannot send these options, and before 1.40.71 it drops the returned TunnelBandwidth.
+    if module.params["pre_shared_key_storage"] is not None:
+        module.require_botocore_at_least("1.38.24", reason="for pre_shared_key_storage")
+
+    if module.params["tunnel_bandwidth"] is not None:
+        module.require_botocore_at_least("1.40.71", reason="for tunnel_bandwidth")
+
     if (
         module.params["name"]
         and module.params["tags"] is not None
@@ -941,6 +1027,13 @@ def validate_inputs(module):
         key = tunnel.get("pre_shared_key")
         if key is not None and not valid_pre_shared_key(key):
             module.fail_json(msg="Invalid tunnel pre_shared_key format")
+
+        # Live: EC2 never returns a key stored in Secrets Manager, so a rerun could not compare it.
+        if key is not None and module.params["pre_shared_key_storage"] == "SecretsManager":
+            module.fail_json(
+                msg="tunnel_options[].pre_shared_key cannot be used with pre_shared_key_storage=SecretsManager "
+                "because EC2 does not return keys stored in Secrets Manager for comparison"
+            )
 
         for name, version, prefix, block in (
             ("tunnel_inside_cidr", 4, 30, "169.254.0.0/16"),
@@ -1057,7 +1150,9 @@ def create_connection(client, module):
 
     options = {field: module.params[name] for name, field in CONNECTION_FIELDS.items()}
     options.update(
-        StaticRoutesOnly=module.params["static_only"], TunnelInsideIpVersion=module.params["tunnel_inside_ip_version"]
+        StaticRoutesOnly=module.params["static_only"],
+        TunnelBandwidth=module.params["tunnel_bandwidth"],
+        TunnelInsideIpVersion=module.params["tunnel_inside_ip_version"],
     )
     if module.params["tunnel_options"]:
         options["TunnelOptions"] = [tunnel_request(tunnel) for tunnel in module.params["tunnel_options"]]
@@ -1073,6 +1168,7 @@ def create_connection(client, module):
             "CustomerGatewayId": module.params["customer_gateway_id"],
             "VpnGatewayId": module.params["vpn_gateway_id"],
             "TransitGatewayId": module.params["transit_gateway_id"],
+            "PreSharedKeyStorage": module.params["pre_shared_key_storage"],
             "Options": options,
             "TagSpecifications": [{"ResourceType": "vpn-connection", "Tags": ansible_dict_to_boto3_tag_list(tags)}],
         }
@@ -1126,13 +1222,21 @@ def ensure_present(client, module, connection):
 
     validate_configuration(module, connection, changed=mutated)
 
-    # Creation already submitted tunnel options before EC2 allocated their outside IPs.
+    # Creation already submitted tunnel options and key storage before EC2 allocated their outside IPs.
     tunnels = [] if changed else tunnel_deltas(module, connection)
+    stored = [] if changed else storage_targets(module, connection)
+    # EC2 changes key storage per tunnel, so each tunnel is modified once with its other changes.
+    tunnels += [(outside_ip, {}) for outside_ip in stored if outside_ip not in dict(tunnels)]
     options = {
         field: module.params[name]
         for name, field in CONNECTION_FIELDS.items()
         if module.params[name] is not None and module.params[name] != connection["Options"].get(field)
     }
+    # EC2 documents standard for a connection without a tunnel bandwidth setting.
+    bandwidth = module.params["tunnel_bandwidth"]
+    if bandwidth is not None and bandwidth != (connection["Options"].get("TunnelBandwidth") or "standard"):
+        options["TunnelBandwidth"] = bandwidth
+
     tags_to_set, tags_to_remove = desired_tags(module, connection)
 
     current_routes = {
@@ -1169,6 +1273,8 @@ def ensure_present(client, module, connection):
 
     if tunnels:
         methods["modify_vpn_tunnel_options"] = ("TunnelOptions", "VpnConnectionId", "VpnTunnelOutsideIpAddress")
+        if stored:
+            methods["modify_vpn_tunnel_options"] += ("PreSharedKeyStorage",)
 
     if remove_routes:
         methods["delete_vpn_connection_route"] = ("DestinationCidrBlock", "VpnConnectionId")
@@ -1200,11 +1306,13 @@ def ensure_present(client, module, connection):
         wait_for_connection(client, module, connection_id, changed=True)
 
     for outside_ip, delta in tunnels:
+        storage = {"PreSharedKeyStorage": module.params["pre_shared_key_storage"]} if outside_ip in stored else {}
         try:
             client.modify_vpn_tunnel_options(
                 VpnConnectionId=connection_id,
                 VpnTunnelOutsideIpAddress=outside_ip,
                 TunnelOptions=delta,
+                **storage,
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
@@ -1378,6 +1486,8 @@ def main():
             "default": "ipsec.1",
         },
         "static_only": {"type": "bool"},
+        "pre_shared_key_storage": {"type": "str", "choices": ["Standard", "SecretsManager"]},
+        "tunnel_bandwidth": {"type": "str", "choices": ["standard", "large"]},
         "tunnel_inside_ip_version": {
             "type": "str",
             "choices": ["ipv4", "ipv6"],

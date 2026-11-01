@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - ec2_vpc_vpn - add the ``tunnel_bandwidth`` option to set the tunnel bandwidth tier on creation and change it on an
+    existing connection attached to a transit gateway or Cloud WAN.
+  - ec2_vpc_vpn - add the ``pre_shared_key_storage`` option to store tunnel pre-shared keys in AWS Secrets Manager.
