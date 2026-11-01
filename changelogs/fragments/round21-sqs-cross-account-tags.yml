@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - sqs_queue_info - a queue owned by another account (O(queue_owner_aws_account_id)) is now returned without
+    C(tags) instead of failing every run with "Unable to list AWS SQS queue tags". SQS does not apply cross-account
+    permissions to C(ListQueueTags), so only the owner's account can read a queue's tags. When
+    O(queue_owner_aws_account_id) is set, the module compares it with the caller's account from C(GetCallerIdentity)
+    and still returns tags for the caller's own queue.

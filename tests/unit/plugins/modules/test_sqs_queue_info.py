@@ -20,6 +20,8 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 NOT_FOUND_CODES = ("AWS.SimpleQueueService.NonExistentQueue", "QueueDoesNotExist")
+CALLER_ACCOUNT = "123456789012"
+OTHER_ACCOUNT = "210987654321"
 
 
 def params(**overrides):
@@ -158,6 +160,56 @@ def test_get_queue_url_rejects_malformed_response():
     result, _require = run(FakeModule(params(name="main"), client=client))
 
     assert result.values["msg"] == "Unexpected response while getting AWS SQS queue URL for main"
+
+
+def run_named_queue(owner):
+    queue_url = f"https://sqs.us-east-1.amazonaws.com/{owner or CALLER_ACCOUNT}/main"
+    client = queue_client({"QueueArn": f"arn:aws:sqs:us-east-1:{owner or CALLER_ACCOUNT}:main"}, {"Name": "main"})
+    client.get_queue_url = Mock(return_value={"QueueUrl": queue_url})
+    module = FakeModule(params(name="main", queue_owner_aws_account_id=owner), client=client)
+    with patch.object(plugin, "get_aws_account_id", return_value=CALLER_ACCOUNT) as get_aws_account_id:
+        result, _require = run(module)
+
+    assert [queue["queue_url"] for queue in result.values["queues"]] == [queue_url]
+    return result.values["queues"][0], client, module, get_aws_account_id
+
+
+def test_another_accounts_queue_is_returned_without_tags():
+    queue, client, module, get_aws_account_id = run_named_queue(OTHER_ACCOUNT)
+
+    assert "tags" not in queue
+    assert queue["name"] == "main"
+    client.get_queue_url.assert_called_once_with(QueueName="main", QueueOwnerAWSAccountId=OTHER_ACCOUNT, aws_retry=True)
+    client.list_queue_tags.assert_not_called()
+    get_aws_account_id.assert_called_once_with(module)
+
+
+def test_callers_own_account_as_queue_owner_reads_tags():
+    queue, client, module, get_aws_account_id = run_named_queue(CALLER_ACCOUNT)
+
+    assert queue["tags"] == {"Name": "main"}
+    client.list_queue_tags.assert_called_once_with(QueueUrl=queue["queue_url"], aws_retry=True)
+    get_aws_account_id.assert_called_once_with(module)
+
+
+def test_queue_without_owner_reads_tags_without_looking_up_the_caller():
+    queue, client, _module, get_aws_account_id = run_named_queue(None)
+
+    assert queue["tags"] == {"Name": "main"}
+    client.get_queue_url.assert_called_once_with(QueueName="main", aws_retry=True)
+    client.list_queue_tags.assert_called_once_with(QueueUrl=queue["queue_url"], aws_retry=True)
+    get_aws_account_id.assert_not_called()
+
+
+def test_missing_queue_with_owner_does_not_look_up_the_caller():
+    client = Mock()
+    client.get_queue_url.side_effect = missing("QueueDoesNotExist", "GetQueueUrl")
+    module = FakeModule(params(name="main", queue_owner_aws_account_id=OTHER_ACCOUNT), client=client)
+    with patch.object(plugin, "get_aws_account_id") as get_aws_account_id:
+        result, _require = run(module)
+
+    assert result.values["queues"] == []
+    get_aws_account_id.assert_not_called()
 
 
 def test_sqs_pagination_supplies_page_size():
