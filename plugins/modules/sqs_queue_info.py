@@ -30,6 +30,7 @@ options:
       - SQS does not apply cross-account permissions to C(ListQueueTags), so a queue owned by another account is
         returned without C(tags).
       - The module compares it with the caller's account from C(GetCallerIdentity) to decide whether to read C(tags).
+        If that lookup fails, the module reads C(tags) as for the caller's own queue.
       - Requires O(name).
     type: str
 extends_documentation_fragment:
@@ -181,7 +182,6 @@ except ImportError:
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
-from ansible_collections.amazon.aws.plugins.module_utils.iam import get_aws_account_id
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -197,6 +197,18 @@ QUEUE_NOT_FOUND_CODES = (
     "AWS.SimpleQueueService.NonExistentQueue",
     "QueueDoesNotExist",
 )
+
+
+def get_caller_account(module):
+    # Unlike amazon.aws get_aws_account_id, return None instead of failing: STS can be unreachable where SQS works,
+    # for example through an SQS-only endpoint_url, and the module then reads tags as it did before the lookup.
+    try:
+        sts = module.client("sts", retry_decorator=AWSRetry.jittered_backoff())
+        response = sts.get_caller_identity(aws_retry=True)
+    except (BotoCoreError, ClientError):
+        return None
+
+    return response.get("Account") if isinstance(response, dict) else None
 
 
 def get_queue(client, module, queue_url, read_tags=True):
@@ -298,7 +310,9 @@ def main():
 
         if queue_url:
             # SQS does not apply cross-account permissions to ListQueueTags, so only the owner can read the tags.
-            read_tags = not queue_owner_aws_account_id or queue_owner_aws_account_id == get_aws_account_id(module)
+            # An unknown caller account keeps reading them.
+            caller_account = get_caller_account(module) if queue_owner_aws_account_id else None
+            read_tags = caller_account is None or caller_account == queue_owner_aws_account_id
             queue = get_queue(client, module, queue_url, read_tags)
         else:
             queue = None
