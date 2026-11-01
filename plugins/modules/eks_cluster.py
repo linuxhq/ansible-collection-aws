@@ -224,9 +224,11 @@ options:
         description:
           - CIDR blocks that can access the public Kubernetes API endpoint.
           - This must not be empty when specified.
+          - This must contain at most 40 distinct CIDR blocks.
           - AWS rejects IPv6 CIDR blocks for an IPv4 cluster.
           - Each CIDR block is converted to its canonical form, as EKS stores it, for example V(203.0.113.5/24)
             becomes V(203.0.113.0/24).
+          - A CIDR block that is repeated after this conversion is sent once.
           - This requires botocore C(1.12.117) or later.
         elements: str
         type: list
@@ -731,11 +733,14 @@ def canonicalize_public_access_cidrs(module):
     if not resources_vpc_config.get("public_access_cidrs"):
         return
 
-    # EKS stores CIDRs in canonical form, so a CIDR with host bits set would otherwise never match.
+    # EKS stores CIDRs in canonical form, so a CIDR with host bits set would otherwise never match. A repeated block is
+    # sent once: EKS counts every entry against its limit, while the cluster comparison ignores repeats.
     try:
-        resources_vpc_config["public_access_cidrs"] = [
-            str(ipaddress.ip_network(cidr, strict=False)) for cidr in resources_vpc_config["public_access_cidrs"]
-        ]
+        resources_vpc_config["public_access_cidrs"] = list(
+            dict.fromkeys(
+                str(ipaddress.ip_network(cidr, strict=False)) for cidr in resources_vpc_config["public_access_cidrs"]
+            )
+        )
     except ValueError as e:
         module.fail_json(msg=f"resources_vpc_config.public_access_cidrs must contain valid CIDR blocks: {e}")
 
@@ -1640,6 +1645,11 @@ def main():
             module.fail_json(msg="resources_vpc_config.public_access_cidrs must not be empty")
 
         canonicalize_public_access_cidrs(module)
+
+        # EKS rejects more than 40, but check mode would predict success, and on an update they reach EKS after other
+        # updates.
+        if len((module.params["resources_vpc_config"] or {}).get("public_access_cidrs") or []) > 40:
+            module.fail_json(msg="resources_vpc_config.public_access_cidrs must contain at most 40 CIDR blocks")
 
     require_positive_wait_bounds(module, always=True)
 
