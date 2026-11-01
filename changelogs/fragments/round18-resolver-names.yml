@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - route53_resolver_info - document that the ``name`` of a returned endpoint is returned only when the endpoint has
+    a name. AWS lists an endpoint created without a name without a ``Name`` field, so the module returns it without
+    ``name``.
