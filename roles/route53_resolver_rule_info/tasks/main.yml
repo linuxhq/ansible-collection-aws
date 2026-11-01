@@ -13,7 +13,8 @@
   ansible.builtin.set_fact:
     _route53_resolver_rule_info_list:
       "{{ __route53_resolver_rule_info_query.resolver_rules |
-          d([]) }}"
+          d([]) |
+          selectattr('name', 'defined') }}"
 
 - name: Ensure dict of aws route53 resolver rules is generated
   tags:

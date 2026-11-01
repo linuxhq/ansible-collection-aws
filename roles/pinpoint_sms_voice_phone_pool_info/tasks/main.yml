@@ -16,7 +16,8 @@
   ansible.builtin.set_fact:
     _pinpoint_sms_voice_phone_pool_info_list:
       "{{ __pinpoint_sms_voice_phone_pool_info_query.pools |
-          d([]) }}"
+          d([]) |
+          selectattr('tags.Name', 'defined') }}"
 
 - name: Ensure dict of aws end user messaging sms phone pools is generated
   tags:
