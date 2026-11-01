@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - ec2_vpc_vpn - an empty or whitespace-only O(tunnel_options[].outside_ip_address) now fails before any AWS call,
+    in check mode too. On an existing connection, a single entry with an empty selector counted as omitted and was
+    applied to both tunnels instead of one, and a whitespace-only selector failed only after the connection lookup.
+    During creation, an empty selector was silently ignored; it now fails the same way. To apply one entry to both
+    tunnels, omit the option.
