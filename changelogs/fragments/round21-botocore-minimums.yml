@@ -1,0 +1,20 @@
+---
+bugfixes:
+  - notifications_contacts, notifications_contacts_info, notifications_hub, notifications_hub_info - document that the
+    modules require botocore 1.35.67 or later, the first release with the AWS User Notifications and User
+    Notifications Contacts services.
+  - pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_pool - document that ``state=present`` without
+    ``phone_number_id`` or ``pool_id`` requires botocore 1.35.26 or later, because the search for an existing number
+    or pool sends the ``Owner`` parameter.
+  - pinpoint_sms_voice_phone_number_info, pinpoint_sms_voice_phone_pool_info - document that ``owner``, and every
+    query without ``phone_number_ids`` or ``pool_ids``, requires botocore 1.35.26 or later.
+  - pinpoint_sms_voice_phone_pool, pinpoint_sms_voice_phone_pool_associate - document that omitting
+    ``iso_country_code`` when the module creates a pool, associates an origination identity, or disassociates one that
+    is not a phone number requires botocore 1.42.80 or later; older releases require ``IsoCountryCode``.
+  - route53_resolver_rule - document that updating a rule with botocore older than 1.35.38 removes the server name
+    indication of its targets, because such a botocore cannot read the current value to keep it.
+  - ssm_association - document that updating an association with botocore older than 1.35.21 clears the
+    ``ExcludeAccounts``, ``IncludeChildOrganizationUnits``, ``Targets``, ``TargetsMaxConcurrency``, and
+    ``TargetsMaxErrors`` fields of its ``TargetLocations``.
+trivial:
+  - pinpoint_sms_voice_phone_number - name botocore 1.40.14 as the minimum for ``international_sending_enabled``.

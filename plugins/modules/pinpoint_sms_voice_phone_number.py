@@ -11,6 +11,7 @@ description:
   - Requests and releases AWS End User Messaging SMS origination phone numbers.
   - Without O(phone_number_id), an existing phone number matching the requested
     attributes is adopted; otherwise a new phone number is requested.
+  - Without O(phone_number_id), O(state=present) requires botocore 1.35.26 or later.
   - Matching uses the attributes fixed when a number is requested, O(iso_country_code),
     O(message_type), O(number_capabilities), O(number_type), O(pool_id), and O(registration_id).
   - When O(tags) contains a C(Name) key, matching also requires an equal C(Name) tag, and the
@@ -46,8 +47,7 @@ options:
       - Whether international sending is enabled for the phone number.
       - When omitted for an existing number, the current setting is left unchanged.
       - This cannot be changed on an existing number that is associated with a pool.
-      - This option requires AWS SDK support for the
-        C(InternationalSendingEnabled) request parameter.
+      - Requires botocore 1.40.14 or later.
     type: bool
   iso_country_code:
     description:

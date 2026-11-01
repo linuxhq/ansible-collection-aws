@@ -88,6 +88,9 @@ options:
           - The server name indication for the target.
           - This must contain at most 255 characters.
           - This requires botocore C(1.35.38) or later.
+          - When omitted, an update keeps the matching current target's value.
+            botocore older than 1.35.38 cannot read that value, so updating an
+            existing rule with such a botocore removes it.
         type: str
     type: list
   wait:

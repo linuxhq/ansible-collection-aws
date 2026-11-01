@@ -11,6 +11,7 @@ description:
   - Gathers information about AWS End User Messaging SMS phone numbers.
   - This module maps to the Pinpoint SMS Voice V2 C(DescribePhoneNumbers) API,
     the API behind C(aws pinpoint-sms-voice-v2 describe-phone-numbers).
+  - Without O(phone_number_ids), this module requires botocore 1.35.26 or later.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -35,6 +36,7 @@ options:
     description:
       - The phone number owner to query.
       - Defaults to C(SELF) when O(phone_number_ids) is omitted.
+      - Requires botocore 1.35.26 or later.
       - Mutually exclusive with O(phone_number_ids).
     type: str
   phone_number_ids:

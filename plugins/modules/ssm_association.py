@@ -77,7 +77,11 @@ notes:
   - Updates send every field of the existing association because
     C(UpdateAssociation) clears omitted fields. botocore older than 1.42.54
     does not model C(AssociationDispatchAssumeRole), so updating an
-    association with such a botocore clears that field.
+    association with such a botocore clears that field. botocore older than
+    1.35.21 also does not model the C(ExcludeAccounts),
+    C(IncludeChildOrganizationUnits), C(Targets), C(TargetsMaxConcurrency),
+    and C(TargetsMaxErrors) fields of C(TargetLocations), so updating an
+    association with such a botocore clears them.
   - Setting a O(schedule_expression) that is not a cron expression clears
     the existing association's C(ApplyOnlyAtCronInterval),
     C(ScheduleOffset), and C(Duration), which AWS supports only with cron
