@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - ec2_vpc_vpn - creating a connection with an empty or whitespace-only O(vpn_gateway_id) or O(transit_gateway_id)
+    next to O(vpn_concentrator_id) now fails before any write, in check mode too. Check mode predicted a new
+    connection. EC2 rejected an empty ID, but treated a whitespace-only ID as omitted and created a concentrator
+    connection, after which the run failed with "Cannot change", as every later run did.

@@ -865,6 +865,24 @@ def test_create_rejects_blank_gateway_ids_before_any_aws_call(params, check_mode
     assert client.mock_calls == []
 
 
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("blank", ["", " "])
+@pytest.mark.parametrize("option", ["vpn_gateway_id", "transit_gateway_id"])
+def test_create_rejects_a_blank_gateway_id_next_to_a_concentrator(params, check_mode, blank, option):
+    # Live: EC2 rejects an empty ID, but ignores a whitespace-only one and creates a concentrator connection that no
+    # later run can match.
+    params.update({"customer_gateway_id": "cgw-123", "vpn_concentrator_id": "vcn-123", option: blank})
+    module = FakeModule(params, check_mode=check_mode)
+    module.require_botocore_at_least = Mock()
+    plugin.validate_inputs(module)
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, module, None)
+
+    assert raised.value.values == {"msg": f"{option} must not be empty"}
+    assert client.mock_calls == []
+
+
 @pytest.mark.parametrize(
     "overrides",
     [
