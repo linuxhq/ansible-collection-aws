@@ -8,6 +8,46 @@
     - elb_application_lb_info
 
   post_tasks:
+    - name: Ensure global accelerator info role is included with endpoint groups
+      ansible.builtin.include_role:
+        name: global_accelerator_info
+      vars:
+        global_accelerator_info_include_endpoint_groups: true
+
+    - name: Ensure endpoint groups stay on the listener whose ports overlap
+      ansible.builtin.assert:
+        that:
+          - __global_accelerator_listeners | length == 2
+          - __global_accelerator_listener_80.port_ranges | length == 1
+          - __global_accelerator_listener_80.port_ranges.0.to_port == 81
+          - __global_accelerator_listener_80.endpoint_groups | length == 1
+          - __global_accelerator_listener_80.endpoint_groups.0.endpoint_group_region == 'us-east-1'
+          - __global_accelerator_listener_80.endpoint_groups.0.traffic_dial_percentage == 50
+          - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions | length == 1
+          - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
+              _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
+          - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions.0.weight == 200
+          - __global_accelerator_listener_443.port_ranges | length == 1
+          - __global_accelerator_listener_443.port_ranges.0.to_port == 444
+          - __global_accelerator_listener_443.endpoint_groups | length == 1
+          - __global_accelerator_listener_443.endpoint_groups.0.endpoint_group_region == 'us-east-1'
+          - __global_accelerator_listener_443.endpoint_groups.0.traffic_dial_percentage == 100
+          - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions | length == 1
+          - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
+              _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
+          - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions.0.weight == 128
+      vars:
+        __global_accelerator_listeners:
+          "{{ _global_accelerator_info_dict['molecule-global-accelerator-00'].listeners }}"
+        __global_accelerator_listener_80:
+          "{{ __global_accelerator_listeners |
+              selectattr('port_ranges.0.from_port', 'equalto', 80) |
+              first }}"
+        __global_accelerator_listener_443:
+          "{{ __global_accelerator_listeners |
+              selectattr('port_ranges.0.from_port', 'equalto', 443) |
+              first }}"
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_security_group_list:

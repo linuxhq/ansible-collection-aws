@@ -17,6 +17,16 @@ description:
     remaining entries update existing listeners with the same protocol in
     place, new listeners are created for the rest, and existing listeners not
     present in O(listeners) are deleted, including their endpoint groups.
+  - Those remaining entries first update listeners whose ports they overlap,
+    pairing as many entries as possible this way and taking the pairs that
+    share the most ports first, then the lowest listener ARN, then the entry
+    with the lowest ports. The others update the remaining listeners of their
+    protocol in O(listeners) order, lowest listener ARN first.
+  - Listeners have no name or tags, so an entry that overlaps no remaining
+    listener, such as port C(80) changed to C(81), can update a different
+    listener of its protocol, which keeps its endpoint groups when
+    O(listeners[].endpoint_groups) is omitted. To keep a listener through such
+    a change, first apply ports that overlap both, such as C(80-81).
   - When O(purge_listeners=false), remaining entries always create new
     listeners and existing listeners not present in O(listeners) are left
     unchanged; the module fails before any listener change when a new
@@ -976,8 +986,15 @@ def reconcile_listeners(module, current_listeners):
         else:
             matched.append((match, desired))
 
+    # Only listeners that would otherwise be purged are reused for other ports.
+    if module.params["purge_listeners"]:
+        for current, desired in overlapping_listener_pairs(remaining, pending):
+            remaining.remove(current)
+            pending.remove(desired)
+            updates.append((current, desired))
+
     for desired in pending:
-        # Only listeners that would otherwise be purged are reused for other ports.
+        # Entries that overlap no remaining listener reuse the first remaining one of their protocol.
         match = None
         if module.params["purge_listeners"]:
             match = next((current for current in remaining if current["protocol"] == desired["protocol"]), None)
@@ -1019,6 +1036,72 @@ def listeners_overlap(first, second):
     return first["protocol"] == second["protocol"] and any(
         port_ranges_overlap(left, right) for left in first["port_ranges"] for right in second["port_ranges"]
     )
+
+
+def shared_port_count(first, second):
+    return sum(
+        max(0, min(left["to_port"], right["to_port"]) - max(left["from_port"], right["from_port"]) + 1)
+        for left in first["port_ranges"]
+        for right in second["port_ranges"]
+    )
+
+
+def max_pair_count(pairs):
+    """Count the most (listener, entry) index pairs that share no listener or entry, by augmenting paths."""
+    listeners_by_entry = {}
+    for listener, entry in pairs:
+        listeners_by_entry.setdefault(entry, []).append(listener)
+
+    owners = {}
+
+    def assign(entry, visited):
+        for listener in listeners_by_entry[entry]:
+            if listener not in visited:
+                visited.add(listener)
+                if listener not in owners or assign(owners[listener], visited):
+                    owners[listener] = entry
+                    return True
+
+        return False
+
+    return sum(assign(entry, set()) for entry in listeners_by_entry)
+
+
+def overlapping_listener_pairs(current_listeners, entries):
+    """Pair listeners with entries whose ports they overlap.
+
+    Listeners have no name or tags, so shared ports are all that ties an entry to a listener. Pairs are taken from the
+    most shared ports, then the lowest listener ARN, then the entry with the lowest ports, while as many entries as
+    possible can still be paired. Pairing as many as possible keeps moves of single port ranges free of circular
+    dependencies, including with the entries left to reuse the first remaining listener of their protocol.
+    """
+    candidates = sorted(
+        (
+            (listener, entry)
+            for listener, current in enumerate(current_listeners)
+            for entry, desired in enumerate(entries)
+            if listeners_overlap(current, desired)
+        ),
+        key=lambda pair: (
+            -shared_port_count(current_listeners[pair[0]], entries[pair[1]]),
+            current_listeners[pair[0]]["listener_arn"],
+            listener_identity(entries[pair[1]]),
+        ),
+    )
+    target = max_pair_count(candidates)
+    pairs, paired_listeners, paired_entries = [], set(), set()
+    for listener, entry in candidates:
+        if listener in paired_listeners or entry in paired_entries:
+            continue
+
+        excluded_listeners, excluded_entries = paired_listeners | {listener}, paired_entries | {entry}
+        rest = [pair for pair in candidates if pair[0] not in excluded_listeners and pair[1] not in excluded_entries]
+        if len(pairs) + 1 + max_pair_count(rest) == target:
+            pairs.append((current_listeners[listener], entries[entry]))
+            paired_listeners.add(listener)
+            paired_entries.add(entry)
+
+    return pairs
 
 
 def ordered_listener_updates(module, updates, changed=False):

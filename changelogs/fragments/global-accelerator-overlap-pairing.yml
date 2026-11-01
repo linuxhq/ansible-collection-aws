@@ -1,0 +1,12 @@
+---
+minor_changes:
+  - global_accelerator - with ``purge_listeners=true``, listener entries whose ports changed now update existing
+    listeners of their protocol whose ports they overlap, pairing as many entries as possible this way and taking the
+    pairs that share the most ports first, then the lowest listener ARN, then the entry with the lowest ports; the
+    other entries keep the previous pairing by listener ARN.
+bugfixes:
+  - global_accelerator - a listener entry whose ports changed no longer updates whichever listener of its protocol has
+    the lowest random ARN when another listener shares its ports. That pairing could fail with circular port
+    dependencies, for example for ``80`` to ``80-81`` with ``443`` to ``443-444``, or leave the endpoint groups of an
+    entry without ``endpoint_groups`` behind another entry's ports.
+...
