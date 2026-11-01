@@ -695,6 +695,65 @@ def test_mixed_tunnel_selection_rejected_in_either_order(params, connection, rev
     assert client.mock_calls == []
 
 
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize(
+    "selector, targets",
+    [
+        ({}, ["203.0.113.1", "203.0.113.2"]),
+        ({"outside_ip_address": None}, ["203.0.113.1", "203.0.113.2"]),
+        ({"outside_ip_address": "203.0.113.2"}, ["203.0.113.2"]),
+        ({"outside_ip_address": ""}, None),
+        ({"outside_ip_address": " "}, None),
+    ],
+    ids=["omitted", "null", "selected", "empty", "whitespace"],
+)
+def test_blank_tunnel_selector_fails_before_any_aws_call(module_spec, connection, check_mode, selector, targets):
+    # An empty selector counted as omitted, so a single entry meant for one tunnel changed both.
+    spec = {key: value for key, value in module_spec.items() if key != "supports_check_mode"}
+    tunnel = dict(selector, phase1_encryption_algorithms=["AES256"])
+    result = ArgumentSpecValidator(**spec).validate({"vpn_connection_id": "vpn-123", "tunnel_options": [tunnel]})
+    assert not result.error_messages
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [connection]}
+    module = FakeModule(result.validated_parameters, check_mode=check_mode, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(module, "client", wraps=module.client) as connect,
+    ):
+        if targets is None:
+            with pytest.raises(ModuleFail) as raised:
+                plugin.main()
+
+            assert raised.value.values == {"msg": "tunnel_options[].outside_ip_address must not be empty"}
+            connect.assert_not_called()
+            assert client.mock_calls == []
+            return
+
+        with pytest.raises(ModuleExit) as exited:
+            plugin.main()
+
+    assert exited.value.values["changed"] is True
+    modified = [call.kwargs["VpnTunnelOutsideIpAddress"] for call in client.modify_vpn_tunnel_options.call_args_list]
+    assert modified == ([] if check_mode else targets)
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("blank", ["", " "])
+def test_create_rejects_a_blank_tunnel_selector_before_any_aws_call(params, check_mode, blank):
+    # Creation used to ignore an empty selector; no tunnel exists yet to select.
+    params.update(
+        customer_gateway_id="cgw-123", vpn_gateway_id="vgw-123", tunnel_options=[{"outside_ip_address": blank}]
+    )
+    module = FakeModule(params, check_mode=check_mode)
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.validate_inputs(module)
+        plugin.ensure_present(client, module, None)
+
+    assert raised.value.values == {"msg": "tunnel_options[].outside_ip_address must not be empty"}
+    assert client.mock_calls == []
+
+
 @pytest.mark.parametrize("actual", ["EXAMPLE_REPLACEMENT", "EXAMPLE_DIFFERENT", "EXAMPLE_é"])
 def test_psk_uses_constant_time_comparison(params, connection, actual):
     params["tunnel_options"] = [{"outside_ip_address": "203.0.113.1", "pre_shared_key": "EXAMPLE_REPLACEMENT"}]

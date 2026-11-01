@@ -1354,6 +1354,9 @@ def validate_inputs(module):
 
     inside_networks = set()
     for tunnel in tunnels:
+        # An empty selector would otherwise count as omitted and apply the entry to both tunnels.
+        require_non_blank(module, tunnel.get("outside_ip_address"), "tunnel_options[].outside_ip_address")
+
         for name in TUNNEL_CHOICES:
             if tunnel.get(name) == []:
                 module.fail_json(msg=f"tunnel_options[].{name} must not be empty")
