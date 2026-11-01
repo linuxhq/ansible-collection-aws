@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - acm_certificate_request - a certificate without a domain name in the region, such as an imported certificate with
+    no common name and no DNS subject alternative name, no longer fails every run with "AWS Certificate Manager returned
+    an invalid certificate summary". The module lists certificates of every key type, and ACM then lists such a
+    certificate without a domain name. The module now skips it, because it cannot match O(domain_name).

@@ -341,7 +341,8 @@ def test_rejects_matching_certificate_summary_without_arn():
     client.request_certificate.assert_not_called()
 
 
-def test_rejects_malformed_certificate_summaries():
+@pytest.mark.parametrize("malformed", [None, {"DomainName": 7}], ids=["not-a-dict", "non-string-domain"])
+def test_rejects_malformed_certificate_summaries(malformed):
     client = Mock()
     client.request_certificate.return_value = {"CertificateArn": "arn:new"}
     module = FakeModule(
@@ -360,7 +361,7 @@ def test_rejects_malformed_certificate_summaries():
         patch.object(
             plugin,
             "query_list",
-            return_value=[None, {}, {"DomainName": 7}, {"DomainName": "other.example.com"}],
+            return_value=[{"CertificateArn": "arn:no-domain"}, malformed, {"DomainName": "other.example.com"}],
         ),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -516,6 +517,59 @@ def test_summaries_rule_out_certificates_without_describing_them():
 
     assert result["certificate_arn"] == "arn:match"
     client.describe_certificate.assert_called_once_with(CertificateArn="arn:match", aws_retry=True)
+    client.request_certificate.assert_not_called()
+
+
+# With the key-type filter, ACM lists an imported certificate that has no common name or DNS name without DomainName.
+DOMAINLESS_SUMMARY = {
+    "CertificateArn": "arn:no-domain",
+    "HasAdditionalSubjectAlternativeNames": False,
+    "KeyAlgorithm": "RSA-2048",
+    "Status": "ISSUED",
+    "SubjectAlternativeNameSummaries": [],
+    "Type": "IMPORTED",
+}
+
+
+def test_summaries_without_a_domain_name_are_skipped():
+    client = Mock()
+    client.describe_certificate.return_value = issued_certificate("arn:match")
+    summaries = [
+        DOMAINLESS_SUMMARY,
+        {"CertificateArn": "arn:empty-domain", "DomainName": ""},
+        {"CertificateArn": "arn:match", "DomainName": "example.com"},
+    ]
+
+    result = run_request(client, summaries)
+
+    assert result == {"changed": False, "certificate_arn": "arn:match"}
+    client.describe_certificate.assert_called_once_with(CertificateArn="arn:match", aws_retry=True)
+    client.request_certificate.assert_not_called()
+
+
+def test_check_mode_predicts_request_next_to_summaries_without_a_domain_name():
+    client = Mock()
+    module = FakeModule(
+        {
+            "domain_name": "example.com",
+            "idempotency_token": None,
+            "purge_tags": True,
+            "subject_alternative_names": None,
+            "tags": None,
+        },
+        check_mode=True,
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[DOMAINLESS_SUMMARY]),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    assert result.value.values == {"changed": True}
+    client.describe_certificate.assert_not_called()
     client.request_certificate.assert_not_called()
 
 
