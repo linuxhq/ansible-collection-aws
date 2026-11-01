@@ -2263,6 +2263,38 @@ def test_log_options_compare_and_send_only_supplied_fields(params, connection, s
 
 
 @pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("enabled, group", [("log_enabled", "log_group_arn"), ("bgp_log_enabled", "bgp_log_group_arn")])
+def test_enabling_logs_without_a_log_group_fails_before_any_write(params, default_tunnels, check_mode, enabled, group):
+    # Live: EC2 rejects enabling logs on a tunnel without a log group, and reuses one already set on the tunnel.
+    first = default_tunnels["Options"]["TunnelOptions"][0]
+    first["LogOptions"]["CloudWatchLogOptions"][plugin.LOG_FIELDS[group]] = LOG_GROUP_ARN
+    params.update(
+        local_ipv4_network_cidr="10.20.0.0/16",
+        tunnel_options=[{"log_options": {"cloud_watch_log_options": {enabled: True}}}],
+    )
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), default_tunnels)
+
+    assert raised.value.values == {
+        "msg": f"Cannot update VPN connection vpn-123 tunnel 203.0.113.2: {enabled} requires {group}, which is "
+        "neither supplied nor set on the tunnel"
+    }
+    assert client.mock_calls == []
+    params["tunnel_options"][0]["log_options"]["cloud_watch_log_options"][group] = LOG_GROUP_ARN
+    assert [change[0] for change in plugin.tunnel_deltas(FakeModule(params), default_tunnels)] == [
+        "203.0.113.1",
+        "203.0.113.2",
+    ]
+    params["tunnel_options"] = [
+        {"outside_ip_address": "203.0.113.1", "log_options": {"cloud_watch_log_options": {enabled: True}}}
+    ]
+    assert plugin.tunnel_deltas(FakeModule(params), default_tunnels) == [
+        ("203.0.113.1", {"LogOptions": {"CloudWatchLogOptions": {plugin.LOG_FIELDS[enabled]: True}}})
+    ]
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
 @pytest.mark.parametrize("actual", ["EXAMPLE", ["EXAMPLE"], {"CloudWatchLogOptions": "EXAMPLE"}])
 def test_malformed_log_options_fail_before_mutation(params, connection, check_mode, actual):
     connection["Options"]["TunnelOptions"][1]["LogOptions"] = actual

@@ -202,7 +202,8 @@ options:
                 description:
                   - Whether to send BGP logs. AWS defaults to false.
                   - EC2 rejects enabling it on a tunnel without a BGP log group, which
-                    O(tunnel_options[].log_options.cloud_watch_log_options.bgp_log_group_arn) sets.
+                    O(tunnel_options[].log_options.cloud_watch_log_options.bgp_log_group_arn) sets. The module checks
+                    an existing tunnel before any change.
                   - Requires botocore 1.41.1 or later.
                 type: bool
               bgp_log_group_arn:
@@ -222,7 +223,7 @@ options:
                 description:
                   - Whether to send tunnel activity logs. AWS defaults to false.
                   - EC2 requires a log group, from O(tunnel_options[].log_options.cloud_watch_log_options.log_group_arn)
-                    or already set on the tunnel, to enable it.
+                    or already set on the tunnel, to enable it. The module checks an existing tunnel before any change.
                 type: bool
               log_group_arn:
                 description:
@@ -1187,6 +1188,15 @@ def tunnel_deltas(module, connection):
                     item == (LOG_DEFAULTS.get(key) if cloud_watch.get(key) is None else cloud_watch[key])
                     for key, item in value["CloudWatchLogOptions"].items()
                 )
+                # Live: EC2 rejects enabling logs without a log group, supplied or already set on the tunnel. A later
+                # tunnel update can follow other writes, so this fails before any of them.
+                resulting = dict(cloud_watch, **value["CloudWatchLogOptions"])
+                for enabled, group in (("log_enabled", "log_group_arn"), ("bgp_log_enabled", "bgp_log_group_arn")):
+                    if not equal and resulting.get(LOG_FIELDS[enabled]) and not resulting.get(LOG_FIELDS[group]):
+                        module.fail_json(
+                            msg=f"Cannot update VPN connection {connection['VpnConnectionId']} tunnel {outside_ip}: "
+                            f"{enabled} requires {group}, which is neither supplied nor set on the tunnel"
+                        )
             elif isinstance(value, list):
                 value_type = int if field.endswith("DHGroupNumbers") else str
                 if actual is not None and (
