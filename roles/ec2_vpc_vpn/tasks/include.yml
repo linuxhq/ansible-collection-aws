@@ -6,23 +6,28 @@
     connection_type: "{{ _vpn.connection_type | d('ipsec.1') }}"
     customer_gateway_id: "{{ _vpn.customer_gateway_id }}"
     delay: "{{ _vpn.delay | d(15) }}"
+    enable_acceleration: "{{ _vpn.enable_acceleration | d(omit) }}"
     local_ipv4_network_cidr: "{{ _vpn.local_ipv4_network_cidr | d(omit) }}"
     local_ipv6_network_cidr: "{{ _vpn.local_ipv6_network_cidr | d(omit) }}"
     name: "{{ _vpn.name }}"
+    outside_ip_address_type: "{{ _vpn.outside_ip_address_type | d(omit) }}"
     pre_shared_key_storage: "{{ _vpn.pre_shared_key_storage | d(omit) }}"
     purge_routes: "{{ _vpn.purge_routes | d(true) }}"
     purge_tags: "{{ _vpn.purge_tags | d(true) }}"
     remote_ipv4_network_cidr: "{{ _vpn.remote_ipv4_network_cidr | d(omit) }}"
     remote_ipv6_network_cidr: "{{ _vpn.remote_ipv6_network_cidr | d(omit) }}"
     routes: "{{ _vpn.routes | d(omit) }}"
+    skip_tunnel_replacement: "{{ _vpn.skip_tunnel_replacement | d(omit) }}"
     state: "{{ _vpn.state | d('present') }}"
     static_only: "{{ _vpn.static_only | d(omit) }}"
     tags: "{{ _vpn.tags | d(omit) }}"
     transit_gateway_id: "{{ _vpn.transit_gateway_id | d(omit) }}"
+    transport_transit_gateway_attachment_id: "{{ _vpn.transport_transit_gateway_attachment_id | d(omit) }}"
     tunnel_bandwidth: "{{ _vpn.tunnel_bandwidth | d(omit) }}"
     tunnel_inside_ip_version: "{{ _vpn.tunnel_inside_ip_version | d(omit) }}"
     tunnel_options: "{{ _vpn.tunnel_options | d(omit) }}"
     validate_certs: true
+    vpn_concentrator_id: "{{ _vpn.vpn_concentrator_id | d(omit) }}"
     vpn_gateway_id: "{{ _vpn.vpn_gateway_id | d(omit) }}"
     wait_timeout: "{{ _vpn.wait_timeout | d(600) }}"
   register: __ec2_vpc_vpn_result
@@ -36,6 +41,7 @@
     - _vpn.name is defined
     - _vpn.customer_gateway_id is defined
     - _vpn.transit_gateway_id is defined or
+      _vpn.vpn_concentrator_id is defined or
       _vpn.vpn_gateway_id is defined
   changed_when:
     - ansible_check_mode | bool

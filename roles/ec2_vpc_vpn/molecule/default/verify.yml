@@ -2,6 +2,7 @@
 - name: Verify
   hosts: all
   roles:
+    - cloudwatchlogs_log_group_info
     - ec2_customer_gateway_info
     - ec2_transit_gateway_info
     - ec2_vpc_vpn_info
@@ -20,6 +21,23 @@
           - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options | length == 2
           - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options |
             selectattr('pre_shared_key', 'defined') | list | length == 0
+          - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options | map(attribute='phase1_lifetime_seconds') | unique == [27000]
+          - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options | map(attribute='phase2_lifetime_seconds') | unique == [3000]
+          - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options | map(attribute='rekey_margin_time_seconds') | unique == [1500]
+          - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options | map(attribute='rekey_fuzz_percentage') | unique == [50]
+          - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options | map(attribute='replay_window_size') | unique == [2048]
+          - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options | map(attribute='dpd_timeout_seconds') | unique == [45]
+          - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options | map(attribute='dpd_timeout_action') | unique == ['restart']
+          - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options | map(attribute='startup_action') | unique == ['add']
+          - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options | map(attribute='enable_tunnel_lifecycle_control') | unique == [true]
+          - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options |
+            map(attribute='log_options.cloud_watch_log_options') | unique ==
+            [dict(log_enabled=true,
+                  log_group_arn=_cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn,
+                  log_output_format='text',
+                  bgp_log_enabled=true,
+                  bgp_log_group_arn=_cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn,
+                  bgp_log_output_format='text')]
           - _ec2_vpc_vpn_info_dict['molecule-01'].vpn_connection_id is defined
           - _ec2_vpc_vpn_info_dict['molecule-01'].customer_gateway_id == ec2_vpc_vpn_list_update.1.customer_gateway_id
           - _ec2_vpc_vpn_info_dict['molecule-01'].transit_gateway_id == ec2_vpc_vpn_list_update.1.transit_gateway_id
@@ -28,6 +46,8 @@
           - _ec2_vpc_vpn_info_dict['molecule-01'].options.static_routes_only
           - _ec2_vpc_vpn_info_dict['molecule-01'].options.local_ipv4_network_cidr == '10.20.0.0/16'
           - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_bandwidth == 'standard'
+          - not _ec2_vpc_vpn_info_dict['molecule-01'].options.enable_acceleration
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.outside_ip_address_type == 'PublicIpv4'
           - _ec2_vpc_vpn_info_dict['molecule-01'].pre_shared_key_arn is not defined
           - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options | length == 2
           - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options |
@@ -51,6 +71,9 @@
       ansible.builtin.set_fact:
         ec2_vpc_vpn_list:
           "{{ ec2_vpc_vpn_list_update |
+              map('combine', {'state': 'absent'}) }}"
+        cloudwatchlogs_log_group_list:
+          "{{ cloudwatchlogs_log_group_list |
               map('combine', {'state': 'absent'}) }}"
         ec2_customer_gateway_list:
           "{{ ec2_customer_gateway_list |
@@ -91,6 +114,7 @@
       ansible.builtin.include_role:
         name: "{{ _verify }}"
       loop:
+        - cloudwatchlogs_log_group
         - ec2_customer_gateway
       loop_control:
         label: "{{ _verify }}"
