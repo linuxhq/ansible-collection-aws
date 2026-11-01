@@ -17,7 +17,8 @@
     _ssm_instance_info_list:
       "{{ __ssm_instance_info_query.instances |
           d([]) |
-          selectattr('instance_id', 'defined') }}"
+          selectattr('instance_id', 'defined') |
+          rejectattr('instance_id', 'none') }}"
 
 - name: Ensure dict of aws systems manager instances is generated
   tags:

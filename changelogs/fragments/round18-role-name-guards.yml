@@ -4,3 +4,6 @@ bugfixes:
     route53_resolver_info, route53_resolver_rule_info and ssm_instance_info roles - leave resources without the dict key
     (a ``Name`` tag, a ``name`` or an ``instance_id``) out of the published list and dict. Before, one such resource
     shifted every later key in the dict onto the wrong resource.
+  - ec2_vpc_endpoint_info role - keep a tag whose value is empty as ``''`` instead of ``null``. An endpoint whose
+    ``Name`` tag was empty also shifted every later key in the dict onto the wrong resource.
+  - ssm_instance_info role - also leave instances whose ``instance_id`` is ``null`` out of the published list and dict.
