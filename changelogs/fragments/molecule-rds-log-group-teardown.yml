@@ -1,0 +1,6 @@
+---
+trivial:
+  - rds_instance and rds_instance_info Molecule scenarios - delete the CloudWatch Logs log groups that RDS creates for
+    the exported ``mariadb118`` logs and for Enhanced Monitoring (``RDSOSMetrics``), which deleting the instance leaves
+    behind.
+...
