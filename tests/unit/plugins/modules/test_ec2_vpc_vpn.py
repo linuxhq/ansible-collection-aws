@@ -2412,6 +2412,129 @@ def test_enabling_logs_without_a_log_group_fails_before_any_write(params, defaul
     ]
 
 
+OTHER_LOG_GROUP_ARN = "arn:aws:logs:us-east-1:123456789012:log-group:EXAMPLE-other-logs"
+
+
+def log_tunnel_params(module_spec, cloud_watch, outside_ip_address=None):
+    # Built through the argument spec, so every omitted option is present as None, as in a real run.
+    spec = {key: value for key, value in module_spec.items() if key != "supports_check_mode"}
+    tunnel = {"log_options": {"cloud_watch_log_options": cloud_watch}}
+    if outside_ip_address:
+        tunnel["outside_ip_address"] = outside_ip_address
+
+    result = ArgumentSpecValidator(**spec).validate({"vpn_connection_id": "vpn-123", "tunnel_options": [tunnel]})
+    assert not result.error_messages
+    return result.validated_parameters
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("prefix", ["", "bgp_"], ids=["log", "bgp_log"])
+@pytest.mark.parametrize("log_enabled", [False, None], ids=["disabled", "omitted"])
+@pytest.mark.parametrize("stored", [None, "", OTHER_LOG_GROUP_ARN], ids=["never_set", "empty", "other"])
+@pytest.mark.parametrize("arn", [LOG_GROUP_ARN, " "], ids=["arn", "whitespace"])
+def test_log_group_arn_is_ignored_while_its_logging_stays_disabled(
+    module_spec, default_tunnels, check_mode, prefix, log_enabled, stored, arn
+):
+    # Live: while that logging stays disabled, EC2 accepts a log group ARN but keeps the stored one, so sending it
+    # reported a change on every run.
+    if stored is not None:
+        for tunnel in default_tunnels["Options"]["TunnelOptions"]:
+            tunnel["LogOptions"]["CloudWatchLogOptions"][plugin.LOG_FIELDS[f"{prefix}log_group_arn"]] = stored
+
+    params = log_tunnel_params(module_spec, {f"{prefix}log_enabled": log_enabled, f"{prefix}log_group_arn": arn})
+    client = Mock()
+    assert ensure(client, FakeModule(params, check_mode=check_mode), default_tunnels)["changed"] is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("prefix", ["", "bgp_"], ids=["log", "bgp_log"])
+@pytest.mark.parametrize(
+    "current, supplied, delta",
+    [
+        # Live: "" is accepted while logging is disabled and is the only way to clear a stored log group.
+        ({"log_group_arn": LOG_GROUP_ARN}, {"log_group_arn": ""}, {"log_group_arn": ""}),
+        (
+            {"log_group_arn": LOG_GROUP_ARN},
+            {"log_enabled": False, "log_group_arn": ""},
+            {"log_enabled": False, "log_group_arn": ""},
+        ),
+        (
+            {"log_enabled": True, "log_group_arn": LOG_GROUP_ARN},
+            {"log_group_arn": OTHER_LOG_GROUP_ARN},
+            {"log_group_arn": OTHER_LOG_GROUP_ARN},
+        ),
+        (
+            {"log_enabled": True, "log_group_arn": LOG_GROUP_ARN},
+            {"log_enabled": True, "log_group_arn": OTHER_LOG_GROUP_ARN},
+            {"log_enabled": True, "log_group_arn": OTHER_LOG_GROUP_ARN},
+        ),
+        (
+            {},
+            {"log_enabled": True, "log_group_arn": LOG_GROUP_ARN},
+            {"log_enabled": True, "log_group_arn": LOG_GROUP_ARN},
+        ),
+        (
+            {"log_group_arn": LOG_GROUP_ARN},
+            {"log_enabled": True, "log_group_arn": OTHER_LOG_GROUP_ARN},
+            {"log_enabled": True, "log_group_arn": OTHER_LOG_GROUP_ARN},
+        ),
+        # A log group whose logging this run disables or leaves disabled is left out of other changes.
+        (
+            {"log_enabled": True, "log_group_arn": LOG_GROUP_ARN},
+            {"log_enabled": False, "log_group_arn": OTHER_LOG_GROUP_ARN},
+            {"log_enabled": False},
+        ),
+        ({}, {"log_group_arn": LOG_GROUP_ARN, "log_output_format": "text"}, {"log_output_format": "text"}),
+    ],
+    ids=[
+        "clear",
+        "disable_and_clear",
+        "enabled_change",
+        "enabled_explicit_change",
+        "enable_with_arn",
+        "enable_with_other_arn",
+        "disable_with_arn",
+        "disabled_other_change",
+    ],
+)
+def test_log_group_arn_is_sent_while_its_logging_is_enabled_or_to_clear_it(
+    module_spec, default_tunnels, check_mode, prefix, current, supplied, delta
+):
+    first = default_tunnels["Options"]["TunnelOptions"][0]
+    first["LogOptions"]["CloudWatchLogOptions"].update(
+        {plugin.LOG_FIELDS[prefix + name]: value for name, value in current.items()}
+    )
+    params = log_tunnel_params(module_spec, {prefix + name: value for name, value in supplied.items()}, "203.0.113.1")
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [default_tunnels]}
+    with patch.object(plugin, "wait_for_connection"):
+        assert ensure(client, FakeModule(params, check_mode=check_mode), default_tunnels)["changed"] is True
+
+    if check_mode:
+        assert client.mock_calls == []
+    else:
+        client.modify_vpn_tunnel_options.assert_called_once_with(
+            VpnConnectionId="vpn-123",
+            VpnTunnelOutsideIpAddress="203.0.113.1",
+            TunnelOptions={
+                "LogOptions": {
+                    "CloudWatchLogOptions": {plugin.LOG_FIELDS[prefix + name]: value for name, value in delta.items()}
+                }
+            },
+            aws_retry=True,
+        )
+
+
+def test_shared_log_group_arn_follows_each_tunnels_logging(module_spec, default_tunnels):
+    first = default_tunnels["Options"]["TunnelOptions"][0]
+    first["LogOptions"]["CloudWatchLogOptions"].update(LogEnabled=True, LogGroupArn=LOG_GROUP_ARN)
+    params = log_tunnel_params(module_spec, {"log_group_arn": OTHER_LOG_GROUP_ARN})
+    assert plugin.tunnel_deltas(FakeModule(params), default_tunnels) == [
+        ("203.0.113.1", {"LogOptions": {"CloudWatchLogOptions": {"LogGroupArn": OTHER_LOG_GROUP_ARN}}})
+    ]
+
+
 @pytest.mark.parametrize("check_mode", [True, False])
 @pytest.mark.parametrize("actual", ["EXAMPLE", ["EXAMPLE"], {"CloudWatchLogOptions": "EXAMPLE"}])
 def test_malformed_log_options_fail_before_mutation(params, connection, check_mode, actual):
