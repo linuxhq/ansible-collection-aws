@@ -27,6 +27,10 @@ options:
   queue_owner_aws_account_id:
     description:
       - AWS account ID of the account that created the queue in O(name).
+      - SQS does not apply cross-account permissions to C(ListQueueTags), so a queue owned by another account is
+        returned without C(tags).
+      - The module compares it with the caller's account from C(GetCallerIdentity) to decide whether to read C(tags).
+        If that lookup fails, the module reads C(tags) as for the caller's own queue.
       - Requires O(name).
     type: str
 extends_documentation_fragment:
@@ -60,7 +64,7 @@ queues:
   description:
     - A list of AWS Simple Queue Service queues.
     - Each queue includes C(name) and C(queue_url) added by the module, and
-      C(tags) from C(ListQueueTags).
+      C(tags) from C(ListQueueTags) when the caller's account owns the queue.
     - All attributes returned by C(GetQueueAttributes) are included with
       snake case names, and attribute values are returned as strings as AWS
       returns them.
@@ -160,7 +164,9 @@ queues:
       description:
         - Queue tags.
         - Tag keys keep their original case.
-      returned: always
+        - SQS does not apply cross-account permissions to C(ListQueueTags), so a queue owned by another account
+          (O(queue_owner_aws_account_id)) has no C(tags).
+      returned: when the caller's account owns the queue
       type: dict
     visibility_timeout:
       description: Visibility timeout in seconds.
@@ -193,7 +199,19 @@ QUEUE_NOT_FOUND_CODES = (
 )
 
 
-def get_queue(client, module, queue_url):
+def get_caller_account(module):
+    # Unlike amazon.aws get_aws_account_id, return None instead of failing: STS can be unreachable where SQS works,
+    # for example through an SQS-only endpoint_url, and the module then reads tags as it did before the lookup.
+    try:
+        sts = module.client("sts", retry_decorator=AWSRetry.jittered_backoff())
+        response = sts.get_caller_identity(aws_retry=True)
+    except (BotoCoreError, ClientError):
+        return None
+
+    return response.get("Account") if isinstance(response, dict) else None
+
+
+def get_queue(client, module, queue_url, read_tags=True):
     try:
         response = client.get_queue_attributes(
             AttributeNames=["All"],
@@ -209,19 +227,21 @@ def get_queue(client, module, queue_url):
     if not isinstance(attributes, dict):
         module.fail_json(msg=f"Unexpected response while getting AWS SQS queue {queue_url}")
 
-    try:
-        response = client.list_queue_tags(QueueUrl=queue_url, aws_retry=True)
-    except is_boto3_error_code(QUEUE_NOT_FOUND_CODES):
-        return None
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to list AWS SQS queue tags for {queue_url}")
-
-    tags = response.get("Tags", {}) if isinstance(response, dict) else None
-    if not isinstance(tags, dict):
-        module.fail_json(msg=f"Unexpected response while listing AWS SQS queue tags for {queue_url}")
-
     queue = boto3_resource_to_ansible_dict(attributes, transform_tags=False, force_tags=False)
-    queue["tags"] = tags
+
+    if read_tags:
+        try:
+            response = client.list_queue_tags(QueueUrl=queue_url, aws_retry=True)
+        except is_boto3_error_code(QUEUE_NOT_FOUND_CODES):
+            return None
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, msg=f"Unable to list AWS SQS queue tags for {queue_url}")
+
+        tags = response.get("Tags", {}) if isinstance(response, dict) else None
+        if not isinstance(tags, dict):
+            module.fail_json(msg=f"Unexpected response while listing AWS SQS queue tags for {queue_url}")
+
+        queue["tags"] = tags
 
     queue_arn = queue.get("queue_arn")
     queue["name"] = (queue_arn or queue_url.rsplit("/", 1)[-1]).split(":")[-1]
@@ -288,7 +308,15 @@ def main():
             if not isinstance(queue_url, str) or not queue_url:
                 module.fail_json(msg=f"Unexpected response while getting AWS SQS queue URL for {name}")
 
-        queue = get_queue(client, module, queue_url) if queue_url else None
+        if queue_url:
+            # SQS does not apply cross-account permissions to ListQueueTags, so only the owner can read the tags.
+            # An unknown caller account keeps reading them.
+            caller_account = get_caller_account(module) if queue_owner_aws_account_id else None
+            read_tags = caller_account is None or caller_account == queue_owner_aws_account_id
+            queue = get_queue(client, module, queue_url, read_tags)
+        else:
+            queue = None
+
         queues = [queue] if queue is not None else []
     else:
         queue_urls = query_list(

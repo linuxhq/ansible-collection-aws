@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 import boto3
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 from botocore.session import get_session
 from botocore.stub import Stubber
 
@@ -20,6 +20,8 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 NOT_FOUND_CODES = ("AWS.SimpleQueueService.NonExistentQueue", "QueueDoesNotExist")
+CALLER_ACCOUNT = "123456789012"
+OTHER_ACCOUNT = "210987654321"
 
 
 def params(**overrides):
@@ -158,6 +160,83 @@ def test_get_queue_url_rejects_malformed_response():
     result, _require = run(FakeModule(params(name="main"), client=client))
 
     assert result.values["msg"] == "Unexpected response while getting AWS SQS queue URL for main"
+
+
+def service_module(owner, sqs, sts):
+    module = FakeModule(params(name="main", queue_owner_aws_account_id=owner))
+    module.client = Mock(side_effect=lambda service, **kwargs: {"sqs": sqs, "sts": sts}[service])
+    return module
+
+
+def run_named_queue(owner, identity=None):
+    queue_url = f"https://sqs.us-east-1.amazonaws.com/{owner or CALLER_ACCOUNT}/main"
+    sqs = queue_client({"QueueArn": f"arn:aws:sqs:us-east-1:{owner or CALLER_ACCOUNT}:main"}, {"Name": "main"})
+    sqs.get_queue_url = Mock(return_value={"QueueUrl": queue_url})
+    sts = Mock(get_caller_identity=identity or Mock(return_value={"Account": CALLER_ACCOUNT}))
+    module = service_module(owner, sqs, sts)
+    result, _require = run(module)
+
+    assert [queue["queue_url"] for queue in result.values["queues"]] == [queue_url]
+    return result.values["queues"][0], sqs, sts, [call.args[0] for call in module.client.call_args_list]
+
+
+def test_another_accounts_queue_is_returned_without_tags():
+    queue, sqs, sts, services = run_named_queue(OTHER_ACCOUNT)
+
+    assert "tags" not in queue
+    assert queue["name"] == "main"
+    sqs.get_queue_url.assert_called_once_with(QueueName="main", QueueOwnerAWSAccountId=OTHER_ACCOUNT, aws_retry=True)
+    sqs.list_queue_tags.assert_not_called()
+    sts.get_caller_identity.assert_called_once_with(aws_retry=True)
+    assert services == ["sqs", "sts"]
+
+
+def test_callers_own_account_as_queue_owner_reads_tags():
+    queue, sqs, sts, services = run_named_queue(CALLER_ACCOUNT)
+
+    assert queue["tags"] == {"Name": "main"}
+    sqs.list_queue_tags.assert_called_once_with(QueueUrl=queue["queue_url"], aws_retry=True)
+    sts.get_caller_identity.assert_called_once_with(aws_retry=True)
+    assert services == ["sqs", "sts"]
+
+
+def test_queue_without_owner_reads_tags_without_looking_up_the_caller():
+    queue, sqs, sts, services = run_named_queue(None)
+
+    assert queue["tags"] == {"Name": "main"}
+    sqs.get_queue_url.assert_called_once_with(QueueName="main", aws_retry=True)
+    sqs.list_queue_tags.assert_called_once_with(QueueUrl=queue["queue_url"], aws_retry=True)
+    sts.get_caller_identity.assert_not_called()
+    assert services == ["sqs"]
+
+
+@pytest.mark.parametrize(
+    "identity",
+    [
+        Mock(side_effect=missing("InvalidClientTokenId", "GetCallerIdentity")),
+        Mock(side_effect=EndpointConnectionError(endpoint_url="https://vpce-0123.sqs.us-east-1.vpce.amazonaws.com")),
+        Mock(return_value={}),
+    ],
+)
+def test_unknown_caller_reads_tags_as_before(identity):
+    queue, sqs, _sts, services = run_named_queue(CALLER_ACCOUNT, identity)
+
+    assert queue["tags"] == {"Name": "main"}
+    sqs.list_queue_tags.assert_called_once_with(QueueUrl=queue["queue_url"], aws_retry=True)
+    identity.assert_called_once_with(aws_retry=True)
+    assert services == ["sqs", "sts"]
+
+
+def test_missing_queue_with_owner_does_not_look_up_the_caller():
+    sqs = Mock()
+    sqs.get_queue_url.side_effect = missing("QueueDoesNotExist", "GetQueueUrl")
+    sts = Mock()
+    module = service_module(OTHER_ACCOUNT, sqs, sts)
+    result, _require = run(module)
+
+    assert result.values["queues"] == []
+    sts.get_caller_identity.assert_not_called()
+    assert [call.args[0] for call in module.client.call_args_list] == ["sqs"]
 
 
 def test_sqs_pagination_supplies_page_size():
