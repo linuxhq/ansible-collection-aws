@@ -1869,6 +1869,7 @@ def test_absent_in_progress_delete_returns_a_result_consistent_with_wait(wait, c
     [
         (["52.94.76.5/24"], ["52.94.76.0/24"]),
         (["0.0.0.0/0", "2001:db8::1/32"], ["0.0.0.0/0", "2001:db8::/32"]),
+        (["52.94.76.5/24", "0.0.0.0/0", "52.94.76.0/24", "0.0.0.0/0"], ["52.94.76.0/24", "0.0.0.0/0"]),
     ],
 )
 def test_public_access_cidrs_are_canonicalized(cidrs, expected):
@@ -2467,7 +2468,7 @@ def test_forty_public_access_cidr_blocks_reach_aws(cidrs):
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_repeated_public_access_cidr_beyond_forty_entries_matches_the_cluster(check_mode):
-    # The cluster comparison ignores repeats, so a list whose 40 distinct blocks match the cluster converges.
+    # A list whose 40 distinct blocks match the cluster converges, as it did before repeats were sent once.
     current = dict(STANDARD_CLUSTER, resourcesVpcConfig=dict(STANDARD_CLUSTER["resourcesVpcConfig"]))
     current["resourcesVpcConfig"]["publicAccessCidrs"] = public_cidrs(40)
     params = eks_params(
@@ -2486,6 +2487,46 @@ def test_repeated_public_access_cidr_beyond_forty_entries_matches_the_cluster(ch
 
     assert raised.value.values["changed"] is False
     module.client.return_value.update_cluster_config.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("current", [None, STANDARD_CLUSTER], ids=["create", "update"])
+def test_repeated_public_access_cidr_blocks_are_sent_once(current, check_mode):
+    # EKS counts every entry against its limit (live: 40 distinct blocks and a repeat are rejected as larger than 40).
+    params = eks_params(
+        deletion_protection=True,
+        resources_vpc_config=vpc_config_params(
+            public_access_cidrs=public_cidrs(40) + ["52.0.0.5/24", "52.0.39.0/24"], subnet_ids=["subnet-a", "subnet-b"]
+        ),
+        role_arn="arn:role",
+        state="present",
+    )
+    module = FakeModule(params, check_mode=check_mode)
+    client = Mock(create_cluster=Mock(return_value={"cluster": CREATED_CLUSTER}))
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    module.client = Mock(return_value=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        patch.object(plugin, "wait_for_cluster"),
+        patch.object(plugin, "wait_for_update"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is True
+    if check_mode:
+        assert client.mock_calls == []
+        assert raised.value.values["cluster"]["resources_vpc_config"]["public_access_cidrs"] == public_cidrs(40)
+    elif current is None:
+        assert client.create_cluster.call_args.kwargs["resourcesVpcConfig"]["publicAccessCidrs"] == public_cidrs(40)
+    else:
+        assert client.update_cluster_config.call_args_list == [
+            call(name="example", deletionProtection=True),
+            call(name="example", resourcesVpcConfig={"publicAccessCidrs": public_cidrs(40)}),
+        ]
 
 
 def cluster_with_endpoints(public, private):
