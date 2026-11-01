@@ -1492,6 +1492,10 @@ def create_connection(client, module):
             "or vpn_concentrator_id"
         )
 
+    # Live: next to a concentrator, EC2 ignores a whitespace-only gateway ID, so no later run could match it.
+    for name in gateways:
+        require_non_blank(module, module.params[name], name)
+
     if any(tunnel.get("outside_ip_address") for tunnel in module.params["tunnel_options"] or []):
         module.fail_json(msg="outside_ip_address cannot be specified during creation")
 
