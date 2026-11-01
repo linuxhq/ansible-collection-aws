@@ -9,6 +9,7 @@ version_added: '1.9.0'
 short_description: Manage AWS Notifications hubs
 description:
   - Manages AWS Notifications hubs.
+  - Requires botocore 1.35.67 or later.
   - The module always uses the C(us-east-1) AWS Notifications endpoint.
   - AWS does not allow deregistering the last C(ACTIVE) notification hub, so
     O(state=absent) fails without changes for that hub.

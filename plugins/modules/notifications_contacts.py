@@ -9,6 +9,7 @@ version_added: '1.9.0'
 short_description: Manage AWS Notifications contacts
 description:
   - Manages AWS Notifications email contacts.
+  - Requires botocore 1.35.67 or later.
 author:
   - Taylor Kimball (@tkimball83)
 options:

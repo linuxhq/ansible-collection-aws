@@ -11,6 +11,7 @@ description:
   - Gathers information about AWS End User Messaging SMS phone pools.
   - This module maps to the Pinpoint SMS Voice V2 C(DescribePools) API,
     the API behind C(aws pinpoint-sms-voice-v2 describe-pools).
+  - Without O(pool_ids), this module requires botocore 1.35.26 or later.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -35,6 +36,7 @@ options:
     description:
       - The phone pool owner to query.
       - Defaults to C(SELF) when O(pool_ids) is omitted.
+      - Requires botocore 1.35.26 or later.
       - Mutually exclusive with O(pool_ids).
     type: str
   pool_ids:

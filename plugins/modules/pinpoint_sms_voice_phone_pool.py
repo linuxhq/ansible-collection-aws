@@ -11,6 +11,7 @@ description:
   - Manages AWS End User Messaging SMS phone pools.
   - This module maps to the Pinpoint SMS Voice V2 C(CreatePool) API,
     the API behind C(aws pinpoint-sms-voice-v2 create-pool).
+  - Without O(pool_id), O(state=present) requires botocore 1.35.26 or later.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -31,6 +32,7 @@ options:
       - When provided, this must be exactly two uppercase letters.
       - This field is optional for origination identities that are not
         country-specific.
+      - Creating a pool without this requires botocore 1.42.80 or later.
       - AWS requires this to create a pool from a phone number, so the module
         fails without changes, including in check mode, when this is omitted,
         O(origination_identity) is a phone number ID or ARN, and no matching

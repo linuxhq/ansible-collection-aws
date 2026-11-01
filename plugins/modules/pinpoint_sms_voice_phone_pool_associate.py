@@ -27,6 +27,8 @@ options:
       - When provided, this must be exactly two uppercase letters.
       - This is optional for origination identities that are not
         country-specific.
+      - Without this, associating an origination identity, or disassociating
+        one that is not a phone number, requires botocore 1.42.80 or later.
       - AWS requires this to associate a phone number, so with
         O(state=present) the module fails without changes, including in check
         mode, when this is omitted and O(origination_identity) is a phone
