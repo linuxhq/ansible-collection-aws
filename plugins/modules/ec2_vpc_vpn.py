@@ -211,6 +211,11 @@ options:
                   - The ARN of the CloudWatch Logs log group for BGP logs.
                   - EC2 stores the ARN as supplied, with or without a trailing C(:*), and the module compares it
                     exactly.
+                  - On an existing tunnel, a log group ARN is applied only while BGP logging is enabled, by
+                    O(tunnel_options[].log_options.cloud_watch_log_options.bgp_log_enabled) or, when that is omitted,
+                    on the tunnel. While BGP logging stays disabled, EC2 keeps the stored log group, so the module
+                    neither compares nor sends a non-empty ARN; an empty string still clears it. Creation stores the
+                    ARN either way.
                   - Requires botocore 1.41.1 or later.
                 type: str
               bgp_log_output_format:
@@ -231,6 +236,11 @@ options:
                   - EC2 stores the ARN as supplied, with or without a trailing C(:*), and the module compares it
                     exactly.
                   - EC2 keeps the log group when logging is disabled.
+                  - On an existing tunnel, a log group ARN is applied only while tunnel activity logging is enabled, by
+                    O(tunnel_options[].log_options.cloud_watch_log_options.log_enabled) or, when that is omitted, on
+                    the tunnel. While logging stays disabled, EC2 keeps the stored log group, so the module neither
+                    compares nor sends a non-empty ARN; an empty string still clears it. Creation stores the ARN either
+                    way.
                 type: str
               log_output_format:
                 description: The format of tunnel activity logs. AWS defaults to C(json).
@@ -1184,6 +1194,14 @@ def tunnel_deltas(module, connection):
 
                 # Live: EC2 keeps the log fields an update omits, so only the supplied ones are compared and sent.
                 cloud_watch = cloud_watch or {}
+                # Live: while that logging stays disabled, EC2 accepts a log group ARN but keeps the stored one, and
+                # only "" clears it, so a non-empty ARN is then neither compared nor sent.
+                supplied = dict(value["CloudWatchLogOptions"])
+                for enabled, group in (("LogEnabled", "LogGroupArn"), ("BgpLogEnabled", "BgpLogGroupArn")):
+                    if supplied.get(group) and not supplied.get(enabled, cloud_watch.get(enabled)):
+                        del supplied[group]
+
+                value = {"CloudWatchLogOptions": supplied}
                 equal = all(
                     item == (LOG_DEFAULTS.get(key) if cloud_watch.get(key) is None else cloud_watch[key])
                     for key, item in value["CloudWatchLogOptions"].items()

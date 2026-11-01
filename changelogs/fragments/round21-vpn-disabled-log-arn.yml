@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - ec2_vpc_vpn - on an existing tunnel, a non-empty
+    O(tunnel_options[].log_options.cloud_watch_log_options.log_group_arn) or
+    O(tunnel_options[].log_options.cloud_watch_log_options.bgp_log_group_arn) is no longer compared or sent while
+    that logging stays disabled, in check mode too. EC2 accepts such an ARN but keeps the stored log group, so every
+    run reported a change and modified the tunnel again. An empty string is still compared and sent, which clears the
+    stored log group; an enabled tunnel's log group and creation are unchanged.
