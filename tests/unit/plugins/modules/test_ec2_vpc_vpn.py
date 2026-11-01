@@ -1137,6 +1137,47 @@ def test_ipv6_creation_uses_requested_family(params):
 
 
 @pytest.mark.parametrize("check_mode", [True, False])
+def test_ipv6_creation_without_a_transit_gateway_fails_before_any_aws_call(params, check_mode):
+    params.update(customer_gateway_id="cgw-123", vpn_gateway_id="vgw-123", tunnel_inside_ip_version="ipv6")
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), None)
+
+    assert raised.value.values == {"changed": False, "msg": "IPv6 VPN connections require a transit gateway"}
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+def test_existing_ipv6_connection_without_a_gateway_is_managed(params, connection, check_mode):
+    # Live: EC2 creates an IPv6 connection attached to no gateway, which Cloud WAN can attach later.
+    connection.pop("VpnGatewayId")
+    connection["CoreNetworkArn"] = "arn:aws:networkmanager::123456789012:core-network/core-network-0123456789abcdef0"
+    connection["Routes"] = []
+    connection["Options"].pop("LocalIpv4NetworkCidr")
+    connection["Options"].update(
+        StaticRoutesOnly=False,
+        TunnelInsideIpVersion="ipv6",
+        LocalIpv6NetworkCidr="::/0",
+        RemoteIpv6NetworkCidr="::/0",
+    )
+    params.update(name=None, vpn_connection_id="vpn-123")
+    client = Mock()
+    assert ensure(client, FakeModule(params, check_mode=check_mode), connection)["changed"] is False
+    assert client.mock_calls == []
+
+    params.update(tags={"Probe": "x"}, purge_tags=False)
+    client.describe_vpn_connections.return_value = {"VpnConnections": [connection]}
+    assert ensure(client, FakeModule(params, check_mode=check_mode), connection)["changed"] is True
+    if check_mode:
+        assert client.mock_calls == []
+    else:
+        assert [call[0] for call in client.mock_calls] == ["create_tags", "describe_vpn_connections"]
+        client.create_tags.assert_called_once_with(
+            Resources=["vpn-123"], Tags=[{"Key": "Probe", "Value": "x"}], aws_retry=True
+        )
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
 @pytest.mark.parametrize("existing", [True, False])
 def test_ipv4_tunnel_cidr_rejected_on_ipv6_connection(params, connection, check_mode, existing):
     params.update(
