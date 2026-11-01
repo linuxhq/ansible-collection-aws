@@ -879,97 +879,171 @@ def multi_range_desired(*ranges):
     return dict(review_desired(*ranges[0]), port_ranges=[{"from_port": start, "to_port": end} for start, end in ranges])
 
 
-def test_listener_reconciliation_falls_back_to_protocol_pairing_when_overlap_pairing_is_circular():
-    # 1-10 and 11-20 share the most ports with X and Y, but each of those updates needs a port the other listener still
-    # holds; pairing by protocol updates 30 to Y instead and deletes 11-20 first.
-    current = listed_listeners({"arn:a": (1, 10), "arn:b": (30, 30), "arn:c": (11, 20)})
-    x = multi_range_desired((1, 9), (11, 11))
-    y = multi_range_desired((10, 10), (12, 20), (30, 30))
-    module = FakeModule({"listeners": [x, y], "purge_listeners": True})
-
-    matched, updates, creates, deletes = plugin.reconcile_listeners(module, current)
-
-    assert {current["listener_arn"]: desired["port_ranges"] for current, desired in updates} == {
-        "arn:a": x["port_ranges"],
-        "arn:b": y["port_ranges"],
-    }
-    assert [current["listener_arn"] for current in deletes] == ["arn:c"]
-    assert matched == []
-    assert creates == []
-    assert plugin.listener_update_order(updates) is not None
-
-
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_unavoidable_cycles_among_many_listener_moves_fail_after_two_pairing_checks(check_mode):
-    # 38 independent contractions beside 1-2 and 3-4 moving to 1+3 and 2+4, which is circular under every pairing.
-    ports_by_arn = {f"arn:{index:02d}": (10 * index + 1, 10 * index + 5) for index in range(1, 39)}
-    ports_by_arn.update({"arn:a": (1, 2), "arn:b": (3, 4)})
+@pytest.mark.parametrize(
+    ("ports_by_arn", "entries"),
+    [
+        # 1-10 and 11-20 share the most ports with the entries, and each update needs a port the other still holds.
+        (
+            {"arn:a": (1, 10), "arn:b": (30, 30), "arn:c": (11, 20)},
+            [((1, 9), (11, 11)), ((10, 10), (12, 20), (30, 30))],
+        ),
+        # Pairing by listener ARN instead would be ordered, but after a partial run a rerun would pair 1-3 with the
+        # entry it shares the most ports with, so a transient failure would move its endpoint groups.
+        (
+            {"arn:a": (1, 3), "arn:b": (4, 7)},
+            [((1, 1), (4, 5)), ((6, 6),), ((2, 3), (7, 7))],
+        ),
+        # 38 independent contractions beside 1-2 and 3-4 moving to 1+3 and 2+4, which is circular under every pairing.
+        (
+            dict(
+                {f"arn:{index:02d}": (10 * index + 1, 10 * index + 5) for index in range(1, 39)},
+                **{"arn:a": (1, 2), "arn:b": (3, 4)},
+            ),
+            [((10 * index + 1, 10 * index + 3),) for index in range(1, 39)] + [((1, 1), (3, 3)), ((2, 2), (4, 4))],
+        ),
+    ],
+    ids=["shared-ports", "retry", "many-moves"],
+)
+def test_circular_overlap_pairings_fail_before_any_write(ports_by_arn, entries, check_mode):
     current = listed_listeners(ports_by_arn)
-    entries = [review_desired(10 * index + 1, 10 * index + 3) for index in range(1, 39)]
-    entries += [multi_range_desired((1, 1), (3, 3)), multi_range_desired((2, 2), (4, 4))]
     module = FakeModule(
-        {"listeners": entries, "purge_endpoint_groups": True, "purge_listeners": True}, check_mode=check_mode
+        {
+            "listeners": [multi_range_desired(*ranges) for ranges in entries],
+            "purge_endpoint_groups": True,
+            "purge_listeners": True,
+        },
+        check_mode=check_mode,
     )
     client = Mock()
     with (
         patch.object(plugin, "get_listeners", return_value=current),
-        patch.object(plugin, "listener_update_order", wraps=plugin.listener_update_order) as order,
         patch.object(plugin, "delete_listener") as delete,
         pytest.raises(ModuleFail, match="circular port dependencies") as raised,
     ):
         plugin.ensure_listeners(client, module, "arn:accelerator")
 
-    # One check of the overlap pairing in reused_listeners, then the one in ordered_listener_updates.
-    assert order.call_count == 2
     assert raised.value.values["changed"] is False
     delete.assert_not_called()
     client.update_listener.assert_not_called()
+    client.create_listener.assert_not_called()
 
 
-def random_port_ranges(generator, ports, count):
-    """Split up to count disjoint port ranges, taken from ports, into groups of one to three ranges."""
+def random_port_ranges(generator, ports, count, group_size):
+    """Split up to count disjoint port ranges, taken from ports, into groups of one to group_size ranges."""
     starts = sorted(generator.sample(ports, min(len(ports), 2 * count)))
     ranges = [(starts[index], starts[index + 1]) for index in range(0, len(starts) - 1, 2)]
     generator.shuffle(ranges)
     groups = []
     while ranges:
-        size = generator.randint(1, min(3, len(ranges)))
+        size = generator.randint(1, min(group_size, len(ranges)))
         groups.append(sorted(ranges[:size]))
         ranges = ranges[size:]
 
     return groups
 
 
-def test_listener_reconciliation_never_fails_where_the_protocol_pairing_alone_succeeds():
-    generator = random.Random(0)
-    regressions = []
-    for unused_case in range(3000):
-        listener_groups = random_port_ranges(generator, range(1, 13), generator.randint(1, 6))
-        entry_groups = random_port_ranges(generator, range(1, 13), generator.randint(1, 6))
-        arns = generator.sample(range(10), len(listener_groups))
-        current = sorted(
-            (
-                dict(review_listener(f"arn:{arn}", 0, 0), port_ranges=multi_range_desired(*ranges)["port_ranges"])
-                for arn, ranges in zip(arns, listener_groups)
-            ),
-            key=lambda item: item["listener_arn"],
+class SimulatedAccelerator:
+    """Hold listeners in memory and apply listener writes to them, failing the write numbered fail_at."""
+
+    def __init__(self, ranges_by_arn, fail_at=None):
+        self.ranges_by_arn = dict(ranges_by_arn)
+        self.fail_at = fail_at
+        self.writes = 0
+        self.created = 0
+        self.client = Mock()
+        self.client.update_listener.side_effect = self.update
+        self.client.create_listener.side_effect = self.create
+
+    def write(self):
+        self.writes += 1
+        if self.writes == self.fail_at:
+            raise plugin.ClientError({"Error": {"Code": "InternalServiceErrorException", "Message": "failed"}}, "Write")
+
+    def listeners(self, *args, **kwargs):
+        return [
+            dict(
+                review_listener(arn, 0, 0), port_ranges=[{"from_port": start, "to_port": end} for start, end in ranges]
+            )
+            for arn, ranges in sorted(self.ranges_by_arn.items())
+        ]
+
+    def update(self, **request):
+        self.write()
+        self.ranges_by_arn[request["ListenerArn"]] = [
+            (item["FromPort"], item["ToPort"]) for item in request["PortRanges"]
+        ]
+        return updated_listener_response(**request)
+
+    def create(self, **request):
+        self.write()
+        self.created += 1
+        arn = f"arn:new-{self.created:03d}"
+        self.ranges_by_arn[arn] = [(item["FromPort"], item["ToPort"]) for item in request["PortRanges"]]
+        return updated_listener_response(
+            ClientAffinity="NONE", ListenerArn=arn, PortRanges=request["PortRanges"], Protocol=request["Protocol"]
         )
-        entries = [multi_range_desired(*ranges) for ranges in entry_groups]
-        module = FakeModule({"listeners": entries, "purge_listeners": True})
 
-        # The rule before overlap pairing: exact matches, then entries in order take the first remaining listener.
-        exact = {plugin.listener_identity(item) for item in current} & {
-            plugin.listener_identity(item) for item in entries
-        }
-        protocol_pairs = plugin.protocol_listener_pairs(
-            [item for item in current if plugin.listener_identity(item) not in exact],
-            [item for item in entries if plugin.listener_identity(item) not in exact],
-        )[0]
-        updates = plugin.reconcile_listeners(module, current)[1]
-        if plugin.listener_update_order(protocol_pairs) is not None and plugin.listener_update_order(updates) is None:
-            regressions.append((listener_groups, arns, entry_groups))
+    def delete(self, client, module, accelerator_arn, listener_arn, changed=False, deadline=None):
+        try:
+            self.write()
+        except plugin.ClientError:
+            module.fail_json(changed=changed, msg=f"Unable to delete {listener_arn}")
 
-    assert regressions == []
+        del self.ranges_by_arn[listener_arn]
+
+    def run(self, entries):
+        module = FakeModule({"listeners": entries, "purge_endpoint_groups": True, "purge_listeners": True})
+        with (
+            patch.object(plugin, "get_listeners", side_effect=self.listeners),
+            patch.object(plugin, "delete_listener", side_effect=self.delete),
+            patch.object(plugin, "wait_for_accelerator"),
+        ):
+            plugin.ensure_listeners(self.client, module, "arn:accelerator")
+
+    def final(self, original_arns):
+        """Return the ranges of every original listener, or None when deleted, and the ranges of new listeners."""
+        return (
+            {arn: self.ranges_by_arn.get(arn) for arn in original_arns},
+            sorted(ranges for arn, ranges in self.ranges_by_arn.items() if arn not in original_arns),
+        )
+
+
+@pytest.mark.parametrize("ranges_per_listener", [1, 3], ids=["single-range", "multi-range"])
+def test_a_rerun_after_a_failed_listener_write_ends_like_an_uninterrupted_run(ranges_per_listener):
+    # Listeners have no name, so a rerun pairs entries again from the partly changed listeners; it must reach the same
+    # listener for every entry, or a transient failure would move endpoint groups the entries leave unmanaged.
+    generator = random.Random(0)
+    unstable = []
+    for unused_case in range(300):
+        listener_ranges = random_port_ranges(generator, range(1, 13), generator.randint(1, 6), ranges_per_listener)
+        entries = [
+            multi_range_desired(*ranges)
+            for ranges in random_port_ranges(generator, range(1, 13), generator.randint(1, 6), ranges_per_listener)
+        ]
+        ranges_by_arn = {f"arn:{arn}": ranges for arn, ranges in zip(generator.sample(range(10), 6), listener_ranges)}
+        expected = SimulatedAccelerator(ranges_by_arn)
+        try:
+            expected.run(entries)
+        except ModuleFail:
+            continue
+
+        for fail_at in range(1, expected.writes + 1):
+            interrupted = SimulatedAccelerator(ranges_by_arn, fail_at=fail_at)
+            with pytest.raises(ModuleFail):
+                interrupted.run(entries)
+
+            interrupted.fail_at = None
+            try:
+                interrupted.run(entries)
+            except ModuleFail:
+                unstable.append((ranges_by_arn, entries, fail_at))
+                continue
+
+            if interrupted.final(ranges_by_arn) != expected.final(ranges_by_arn):
+                unstable.append((ranges_by_arn, entries, fail_at))
+
+    assert unstable == []
 
 
 def test_listener_reconciliation_without_purge_never_reuses_an_overlapping_listener():
