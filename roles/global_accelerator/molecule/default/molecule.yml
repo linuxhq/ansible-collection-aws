@@ -98,6 +98,15 @@ provisioner:
                 port_ranges:
                   - from_port: 80
                     to_port: 80
+                endpoint_groups:
+                  - endpoint_group_region: us-east-1
+                    traffic_dial_percentage: 90
+                    endpoint_configurations:
+                      - endpoint_id:
+                          "{{ _elb_application_lb_info_dict[
+                                'molecule-http-80'
+                              ].load_balancer_arn }}"
+                        weight: 64
               - protocol: TCP
                 port_ranges:
                   - from_port: 443
@@ -128,13 +137,8 @@ provisioner:
             listeners:
               - protocol: TCP
                 port_ranges:
-                  - from_port: 81
+                  - from_port: 80
                     to_port: 81
-                endpoint_groups: []
-              - protocol: TCP
-                port_ranges:
-                  - from_port: 444
-                    to_port: 444
                 endpoint_groups:
                   - endpoint_group_region: us-east-1
                     traffic_dial_percentage: 50
@@ -144,6 +148,10 @@ provisioner:
                                 'molecule-http-80'
                               ].load_balancer_arn }}"
                         weight: 200
+              - protocol: TCP
+                port_ranges:
+                  - from_port: 443
+                    to_port: 444
           - name: molecule-global-accelerator-01
             enabled: false
             tags:
