@@ -1,0 +1,9 @@
+---
+minor_changes:
+  - ec2_vpc_vpn - add the ``phase1_lifetime_seconds``, ``phase2_lifetime_seconds``, ``rekey_margin_time_seconds``,
+    ``rekey_fuzz_percentage``, ``replay_window_size``, ``dpd_timeout_seconds``, ``dpd_timeout_action``,
+    ``startup_action``, ``enable_tunnel_lifecycle_control``, and ``log_options`` tunnel options.
+  - ec2_vpc_vpn - add the ``skip_tunnel_replacement`` option to change tunnel endpoint lifecycle control without
+    replacing the tunnel endpoint.
+  - ec2_vpc_vpn - add the ``enable_acceleration``, ``outside_ip_address_type``,
+    ``transport_transit_gateway_attachment_id``, and ``vpn_concentrator_id`` options for creating a connection.

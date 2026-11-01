@@ -11,7 +11,8 @@ description:
   - Creates, updates, and deletes a VPN connection selected by name, ID, or filters.
   - Updates only supplied attributes, including tunnel encryption and connection CIDRs.
   - Tunnel changes are applied sequentially and can temporarily interrupt connectivity.
-  - Gateway IDs, routing mode, and tunnel address family cannot be changed on an existing connection.
+  - Gateway and VPN concentrator IDs, routing mode, tunnel address family, acceleration, outside IP address type, and
+    transport attachment cannot be changed on an existing connection.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -23,6 +24,12 @@ options:
   customer_gateway_id:
     description: The customer gateway ID. Required to create a connection.
     type: str
+  enable_acceleration:
+    description:
+      - Whether the connection uses AWS Global Accelerator to route traffic to the nearest AWS edge location.
+      - AWS defaults to false on creation. Cannot be changed on an existing connection.
+    type: bool
+    version_added: "2.6.0"
   filters:
     description:
       - EC2 filter names mapped to strings or lists of strings. Must uniquely identify a connection.
@@ -44,6 +51,16 @@ options:
       - Supply one of O(name), O(vpn_connection_id), or O(filters).
       - Mutually exclusive with O(vpn_connection_id) and O(filters).
     type: str
+  outside_ip_address_type:
+    description:
+      - The type of IP address on the outside interface of the customer gateway device.
+      - C(Ipv6) requires a customer gateway with an IPv6 address.
+      - C(PrivateIpv4) requires O(transport_transit_gateway_attachment_id). It applies to private IP VPN
+        connections over AWS Direct Connect, which this module supports with unit tests only.
+      - AWS defaults to C(PublicIpv4) on creation. Cannot be changed on an existing connection.
+    type: str
+    choices: [PrivateIpv4, PublicIpv4, Ipv6]
+    version_added: "2.6.0"
   pre_shared_key_storage:
     description:
       - Where the tunnel pre-shared keys are stored. C(Standard) stores them in the Site-to-Site VPN service.
@@ -79,6 +96,18 @@ options:
       - Waits for requested routes to become available and removed routes to disappear, except in check mode.
     type: list
     elements: str
+  skip_tunnel_replacement:
+    description:
+      - Whether to skip the immediate tunnel endpoint replacement that a change to
+        O(tunnel_options[].enable_tunnel_lifecycle_control) starts on an existing tunnel.
+      - When true, the module sends a tunnel's lifecycle control change on its own, which EC2 applies without a
+        replacement or a C(modifying) state, and then sends the tunnel's other changes as usual. EC2 rejects skipping
+        together with changes such as O(tunnel_options[].startup_action).
+      - It is not part of the connection state, so it is never compared and never reports a change by itself. It is
+        ignored during creation and when lifecycle control does not change.
+      - When omitted or false, EC2 replaces the tunnel endpoint, which keeps its outside IP address.
+    type: bool
+    version_added: "2.6.0"
   state:
     description: The desired connection state.
     type: str
@@ -90,9 +119,17 @@ options:
     type: bool
   transit_gateway_id:
     description:
-      - The transit gateway ID. Required for creation unless O(vpn_gateway_id) is supplied.
+      - The transit gateway ID. Required for creation unless O(vpn_gateway_id) or O(vpn_concentrator_id) is supplied.
       - Mutually exclusive with O(vpn_gateway_id).
     type: str
+  transport_transit_gateway_attachment_id:
+    description:
+      - The transit gateway attachment that carries the tunnels of a C(PrivateIpv4) connection, such as an AWS
+        Direct Connect gateway attachment. EC2 requires it when O(outside_ip_address_type=PrivateIpv4).
+      - Requires AWS Direct Connect, so this module supports it with unit tests only.
+      - Cannot be changed on an existing connection.
+    type: str
+    version_added: "2.6.0"
   tunnel_bandwidth:
     description:
       - The bandwidth of each tunnel. C(standard) supports up to 1.25 Gbps per tunnel and C(large) up to 5 Gbps.
@@ -122,11 +159,83 @@ options:
     type: list
     elements: dict
     suboptions:
+      dpd_timeout_action:
+        description:
+          - The action after a dead peer detection timeout. C(clear) ends the IKE session, C(restart) restarts the IKE
+            initiation, and C(none) takes no action.
+          - AWS defaults to C(clear).
+        type: str
+        choices: [clear, none, restart]
+        version_added: "2.6.0"
+      dpd_timeout_seconds:
+        description:
+          - The number of seconds after which a dead peer detection timeout occurs. Must be 30 or greater.
+          - EC2 does not return a timeout that was never set, and the EC2 API documents both 30 and 40 as its default,
+            so the first update that supplies a timeout for such a tunnel always sends it.
+        type: int
+        version_added: "2.6.0"
+      enable_tunnel_lifecycle_control:
+        description:
+          - Whether tunnel endpoint lifecycle control is enabled, which lets you schedule the replacement of the tunnel
+            endpoint during AWS maintenance.
+          - AWS defaults to false. Changing it on an existing tunnel replaces the tunnel endpoint, which keeps its
+            outside IP address, unless O(skip_tunnel_replacement=true).
+        type: bool
+        version_added: "2.6.0"
       ike_versions:
         description: The permitted IKE versions. Order is ignored.
         type: list
         elements: str
         choices: [ikev1, ikev2]
+      log_options:
+        description: Options for logging tunnel activity.
+        type: dict
+        version_added: "2.6.0"
+        suboptions:
+          cloud_watch_log_options:
+            description:
+              - Options for sending tunnel logs to CloudWatch Logs. Omitted fields retain their current values.
+              - EC2 rejects a log group that does not exist in the connection's Region.
+            type: dict
+            suboptions:
+              bgp_log_enabled:
+                description:
+                  - Whether to send BGP logs. AWS defaults to false.
+                  - EC2 rejects enabling it on a tunnel without a BGP log group, which
+                    O(tunnel_options[].log_options.cloud_watch_log_options.bgp_log_group_arn) sets. The module checks
+                    an existing tunnel before any change.
+                  - Requires botocore 1.41.1 or later.
+                type: bool
+              bgp_log_group_arn:
+                description:
+                  - The ARN of the CloudWatch Logs log group for BGP logs.
+                  - EC2 stores the ARN as supplied, with or without a trailing C(:*), and the module compares it
+                    exactly.
+                  - Requires botocore 1.41.1 or later.
+                type: str
+              bgp_log_output_format:
+                description:
+                  - The format of BGP logs. AWS defaults to C(json).
+                  - Requires botocore 1.41.1 or later.
+                type: str
+                choices: [json, text]
+              log_enabled:
+                description:
+                  - Whether to send tunnel activity logs. AWS defaults to false.
+                  - EC2 requires a log group, from O(tunnel_options[].log_options.cloud_watch_log_options.log_group_arn)
+                    or already set on the tunnel, to enable it. The module checks an existing tunnel before any change.
+                type: bool
+              log_group_arn:
+                description:
+                  - The ARN of the CloudWatch Logs log group for tunnel activity logs.
+                  - EC2 stores the ARN as supplied, with or without a trailing C(:*), and the module compares it
+                    exactly.
+                  - EC2 keeps the log group when logging is disabled.
+                type: str
+              log_output_format:
+                description: The format of tunnel activity logs. AWS defaults to C(json).
+                type: str
+                choices: [json, text]
       outside_ip_address:
         description: Optional outside IP selecting one existing tunnel. Cannot be supplied during creation.
         type: str
@@ -145,6 +254,15 @@ options:
         type: list
         elements: str
         choices: [SHA1, SHA2-256, SHA2-384, SHA2-512]
+      phase1_lifetime_seconds:
+        description:
+          - The lifetime of phase 1 of the IKE negotiation, from 900 to 28800 seconds. AWS defaults to 28800.
+          - Must not be less than the tunnel's phase 2 lifetime.
+          - EC2 checks the lifetimes and rekey margin of an update against the AWS defaults of those it omits, not the
+            tunnel's current values. A change to one of them therefore also resends the others already set on the
+            tunnel, and the module checks the resulting values before any change.
+        type: int
+        version_added: "2.6.0"
       phase2_dh_group_numbers:
         description: The permitted phase 2 Diffie-Hellman groups. Order is ignored.
         type: list
@@ -160,6 +278,13 @@ options:
         type: list
         elements: str
         choices: [SHA1, SHA2-256, SHA2-384, SHA2-512]
+      phase2_lifetime_seconds:
+        description:
+          - The lifetime of phase 2 of the IKE negotiation, from 900 to 3600 seconds. AWS defaults to 3600.
+          - Must not exceed the tunnel's phase 1 lifetime and must be at least twice its rekey margin time. Updated
+            together with them, as O(tunnel_options[].phase1_lifetime_seconds) describes.
+        type: int
+        version_added: "2.6.0"
       pre_shared_key:
         description:
           - A pre-shared key of 8 to 64 alphanumeric, period, or underscore characters, not starting with zero.
@@ -169,12 +294,46 @@ options:
             O(pre_shared_key_storage=Standard) to move the key out of Secrets Manager and set it in the same update.
           - Cannot be used with O(pre_shared_key_storage=SecretsManager).
         type: str
+      rekey_fuzz_percentage:
+        description:
+          - The percentage of the rekey window, set by the rekey margin time, during which the rekey time is randomly
+            selected. From 0 to 100. AWS defaults to 100.
+        type: int
+        version_added: "2.6.0"
+      rekey_margin_time_seconds:
+        description:
+          - The seconds before the phase 2 lifetime expires during which AWS performs an IKE rekey. AWS defaults to 270.
+          - Must be 60 or greater and at most half of the tunnel's phase 2 lifetime. Updated together with the
+            lifetimes, as O(tunnel_options[].phase1_lifetime_seconds) describes.
+        type: int
+        version_added: "2.6.0"
+      replay_window_size:
+        description: The number of packets in an IKE replay window, from 64 to 2048. AWS defaults to 1024.
+        type: int
+        version_added: "2.6.0"
+      startup_action:
+        description:
+          - The action when establishing the tunnel. C(add) waits for the customer gateway to initiate the IKE
+            negotiation, and C(start) has AWS initiate it.
+          - AWS defaults to C(add).
+        type: str
+        choices: [add, start]
+        version_added: "2.6.0"
       tunnel_inside_cidr:
         description: An unreserved IPv4 /30 network in C(169.254.0.0/16).
         type: str
       tunnel_inside_ipv6_cidr:
         description: An IPv6 /126 network in C(fd00::/8). Requires an IPv6 VPN connection.
         type: str
+  vpn_concentrator_id:
+    description:
+      - The ID of the VPN concentrator that attaches the connection to its transit gateway. Required for creation
+        unless O(vpn_gateway_id) or O(transit_gateway_id) is supplied. EC2 rejects it together with
+        O(transit_gateway_id).
+      - Cannot be changed on an existing connection.
+      - Requires botocore 1.40.76 or later.
+    type: str
+    version_added: "2.6.0"
   vpn_connection_id:
     description:
       - The ID of an existing VPN connection. A missing ID cannot be used to create a connection.
@@ -183,7 +342,8 @@ options:
     type: str
   vpn_gateway_id:
     description:
-      - The virtual private gateway ID. Required for creation unless O(transit_gateway_id) is supplied.
+      - The virtual private gateway ID. Required for creation unless O(transit_gateway_id) or O(vpn_concentrator_id)
+        is supplied.
       - Mutually exclusive with O(transit_gateway_id).
     type: str
   wait_delay:
@@ -247,6 +407,38 @@ EXAMPLES = r"""
     transit_gateway_id: tgw-0123456789abcdef0
     tunnel_bandwidth: large
     pre_shared_key_storage: SecretsManager
+
+- name: Create an accelerated transit gateway VPN with tuned and logged tunnels
+  linuxhq.aws.ec2_vpc_vpn:
+    name: datacenter-accelerated
+    customer_gateway_id: cgw-0123456789abcdef0
+    transit_gateway_id: tgw-0123456789abcdef0
+    enable_acceleration: true
+    tunnel_options:
+      - phase1_lifetime_seconds: 14400
+        phase2_lifetime_seconds: 1800
+        rekey_margin_time_seconds: 540
+        dpd_timeout_seconds: 60
+        dpd_timeout_action: restart
+        startup_action: start
+        log_options:
+          cloud_watch_log_options:
+            log_enabled: true
+            log_group_arn: arn:aws:logs:us-east-1:123456789012:log-group:vpn-tunnels
+            log_output_format: text
+
+- name: Attach a branch VPN to a VPN concentrator
+  linuxhq.aws.ec2_vpc_vpn:
+    name: branch-17
+    customer_gateway_id: cgw-0123456789abcdef0
+    vpn_concentrator_id: vcn-0123456789abcdef0
+
+- name: Turn on tunnel endpoint lifecycle control without replacing the endpoints
+  linuxhq.aws.ec2_vpc_vpn:
+    vpn_connection_id: vpn-0123456789abcdef0
+    skip_tunnel_replacement: true
+    tunnel_options:
+      - enable_tunnel_lifecycle_control: true
 
 - name: Update encryption on an existing tunnel
   linuxhq.aws.ec2_vpc_vpn:
@@ -631,7 +823,49 @@ TUNNEL_FIELDS = {
     "phase2_integrity_algorithms": "Phase2IntegrityAlgorithms",
     "phase1_dh_group_numbers": "Phase1DHGroupNumbers",
     "phase2_dh_group_numbers": "Phase2DHGroupNumbers",
+    "phase1_lifetime_seconds": "Phase1LifetimeSeconds",
+    "phase2_lifetime_seconds": "Phase2LifetimeSeconds",
+    "rekey_margin_time_seconds": "RekeyMarginTimeSeconds",
+    "rekey_fuzz_percentage": "RekeyFuzzPercentage",
+    "replay_window_size": "ReplayWindowSize",
+    "dpd_timeout_seconds": "DPDTimeoutSeconds",
+    "dpd_timeout_action": "DPDTimeoutAction",
+    "startup_action": "StartupAction",
+    "enable_tunnel_lifecycle_control": "EnableTunnelLifecycleControl",
+    "log_options": "LogOptions",
 }
+
+# EC2 uses different key casing in requests and responses.
+TUNNEL_RESPONSE_FIELDS = {
+    "IKEVersions": "IkeVersions",
+    "DPDTimeoutSeconds": "DpdTimeoutSeconds",
+    "DPDTimeoutAction": "DpdTimeoutAction",
+}
+
+# Live: EC2 rejects phase 2 lifetimes above phase 1 and rekey margins above half of phase 2.
+TIMER_FIELDS = ("Phase1LifetimeSeconds", "Phase2LifetimeSeconds", "RekeyMarginTimeSeconds")
+
+# Live: EC2 rejects values outside these ranges with InvalidParameterValue.
+TUNNEL_RANGES = {
+    "phase1_lifetime_seconds": (900, 28800),
+    "phase2_lifetime_seconds": (900, 3600),
+    "rekey_margin_time_seconds": (60, None),
+    "rekey_fuzz_percentage": (0, 100),
+    "replay_window_size": (64, 2048),
+    "dpd_timeout_seconds": (30, None),
+}
+
+LOG_FIELDS = {
+    "log_enabled": "LogEnabled",
+    "log_group_arn": "LogGroupArn",
+    "log_output_format": "LogOutputFormat",
+    "bgp_log_enabled": "BgpLogEnabled",
+    "bgp_log_group_arn": "BgpLogGroupArn",
+    "bgp_log_output_format": "BgpLogOutputFormat",
+}
+
+# EC2 omits a log option that was never set; these are its AWS defaults.
+LOG_DEFAULTS = {"LogEnabled": False, "LogOutputFormat": "json", "BgpLogEnabled": False, "BgpLogOutputFormat": "json"}
 
 TUNNEL_CHOICES = {
     "ike_versions": ["ikev1", "ikev2"],
@@ -643,8 +877,20 @@ TUNNEL_CHOICES = {
     "phase2_dh_group_numbers": [2, 5, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
 }
 
-# EC2 omits a tunnel list option that was never set; its AWS default permits every choice.
-TUNNEL_DEFAULTS = {TUNNEL_FIELDS[name]: set(choices) for name, choices in TUNNEL_CHOICES.items()}
+# EC2 omits a tunnel option that was never set; a list option's AWS default permits every choice. Live, EC2 returns
+# every value once set, even one equal to its default. DPDTimeoutSeconds has no entry: the EC2 API documents both 30
+# and 40 as its default, so a supplied value is sent once to a tunnel where it was never set.
+TUNNEL_DEFAULTS = {
+    **{TUNNEL_FIELDS[name]: set(choices) for name, choices in TUNNEL_CHOICES.items()},
+    "Phase1LifetimeSeconds": 28800,
+    "Phase2LifetimeSeconds": 3600,
+    "RekeyMarginTimeSeconds": 270,
+    "RekeyFuzzPercentage": 100,
+    "ReplayWindowSize": 1024,
+    "DPDTimeoutAction": "clear",
+    "StartupAction": "add",
+    "EnableTunnelLifecycleControl": False,
+}
 
 
 RESERVED_TUNNEL_IPV4_NETWORKS = {f"169.254.{index}.0/30" for index in range(6)} | {"169.254.169.252/30"}
@@ -796,6 +1042,12 @@ def tunnel_request(options):
 
     for name, field in TUNNEL_FIELDS.items():
         value = options.get(name)
+        if name == "log_options" and value is not None:
+            cloud_watch = scrub_none_parameters(
+                {LOG_FIELDS[key]: item for key, item in (value.get("cloud_watch_log_options") or {}).items()}
+            )
+            value = {"CloudWatchLogOptions": cloud_watch} if cloud_watch else None
+
         if value is not None:
             if name in TUNNEL_CHOICES:
                 value = [{"Value": item} for item in sorted(set(value))]
@@ -909,8 +1161,7 @@ def tunnel_deltas(module, connection):
         tunnel = matches[0]
         delta = {}
         for field, value in tunnel_request(desired).items():
-            # EC2 uses different IKE key casing in requests and responses.
-            actual = tunnel.get("IkeVersions" if field == "IKEVersions" else field)
+            actual = tunnel.get(TUNNEL_RESPONSE_FIELDS.get(field, field))
             if field == "PreSharedKey":
                 usable = isinstance(actual, str) and bool(actual)
                 if not usable and module.params["pre_shared_key_storage"] != "Standard":
@@ -923,6 +1174,29 @@ def tunnel_deltas(module, connection):
 
                 # Live: the update that moves a key out of Secrets Manager also sets the supplied key.
                 equal = usable and secrets.compare_digest(value.encode("utf-8"), actual.encode("utf-8"))
+            elif field == "LogOptions":
+                cloud_watch = actual.get("CloudWatchLogOptions") if isinstance(actual, dict) else actual
+                if cloud_watch is not None and not isinstance(cloud_watch, dict):
+                    module.fail_json(
+                        msg=f"EC2 returned invalid LogOptions for VPN connection {connection['VpnConnectionId']} "
+                        f"tunnel {outside_ip}"
+                    )
+
+                # Live: EC2 keeps the log fields an update omits, so only the supplied ones are compared and sent.
+                cloud_watch = cloud_watch or {}
+                equal = all(
+                    item == (LOG_DEFAULTS.get(key) if cloud_watch.get(key) is None else cloud_watch[key])
+                    for key, item in value["CloudWatchLogOptions"].items()
+                )
+                # Live: EC2 rejects enabling logs without a log group, supplied or already set on the tunnel. A later
+                # tunnel update can follow other writes, so this fails before any of them.
+                resulting = dict(cloud_watch, **value["CloudWatchLogOptions"])
+                for enabled, group in (("log_enabled", "log_group_arn"), ("bgp_log_enabled", "bgp_log_group_arn")):
+                    if not equal and resulting.get(LOG_FIELDS[enabled]) and not resulting.get(LOG_FIELDS[group]):
+                        module.fail_json(
+                            msg=f"Cannot update VPN connection {connection['VpnConnectionId']} tunnel {outside_ip}: "
+                            f"{enabled} requires {group}, which is neither supplied nor set on the tunnel"
+                        )
             elif isinstance(value, list):
                 value_type = int if field.endswith("DHGroupNumbers") else str
                 if actual is not None and (
@@ -942,7 +1216,7 @@ def tunnel_deltas(module, connection):
                 current_values = TUNNEL_DEFAULTS[field] if actual is None else {item["Value"] for item in actual}
                 equal = {item["Value"] for item in value} == current_values
             else:
-                equal = value == actual
+                equal = value == (TUNNEL_DEFAULTS.get(field) if actual is None else actual)
 
             if not equal:
                 if field in ("TunnelInsideCidr", "TunnelInsideIpv6Cidr") and any(
@@ -956,10 +1230,52 @@ def tunnel_deltas(module, connection):
 
                 delta[field] = value
 
+        if any(field in delta for field in TIMER_FIELDS):
+            require_valid_timers(module, connection, tunnel, delta)
+            # Live: EC2 checks the timers in a request against the AWS defaults of those it omits, not the tunnel's
+            # current values, so a timer change also resends the timers already set on the tunnel.
+            delta.update(
+                {field: tunnel[field] for field in TIMER_FIELDS if field not in delta and tunnel.get(field) is not None}
+            )
+
         if delta:
             changes.append((outside_ip, delta))
 
     return changes
+
+
+def require_valid_timers(module, connection, tunnel, delta):
+    """Fail before any write when a tunnel's resulting lifetimes and rekey margin break the rules EC2 enforces."""
+    timers = []
+    for field in TIMER_FIELDS:
+        value = delta[field] if field in delta else tunnel.get(field)
+        if value is None:
+            value = TUNNEL_DEFAULTS[field]
+
+        if not isinstance(value, int) or isinstance(value, bool):
+            module.fail_json(
+                msg=f"EC2 returned invalid {field} for VPN connection {connection['VpnConnectionId']} "
+                f"tunnel {tunnel['OutsideIpAddress']}"
+            )
+
+        timers.append(value)
+
+    # Live: EC2 accepts equal lifetimes and a rekey margin of exactly half the phase 2 lifetime.
+    phase1, phase2, margin = timers
+    problems = []
+    if phase2 > phase1:
+        problems.append(f"phase2_lifetime_seconds ({phase2}) must not exceed phase1_lifetime_seconds ({phase1})")
+
+    if margin * 2 > phase2:
+        problems.append(
+            f"rekey_margin_time_seconds ({margin}) must not exceed half of phase2_lifetime_seconds ({phase2})"
+        )
+
+    if problems:
+        module.fail_json(
+            msg=f"Cannot update VPN connection {connection['VpnConnectionId']} tunnel {tunnel['OutsideIpAddress']}: "
+            + "; ".join(problems)
+        )
 
 
 def validate_network(module, value, name, version):
@@ -994,6 +1310,25 @@ def validate_inputs(module):
     if module.params["tunnel_bandwidth"] is not None:
         module.require_botocore_at_least("1.40.71", reason="for tunnel_bandwidth")
 
+    if module.params["vpn_concentrator_id"] is not None:
+        module.require_botocore_at_least("1.40.76", reason="for vpn_concentrator_id")
+
+    tunnels = module.params["tunnel_options"] or []
+    bgp_options = sorted(
+        {
+            name
+            for tunnel in tunnels
+            for name, value in ((tunnel.get("log_options") or {}).get("cloud_watch_log_options") or {}).items()
+            if name.startswith("bgp_") and value is not None
+        }
+    )
+    if bgp_options:
+        module.require_botocore_at_least("1.41.1", reason=f"for {bgp_options[0]}")
+
+    # Live: EC2 treats a whitespace-only concentrator or attachment ID as omitted, so a rerun could never match it.
+    for name in ("transport_transit_gateway_attachment_id", "vpn_concentrator_id"):
+        require_non_blank(module, module.params[name], name)
+
     if (
         module.params["name"]
         and module.params["tags"] is not None
@@ -1014,7 +1349,6 @@ def validate_inputs(module):
             {str(validate_network(module, route, "routes", 4)) for route in module.params["routes"]}
         )
 
-    tunnels = module.params["tunnel_options"] or []
     if len(tunnels) > 2:
         module.fail_json(msg="tunnel_options must contain at most two entries")
 
@@ -1023,6 +1357,13 @@ def validate_inputs(module):
         for name in TUNNEL_CHOICES:
             if tunnel.get(name) == []:
                 module.fail_json(msg=f"tunnel_options[].{name} must not be empty")
+
+        # A later tunnel update can follow other writes, so out-of-range values fail before any of them.
+        for name, (low, high) in TUNNEL_RANGES.items():
+            value = tunnel.get(name)
+            if value is not None and (value < low or (high is not None and value > high)):
+                limit = f"{low} or greater" if high is None else f"between {low} and {high}"
+                module.fail_json(msg=f"tunnel_options[].{name} must be {limit}")
 
         key = tunnel.get("pre_shared_key")
         if key is not None and not valid_pre_shared_key(key):
@@ -1077,14 +1418,15 @@ def desired_tags(module, current):
 
 
 def validate_configuration(module, connection=None, changed=False):
+    # A VPN concentrator attaches the connection to its transit gateway; live, EC2 then omits TransitGatewayId.
     if connection is not None:
         options = connection["Options"]
         static_only = options.get("StaticRoutesOnly") or False
-        transit_gateway = connection.get("TransitGatewayId")
+        transit_gateway = connection.get("TransitGatewayId") or connection.get("VpnConcentratorId")
         family = options.get("TunnelInsideIpVersion") or "ipv4"
     else:
         static_only = module.params["static_only"] or False
-        transit_gateway = module.params["transit_gateway_id"]
+        transit_gateway = module.params["transit_gateway_id"] or module.params["vpn_concentrator_id"]
         family = module.params["tunnel_inside_ip_version"] or "ipv4"
 
     if module.params["routes"] and (not static_only or transit_gateway):
@@ -1109,12 +1451,17 @@ def validate_configuration(module, connection=None, changed=False):
             module.fail_json(changed=changed, msg=f"{name} requires tunnel_inside_ip_version=ipv6")
 
     if connection is not None:
+        # No EC2 modify operation takes the last four. A missing acceleration or address type is the AWS default.
         immutable = {
             "customer_gateway_id": connection.get("CustomerGatewayId"),
             "vpn_gateway_id": connection.get("VpnGatewayId"),
             "transit_gateway_id": connection.get("TransitGatewayId"),
             "static_only": static_only,
             "tunnel_inside_ip_version": family,
+            "enable_acceleration": options.get("EnableAcceleration") or False,
+            "outside_ip_address_type": options.get("OutsideIpAddressType") or "PublicIpv4",
+            "transport_transit_gateway_attachment_id": options.get("TransportTransitGatewayAttachmentId"),
+            "vpn_concentrator_id": connection.get("VpnConcentratorId"),
         }
 
         for name, actual in immutable.items():
@@ -1133,13 +1480,15 @@ def create_connection(client, module):
         )
 
     # EC2 treats a whitespace-only gateway ID as omitted, so it counts as missing here too.
+    gateways = ("vpn_gateway_id", "transit_gateway_id", "vpn_concentrator_id")
     if (
         not module.params["name"]
         or not (module.params["customer_gateway_id"] or "").strip()
-        or not (module.params["vpn_gateway_id"] or module.params["transit_gateway_id"] or "").strip()
+        or not any((module.params[name] or "").strip() for name in gateways)
     ):
         module.fail_json(
-            msg="Creation requires name, customer_gateway_id, and either vpn_gateway_id or transit_gateway_id"
+            msg="Creation requires name, customer_gateway_id, and one of vpn_gateway_id, transit_gateway_id, "
+            "or vpn_concentrator_id"
         )
 
     if any(tunnel.get("outside_ip_address") for tunnel in module.params["tunnel_options"] or []):
@@ -1150,7 +1499,10 @@ def create_connection(client, module):
 
     options = {field: module.params[name] for name, field in CONNECTION_FIELDS.items()}
     options.update(
+        EnableAcceleration=module.params["enable_acceleration"],
+        OutsideIpAddressType=module.params["outside_ip_address_type"],
         StaticRoutesOnly=module.params["static_only"],
+        TransportTransitGatewayAttachmentId=module.params["transport_transit_gateway_attachment_id"],
         TunnelBandwidth=module.params["tunnel_bandwidth"],
         TunnelInsideIpVersion=module.params["tunnel_inside_ip_version"],
     )
@@ -1168,6 +1520,7 @@ def create_connection(client, module):
             "CustomerGatewayId": module.params["customer_gateway_id"],
             "VpnGatewayId": module.params["vpn_gateway_id"],
             "TransitGatewayId": module.params["transit_gateway_id"],
+            "VpnConcentratorId": module.params["vpn_concentrator_id"],
             "PreSharedKeyStorage": module.params["pre_shared_key_storage"],
             "Options": options,
             "TagSpecifications": [{"ResourceType": "vpn-connection", "Tags": ansible_dict_to_boto3_tag_list(tags)}],
@@ -1271,10 +1624,20 @@ def ensure_present(client, module, connection):
     if options:
         methods["modify_vpn_connection_options"] = ("VpnConnectionId",) + tuple(options)
 
+    # Skipping applies only to a lifecycle control change and never counts as a change; live, false replaces the
+    # endpoint just as omitting it does, so only true is sent.
+    skipped = {
+        outside_ip
+        for outside_ip, delta in tunnels
+        if module.params["skip_tunnel_replacement"] and "EnableTunnelLifecycleControl" in delta
+    }
     if tunnels:
         methods["modify_vpn_tunnel_options"] = ("TunnelOptions", "VpnConnectionId", "VpnTunnelOutsideIpAddress")
         if stored:
             methods["modify_vpn_tunnel_options"] += ("PreSharedKeyStorage",)
+
+        if skipped:
+            methods["modify_vpn_tunnel_options"] += ("SkipTunnelReplacement",)
 
     if remove_routes:
         methods["delete_vpn_connection_route"] = ("DestinationCidrBlock", "VpnConnectionId")
@@ -1307,21 +1670,30 @@ def ensure_present(client, module, connection):
 
     for outside_ip, delta in tunnels:
         storage = {"PreSharedKeyStorage": module.params["pre_shared_key_storage"]} if outside_ip in stored else {}
-        try:
-            client.modify_vpn_tunnel_options(
-                VpnConnectionId=connection_id,
-                VpnTunnelOutsideIpAddress=outside_ip,
-                TunnelOptions=delta,
-                **storage,
-                aws_retry=True,
-            )
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e, changed=mutated, msg=f"Unable to modify VPN connection {connection_id} tunnel {outside_ip}"
-            )
+        requests = [(delta, storage)]
+        if outside_ip in skipped:
+            # Live: EC2 rejects SkipTunnelReplacement with other changes such as StartupAction, so lifecycle control
+            # changes first on its own, which EC2 applies without entering modifying.
+            rest = {field: value for field, value in delta.items() if field != "EnableTunnelLifecycleControl"}
+            lifecycle = {"EnableTunnelLifecycleControl": delta["EnableTunnelLifecycleControl"]}
+            requests = [(lifecycle, {"SkipTunnelReplacement": True})] + ([(rest, storage)] if rest or storage else [])
 
-        mutated = True
-        wait_for_connection(client, module, connection_id, changed=True)
+        for options, parameters in requests:
+            try:
+                client.modify_vpn_tunnel_options(
+                    VpnConnectionId=connection_id,
+                    VpnTunnelOutsideIpAddress=outside_ip,
+                    TunnelOptions=options,
+                    **parameters,
+                    aws_retry=True,
+                )
+            except (BotoCoreError, ClientError) as e:
+                module.fail_json_aws(
+                    e, changed=mutated, msg=f"Unable to modify VPN connection {connection_id} tunnel {outside_ip}"
+                )
+
+            mutated = True
+            wait_for_connection(client, module, connection_id, changed=True)
 
     reconcile_routes(client, module, connection_id, add_routes, remove_routes, changed=mutated)
     mutated = mutated or bool(add_routes or remove_routes)
@@ -1454,11 +1826,33 @@ def ensure_absent(client, module, connection):
 
 
 def main():
+    log_spec = {
+        "log_enabled": {"type": "bool"},
+        "log_group_arn": {"type": "str"},
+        "log_output_format": {"type": "str", "choices": ["json", "text"]},
+        "bgp_log_enabled": {"type": "bool"},
+        "bgp_log_group_arn": {"type": "str"},
+        "bgp_log_output_format": {"type": "str", "choices": ["json", "text"]},
+    }
     tunnel_spec = {
         "outside_ip_address": {"type": "str"},
         "tunnel_inside_cidr": {"type": "str"},
         "tunnel_inside_ipv6_cidr": {"type": "str"},
         "pre_shared_key": {"type": "str", "no_log": True},
+        "phase1_lifetime_seconds": {"type": "int"},
+        "phase2_lifetime_seconds": {"type": "int"},
+        # Rekey timers are not secrets.
+        "rekey_margin_time_seconds": {"type": "int", "no_log": False},
+        "rekey_fuzz_percentage": {"type": "int", "no_log": False},
+        "replay_window_size": {"type": "int"},
+        "dpd_timeout_seconds": {"type": "int"},
+        "dpd_timeout_action": {"type": "str", "choices": ["clear", "none", "restart"]},
+        "startup_action": {"type": "str", "choices": ["add", "start"]},
+        "enable_tunnel_lifecycle_control": {"type": "bool"},
+        "log_options": {
+            "type": "dict",
+            "options": {"cloud_watch_log_options": {"type": "dict", "options": log_spec}},
+        },
     }
 
     for name, choices in TUNNEL_CHOICES.items():
@@ -1480,11 +1874,16 @@ def main():
         "customer_gateway_id": {"type": "str"},
         "vpn_gateway_id": {"type": "str"},
         "transit_gateway_id": {"type": "str"},
+        "vpn_concentrator_id": {"type": "str"},
         "connection_type": {
             "type": "str",
             "choices": ["ipsec.1"],
             "default": "ipsec.1",
         },
+        "enable_acceleration": {"type": "bool"},
+        "outside_ip_address_type": {"type": "str", "choices": ["PrivateIpv4", "PublicIpv4", "Ipv6"]},
+        "transport_transit_gateway_attachment_id": {"type": "str"},
+        "skip_tunnel_replacement": {"type": "bool"},
         "static_only": {"type": "bool"},
         "pre_shared_key_storage": {"type": "str", "choices": ["Standard", "SecretsManager"]},
         "tunnel_bandwidth": {"type": "str", "choices": ["standard", "large"]},

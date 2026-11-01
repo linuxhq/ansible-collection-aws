@@ -12,6 +12,13 @@
         - molecule-idempotence-notest
       check_mode: false
 
+    - role: cloudwatchlogs_log_group
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: cloudwatchlogs_log_group_info
+
     - role: ec2_vpc_vpn
       ec2_vpc_vpn_list: []
       tags:

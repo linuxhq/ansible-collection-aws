@@ -15,7 +15,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.retries import Retrying
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import sdk
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_vpc_vpn as plugin
-from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule, ModuleExit, ModuleFail
+from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
+    FakeModule,
+    ModuleExit,
+    ModuleFail,
+    assert_documents_shape,
+    documented_returns,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -251,15 +257,20 @@ def test_module_argument_defaults(module_spec):
     assert not result.error_messages
     expected = {
         "connection_type": "ipsec.1",
+        "enable_acceleration": None,
+        "outside_ip_address_type": None,
         "purge_routes": True,
         "purge_tags": True,
         "routes": None,
+        "skip_tunnel_replacement": None,
         "state": "present",
         "pre_shared_key_storage": None,
         "static_only": None,
         "tags": None,
+        "transport_transit_gateway_attachment_id": None,
         "tunnel_bandwidth": None,
         "tunnel_options": None,
+        "vpn_concentrator_id": None,
         "wait_delay": 15,
         "wait_timeout": 600,
     }
@@ -574,9 +585,14 @@ DEFAULT_TUNNEL_LISTS = {
 
 @pytest.fixture
 def default_tunnels(connection):
-    # EC2 returns only these fields for tunnels created with default options.
+    # Live: EC2 returns only these fields for tunnels created with default options.
     connection["Options"]["TunnelOptions"] = [
-        {"OutsideIpAddress": address, "PreSharedKey": "EXAMPLE_GENERATED_SECRET", "TunnelInsideCidr": cidr}
+        {
+            "OutsideIpAddress": address,
+            "PreSharedKey": "EXAMPLE_GENERATED_SECRET",
+            "TunnelInsideCidr": cidr,
+            "LogOptions": {"CloudWatchLogOptions": {"LogEnabled": False, "BgpLogEnabled": False}},
+        }
         for address, cidr in (("203.0.113.1", "169.254.10.0/30"), ("203.0.113.2", "169.254.11.0/30"))
     ]
     return connection
@@ -831,8 +847,9 @@ def test_create_check_mode_validates_and_does_not_invent_an_id(params):
         {"customer_gateway_id": None, "vpn_gateway_id": "vgw-123"},
         {"customer_gateway_id": "cgw-123", "vpn_gateway_id": None},
         {"customer_gateway_id": "cgw-123", "transit_gateway_id": None},
+        {"customer_gateway_id": "cgw-123", "vpn_concentrator_id": None},
     ],
-    ids=["customer_gateway_id", "vpn_gateway_id", "transit_gateway_id"],
+    ids=["customer_gateway_id", "vpn_gateway_id", "transit_gateway_id", "vpn_concentrator_id"],
 )
 def test_create_rejects_blank_gateway_ids_before_any_aws_call(params, check_mode, blank, gateways):
     # No gateway has a blank ID, so EC2 can never create the connection that check mode would predict.
@@ -842,7 +859,8 @@ def test_create_rejects_blank_gateway_ids_before_any_aws_call(params, check_mode
         plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), None)
 
     assert raised.value.values == {
-        "msg": "Creation requires name, customer_gateway_id, and either vpn_gateway_id or transit_gateway_id"
+        "msg": "Creation requires name, customer_gateway_id, and one of vpn_gateway_id, transit_gateway_id, "
+        "or vpn_concentrator_id"
     }
     assert client.mock_calls == []
 
@@ -1822,7 +1840,9 @@ def test_unsupported_tunnel_bandwidth_update_fails_before_any_write(params, tran
         ("tunnel_bandwidth", "large", "1.40.71"),
         ("pre_shared_key_storage", "Standard", "1.38.24"),
         ("pre_shared_key_storage", "SecretsManager", "1.38.24"),
+        ("vpn_concentrator_id", "vcn-123", "1.40.76"),
         ("tunnel_bandwidth", None, None),
+        ("vpn_concentrator_id", None, None),
     ],
 )
 def test_new_options_require_botocore_only_when_supplied(params, state, option, value, version):
@@ -2064,3 +2084,683 @@ def test_key_storage_without_returned_tunnels_fails_before_any_write(params, con
         plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), connection)
 
     assert client.mock_calls == []
+
+
+LOG_GROUP_ARN = "arn:aws:logs:us-east-1:123456789012:log-group:EXAMPLE-vpn-logs"
+
+NONDEFAULT_TUNNEL = {
+    "phase1_lifetime_seconds": 27000,
+    "phase2_lifetime_seconds": 3000,
+    "rekey_margin_time_seconds": 1500,
+    "rekey_fuzz_percentage": 50,
+    "replay_window_size": 2048,
+    "dpd_timeout_seconds": 45,
+    "dpd_timeout_action": "restart",
+    "startup_action": "start",
+    "enable_tunnel_lifecycle_control": True,
+    "log_options": {
+        "cloud_watch_log_options": {
+            "log_enabled": True,
+            "log_group_arn": LOG_GROUP_ARN,
+            "log_output_format": "text",
+            "bgp_log_enabled": True,
+            "bgp_log_group_arn": LOG_GROUP_ARN,
+            "bgp_log_output_format": "text",
+        }
+    },
+}
+
+NONDEFAULT_LOGS = {
+    "LogEnabled": True,
+    "LogGroupArn": LOG_GROUP_ARN,
+    "LogOutputFormat": "text",
+    "BgpLogEnabled": True,
+    "BgpLogGroupArn": LOG_GROUP_ARN,
+    "BgpLogOutputFormat": "text",
+}
+
+# Live: EC2 returns these fields, with Dpd casing, once NONDEFAULT_TUNNEL is set.
+NONDEFAULT_RESPONSE = {
+    "Phase1LifetimeSeconds": 27000,
+    "Phase2LifetimeSeconds": 3000,
+    "RekeyMarginTimeSeconds": 1500,
+    "RekeyFuzzPercentage": 50,
+    "ReplayWindowSize": 2048,
+    "DpdTimeoutSeconds": 45,
+    "DpdTimeoutAction": "restart",
+    "StartupAction": "start",
+    "EnableTunnelLifecycleControl": True,
+    "LogOptions": {"CloudWatchLogOptions": NONDEFAULT_LOGS},
+}
+
+NONDEFAULT_REQUEST = {
+    "Phase1LifetimeSeconds": 27000,
+    "Phase2LifetimeSeconds": 3000,
+    "RekeyMarginTimeSeconds": 1500,
+    "RekeyFuzzPercentage": 50,
+    "ReplayWindowSize": 2048,
+    "DPDTimeoutSeconds": 45,
+    "DPDTimeoutAction": "restart",
+    "StartupAction": "start",
+    "EnableTunnelLifecycleControl": True,
+    "LogOptions": {"CloudWatchLogOptions": NONDEFAULT_LOGS},
+}
+
+# AWS defaults of the tunnel options that EC2 omits until they are set.
+DEFAULT_TUNNEL_SCALARS = {
+    "phase1_lifetime_seconds": 28800,
+    "phase2_lifetime_seconds": 3600,
+    "rekey_margin_time_seconds": 270,
+    "rekey_fuzz_percentage": 100,
+    "replay_window_size": 1024,
+    "dpd_timeout_action": "clear",
+    "startup_action": "add",
+    "enable_tunnel_lifecycle_control": False,
+    "log_options": {
+        "cloud_watch_log_options": {
+            "log_enabled": False,
+            "log_output_format": "json",
+            "bgp_log_enabled": False,
+            "bgp_log_output_format": "json",
+        }
+    },
+}
+
+
+def modify_shape():
+    return Session().get_service_model("ec2").operation_model("ModifyVpnTunnelOptions").input_shape
+
+
+def create_shape():
+    return Session().get_service_model("ec2").operation_model("CreateVpnConnection").input_shape
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+def test_new_tunnel_options_converge_and_rerun_without_change(params, default_tunnels, check_mode):
+    params["tunnel_options"] = [deepcopy(NONDEFAULT_TUNNEL)]
+    updated = deepcopy(default_tunnels)
+    for tunnel in updated["Options"]["TunnelOptions"]:
+        tunnel.update(deepcopy(NONDEFAULT_RESPONSE))
+
+    validate_parameters(
+        updated["Options"]["TunnelOptions"][0], Session().get_service_model("ec2").shape_for("TunnelOption")
+    )
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [updated]}
+    with patch.object(plugin, "wait_for_connection") as waiter:
+        result = ensure(client, FakeModule(params, check_mode=check_mode), default_tunnels)
+
+    assert result["changed"] is True
+    if check_mode:
+        assert client.mock_calls == []
+        waiter.assert_not_called()
+    else:
+        assert [call.kwargs for call in client.modify_vpn_tunnel_options.call_args_list] == [
+            {
+                "VpnConnectionId": "vpn-123",
+                "VpnTunnelOutsideIpAddress": address,
+                "TunnelOptions": NONDEFAULT_REQUEST,
+                "aws_retry": True,
+            }
+            for address in ("203.0.113.1", "203.0.113.2")
+        ]
+        for call in client.modify_vpn_tunnel_options.call_args_list:
+            validate_parameters(
+                {key: value for key, value in call.kwargs.items() if key != "aws_retry"}, modify_shape()
+            )
+
+        assert waiter.call_count == 2
+        tunnel = result["vpn_connection"]["options"]["tunnel_options"][0]
+        assert tunnel["dpd_timeout_seconds"] == 45
+        assert tunnel["log_options"]["cloud_watch_log_options"]["bgp_log_group_arn"] == LOG_GROUP_ARN
+
+    client.reset_mock()
+    assert ensure(client, FakeModule(params, check_mode=check_mode), updated)["changed"] is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("option", sorted(DEFAULT_TUNNEL_SCALARS))
+def test_omitted_tunnel_scalars_match_explicit_aws_defaults(params, default_tunnels, check_mode, option):
+    # Live: EC2 omits these until they are set; the lifetimes match the customer gateway configuration.
+    params["tunnel_options"] = [{option: deepcopy(DEFAULT_TUNNEL_SCALARS[option])}]
+    client = Mock()
+    assert ensure(client, FakeModule(params, check_mode=check_mode), default_tunnels)["changed"] is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("value", [30, 40])
+def test_unset_dpd_timeout_is_sent_once(params, default_tunnels, value):
+    # The EC2 API documents both 30 and 40 as the default of a timeout EC2 omits until it is set.
+    params["tunnel_options"] = [{"dpd_timeout_seconds": value}]
+    assert plugin.tunnel_deltas(FakeModule(params), default_tunnels) == [
+        (address, {"DPDTimeoutSeconds": value}) for address in ("203.0.113.1", "203.0.113.2")
+    ]
+    for tunnel in default_tunnels["Options"]["TunnelOptions"]:
+        tunnel["DpdTimeoutSeconds"] = value
+
+    assert plugin.tunnel_deltas(FakeModule(params), default_tunnels) == []
+
+
+@pytest.mark.parametrize(
+    "supplied, delta",
+    [
+        ({"log_enabled": False}, {"LogEnabled": False}),
+        ({"log_group_arn": LOG_GROUP_ARN, "log_output_format": "text"}, None),
+        ({"log_group_arn": f"{LOG_GROUP_ARN}:*"}, {"LogGroupArn": f"{LOG_GROUP_ARN}:*"}),
+        ({"bgp_log_output_format": "json"}, {"BgpLogOutputFormat": "json"}),
+        ({}, None),
+    ],
+)
+def test_log_options_compare_and_send_only_supplied_fields(params, connection, supplied, delta):
+    # Live: EC2 keeps the log fields an update omits and stores the ARN exactly as sent, with or without ":*".
+    connection["Options"]["TunnelOptions"][0]["LogOptions"] = {"CloudWatchLogOptions": dict(NONDEFAULT_LOGS)}
+    params["tunnel_options"] = [
+        {"outside_ip_address": "203.0.113.1", "log_options": {"cloud_watch_log_options": supplied}}
+    ]
+    expected = [("203.0.113.1", {"LogOptions": {"CloudWatchLogOptions": delta}})] if delta else []
+    assert plugin.tunnel_deltas(FakeModule(params), connection) == expected
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("enabled, group", [("log_enabled", "log_group_arn"), ("bgp_log_enabled", "bgp_log_group_arn")])
+def test_enabling_logs_without_a_log_group_fails_before_any_write(params, default_tunnels, check_mode, enabled, group):
+    # Live: EC2 rejects enabling logs on a tunnel without a log group, and reuses one already set on the tunnel.
+    first = default_tunnels["Options"]["TunnelOptions"][0]
+    first["LogOptions"]["CloudWatchLogOptions"][plugin.LOG_FIELDS[group]] = LOG_GROUP_ARN
+    params.update(
+        local_ipv4_network_cidr="10.20.0.0/16",
+        tunnel_options=[{"log_options": {"cloud_watch_log_options": {enabled: True}}}],
+    )
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), default_tunnels)
+
+    assert raised.value.values == {
+        "msg": f"Cannot update VPN connection vpn-123 tunnel 203.0.113.2: {enabled} requires {group}, which is "
+        "neither supplied nor set on the tunnel"
+    }
+    assert client.mock_calls == []
+    params["tunnel_options"][0]["log_options"]["cloud_watch_log_options"][group] = LOG_GROUP_ARN
+    assert [change[0] for change in plugin.tunnel_deltas(FakeModule(params), default_tunnels)] == [
+        "203.0.113.1",
+        "203.0.113.2",
+    ]
+    params["tunnel_options"] = [
+        {"outside_ip_address": "203.0.113.1", "log_options": {"cloud_watch_log_options": {enabled: True}}}
+    ]
+    assert plugin.tunnel_deltas(FakeModule(params), default_tunnels) == [
+        ("203.0.113.1", {"LogOptions": {"CloudWatchLogOptions": {plugin.LOG_FIELDS[enabled]: True}}})
+    ]
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("actual", ["EXAMPLE", ["EXAMPLE"], {"CloudWatchLogOptions": "EXAMPLE"}])
+def test_malformed_log_options_fail_before_mutation(params, connection, check_mode, actual):
+    connection["Options"]["TunnelOptions"][1]["LogOptions"] = actual
+    params.update(
+        local_ipv4_network_cidr="10.20.0.0/16",
+        tunnel_options=[{"log_options": {"cloud_watch_log_options": {"log_enabled": False}}}],
+    )
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), connection)
+
+    assert raised.value.values == {
+        "msg": "EC2 returned invalid LogOptions for VPN connection vpn-123 tunnel 203.0.113.2"
+    }
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize(
+    "tunnel",
+    [
+        {"phase1_lifetime_seconds": 899},
+        {"phase1_lifetime_seconds": 28801},
+        {"phase2_lifetime_seconds": 899},
+        {"phase2_lifetime_seconds": 3601},
+        {"rekey_margin_time_seconds": 59},
+        {"rekey_fuzz_percentage": -1},
+        {"rekey_fuzz_percentage": 101},
+        {"replay_window_size": 63},
+        {"replay_window_size": 2049},
+        {"dpd_timeout_seconds": 29},
+    ],
+)
+def test_out_of_range_tunnel_values_fail_before_any_aws_call(params, tunnel):
+    # Live: EC2 rejects each of these values, and a tunnel update can follow other writes.
+    params["tunnel_options"] = [tunnel]
+    (name,) = tunnel
+    low, high = plugin.TUNNEL_RANGES[name]
+    limit = f"{low} or greater" if high is None else f"between {low} and {high}"
+    with pytest.raises(ModuleFail) as raised:
+        plugin.validate_inputs(FakeModule(params))
+
+    assert raised.value.values == {"msg": f"tunnel_options[].{name} must be {limit}"}
+
+
+@pytest.mark.parametrize(
+    "tunnel",
+    [
+        {
+            "phase1_lifetime_seconds": 900,
+            "phase2_lifetime_seconds": 900,
+            "rekey_margin_time_seconds": 60,
+            "rekey_fuzz_percentage": 0,
+            "replay_window_size": 64,
+            "dpd_timeout_seconds": 30,
+        },
+        {"phase1_lifetime_seconds": 28800, "phase2_lifetime_seconds": 3600, "rekey_fuzz_percentage": 100},
+        {"replay_window_size": 2048, "dpd_timeout_seconds": 86400},
+    ],
+)
+def test_boundary_tunnel_values_are_valid(params, tunnel):
+    params["tunnel_options"] = [tunnel]
+    plugin.validate_inputs(FakeModule(params))
+
+
+PHASE2_ABOVE_PHASE1 = "phase2_lifetime_seconds ({}) must not exceed phase1_lifetime_seconds ({})"
+MARGIN_ABOVE_HALF = "rekey_margin_time_seconds ({}) must not exceed half of phase2_lifetime_seconds ({})"
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize(
+    "returned, tunnel, problems",
+    [
+        ({}, {"phase1_lifetime_seconds": 900}, [PHASE2_ABOVE_PHASE1.format(3600, 900)]),
+        ({}, {"rekey_margin_time_seconds": 1801}, [MARGIN_ABOVE_HALF.format(1801, 3600)]),
+        ({}, {"phase2_lifetime_seconds": 900, "rekey_margin_time_seconds": 451}, [MARGIN_ABOVE_HALF.format(451, 900)]),
+        ({"Phase2LifetimeSeconds": 900}, {"rekey_margin_time_seconds": 451}, [MARGIN_ABOVE_HALF.format(451, 900)]),
+        (
+            {"Phase1LifetimeSeconds": 1200, "RekeyMarginTimeSeconds": 601},
+            {"phase2_lifetime_seconds": 1201},
+            [PHASE2_ABOVE_PHASE1.format(1201, 1200), MARGIN_ABOVE_HALF.format(601, 1201)],
+        ),
+    ],
+)
+def test_tunnel_timers_are_checked_against_current_values_before_any_write(
+    params, default_tunnels, check_mode, returned, tunnel, problems
+):
+    # Live: EC2 rejects each of these; the module resends the timers already set, so it checks the resulting values.
+    default_tunnels["Options"]["TunnelOptions"][1].update(returned)
+    params.update(
+        local_ipv4_network_cidr="10.20.0.0/16",
+        tunnel_options=[dict(tunnel, outside_ip_address="203.0.113.2")],
+    )
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), default_tunnels)
+
+    assert raised.value.values == {
+        "msg": "Cannot update VPN connection vpn-123 tunnel 203.0.113.2: " + "; ".join(problems)
+    }
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize(
+    "returned, sent",
+    [
+        ({}, {"Phase1LifetimeSeconds": 1000, "Phase2LifetimeSeconds": 900}),
+        (
+            {"RekeyMarginTimeSeconds": 300},
+            {"Phase1LifetimeSeconds": 1000, "Phase2LifetimeSeconds": 900, "RekeyMarginTimeSeconds": 300},
+        ),
+    ],
+)
+def test_timer_change_resends_the_timers_already_set(params, default_tunnels, returned, sent):
+    # Live: with Phase2LifetimeSeconds 900 set, EC2 rejected Phase1LifetimeSeconds 1000 sent alone, because it checks
+    # the request against the 3600 second default of the omitted phase 2 lifetime.
+    tunnel = default_tunnels["Options"]["TunnelOptions"][0]
+    tunnel.update(Phase1LifetimeSeconds=900, Phase2LifetimeSeconds=900, **returned)
+    params["tunnel_options"] = [
+        {"outside_ip_address": "203.0.113.1", "phase1_lifetime_seconds": 1000, "phase2_lifetime_seconds": 900}
+    ]
+    assert plugin.tunnel_deltas(FakeModule(params), default_tunnels) == [("203.0.113.1", sent)]
+    tunnel["Phase1LifetimeSeconds"] = 1000
+    assert plugin.tunnel_deltas(FakeModule(params), default_tunnels) == []
+
+
+def test_tunnel_timers_accept_equal_lifetimes_and_a_margin_of_half(params, default_tunnels):
+    # Live: EC2 accepted 900/900 lifetimes on update and a 1500 second margin with a 3000 second phase 2 lifetime.
+    params["tunnel_options"] = [
+        {"phase1_lifetime_seconds": 900, "phase2_lifetime_seconds": 900, "rekey_margin_time_seconds": 450}
+    ]
+    assert len(plugin.tunnel_deltas(FakeModule(params), default_tunnels)) == 2
+
+
+@pytest.mark.parametrize("value", ["3600", True, 3600.0])
+def test_malformed_returned_timers_fail_before_mutation(params, default_tunnels, value):
+    default_tunnels["Options"]["TunnelOptions"][0]["Phase2LifetimeSeconds"] = value
+    params["tunnel_options"] = [{"outside_ip_address": "203.0.113.1", "rekey_margin_time_seconds": 300}]
+    with pytest.raises(ModuleFail, match="EC2 returned invalid Phase2LifetimeSeconds"):
+        plugin.tunnel_deltas(FakeModule(params), default_tunnels)
+
+
+def test_skip_tunnel_replacement_is_sent_only_with_a_lifecycle_change(params, default_tunnels, sdk_checks):
+    # Live: with SkipTunnelReplacement=true, EC2 applied the lifecycle change without entering modifying.
+    params.update(
+        skip_tunnel_replacement=True,
+        tunnel_options=[
+            {"outside_ip_address": "203.0.113.1", "enable_tunnel_lifecycle_control": True},
+            {"outside_ip_address": "203.0.113.2", "startup_action": "start"},
+        ],
+    )
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [default_tunnels]}
+    with patch.object(plugin, "wait_for_connection"):
+        assert ensure(client, FakeModule(params), default_tunnels)["changed"] is True
+
+    assert [call.kwargs for call in client.modify_vpn_tunnel_options.call_args_list] == [
+        {
+            "VpnConnectionId": "vpn-123",
+            "VpnTunnelOutsideIpAddress": "203.0.113.1",
+            "TunnelOptions": {"EnableTunnelLifecycleControl": True},
+            "SkipTunnelReplacement": True,
+            "aws_retry": True,
+        },
+        {
+            "VpnConnectionId": "vpn-123",
+            "VpnTunnelOutsideIpAddress": "203.0.113.2",
+            "TunnelOptions": {"StartupAction": "start"},
+            "aws_retry": True,
+        },
+    ]
+    for call in client.modify_vpn_tunnel_options.call_args_list:
+        validate_parameters({key: value for key, value in call.kwargs.items() if key != "aws_retry"}, modify_shape())
+
+    (checked,) = [call.args[3] for call in sdk_checks.call_args_list if "modify_vpn_tunnel_options" in call.args[3]]
+    assert checked["modify_vpn_tunnel_options"][-1] == "SkipTunnelReplacement"
+    sdk.require_client_methods(FakeModule({}), Session().create_client("ec2", region_name="us-east-1"), "EC2", checked)
+
+
+@pytest.mark.parametrize("storage", [True, False])
+def test_skipped_lifecycle_change_is_sent_alone_before_the_tunnels_other_changes(
+    params, default_tunnels, sdk_checks, storage
+):
+    # Live: EC2 rejects SkipTunnelReplacement with a StartupAction change (UnsupportedOperation).
+    params.update(
+        skip_tunnel_replacement=True,
+        pre_shared_key_storage="SecretsManager" if storage else None,
+        tunnel_options=[
+            {"outside_ip_address": "203.0.113.1", "enable_tunnel_lifecycle_control": True, "startup_action": "start"}
+        ],
+    )
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [default_tunnels]}
+    with patch.object(plugin, "wait_for_connection") as waiter:
+        client.attach_mock(waiter, "wait_connection")
+        assert ensure(client, FakeModule(params), default_tunnels)["changed"] is True
+
+    calls = [call for call in client.mock_calls if call[0] in ("modify_vpn_tunnel_options", "wait_connection")]
+    expected = [
+        ("203.0.113.1", {"EnableTunnelLifecycleControl": True}, {"SkipTunnelReplacement": True}),
+        ("203.0.113.1", {"StartupAction": "start"}, {"PreSharedKeyStorage": "SecretsManager"} if storage else {}),
+    ]
+    if storage:
+        expected.append(("203.0.113.2", {}, {"PreSharedKeyStorage": "SecretsManager"}))
+
+    assert [call[0] for call in calls] == ["modify_vpn_tunnel_options", "wait_connection"] * len(expected)
+    assert [call.kwargs for call in client.modify_vpn_tunnel_options.call_args_list] == [
+        dict(
+            VpnConnectionId="vpn-123",
+            VpnTunnelOutsideIpAddress=address,
+            TunnelOptions=options,
+            aws_retry=True,
+            **parameters,
+        )
+        for address, options, parameters in expected
+    ]
+    for call in client.modify_vpn_tunnel_options.call_args_list:
+        validate_parameters({key: value for key, value in call.kwargs.items() if key != "aws_retry"}, modify_shape())
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("skip", [True, False])
+@pytest.mark.parametrize("tunnels", [None, [{"enable_tunnel_lifecycle_control": False}]])
+def test_skip_tunnel_replacement_never_reports_a_change(params, default_tunnels, check_mode, skip, tunnels):
+    params.update(skip_tunnel_replacement=skip, tunnel_options=tunnels)
+    client = Mock()
+    assert ensure(client, FakeModule(params, check_mode=check_mode), default_tunnels)["changed"] is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("skip", [None, False])
+def test_omitted_or_false_skip_tunnel_replacement_is_not_sent(params, default_tunnels, sdk_checks, skip):
+    # Live: SkipTunnelReplacement=false replaced the endpoint just as omitting it did.
+    params.update(
+        skip_tunnel_replacement=skip,
+        tunnel_options=[{"outside_ip_address": "203.0.113.1", "enable_tunnel_lifecycle_control": True}],
+    )
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [default_tunnels]}
+    with patch.object(plugin, "wait_for_connection"):
+        assert ensure(client, FakeModule(params), default_tunnels)["changed"] is True
+
+    client.modify_vpn_tunnel_options.assert_called_once_with(
+        VpnConnectionId="vpn-123",
+        VpnTunnelOutsideIpAddress="203.0.113.1",
+        TunnelOptions={"EnableTunnelLifecycleControl": True},
+        aws_retry=True,
+    )
+    (checked,) = [call.args[3] for call in sdk_checks.call_args_list if "modify_vpn_tunnel_options" in call.args[3]]
+    assert "SkipTunnelReplacement" not in checked["modify_vpn_tunnel_options"]
+
+
+def test_creation_sends_connection_and_tunnel_options(params, transit_connection, sdk_checks):
+    params.update(
+        customer_gateway_id="cgw-123",
+        transit_gateway_id="tgw-123",
+        enable_acceleration=True,
+        outside_ip_address_type="PublicIpv4",
+        skip_tunnel_replacement=True,
+        tunnel_options=[deepcopy(NONDEFAULT_TUNNEL)],
+    )
+    transit_connection["Options"].update(EnableAcceleration=True, OutsideIpAddressType="PublicIpv4")
+    for tunnel in transit_connection["Options"]["TunnelOptions"]:
+        tunnel.update(deepcopy(NONDEFAULT_RESPONSE))
+
+    client = Mock()
+    client.create_vpn_connection.return_value = {"VpnConnection": transit_connection}
+    client.describe_vpn_connections.return_value = {"VpnConnections": [transit_connection]}
+    with patch.object(plugin, "wait_for_connection"):
+        assert ensure(client, FakeModule(params), None)["changed"] is True
+
+    request = dict(client.create_vpn_connection.call_args.kwargs)
+    assert request.pop("aws_retry") is True
+    assert "SkipTunnelReplacement" not in json.dumps(request)
+    assert request["Options"] == {
+        "EnableAcceleration": True,
+        "OutsideIpAddressType": "PublicIpv4",
+        "TunnelOptions": [NONDEFAULT_REQUEST, NONDEFAULT_REQUEST],
+    }
+    first, second = request["Options"]["TunnelOptions"]
+    assert first["LogOptions"] is not second["LogOptions"]
+    validate_parameters(request, create_shape())
+    assert set(sdk_checks.call_args_list[0].args[3]["create_vpn_connection"]) == set(request)
+    client.modify_vpn_tunnel_options.assert_not_called()
+    client.reset_mock()
+    assert ensure(client, FakeModule(params), transit_connection)["changed"] is False
+    assert client.mock_calls == []
+
+
+def test_creation_attaches_a_vpn_concentrator_instead_of_a_transit_gateway(params, connection, sdk_checks):
+    # Live: EC2 rejects TransitGatewayId with VpnConcentratorId and then omits TransitGatewayId from the connection.
+    connection.pop("VpnGatewayId")
+    connection["VpnConcentratorId"] = "vcn-123"
+    connection["Options"]["StaticRoutesOnly"] = False
+    params.update(customer_gateway_id="cgw-123", vpn_concentrator_id="vcn-123")
+    client = Mock()
+    client.create_vpn_connection.return_value = {"VpnConnection": connection}
+    client.describe_vpn_connections.return_value = {"VpnConnections": [connection]}
+    with patch.object(plugin, "wait_for_connection"):
+        result = ensure(client, FakeModule(params), None)
+
+    assert result["vpn_connection"]["vpn_concentrator_id"] == "vcn-123"
+    request = dict(client.create_vpn_connection.call_args.kwargs)
+    request.pop("aws_retry")
+    assert request["VpnConcentratorId"] == "vcn-123"
+    assert "TransitGatewayId" not in request and "VpnGatewayId" not in request
+    validate_parameters(request, create_shape())
+    assert set(sdk_checks.call_args_list[0].args[3]["create_vpn_connection"]) == set(request)
+    client.reset_mock()
+    assert ensure(client, FakeModule(params), connection)["changed"] is False
+    assert client.mock_calls == []
+
+
+def test_creation_sends_a_private_ipv4_transport_attachment(params, transit_connection):
+    # Private IP VPN needs AWS Direct Connect, so this request is covered by unit tests only.
+    params.update(
+        customer_gateway_id="cgw-123",
+        transit_gateway_id="tgw-123",
+        outside_ip_address_type="PrivateIpv4",
+        transport_transit_gateway_attachment_id="tgw-attach-123",
+    )
+    transit_connection["Options"].update(
+        OutsideIpAddressType="PrivateIpv4", TransportTransitGatewayAttachmentId="tgw-attach-123"
+    )
+    client = Mock()
+    client.create_vpn_connection.return_value = {"VpnConnection": transit_connection}
+    client.describe_vpn_connections.return_value = {"VpnConnections": [transit_connection]}
+    with patch.object(plugin, "wait_for_connection"):
+        assert ensure(client, FakeModule(params), None)["changed"] is True
+
+    request = dict(client.create_vpn_connection.call_args.kwargs)
+    request.pop("aws_retry")
+    assert request["Options"] == {
+        "OutsideIpAddressType": "PrivateIpv4",
+        "TransportTransitGatewayAttachmentId": "tgw-attach-123",
+    }
+    validate_parameters(request, create_shape())
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize(
+    "option, value",
+    [
+        ("enable_acceleration", True),
+        ("outside_ip_address_type", "Ipv6"),
+        ("outside_ip_address_type", "PrivateIpv4"),
+        ("transport_transit_gateway_attachment_id", "tgw-attach-123"),
+        ("vpn_concentrator_id", "vcn-123"),
+    ],
+)
+def test_create_only_connection_options_fail_before_mutation(params, connection, check_mode, option, value):
+    # No EC2 operation modifies these on an existing connection.
+    params.update({option: value, "local_ipv4_network_cidr": "10.20.0.0/16"})
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), connection)
+
+    assert raised.value.values == {
+        "changed": False,
+        "msg": f"Cannot change {option} on an existing VPN connection with this module",
+    }
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("returned", [True, False])
+def test_create_only_connection_options_matching_the_connection_are_unchanged(params, connection, returned):
+    # Live: EC2 returns EnableAcceleration and OutsideIpAddressType even for a connection created without them.
+    params.update(enable_acceleration=False, outside_ip_address_type="PublicIpv4")
+    if returned:
+        connection["Options"].update(EnableAcceleration=False, OutsideIpAddressType="PublicIpv4")
+
+    client = Mock()
+    assert ensure(client, FakeModule(params), connection)["changed"] is False
+    connection["Options"].update(
+        EnableAcceleration=True, OutsideIpAddressType="PrivateIpv4", TransportTransitGatewayAttachmentId="tgw-attach-1"
+    )
+    params.update(
+        enable_acceleration=True,
+        outside_ip_address_type="PrivateIpv4",
+        transport_transit_gateway_attachment_id="tgw-attach-1",
+    )
+    assert ensure(client, FakeModule(params), connection)["changed"] is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("option", ["transport_transit_gateway_attachment_id", "vpn_concentrator_id"])
+@pytest.mark.parametrize("blank", ["", " "])
+def test_blank_create_only_ids_fail_before_any_aws_call(params, option, blank):
+    # Live: EC2 created a connection without a concentrator or attachment for whitespace-only IDs.
+    params[option] = blank
+    module = FakeModule(params)
+    module.require_botocore_at_least = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.validate_inputs(module)
+
+    assert raised.value.values == {"msg": f"{option} must not be empty"}
+
+
+@pytest.mark.parametrize("existing", [True, False])
+def test_concentrator_connections_reject_static_routes(params, connection, existing):
+    params.update(customer_gateway_id="cgw-123", static_only=True, routes=["10.20.0.0/16"])
+    if existing:
+        connection.pop("VpnGatewayId")
+        connection["VpnConcentratorId"] = "vcn-123"
+    else:
+        params["vpn_concentrator_id"] = "vcn-123"
+
+    client = Mock()
+    with pytest.raises(ModuleFail, match="virtual private gateway connection"):
+        plugin.ensure_present(client, FakeModule(params), connection if existing else None)
+
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("state", ["present", "absent"])
+@pytest.mark.parametrize(
+    "option", [None, "log_enabled", "bgp_log_enabled", "bgp_log_group_arn", "bgp_log_output_format"]
+)
+def test_bgp_log_options_require_botocore_only_when_supplied(params, state, option):
+    values = {
+        "log_enabled": True,
+        "bgp_log_enabled": True,
+        "bgp_log_group_arn": LOG_GROUP_ARN,
+        "bgp_log_output_format": "text",
+    }
+    supplied = {option: values[option]} if option else {}
+    params.update(state=state, tunnel_options=[{"log_options": {"cloud_watch_log_options": supplied}}])
+    module = FakeModule(params)
+    module.require_botocore_at_least = Mock(side_effect=ModuleFail({"msg": "botocore"}))
+    if state == "present" and option and option.startswith("bgp_"):
+        with pytest.raises(ModuleFail, match="botocore"):
+            plugin.validate_inputs(module)
+
+        module.require_botocore_at_least.assert_called_once_with("1.41.1", reason=f"for {option}")
+    else:
+        plugin.validate_inputs(module)
+        module.require_botocore_at_least.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "tunnels, changed",
+    [
+        ([{"startup_action": "start"}], True),
+        ([{"log_options": {"cloud_watch_log_options": {"log_enabled": False}}}], True),
+        ([{"log_options": {"cloud_watch_log_options": {}}}], False),
+        ([{"log_options": {"cloud_watch_log_options": None}}], False),
+    ],
+)
+def test_pending_vpn_check_mode_predicts_new_tunnel_options(params, connection, tunnels, changed):
+    connection["State"] = "pending"
+    connection["Options"]["TunnelOptions"] = []
+    params.update(skip_tunnel_replacement=True, tunnel_options=tunnels)
+    client = Mock()
+    assert ensure(client, FakeModule(params, check_mode=True), connection)["changed"] is changed
+    assert client.mock_calls == []
+
+
+def test_documented_returns_cover_connection_and_tunnel_fields():
+    returns = documented_returns(plugin)["vpn_connection"]["contains"]
+    model = Session().get_service_model("ec2")
+
+    def snake(shape_name, excluded):
+        names = [name for name in model.shape_for(shape_name).members if name not in excluded]
+        return {plugin.camel_dict_to_snake_dict({name: None}).popitem()[0] for name in names}
+
+    assert snake("VpnConnection", {"CustomerGatewayConfiguration"}) <= set(returns)
+    assert_documents_shape(returns["options"]["contains"], "ec2", "VpnConnectionOptions")
+    tunnel = returns["options"]["contains"]["tunnel_options"]["contains"]
+    assert snake("TunnelOption", {"PreSharedKey"}) <= set(tunnel)
+    assert_documents_shape(tunnel["log_options"]["contains"], "ec2", "VpnTunnelLogOptions")
