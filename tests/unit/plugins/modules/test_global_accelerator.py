@@ -879,12 +879,10 @@ def multi_range_desired(*ranges):
     return dict(review_desired(*ranges[0]), port_ranges=[{"from_port": start, "to_port": end} for start, end in ranges])
 
 
-@pytest.mark.parametrize("arns", list(itertools.permutations(["arn:a", "arn:b", "arn:c"])))
-def test_listener_reconciliation_skips_pairs_that_leave_circular_dependencies(arns):
+def test_listener_reconciliation_falls_back_to_protocol_pairing_when_overlap_pairing_is_circular():
     # 1-10 and 11-20 share the most ports with X and Y, but each of those updates needs a port the other listener still
-    # holds; updating 30 to Y instead lets 11-20 be deleted first.
-    low_arn, single_arn, high_arn = arns
-    current = listed_listeners({low_arn: (1, 10), single_arn: (30, 30), high_arn: (11, 20)})
+    # holds; pairing by protocol updates 30 to Y instead and deletes 11-20 first.
+    current = listed_listeners({"arn:a": (1, 10), "arn:b": (30, 30), "arn:c": (11, 20)})
     x = multi_range_desired((1, 9), (11, 11))
     y = multi_range_desired((10, 10), (12, 20), (30, 30))
     module = FakeModule({"listeners": [x, y], "purge_listeners": True})
@@ -892,13 +890,40 @@ def test_listener_reconciliation_skips_pairs_that_leave_circular_dependencies(ar
     matched, updates, creates, deletes = plugin.reconcile_listeners(module, current)
 
     assert {current["listener_arn"]: desired["port_ranges"] for current, desired in updates} == {
-        low_arn: x["port_ranges"],
-        single_arn: y["port_ranges"],
+        "arn:a": x["port_ranges"],
+        "arn:b": y["port_ranges"],
     }
-    assert [current["listener_arn"] for current in deletes] == [high_arn]
+    assert [current["listener_arn"] for current in deletes] == ["arn:c"]
     assert matched == []
     assert creates == []
     assert plugin.listener_update_order(updates) is not None
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_unavoidable_cycles_among_many_listener_moves_fail_after_two_pairing_checks(check_mode):
+    # 38 independent contractions beside 1-2 and 3-4 moving to 1+3 and 2+4, which is circular under every pairing.
+    ports_by_arn = {f"arn:{index:02d}": (10 * index + 1, 10 * index + 5) for index in range(1, 39)}
+    ports_by_arn.update({"arn:a": (1, 2), "arn:b": (3, 4)})
+    current = listed_listeners(ports_by_arn)
+    entries = [review_desired(10 * index + 1, 10 * index + 3) for index in range(1, 39)]
+    entries += [multi_range_desired((1, 1), (3, 3)), multi_range_desired((2, 2), (4, 4))]
+    module = FakeModule(
+        {"listeners": entries, "purge_endpoint_groups": True, "purge_listeners": True}, check_mode=check_mode
+    )
+    client = Mock()
+    with (
+        patch.object(plugin, "get_listeners", return_value=current),
+        patch.object(plugin, "listener_update_order", wraps=plugin.listener_update_order) as order,
+        patch.object(plugin, "delete_listener") as delete,
+        pytest.raises(ModuleFail, match="circular port dependencies") as raised,
+    ):
+        plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    # One check of the overlap pairing in reused_listeners, then the one in ordered_listener_updates.
+    assert order.call_count == 2
+    assert raised.value.values["changed"] is False
+    delete.assert_not_called()
+    client.update_listener.assert_not_called()
 
 
 def random_port_ranges(generator, ports, count):

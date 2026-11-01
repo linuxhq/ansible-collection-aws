@@ -1,10 +1,10 @@
 ---
 minor_changes:
   - global_accelerator - with ``purge_listeners=true``, listener entries whose ports changed now update existing
-    listeners of their protocol whose ports they overlap, taking the pairs that share the most ports first, then the
-    lowest listener ARN, then the entry with the lowest ports; entries that overlap no remaining listener keep the
-    previous pairing by listener ARN, and a pair is skipped when every pairing that keeps it would leave circular port
-    dependencies.
+    listeners of their protocol whose ports they overlap, pairing as many entries as possible this way and taking the
+    pairs that share the most ports first, then the lowest listener ARN, then the entry with the lowest ports; the
+    other entries keep the previous pairing by listener ARN, which also pairs every entry when the overlap pairing
+    would leave circular port dependencies.
 bugfixes:
   - global_accelerator - a listener entry whose ports changed no longer updates whichever listener of its protocol has
     the lowest random ARN when another listener shares its ports. That pairing could fail with circular port
