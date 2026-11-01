@@ -45,7 +45,7 @@
             map(attribute='dpd_timeout_action') |
             unique == ['restart']
           - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options |
-            map(attribute='startup_action') |
+            map(attribute='startup_action', default='add') |
             unique == ['add']
           - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options |
             map(attribute='enable_tunnel_lifecycle_control') |
