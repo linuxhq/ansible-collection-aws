@@ -132,7 +132,7 @@ resolver_endpoints:
       type: str
     name:
       description: The endpoint name.
-      returned: always
+      returned: when configured
       type: str
     outpost_arn:
       description: The ARN of the Outpost the endpoint is on.
