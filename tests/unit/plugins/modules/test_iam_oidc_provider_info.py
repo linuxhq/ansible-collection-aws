@@ -85,6 +85,43 @@ def test_url_filter_normalizes_scheme_and_ignores_other_arns():
     get.assert_called_once()
 
 
+@pytest.mark.parametrize(
+    "url, expected",
+    [
+        ("https://sts.windows.net/t/", "arn:aws:iam::1:oidc-provider/sts.windows.net/t/"),
+        ("https://sts.windows.net/t", "arn:aws:iam::1:oidc-provider/sts.windows.net/t"),
+    ],
+)
+def test_url_filter_returns_the_provider_with_the_exact_url(url, expected):
+    module = FakeModule({"arn": None, "url": url}, client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(iam_oidc, "require_client_methods"),
+        patch.object(
+            iam_oidc,
+            "query_list",
+            return_value=[
+                {"Arn": "arn:aws:iam::1:oidc-provider/sts.windows.net/t"},
+                {"Arn": "arn:aws:iam::1:oidc-provider/sts.windows.net/t/"},
+            ],
+        ),
+        patch.object(
+            iam_oidc,
+            "get_provider_by_arn",
+            side_effect=lambda client, module, arn: {
+                "OpenIDConnectProviderArn": arn,
+                "Url": arn.partition(":oidc-provider/")[2],
+            },
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    providers = raised.value.values["open_id_connect_providers"]
+    assert [provider["open_id_connect_provider_arn"] for provider in providers] == [expected]
+
+
 def test_missing_provider_arn_returns_an_empty_list():
     client = Mock()
     client.get_open_id_connect_provider.side_effect = ClientError(

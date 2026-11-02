@@ -118,6 +118,101 @@ def test_provider_lookup_normalizes_url():
     )
 
 
+def provider_from_arn(client, module, arn):
+    """Return a provider as IAM reports it: the URL is the ARN's resource part."""
+    return {"OpenIDConnectProviderArn": arn, "Url": arn.partition(":oidc-provider/")[2]}
+
+
+@pytest.mark.parametrize("listed_first", ["slashless", "slash"])
+@pytest.mark.parametrize(
+    "url, expected",
+    [
+        ("https://sts.windows.net/t/", "arn:aws:iam::1:oidc-provider/sts.windows.net/t/"),
+        ("https://sts.windows.net/t", "arn:aws:iam::1:oidc-provider/sts.windows.net/t"),
+        ("HTTPS://sts.windows.net/t/", "arn:aws:iam::1:oidc-provider/sts.windows.net/t/"),
+        ("sts.windows.net/t/", "arn:aws:iam::1:oidc-provider/sts.windows.net/t/"),
+    ],
+)
+def test_provider_lookup_prefers_the_exact_url(listed_first, url, expected):
+    # IAM keeps both URL forms as separate providers and STS matches a token's issuer exactly, so the provider with the
+    # URL as given wins whichever is listed first. IAM lists the slash-less one first.
+    providers = [
+        {"Arn": "arn:aws:iam::1:oidc-provider/sts.windows.net/t"},
+        {"Arn": "arn:aws:iam::1:oidc-provider/sts.windows.net/t/"},
+    ]
+    if listed_first == "slash":
+        providers.reverse()
+
+    client = Mock()
+    module = SimpleNamespace(params={})
+    with (
+        patch.object(iam_oidc, "query_list", return_value=providers),
+        patch.object(iam_oidc, "get_provider_by_arn", side_effect=provider_from_arn) as get,
+        patch.object(iam_oidc, "require_client_methods"),
+    ):
+        result = get_provider_by_url(client, module, url)
+
+    assert result["OpenIDConnectProviderArn"] == expected
+    get.assert_called_once_with(client, module, expected)
+
+
+def test_provider_lookup_prefers_the_exact_host_case():
+    providers = [
+        {"Arn": "arn:aws:iam::1:oidc-provider/Example.com/id"},
+        {"Arn": "arn:aws:iam::1:oidc-provider/example.com/id"},
+    ]
+    with (
+        patch.object(iam_oidc, "query_list", return_value=providers),
+        patch.object(iam_oidc, "get_provider_by_arn", side_effect=provider_from_arn),
+        patch.object(iam_oidc, "require_client_methods"),
+    ):
+        result = get_provider_by_url(Mock(), SimpleNamespace(params={}), "https://example.com/id")
+
+    assert result["OpenIDConnectProviderArn"] == "arn:aws:iam::1:oidc-provider/example.com/id"
+
+
+@pytest.mark.parametrize("url", ["https://sts.windows.net/t/", "https://STS.windows.net/t"])
+def test_provider_lookup_still_matches_a_single_normalized_provider(url):
+    # A provider created by an earlier version (slash stripped, host lower-cased) stays the managed provider.
+    providers = [
+        {"Arn": "arn:aws:iam::1:oidc-provider/other.example.com"},
+        {"Arn": "arn:aws:iam::1:oidc-provider/sts.windows.net/t"},
+    ]
+    with (
+        patch.object(iam_oidc, "query_list", return_value=providers),
+        patch.object(iam_oidc, "get_provider_by_arn", side_effect=provider_from_arn) as get,
+        patch.object(iam_oidc, "require_client_methods"),
+    ):
+        result = get_provider_by_url(Mock(), SimpleNamespace(params={}), url)
+
+    assert result["OpenIDConnectProviderArn"] == "arn:aws:iam::1:oidc-provider/sts.windows.net/t"
+    get.assert_called_once()
+
+
+def test_provider_lookup_falls_back_when_the_exact_provider_disappears():
+    # The exact provider is deleted between the listing and the read, so the normalized match is still found.
+    providers = [
+        {"Arn": "arn:aws:iam::1:oidc-provider/sts.windows.net/t"},
+        {"Arn": "arn:aws:iam::1:oidc-provider/sts.windows.net/t/"},
+    ]
+
+    def get_provider_by_arn(client, module, arn):
+        return None if arn.endswith("/") else provider_from_arn(client, module, arn)
+
+    with (
+        patch.object(iam_oidc, "query_list", return_value=providers),
+        patch.object(iam_oidc, "get_provider_by_arn", side_effect=get_provider_by_arn) as get,
+        patch.object(iam_oidc, "require_client_methods"),
+    ):
+        result = get_provider_by_url(Mock(), SimpleNamespace(params={}), "https://sts.windows.net/t/")
+
+    assert result["OpenIDConnectProviderArn"] == "arn:aws:iam::1:oidc-provider/sts.windows.net/t"
+    assert [call.args[2] for call in get.call_args_list] == [
+        "arn:aws:iam::1:oidc-provider/sts.windows.net/t/",
+        "arn:aws:iam::1:oidc-provider/sts.windows.net/t",
+    ]
+
+
 def test_provider_lookup_rejects_invalid_summaries():
     module = FakeModule({})
     with (
