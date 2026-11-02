@@ -444,9 +444,7 @@ accelerator:
       elements: dict
       contains:
         ip_address_details:
-          description:
-            - The IP addresses in the set, with details such as the network zone of each address.
-            - Returned only with a botocore version that models it, such as 1.43.122.
+          description: The IP addresses in the set, with details such as the network zone of each address.
           returned: when returned by AWS
           type: list
           elements: dict
