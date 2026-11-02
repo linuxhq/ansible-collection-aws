@@ -266,6 +266,10 @@ phone_number:
       description: The pool the phone number is associated with.
       returned: when associated with a pool
       type: str
+    pricing_tier:
+      description: The pricing model of the phone number.
+      returned: when returned by AWS
+      type: str
     registration_id:
       description: The registration associated with the phone number.
       returned: when associated with a registration

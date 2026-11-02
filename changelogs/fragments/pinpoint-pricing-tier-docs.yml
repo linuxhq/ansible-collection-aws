@@ -1,0 +1,5 @@
+---
+trivial:
+  - pinpoint_sms_voice_phone_number and pinpoint_sms_voice_phone_number_info - document the ``pricing_tier`` return that
+    newer botocore models on phone numbers.
+...
