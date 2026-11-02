@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - iam_account_alias - O(name) as a 12-digit number now fails before any AWS call when O(state=present), in check mode
+    too. AWS documents that an account alias cannot be a 12-digit number and rejects every one with
+    C(EntityAlreadyExists), while the module's own name check accepted it and check mode predicted success.
