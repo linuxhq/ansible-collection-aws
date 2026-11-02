@@ -215,6 +215,13 @@ options:
                 description:
                   - Endpoint port to receive the traffic.
                   - This must be between C(1) and C(65535).
+                  - AWS requires this to be outside every listener's
+                    O(listeners[].port_ranges), whatever its protocol, and
+                    different from the endpoint port of every other port
+                    override in an endpoint group with the same
+                    O(listeners[].endpoint_groups[].endpoint_group_region),
+                    whichever listener it belongs to. The module checks this
+                    against O(listeners) before making any change.
                 required: true
                 type: int
               listener_port:
@@ -2300,6 +2307,9 @@ def main():
         if sum(len(listener.get("endpoint_groups") or []) for listener in listeners) > 42:
             module.fail_json(msg="listeners must contain at most 42 endpoint groups in total")
 
+        # Every listener's ports, of either protocol, and the port override endpoint ports seen so far, by region.
+        all_port_ranges = [port_range for listener in listeners for port_range in listener["port_ranges"] or []]
+        region_endpoint_ports = {}
         for listener in listeners:
             if not listener["port_ranges"]:
                 module.fail_json(msg="listeners entries require at least one port_ranges entry")
@@ -2450,6 +2460,26 @@ def main():
                                 f"{port_override['listener_port']} must be within the listener's port_ranges"
                             )
                         )
+
+                    # Likewise, live, for an endpoint port within any listener's ports or used by another override
+                    # in the region.
+                    override = (
+                        f"Endpoint group {region} port_overrides listener_port {port_override['listener_port']} "
+                        f"endpoint_port {port_override['endpoint_port']}"
+                    )
+                    if any(
+                        port_range["from_port"] <= port_override["endpoint_port"] <= port_range["to_port"]
+                        for port_range in all_port_ranges
+                    ):
+                        module.fail_json(msg=f"{override} must not be within any listener's port_ranges")
+
+                    endpoint_ports = region_endpoint_ports.setdefault(region, set())
+                    if port_override["endpoint_port"] in endpoint_ports:
+                        module.fail_json(
+                            msg=f"{override} must not repeat the endpoint_port of another port override in {region}"
+                        )
+
+                    endpoint_ports.add(port_override["endpoint_port"])
 
         require_valid_tags(module, module.params["tags"], 50, restricted_characters=True)
 

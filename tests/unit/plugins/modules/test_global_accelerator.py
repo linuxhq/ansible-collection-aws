@@ -1471,6 +1471,188 @@ def test_port_override_within_any_listener_port_range_is_accepted(listener_port)
     ensure_present.assert_called_once()
 
 
+def override_listener(protocol, ports, groups=None):
+    """A listener entry; groups maps an endpoint group region to its (listener_port, endpoint_port) overrides."""
+    endpoint_groups = None
+    if groups is not None:
+        endpoint_groups = [
+            {
+                "endpoint_configurations": None,
+                "endpoint_group_region": region,
+                "health_check_interval_seconds": None,
+                "health_check_path": None,
+                "health_check_port": None,
+                "health_check_protocol": None,
+                "port_overrides": [
+                    {"endpoint_port": endpoint_port, "listener_port": listener_port}
+                    for listener_port, endpoint_port in overrides
+                ],
+                "threshold_count": None,
+                "traffic_dial_percentage": None,
+            }
+            for region, overrides in groups.items()
+        ]
+
+    return {
+        "client_affinity": None,
+        "endpoint_groups": endpoint_groups,
+        "port_ranges": [{"from_port": from_port, "to_port": to_port} for from_port, to_port in ports],
+        "protocol": protocol,
+    }
+
+
+# The live probe's listeners: TCP 80, TCP 8080, TCP 81-82 and UDP 5353.
+def probe_listeners(tcp_80=None, tcp_81=None, udp_5353=None, udp_80=None):
+    listeners = [
+        override_listener("TCP", [(80, 80)], tcp_80),
+        override_listener("TCP", [(8080, 8080)]),
+        override_listener("TCP", [(81, 82)], tcp_81),
+        override_listener("UDP", [(5353, 5353)], udp_5353),
+    ]
+    if udp_80 is not None:
+        listeners.append(override_listener("UDP", [(80, 80)], udp_80))
+
+    return listeners
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("listeners", "message"),
+    [
+        (
+            probe_listeners(tcp_80={"us-west-2": [(80, 8080)]}),
+            (
+                "Endpoint group us-west-2 port_overrides listener_port 80 endpoint_port 8080 "
+                "must not be within any listener's port_ranges"
+            ),
+        ),
+        (
+            probe_listeners(tcp_80={"us-east-1": [(80, 8080)]}),
+            (
+                "Endpoint group us-east-1 port_overrides listener_port 80 endpoint_port 8080 "
+                "must not be within any listener's port_ranges"
+            ),
+        ),
+        (
+            probe_listeners(tcp_81={"us-west-2": [(81, 82)]}),
+            (
+                "Endpoint group us-west-2 port_overrides listener_port 81 endpoint_port 82 "
+                "must not be within any listener's port_ranges"
+            ),
+        ),
+        (
+            probe_listeners(tcp_80={"us-west-2": [(80, 80)]}),
+            (
+                "Endpoint group us-west-2 port_overrides listener_port 80 endpoint_port 80 "
+                "must not be within any listener's port_ranges"
+            ),
+        ),
+        (
+            probe_listeners(tcp_80={"us-west-2": [(80, 5353)]}),
+            (
+                "Endpoint group us-west-2 port_overrides listener_port 80 endpoint_port 5353 "
+                "must not be within any listener's port_ranges"
+            ),
+        ),
+        (
+            probe_listeners(udp_5353={"us-west-2": [(5353, 80)]}),
+            (
+                "Endpoint group us-west-2 port_overrides listener_port 5353 endpoint_port 80 "
+                "must not be within any listener's port_ranges"
+            ),
+        ),
+        (
+            probe_listeners(tcp_81={"us-west-2": [(81, 9100), (82, 9100)]}),
+            (
+                "Endpoint group us-west-2 port_overrides listener_port 82 endpoint_port 9100 "
+                "must not repeat the endpoint_port of another port override in us-west-2"
+            ),
+        ),
+        (
+            probe_listeners(tcp_80={"us-west-2": [(80, 9080)]}, tcp_81={"us-west-2": [(81, 9080)]}),
+            (
+                "Endpoint group us-west-2 port_overrides listener_port 81 endpoint_port 9080 "
+                "must not repeat the endpoint_port of another port override in us-west-2"
+            ),
+        ),
+        (
+            probe_listeners(tcp_80={"us-west-2": [(80, 9080)]}, udp_5353={"us-west-2": [(5353, 9080)]}),
+            (
+                "Endpoint group us-west-2 port_overrides listener_port 5353 endpoint_port 9080 "
+                "must not repeat the endpoint_port of another port override in us-west-2"
+            ),
+        ),
+        (
+            probe_listeners(tcp_80={"us-west-2": [(80, 9080)]}, udp_80={"us-west-2": [(80, 9080)]}),
+            (
+                "Endpoint group us-west-2 port_overrides listener_port 80 endpoint_port 9080 "
+                "must not repeat the endpoint_port of another port override in us-west-2"
+            ),
+        ),
+    ],
+    ids=[
+        "another-listener",
+        "another-listener-other-region",
+        "own-listener",
+        "own-listener-port",
+        "udp-listener",
+        "tcp-listener-from-udp",
+        "one-group",
+        "two-listeners",
+        "two-protocols",
+        "two-protocols-same-listener-port",
+    ],
+)
+def test_port_override_endpoint_ports_aws_rejects_fail_before_any_aws_call(check_mode, listeners, message):
+    # Live: Create/UpdateEndpointGroup reject an endpoint port within any listener's port ranges, of either protocol and
+    # for a group in any region, and an endpoint port another port override already uses in an endpoint group of the
+    # same region, on any listener, with InvalidArgumentException, which a real run reaches only after creating or
+    # updating the accelerator and its listeners.
+    module = FakeModule(present_params(listeners), check_mode=check_mode)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(module, "client") as client_factory,
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": message}
+    client_factory.assert_not_called()
+    ensure_present.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "listeners",
+    [
+        probe_listeners(tcp_80={"us-west-2": [(80, 9080)]}),
+        [override_listener("TCP", [(81, 82)], {"us-west-2": [(81, 80), (82, 83)]})],
+        probe_listeners(tcp_81={"us-west-2": [(81, 9100)], "us-east-1": [(82, 9100)]}),
+        probe_listeners(tcp_81={"us-west-2": [(81, 9100)], "us-east-1": [(81, 9100)]}),
+        probe_listeners(tcp_80={"us-west-2": [(80, 9080)]}, tcp_81={"us-east-1": [(81, 9080)]}),
+    ],
+    ids=[
+        "outside-every-listener",
+        "next-to-the-listener",
+        "one-listener-two-regions",
+        "same-listener-port-two-regions",
+        "two-listeners-two-regions",
+    ],
+)
+def test_port_override_endpoint_ports_aws_accepts_are_left_to_aws(check_mode, listeners):
+    # Live: AWS stores the first and the last three as sent; the second only sends ports next to its listener's range.
+    module = FakeModule(present_params(listeners), check_mode=check_mode)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(module, "client"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once()
+
+
 EIP_ALLOCATION_ID = "eipalloc-0123456789abcdef0"
 EIP_ARN = f"arn:aws:ec2:us-west-2:123456789012:elastic-ip/{EIP_ALLOCATION_ID}"
 
