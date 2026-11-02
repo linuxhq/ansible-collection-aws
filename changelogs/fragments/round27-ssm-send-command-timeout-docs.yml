@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - ssm_send_command - document ``timeout_seconds`` and the returned ``command.timeout_seconds`` as the time
+    AWS Systems Manager waits for the command to start running on a target, not an execution timeout, and point to
+    the document's execution timeout parameter, such as ``executionTimeout``, for limiting run time.
+...
