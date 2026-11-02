@@ -81,7 +81,12 @@ options:
     type: list
   timeout_seconds:
     description:
-      - The timeout in seconds for the command execution.
+      - The number of seconds AWS Systems Manager waits for the command to
+        start running on a target. If the command has not started running on
+        a target when this time is reached, it does not run there.
+      - This does not limit how long a started command runs. To limit run
+        time, set the document's execution timeout parameter, such as
+        C(executionTimeout) for C(AWS-RunShellScript), in O(parameters).
       - This must be between 30 and 2592000.
     type: int
   wait:
@@ -244,7 +249,10 @@ command:
       type: list
       elements: dict
     timeout_seconds:
-      description: Command execution timeout in seconds.
+      description:
+        - The number of seconds AWS Systems Manager waits for the command to
+          start running on a target.
+        - This does not limit how long a started command runs.
       returned: when available
       type: int
     triggered_alarms:
