@@ -271,7 +271,7 @@ def test_absent_reports_no_change_for_a_missing_web_acl():
     client.delete_logging_configuration.assert_not_called()
 
 
-def test_client_retries_optimistic_lock_conflicts():
+def test_client_retries_optimistic_lock_and_service_linked_role_lock():
     module = FakeModule(params())
     module.client = Mock(side_effect=ModuleInitialized)
     with (
@@ -281,4 +281,6 @@ def test_client_retries_optimistic_lock_conflicts():
     ):
         plugin.main()
 
-    jittered_backoff.assert_called_once_with(catch_extra_error_codes=["WAFOptimisticLockException"])
+    jittered_backoff.assert_called_once_with(
+        catch_extra_error_codes=["WAFOptimisticLockException", "WAFServiceLinkedRoleErrorException"]
+    )

@@ -310,7 +310,9 @@ def main():
     web_acl = web_acl_identity(module)
     client = module.client(
         "wafv2",
-        retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["WAFOptimisticLockException"]),
+        retry_decorator=AWSRetry.jittered_backoff(
+            catch_extra_error_codes=["WAFOptimisticLockException", "WAFServiceLinkedRoleErrorException"]
+        ),
     )
     methods = {"get_logging_configuration": ("ResourceArn",)}
     if state == "present":
