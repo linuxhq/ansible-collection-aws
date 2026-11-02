@@ -1742,12 +1742,12 @@ def ensure_present(client, module, connection):
             lifecycle = {"EnableTunnelLifecycleControl": delta["EnableTunnelLifecycleControl"]}
             requests = [(lifecycle, {"SkipTunnelReplacement": True})] + ([(rest, storage)] if rest or storage else [])
 
-        for options, parameters in requests:
+        for tunnel_options, parameters in requests:
             try:
                 client.modify_vpn_tunnel_options(
                     VpnConnectionId=connection_id,
                     VpnTunnelOutsideIpAddress=outside_ip,
-                    TunnelOptions=options,
+                    TunnelOptions=tunnel_options,
                     **parameters,
                     aws_retry=True,
                 )
