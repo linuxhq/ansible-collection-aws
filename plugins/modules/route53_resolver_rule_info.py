@@ -113,6 +113,8 @@ resolver_rules:
       description:
         - The rule tags with key case preserved.
         - AWS-owned rules, such as the Internet Resolver rule, cannot be tagged and return an empty dictionary.
+        - Rules shared with this account by another account return an empty dictionary, because only the account
+          that created a rule can see its tags.
       returned: always
       type: dict
     target_ips:
@@ -294,8 +296,13 @@ def main():
     for rule in resolver_rules:
         resolver_rule_id = rule.get("Id")
         tags = []
-        # AWS-owned rules, such as the Internet Resolver rule, cannot be tagged.
-        if rule.get("Arn") and rule.get("OwnerId") != AWS_OWNED_RULE_OWNER:
+        # AWS-owned rules, such as the Internet Resolver rule, cannot be tagged, and only the account that created a
+        # rule can see its tags.
+        if (
+            rule.get("Arn")
+            and rule.get("OwnerId") != AWS_OWNED_RULE_OWNER
+            and rule.get("ShareStatus") != "SHARED_WITH_ME"
+        ):
             try:
                 response = paginated_query_with_retries(
                     client,
