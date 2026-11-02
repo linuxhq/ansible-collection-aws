@@ -32,9 +32,11 @@ provisioner:
       all:
         ec2_eip_list:
           - name: molecule-eip-01
-            device_id: "{{ _ec2_eni_molecule_info.network_interfaces.0.id }}"
+            device_id: "{{ _ec2_eni_molecule_dict['molecule-eip-01'] }}"
             in_vpc: true
           - name: molecule-eip-02
+            device_id: "{{ _ec2_eni_molecule_dict['molecule-eip-02'] }}"
+            in_vpc: true
           - name: molecule-eip-03
           - name: molecule-eip-04
           - name: molecule-eip-05

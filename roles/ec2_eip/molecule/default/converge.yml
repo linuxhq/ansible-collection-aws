@@ -22,23 +22,38 @@
         - molecule-idempotence-notest
 
   tasks:
-    - name: Ensure aws elastic network interface is present
+    - name: Ensure aws elastic network interfaces are present
       tags:
         - molecule-idempotence-notest
       amazon.aws.ec2_eni:
-        name: molecule-eip
-        private_ip_address: "{{ ec2_vpc_subnet_list.0.subnets.0.cidr | ansible.utils.nthhost(10) }}"
+        name: "{{ _eni.name }}"
+        private_ip_address: "{{ ec2_vpc_subnet_list.0.subnets.0.cidr | ansible.utils.nthhost(_eni.host) }}"
         state: present
         subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
         validate_certs: true
+      loop:
+        - name: molecule-eip-01
+          host: 10
+        - name: molecule-eip-02
+          host: 11
+      loop_control:
+        label: "{{ _eni.name }}"
+        loop_var: _eni
       check_mode: false
 
-    - name: Ensure aws elastic network interface is discoverable
+    - name: Ensure aws elastic network interfaces are discoverable
       amazon.aws.ec2_eni_info:
         filters:
-          tag:Name: molecule-eip
+          tag:Name: molecule-eip-*
         validate_certs: true
       register: _ec2_eni_molecule_info
+
+    - name: Ensure dict of aws elastic network interfaces is generated
+      ansible.builtin.set_fact:
+        _ec2_eni_molecule_dict:
+          "{{ _ec2_eni_molecule_info.network_interfaces |
+              json_query('[].{key: tags.Name, value: id}') |
+              items2dict }}"
 
     - name: Ensure role is imported with an empty list
       tags:
