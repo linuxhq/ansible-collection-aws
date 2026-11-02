@@ -706,22 +706,6 @@ def ensure_present(client, module):
                 {"create_flow_logs": tuple(base_request) + ("ClientToken", "ResourceIds")},
             )
 
-            if "DestinationOptions" in base_request:
-                destination_option_parameters = (
-                    client.meta.service_model.operation_model("CreateFlowLogs")
-                    .input_shape.members["DestinationOptions"]
-                    .members
-                )
-                for parameter_name in sorted(base_request["DestinationOptions"]):
-                    if parameter_name not in destination_option_parameters:
-                        module.fail_json(
-                            msg=(
-                                "Installed botocore does not support EC2 "
-                                "create_flow_logs DestinationOptions parameter "
-                                f"{parameter_name}"
-                            )
-                        )
-
             batch_size = MAX_RESOURCE_IDS_PER_CREATE
             if resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
                 batch_size = MAX_TRANSIT_GATEWAY_RESOURCE_IDS_PER_CREATE

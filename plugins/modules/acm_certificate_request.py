@@ -48,7 +48,9 @@ options:
     description:
       - Subject alternative names for the certificate.
       - Entries must not be empty.
-      - This must contain at most 99 additional entries after normalization because ACM allows 100 domain names including O(domain_name).
+      - This must contain at most 99 additional entries after normalization because ACM allows at most 100 domain names
+        including O(domain_name).
+      - The default ACM quota is 10 domain names per certificate; 100 is the maximum after a quota increase.
     elements: str
     type: list
 extends_documentation_fragment:

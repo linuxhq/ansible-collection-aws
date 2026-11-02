@@ -33,7 +33,8 @@ options:
       - EC2 instance type names used to limit the result set.
       - This is sent as the C(instance-type) filter and takes precedence over an
         C(instance-type) key in O(filters), so wildcards such as C(t3.*) are supported.
-      - An instance type that is not offered in the region results in no entry; no error is raised.
+      - An instance type that is not offered in the region results in no entry unless
+        O(include_unsupported_in_region=true); no error is raised.
       - EC2 accepts at most 200 filter values in each call, so the unique entries in this list
         and the values in O(filters) must total at most 200.
     elements: str

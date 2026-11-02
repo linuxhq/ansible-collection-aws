@@ -1004,24 +1004,21 @@ def reconcile_listeners(module, current_listeners):
             pending.remove(desired)
             updates.append((current, desired))
 
-    for desired in pending:
-        # Entries that overlap no remaining listener reuse the first remaining one of their protocol.
-        match = None
-        if module.params["purge_listeners"]:
+        for desired in pending:
+            # Entries that overlap no remaining listener reuse the first remaining one of their protocol.
             match = next((current for current in remaining if current["protocol"] == desired["protocol"]), None)
+            if match is None:
+                creates.append(desired)
+                continue
 
-        if match is None:
-            creates.append(desired)
-            continue
+            remaining.remove(match)
+            updates.append((match, desired))
 
-        remaining.remove(match)
-        updates.append((match, desired))
-
-    deletes = []
-    if module.params["purge_listeners"]:
         deletes = remaining
     else:
+        creates.extend(pending)
         matched.extend((current, None) for current in remaining)
+        deletes = []
 
     return matched, updates, creates, deletes
 
