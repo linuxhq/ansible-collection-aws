@@ -92,10 +92,19 @@ web_acls:
       returned: always
       type: str
     association_config:
-      description: Request-body inspection settings for associated resources.
+      description:
+        - Custom settings for the associations between the web ACL and
+          protected resources.
       returned: when available
       type: dict
       contains:
+        challenge_javascript_sdk_injection:
+          description:
+            - Resource types whose responses get the WAF challenge JavaScript
+              SDK inserted, keyed as AWS returns them, such as C(CLOUDFRONT).
+            - Each value is empty.
+          returned: when available
+          type: dict
         request_body:
           description:
             - Request-body inspection settings keyed by associated resource type.
@@ -211,6 +220,12 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
     require_lookup_params,
 )
 
+# AssociationConfig members keyed by associated resource types, which are AWS values rather than field names.
+RESOURCE_TYPE_MAPS = {
+    "ChallengeJavascriptSdkInjection": "challenge_javascript_sdk_injection",
+    "RequestBody": "request_body",
+}
+
 
 def json_default(value):
     if isinstance(value, (bytes, bytearray)):
@@ -220,13 +235,13 @@ def json_default(value):
 
 
 def association_config(config):
-    # RequestBody is keyed by associated resource types, which are AWS values rather than field names.
-    request_body = config.get("RequestBody")
-    result = camel_dict_to_snake_dict({key: value for key, value in config.items() if key != "RequestBody"})
-    if isinstance(request_body, dict):
-        result["request_body"] = {
-            resource_type: camel_dict_to_snake_dict(settings) for resource_type, settings in request_body.items()
-        }
+    result = camel_dict_to_snake_dict({key: value for key, value in config.items() if key not in RESOURCE_TYPE_MAPS})
+    for key, name in RESOURCE_TYPE_MAPS.items():
+        resource_types = config.get(key)
+        if isinstance(resource_types, dict):
+            result[name] = {
+                resource_type: camel_dict_to_snake_dict(settings) for resource_type, settings in resource_types.items()
+            }
 
     return result
 

@@ -1213,6 +1213,12 @@ def test_ipv6_creation_uses_requested_family(params):
     plugin.validate_configuration(FakeModule(params))
 
 
+def test_ipv6_creation_accepts_a_vpn_concentrator(params):
+    params.update(vpn_concentrator_id="vcn-123", tunnel_inside_ip_version="ipv6")
+    assert params["transit_gateway_id"] is None
+    plugin.validate_configuration(FakeModule(params))
+
+
 @pytest.mark.parametrize("check_mode", [True, False])
 def test_ipv6_creation_without_a_transit_gateway_fails_before_any_aws_call(params, check_mode):
     params.update(customer_gateway_id="cgw-123", vpn_gateway_id="vgw-123", tunnel_inside_ip_version="ipv6")

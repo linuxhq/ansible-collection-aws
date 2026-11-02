@@ -145,7 +145,7 @@ options:
   tunnel_inside_ip_version:
     description:
       - The tunnel address family. AWS defaults to IPv4 on creation.
-      - IPv6 requires O(transit_gateway_id) when creating a connection.
+      - IPv6 requires O(transit_gateway_id) or O(vpn_concentrator_id) when creating a connection.
       - IPv6 together with O(vpn_concentrator_id) has not been tested.
     type: str
     choices: [ipv4, ipv6]

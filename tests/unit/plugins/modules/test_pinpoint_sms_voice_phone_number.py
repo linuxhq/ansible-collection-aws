@@ -1669,7 +1669,7 @@ def test_absent_fails_without_mutation_for_last_phone_number_in_pool(check_mode)
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_absent_proceeds_when_other_phone_numbers_remain_in_pool(check_mode):
-    client = Mock()
+    client = model_client()
     client.update_phone_number.return_value = existing_number(DeletionProtectionEnabled=False)
     client.release_phone_number.return_value = {"PhoneNumberId": "phone-1", "Status": "DELETED"}
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=check_mode)
@@ -1914,16 +1914,27 @@ RELEASED_NUMBER = dict(
 
 @pytest.mark.parametrize("deletion_protection_enabled", [False, True])
 @pytest.mark.parametrize("pool_id", [None, "pool-1"], ids=["unpooled", "pooled"])
-def test_absent_check_mode_predicts_the_release_response(pool_id, deletion_protection_enabled):
+@pytest.mark.parametrize("pricing_tier", [None, "EXAMPLE-TIER"], ids=["no-pricing-tier", "pricing-tier"])
+def test_absent_check_mode_predicts_the_release_response(pool_id, deletion_protection_enabled, pricing_tier):
     described = dict(DESCRIBED_NUMBER, DeletionProtectionEnabled=deletion_protection_enabled)
     if pool_id:
         described["PoolId"] = pool_id
 
+    if pricing_tier:
+        described["PricingTier"] = pricing_tier
+
+    # botocore drops the members ReleasePhoneNumberResult does not model, such as PricingTier, from the response.
+    released_members = get_session().get_service_model("pinpoint-sms-voice-v2").shape_for("ReleasePhoneNumberResult")
+    released = {key: value for key, value in described.items() if key in released_members.members}
+    released["Status"] = "DELETED"
+    if not pricing_tier:
+        assert released == RELEASED_NUMBER
+
     results = {}
     for check_mode in (False, True):
-        client = Mock()
+        client = model_client()
         client.update_phone_number.return_value = dict(DESCRIBED_NUMBER)
-        client.release_phone_number.return_value = dict(RELEASED_NUMBER)
+        client.release_phone_number.return_value = dict(released)
         module = FakeModule(
             phone_number_params(phone_number_id="phone-1", state="absent", wait_delay=1, wait_timeout=1),
             check_mode=check_mode,
@@ -1952,6 +1963,8 @@ def test_absent_check_mode_predicts_the_release_response(pool_id, deletion_prote
     assert results[True] == results[False]
     assert results[True]["phone_number"]["status"] == "DELETED"
     assert "pool_id" not in results[True]["phone_number"]
+    # The prediction keeps PricingTier exactly when the installed ReleasePhoneNumberResult model has it.
+    assert ("pricing_tier" in results[True]["phone_number"]) is ("PricingTier" in released)
 
 
 # Live, RequestPhoneNumber returned these for an untagged SIMULATOR request, without a Tags key. A number requested

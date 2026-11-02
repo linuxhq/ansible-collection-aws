@@ -159,7 +159,10 @@ command:
       returned: when available
       type: str
     completed_count:
-      description: Number of targets that completed the command.
+      description:
+        - Number of targets whose invocation reached a terminal state, such as
+          Success, Failed, Execution Timed Out, Delivery Timed Out, Cancelled,
+          Terminated, or Undeliverable.
       returned: when available
       type: int
     delivery_timed_out_count:
@@ -179,7 +182,11 @@ command:
       returned: when available
       type: int
     expires_after:
-      description: Time after which the command is not invoked.
+      description:
+        - Time when the command expires. AWS then marks every invocation that
+          is still Pending, In Progress, or Delayed as Delivery Timed Out.
+        - It is based on the total timeout, which is O(timeout_seconds) plus
+          the document's execution timeout.
       returned: when available
       type: str
     instance_ids:
@@ -351,7 +358,10 @@ command_invocations:
       returned: when available
       type: str
     instance_name:
-      description: Name of the managed instance associated with the invocation.
+      description:
+        - Fully qualified host name of the managed instance, such as
+          C(ip-10-0-0-32.us-west-2.compute.internal) for an EC2 instance. It
+          is not the EC2 C(Name) tag.
       returned: when available
       type: str
     notification_config:
