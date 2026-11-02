@@ -1531,6 +1531,42 @@ def test_client_ip_preservation_on_an_elastic_ip_endpoint_fails_before_any_aws_c
     ensure_present.assert_not_called()
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "endpoint_id",
+    [
+        "i-0123456789abcdef0",
+        "arn:aws:ec2:us-west-2:123456789012:instance/i-0123456789abcdef0",
+    ],
+    ids=["instance-id", "instance-arn"],
+)
+def test_disabling_client_ip_preservation_on_an_ec2_instance_endpoint_fails_before_any_aws_call(
+    check_mode, endpoint_id
+):
+    # Live: Create/UpdateEndpointGroup reject it for an EC2 instance given by instance ID or by ARN with
+    # InvalidArgumentException, which a real run reaches only after creating or updating the accelerator and listeners.
+    module = FakeModule(
+        present_params(client_ip_preservation_listeners(endpoint_id, False)),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", lambda **kwargs: module),
+        patch.object(module, "client") as client_factory,
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": (
+            f"Endpoint group us-west-2 endpoint {endpoint_id} is an EC2 instance, "
+            "which does not support client_ip_preservation_enabled=false"
+        )
+    }
+    client_factory.assert_not_called()
+    ensure_present.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("endpoint_id", "client_ip_preservation_enabled"),
     [
@@ -1538,10 +1574,27 @@ def test_client_ip_preservation_on_an_elastic_ip_endpoint_fails_before_any_aws_c
         (EIP_ALLOCATION_ID, None),
         (EIP_ARN, False),
         ("i-0123456789abcdef0", True),
+        ("i-0123456789abcdef0", None),
         ("arn:aws:ec2:us-west-2:123456789012:instance/i-0123456789abcdef0", True),
+        ("arn:aws:ec2:us-west-2:123456789012:instance/i-0123456789abcdef0", None),
         ("arn:aws:elasticloadbalancing:us-west-2:123456789012:loadbalancer/app/example/0123456789abcdef", True),
+        ("arn:aws:elasticloadbalancing:us-west-2:123456789012:loadbalancer/app/example/0123456789abcdef", False),
+        ("arn:aws:elasticloadbalancing:us-west-2:123456789012:loadbalancer/net/example/0123456789abcdef", True),
+        ("arn:aws:elasticloadbalancing:us-west-2:123456789012:loadbalancer/net/example/0123456789abcdef", False),
     ],
-    ids=["eip-false", "eip-omitted", "eip-arn-false", "instance", "instance-arn", "load-balancer"],
+    ids=[
+        "eip-false",
+        "eip-omitted",
+        "eip-arn-false",
+        "instance",
+        "instance-omitted",
+        "instance-arn",
+        "instance-arn-omitted",
+        "load-balancer",
+        "load-balancer-false",
+        "network-load-balancer",
+        "network-load-balancer-false",
+    ],
 )
 def test_client_ip_preservation_is_left_to_aws_for_other_endpoints(endpoint_id, client_ip_preservation_enabled):
     module = FakeModule(present_params(client_ip_preservation_listeners(endpoint_id, client_ip_preservation_enabled)))
