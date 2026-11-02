@@ -4,7 +4,9 @@
     - ec2_eip
   amazon.aws.ec2_eip:
     device_id: "{{ _eip.device_id | d(omit) }}"
+    in_vpc: "{{ _eip.in_vpc | d(false) }}"
     ip: "{{ __ec2_eip_dict[_eip.name] }}"
+    release_on_disassociation: "{{ _eip.release_on_disassociation | d(true) }}"
     state: absent
     validate_certs: true
   register: __ec2_eip_result_absent
@@ -19,7 +21,6 @@
     - _eip.name in __ec2_eip_dict.keys()
     - _eip.state is defined
     - _eip.state == 'absent'
-    - __ec2_eip_dict[_eip.name] is defined
   changed_when:
     - ansible_check_mode | bool
     - __ec2_eip_result_absent.changed | bool
@@ -40,4 +41,23 @@
     - _jid.ansible_job_id is defined
   until:
     - __ec2_eip_status_absent.finished | bool
+
+- name: Ensure aws elastic ip addresses detached from their device are released
+  tags:
+    - ec2_eip
+  amazon.aws.ec2_eip:
+    ip: "{{ __ec2_eip_dict[_eip.name] }}"
+    state: absent
+    validate_certs: true
+  loop: "{{ __ec2_eip_list }}"
+  loop_control:
+    label: "{{ _eip.name | d(none) }}"
+    loop_var: _eip
+  when:
+    - _eip.name is defined
+    - _eip.name in __ec2_eip_dict.keys()
+    - _eip.state is defined
+    - _eip.state == 'absent'
+    - _eip.device_id is defined
+    - _eip.release_on_disassociation | d(true) | bool
 ...

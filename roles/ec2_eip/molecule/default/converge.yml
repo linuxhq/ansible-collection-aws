@@ -2,10 +2,68 @@
 - name: Converge
   hosts: all
   roles:
-    - role: ec2_eip
-      ec2_eip_list: []
+    - role: ec2_vpc_net
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_vpc_igw
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_vpc_subnet
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - role: ec2_vpc_subnet_info
       tags:
         - molecule-idempotence-notest
 
-    - ec2_eip
+  tasks:
+    - name: Ensure aws elastic network interfaces are present
+      tags:
+        - molecule-idempotence-notest
+      amazon.aws.ec2_eni:
+        name: "{{ _eni.name }}"
+        private_ip_address: "{{ ec2_vpc_subnet_list.0.subnets.0.cidr | ansible.utils.nthhost(_eni.host) }}"
+        state: present
+        subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+        validate_certs: true
+      loop:
+        - name: molecule-eip-01
+          host: 10
+        - name: molecule-eip-02
+          host: 11
+      loop_control:
+        label: "{{ _eni.name }}"
+        loop_var: _eni
+      check_mode: false
+
+    - name: Ensure aws elastic network interfaces are discoverable
+      amazon.aws.ec2_eni_info:
+        filters:
+          tag:Name: molecule-eip-*
+        validate_certs: true
+      register: _ec2_eni_molecule_info
+
+    - name: Ensure dict of aws elastic network interfaces is generated
+      ansible.builtin.set_fact:
+        _ec2_eni_molecule_dict:
+          "{{ _ec2_eni_molecule_info.network_interfaces |
+              json_query('[].{key: tags.Name, value: id}') |
+              items2dict }}"
+
+    - name: Ensure role is imported with an empty list
+      tags:
+        - molecule-idempotence-notest
+      ansible.builtin.import_role:
+        name: ec2_eip
+      vars:
+        ec2_eip_list: []
+
+    - name: Ensure role is imported
+      ansible.builtin.import_role:
+        name: ec2_eip
 ...

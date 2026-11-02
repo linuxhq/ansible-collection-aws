@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - ec2_eip role - release an address with ``state=absent`` when the entry has a ``device_id``. The address was only
+    disassociated, so an instance address stayed allocated, and a network interface address failed every run because
+    ``in_vpc`` was not passed. ``release_on_disassociation`` now defaults to ``true`` for absent entries, and an address that is already
+    detached from its ``device_id`` is released as well.
+...
