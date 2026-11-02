@@ -127,6 +127,51 @@ def test_invalid_alias_is_rejected_before_api_calls():
     assert "lowercase letters" in raised.value.values["msg"]
 
 
+# Live: CreateAccountAlias rejects every 12-digit alias with EntityAlreadyExists and accepts a 13-digit one.
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("name", ["123456789013", "000000000000"])
+def test_twelve_digit_alias_is_rejected_before_api_calls(check_mode, name):
+    client = Mock()
+    module = FakeModule({"name": name, "state": "present"}, check_mode=check_mode, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": "name must be 3 to 63 characters of lowercase letters, digits, and hyphens, cannot start or end with a "
+        "hyphen or contain consecutive hyphens, and cannot be a 12-digit number"
+    }
+    ensure_present.assert_not_called()
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("name", "state"),
+    [
+        ("12345678901", "present"),
+        ("1234567890134", "present"),
+        ("12345678901a", "present"),
+        ("1234-5678901", "present"),
+        ("123456789013", "absent"),
+    ],
+)
+def test_alias_names_aws_accepts_reach_reconciliation(check_mode, name, state):
+    module = FakeModule({"name": name, "state": state}, check_mode=check_mode, client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+        patch.object(plugin, "ensure_absent") as ensure_absent,
+    ):
+        plugin.main()
+
+    assert (ensure_present if state == "present" else ensure_absent).call_count == 1
+
+
 def test_account_alias_retries_concurrent_modification():
     module = FakeModule({"state": "absent", "name": "example"}, client=Mock())
     original = plugin.AWSRetry.jittered_backoff

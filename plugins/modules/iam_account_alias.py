@@ -17,8 +17,8 @@ options:
     description:
       - The IAM account alias name.
       - When O(state=present), this must be 3 to 63 characters of lowercase
-        letters, digits, and hyphens, and cannot start or end with a hyphen
-        or contain consecutive hyphens.
+        letters, digits, and hyphens, cannot start or end with a hyphen or
+        contain consecutive hyphens, and cannot be a 12-digit number.
     required: true
     type: str
   state:
@@ -190,13 +190,17 @@ def main():
     )
 
     state = module.params["state"]
+    name = module.params["name"]
 
-    if state == "present" and not re.fullmatch(r"[a-z0-9]([a-z0-9]|-(?!-)){1,61}[a-z0-9]", module.params["name"]):
+    # IAM also refuses a 12-digit alias (EntityAlreadyExists), which its model pattern does not express.
+    if state == "present" and (
+        not re.fullmatch(r"[a-z0-9]([a-z0-9]|-(?!-)){1,61}[a-z0-9]", name) or re.fullmatch(r"[0-9]{12}", name)
+    ):
         module.fail_json(
             msg=(
                 "name must be 3 to 63 characters of lowercase letters, digits, "
-                "and hyphens, and cannot start or end with a hyphen or contain "
-                "consecutive hyphens"
+                "and hyphens, cannot start or end with a hyphen or contain "
+                "consecutive hyphens, and cannot be a 12-digit number"
             )
         )
 
