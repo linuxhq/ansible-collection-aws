@@ -2362,6 +2362,88 @@ def test_remote_networks_follow_an_access_change_away_from_config_map(check_mode
         ]
 
 
+IPV6_CLUSTER = dict(
+    STANDARD_CLUSTER, kubernetesNetworkConfig={"ipFamily": "ipv6", "elasticLoadBalancing": {"enabled": False}}
+)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "remote_network_config",
+    [
+        {"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": None},
+        {"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": POD_NETWORKS},
+    ],
+    ids=["nodes", "nodes-and-pods"],
+)
+def test_remote_networks_on_an_ipv6_cluster_fail_before_any_update(remote_network_config, check_mode):
+    # CreateCluster: "remoteNetworkConfig is not supported for IPv6 clusters." (live); an update sends the remote
+    # networks after the deletion protection update.
+    params = eks_params(deletion_protection=True, remote_network_config=remote_network_config)
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=IPV6_CLUSTER),
+        patch.object(plugin, "wait_for_cluster") as wait_for_cluster,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values == {"msg": "remote_network_config requires an IPv4 cluster"}
+    assert client.mock_calls == []
+    wait_for_cluster.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_empty_remote_networks_on_an_ipv6_cluster_are_unchanged(check_mode):
+    params = eks_params(
+        deletion_protection=True, remote_network_config={"remote_node_networks": [], "remote_pod_networks": []}
+    )
+
+    client, result = run_present(FakeModule(params, check_mode=check_mode), [IPV6_CLUSTER])
+
+    assert result["changed"] is True
+    if check_mode:
+        assert client.mock_calls == []
+    else:
+        assert client.update_cluster_config.call_args_list == [call(name="example", deletionProtection=True)]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_remote_networks_on_an_ipv4_cluster_reach_aws(check_mode):
+    params = eks_params(
+        deletion_protection=True,
+        remote_network_config={"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": None},
+    )
+
+    client, result = run_present(FakeModule(params, check_mode=check_mode), [STANDARD_CLUSTER])
+
+    assert result["changed"] is True
+    assert result["cluster"]["remote_network_config"] == {"remote_node_networks": NODE_NETWORKS}
+    if check_mode:
+        assert client.mock_calls == []
+    else:
+        assert client.update_cluster_config.call_args_list == [
+            call(name="example", deletionProtection=True),
+            call(name="example", remoteNetworkConfig={"remoteNodeNetworks": NODE_NETWORKS}),
+        ]
+
+
+def test_remote_networks_for_an_ipv6_cluster_on_create_are_left_to_aws():
+    # CreateCluster rejects them before it creates anything (live).
+    params = eks_params(
+        kubernetes_network_config={"elastic_load_balancing": None, "ip_family": "ipv6", "service_ipv4_cidr": None},
+        remote_network_config={"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": None},
+        resources_vpc_config=vpc_config_params(subnet_ids=["subnet-1", "subnet-2"]),
+        role_arn="arn:role",
+    )
+    client = Mock(create_cluster=Mock(return_value={"cluster": CREATED_CLUSTER}))
+
+    client, result = run_present(FakeModule(params), [None], client)
+
+    assert result["changed"] is True
+    assert client.create_cluster.call_args.kwargs["remoteNetworkConfig"] == {"remoteNodeNetworks": NODE_NETWORKS}
+
+
 def vpc_config_params(**values):
     config = dict.fromkeys(
         ["endpoint_private_access", "endpoint_public_access", "public_access_cidrs", "security_group_ids", "subnet_ids"]
@@ -2660,6 +2742,75 @@ def test_remote_network_cidrs_reach_aws():
         plugin.main()
 
     module.client.assert_called_once()
+
+
+def remote_cidrs(network, count):
+    return [f"10.{80 if network == 'remote_node_networks' else 81}.{index}.0/24" for index in range(count)]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("network", ["remote_node_networks", "remote_pod_networks"])
+@pytest.mark.parametrize("extra", [[], ["10.82.0.0/24"]], ids=["16", "16-and-repeat"])
+def test_more_than_fifteen_remote_network_cidrs_fail_before_any_aws_call(extra, network, check_mode):
+    # CreateCluster: "remoteNodeNetworks CIDRs limit exceeded. Allowed: 15, Provided: 16." and the same for
+    # remotePodNetworks (live); the limit is per cluster, and an update sends the remote networks after the deletion
+    # protection update.
+    config = {"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": POD_NETWORKS}
+    cidrs = remote_cidrs(network, 15) + ["10.82.0.0/24"] + extra
+    config[network] = [{"cidrs": cidrs}]
+    params = eks_params(deletion_protection=True, remote_network_config=config, state="present")
+    module = FakeModule(params, check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": f"remote_network_config.{network}[].cidrs must contain at most 15 CIDR blocks"
+    }
+    module.client.assert_not_called()
+
+
+@pytest.mark.parametrize("network", ["remote_node_networks", "remote_pod_networks"])
+@pytest.mark.parametrize("repeats", [0, 1], ids=["15", "15-blocks-and-repeat"])
+def test_fifteen_remote_network_cidr_blocks_reach_aws(repeats, network):
+    config = {"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": POD_NETWORKS}
+    cidrs = remote_cidrs(network, 15)
+    config[network] = [{"cidrs": cidrs + cidrs[:repeats]}]
+    module = FakeModule(eks_params(remote_network_config=config, state="present"))
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
+
+    module.client.assert_called_once()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_repeated_remote_network_cidr_beyond_fifteen_entries_matches_the_cluster(check_mode):
+    # A list whose 15 distinct blocks match the cluster converges, as it did before the limit was checked.
+    networks = [{"cidrs": remote_cidrs("remote_node_networks", 15)}]
+    current = dict(STANDARD_CLUSTER, remoteNetworkConfig={"remoteNodeNetworks": networks})
+    config = {
+        "remote_node_networks": [{"cidrs": remote_cidrs("remote_node_networks", 15) + ["10.80.0.0/24"]}],
+        "remote_pod_networks": None,
+    }
+    module = FakeModule(eks_params(remote_network_config=config, state="present"), check_mode=check_mode)
+    module.client = Mock(return_value=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is False
+    module.client.return_value.update_cluster_config.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
