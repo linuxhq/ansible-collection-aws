@@ -3,6 +3,7 @@ from unittest.mock import Mock, call, patch
 import pytest
 from botocore.exceptions import ClientError
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import iam_oidc
 from ansible_collections.linuxhq.aws.plugins.modules import iam_oidc_provider as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -679,7 +680,12 @@ def test_check_mode_create_matches_the_real_create(client_id_list, tags):
     assert real["open_id_connect_provider"]["tags"] == (tags or {})
 
 
-def test_create_fallback_reports_the_provider_as_iam_creates_it():
+@pytest.mark.parametrize(
+    ("url", "stored_url"),
+    [("https://example.com/id", "example.com/id"), ("https://example.com/id/", "example.com/id/")],
+    ids=["no-trailing-slash", "trailing-slash"],
+)
+def test_create_fallback_reports_the_provider_as_iam_creates_it(url, stored_url):
     client = Mock()
     client.create_open_id_connect_provider.return_value = {"OpenIDConnectProviderArn": "arn:provider"}
     with (
@@ -688,15 +694,102 @@ def test_create_fallback_reports_the_provider_as_iam_creates_it():
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, FakeModule(oidc_params(thumbprint_list=["a" * 40])))
+        plugin.ensure_present(client, FakeModule(oidc_params(thumbprint_list=["a" * 40], url=url)))
 
     assert raised.value.values["open_id_connect_provider"] == {
         "client_id_list": [],
         "open_id_connect_provider_arn": "arn:provider",
         "tags": {},
         "thumbprint_list": ["a" * 40],
-        "url": "example.com/id",
+        "url": stored_url,
     }
+
+
+# STS matches a token's iss to the provider URL exactly (live: with only the slash-less provider, an issuer with a
+# trailing slash is not validated, and the reverse), and IAM stores the URL as sent, so a new provider keeps it as given.
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("url", "stored_url"),
+    [
+        (
+            "https://sts.windows.net/00000000-0000-0000-0000-000000000000/",
+            "sts.windows.net/00000000-0000-0000-0000-000000000000/",
+        ),
+        ("HTTPS://Issuer.Example.com/Tenant/", "Issuer.Example.com/Tenant/"),
+        ("https://example.com/id", "example.com/id"),
+    ],
+    ids=["trailing-slash", "scheme-and-host-case", "no-trailing-slash"],
+)
+def test_new_provider_is_created_with_the_url_as_given(check_mode, url, stored_url):
+    client = Mock()
+    client.create_open_id_connect_provider.return_value = {"OpenIDConnectProviderArn": "arn:provider"}
+    client.get_open_id_connect_provider.return_value = {
+        "ClientIDList": [],
+        "ThumbprintList": ["a" * 40],
+        "Url": stored_url,
+    }
+    with (
+        patch.object(plugin, "get_provider_by_url", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(
+            client, FakeModule(oidc_params(thumbprint_list=["a" * 40], url=url), check_mode=check_mode)
+        )
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["url"] == url
+    assert raised.value.values["open_id_connect_provider"]["url"] == stored_url
+    if check_mode:
+        client.create_open_id_connect_provider.assert_not_called()
+    else:
+        client.create_open_id_connect_provider.assert_called_once_with(
+            ThumbprintList=["a" * 40],
+            Url=f"https://{stored_url}",
+            aws_retry=True,
+        )
+
+
+# A provider created before URLs were kept as given has no trailing slash and a lower-case host; lookups still
+# normalize, so it stays the managed provider and nothing new is created.
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("url", "existing_url"),
+    [
+        (
+            "https://sts.windows.net/00000000-0000-0000-0000-000000000000/",
+            "sts.windows.net/00000000-0000-0000-0000-000000000000",
+        ),
+        (
+            "https://sts.windows.net/00000000-0000-0000-0000-000000000000",
+            "sts.windows.net/00000000-0000-0000-0000-000000000000/",
+        ),
+        ("https://Example.com/id/", "example.com/id"),
+    ],
+    ids=["slash-requested-slashless-exists", "slashless-requested-slash-exists", "host-case-and-slash"],
+)
+def test_lookup_still_manages_a_provider_differing_only_in_slash_or_host_case(check_mode, url, existing_url):
+    arn = f"arn:aws:iam::123456789012:oidc-provider/{existing_url}"
+    client = Mock()
+    client.get_open_id_connect_provider.return_value = {
+        "ClientIDList": [],
+        "ThumbprintList": ["a" * 40],
+        "Url": existing_url,
+    }
+    with (
+        patch.object(iam_oidc, "query_list", return_value=[{"Arn": arn}]),
+        patch.object(iam_oidc, "require_client_methods"),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(
+            client, FakeModule(oidc_params(thumbprint_list=["a" * 40], url=url), check_mode=check_mode)
+        )
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["open_id_connect_provider_arn"] == arn
+    assert raised.value.values["open_id_connect_provider"]["url"] == existing_url
+    client.create_open_id_connect_provider.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
