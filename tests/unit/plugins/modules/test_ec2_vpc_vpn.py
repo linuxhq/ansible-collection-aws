@@ -2677,6 +2677,108 @@ def test_malformed_returned_timers_fail_before_mutation(params, default_tunnels,
         plugin.tunnel_deltas(FakeModule(params), default_tunnels)
 
 
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize(
+    "returned, tunnel",
+    [
+        ({"IkeVersions": [{"Value": "ikev1"}]}, {"startup_action": "start"}),
+        ({"IkeVersions": [{"Value": "ikev1"}]}, {"ike_versions": ["ikev1"], "startup_action": "start"}),
+        ({}, {"ike_versions": ["ikev1"], "startup_action": "start"}),
+        ({"IkeVersions": [{"Value": "ikev2"}]}, {"ike_versions": ["ikev1"], "startup_action": "start"}),
+        ({"StartupAction": "start"}, {"ike_versions": ["ikev1"]}),
+        ({"StartupAction": "start", "IkeVersions": [{"Value": "ikev2"}]}, {"ike_versions": ["ikev1"]}),
+        ({"StartupAction": "start"}, {"ike_versions": ["ikev1"], "startup_action": "start"}),
+    ],
+)
+def test_startup_start_without_ikev2_fails_before_any_write(params, default_tunnels, check_mode, returned, tunnel):
+    # Live: EC2 rejects each of these with "Initiator mode is only supported for IKEv2", checking against the
+    # tunnel's current values of the options a request omits, after the earlier connection and tunnel writes.
+    default_tunnels["Options"]["TunnelOptions"][1].update(returned)
+    params.update(
+        local_ipv4_network_cidr="10.20.0.0/16",
+        tunnel_options=[
+            {"outside_ip_address": "203.0.113.1", "phase1_lifetime_seconds": 27000},
+            dict(tunnel, outside_ip_address="203.0.113.2"),
+        ],
+    )
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), default_tunnels)
+
+    assert raised.value.values == {
+        "msg": "Cannot update VPN connection vpn-123 tunnel 203.0.113.2: "
+        "startup_action start requires ike_versions to include ikev2"
+    }
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize(
+    "returned, tunnel, sent",
+    [
+        ({}, {"startup_action": "start"}, {"StartupAction": "start"}),
+        (
+            {"IkeVersions": [{"Value": "ikev1"}]},
+            {"ike_versions": ["ikev2"], "startup_action": "start"},
+            {"IKEVersions": [{"Value": "ikev2"}], "StartupAction": "start"},
+        ),
+        (
+            {"IkeVersions": [{"Value": "ikev1"}]},
+            {"ike_versions": ["ikev1", "ikev2"], "startup_action": "start"},
+            {"IKEVersions": [{"Value": "ikev1"}, {"Value": "ikev2"}], "StartupAction": "start"},
+        ),
+        (
+            {"StartupAction": "start", "IkeVersions": [{"Value": "ikev2"}]},
+            {"ike_versions": ["ikev1", "ikev2"]},
+            {"IKEVersions": [{"Value": "ikev1"}, {"Value": "ikev2"}]},
+        ),
+        (
+            {"StartupAction": "start"},
+            {"ike_versions": ["ikev1"], "startup_action": "add"},
+            {"IKEVersions": [{"Value": "ikev1"}], "StartupAction": "add"},
+        ),
+        ({}, {"ike_versions": ["ikev1"], "startup_action": "add"}, {"IKEVersions": [{"Value": "ikev1"}]}),
+        ({"IkeVersions": [{"Value": "ikev1"}]}, {"phase1_lifetime_seconds": 27000}, {"Phase1LifetimeSeconds": 27000}),
+    ],
+)
+def test_startup_and_ike_versions_that_permit_ikev2_or_add_are_sent(
+    params, default_tunnels, check_mode, returned, tunnel, sent
+):
+    # Live: EC2 accepted each of these combinations.
+    default_tunnels["Options"]["TunnelOptions"][1].update(returned)
+    params["tunnel_options"] = [dict(tunnel, outside_ip_address="203.0.113.2")]
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [default_tunnels]}
+    with patch.object(plugin, "wait_for_connection"):
+        assert ensure(client, FakeModule(params, check_mode=check_mode), default_tunnels)["changed"] is True
+
+    expected = [] if check_mode else [{"VpnTunnelOutsideIpAddress": "203.0.113.2", "TunnelOptions": sent}]
+    assert [
+        {key: call.kwargs[key] for key in ("VpnTunnelOutsideIpAddress", "TunnelOptions")}
+        for call in client.modify_vpn_tunnel_options.call_args_list
+    ] == expected
+
+
+def test_ikev1_with_add_is_unchanged(params, default_tunnels):
+    default_tunnels["Options"]["TunnelOptions"][1].update(IkeVersions=[{"Value": "ikev1"}], StartupAction="add")
+    params["tunnel_options"] = [
+        {"outside_ip_address": "203.0.113.2", "ike_versions": ["ikev1"], "startup_action": "add"}
+    ]
+    assert plugin.tunnel_deltas(FakeModule(params), default_tunnels) == []
+
+
+@pytest.mark.parametrize("value", ["ikev1", ["ikev1"], {"Value": "ikev1"}])
+def test_malformed_returned_ike_versions_fail_before_a_startup_change(params, default_tunnels, value):
+    default_tunnels["Options"]["TunnelOptions"][0]["IkeVersions"] = value
+    params["tunnel_options"] = [{"outside_ip_address": "203.0.113.1", "startup_action": "start"}]
+    with pytest.raises(ModuleFail) as raised:
+        plugin.tunnel_deltas(FakeModule(params), default_tunnels)
+
+    assert raised.value.values == {
+        "msg": "EC2 returned invalid IKEVersions for VPN connection vpn-123 tunnel 203.0.113.1"
+    }
+
+
 def test_skip_tunnel_replacement_is_sent_only_with_a_lifecycle_change(params, default_tunnels, sdk_checks):
     # Live: with SkipTunnelReplacement=true, EC2 applied the lifecycle change without entering modifying.
     params.update(

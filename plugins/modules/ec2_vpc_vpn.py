@@ -183,7 +183,10 @@ options:
         type: bool
         version_added: "2.6.0"
       ike_versions:
-        description: The permitted IKE versions. Order is ignored.
+        description:
+          - The permitted IKE versions. Order is ignored. AWS permits both by default.
+          - Must include C(ikev2) while the tunnel's startup action is C(start), as
+            O(tunnel_options[].startup_action) describes.
         type: list
         elements: str
         choices: [ikev1, ikev2]
@@ -326,6 +329,8 @@ options:
           - The action when establishing the tunnel. C(add) waits for the customer gateway to initiate the IKE
             negotiation, and C(start) has AWS initiate it.
           - AWS defaults to C(add).
+          - EC2 supports C(start) only for IKEv2, so the tunnel's IKE versions, from O(tunnel_options[].ike_versions)
+            or already set on the tunnel, must include C(ikev2). The module checks an existing tunnel before any change.
         type: str
         choices: [add, start]
         version_added: "2.6.0"
@@ -1256,6 +1261,9 @@ def tunnel_deltas(module, connection):
                 {field: tunnel[field] for field in TIMER_FIELDS if field not in delta and tunnel.get(field) is not None}
             )
 
+        if "StartupAction" in delta or "IKEVersions" in delta:
+            require_ikev2_for_start(module, connection, tunnel, delta)
+
         if delta:
             changes.append((outside_ip, delta))
 
@@ -1293,6 +1301,32 @@ def require_valid_timers(module, connection, tunnel, delta):
         module.fail_json(
             msg=f"Cannot update VPN connection {connection['VpnConnectionId']} tunnel {tunnel['OutsideIpAddress']}: "
             + "; ".join(problems)
+        )
+
+
+def require_ikev2_for_start(module, connection, tunnel, delta):
+    """Fail before any write when a tunnel would have AWS initiate IKE without permitting IKEv2."""
+    # Live: EC2 rejects StartupAction start unless the tunnel permits IKEv2 ("Initiator mode is only supported for
+    # IKEv2"), and checks a request against the tunnel's current values of the two options it omits.
+    action = delta["StartupAction"] if "StartupAction" in delta else tunnel.get("StartupAction")
+    if (TUNNEL_DEFAULTS["StartupAction"] if action is None else action) != "start":
+        return
+
+    versions = delta["IKEVersions"] if "IKEVersions" in delta else tunnel.get("IkeVersions")
+    # EC2 omits IkeVersions until it is set; the AWS default permits both versions.
+    if versions is None:
+        return
+
+    if not isinstance(versions, list) or any(not isinstance(item, dict) for item in versions):
+        module.fail_json(
+            msg=f"EC2 returned invalid IKEVersions for VPN connection {connection['VpnConnectionId']} "
+            f"tunnel {tunnel['OutsideIpAddress']}"
+        )
+
+    if "ikev2" not in {item.get("Value") for item in versions}:
+        module.fail_json(
+            msg=f"Cannot update VPN connection {connection['VpnConnectionId']} tunnel {tunnel['OutsideIpAddress']}: "
+            "startup_action start requires ike_versions to include ikev2"
         )
 
 
