@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - iam_oidc_provider - when two existing providers differ only in a trailing slash or host case, the provider whose
+    URL equals O(url) exactly is now managed. IAM keeps both forms as separate providers and lists the slash-less one
+    first, so C(url=https://sts.windows.net/<tenant>/) updated, returned and deleted the slash-less provider that AWS STS
+    never uses for that issuer.
+  - iam_oidc_provider_info - when two providers differ only in a trailing slash or host case, O(url) now returns the
+    provider whose URL equals it exactly instead of the first one listed.

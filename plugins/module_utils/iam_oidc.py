@@ -100,14 +100,17 @@ def get_provider(client, module, arn):
 
 def get_provider_by_url(client, module, url):
     desired_url = normalize_provider_url(url)
-
-    for provider_summary in list_provider_summaries(client, module):
-        arn = provider_summary["Arn"]
-
-        arn_url = arn.partition(":oidc-provider/")[2]
-        if normalize_provider_url(arn_url) != desired_url:
-            continue
-
+    exact_url = url[len("https://") :] if url.lower().startswith("https://") else url
+    candidates = [
+        provider_summary["Arn"]
+        for provider_summary in list_provider_summaries(client, module)
+        if normalize_provider_url(provider_summary["Arn"].partition(":oidc-provider/")[2]) == desired_url
+    ]
+    # IAM keeps URLs that differ only in a trailing slash or host case as separate providers, and STS matches a token's
+    # issuer exactly, so the provider with the URL exactly as given wins over a normalized match. The sort is stable,
+    # so the listed order decides otherwise.
+    candidates.sort(key=lambda arn: arn.partition(":oidc-provider/")[2] != exact_url)
+    for arn in candidates:
         provider = get_provider(client, module, arn)
 
         if provider and normalize_provider_url(provider.get("Url")) == desired_url:

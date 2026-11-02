@@ -56,6 +56,8 @@ options:
       - An existing provider whose URL differs from O(url) only in a trailing
         slash or host case is managed as the matching provider; no provider
         with the exact URL is created while it exists.
+      - When several existing providers match, the one whose URL equals O(url)
+        exactly, apart from the C(https://) prefix, is managed.
     required: true
     type: str
 notes:
