@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - route53_resolver_rule_info - a rule that another account shares with this account through AWS RAM
+    (C(share_status=SHARED_WITH_ME)) is now returned with empty C(tags) and without a C(ListTagsForResource) call.
+    Only the account that created a Route 53 Resolver rule can see its tags, so the call could fail the module with
+    "Unable to list tags for AWS Route53 Resolver rule", or drop the shared rule from C(resolver_rules) when AWS
+    reported it as not found. Rules this account owns, including rules it shares with other accounts, still return
+    their tags.
