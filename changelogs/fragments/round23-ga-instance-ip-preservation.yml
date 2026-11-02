@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - global_accelerator - O(listeners[].endpoint_groups[].endpoint_configurations[].client_ip_preservation_enabled=false)
+    on an EC2 instance endpoint, given by instance ID or by ARN, now fails before any AWS call, in check mode too. AWS
+    rejects it on the endpoint group create or update, which a real run reached only after creating or updating the
+    accelerator and its listeners, while check mode predicted success. The option documents that internal Application
+    Load Balancer endpoints also always preserve client IP addresses.

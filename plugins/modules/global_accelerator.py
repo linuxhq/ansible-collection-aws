@@ -135,6 +135,10 @@ options:
                     type.
                   - AWS does not support C(true) for Elastic IP address
                     endpoints, whether given by allocation ID or by ARN.
+                  - AWS does not support C(false) for EC2 instance endpoints,
+                    whether given by instance ID or by ARN, or for internal
+                    Application Load Balancer endpoints, which always preserve
+                    client IP addresses.
                 type: bool
               endpoint_id:
                 description:
@@ -2405,6 +2409,17 @@ def main():
                             msg=(
                                 f"Endpoint group {region} endpoint {endpoint_id} is an Elastic IP address, "
                                 "which does not support client_ip_preservation_enabled=true"
+                            )
+                        )
+
+                    # Likewise for false on an EC2 instance given by instance ID or by ARN.
+                    if configuration.get("client_ip_preservation_enabled") is False and (
+                        endpoint_id.startswith("i-") or ec2_endpoint_arn(endpoint_id, ("instance",)) is not None
+                    ):
+                        module.fail_json(
+                            msg=(
+                                f"Endpoint group {region} endpoint {endpoint_id} is an EC2 instance, "
+                                "which does not support client_ip_preservation_enabled=false"
                             )
                         )
 
