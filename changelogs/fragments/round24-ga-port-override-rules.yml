@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - global_accelerator - a port override whose
+    O(listeners[].endpoint_groups[].port_overrides[].endpoint_port) is within any listener's port ranges, of either
+    protocol, or repeats the endpoint port of another port override in an endpoint group of the same region, on any
+    listener, now fails before any AWS call, in check mode too. AWS rejects it on the endpoint group create or update,
+    which a real run reached only after creating or updating the accelerator and its listeners, while check mode
+    predicted success.
