@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - wafv2_web_acl_logging - C(WAFServiceLinkedRoleErrorException) is now retried with the module's bounded backoff.
+    AWS documents it as a transient lock on the logging service-linked role that a recent C(PutLoggingConfiguration)
+    request can hold for about 20 seconds, and asks callers to try again.
