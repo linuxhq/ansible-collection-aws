@@ -1,0 +1,15 @@
+---
+bugfixes:
+  - ec2_instance_type_info - document that an ``instance_types`` entry not offered in the region is still
+    returned when ``include_unsupported_in_region=true``, instead of stating that it never produces an entry.
+trivial:
+  - acm_certificate_request - document that the default ACM quota is 10 domain names per certificate and that 100
+    is the maximum after a quota increase.
+  - ec2_flow_log - remove the redundant per-member ``DestinationOptions`` botocore check; every member shipped in
+    the same botocore release as ``DestinationOptions``, which the parameter-level check already requires.
+  - ec2_transit_gateway_route_table - resolve the create or replace route method by name.
+  - ec2_vpc_vpn - document that the returned ``transit_gateway_id`` is absent for VPN concentrator connections,
+    that ``vpn_concentrator_id`` cannot be combined with ``vpn_gateway_id``, and that IPv6 together with
+    ``vpn_concentrator_id`` has not been tested.
+  - global_accelerator - combine the ``purge_listeners`` branches of listener reconciliation.
+...

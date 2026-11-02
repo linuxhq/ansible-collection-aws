@@ -146,6 +146,7 @@ options:
     description:
       - The tunnel address family. AWS defaults to IPv4 on creation.
       - IPv6 requires O(transit_gateway_id) when creating a connection.
+      - IPv6 together with O(vpn_concentrator_id) has not been tested.
     type: str
     choices: [ipv4, ipv6]
   tunnel_options:
@@ -344,7 +345,7 @@ options:
     description:
       - The ID of the VPN concentrator that attaches the connection to its transit gateway. Required for creation
         unless O(vpn_gateway_id) or O(transit_gateway_id) is supplied. EC2 rejects it together with
-        O(transit_gateway_id).
+        O(transit_gateway_id) or O(vpn_gateway_id).
       - Cannot be changed on an existing connection.
       - Requires botocore 1.40.76 or later.
     type: str
@@ -492,7 +493,10 @@ vpn_connection:
       returned: when attached to a virtual private gateway
       type: str
     transit_gateway_id:
-      description: The transit gateway ID.
+      description:
+        - The transit gateway ID.
+        - Absent for a VPN concentrator connection because EC2 does not report it, even though the
+          concentrator is attached to a transit gateway.
       returned: when attached to a transit gateway
       type: str
     type:

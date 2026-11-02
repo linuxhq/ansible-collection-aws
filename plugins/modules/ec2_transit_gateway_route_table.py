@@ -973,11 +973,7 @@ def ensure_present(client, module):
                         )
 
                         # Resolve the method only after require_client_methods confirms it exists.
-                        method = (
-                            client.create_transit_gateway_route
-                            if current_route is None
-                            else client.replace_transit_gateway_route
-                        )
+                        method = getattr(client, method_name)
                         try:
                             response = method(**request, aws_retry=True)
                         except (BotoCoreError, ClientError) as e:

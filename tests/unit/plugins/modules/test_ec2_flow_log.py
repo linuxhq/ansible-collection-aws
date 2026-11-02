@@ -715,11 +715,6 @@ def test_absent_log_format_with_extra_spacing_deletes_the_flow_log_ec2_stored():
 def test_create_sdk_check_covers_every_request_parameter():
     client = Mock()
     client.create_flow_logs.return_value = {"FlowLogIds": ["fl-new"]}
-    client.meta.service_model.operation_model.return_value.input_shape.members = {
-        "DestinationOptions": Mock(
-            members=dict.fromkeys(("FileFormat", "HiveCompatiblePartitions", "PerHourPartition"))
-        )
-    }
     params = present_params(
         deliver_cross_account_role="arn:aws:iam::123456789012:role/cross",
         destination_options={"file_format": "parquet", "hive_compatible_partitions": True, "per_hour_partition": None},
@@ -743,25 +738,6 @@ def test_create_sdk_check_covers_every_request_parameter():
         "FileFormat": "parquet",
         "HiveCompatiblePartitions": True,
     }
-
-
-def test_create_fails_before_aws_when_botocore_lacks_a_destination_option():
-    client = Mock()
-    client.meta.service_model.operation_model.return_value.input_shape.members = {
-        "DestinationOptions": Mock(members={"FileFormat": None})
-    }
-    params = present_params(destination_options={"file_format": "parquet", "per_hour_partition": True})
-    with (
-        patch.object(plugin, "get_flow_logs", return_value=[]),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, FakeModule(params))
-
-    assert raised.value.values["msg"] == (
-        "Installed botocore does not support EC2 create_flow_logs DestinationOptions parameter PerHourPartition"
-    )
-    client.create_flow_logs.assert_not_called()
 
 
 def test_create_sends_a_client_token():
