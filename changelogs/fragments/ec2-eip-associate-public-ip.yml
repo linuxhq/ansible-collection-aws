@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ec2_eip role - associate addresses with ``device_id`` again. The association task read ``public_ip`` from a
+    name-to-address map whose values are the public IP strings, so every association was skipped.
+...
