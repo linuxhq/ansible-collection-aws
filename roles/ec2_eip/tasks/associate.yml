@@ -6,7 +6,7 @@
     allow_reassociation: "{{ _eip.allow_reassociation | d(false) }}"
     device_id: "{{ _eip.device_id }}"
     in_vpc: "{{ _eip.in_vpc | d(false) }}"
-    public_ip: "{{ __ec2_eip_dict[_eip.name].public_ip }}"
+    public_ip: "{{ __ec2_eip_dict[_eip.name] }}"
     purge_tags: "{{ _eip.purge_tags | d(true) }}"
     release_on_disassociation: "{{ _eip.release_on_disassociation | d(false) }}"
     reuse_existing_ip_allowed: "{{ _eip.reuse_existing_ip_allowed | d(false) }}"
@@ -26,7 +26,6 @@
     - _eip.device_id is defined
     - _eip.state is not defined or
       _eip.state == 'present'
-    - __ec2_eip_dict[_eip.name].public_ip is defined
   changed_when:
     - ansible_check_mode | bool
     - __ec2_eip_result_associate.changed | bool
