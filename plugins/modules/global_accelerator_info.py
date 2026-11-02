@@ -121,6 +121,22 @@ accelerators:
       type: list
       elements: dict
       contains:
+        ip_address_details:
+          description:
+            - The IP addresses in the set, with details such as the network zone of each address.
+            - Returned only with a botocore version that models it, such as 1.43.122.
+          returned: when returned by AWS
+          type: list
+          elements: dict
+          contains:
+            ip_address:
+              description: The static IP address.
+              returned: when returned by AWS
+              type: str
+            network_zone:
+              description: The network zone that the IP address is located on.
+              returned: when returned by AWS
+              type: str
         ip_address_family:
           description: The IP address family.
           returned: when returned by AWS

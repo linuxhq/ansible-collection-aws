@@ -1,0 +1,5 @@
+---
+trivial:
+  - ec2_vpc_vpn - name the tunnel modification loop variable ``tunnel_options`` instead of reusing ``options``.
+  - global_accelerator, global_accelerator_info - document ``ip_sets[].ip_address_details`` in the return values.
+...
