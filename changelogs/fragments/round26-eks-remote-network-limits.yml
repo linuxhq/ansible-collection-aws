@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - 'eks_cluster - more than 15 distinct O(remote_network_config.remote_node_networks[].cidrs) or
+    O(remote_network_config.remote_pod_networks[].cidrs) blocks now fail before any AWS call, in check mode too. EKS
+    accepts at most 15 of each per cluster ("remoteNodeNetworks CIDRs limit exceeded. Allowed: 15, Provided: 16."),
+    but check mode predicted success, and on an existing cluster the real run sent them only after an earlier access,
+    deletion protection or logging update, so it could fail with changed=true.'
+  - eks_cluster - remote networks for an existing IPv6 cluster now fail before any update, in check mode too. EKS
+    rejects them ("remoteNetworkConfig is not supported for IPv6 clusters."), but check mode predicted success, and
+    the real run sent them only after an earlier update, so it could fail with changed=true.

@@ -170,6 +170,7 @@ options:
       - AWS accepts remote networks only on a cluster whose O(access_config.authentication_mode) is C(API) or
         C(API_AND_CONFIG_MAP). When updating a cluster, an authentication mode change in the same task is applied
         first.
+      - AWS accepts remote networks only on a cluster whose O(kubernetes_network_config.ip_family) is C(ipv4).
       - This requires botocore C(1.35.72) or later, and C(1.37.24) or later to update an existing cluster.
     suboptions:
       remote_node_networks:
@@ -181,6 +182,7 @@ options:
             description:
               - The CIDR blocks of the remote node network.
               - This must contain at least one CIDR block, and entries must not be empty.
+              - This must contain at most 15 distinct CIDR blocks.
             elements: str
             required: true
             type: list
@@ -195,6 +197,7 @@ options:
             description:
               - The CIDR blocks of the remote pod network.
               - This must contain at least one CIDR block, and entries must not be empty.
+              - This must contain at most 15 distinct CIDR blocks.
             elements: str
             required: true
             type: list
@@ -1276,6 +1279,10 @@ def ensure_present(client, module, deadline=None):
                 msg="remote_network_config requires access_config.authentication_mode API or API_AND_CONFIG_MAP"
             )
 
+        # EKS rejects remote networks on an IPv6 cluster, whose IP family cannot change.
+        if (current.get("kubernetesNetworkConfig") or {}).get("ipFamily") == "ipv6":
+            module.fail_json(msg="remote_network_config requires an IPv4 cluster")
+
     if auto_mode_changed:
         # EKS requires compute, load balancing, and storage enablement in one request.
         update_requests.append(auto_mode_request(current, config_request))
@@ -1630,6 +1637,11 @@ def main():
                 module.fail_json(
                     msg=f"remote_network_config.{network}[].cidrs must not be empty or contain empty entries"
                 )
+
+            # EKS rejects more than 15 per cluster, but check mode would predict success, and on an update they reach
+            # EKS after other updates. Repeats are counted once, as the cluster comparison ignores them.
+            if len({cidr for entry in entries for cidr in entry["cidrs"]}) > 15:
+                module.fail_json(msg=f"remote_network_config.{network}[].cidrs must contain at most 15 CIDR blocks")
 
         # EKS rejects these, but check mode would predict success, and a blank network entry or version reaches EKS
         # after other updates.
