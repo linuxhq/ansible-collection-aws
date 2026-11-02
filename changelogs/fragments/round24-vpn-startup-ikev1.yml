@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - ec2_vpc_vpn - an existing tunnel update whose resulting O(tunnel_options[].startup_action) is C(start) while its
+    resulting O(tunnel_options[].ike_versions) exclude C(ikev2), each supplied or already set on the tunnel, now fails
+    before any change, in check mode too. EC2 rejects that tunnel update ("Initiator mode is only supported for IKEv2"),
+    which a real run reached only after modifying the connection options or another tunnel, while check mode predicted
+    success. Both options document the rule; creation is unchanged.
