@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - iam_oidc_provider - a new provider is now created with O(url) exactly as given, apart from a lower-case
+    C(https://) prefix. The module used to strip a trailing slash and lower-case the host, so
+    C(https://sts.windows.net/<tenant>/) created C(sts.windows.net/<tenant>), which AWS STS never uses for tokens whose
+    C(iss) ends in a slash (it matches the issuer exactly), while every rerun reported no change. Lookups still ignore
+    a trailing slash and host case, so an existing provider created by earlier versions keeps being managed; delete it
+    to recreate it with the exact URL.

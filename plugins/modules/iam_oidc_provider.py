@@ -49,6 +49,13 @@ options:
       - The URL must be at most 255 characters and identify a host that is not empty or whitespace-only.
       - Matching against an existing provider ignores the C(https://) prefix
         and any trailing slash, and compares the host case-insensitively.
+      - A new provider is created with the URL exactly as given, apart from a
+        lower-case C(https://) prefix, because AWS STS matches the C(iss) claim
+        of a token to the provider URL exactly, including any trailing slash.
+        Give the URL exactly as the identity provider's tokens state their issuer.
+      - An existing provider whose URL differs from O(url) only in a trailing
+        slash or host case is managed as the matching provider; no provider
+        with the exact URL is created while it exists.
     required: true
     type: str
 notes:
@@ -248,10 +255,10 @@ def updated_provider(current, desired, current_comparable):
     return dict(current, **written)
 
 
-def new_provider(desired, tags):
-    """Return a provider being created as IAM reports it: no client IDs or tags unless they were requested."""
+def new_provider(created_url, desired, tags):
+    """Return a provider being created as IAM reports it: the URL as sent, no client IDs or tags unless requested."""
     return dict(
-        {"ClientIDList": [], "Tags": ansible_dict_to_boto3_tag_list(tags or {}), "Url": desired["url"]},
+        {"ClientIDList": [], "Tags": ansible_dict_to_boto3_tag_list(tags or {}), "Url": created_url},
         **provider_lists(desired),
     )
 
@@ -261,6 +268,9 @@ def ensure_present(client, module):
     url = module.params["url"]
     current = get_provider_by_url(client, module, url)
     desired = {"url": normalize_provider_url(url)}
+    # STS matches a token's issuer to the provider URL exactly, trailing slash included, and IAM stores the URL as sent
+    # without its https:// prefix, so a new provider keeps the given URL. Only the lookup above normalizes it.
+    created_url = url[len("https://") :]
     if module.params["client_id_list"] is not None:
         desired["client_id_list"] = sorted(set(module.params["client_id_list"]))
 
@@ -291,7 +301,7 @@ def ensure_present(client, module):
 
     if changed and not module.check_mode:
         if current is None:
-            request = {"Url": f"https://{desired['url']}", **provider_lists(desired)}
+            request = {"Url": f"https://{created_url}", **provider_lists(desired)}
             if tags:
                 request["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
@@ -329,7 +339,7 @@ def ensure_present(client, module):
             arn = response["OpenIDConnectProviderArn"]
 
             current = get_provider_by_arn(client, module, arn, changed=True) or dict(
-                new_provider(desired, tags), OpenIDConnectProviderArn=arn
+                new_provider(created_url, desired, tags), OpenIDConnectProviderArn=arn
             )
         else:
             arn = current["OpenIDConnectProviderArn"]
@@ -459,7 +469,7 @@ def ensure_present(client, module):
     elif changed and module.check_mode:
         # Mirror the real run: an existing provider keeps the URL AWS returned and every list no call would write.
         if current is None:
-            current = new_provider(desired, tags)
+            current = new_provider(created_url, desired, tags)
         elif resource_changed:
             current = updated_provider(current, desired, current_comparable)
 
@@ -506,7 +516,7 @@ def main():
 
         # IAM rejects a whitespace-only host, which identifies no provider either.
         normalized_url = normalize_provider_url(module.params["url"])
-        if not normalized_url or not normalized_url.partition("/")[0].strip():
+        if not normalized_url.partition("/")[0].strip():
             module.fail_json(msg="url must identify an OIDC provider host")
 
         if len(module.params["url"]) > 255:
