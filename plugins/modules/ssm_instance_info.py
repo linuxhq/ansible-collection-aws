@@ -163,7 +163,11 @@ instances:
       returned: when available
       type: str
     is_latest_version:
-      description: Whether the installed SSM Agent is the latest available version.
+      description:
+        - Whether the latest SSM Agent version is running on the managed
+          instance.
+        - AWS documents that this does not indicate whether the latest version
+          is installed on Windows Server instances.
       returned: when available
       type: bool
     last_association_execution_date:

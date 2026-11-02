@@ -127,7 +127,7 @@ def main():
         require_client_methods(module, client, "EC2", {method_name: ()})
 
         # Resolve the method only after require_client_methods confirms it exists.
-        method = client.enable_serial_console_access if desired_enabled else client.disable_serial_console_access
+        method = getattr(client, method_name)
         try:
             response = method(aws_retry=True)
         except (BotoCoreError, ClientError) as e:

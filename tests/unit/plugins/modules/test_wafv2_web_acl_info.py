@@ -103,6 +103,24 @@ def test_request_body_resource_types_are_preserved():
     }
 
 
+def test_challenge_javascript_sdk_injection_resource_types_are_preserved():
+    acl = {
+        "ARN": "arn:web-acl",
+        "Id": "acl-1",
+        "Name": "main",
+        "AssociationConfig": {
+            "RequestBody": {"CLOUDFRONT": {"DefaultSizeInspectionLimit": "KB_16"}},
+            "ChallengeJavascriptSdkInjection": {"CLOUDFRONT": {}},
+        },
+    }
+    result, _require, _query = run(FakeModule(params(), client=acl_client(acl)), [SUMMARY])
+
+    assert result.values["web_acls"][0]["association_config"] == {
+        "challenge_javascript_sdk_injection": {"CLOUDFRONT": {}},
+        "request_body": {"CLOUDFRONT": {"default_size_inspection_limit": "KB_16"}},
+    }
+
+
 def test_tags_are_returned_with_their_case():
     client = acl_client(
         {"ARN": "arn:web-acl", "Id": "acl-1", "Name": "main"},

@@ -367,9 +367,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     wait_deadline,
 )
 
-# DescribePhoneNumbers fields that the ReleasePhoneNumber response does not model.
-RELEASE_OMITTED_FIELDS = ("DeletionProtectionEnabled", "InternationalSendingEnabled", "MessagingLimits", "PoolId")
-
 # Settings AWS gives a requested number when the request omits them, used only to predict check-mode results.
 REQUEST_CREATION_DEFAULTS = {"DeletionProtectionEnabled": False, "InternationalSendingEnabled": False}
 # Settings a number shares with its pool, which AWS gives these values only for a number requested outside a pool.
@@ -671,8 +668,10 @@ def ensure_absent(client, module):
         require_not_last_pool_phone_number(client, module, current)
 
     if changed and module.check_mode:
-        # A real run returns the ReleasePhoneNumber response, which reports the number DELETED.
-        response = {key: value for key, value in current.items() if key not in RELEASE_OMITTED_FIELDS}
+        # A real run returns the ReleasePhoneNumber response, which reports the number DELETED, and botocore drops
+        # the members its model lacks, so keep only the described fields that response models.
+        released_fields = client.meta.service_model.shape_for("ReleasePhoneNumberResult").members
+        response = {key: value for key, value in current.items() if key in released_fields}
         response["Status"] = "DELETED"
 
     if changed and not module.check_mode:

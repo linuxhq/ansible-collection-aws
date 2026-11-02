@@ -1,0 +1,19 @@
+---
+bugfixes:
+  - ec2_vpc_vpn - document that IPv6 requires ``transit_gateway_id`` or ``vpn_concentrator_id`` when creating a
+    connection, as the module enforces, instead of ``transit_gateway_id`` alone.
+  - pinpoint_sms_voice_phone_number - derive the check-mode ``state=absent`` result from the installed
+    ``ReleasePhoneNumber`` response model, so it no longer returns ``pricing_tier`` that the real run does not.
+  - ssm_instance_info - document that ``is_latest_version`` reports whether the latest SSM Agent is running, and
+    that AWS does not use it to indicate the installed version on Windows Server instances.
+  - ssm_send_command - document that ``command.completed_count`` counts every invocation that reached a terminal
+    state, including failed, timed out, cancelled, and undeliverable ones.
+  - ssm_send_command - document that ``command.expires_after`` is when AWS marks unfinished invocations as
+    Delivery Timed Out, based on ``timeout_seconds`` plus the document's execution timeout.
+  - ssm_send_command - document that ``command_invocations[].instance_name`` is the managed instance's fully
+    qualified host name, not the EC2 ``Name`` tag.
+  - wafv2_web_acl_info - keep the resource-type keys of ``association_config.challenge_javascript_sdk_injection``,
+    such as ``CLOUDFRONT``, as AWS returns them, and document the member.
+trivial:
+  - ec2_serial_console - resolve the enable or disable method by name.
+...
