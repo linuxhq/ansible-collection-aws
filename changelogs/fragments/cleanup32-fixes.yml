@@ -1,0 +1,9 @@
+---
+trivial:
+  - ec2_vpc_vpn - document that EC2 rejects ``skip_tunnel_replacement`` when turning tunnel lifecycle control off
+    while pending maintenance is available.
+  - glue_connection_info - document that Glue still returns ``KAFKA_SASL_SCRAM_PASSWORD`` when ``hide_password`` is
+    true.
+  - ses_identity_dkim, ses_identity_info - document that ``dkim_attributes.tokens`` holds the selector of your public
+    key for an identity with keys you supplied.
+...
