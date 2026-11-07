@@ -103,6 +103,8 @@ options:
       - When true, the module sends a tunnel's lifecycle control change on its own, which EC2 applies without a
         replacement or a C(modifying) state, and then sends the tunnel's other changes as usual. EC2 rejects skipping
         together with changes such as O(tunnel_options[].startup_action).
+      - While pending maintenance is available for a tunnel, EC2 also rejects skipping when lifecycle control is turned
+        off; turning it off without skipping applies that maintenance with an immediate endpoint replacement.
       - It is not part of the connection state, so it is never compared and never reports a change by itself. It is
         ignored during creation and when lifecycle control does not change.
       - When omitted or false, EC2 replaces the tunnel endpoint, which keeps its outside IP address.
@@ -180,7 +182,8 @@ options:
           - Whether tunnel endpoint lifecycle control is enabled, which lets you schedule the replacement of the tunnel
             endpoint during AWS maintenance.
           - AWS defaults to false. Changing it on an existing tunnel replaces the tunnel endpoint, which keeps its
-            outside IP address, unless O(skip_tunnel_replacement=true).
+            outside IP address, unless O(skip_tunnel_replacement=true). EC2 rejects that skip when turning lifecycle
+            control off while pending maintenance is available.
         type: bool
         version_added: "2.6.0"
       ike_versions:

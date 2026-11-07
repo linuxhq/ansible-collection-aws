@@ -109,7 +109,11 @@ identities:
           returned: when available
           type: str
         tokens:
-          description: The Easy DKIM tokens for the identity's DKIM CNAME records.
+          description:
+            - The Easy DKIM tokens for the identity's DKIM CNAME records.
+            - For an identity with keys you supplied
+              (RV(identities[].dkim_attributes.signing_attributes_origin=EXTERNAL)), this is the selector of your
+              public key.
           returned: when available
           type: list
           elements: str

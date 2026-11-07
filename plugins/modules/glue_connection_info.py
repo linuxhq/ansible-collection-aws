@@ -37,6 +37,8 @@ options:
     default: true
     description:
       - Whether to hide passwords in the returned connection properties.
+      - Glue does not hide every secret property; it still returns
+        C(KAFKA_SASL_SCRAM_PASSWORD) when this is V(true).
       - Setting this to V(false) returns secrets in C(connection_properties)
         that Ansible does not mask; register and handle the result with care.
     type: bool
