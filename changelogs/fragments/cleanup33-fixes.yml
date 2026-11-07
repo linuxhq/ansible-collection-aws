@@ -1,0 +1,11 @@
+---
+bugfixes:
+  - ses_identity_dkim - for an identity with keys you supplied (``EXTERNAL`` signing attributes origin), the
+    ``FAILED`` DKIM status warning now names the TXT record at ``<selector>._domainkey.<domain>`` instead of
+    DKIM CNAME records.
+trivial:
+  - global_accelerator - document that AWS does not support client IP address preservation for Network Load
+    Balancer endpoints without security groups.
+  - route53_resolver_rule - document that an update keeps the omitted port and protocol, as well as the server
+    name indication, only from a matching current target.
+  - ssm_association - document that ``apply_only_at_cron_interval`` also skips the immediate run after an update.

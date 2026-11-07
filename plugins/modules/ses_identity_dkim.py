@@ -16,7 +16,8 @@ description:
   - The identity must already exist.
   - The module warns when the identity's DKIM verification status is
     V(FAILED), including in check mode. Check that the DKIM CNAME records are
-    published and correct.
+    published and correct, or, for an identity with keys you supplied, the
+    DKIM TXT record at C(<selector>._domainkey.<domain>).
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -220,9 +221,16 @@ def main():
             current = get_dkim_attributes(client, module, changed=True)
 
     if current.get("Status") == "FAILED":
+        # Keys you supplied (EXTERNAL) are verified by a TXT record at their selector, which Tokens holds.
+        if current.get("SigningAttributesOrigin") == "EXTERNAL":
+            selector = (current.get("Tokens") or ["<selector>"])[0]
+            records = f"DKIM TXT record at {selector}._domainkey.{identity} is"
+        else:
+            records = "DKIM CNAME records are"
+
         module.warn(
             f"DKIM verification failed for AWS SES identity {identity}; "
-            "check that the DKIM CNAME records are published and correct"
+            f"check that the {records} published and correct"
         )
 
     module.exit_json(
