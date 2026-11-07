@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - Add the ``linuxhq.aws.aws`` action group for every module, extending ``amazon.aws.aws``, so
+    ``module_defaults`` set through ``group/linuxhq.aws.aws`` apply to modules from both collections.
+...

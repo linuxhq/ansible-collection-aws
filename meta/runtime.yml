@@ -1,3 +1,74 @@
 ---
 requires_ansible: '>=2.18.0'
+action_groups:
+  aws:
+    - metadata:
+        extend_group:
+          - amazon.aws.aws
+    - account_name
+    - account_region
+    - acm_certificate_request
+    - aws_account_info
+    - ec2_flow_log_info
+    - ec2_flow_log
+    - ec2_instance_metadata_info
+    - ec2_instance_metadata
+    - ec2_instance_type_info
+    - ec2_placement_group_info
+    - ec2_pricing_info
+    - ec2_serial_console_info
+    - ec2_serial_console
+    - ec2_transit_gateway_route_table_info
+    - ec2_transit_gateway_route_table
+    - ec2_vpc_prefix_list_info
+    - ec2_vpc_prefix_list
+    - ec2_vpc_vpn
+    - ecs_ecr_info
+    - eks_cluster_info
+    - eks_cluster
+    - global_accelerator_info
+    - global_accelerator
+    - glue_connection_info
+    - iam_account_alias_info
+    - iam_account_alias
+    - iam_oidc_provider_info
+    - iam_oidc_provider
+    - iam_policy_info
+    - notifications_contacts_info
+    - notifications_contacts
+    - notifications_hub_info
+    - notifications_hub
+    - pinpoint_sms_voice_phone_number_info
+    - pinpoint_sms_voice_phone_number
+    - pinpoint_sms_voice_phone_pool_associate
+    - pinpoint_sms_voice_phone_pool_info
+    - pinpoint_sms_voice_phone_pool
+    - rds_subnet_group_info
+    - route53_delegation_set_info
+    - route53_delegation_set
+    - route53_resolver_info
+    - route53_resolver_rule_associate
+    - route53_resolver_rule_info
+    - route53_resolver_rule
+    - route53_resolver
+    - route53_zone_associate
+    - service_quota_info
+    - service_quota
+    - ses_identity_dkim
+    - ses_identity_info
+    - ses_sandbox_info
+    - ses_sandbox
+    - sns_sms_attributes_info
+    - sns_sms_attributes
+    - sns_topic_attributes
+    - sqs_queue_info
+    - ssm_association_info
+    - ssm_association
+    - ssm_document_info
+    - ssm_document
+    - ssm_instance_info
+    - ssm_send_command
+    - wafv2_ip_set_info
+    - wafv2_web_acl_info
+    - wafv2_web_acl_logging
 ...
