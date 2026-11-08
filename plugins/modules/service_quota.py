@@ -69,17 +69,18 @@ EXAMPLES = r"""
 
 - name: Request a resource-level quota increase
   linuxhq.aws.service_quota:
-    context_id: arn:aws:example:us-east-1:123456789012:resource/example
-    quota_code: L-0263D0A3
-    service_code: ec2
-    value: 10
+    context_id: arn:aws:es:us-east-1:123456789012:domain/example
+    quota_code: L-6408ABDE
+    region: us-east-1
+    service_code: es
+    value: 250
 
 - name: Request an IAM quota increase in a specific region
   linuxhq.aws.service_quota:
     quota_code: L-0DA4ABF3
     region: us-east-1
     service_code: iam
-    value: 20
+    value: 25
 """
 
 RETURN = r"""

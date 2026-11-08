@@ -366,6 +366,7 @@ def test_endpoint_list_limits_are_rejected():
         ],
         "name": "endpoint",
         "protocols": ["Do53"],
+        "resolver_endpoint_type": None,
         "security_group_ids": ["sg-1"],
         "state": "present",
         "tags": None,
@@ -499,6 +500,100 @@ def test_blank_subnet_is_rejected_before_an_existing_endpoint_gains_an_address(c
 
     assert raised.value.values == {"msg": "ip_addresses[].subnet_id must contain 1 to 32 characters"}
     assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "endpoint_type,entry,field",
+    [
+        ("IPV4", {"ip": None, "ipv6": "2001:db8::11", "subnet_id": "subnet-1"}, "ipv6"),
+        ("IPV6", {"ip": "192.0.2.11", "ipv6": None, "subnet_id": "subnet-1"}, "ip"),
+    ],
+)
+def test_address_family_mismatch_with_requested_type_is_rejected_before_any_aws_call(
+    check_mode, endpoint_type, entry, field
+):
+    module = FakeModule(
+        endpoint_params(
+            ip_addresses=[entry, {"ip": None, "ipv6": None, "subnet_id": "subnet-2"}],
+            resolver_endpoint_type=endpoint_type,
+            state="present",
+        ),
+        check_mode=check_mode,
+    )
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": f"ip_addresses[].{field} cannot be used with resolver_endpoint_type {endpoint_type}"
+    }
+    module.client.assert_not_called()
+    ensure_present.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "endpoint_type,entry,field",
+    [
+        ("IPV4", {"ip": None, "ipv6": "2001:db8::11", "subnet_id": "subnet-1"}, "ipv6"),
+        ("IPV4", {"ip": "192.0.2.11", "ipv6": "2001:db8::11", "subnet_id": "subnet-1"}, "ipv6"),
+        ("IPV6", {"ip": "192.0.2.11", "ipv6": None, "subnet_id": "subnet-1"}, "ip"),
+    ],
+)
+def test_address_family_mismatch_with_current_type_is_rejected_before_any_write(
+    check_mode, endpoint_type, entry, field
+):
+    # Live: AssociateResolverEndpointIpAddress refuses an IPv6 address on an IPV4 endpoint (RSLVR-00400), with or
+    # without an IPv4 address, after the protocol update and the earlier addresses were already written.
+    client = Mock()
+    module = FakeModule(
+        endpoint_params(
+            ip_addresses=[
+                {"ip": "192.0.2.1", "ipv6": None, "subnet_id": "subnet-1"},
+                {"ip": "192.0.2.2", "ipv6": None, "subnet_id": "subnet-2"},
+                entry,
+            ],
+            protocols=["Do53", "DoH"],
+            state="present",
+        ),
+        check_mode=check_mode,
+        client=client,
+    )
+    endpoint = existing_endpoint(ResolverEndpointType=endpoint_type)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "msg": (
+            f"ip_addresses[].{field} cannot be used with resolver_endpoint_type {endpoint_type}, the current type of "
+            "AWS Route53 Resolver endpoint main. The existing endpoint has not been modified."
+        )
+    }
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("endpoint_type", [None, "DUALSTACK"])
+def test_address_families_are_accepted_by_a_dual_stack_or_unknown_type(endpoint_type):
+    module = FakeModule({})
+    ip_addresses = [
+        {"ip": "192.0.2.1", "ipv6": None, "subnet_id": "subnet-1"},
+        {"ip": None, "ipv6": "2001:db8::11", "subnet_id": "subnet-2"},
+        {"ip": "192.0.2.2", "ipv6": "2001:db8::12", "subnet_id": "subnet-2"},
+    ]
+
+    plugin.require_ip_address_families(module, ip_addresses, endpoint_type)
 
 
 def test_subnet_only_entries_may_share_a_subnet():

@@ -61,9 +61,10 @@ EXAMPLES = r"""
 
 - name: Gather information about a resource-level service quota
   linuxhq.aws.service_quota_info:
-    context_id: arn:aws:example:us-east-1:123456789012:resource/example
-    quota_code: L-0263D0A3
-    service_code: ec2
+    context_id: arn:aws:es:us-east-1:123456789012:domain/example
+    quota_code: L-6408ABDE
+    region: us-east-1
+    service_code: es
 """
 
 RETURN = r"""

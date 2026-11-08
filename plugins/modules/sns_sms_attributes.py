@@ -40,6 +40,8 @@ options:
   monthly_spend_limit:
     description:
       - The maximum amount in USD to spend each month for SMS messages.
+      - AWS rejects a value above the account's SMS spending quota, which is
+        1 USD for new accounts until AWS Support raises it.
     type: str
   usage_report_s3_bucket:
     description:
@@ -62,7 +64,7 @@ EXAMPLES = r"""
 - name: Ensure SNS SMS attributes are configured
   linuxhq.aws.sns_sms_attributes:
     default_sms_type: Transactional
-    monthly_spend_limit: "25"
+    monthly_spend_limit: "1"
 
 - name: Ensure SNS SMS delivery logging is configured
   linuxhq.aws.sns_sms_attributes:
