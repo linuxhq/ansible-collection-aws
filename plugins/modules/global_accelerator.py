@@ -319,10 +319,11 @@ options:
       - Even when O(wait=false), the module waits for an accelerator that is still deploying before
         changing it or managing its listeners, for a new accelerator to deploy before creating its
         listeners, between dependent listener changes, after deleting a listener's endpoint groups
-        before deleting the listener, and after listener changes before endpoint group changes. When
-        O(state=absent), it also waits for listener and endpoint group deletions and for the
-        accelerator to be disabled, because AWS deletes an accelerator only after these deploy. These
-        waits use O(wait_delay) and are bounded by O(wait_timeout).
+        before deleting the listener, and after listener changes before managing
+        O(listeners[].endpoint_groups), even when no endpoint group changes. When O(state=absent),
+        it also waits for listener and endpoint group deletions and for the accelerator to be
+        disabled, because AWS deletes an accelerator only after these deploy. These waits use
+        O(wait_delay) and are bounded by O(wait_timeout).
     default: true
     type: bool
   wait_delay:
