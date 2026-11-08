@@ -1,0 +1,5 @@
+---
+trivial:
+  - pinpoint_sms_voice_phone_number - request the long code example in Canada, because AWS rejects long code requests
+    for the United States.
+  - wafv2_ip_set_info, wafv2_web_acl_info - document that an ``id`` that does not exist results in an empty list.

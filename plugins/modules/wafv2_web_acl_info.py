@@ -22,6 +22,7 @@ options:
         by ID, and then gathers each full web ACL definition.
       - When both O(id) and O(name) are specified, the module gets the web ACL
         directly without listing summaries.
+      - A web ACL ID that does not exist results in an empty list.
     type: str
   name:
     description:
