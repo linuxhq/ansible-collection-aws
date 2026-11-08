@@ -1,0 +1,7 @@
+---
+trivial:
+  - ec2_vpc_vpn - document that ``outside_ip_address_type=Ipv6`` requires a connection attached to a transit gateway
+    or Cloud WAN.
+  - global_accelerator - document that, even with ``wait=false``, the module waits after listener changes before
+    managing ``listeners[].endpoint_groups``, even when no endpoint group changes.
+  - sns_sms_attributes - use a monthly spend limit of 1 in the README example, within the default SMS spending quota.

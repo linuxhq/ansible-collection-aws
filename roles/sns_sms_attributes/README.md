@@ -31,4 +31,4 @@ None
         - role: linuxhq.aws.sns_sms_attributes
           sns_sms_attributes_default_sms_type: Transactional
           sns_sms_attributes_delivery_status_success_sampling_rate: "10"
-          sns_sms_attributes_monthly_spend_limit: "25"
+          sns_sms_attributes_monthly_spend_limit: "1"

@@ -55,6 +55,7 @@ options:
     description:
       - The type of IP address on the outside interface of the customer gateway device.
       - C(Ipv6) requires a customer gateway with an IPv6 address.
+      - C(Ipv6) requires a connection attached to a transit gateway or Cloud WAN.
       - C(PrivateIpv4) requires O(transport_transit_gateway_attachment_id). It applies to private IP VPN
         connections over AWS Direct Connect, which this module supports with unit tests only.
       - AWS defaults to C(PublicIpv4) on creation. Cannot be changed on an existing connection.
