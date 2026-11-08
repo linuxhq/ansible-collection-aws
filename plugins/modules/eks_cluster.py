@@ -302,9 +302,11 @@ options:
       - Quote the version in playbooks so YAML does not parse values such as
         V(1.30) as the float C(1.3).
       - This must not be empty when specified.
-      - EKS updates a cluster only one minor version at a time. The module fails before any change when this has
-        the same major version as an C(ACTIVE) cluster and is more than one minor version above it. A cluster that
-        is not C(ACTIVE) is checked once it becomes C(ACTIVE), except in check mode.
+      - EKS updates a cluster only one minor version at a time and rolls it back only to the previous minor
+        version. The module fails before any change when this has the same major version as an C(ACTIVE) cluster
+        and is more than one minor version above or below it. A cluster that is not C(ACTIVE) is checked once it
+        becomes C(ACTIVE), except in check mode. EKS decides whether a rollback to the previous minor version is
+        allowed.
     type: str
   wait:
     default: true
@@ -1085,15 +1087,17 @@ def parse_version(version):
 
 
 def require_one_minor_version_update(module, current_version, version):
-    # EKS updates one minor version at a time, but check mode would predict success, and the version update reaches
-    # EKS after the configuration updates. Downgrades and versions that do not parse are left to EKS.
+    # EKS updates one minor version at a time and rolls back only to the previous minor version, but check mode would
+    # predict success, and the version update reaches EKS after the configuration updates. A rollback to the previous
+    # minor version depends on the cluster's upgrade history, so it and versions that do not parse are left to EKS.
     current = parse_version(current_version)
     requested = parse_version(version)
-    if current and requested and requested[0] == current[0] and requested[1] > current[1] + 1:
+    if current and requested and requested[0] == current[0] and abs(requested[1] - current[1]) > 1:
         module.fail_json(
             msg=(
                 f"Unable to update EKS cluster {module.params['name']} from version {current_version} to {version};"
-                " EKS updates a cluster only one minor version at a time"
+                " EKS updates a cluster only one minor version at a time and rolls it back only to the previous minor"
+                " version"
             )
         )
 

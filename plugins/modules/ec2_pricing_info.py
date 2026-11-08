@@ -22,6 +22,7 @@ options:
     description:
       - Filters to apply when gathering products.
       - Filter entries are passed to the AWS Pricing C(GetProducts) API.
+      - A product is returned only when it matches every filter.
       - This must contain at most 50 entries.
       - When omitted or empty, every product for O(service_code) is returned,
         which can be very large.

@@ -1,0 +1,12 @@
+---
+bugfixes:
+  - eks_cluster - fail before any change, including in check mode, when ``version`` has the major version of an
+    ``ACTIVE`` cluster and is more than one minor version below it. EKS rolls a cluster back only to the previous
+    minor version, so the configuration updates were applied before the version update was rejected.
+trivial:
+  - ec2_pricing_info - state that a product must match every filter.
+  - ec2_vpc_vpn - drop the AWS-initiated startup and dead peer detection restart actions from the accelerated VPN
+    example, because IKE negotiation for accelerated tunnels must be initiated from the customer gateway device.
+  - pinpoint_sms_voice_phone_number - document that the pool used for matching is the number's current pool, which
+    can change after the number is requested.
+  - pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_pool - use modeled statuses in unit test fixtures.

@@ -585,7 +585,7 @@ def test_check_mode_does_not_wait_for_existing_pool():
         "DeletionProtectionEnabled": False,
         "MessageType": "TRANSACTIONAL",
         "PoolId": "pool-1",
-        "Status": "UPDATING",
+        "Status": "CREATING",
         "Tags": [{"Key": "Name", "Value": "primary"}],
     }
     module = FakeModule(
@@ -660,7 +660,7 @@ def test_no_wait_update_waits_for_transition_and_rechecks_state():
         "DeletionProtectionEnabled": False,
         "MessageType": "TRANSACTIONAL",
         "PoolId": "pool-1",
-        "Status": "UPDATING",
+        "Status": "CREATING",
         "Tags": [{"Key": "Name", "Value": "primary"}],
     }
     active = dict(
@@ -764,7 +764,7 @@ def test_absent_stops_when_wait_observes_external_deletion(waited):
                 {
                     "DeletionProtectionEnabled": True,
                     "PoolId": "pool-1",
-                    "Status": "UPDATING",
+                    "Status": "CREATING",
                 }
             ],
         ),
@@ -832,7 +832,7 @@ def test_absent_disables_deletion_protection_before_deleting():
     client.update_pool.return_value = {
         "DeletionProtectionEnabled": False,
         "PoolId": "pool-1",
-        "Status": "UPDATING",
+        "Status": "CREATING",
     }
     client.delete_pool.return_value = {"PoolId": "pool-1", "Status": "DELETING"}
     module = FakeModule({"pool_id": "pool-1", "state": "absent"})
@@ -929,7 +929,7 @@ def test_wait_reuses_the_described_pool_after_update():
         "MessageType": "TRANSACTIONAL",
         "PoolArn": "arn:pool",
         "PoolId": "pool-1",
-        "Status": "UPDATING",
+        "Status": "CREATING",
     }
     module = FakeModule(
         {
@@ -1291,7 +1291,7 @@ def test_resulting_tag_limit_fails_before_updating_the_pool(check_mode):
     client.tag_resource.assert_not_called()
 
 
-@pytest.mark.parametrize("update_status", ["UPDATING", "ACTIVE"])
+@pytest.mark.parametrize("update_status", ["CREATING", "ACTIVE"])
 def test_present_addresses_a_pool_given_by_arn_by_that_arn(update_status):
     client = Mock()
     client.update_pool.return_value = active_pool(
@@ -1300,7 +1300,7 @@ def test_present_addresses_a_pool_given_by_arn_by_that_arn(update_status):
     module = FakeModule(present_params(deletion_protection_enabled=True, pool_id=POOL_ARN, tags=None, wait=True))
     settled = active_pool(DeletionProtectionEnabled=True, PoolArn=POOL_ARN)
     with (
-        patch.object(plugin, "find_pool", return_value=active_pool(PoolArn=POOL_ARN, Status="UPDATING")),
+        patch.object(plugin, "find_pool", return_value=active_pool(PoolArn=POOL_ARN, Status="CREATING")),
         patch.object(
             plugin, "wait_for_pool_active", side_effect=[active_pool(PoolArn=POOL_ARN), settled]
         ) as wait_for_pool_active,

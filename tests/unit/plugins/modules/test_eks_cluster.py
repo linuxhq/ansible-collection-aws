@@ -3048,10 +3048,13 @@ ACTIVE_ON_1_30 = dict(DESCRIBED_CLUSTER, deletionProtection=False, version="1.30
     ],
 )
 @pytest.mark.parametrize("wait", [True, False])
-def test_version_more_than_one_minor_ahead_fails_before_any_update(check_mode, described, wait):
+@pytest.mark.parametrize("version", ["1.32", "1.28"])
+def test_version_more_than_one_minor_away_fails_before_any_update(check_mode, described, wait, version):
     # Live: UpdateClusterVersion from 1.34 to 1.36 fails with InvalidParameterException
     # "Unsupported Kubernetes minor version update from 1.34 to 1.36".
-    params = eks_params(deletion_protection=True, tags={"Env": "prod"}, version="1.32", wait=wait)
+    # Live: UpdateClusterVersion from 1.34 to 1.32 fails with InvalidParameterException
+    # "Unsupported Kubernetes minor version update from 1.34 to 1.32".
+    params = eks_params(deletion_protection=True, tags={"Env": "prod"}, version=version, wait=wait)
     client = Mock()
     with (
         patch.object(plugin, "describe_cluster", side_effect=described),
@@ -3062,8 +3065,8 @@ def test_version_more_than_one_minor_ahead_fails_before_any_update(check_mode, d
 
     assert client.mock_calls == []
     assert raised.value.values["msg"] == (
-        "Unable to update EKS cluster example from version 1.30 to 1.32;"
-        " EKS updates a cluster only one minor version at a time"
+        f"Unable to update EKS cluster example from version 1.30 to {version};"
+        " EKS updates a cluster only one minor version at a time and rolls it back only to the previous minor version"
     )
     assert "changed" not in raised.value.values
 
