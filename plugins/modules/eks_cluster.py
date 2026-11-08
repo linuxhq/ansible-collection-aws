@@ -303,7 +303,8 @@ options:
         V(1.30) as the float C(1.3).
       - This must not be empty when specified.
       - EKS updates a cluster only one minor version at a time. The module fails before any change when this has
-        the same major version as the cluster and is more than one minor version above it.
+        the same major version as an C(ACTIVE) cluster and is more than one minor version above it. A cluster that
+        is not C(ACTIVE) is checked once it becomes C(ACTIVE), except in check mode.
     type: str
   wait:
     default: true
@@ -1313,7 +1314,10 @@ def ensure_present(client, module, deadline=None):
     config_changed = bool(update_requests)
     version_changed = version is not None and version != current.get("version")
     if version_changed:
-        require_one_minor_version_update(module, current.get("version"), version)
+        # A real run rechecks a cluster that is not ACTIVE after waiting for it, when its version is current.
+        if current.get("status") == "ACTIVE":
+            require_one_minor_version_update(module, current.get("version"), version)
+
         changes["version"] = version
 
     tags_to_set, tag_keys_to_unset = ({}, [])

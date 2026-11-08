@@ -3035,16 +3035,26 @@ def test_absent_waits_share_one_wait_timeout_budget():
     assert attempts == [11, 6]
 
 
-@pytest.mark.parametrize("check_mode", [True, False])
-@pytest.mark.parametrize("status", ["ACTIVE", "UPDATING"])
-def test_version_more_than_one_minor_ahead_fails_before_any_update(check_mode, status):
+ACTIVE_ON_1_30 = dict(DESCRIBED_CLUSTER, deletionProtection=False, version="1.30")
+
+
+@pytest.mark.parametrize(
+    "check_mode, described",
+    [
+        (True, [ACTIVE_ON_1_30]),
+        (False, [ACTIVE_ON_1_30]),
+        # A real run checks a cluster that is not ACTIVE once the wait for it returns.
+        (False, [dict(ACTIVE_ON_1_30, status="UPDATING"), ACTIVE_ON_1_30]),
+    ],
+)
+@pytest.mark.parametrize("wait", [True, False])
+def test_version_more_than_one_minor_ahead_fails_before_any_update(check_mode, described, wait):
     # Live: UpdateClusterVersion from 1.34 to 1.36 fails with InvalidParameterException
     # "Unsupported Kubernetes minor version update from 1.34 to 1.36".
-    params = eks_params(deletion_protection=True, tags={"Env": "prod"}, version="1.32", wait=True)
-    current = dict(DESCRIBED_CLUSTER, deletionProtection=False, status=status, version="1.30")
+    params = eks_params(deletion_protection=True, tags={"Env": "prod"}, version="1.32", wait=wait)
     client = Mock()
     with (
-        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "describe_cluster", side_effect=described),
         patch.object(plugin, "wait_for_cluster"),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -3056,6 +3066,22 @@ def test_version_more_than_one_minor_ahead_fails_before_any_update(check_mode, s
         " EKS updates a cluster only one minor version at a time"
     )
     assert "changed" not in raised.value.values
+
+
+@pytest.mark.parametrize("wait", [True, False])
+def test_version_gap_is_checked_against_the_version_after_an_ongoing_update(wait):
+    params = eks_params(version="1.32", wait=wait)
+    updating = dict(DESCRIBED_CLUSTER, status="UPDATING", version="1.30")
+
+    described = [updating, dict(DESCRIBED_CLUSTER, version="1.31"), dict(DESCRIBED_CLUSTER, version="1.32")]
+
+    client = run_present(FakeModule(params), described)[0]
+    check_client, check = run_present(FakeModule(params, check_mode=True), [updating])
+
+    client.update_cluster_version.assert_called_once_with(name="example", version="1.32")
+    assert check_client.mock_calls == []
+    assert check["changed"] is True
+    assert check["cluster"]["version"] == "1.32"
 
 
 @pytest.mark.parametrize("version", ["1.31", "1.29", "2.0", "1.32-eks", "latest"])

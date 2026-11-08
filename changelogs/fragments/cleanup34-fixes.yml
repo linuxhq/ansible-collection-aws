@@ -1,7 +1,7 @@
 ---
 bugfixes:
-  - eks_cluster - fail before any change, including in check mode, when ``version`` has the cluster's major version
-    and is more than one minor version above it. EKS updates a cluster only one minor version at a time, so the
+  - eks_cluster - fail before any change, including in check mode, when ``version`` has the major version of an
+    ``ACTIVE`` cluster and is more than one minor version above it. EKS updates a cluster only one minor version at a time, so the
     configuration updates were applied before the version update was rejected.
 trivial:
   - ec2_pricing_info - state that the listed Pricing API Regions are those of the aws partition.
