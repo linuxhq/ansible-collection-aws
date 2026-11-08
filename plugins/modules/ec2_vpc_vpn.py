@@ -438,8 +438,6 @@ EXAMPLES = r"""
         phase2_lifetime_seconds: 1800
         rekey_margin_time_seconds: 540
         dpd_timeout_seconds: 60
-        dpd_timeout_action: restart
-        startup_action: start
         log_options:
           cloud_watch_log_options:
             log_enabled: true

@@ -696,7 +696,7 @@ def test_absent_removes_pool_and_deletion_protection_before_release():
     client.update_phone_number.return_value = {
         "DeletionProtectionEnabled": False,
         "PhoneNumberId": "phone-1",
-        "Status": "UPDATING",
+        "Status": "PENDING",
     }
     client.release_phone_number.return_value = {
         "PhoneNumberId": "phone-1",

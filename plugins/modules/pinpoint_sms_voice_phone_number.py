@@ -13,12 +13,13 @@ description:
     attributes is adopted; otherwise a new phone number is requested.
   - Without O(phone_number_id), O(state=present) requires botocore 1.35.26 or later.
   - Matching uses the attributes fixed when a number is requested, O(iso_country_code),
-    O(message_type), O(number_capabilities), O(number_type), O(pool_id), and O(registration_id).
+    O(message_type), O(number_capabilities), O(number_type), and O(registration_id), and the
+    pool the number is currently in, O(pool_id), which can change after the request.
   - When O(tags) contains a C(Name) key, matching also requires an equal C(Name) tag, and the
     module fails if more than one phone number matches. Other tags are not used for matching.
-  - When O(tags) is omitted, the first phone number matching the fixed attributes is adopted.
-  - When O(tags) has no C(Name) key, the module fails if more than one phone number matches the
-    fixed attributes, instead of retagging an arbitrary number. Set a C(Name) tag to identify a
+  - When O(tags) is omitted, the first phone number matching these attributes is adopted.
+  - When O(tags) has no C(Name) key, the module fails if more than one phone number matches
+    these attributes, instead of retagging an arbitrary number. Set a C(Name) tag to identify a
     specific number.
   - O(tags) other than C(Name) are converged on the matched number according to O(purge_tags).
   - O(deletion_protection_enabled), O(international_sending_enabled), and O(opt_out_list_name)
@@ -804,7 +805,7 @@ def ensure_present(client, module):
             Owner="SELF",
         )
 
-    # Match only attributes fixed by RequestPhoneNumber; updatable settings converge below.
+    # Match the attributes fixed by RequestPhoneNumber and the current pool; updatable settings converge below.
     desired = {
         "IsoCountryCode": iso_country_code,
         "MessageType": message_type,
