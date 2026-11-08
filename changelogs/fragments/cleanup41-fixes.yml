@@ -1,0 +1,4 @@
+---
+trivial:
+  - pinpoint_sms_voice_phone_number - document that with ``state=absent`` the last phone number of a pool that is
+    already being deleted is released, also in check mode, instead of failing.

@@ -106,6 +106,9 @@ options:
         because AWS does not allow it to be disassociated. Delete the pool with
         M(linuxhq.aws.pinpoint_sms_voice_phone_pool) first. Sender IDs in the
         pool do not count as phone numbers, and this module never deletes pools.
+      - When the pool is already being deleted, the last phone number is
+        released instead, and check mode reports that change, because deleting
+        the pool disassociates it.
     type: str
   pool_id:
     description:
