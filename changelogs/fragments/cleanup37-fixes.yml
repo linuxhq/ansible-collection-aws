@@ -1,0 +1,16 @@
+---
+bugfixes:
+  - route53_resolver - fail before any change, including in check mode, when an ``ip_addresses`` entry has an address
+    family that the requested ``resolver_endpoint_type``, or the current type of an existing endpoint when it is
+    omitted, cannot hold. AWS refuses an IPv6 address on an ``IPV4`` endpoint only after the protocol update and the
+    earlier addresses were written.
+trivial:
+  - ec2_instance_metadata - document that ``http_tokens_enforced`` also blocks re-enabling IMDSv1 on existing
+    instances that require IMDSv2.
+  - global_accelerator - document that the module waits before endpoint group changes only after listener changes.
+  - global_accelerator, global_accelerator_info - describe the ``events`` return as the progress and error messages
+    of IP address type changes between IPv4 and dual-stack.
+  - service_quota, service_quota_info - use a real resource-level quota in the resource-level examples, and request
+    an IAM quota value above the AWS default.
+  - sns_sms_attributes - use a monthly spend limit within the default SMS spending quota in the example, and document
+    that AWS rejects a value above the account's quota.

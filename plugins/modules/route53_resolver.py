@@ -41,11 +41,15 @@ options:
         description:
           - The IPv4 address for the endpoint.
           - Can be supplied together with O(ip_addresses[].ipv6) for O(resolver_endpoint_type=DUALSTACK).
+          - Cannot be used with O(resolver_endpoint_type=IPV6), or on an existing V(IPV6) endpoint when
+            O(resolver_endpoint_type) is omitted. The module fails without modifying the endpoint.
         type: str
       ipv6:
         description:
           - The IPv6 address for the endpoint.
           - Can be supplied together with O(ip_addresses[].ip) for O(resolver_endpoint_type=DUALSTACK).
+          - Cannot be used with O(resolver_endpoint_type=IPV4), or on an existing V(IPV4) endpoint when
+            O(resolver_endpoint_type) is omitted. The module fails without modifying the endpoint.
         type: str
       subnet_id:
         description:
@@ -747,6 +751,18 @@ def ensure_present(client, module, deadline=None):
                 ),
             )
 
+        if desired_type is None:
+            # On an update, AWS refuses the address only after earlier writes.
+            require_ip_address_families(
+                module,
+                module.params["ip_addresses"],
+                current["resolver_endpoint_type"],
+                detail=(
+                    f", the current type of AWS Route53 Resolver endpoint {module.params['name']}. "
+                    "The existing endpoint has not been modified."
+                ),
+            )
+
         if (
             current["direction"] == "INBOUND"
             and current["protocols"] == ["Do53"]
@@ -1183,6 +1199,18 @@ def ip_address_without_ipv6(ip_address):
     return {field: value for field, value in ip_address.items() if field != "Ipv6"}
 
 
+def require_ip_address_families(module, ip_addresses, endpoint_type, detail=""):
+    """Fail when an endpoint of endpoint_type cannot hold an address that ip_addresses requests.
+
+    AWS refuses an IPv6 address on an IPV4 endpoint (RSLVR-00400) and requires addresses to match the endpoint type.
+    """
+    for field, refused_type in (("ipv6", "IPV4"), ("ip", "IPV6")):
+        if endpoint_type == refused_type and any(entry.get(field) is not None for entry in ip_addresses):
+            module.fail_json(
+                msg=f"ip_addresses[].{field} cannot be used with resolver_endpoint_type {endpoint_type}{detail}"
+            )
+
+
 def usable_ip_addresses(ip_addresses):
     excluded = FAILED_IP_ADDRESS_STATUSES | DEPARTING_IP_ADDRESS_STATUSES
     return [ip_address for ip_address in ip_addresses or [] if ip_address_status(ip_address) not in excluded]
@@ -1383,6 +1411,7 @@ def main():
 
             require_ip_versions(module, entry, "ip_addresses")
 
+        require_ip_address_families(module, module.params["ip_addresses"], module.params["resolver_endpoint_type"])
         require_valid_tags(module, tags, 200, restricted_characters=True)
 
     require_positive_wait_bounds(module, always=state == "present")

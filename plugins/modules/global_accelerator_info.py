@@ -97,7 +97,10 @@ accelerators:
       returned: always
       type: bool
     events:
-      description: The accelerator events, such as those reporting failed IP address transfers.
+      description:
+        - Progress and error messages from changes of the accelerator IP address type between IPv4 and
+          dual-stack.
+        - AWS stores at most ten event messages.
       returned: when returned by AWS
       type: list
       elements: dict

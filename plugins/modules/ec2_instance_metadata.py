@@ -51,6 +51,8 @@ options:
     description:
       - Whether launching an instance requires IMDSv2, so instances fail to launch unless
         tokens are required.
+      - When C(enabled), it also blocks re-enabling IMDSv1 on existing instances that require
+        IMDSv2, but does not change existing instances.
       - C(no-preference) clears the account-level default.
       - Requires botocore 1.42.56 or later.
       - At least one of O(http_endpoint), O(http_put_response_hop_limit),

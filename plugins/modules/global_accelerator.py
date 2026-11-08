@@ -319,10 +319,10 @@ options:
       - Even when O(wait=false), the module waits for an accelerator that is still deploying before
         changing it or managing its listeners, for a new accelerator to deploy before creating its
         listeners, between dependent listener changes, after deleting a listener's endpoint groups
-        before deleting the listener, and before endpoint group changes. When O(state=absent), it
-        also waits for listener and endpoint group deletions and for the accelerator to be disabled,
-        because AWS deletes an accelerator only after these deploy. These waits use O(wait_delay) and
-        are bounded by O(wait_timeout).
+        before deleting the listener, and after listener changes before endpoint group changes. When
+        O(state=absent), it also waits for listener and endpoint group deletions and for the
+        accelerator to be disabled, because AWS deletes an accelerator only after these deploy. These
+        waits use O(wait_delay) and are bounded by O(wait_timeout).
     default: true
     type: bool
   wait_delay:
@@ -421,7 +421,10 @@ accelerator:
       returned: always
       type: bool
     events:
-      description: The accelerator events, such as those reporting failed IP address transfers.
+      description:
+        - Progress and error messages from changes of the accelerator IP address type between IPv4 and
+          dual-stack.
+        - AWS stores at most ten event messages.
       returned: when returned by AWS
       type: list
       elements: dict
