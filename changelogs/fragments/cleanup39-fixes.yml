@@ -1,0 +1,4 @@
+---
+trivial:
+  - ec2_pricing_info - set ``region`` to ``us-east-1`` in the Oregon pricing example, whose title claimed a default
+    Pricing API endpoint that the module no longer has.
