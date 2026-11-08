@@ -1718,6 +1718,32 @@ def test_absent_releases_last_phone_number_of_a_pool_being_deleted(pools_result)
     client.release_phone_number.assert_called_once_with(PhoneNumberId="phone-1", aws_retry=True)
 
 
+@pytest.mark.parametrize(
+    "pools_result",
+    [{"Pools": [{"PoolId": "pool-1", "Status": "DELETING"}]}, {"Pools": []}],
+    ids=["deleting", "gone"],
+)
+def test_absent_check_mode_reports_release_of_last_phone_number_of_a_pool_being_deleted(pools_result):
+    client = model_client()
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=True)
+    with (
+        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(plugin, "paginated_query_with_retries", side_effect=pool_query(LAST_PHONE_NUMBER_POOL, None)),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=pool_query(None, pools_result)),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert "failed" not in raised.value.values
+    assert raised.value.values["phone_number"]["status"] == "DELETED"
+    client.disassociate_origination_identity.assert_not_called()
+    client.update_phone_number.assert_not_called()
+    client.release_phone_number.assert_not_called()
+    client.delete_pool.assert_not_called()
+
+
 def test_absent_maps_last_phone_number_conflict_to_clear_failure():
     client = Mock()
     client.disassociate_origination_identity.side_effect = plugin.ClientError(

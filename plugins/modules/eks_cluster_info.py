@@ -43,7 +43,7 @@ EXAMPLES = r"""
 - name: Gather information about EKS clusters
   linuxhq.aws.eks_cluster_info:
 
-- name: Gather information about selected EKS clusters
+- name: Gather information about a selected EKS cluster
   linuxhq.aws.eks_cluster_info:
     name: molecule-eks1
 

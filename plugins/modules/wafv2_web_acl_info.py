@@ -67,7 +67,7 @@ EXAMPLES = r"""
     scope: cloudfront
     region: us-east-1
 
-- name: Gather information about selected WAFv2 web ACLs
+- name: Gather information about a selected WAFv2 web ACL
   linuxhq.aws.wafv2_web_acl_info:
     name: molecule
 """

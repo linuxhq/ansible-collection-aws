@@ -1332,6 +1332,92 @@ def test_create_only_settings_compare_the_current_value(overrides, message):
     assert client.mock_calls == []
 
 
+AUTO_MODE_CLUSTER = {
+    "name": "example",
+    "arn": "arn:example",
+    "status": "ACTIVE",
+    "computeConfig": {"enabled": True, "nodePools": ["system"], "nodeRoleArn": "arn:a"},
+    "kubernetesNetworkConfig": {"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": True}},
+    "storageConfig": {"blockStorage": {"enabled": True}},
+    "deletionProtection": False,
+}
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("enabled", [True, None])
+def test_auto_mode_node_role_change_fails_before_any_update(enabled, check_mode):
+    client = Mock()
+    module = FakeModule(
+        eks_params(deletion_protection=True, compute_config={"enabled": enabled, "node_role_arn": "arn:b"}),
+        check_mode=check_mode,
+    )
+    with patch.object(plugin, "describe_cluster", return_value=AUTO_MODE_CLUSTER), pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == (
+        "Cannot modify compute_config.node_role_arn while EKS Auto Mode compute is enabled for existing EKS cluster "
+        "example"
+    )
+    assert "changed" not in raised.value.values
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("current_enabled", "compute_config", "expected"),
+    [
+        # A matching or omitted node role keeps the cluster's role.
+        (True, {"enabled": True, "node_role_arn": "arn:a"}, None),
+        (True, {"enabled": True}, None),
+        # EKS accepts a new node role together with disabling Auto Mode compute.
+        (
+            True,
+            {"enabled": False, "node_pools": ["system"], "node_role_arn": "arn:b"},
+            {"enabled": False, "nodePools": ["system"], "nodeRoleArn": "arn:b"},
+        ),
+        # EKS accepts a new node role when enabling Auto Mode compute.
+        (
+            False,
+            {"enabled": True, "node_pools": ["system"], "node_role_arn": "arn:b"},
+            {"enabled": True, "nodePools": ["system"], "nodeRoleArn": "arn:b"},
+        ),
+    ],
+)
+def test_auto_mode_node_role_is_allowed_when_unchanged_or_compute_is_toggled(
+    current_enabled, compute_config, expected, check_mode
+):
+    current = dict(AUTO_MODE_CLUSTER, computeConfig=dict(AUTO_MODE_CLUSTER["computeConfig"], enabled=current_enabled))
+    enabled = compute_config["enabled"]
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    module = FakeModule(
+        eks_params(
+            compute_config=compute_config,
+            kubernetes_network_config={"elastic_load_balancing": {"enabled": enabled}},
+            storage_config={"block_storage": {"enabled": enabled}},
+        ),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is (expected is not None)
+    if expected is None or check_mode:
+        client.update_cluster_config.assert_not_called()
+    else:
+        client.update_cluster_config.assert_called_once_with(
+            name="example",
+            computeConfig=expected,
+            kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": enabled}},
+            storageConfig={"blockStorage": {"enabled": enabled}},
+        )
+
+
 def test_auto_mode_load_balancing_updates_with_matching_create_only_network_settings():
     current = {
         "name": "example",

@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - eks_cluster - fail before any change, also in check mode, when ``compute_config.node_role_arn`` differs from the
+    node role of a cluster whose EKS Auto Mode compute is enabled and stays enabled, because EKS rejects that change.
+    Previously other updates in the same run were applied before the run failed.
+trivial:
+  - eks_cluster_info, ec2_vpc_prefix_list_info, iam_policy_info, wafv2_ip_set_info, wafv2_web_acl_info - make
+    example titles singular or plural to match the options each task passes.
+  - pinpoint_sms_voice_phone_number - add a check-mode unit test for releasing the last phone number of a pool that
+    is already being deleted.

@@ -62,6 +62,8 @@ options:
         description:
           - The IAM role ARN used by EKS Auto Mode nodes.
           - When omitted while EKS Auto Mode compute is enabled, the existing node role is kept.
+          - This cannot be changed while EKS Auto Mode compute stays enabled; the module fails before any change if it
+            differs from the cluster's node role.
         type: str
     type: dict
   deletion_protection:
@@ -1195,6 +1197,20 @@ def ensure_present(client, module, deadline=None):
         value = (desired.get("kubernetes_network_config") or {}).get(field)
         if value is not None and value != current_network_config.get(camel_field):
             module.fail_json(msg=f"Cannot modify kubernetes_network_config.{field} for existing EKS cluster {name}")
+
+    # EKS rejects a new node role while Auto Mode compute stays enabled; it accepts one when disabling or enabling.
+    current_compute_config = current.get("computeConfig") or {}
+    compute_config = desired.get("compute_config") or {}
+    node_role_arn = compute_config.get("node_role_arn")
+    if (
+        current_compute_config.get("enabled") is True
+        and compute_config.get("enabled") is not False
+        and node_role_arn is not None
+        and node_role_arn != current_compute_config.get("nodeRoleArn")
+    ):
+        module.fail_json(
+            msg=f"Cannot modify compute_config.node_role_arn while EKS Auto Mode compute is enabled for existing EKS cluster {name}"
+        )
 
     config_request = {field: desired[field] for field in UPDATE_CONFIG_FIELDS if field in desired}
 
