@@ -136,7 +136,7 @@ options:
                   - AWS does not support C(true) for Elastic IP address
                     endpoints, whether given by allocation ID or by ARN.
                   - AWS does not support C(true) for Network Load Balancer
-                    endpoints without security groups.
+                    endpoints without security groups or with TLS listeners.
                   - AWS does not support C(false) for EC2 instance endpoints,
                     whether given by instance ID or by ARN, or for internal
                     Application Load Balancer endpoints, which always preserve

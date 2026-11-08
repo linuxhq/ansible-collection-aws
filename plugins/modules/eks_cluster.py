@@ -302,6 +302,8 @@ options:
       - Quote the version in playbooks so YAML does not parse values such as
         V(1.30) as the float C(1.3).
       - This must not be empty when specified.
+      - EKS updates a cluster only one minor version at a time. The module fails before any change when this has
+        the same major version as the cluster and is more than one minor version above it.
     type: str
   wait:
     default: true
@@ -559,6 +561,7 @@ state:
 """
 
 import ipaddress
+import re
 import time
 
 try:
@@ -1074,6 +1077,26 @@ def exit_result(module, changed, cluster, state):
     )
 
 
+def parse_version(version):
+    """Return a version's major and minor numbers, or None when it is not "<major>.<minor>"."""
+    match = re.fullmatch(r"(\d+)\.(\d+)", version or "")
+    return (int(match.group(1)), int(match.group(2))) if match else None
+
+
+def require_one_minor_version_update(module, current_version, version):
+    # EKS updates one minor version at a time, but check mode would predict success, and the version update reaches
+    # EKS after the configuration updates. Downgrades and versions that do not parse are left to EKS.
+    current = parse_version(current_version)
+    requested = parse_version(version)
+    if current and requested and requested[0] == current[0] and requested[1] > current[1] + 1:
+        module.fail_json(
+            msg=(
+                f"Unable to update EKS cluster {module.params['name']} from version {current_version} to {version};"
+                " EKS updates a cluster only one minor version at a time"
+            )
+        )
+
+
 def ensure_present(client, module, deadline=None):
     # Every wait in one run, including those before the cluster is checked again, shares wait_timeout.
     if deadline is None:
@@ -1290,6 +1313,7 @@ def ensure_present(client, module, deadline=None):
     config_changed = bool(update_requests)
     version_changed = version is not None and version != current.get("version")
     if version_changed:
+        require_one_minor_version_update(module, current.get("version"), version)
         changes["version"] = version
 
     tags_to_set, tag_keys_to_unset = ({}, [])

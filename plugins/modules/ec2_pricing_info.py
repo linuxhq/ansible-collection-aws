@@ -11,8 +11,8 @@ description:
   - Gathers AWS Price List product information.
   - This module maps to the AWS Pricing C(GetProducts) API, the API behind
     C(aws pricing get-products).
-  - Requires a region. The Pricing API is served from C(us-east-1),
-    C(eu-central-1), and C(ap-south-1).
+  - Requires a region. In the aws partition, the Pricing API is served from
+    C(us-east-1), C(eu-central-1), and C(ap-south-1).
   - The endpoint region does not limit the products returned. Use filters such as
     C(regionCode) or C(location) for product-specific regional pricing data.
 author:
@@ -245,7 +245,7 @@ def main():
 
     if not module.region:
         module.fail_json(
-            msg="region is required; the Pricing API is served from us-east-1, eu-central-1, and ap-south-1"
+            msg="region is required; in the aws partition, the Pricing API is served from us-east-1, eu-central-1, and ap-south-1"
         )
 
     client = module.client("pricing", retry_decorator=AWSRetry.jittered_backoff())
