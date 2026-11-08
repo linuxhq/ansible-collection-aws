@@ -158,7 +158,7 @@ association:
           returned: when available
           type: bool
     apply_only_at_cron_interval:
-      description: Whether the association runs only at its cron interval, rather than also immediately after it is created.
+      description: Whether the association runs only at its cron interval, rather than also immediately after it is created or updated.
       returned: when available
       type: bool
     association_dispatch_assume_role:

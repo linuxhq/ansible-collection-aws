@@ -149,6 +149,24 @@ def test_failed_status_warns_without_changes(check_mode):
     client.put_email_identity_dkim_attributes.assert_not_called()
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_failed_status_with_supplied_keys_names_the_selector_txt_record(check_mode):
+    current = {"SigningAttributesOrigin": "EXTERNAL", "SigningEnabled": True, "Status": "FAILED", "Tokens": ["sel"]}
+    client = client_with(current, dict(current, SigningEnabled=False))
+    module = FakeModule(params(signing_enabled=False), client=client, check_mode=check_mode)
+    result, _require = run(module)
+
+    assert result.values["changed"] is True
+    assert result.values["dkim_attributes"]["signing_attributes_origin"] == "EXTERNAL"
+    assert module.warnings == [
+        (
+            "DKIM verification failed for AWS SES identity example.com; "
+            "check that the DKIM TXT record at sel._domainkey.example.com is published and correct"
+        )
+    ]
+    client.put_email_identity_dkim_signing_attributes.assert_not_called()
+
+
 @pytest.mark.parametrize("status", ["PENDING", "SUCCESS", "TEMPORARY_FAILURE", "NOT_STARTED"])
 def test_other_statuses_do_not_warn(status):
     module = FakeModule(params(), client=client_with(dict(EASY, Status=status)))

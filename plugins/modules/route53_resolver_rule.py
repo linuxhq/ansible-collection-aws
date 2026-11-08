@@ -56,6 +56,12 @@ options:
       - The target IP definitions for forwarding rules.
       - This is required when O(state=present).
       - This must contain at least one entry.
+      - On update, an entry keeps the current values of the fields it omits
+        only when it matches a current target, that is, when every value it
+        sets equals that target's value. An entry that matches no current
+        target, such as a C(DoH) target whose port changed, is sent as
+        supplied, so set O(target_ips[].protocol) and
+        O(target_ips[].server_name_indication) again in that case.
     elements: dict
     suboptions:
       ip:
@@ -74,10 +80,12 @@ options:
         description:
           - The port for the target.
           - This must be between C(0) and C(65535).
+          - When omitted, an update keeps the matching current target's value.
         type: int
       protocol:
         description:
           - The protocol for the target.
+          - When omitted, an update keeps the matching current target's value.
         choices:
           - Do53
           - DoH
