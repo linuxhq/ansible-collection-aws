@@ -61,7 +61,7 @@ EXAMPLES = r"""
 - name: Gather information about IAM inline policies
   linuxhq.aws.iam_policy_info:
 
-- name: Gather information about inline policies for selected users
+- name: Gather information about inline policies for a selected user
   linuxhq.aws.iam_policy_info:
     user_name: molecule
 

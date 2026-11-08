@@ -55,7 +55,7 @@ EXAMPLES = r"""
 - name: Gather information about EC2 VPC prefix lists
   linuxhq.aws.ec2_vpc_prefix_list_info:
 
-- name: Gather information about a selected EC2 VPC prefix list
+- name: Gather information about selected EC2 VPC prefix lists
   linuxhq.aws.ec2_vpc_prefix_list_info:
     prefix_list_ids:
       - pl-0123456789abcdef0

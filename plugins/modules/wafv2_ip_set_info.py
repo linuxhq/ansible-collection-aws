@@ -67,7 +67,7 @@ EXAMPLES = r"""
     scope: cloudfront
     region: us-east-1
 
-- name: Gather information about selected WAFv2 IP sets
+- name: Gather information about a selected WAFv2 IP set
   linuxhq.aws.wafv2_ip_set_info:
     name: molecule
 """
