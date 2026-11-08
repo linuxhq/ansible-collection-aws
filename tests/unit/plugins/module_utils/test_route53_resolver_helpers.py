@@ -320,8 +320,6 @@ def test_reconcile_resolver_arn_tags_rejects_an_invalid_arn(resource):
 
     assert raised.value.values == {
         "changed": True,
-        "msg": (
-            "Unable to reconcile tags for AWS Route53 Resolver endpoint main: " "AWS returned an invalid endpoint ARN"
-        ),
+        "msg": "Unable to reconcile tags for AWS Route53 Resolver endpoint main: AWS returned an invalid endpoint ARN",
     }
     reconcile.assert_not_called()

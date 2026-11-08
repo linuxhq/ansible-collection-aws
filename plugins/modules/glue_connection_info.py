@@ -66,7 +66,7 @@ EXAMPLES = r"""
 - name: Gather information about Glue connections
   linuxhq.aws.glue_connection_info:
 
-- name: Gather information about selected Glue connections
+- name: Gather information about a Glue connection
   linuxhq.aws.glue_connection_info:
     name: molecule
 

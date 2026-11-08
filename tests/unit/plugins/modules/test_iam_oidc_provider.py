@@ -105,7 +105,7 @@ def test_non_hexadecimal_thumbprint_is_rejected():
             "thumbprint_list": ["z" * 40],
             "url": "https://example.com/id",
         },
-        ("thumbprint_list entries must be exactly 40 hexadecimal " f"characters: {'z' * 40}"),
+        f"thumbprint_list entries must be exactly 40 hexadecimal characters: {'z' * 40}",
     )
 
 

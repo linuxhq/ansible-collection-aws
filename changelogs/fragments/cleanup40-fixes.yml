@@ -1,0 +1,4 @@
+---
+trivial:
+  - glue_connection_info - retitle the single-connection example in the singular.
+  - unit tests - join same-line implicit string concatenations into single literals.
