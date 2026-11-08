@@ -1,0 +1,15 @@
+---
+bugfixes:
+  - eks_cluster - stop sending the cluster's node role with an empty ``compute_config.node_pools`` list while EKS Auto
+    Mode compute is enabled, because EKS rejects a node role without node pools; disabling the built-in node pools now
+    succeeds.
+  - eks_cluster - fail before any change, also in check mode, when ``compute_config.node_role_arn`` is set while EKS
+    Auto Mode compute is enabled and the requested or existing node pools are empty, because EKS rejects that request.
+    Previously other updates in the same run were applied before the run failed.
+  - eks_cluster - allow ``compute_config.node_role_arn`` on a cluster with EKS Auto Mode compute enabled and no node
+    role, as EKS accepts a node role together with node pools in that state.
+trivial:
+  - iam_policy_info - describe the ``path_prefix`` character rule as ASCII ``!`` through DEL (no spaces), which is the
+    rule the module and IAM enforce, instead of printable ASCII.
+  - route53_resolver_info, route53_resolver_rule_info - retitle the name-filter examples, as Resolver names are not
+    unique.

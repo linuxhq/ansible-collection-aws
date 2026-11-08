@@ -35,7 +35,7 @@ EXAMPLES = r"""
 - name: Gather information about Route53 Resolver rules
   linuxhq.aws.route53_resolver_rule_info:
 
-- name: Gather information about a single Route53 Resolver rule
+- name: Gather information about Route53 Resolver rules by name
   linuxhq.aws.route53_resolver_rule_info:
     filters:
       Name: molecule-cloudflare

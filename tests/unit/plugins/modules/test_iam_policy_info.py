@@ -172,7 +172,8 @@ def test_invalid_path_prefix_is_rejected_before_api_calls(path_prefix):
         plugin.main()
 
     assert raised.value.values["msg"] == (
-        "path_prefix must begin with /, contain only printable ASCII characters, and contain at most 512 characters"
+        "path_prefix must begin with /, contain only ASCII characters from ! through DEL (no spaces), "
+        "and contain at most 512 characters"
     )
 
 

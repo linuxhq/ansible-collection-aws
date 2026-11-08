@@ -35,7 +35,7 @@ EXAMPLES = r"""
 - name: Gather information about Route53 Resolver endpoints
   linuxhq.aws.route53_resolver_info:
 
-- name: Gather information about a single Route53 Resolver endpoint
+- name: Gather information about Route53 Resolver endpoints by name
   linuxhq.aws.route53_resolver_info:
     filters:
       Name: molecule

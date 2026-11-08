@@ -26,7 +26,8 @@ options:
       - Only used when none of O(group_name), O(role_name), or O(user_name) is provided.
       - When any of O(group_name), O(role_name), or O(user_name) is provided,
         this option is ignored and a warning is returned.
-      - Must begin with C(/), contain only printable ASCII characters, and contain at most 512 characters.
+      - Must begin with C(/), contain only ASCII characters from C(!) through DEL (no spaces), and contain at most 512
+        characters.
     type: str
   policy_name:
     description:
@@ -390,7 +391,10 @@ def main():
     path_prefix = module.params["path_prefix"]
     if path_prefix and (not PATH_PREFIX_PATTERN.fullmatch(path_prefix) or len(path_prefix) > 512):
         module.fail_json(
-            msg="path_prefix must begin with /, contain only printable ASCII characters, and contain at most 512 characters"
+            msg=(
+                "path_prefix must begin with /, contain only ASCII characters from ! through DEL (no spaces), "
+                "and contain at most 512 characters"
+            )
         )
 
     if path_prefix and any(module.params[f"{entity_type.lower()}_name"] for entity_type in ENTITY_TYPES):
