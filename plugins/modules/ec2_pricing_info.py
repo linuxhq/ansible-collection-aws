@@ -93,7 +93,7 @@ EXAMPLES = r"""
       - field: tenancy
         value: Shared
 
-- name: Gather Oregon EC2 pricing from the default Pricing API endpoint
+- name: Gather Oregon EC2 pricing from the us-east-1 Pricing API endpoint
   linuxhq.aws.ec2_pricing_info:
     filters:
       - field: instanceType
@@ -104,6 +104,7 @@ EXAMPLES = r"""
         value: Linux
       - field: tenancy
         value: Shared
+    region: us-east-1
 
 - name: Gather pricing products for another service
   linuxhq.aws.ec2_pricing_info:
