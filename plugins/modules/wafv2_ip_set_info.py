@@ -22,6 +22,7 @@ options:
         ID, and then gathers each full IP set definition.
       - When both O(id) and O(name) are specified, the module gets the IP set
         directly without listing summaries.
+      - An IP set ID that does not exist results in an empty list.
     type: str
   name:
     description:

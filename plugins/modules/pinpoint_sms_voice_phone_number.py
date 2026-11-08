@@ -168,7 +168,7 @@ attributes:
 EXAMPLES = r"""
 - name: Request a transactional SMS long code
   linuxhq.aws.pinpoint_sms_voice_phone_number:
-    iso_country_code: US
+    iso_country_code: CA
     message_type: TRANSACTIONAL
     number_capabilities:
       - SMS
