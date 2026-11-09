@@ -331,7 +331,13 @@ def test_malformed_disassociate_response_reports_changed():
         patch.object(
             plugin,
             "current_associations",
-            return_value=({"PoolId": "pool-1"}, [{"OriginationIdentity": "sender-1", "PoolId": "pool-1"}]),
+            return_value=(
+                {"PoolId": "pool-1"},
+                [
+                    {"OriginationIdentity": "sender-1", "PoolId": "pool-1"},
+                    {"OriginationIdentity": "sender-2", "PoolId": "pool-1"},
+                ],
+            ),
         ),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -359,7 +365,10 @@ def test_absent_does_not_return_association_that_disappeared():
         patch.object(
             plugin,
             "current_associations",
-            return_value=({"PoolId": "pool-1"}, [{"OriginationIdentity": "sender-1"}]),
+            return_value=(
+                {"PoolId": "pool-1"},
+                [{"OriginationIdentity": "sender-1"}, {"OriginationIdentity": "sender-2"}],
+            ),
         ),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -506,13 +515,18 @@ SENDER_1 = {
     "OriginationIdentity": "sender-1",
     "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US",
 }
+SENDER_2 = dict(
+    SENDER_1,
+    OriginationIdentity="sender-2",
+    OriginationIdentityArn="arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-2/US",
+)
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_absent_fails_without_mutation_for_last_phone_number(check_mode):
     client = Mock()
     with (
-        patch.object(plugin, "current_associations", return_value=({"PoolId": "pool-1"}, [PHONE_1, SENDER_1])),
+        patch.object(plugin, "current_associations", return_value=({"PoolId": "pool-1"}, [PHONE_1])),
         patch.object(
             pinpoint_sms_voice,
             "paginated_query_with_retries",
@@ -534,6 +548,33 @@ def test_absent_fails_without_mutation_for_last_phone_number(check_mode):
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("origination_identity", ["sender-1", SENDER_1["OriginationIdentityArn"]])
+def test_absent_fails_without_mutation_for_sole_sender_id(origination_identity, check_mode):
+    client = Mock()
+    with (
+        patch.object(plugin, "current_associations", return_value=({"PoolId": "pool-1"}, [SENDER_1])),
+        patch.object(
+            pinpoint_sms_voice,
+            "paginated_query_with_retries",
+            return_value={"Pools": [{"PoolId": "pool-1", "Status": "ACTIVE"}]},
+        ),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, absent_params(origination_identity, check_mode=check_mode))
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["msg"] == plugin.last_phone_number_message(origination_identity, "pool-1", False)
+    assert raised.value.values["msg"].startswith(f"Origination identity {origination_identity} is the last")
+    client.disassociate_origination_identity.assert_not_called()
+    client.delete_pool.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("listing", "origination_identity"),
+    [([PHONE_1], "phone-1"), ([SENDER_1], "sender-1")],
+    ids=["phone-number", "sender-id"],
+)
 @pytest.mark.parametrize(
     "describe",
     [
@@ -543,14 +584,16 @@ def test_absent_fails_without_mutation_for_last_phone_number(check_mode):
     ],
     ids=["deleting", "empty", "not-found"],
 )
-def test_absent_reports_no_change_for_last_phone_number_of_a_deleting_pool(describe, check_mode):
+def test_absent_reports_no_change_for_sole_identity_of_a_deleting_pool(
+    describe, listing, origination_identity, check_mode
+):
     client = Mock()
     with (
-        patch.object(plugin, "current_associations", return_value=({"PoolId": "pool-1"}, [PHONE_1, SENDER_1])),
+        patch.object(plugin, "current_associations", return_value=({"PoolId": "pool-1"}, listing)),
         patch.object(pinpoint_sms_voice, "paginated_query_with_retries", **describe) as query,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_absent(client, absent_params(check_mode=check_mode))
+        plugin.ensure_absent(client, absent_params(origination_identity, check_mode=check_mode))
 
     query.assert_called_once_with(
         client, "describe_pools", PoolIds=["arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1"]
@@ -558,7 +601,7 @@ def test_absent_reports_no_change_for_last_phone_number_of_a_deleting_pool(descr
     assert raised.value.values == {
         "association": {},
         "changed": False,
-        "origination_identity": "phone-1",
+        "origination_identity": origination_identity,
         "pool_id": "arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1",
         "state": "absent",
     }
@@ -593,6 +636,22 @@ def test_absent_disassociates_phone_number_when_others_remain(check_mode):
     assert client.disassociate_origination_identity.called is not check_mode
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_absent_disassociates_phone_number_beside_sender_id(check_mode):
+    client = Mock()
+    client.disassociate_origination_identity.return_value = {"OriginationIdentity": "phone-1", "PoolId": "pool-1"}
+    with (
+        patch.object(plugin, "current_associations", return_value=({"PoolId": "pool-1"}, [PHONE_1, SENDER_1])),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries") as query,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, absent_params(check_mode=check_mode))
+
+    assert raised.value.values["changed"] is True
+    assert client.disassociate_origination_identity.called is not check_mode
+    query.assert_not_called()
+
+
 def test_absent_disassociates_sender_id_beside_last_phone_number():
     client = Mock()
     client.disassociate_origination_identity.return_value = {"OriginationIdentity": "sender-1", "PoolId": "pool-1"}
@@ -620,6 +679,23 @@ def test_absent_maps_last_phone_number_conflict_to_clear_failure():
 
     assert raised.value.values["changed"] is False
     assert raised.value.values["msg"] == plugin.last_phone_number_message("phone-1", "pool-1")
+
+
+def test_absent_maps_last_identity_conflict_for_sender_id_to_neutral_failure():
+    client = Mock()
+    client.disassociate_origination_identity.side_effect = plugin.ClientError(
+        {"Error": {"Code": "ConflictException", "Message": "conflict"}, "Reason": "LAST_PHONE_NUMBER"},
+        "DisassociateOriginationIdentity",
+    )
+    with (
+        patch.object(plugin, "current_associations", return_value=({"PoolId": "pool-1"}, [SENDER_1, SENDER_2])),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, absent_params("sender-1"))
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["msg"] == plugin.last_phone_number_message("sender-1", "pool-1", False)
+    assert "Phone number" not in raised.value.values["msg"]
 
 
 def test_absent_reports_other_disassociate_conflicts_from_aws():

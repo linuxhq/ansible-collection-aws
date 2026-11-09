@@ -1,0 +1,13 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number - allow releasing a phone number that shares its pool with a sender ID,
+    and refuse only when the number is the pool's sole origination identity, because AWS accepts the former.
+  - pinpoint_sms_voice_phone_pool_associate - refuse to disassociate a pool's sole origination identity
+    in every mode, including a sender ID, with wording that does not call a sender ID a phone number.
+  - pinpoint_sms_voice_phone_pool_associate - allow disassociating a phone number while a sender ID remains
+    in the pool, because AWS accepts it.
+  - global_accelerator - correct the description of when endpoint groups are updated and created.
+trivial:
+  - global_accelerator - document the input limits that the module already enforces.
+  - eks_cluster, eks_cluster_info - document resources_vpc_config.control_plane_egress_mode.
+  - ec2_pricing_info - document the top-level members of products.

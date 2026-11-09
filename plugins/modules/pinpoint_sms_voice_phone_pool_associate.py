@@ -59,12 +59,12 @@ options:
     description:
       - Whether the origination identity should be associated with the pool.
       - With O(state=absent), the module fails without changes, including in
-        check mode, when O(origination_identity) is the last phone number in
-        the pool, because AWS does not allow it to be disassociated. Delete the
-        pool with M(linuxhq.aws.pinpoint_sms_voice_phone_pool) instead. Sender
-        IDs do not count as phone numbers.
-      - When the pool is already being deleted, removing its last phone number
-        reports no change instead, because deleting the pool disassociates it.
+        check mode, when O(origination_identity) is the only origination
+        identity in the pool, because AWS does not allow it to be disassociated.
+        Delete the pool with M(linuxhq.aws.pinpoint_sms_voice_phone_pool)
+        instead.
+      - When the pool is already being deleted, removing that identity reports
+        no change instead, because deleting the pool disassociates it.
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -345,14 +345,17 @@ def ensure_absent(client, module):
     origination_identity = module.params["origination_identity"]
     pool_id = module.params["pool_id"].rsplit("/", 1)[-1]
 
-    # AWS rejects disassociating the last phone number in a pool; only the pool module deletes pools.
+    # AWS rejects disassociating a pool's only origination identity; only the pool module deletes pools.
     if changed and is_last_phone_number(current, (origination_identity,)):
-        # A DELETING pool is treated as missing, because deleting it disassociates its numbers.
+        # A DELETING pool is treated as missing, because deleting it disassociates its identities.
         # A shared pool must be described by the ARN the caller gave.
         if pool_is_deleting(client, module, module.params["pool_id"]):
             exit_result(module, False, None)
 
-        module.fail_json(changed=False, msg=last_phone_number_message(origination_identity, pool_id))
+        module.fail_json(
+            changed=False,
+            msg=last_phone_number_message(origination_identity, pool_id, is_phone_number_identity(association)),
+        )
 
     if changed and module.check_mode:
         # A real run returns the DisassociateOriginationIdentity response, without the listed capabilities or number.
@@ -376,7 +379,10 @@ def ensure_absent(client, module):
             association = None
         except is_boto3_error_code("ConflictException") as e:
             if is_last_phone_number_conflict(e):
-                module.fail_json(changed=False, msg=last_phone_number_message(origination_identity, pool_id))
+                module.fail_json(
+                    changed=False,
+                    msg=last_phone_number_message(origination_identity, pool_id, is_phone_number_identity(association)),
+                )
 
             module.fail_json_aws(e, msg=disassociate_failure_message(module))
         except (BotoCoreError, ClientError) as e:

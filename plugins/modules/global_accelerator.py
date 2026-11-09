@@ -33,9 +33,10 @@ description:
     listener's ports overlap one of those existing listeners.
   - Endpoint groups are identified by
     O(listeners[].endpoint_groups[].endpoint_group_region), which AWS keeps
-    unique per listener, so entries update the existing endpoint group for
-    their region in place before new endpoint groups are created; endpoint
-    groups in regions not listed are deleted when O(purge_endpoint_groups=true).
+    unique per listener, so an entry updates the existing endpoint group for
+    its region in place, and a new endpoint group is created only for a region
+    without one; endpoint groups in regions not listed are deleted when
+    O(purge_endpoint_groups=true).
   - When O(state=absent), endpoint groups, listeners, and the accelerator are
     removed in dependency order.
   - The Global Accelerator control plane uses the C(us-west-2) region.
@@ -66,7 +67,7 @@ options:
   ip_addresses:
     description:
       - Static IP addresses to assign to the accelerator.
-      - These must be IP addresses from an AWS Global Accelerator BYOIP address pool.
+      - These must be unique IPv4 addresses from an AWS Global Accelerator BYOIP address pool.
       - This must contain at most 2 entries.
       - When omitted, AWS assigns IP addresses.
       - Additional AWS-assigned addresses do not cause updates when all requested addresses are present.
@@ -125,6 +126,7 @@ options:
                   - Used for create and update requests. AWS does not return
                     this ARN in endpoint descriptions, so it is not compared
                     when determining whether an existing endpoint needs updating.
+                  - This must contain at most 255 characters.
                   - This requires botocore C(1.31.76) or later.
                 type: str
               client_ip_preservation_enabled:
@@ -160,7 +162,8 @@ options:
                     EC2 instance both by ID and by ARN.
                   - AWS does not support Elastic IP address endpoints for a
                     C(DUAL_STACK) accelerator.
-                  - This must not be empty or blank.
+                  - This must not be empty or blank and must contain at most 255
+                    characters.
                 required: true
                 type: str
               weight:
@@ -249,6 +252,8 @@ options:
                   - Listener port to override.
                   - This must be between C(1) and C(65535), and within one of
                     the listener's O(listeners[].port_ranges).
+                  - Each listener port can be overridden only once in an
+                    endpoint group.
                 required: true
                 type: int
             type: list
@@ -275,7 +280,9 @@ options:
       port_ranges:
         description:
           - Port ranges for the listener.
-          - This list must contain at least one entry.
+          - This list must contain 1 to 10 entries.
+          - Port ranges must not overlap each other or those of another entry
+            in O(listeners) with the same O(listeners[].protocol).
         elements: dict
         suboptions:
           from_port:

@@ -1621,6 +1621,12 @@ LAST_PHONE_NUMBER_POOL = pool_listing(
         "OriginationIdentity": "phone-1",
         "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:phone-number/phone-1",
     },
+)
+PHONE_NUMBER_BESIDE_SENDER_ID_POOL = pool_listing(
+    {
+        "OriginationIdentity": "phone-1",
+        "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:phone-number/phone-1",
+    },
     {
         "OriginationIdentity": "sender-1",
         "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US",
@@ -1689,6 +1695,32 @@ def test_absent_proceeds_when_other_phone_numbers_remain_in_pool(check_mode):
     assert raised.value.values["changed"] is True
     assert client.disassociate_origination_identity.called is not check_mode
     assert client.release_phone_number.called is not check_mode
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_absent_releases_number_beside_sender_id_in_pool(check_mode):
+    client = model_client()
+    client.update_phone_number.return_value = existing_number(DeletionProtectionEnabled=False)
+    client.release_phone_number.return_value = {"PhoneNumberId": "phone-1", "Status": "DELETED"}
+    module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(plugin, "wait_for_phone_number_active", return_value=existing_number()),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=pool_query(PHONE_NUMBER_BESIDE_SENDER_ID_POOL, None),
+        ),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries") as describe_pools,
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert client.disassociate_origination_identity.called is not check_mode
+    assert client.release_phone_number.called is not check_mode
+    describe_pools.assert_not_called()
 
 
 @pytest.mark.parametrize(

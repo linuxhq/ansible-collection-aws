@@ -190,6 +190,11 @@ clusters:
           description: The cluster security group ID created by EKS.
           returned: when returned by AWS
           type: str
+        control_plane_egress_mode:
+          description: The control plane egress routing mode.
+          returned: when returned by AWS
+          type: str
+          sample: AWS_MANAGED
         endpoint_private_access:
           description: Whether the private API server endpoint is enabled.
           returned: unless the cluster is an EKS Connector cluster
