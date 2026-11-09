@@ -423,7 +423,7 @@ cluster:
   contains:
     access_config:
       description: The cluster access configuration.
-      returned: when the cluster exists, except for a create predicted in check mode
+      returned: when the cluster exists and is not an EKS Connector cluster, except for a create predicted in check mode
       type: dict
       contains:
         authentication_mode:
@@ -441,7 +441,7 @@ cluster:
       type: str
     certificate_authority:
       description: The certificate authority data for the cluster.
-      returned: when the cluster exists, except for a create predicted in check mode
+      returned: when the cluster exists and is not an EKS Connector cluster, except for a create predicted in check mode
       type: dict
     client_request_token:
       description: The unique, case-sensitive identifier provided to ensure request idempotency.
@@ -491,7 +491,8 @@ cluster:
       elements: dict
     endpoint:
       description: The Kubernetes API server endpoint.
-      returned: when the cluster is active, except for a create predicted in check mode
+      returned: when the cluster is active and is not an EKS Connector cluster, except for a create predicted
+        in check mode
       type: str
     health:
       description: The health of the cluster.
@@ -519,11 +520,11 @@ cluster:
       type: dict
     kubernetes_network_config:
       description: The Kubernetes network configuration.
-      returned: when the cluster exists, except for a create predicted in check mode
+      returned: when the cluster exists and is not an EKS Connector cluster, except for a create predicted in check mode
       type: dict
     logging:
       description: The control plane logging configuration.
-      returned: when the cluster exists, except for a create predicted in check mode
+      returned: when the cluster exists and is not an EKS Connector cluster, except for a create predicted in check mode
       type: dict
     name:
       description: The cluster name.
@@ -535,7 +536,7 @@ cluster:
       type: dict
     platform_version:
       description: The EKS platform version.
-      returned: when the cluster exists, except for a create predicted in check mode
+      returned: when the cluster exists and is not an EKS Connector cluster, except for a create predicted in check mode
       type: str
     remote_network_config:
       description: The remote node and pod networks for EKS hybrid nodes.
@@ -543,7 +544,7 @@ cluster:
       type: dict
     resources_vpc_config:
       description: The cluster VPC configuration.
-      returned: when the cluster exists
+      returned: when the cluster exists and is not an EKS Connector cluster
       type: dict
       contains:
         cluster_security_group_id:
@@ -579,7 +580,7 @@ cluster:
           type: str
     role_arn:
       description: The cluster IAM role ARN.
-      returned: when the cluster exists
+      returned: when the cluster exists and is not an EKS Connector cluster
       type: str
     status:
       description: The cluster status.
@@ -606,7 +607,7 @@ cluster:
           sample: EXTENDED
     version:
       description: The Kubernetes version.
-      returned: when the cluster exists, except for a create predicted in check mode
+      returned: when the cluster exists and is not an EKS Connector cluster, except for a create predicted in check mode
       type: str
       sample: "1.34"
     zonal_shift_config:

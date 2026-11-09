@@ -91,7 +91,8 @@ def require_no_reserved_tag_keys(module, tags_to_set):
     """Fail when a tag to set has the reserved aws: key prefix.
 
     Live: EC2, IAM, ACM, EKS, Global Accelerator, Route 53 Resolver, SMS Voice V2, Systems Manager, and User
-    Notifications Contacts reject the prefix in any letter case and accept aws: values. Probe a service the same way before guarding it.
+    Notifications Contacts reject the prefix in any letter case and accept aws: values. Probe a service the same way
+    before guarding it.
     """
     if any(key.lower().startswith("aws:") for key in tags_to_set):
         module.fail_json(msg="tag keys beginning with aws: are reserved and cannot be set")

@@ -95,6 +95,19 @@ placement_groups:
       description: Details of the service that operates the placement group.
       returned: when available
       type: dict
+      contains:
+        hidden_by_default:
+          description: Whether the account's managed resource visibility settings hide the placement group by default.
+          returned: when returned by AWS
+          type: bool
+        managed:
+          description: Whether a service provider manages the placement group.
+          returned: when returned by AWS
+          type: bool
+        principal:
+          description: The service provider that manages the placement group, when C(managed) is true.
+          returned: when returned by AWS
+          type: str
     parent_group_id:
       description: ID of the parent placement group.
       returned: when available

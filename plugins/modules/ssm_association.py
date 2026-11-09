@@ -615,7 +615,8 @@ def ensure_present(client, module, current):
         # AWS supports these fields only with cron schedules.
         clears_cron_only_parameters = schedule_expression is not None and not schedule_expression.startswith("cron(")
         if changed and not module.check_mode:
-            # Empty lists are dropped because some, such as TargetLocations, reject them and omitting one keeps it unset.
+            # Empty lists are dropped because some, such as TargetLocations, reject them and omitting one keeps it
+            # unset.
             update_request = {
                 parameter: current.get(parameter)
                 for parameter in get_boto3_client_method_parameters(client, "update_association")

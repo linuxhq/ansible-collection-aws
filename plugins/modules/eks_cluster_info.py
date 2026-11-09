@@ -131,7 +131,7 @@ clusters:
       elements: dict
     endpoint:
       description: The Kubernetes API server endpoint.
-      returned: when the cluster is active
+      returned: when the cluster is active, unless the cluster is an EKS Connector cluster
       type: str
     health:
       description: The health of the cluster.
