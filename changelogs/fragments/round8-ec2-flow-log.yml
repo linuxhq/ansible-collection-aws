@@ -5,8 +5,8 @@ bugfixes:
     C(false)), as a real run does.
   - ec2_flow_log - in check mode, a predicted create now returns the C(max_aggregation_interval) that EC2
     stores when it is omitted (C(600), or C(60) for transit gateway resource types), as a real run does.
-  - ec2_flow_log - in check mode, a predicted create without O(tags) now returns empty C(tags), as a real
-    run does.
+  - ec2_flow_log - in check mode, a predicted create now returns the C(tags) the new flow log is created with,
+    including its C(Name) tag, as a real run does.
 trivial:
   - ec2_flow_log - build the create request once and check SDK support against its parameters instead of
     parallel option-to-parameter maps.
