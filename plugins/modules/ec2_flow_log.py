@@ -18,8 +18,9 @@ description:
     compared, and returned as empty.
   - Existing flow log tags are purged only when O(tags) is provided and
     O(purge_tags=true).
-  - EC2 flow logs cannot be modified. When settings change, the module creates a new flow log; set
-    O(purge_flow_logs=true) to delete the flow logs on O(resource_ids) that no longer match.
+  - O(name) identifies the flow log on each of O(resource_ids) by its C(Name) tag. EC2 flow logs cannot be
+    modified, so a flow log with this name and other settings is replaced, and flow logs with another C(Name)
+    tag or none are never changed or deleted.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -98,16 +99,34 @@ options:
       - 60
       - 600
     type: int
-  purge_flow_logs:
+  name:
     description:
-      - Whether to delete flow logs on O(resource_ids) that do not match the requested settings.
-      - Replacement flow logs are created before the old ones are deleted, so logging continues.
-      - Old flow logs are kept, and the module fails, when a replacement is not active or reports failed
-        delivery. They are also kept, with a warning, when EC2 does not yet return a new replacement.
+      - The name of the flow log, managed as its C(Name) tag.
+      - This is used in combination with O(resource_ids) to identify one flow log on each resource, and only
+        flow logs on O(resource_ids) whose C(Name) tag equals this value are matched, replaced, or deleted.
+        Other tags are not used for matching.
+      - When O(state=present) and the flow log with this name has other settings, a new flow log with this name
+        is created and the old one is deleted, and RV(deleted_flow_log_ids) lists it.
+      - The new flow log is created before the old one is deleted, so logging continues.
+      - The old flow log is kept, and the module fails, when its replacement is not active or reports failed
+        delivery. It is also kept, with a warning, when EC2 does not yet return the new replacement; a later run
+        deletes it.
       - Delivery failures that EC2 reports only after the first delivery attempt cannot be detected.
-      - This is only used when O(state=present).
-    default: false
-    type: bool
+      - When O(state=present), the module fails before any change when more than one flow log with this name on
+        a resource matches the requested settings. When O(state=absent), every flow log with this name that
+        matches the specified attributes is deleted.
+      - EC2 rejects a new flow log whose settings and destination equal those of another flow log on the same
+        resource, so a flow log without this name that has the requested settings must be tagged with it or
+        deleted first.
+      - The value of O(name) overrides any value set for V(Name) in the O(tags) parameter.
+      - When O(tags) is omitted, other tags are left unchanged; O(purge_tags) never removes the C(Name) tag set
+        by this option.
+      - A replacement flow log gets the tags of the flow log it replaces, changed by O(tags) and O(purge_tags) as
+        they would change the tags of a kept flow log. Tags with the reserved C(aws:) prefix are not copied.
+      - This must not be empty or made only of spaces, tabs, carriage returns, and line feeds, because EC2 stores
+        such a C(Name) tag as an empty value.
+    required: true
+    type: str
     version_added: "2.6.0"
   resource_ids:
     description:
@@ -131,8 +150,10 @@ options:
   state:
     description:
       - Whether matching EC2 flow logs should exist.
-      - When O(state=absent), only specified attributes are used to match flow logs.
-      - If only O(resource_ids) is set, all flow logs for those resources are removed.
+      - When O(state=absent), only O(name) and the other specified attributes are used to match flow logs.
+      - O(tags) and O(purge_tags) are not used to match flow logs when O(state=absent); only O(name) selects flow
+        logs by their C(Name) tag.
+      - If only O(name) and O(resource_ids) are set, all flow logs with this name on those resources are removed.
     choices:
       - absent
       - present
@@ -172,11 +193,11 @@ EXAMPLES = r"""
     traffic_type: ALL
     log_group_name: /aws/vpc/flow-logs
     deliver_logs_permission_arn: arn:aws:iam::123456789012:role/vpc-flow-logs
-    tags:
-      Name: vpc-flow-logs
+    name: vpc-flow-logs
 
 - name: Ensure subnet flow logs are delivered to S3
   linuxhq.aws.ec2_flow_log:
+    name: subnet-flow-logs
     resource_ids:
       - subnet-0123456789abcdef0
     resource_type: Subnet
@@ -187,8 +208,9 @@ EXAMPLES = r"""
       hive_compatible_partitions: true
       per_hour_partition: true
 
-- name: Ensure flow logs are absent from a VPC
+- name: Ensure the VPC flow log is absent
   linuxhq.aws.ec2_flow_log:
+    name: vpc-flow-logs
     resource_ids:
       - vpc-0123456789abcdef0
     state: absent
@@ -197,7 +219,8 @@ EXAMPLES = r"""
 RETURN = r"""
 deleted_flow_log_ids:
   description:
-    - The EC2 flow log IDs deleted by O(purge_flow_logs=true), or that would be deleted in check mode.
+    - The EC2 flow log IDs with the O(name) and other settings that were replaced, or that would be replaced in
+      check mode.
   returned: when O(state=present)
   type: list
   elements: str
@@ -281,6 +304,11 @@ flow_logs:
       description: Maximum interval, in seconds, during which packets are aggregated into a flow log record.
       returned: when available
       type: int
+    name:
+      description: The C(Name) tag of the flow log.
+      returned: when the flow log has a C(Name) tag
+      type: str
+      version_added: "2.6.0"
     resource_id:
       description: ID of the monitored resource.
       returned: when available
@@ -346,11 +374,13 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    EC2_BLANK_TAG_VALUE_CHARACTERS,
     apply_tag_deltas,
     ec2_tag_methods,
     reconcile_ec2_tags,
     require_resulting_tag_limit,
     require_valid_tags,
+    updated_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
@@ -360,6 +390,7 @@ MAX_FLOW_LOG_IDS_PER_REQUEST = 100
 MAX_RESOURCE_IDS_PER_CREATE = 300
 MAX_TRANSIT_GATEWAY_RESOURCE_IDS_PER_CREATE = 25
 
+# name matches the Name tag of a flow log.
 ABSENT_MATCH_FIELDS = (
     "deliver_cross_account_role",
     "deliver_logs_permission_arn",
@@ -368,6 +399,7 @@ ABSENT_MATCH_FIELDS = (
     "log_format",
     "log_group_name",
     "max_aggregation_interval",
+    "name",
     "traffic_type",
 )
 
@@ -378,6 +410,7 @@ PRESENT_MATCH_FIELDS = (
     "log_format",
     "log_group_name",
     "max_aggregation_interval",
+    "name",
 )
 
 # EC2 requires TrafficType for every resource type except the transit gateway types.
@@ -423,6 +456,15 @@ def desired_match_fields(module, fields):
     return desired
 
 
+def desired_tags(module):
+    """Return the tags to converge on matching flow logs, with O(name) as the Name tag; None leaves tags unchanged."""
+    tags = module.params["tags"]
+    if tags is None:
+        return None
+
+    return dict(tags, Name=module.params["name"])
+
+
 def matching_flow_logs(module, flow_logs, desired):
     resource_ids = set(normalized_resource_ids(module))
     matching = []
@@ -434,6 +476,7 @@ def matching_flow_logs(module, flow_logs, desired):
             continue
 
         normalized = boto3_resource_to_ansible_dict(flow_log, transform_tags=False, force_tags=False)
+        normalized["name"] = boto3_tag_list_to_ansible_dict(flow_log.get("Tags") or []).get("Name")
         comparable = {key: normalized.get(key) for key in desired}
         if "destination_options" in desired:
             current_destination_options = normalized.get("destination_options") or {}
@@ -543,15 +586,15 @@ def delete_flow_logs(client, module, flow_log_ids, changed=False):
     return removed
 
 
-def verified_purge(module, flow_logs, current, purge_flow_log_ids, changed=False):
+def verified_replacement(module, flow_logs, current, superseded_flow_log_ids, changed=False):
     """Return the flow logs that are safe to delete because their replacements are working.
 
     changed reports whether resources were already modified, for failure results.
     """
-    purge_resource_ids = {
-        flow_log.get("ResourceId") for flow_log in flow_logs if flow_log.get("FlowLogId") in purge_flow_log_ids
+    superseded_resource_ids = {
+        flow_log.get("ResourceId") for flow_log in flow_logs if flow_log.get("FlowLogId") in superseded_flow_log_ids
     }
-    replacements = [flow_log for flow_log in current if flow_log.get("ResourceId") in purge_resource_ids]
+    replacements = [flow_log for flow_log in current if flow_log.get("ResourceId") in superseded_resource_ids]
     failed = sorted(
         flow_log["FlowLogId"]
         for flow_log in replacements
@@ -562,7 +605,7 @@ def verified_purge(module, flow_logs, current, purge_flow_log_ids, changed=False
             changed=changed,
             msg=(
                 f"Replacement EC2 flow logs {', '.join(failed)} are not delivering logs; "
-                f"superseded flow logs {', '.join(purge_flow_log_ids)} were kept"
+                f"superseded flow logs {', '.join(superseded_flow_log_ids)} were kept"
             ),
             replacement_errors={
                 flow_log["FlowLogId"]: flow_log.get("DeliverLogsErrorMessage")
@@ -574,14 +617,14 @@ def verified_purge(module, flow_logs, current, purge_flow_log_ids, changed=False
 
     # Created flow logs that describe_flow_logs has not returned yet only carry their ID.
     covered = {flow_log.get("ResourceId") for flow_log in replacements}
-    if purge_resource_ids - covered:
+    if superseded_resource_ids - covered:
         module.warn(
             "EC2 has not returned the replacement flow logs yet; "
-            f"superseded flow logs {', '.join(purge_flow_log_ids)} were kept and will be purged on a later run"
+            f"superseded flow logs {', '.join(superseded_flow_log_ids)} were kept and will be purged on a later run"
         )
         return []
 
-    return purge_flow_log_ids
+    return superseded_flow_log_ids
 
 
 def require_create_parameters(module, desired):
@@ -633,7 +676,8 @@ def ensure_absent(client, module):
 def ensure_present(client, module):
     resource_ids = normalized_resource_ids(module)
     resource_type = module.params["resource_type"]
-    tags = module.params["tags"]
+    name = module.params["name"]
+    tags = desired_tags(module)
     desired = {
         "log_destination_type": module.params["log_destination_type"] or "cloud-watch-logs",
     }
@@ -644,21 +688,50 @@ def ensure_present(client, module):
     destination_options = comparable_destination_options(module)
     flow_logs = get_flow_logs(client, module)
     current = matching_flow_logs(module, flow_logs, desired)
+    for resource_id in resource_ids:
+        count = sum(flow_log.get("ResourceId") == resource_id for flow_log in current)
+        if count > 1:
+            module.fail_json(
+                msg=(
+                    f"Found {count} EC2 flow logs named {name} on resource {resource_id} that match the requested "
+                    "settings; delete all but one"
+                )
+            )
 
-    purge_flow_log_ids = []
-    if module.params.get("purge_flow_logs"):
-        matched_flow_log_ids = {flow_log["FlowLogId"] for flow_log in current}
-        requested_resource_ids = set(resource_ids)
-        purge_flow_log_ids = sorted(
-            flow_log["FlowLogId"]
-            for flow_log in flow_logs
-            if flow_log.get("ResourceId") in requested_resource_ids
-            and flow_log.get("FlowLogId")
-            and flow_log["FlowLogId"] not in matched_flow_log_ids
-        )
+    # EC2 cannot modify a flow log, so a flow log with this name and other settings is replaced.
+    matched_flow_log_ids = {flow_log["FlowLogId"] for flow_log in current}
+    superseded_flow_logs = sorted(
+        (
+            flow_log
+            for flow_log in matching_flow_logs(module, flow_logs, {"name": name})
+            if flow_log["FlowLogId"] not in matched_flow_log_ids
+        ),
+        key=lambda flow_log: flow_log["FlowLogId"],
+    )
+    superseded_flow_log_ids = [flow_log["FlowLogId"] for flow_log in superseded_flow_logs]
 
     matched_resource_ids = {flow_log.get("ResourceId") for flow_log in current}
     missing_resource_ids = [resource_id for resource_id in resource_ids if resource_id not in matched_resource_ids]
+    created_tags = {}
+    for resource_id in missing_resource_ids:
+        # A replacement keeps the tags of the flow log it replaces, as a kept flow log would; EC2 rejects aws: keys.
+        replaced_tags = {}
+        for flow_log in superseded_flow_logs:
+            if flow_log.get("ResourceId") == resource_id:
+                replaced_tags.update(boto3_tag_list_to_ansible_dict(flow_log.get("Tags") or []))
+
+        replaced_tags = {key: value for key, value in replaced_tags.items() if not key.lower().startswith("aws:")}
+        if tags is None:
+            created_tags[resource_id] = dict(replaced_tags, Name=name)
+        else:
+            tags_to_set, tag_keys_to_unset = compare_aws_tags(
+                replaced_tags, tags, purge_tags=module.params["purge_tags"]
+            )
+            require_resulting_tag_limit(module, replaced_tags, tags_to_set, tag_keys_to_unset, 50, "EC2 flow log")
+            created_tags[resource_id] = updated_tags(replaced_tags, tags_to_set, tag_keys_to_unset)
+
+    # name is sent as the Name tag, not as a flow log setting.
+    create_settings = {key: value for key, value in desired.items() if key != "name"}
     if missing_resource_ids:
         require_create_parameters(module, desired)
 
@@ -676,7 +749,7 @@ def ensure_present(client, module):
             if tags_to_set or tag_keys_to_unset:
                 tags_changed.append((flow_log, tags_to_set, tag_keys_to_unset))
 
-    changed = bool(missing_resource_ids or tags_changed or purge_flow_log_ids)
+    changed = bool(missing_resource_ids or tags_changed or superseded_flow_log_ids)
     # Whether AWS was already modified, so failures after a mutation report changed=True.
     modified = False
 
@@ -687,33 +760,47 @@ def ensure_present(client, module):
             any(tag_keys_to_unset for _flow_log, _tags_to_set, tag_keys_to_unset in tags_changed),
         )
 
-        if purge_flow_log_ids:
+        if superseded_flow_log_ids:
             later_methods["delete_flow_logs"] = ("FlowLogIds",)
 
         require_client_methods(module, client, "EC2", later_methods)
 
     if missing_resource_ids:
         if not module.check_mode:
-            base_request = snake_dict_to_camel_dict(dict(desired, resource_type=resource_type), capitalize_first=True)
-            tag_specifications = boto3_tag_specifications(tags, types="vpc-flow-log")
-            if tag_specifications is not None:
-                base_request["TagSpecifications"] = tag_specifications
-
+            base_request = snake_dict_to_camel_dict(
+                dict(create_settings, resource_type=resource_type), capitalize_first=True
+            )
+            # Every flow log is created with at least its Name tag.
             require_client_methods(
                 module,
                 client,
                 "EC2",
-                {"create_flow_logs": tuple(base_request) + ("ClientToken", "ResourceIds")},
+                {"create_flow_logs": tuple(base_request) + ("ClientToken", "ResourceIds", "TagSpecifications")},
             )
 
             batch_size = MAX_RESOURCE_IDS_PER_CREATE
             if resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
                 batch_size = MAX_TRANSIT_GATEWAY_RESOURCE_IDS_PER_CREATE
 
+            # One request carries one tag set, so resources are grouped by the tags of their new flow log.
+            tag_groups = {}
+            for resource_id in missing_resource_ids:
+                tag_groups.setdefault(tuple(sorted(created_tags[resource_id].items())), []).append(resource_id)
+
+            batches = [
+                (group_tags, batch)
+                for group_tags, group_resource_ids in tag_groups.items()
+                for batch in chunks(group_resource_ids, batch_size)
+            ]
             created_flow_log_ids = []
-            for batch in chunks(missing_resource_ids, batch_size):
+            for group_tags, batch in batches:
                 # One token per request makes SDK retries of a request that already succeeded idempotent.
-                request = dict(base_request, ResourceIds=batch, ClientToken=str(uuid.uuid4()))
+                request = dict(
+                    base_request,
+                    ClientToken=str(uuid.uuid4()),
+                    ResourceIds=batch,
+                    TagSpecifications=boto3_tag_specifications(dict(group_tags), types="vpc-flow-log"),
+                )
 
                 try:
                     response = client.create_flow_logs(**request, aws_retry=True)
@@ -780,7 +867,7 @@ def ensure_present(client, module):
             if resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
                 predicted["max_aggregation_interval"] = 60
 
-            predicted.update(desired)
+            predicted.update(create_settings)
             if desired["log_destination_type"] == "s3":
                 predicted["destination_options"] = dict(S3_DESTINATION_OPTION_DEFAULTS, **destination_options)
 
@@ -797,8 +884,7 @@ def ensure_present(client, module):
                     resource_id=resource_id,
                 )
                 flow_log = snake_dict_to_camel_dict(flow_log, capitalize_first=True)
-                # EC2 returns an empty tag list for an untagged flow log.
-                flow_log["Tags"] = ansible_dict_to_boto3_tag_list(tags or {})
+                flow_log["Tags"] = ansible_dict_to_boto3_tag_list(created_tags[resource_id])
 
                 current.append(flow_log)
 
@@ -830,23 +916,29 @@ def ensure_present(client, module):
         flow_log.update(apply_tag_deltas(flow_log, tags_to_set, tag_keys_to_unset))
 
     # Delete superseded flow logs only after their replacements exist and are delivering.
-    if purge_flow_log_ids:
-        purge_flow_log_ids = verified_purge(module, flow_logs, current, purge_flow_log_ids, changed=modified)
-        if purge_flow_log_ids and not module.check_mode:
-            purge_flow_log_ids = delete_flow_logs(client, module, purge_flow_log_ids, changed=modified)
-            modified = modified or bool(purge_flow_log_ids)
+    if superseded_flow_log_ids:
+        superseded_flow_log_ids = verified_replacement(
+            module, flow_logs, current, superseded_flow_log_ids, changed=modified
+        )
+        if superseded_flow_log_ids and not module.check_mode:
+            superseded_flow_log_ids = delete_flow_logs(client, module, superseded_flow_log_ids, changed=modified)
+            modified = modified or bool(superseded_flow_log_ids)
 
     if not module.check_mode:
         # Report only work AWS performed, such as flow logs that were already gone when deleted.
         changed = modified
 
     flow_log_ids = [flow_log["FlowLogId"] for flow_log in current if flow_log.get("FlowLogId")]
+    result_flow_logs = boto3_resource_list_to_ansible_dict(current, transform_tags=True, force_tags=False)
+    for flow_log in result_flow_logs:
+        if "Name" in (flow_log.get("tags") or {}):
+            flow_log["name"] = flow_log["tags"]["Name"]
 
     module.exit_json(
         changed=changed,
-        deleted_flow_log_ids=purge_flow_log_ids,
+        deleted_flow_log_ids=superseded_flow_log_ids,
         flow_log_ids=flow_log_ids,
-        flow_logs=boto3_resource_list_to_ansible_dict(current, transform_tags=True, force_tags=False),
+        flow_logs=result_flow_logs,
         resource_ids=resource_ids,
         state="present",
     )
@@ -875,7 +967,7 @@ def main():
         "log_format": {"type": "str"},
         "log_group_name": {"type": "str"},
         "max_aggregation_interval": {"choices": [60, 600], "type": "int"},
-        "purge_flow_logs": {"default": False, "type": "bool"},
+        "name": {"required": True, "type": "str"},
         "purge_tags": {"default": True, "type": "bool"},
         "resource_ids": {"elements": "str", "required": True, "type": "list"},
         "resource_type": {
@@ -915,7 +1007,7 @@ def main():
 
     if state == "present":
         # EC2 rejects these blank values, or accepts a whitespace-only value without storing it, so no flow log ever
-        # matches them, and check mode would predict new flow logs and a purge.
+        # matches them, and check mode would predict new flow logs.
         for option in (
             "deliver_cross_account_role",
             "deliver_logs_permission_arn",
@@ -938,7 +1030,17 @@ def main():
         if destination_options and module.params["log_destination_type"] != "s3":
             module.fail_json(msg="destination_options requires log_destination_type to be s3 when state is present")
 
-    require_valid_tags(module, module.params["tags"] if state == "present" else None, 50, ec2=True)
+    name = module.params["name"]
+    tags = module.params["tags"]
+    # EC2 would store the Name tag as "", so the flow log could never be found by this name again.
+    if not name.strip(EC2_BLANK_TAG_VALUE_CHARACTERS):
+        module.fail_json(msg="name must not be empty")
+
+    if state == "present":
+        require_valid_tags(module, tags, 50, ec2=True)
+        # name replaces any Name key in tags, and the Name tag counts toward the EC2 tag limit.
+        require_valid_tags(module, dict(tags or {}, Name=name), 50, ec2=True)
+
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
     describe_parameters = ["Filter", "MaxResults", "NextToken"]
     if state == "present":

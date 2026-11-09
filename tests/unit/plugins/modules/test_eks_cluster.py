@@ -1440,6 +1440,18 @@ def test_auto_mode_empty_node_pools_omit_the_cluster_node_role(check_mode):
         ]
 
 
+@pytest.mark.parametrize(("check_mode", "wait"), [(True, False), (True, True), (False, False)])
+def test_auto_mode_empty_node_pools_predict_no_cluster_node_role(check_mode, wait):
+    # Live probe: after UpdateClusterConfig {enabled, nodePools: []}, EKS returns {enabled, nodePools: []} only.
+    params = eks_params(compute_config={"enabled": True, "node_pools": []}, wait=wait)
+
+    _client, result = run_present(FakeModule(params, check_mode=check_mode), [AUTO_MODE_CLUSTER])
+
+    assert result["changed"] is True
+    assert result["cluster"]["compute_config"] == {"enabled": True, "node_pools": []}
+    assert AUTO_MODE_CLUSTER["computeConfig"] == {"enabled": True, "nodePools": ["system"], "nodeRoleArn": "arn:a"}
+
+
 NO_NODE_ROLE_AUTO_MODE_CLUSTER = dict(AUTO_MODE_CLUSTER, computeConfig={"enabled": True, "nodePools": []})
 
 

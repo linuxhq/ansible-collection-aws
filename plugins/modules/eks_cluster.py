@@ -1068,6 +1068,16 @@ def check_mode_cluster(module, current, changes=None):
         else:
             del cluster["remoteNetworkConfig"]
 
+    compute_config = cluster.get("computeConfig") or {}
+    if (
+        current is not None
+        and "computeConfig" in desired
+        and compute_config.get("enabled") is True
+        and not compute_config.get("nodePools")
+    ):
+        # EKS removes the node role when the node pools of enabled Auto Mode compute are emptied.
+        compute_config.pop("nodeRoleArn", None)
+
     cluster["name"] = module.params["name"]
     if tags is not None:
         current_tags = cluster.get("tags") or {}

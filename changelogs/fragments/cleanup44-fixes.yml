@@ -1,0 +1,20 @@
+---
+breaking_changes:
+  - ec2_flow_log - the new ``name`` option is required. It is managed as the ``Name`` tag and identifies one flow log on
+    each of ``resource_ids``. Only flow logs with that ``Name`` tag are matched or deleted, and flow logs with another
+    ``Name`` tag or none are never changed or deleted. A flow log with that name and other settings is replaced; the
+    replacement is created first, and the old flow log is deleted only after the replacement exists, is active, and is
+    not reporting failed delivery. The replacement gets the replaced flow log's tags, changed by ``tags`` and
+    ``purge_tags`` as for a kept flow log. The replaced flow log IDs are returned in ``deleted_flow_log_ids``, and each
+    returned flow log includes its ``name``. The value of ``name`` overrides a ``Name`` key in ``tags``. Tasks that
+    omitted ``name`` must now set it, and should tag an existing flow log with that name first, because EC2 rejects a
+    new flow log with the same settings and destination as another flow log on the resource.
+minor_changes:
+  - ec2_flow_log role - pass each item's ``name`` as the module's ``name`` option instead of a ``Name`` tag, so
+    removing or changing one item no longer affects differently named flow logs on the same resources.
+bugfixes:
+  - eks_cluster - stop predicting the node role in the check mode and no-wait cluster result when a run empties the
+    node pools of a cluster whose EKS Auto Mode compute is enabled, because EKS removes the node role.
+trivial:
+  - ec2_pricing_info - document that ``filters[].value`` is a comma-separated list of values for the ``ANY_OF`` and
+    ``NONE_OF`` filter types.
