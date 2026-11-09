@@ -1228,7 +1228,10 @@ def get_endpoint_groups(client, module, listener_arn, changed=False):
 
 
 def ec2_endpoint_arn(endpoint_id, resource_types=("elastic-ip", "instance")):
-    """Return the parsed ARN when an endpoint ID is the ARN of an EC2 resource of one of resource_types, otherwise None."""
+    """Return the parsed ARN when an endpoint ID is the ARN of an EC2 resource of one of resource_types.
+
+    Otherwise return None.
+    """
     endpoint_arn = parse_aws_arn(endpoint_id)
     if endpoint_arn and endpoint_arn["service"] == "ec2" and endpoint_arn["resource_type"] in resource_types:
         return endpoint_arn

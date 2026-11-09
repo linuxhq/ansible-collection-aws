@@ -63,9 +63,14 @@ def predicted_origination_identity(origination_identity, iso_country_code):
         "IsoCountryCode": iso_country_code,
         "OriginationIdentity": origination_identity,
     }
-    # A phone number is returned by its ID; a sender ID ARN ends with its country, so it is kept as given.
+    # Live: AWS returns a phone number or sender ID by its ID, with the ARN beside it.
+    sender_id_arn = re.fullmatch(r"arn:.*:sender-id/([^/]+)/([^/]+)", origination_identity)
     if origination_identity.startswith("arn:") and ":phone-number/" in origination_identity:
         identity["OriginationIdentity"] = origination_identity.rsplit("/", 1)[-1]
+        identity["OriginationIdentityArn"] = origination_identity
+    elif sender_id_arn:
+        identity["IsoCountryCode"] = iso_country_code or sender_id_arn.group(2)
+        identity["OriginationIdentity"] = sender_id_arn.group(1)
         identity["OriginationIdentityArn"] = origination_identity
 
     return scrub_none_parameters(identity)

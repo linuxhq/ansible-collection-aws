@@ -509,7 +509,11 @@ SENDER_ARN = "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US"
             "US",
             {"iso_country_code": "US", "origination_identity": "phone-1", "origination_identity_arn": PHONE_ARN},
         ),
-        (SENDER_ARN, None, {"origination_identity": SENDER_ARN}),
+        (
+            SENDER_ARN,
+            None,
+            {"iso_country_code": "US", "origination_identity": "sender-1", "origination_identity_arn": SENDER_ARN},
+        ),
         ("phone-1", None, {"origination_identity": "phone-1"}),
     ],
     ids=["phone-number-arn", "sender-id-arn", "id"],

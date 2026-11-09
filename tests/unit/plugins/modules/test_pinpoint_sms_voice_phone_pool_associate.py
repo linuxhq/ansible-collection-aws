@@ -173,20 +173,27 @@ def test_present_with_pool_arn_returns_the_pool_id_in_every_mode(check_mode):
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_present_with_phone_number_arn_returns_the_phone_number_id_in_every_mode(check_mode):
-    phone_arn = "arn:aws:sms-voice:us-east-1:123456789012:phone-number/phone-1"
+@pytest.mark.parametrize(
+    ("identity_arn", "identity_id"),
+    [
+        ("arn:aws:sms-voice:us-east-1:123456789012:phone-number/phone-1", "phone-1"),
+        ("arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US", "sender-1"),
+    ],
+    ids=["phone-number-arn", "sender-id-arn"],
+)
+def test_present_with_identity_arn_returns_the_identity_id_in_every_mode(check_mode, identity_arn, identity_id):
     client = Mock()
     client.associate_origination_identity.return_value = {
         "IsoCountryCode": "US",
-        "OriginationIdentity": "phone-1",
-        "OriginationIdentityArn": phone_arn,
+        "OriginationIdentity": identity_id,
+        "OriginationIdentityArn": identity_arn,
         "PoolId": "pool-1",
     }
     module = FakeModule(
         {
             "client_token": None,
             "iso_country_code": "US",
-            "origination_identity": phone_arn,
+            "origination_identity": identity_arn,
             "pool_id": "pool-1",
             "state": "present",
         },
@@ -199,11 +206,11 @@ def test_present_with_phone_number_arn_returns_the_phone_number_id_in_every_mode
         plugin.ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
-    assert raised.value.values["origination_identity"] == phone_arn
+    assert raised.value.values["origination_identity"] == identity_arn
     assert raised.value.values["association"] == {
         "iso_country_code": "US",
-        "origination_identity": "phone-1",
-        "origination_identity_arn": phone_arn,
+        "origination_identity": identity_id,
+        "origination_identity_arn": identity_arn,
         "pool_id": "pool-1",
     }
     assert client.associate_origination_identity.called is not check_mode

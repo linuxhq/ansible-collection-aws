@@ -72,7 +72,22 @@ SENDER_ARN = "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US"
             "US",
             {"IsoCountryCode": "US", "OriginationIdentity": "phone-1", "OriginationIdentityArn": PHONE_ARN},
         ),
-        (SENDER_ARN, "US", {"IsoCountryCode": "US", "OriginationIdentity": SENDER_ARN}),
+        (
+            SENDER_ARN,
+            "US",
+            {"IsoCountryCode": "US", "OriginationIdentity": "sender-1", "OriginationIdentityArn": SENDER_ARN},
+        ),
+        (
+            SENDER_ARN,
+            None,
+            {"IsoCountryCode": "US", "OriginationIdentity": "sender-1", "OriginationIdentityArn": SENDER_ARN},
+        ),
+        # An ARN without the sender-id/<SenderId>/<country> form is left for AWS to reject.
+        (
+            "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1",
+            None,
+            {"OriginationIdentity": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1"},
+        ),
         ("phone-1", "US", {"IsoCountryCode": "US", "OriginationIdentity": "phone-1"}),
         ("sender-1", None, {"OriginationIdentity": "sender-1"}),
     ],

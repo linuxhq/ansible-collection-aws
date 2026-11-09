@@ -1797,9 +1797,9 @@ def test_waited_write_returns_entries_in_the_sorted_order_of_every_other_path(br
     raw_entries = [{"Cidr": entry["cidr"]} for entry in entries]
     sorted_entries = [{"cidr": "10.0.0.0/8"}, {"cidr": "192.0.2.0/24"}, {"cidr": "9.0.0.0/8"}]
     client = Mock()
-    module = FakeModule(present_params(entries))
+    module = FakeModule(present_params(entries, wait=True))
     current = None if branch == "create" else prefix_list()
-    after_write = prefix_list(State="create-complete" if branch == "create" else "modify-complete")
+    after_write = prefix_list(MaxEntries=3, State="create-complete" if branch == "create" else "modify-complete")
     with (
         patch.object(
             plugin, "get_current", return_value=(current, None if current is None else [{"Cidr": "192.0.2.0/24"}])

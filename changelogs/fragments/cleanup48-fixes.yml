@@ -1,0 +1,12 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_pool - return a sender ID ARN's sender ID, ARN, and country in the predicted
+    ``pool.origination_identities`` as AWS returns them.
+  - pinpoint_sms_voice_phone_pool_associate - predict a sender ID ARN's association as AWS returns it, with the sender ID
+    in ``origination_identity`` and the ARN in ``origination_identity_arn``.
+trivial:
+  - ec2_placement_group_info - document the fields returned under ``operator``.
+  - eks_cluster and eks_cluster_info - document the return values that EKS omits for an EKS Connector cluster.
+  - ec2_vpc_prefix_list - make the waited write regression test use ``wait=true``.
+  - global_accelerator, ssm_association, and module_utils/tags.py - wrap a docstring or comment over 120 columns.
+...
