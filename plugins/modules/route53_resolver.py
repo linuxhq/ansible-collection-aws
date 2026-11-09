@@ -372,6 +372,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
+    require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tags,
 )
@@ -701,6 +702,11 @@ def ensure_present(client, module, deadline=None):
     if tags is not None:
         current_tag_dict = boto3_tag_list_to_ansible_dict(current_tags)
         tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tag_dict, tags, purge_tags=purge_tags)
+        # Live: Route 53 Resolver rejects these keys, after any endpoint, address, or tag change of the same run. A
+        # create sends its tags in its only write.
+        if endpoint is not None:
+            require_no_reserved_tag_keys(module, tags_to_set)
+
         require_resulting_tag_limit(
             module, current_tag_dict, tags_to_set, tag_keys_to_unset, 200, "AWS Route53 Resolver endpoint"
         )

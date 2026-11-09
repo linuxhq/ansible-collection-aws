@@ -2620,3 +2620,50 @@ def test_create_fails_cleanly_when_the_endpoint_is_gone_after_waiting():
 
     assert raised.value.values["changed"] is True
     assert raised.value.values["msg"] == "AWS Route53 Resolver did not return the created endpoint main"
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner", "Aws:owner"])
+def test_reserved_tag_key_fails_before_updating_the_endpoint(key, check_mode):
+    client = Mock()
+    params = endpoint_params(
+        ip_addresses=[{"ip": "192.0.2.3", "subnet_id": "subnet-3"}, {"ip": "192.0.2.2", "subnet_id": "subnet-2"}],
+        purge_tags=True,
+        tags={key: "me"},
+    )
+    existing = existing_endpoint(Tags=[{"Key": "old", "Value": "x"}])
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(
+            plugin, "reconcile_resolver_endpoint_ip_addresses", side_effect=lambda *args, **kwargs: args[2]
+        ) as reconcile,
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_resolver_endpoint_status", side_effect=lambda *args, **kwargs: args[2]) as wait,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
+    assert raised.value.values.get("changed", False) is False
+    reconcile.assert_not_called()
+    wait.assert_not_called()
+    client.update_resolver_endpoint.assert_not_called()
+    client.untag_resource.assert_not_called()
+    client.tag_resource.assert_not_called()
+
+
+def test_reserved_tag_key_is_left_to_aws_on_a_new_endpoint():
+    client = Mock()
+    client.meta.service_model = get_session().get_service_model("route53resolver")
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(endpoint_params(tags={"aws:owner": "me"}), check_mode=True))
+
+    assert raised.value.values["changed"] is True

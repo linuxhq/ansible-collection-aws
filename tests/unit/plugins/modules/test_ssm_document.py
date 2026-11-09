@@ -1161,3 +1161,22 @@ def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
         "changed": False,
         "msg": "Unable to wait for AWS Systems Manager document example to become active",
     }
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner", "Aws:owner"])
+def test_reserved_tag_key_fails_before_updating_the_document(key, check_mode):
+    client = Mock()
+    current = document({"schemaVersion": "1.2"}, Tags=[{"Key": "old", "Value": "x"}])
+    result, _wait, _get = run_present(
+        client,
+        FakeModule(params(purge_tags=True, tags={key: "me"}), check_mode=check_mode),
+        [current],
+    )
+
+    assert isinstance(result, ModuleFail)
+    assert result.values["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
+    assert result.values.get("changed", False) is False
+    client.update_document.assert_not_called()
+    client.add_tags_to_resource.assert_not_called()
+    client.remove_tags_from_resource.assert_not_called()

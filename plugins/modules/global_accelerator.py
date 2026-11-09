@@ -677,6 +677,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     reconcile_arn_tags,
+    require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tags,
     updated_tags,
@@ -2026,6 +2027,11 @@ def ensure_present(client, module, deadline=None):
             tags,
             purge_tags=module.params["purge_tags"],
         )
+        # Live: Global Accelerator rejects these keys, after any accelerator, listener, endpoint, or tag change of the
+        # same run. A create sends its tags in its only write.
+        if not created:
+            require_no_reserved_tag_keys(module, tags_to_set)
+
         require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "accelerator")
 
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)

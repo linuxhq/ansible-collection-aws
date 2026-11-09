@@ -3280,3 +3280,52 @@ def test_next_minor_downgrade_and_unparsed_versions_reach_the_version_update(ver
 )
 def test_parse_version(version, expected):
     assert plugin.parse_version(version) == expected
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner", "Aws:owner"])
+def test_reserved_tag_key_fails_before_any_cluster_write(key, check_mode):
+    client = Mock()
+    params = dict.fromkeys(plugin.CREATE_FIELDS)
+    params.update(
+        {"deletion_protection": True, "name": "example", "purge_tags": True, "tags": {key: "me"}, "wait": False}
+    )
+    current = {
+        "arn": "arn:cluster",
+        "deletionProtection": False,
+        "name": "example",
+        "status": "ACTIVE",
+        "tags": {"old": "x"},
+    }
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
+    assert raised.value.values.get("changed", False) is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_stored_reserved_tag_key_with_the_same_value_keeps_working(check_mode):
+    client = Mock()
+    params = dict.fromkeys(plugin.CREATE_FIELDS)
+    params.update(
+        {"name": "example", "purge_tags": True, "tags": {"aws:owner": "me", "Env": "aws:prod"}, "wait": False}
+    )
+    current = {
+        "arn": "arn:cluster",
+        "name": "example",
+        "status": "ACTIVE",
+        "tags": {"aws:owner": "me", "Env": "aws:prod"},
+    }
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values["changed"] is False
+    client.tag_resource.assert_not_called()

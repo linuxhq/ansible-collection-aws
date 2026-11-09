@@ -721,9 +721,8 @@ def ensure_present(client, module, owner_id, deadline=None):
 
     prefix_list = boto3_resource_to_ansible_dict(current or {}, transform_tags=True, force_tags=False)
     if current_entries is not None:
-        prefix_list["entries"] = boto3_resource_list_to_ansible_dict(
-            current_entries, transform_tags=False, force_tags=False
-        )
+        # EC2 keeps its own order, so a waited write returns the same sorted entries as every other path.
+        prefix_list["entries"] = comparable_entries(current_entries)
 
     result = {
         "changed": changed,

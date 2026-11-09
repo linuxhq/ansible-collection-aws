@@ -1788,3 +1788,26 @@ def test_unchanged_reserved_tag_key_keeps_working(check_mode):
     assert result["changed"] is False
     assert result["prefix_list"]["tags"] == {"aws:owner": "me"}
     reconcile.assert_not_called()
+
+
+@pytest.mark.parametrize("branch", ["create", "update"])
+def test_waited_write_returns_entries_in_the_sorted_order_of_every_other_path(branch):
+    # Live: GetManagedPrefixListEntries returned EC2's own order, not this module's string sort.
+    entries = [{"cidr": "192.0.2.0/24"}, {"cidr": "9.0.0.0/8"}, {"cidr": "10.0.0.0/8"}]
+    raw_entries = [{"Cidr": entry["cidr"]} for entry in entries]
+    sorted_entries = [{"cidr": "10.0.0.0/8"}, {"cidr": "192.0.2.0/24"}, {"cidr": "9.0.0.0/8"}]
+    client = Mock()
+    module = FakeModule(present_params(entries))
+    current = None if branch == "create" else prefix_list()
+    after_write = prefix_list(State="create-complete" if branch == "create" else "modify-complete")
+    with (
+        patch.object(
+            plugin, "get_current", return_value=(current, None if current is None else [{"Cidr": "192.0.2.0/24"}])
+        ),
+        patch.object(plugin, "create_prefix_list", return_value=(after_write, raw_entries)),
+        patch.object(plugin, "update_prefix_list", return_value=(after_write, raw_entries)),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert result.value.values["prefix_list"]["entries"] == sorted_entries

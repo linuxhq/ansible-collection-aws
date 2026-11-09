@@ -112,6 +112,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tags,
 )
@@ -341,6 +342,8 @@ def ensure_certificate_tags(module, client, certificate_arn, tags, purge_tags):
         tags,
         purge_tags=purge_tags,
     )
+    # Live: ACM rejects these keys, after any tag removal of the same run.
+    require_no_reserved_tag_keys(module, tags_to_set)
     require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "certificate")
 
     if module.check_mode:

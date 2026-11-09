@@ -258,6 +258,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_ssm_tags,
+    require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tags,
     ssm_tag_methods,
@@ -535,6 +536,11 @@ def ensure_present(client, module):
     if tags is not None:
         current_tags = boto3_tag_list_to_ansible_dict((current or {}).get("Tags", []))
         tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge_tags=purge_tags)
+        # Live: Systems Manager rejects these keys, after any document update, promotion, or tag removal of the same
+        # run. A create sends its tags in its only write.
+        if current is not None:
+            require_no_reserved_tag_keys(module, tags_to_set)
+
         require_resulting_tag_limit(
             module, current_tags, tags_to_set, tag_keys_to_unset, 50, "AWS Systems Manager document"
         )
