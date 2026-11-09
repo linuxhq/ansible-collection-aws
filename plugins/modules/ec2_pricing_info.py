@@ -48,6 +48,7 @@ options:
       value:
         description:
           - The filter value.
+          - When O(filters[].type) is C(ANY_OF) or C(NONE_OF), this is a comma-separated list of values.
         required: true
         type: str
     type: list

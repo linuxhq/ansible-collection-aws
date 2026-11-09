@@ -132,6 +132,8 @@ options:
     description:
       - Whether matching EC2 flow logs should exist.
       - When O(state=absent), only specified attributes are used to match flow logs.
+      - O(tags) and O(purge_tags) are ignored when O(state=absent), so matching flow logs are removed whatever
+        their tags.
       - If only O(resource_ids) is set, all flow logs for those resources are removed.
     choices:
       - absent

@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - eks_cluster - stop predicting the node role in the check mode and no-wait cluster result when a run empties the
+    node pools of a cluster whose EKS Auto Mode compute is enabled, because EKS removes the node role.
+trivial:
+  - ec2_flow_log - document that ``tags`` and ``purge_tags`` are ignored when ``state=absent``, so matching flow logs
+    are removed whatever their tags.
+  - ec2_pricing_info - document that ``filters[].value`` is a comma-separated list of values for the ``ANY_OF`` and
+    ``NONE_OF`` filter types.
