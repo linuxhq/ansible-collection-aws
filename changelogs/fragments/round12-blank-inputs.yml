@@ -5,8 +5,7 @@ bugfixes:
   - ec2_flow_log - with O(state=present), an empty or blank O(deliver_cross_account_role),
     O(deliver_logs_permission_arn), O(log_destination), O(log_format), or O(log_group_name) now fails before any AWS
     call, in check mode too. EC2 rejects these values, or accepts a whitespace-only value without storing it so that
-    every later run fails with C(FlowLogAlreadyExists), but check mode predicted a new flow log and, with
-    O(purge_flow_logs=true), the deletion of the existing flow logs.
+    every later run fails with C(FlowLogAlreadyExists), but check mode predicted a new flow log.
   - ec2_vpc_vpn - creating a connection with a whitespace-only O(customer_gateway_id), O(vpn_gateway_id), or
     O(transit_gateway_id) now fails before any write, in check mode too, as an empty one already did. Check mode
     predicted a new connection, and EC2 treats a whitespace-only gateway ID as omitted. A whitespace-only
