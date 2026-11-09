@@ -76,9 +76,9 @@ options:
       transit_gateway_attachment_id:
         description:
           - The transit gateway attachment ID to route traffic to.
-          - Mutually exclusive with O(routes[].blackhole=true).
           - Required when O(routes[].state=present) unless
             O(routes[].blackhole=true).
+          - Mutually exclusive with O(routes[].blackhole=true).
         type: str
     type: list
   state:

@@ -141,6 +141,8 @@ options:
                     endpoints, whether given by allocation ID or by ARN.
                   - AWS does not support C(true) for Network Load Balancer
                     endpoints without security groups or with TLS listeners.
+                  - AWS does not support C(true) for a dual-stack Network Load
+                    Balancer endpoint of an C(IPV4) accelerator.
                   - AWS does not support C(false) for EC2 instance endpoints,
                     whether given by instance ID or by ARN, or for internal
                     Application Load Balancer endpoints, which always preserve

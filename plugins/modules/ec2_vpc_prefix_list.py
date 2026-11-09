@@ -235,7 +235,6 @@ state:
 """
 
 import ipaddress
-import json
 import uuid
 
 try:
@@ -974,7 +973,7 @@ def comparable_entries(entries):
 
         result.append(normalized_entry)
 
-    return sorted(result, key=lambda entry: json.dumps(entry, sort_keys=True))
+    return sorted(result, key=lambda entry: entry["cidr"])
 
 
 def main():
