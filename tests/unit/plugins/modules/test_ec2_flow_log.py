@@ -1460,7 +1460,7 @@ def test_name_is_the_name_tag_of_a_new_flow_log_whatever_tags_set(check_mode):
         assert client.create_flow_logs.call_args.kwargs["TagSpecifications"] == [
             {
                 "ResourceType": "vpc-flow-log",
-                "Tags": [{"Key": "Name", "Value": "main"}, {"Key": "Environment", "Value": "prod"}],
+                "Tags": [{"Key": "Environment", "Value": "prod"}, {"Key": "Name", "Value": "main"}],
             }
         ]
 
@@ -1531,3 +1531,92 @@ def test_name_tag_counts_toward_the_tag_limit():
 
     assert raised.value.values == {"msg": "tags must contain at most 50 entries"}
     get_flow_logs.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("tags", "purge_tags", "expected"),
+    [
+        # Omitted tags keep the replaced flow log's tags.
+        (None, True, {"Name": "main", "Owner": "ops"}),
+        # purge_tags=false adds the requested tags to them.
+        ({"Environment": "prod"}, False, {"Environment": "prod", "Name": "main", "Owner": "ops"}),
+        # purge_tags=true replaces them with the requested tags.
+        ({"Environment": "prod"}, True, {"Environment": "prod", "Name": "main"}),
+    ],
+)
+def test_replacement_keeps_the_tags_of_the_flow_log_it_replaces(tags, purge_tags, expected, check_mode):
+    client = Mock()
+    replaced_tags = [
+        {"Key": "Name", "Value": "main"},
+        {"Key": "Owner", "Value": "ops"},
+        {"Key": "aws:reserved", "Value": "x"},
+    ]
+    module = FakeModule(present_params(tags=tags, purge_tags=purge_tags), check_mode=check_mode)
+
+    result = run_present(client, module, [dict(OLD_FLOW_LOG, Tags=replaced_tags)])
+
+    assert result["deleted_flow_log_ids"] == ["fl-old"]
+    if check_mode:
+        assert result["flow_logs"][0]["tags"] == expected
+    else:
+        assert client.create_flow_logs.call_args.kwargs["TagSpecifications"] == [
+            {
+                "ResourceType": "vpc-flow-log",
+                "Tags": [{"Key": key, "Value": value} for key, value in sorted(expected.items())],
+            }
+        ]
+
+
+def test_replacements_with_different_tags_are_created_in_separate_requests():
+    client = Mock()
+    client.create_flow_logs.side_effect = lambda **kwargs: {
+        "FlowLogIds": [f"fl-new-{resource_id}" for resource_id in kwargs["ResourceIds"]],
+        "Unsuccessful": [],
+    }
+    client.delete_flow_logs.return_value = {}
+    flow_logs = [
+        dict(
+            OLD_FLOW_LOG, FlowLogId="fl-old-1", Tags=[{"Key": "Name", "Value": "main"}, {"Key": "Owner", "Value": "a"}]
+        ),
+        dict(
+            OLD_FLOW_LOG,
+            FlowLogId="fl-old-2",
+            ResourceId="vpc-2",
+            Tags=[{"Key": "Name", "Value": "main"}, {"Key": "Owner", "Value": "b"}],
+        ),
+    ]
+    module = FakeModule(present_params(resource_ids=["vpc-1", "vpc-2", "vpc-3"]))
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=flow_logs),
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
+
+    requests = [
+        (call.kwargs["ResourceIds"], call.kwargs["TagSpecifications"][0]["Tags"])
+        for call in client.create_flow_logs.call_args_list
+    ]
+    assert requests == [
+        (["vpc-1"], [{"Key": "Name", "Value": "main"}, {"Key": "Owner", "Value": "a"}]),
+        (["vpc-2"], [{"Key": "Name", "Value": "main"}, {"Key": "Owner", "Value": "b"}]),
+        (["vpc-3"], [{"Key": "Name", "Value": "main"}]),
+    ]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_replacement_tag_limit_fails_before_creating_flow_logs(check_mode):
+    client = Mock()
+    replaced_tags = [{"Key": "Name", "Value": "main"}] + [{"Key": f"old{index}", "Value": ""} for index in range(49)]
+    params = present_params(purge_tags=False, tags={"new": ""})
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[dict(OLD_FLOW_LOG, Tags=replaced_tags)]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values["msg"] == "The resulting EC2 flow log tags must contain at most 50 entries"
+    client.create_flow_logs.assert_not_called()

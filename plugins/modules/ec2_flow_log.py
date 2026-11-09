@@ -121,6 +121,8 @@ options:
       - The value of O(name) overrides any value set for V(Name) in the O(tags) parameter.
       - When O(tags) is omitted, other tags are left unchanged; O(purge_tags) never removes the C(Name) tag set
         by this option.
+      - A replacement flow log gets the tags of the flow log it replaces, changed by O(tags) and O(purge_tags) as
+        they would change the tags of a kept flow log. Tags with the reserved C(aws:) prefix are not copied.
       - This must not be empty or made only of spaces, tabs, carriage returns, and line feeds, because EC2 stores
         such a C(Name) tag as an empty value.
     required: true
@@ -378,6 +380,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     reconcile_ec2_tags,
     require_resulting_tag_limit,
     require_valid_tags,
+    updated_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
@@ -697,16 +700,35 @@ def ensure_present(client, module):
 
     # EC2 cannot modify a flow log, so a flow log with this name and other settings is replaced.
     matched_flow_log_ids = {flow_log["FlowLogId"] for flow_log in current}
-    superseded_flow_log_ids = sorted(
-        flow_log["FlowLogId"]
-        for flow_log in matching_flow_logs(module, flow_logs, {"name": name})
-        if flow_log["FlowLogId"] not in matched_flow_log_ids
+    superseded_flow_logs = sorted(
+        (
+            flow_log
+            for flow_log in matching_flow_logs(module, flow_logs, {"name": name})
+            if flow_log["FlowLogId"] not in matched_flow_log_ids
+        ),
+        key=lambda flow_log: flow_log["FlowLogId"],
     )
+    superseded_flow_log_ids = [flow_log["FlowLogId"] for flow_log in superseded_flow_logs]
 
     matched_resource_ids = {flow_log.get("ResourceId") for flow_log in current}
     missing_resource_ids = [resource_id for resource_id in resource_ids if resource_id not in matched_resource_ids]
-    # A matched flow log already carries the Name tag; a new one is always created with it.
-    created_tags = dict(tags or {}, Name=name)
+    created_tags = {}
+    for resource_id in missing_resource_ids:
+        # A replacement keeps the tags of the flow log it replaces, as a kept flow log would; EC2 rejects aws: keys.
+        replaced_tags = {}
+        for flow_log in superseded_flow_logs:
+            if flow_log.get("ResourceId") == resource_id:
+                replaced_tags.update(boto3_tag_list_to_ansible_dict(flow_log.get("Tags") or []))
+
+        replaced_tags = {key: value for key, value in replaced_tags.items() if not key.lower().startswith("aws:")}
+        if tags is None:
+            created_tags[resource_id] = dict(replaced_tags, Name=name)
+        else:
+            tags_to_set, tag_keys_to_unset = compare_aws_tags(
+                replaced_tags, tags, purge_tags=module.params["purge_tags"]
+            )
+            require_resulting_tag_limit(module, replaced_tags, tags_to_set, tag_keys_to_unset, 50, "EC2 flow log")
+            created_tags[resource_id] = updated_tags(replaced_tags, tags_to_set, tag_keys_to_unset)
 
     # name is sent as the Name tag, not as a flow log setting.
     create_settings = {key: value for key, value in desired.items() if key != "name"}
@@ -748,25 +770,37 @@ def ensure_present(client, module):
             base_request = snake_dict_to_camel_dict(
                 dict(create_settings, resource_type=resource_type), capitalize_first=True
             )
-            tag_specifications = boto3_tag_specifications(created_tags, types="vpc-flow-log")
-            if tag_specifications is not None:
-                base_request["TagSpecifications"] = tag_specifications
-
+            # Every flow log is created with at least its Name tag.
             require_client_methods(
                 module,
                 client,
                 "EC2",
-                {"create_flow_logs": tuple(base_request) + ("ClientToken", "ResourceIds")},
+                {"create_flow_logs": tuple(base_request) + ("ClientToken", "ResourceIds", "TagSpecifications")},
             )
 
             batch_size = MAX_RESOURCE_IDS_PER_CREATE
             if resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
                 batch_size = MAX_TRANSIT_GATEWAY_RESOURCE_IDS_PER_CREATE
 
+            # One request carries one tag set, so resources are grouped by the tags of their new flow log.
+            tag_groups = {}
+            for resource_id in missing_resource_ids:
+                tag_groups.setdefault(tuple(sorted(created_tags[resource_id].items())), []).append(resource_id)
+
+            batches = [
+                (group_tags, batch)
+                for group_tags, group_resource_ids in tag_groups.items()
+                for batch in chunks(group_resource_ids, batch_size)
+            ]
             created_flow_log_ids = []
-            for batch in chunks(missing_resource_ids, batch_size):
+            for group_tags, batch in batches:
                 # One token per request makes SDK retries of a request that already succeeded idempotent.
-                request = dict(base_request, ResourceIds=batch, ClientToken=str(uuid.uuid4()))
+                request = dict(
+                    base_request,
+                    ClientToken=str(uuid.uuid4()),
+                    ResourceIds=batch,
+                    TagSpecifications=boto3_tag_specifications(dict(group_tags), types="vpc-flow-log"),
+                )
 
                 try:
                     response = client.create_flow_logs(**request, aws_retry=True)
@@ -850,8 +884,7 @@ def ensure_present(client, module):
                     resource_id=resource_id,
                 )
                 flow_log = snake_dict_to_camel_dict(flow_log, capitalize_first=True)
-                # EC2 returns an empty tag list for an untagged flow log.
-                flow_log["Tags"] = ansible_dict_to_boto3_tag_list(created_tags or {})
+                flow_log["Tags"] = ansible_dict_to_boto3_tag_list(created_tags[resource_id])
 
                 current.append(flow_log)
 

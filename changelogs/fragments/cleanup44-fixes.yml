@@ -4,7 +4,8 @@ breaking_changes:
     each of ``resource_ids``. Only flow logs with that ``Name`` tag are matched or deleted, and flow logs with another
     ``Name`` tag or none are never changed or deleted. A flow log with that name and other settings is replaced; the
     replacement is created first, and the old flow log is deleted only after the replacement exists, is active, and is
-    not reporting failed delivery. The replaced flow log IDs are returned in ``deleted_flow_log_ids``, and each
+    not reporting failed delivery. The replacement gets the replaced flow log's tags, changed by ``tags`` and
+    ``purge_tags`` as for a kept flow log. The replaced flow log IDs are returned in ``deleted_flow_log_ids``, and each
     returned flow log includes its ``name``. The value of ``name`` overrides a ``Name`` key in ``tags``. Tasks that
     omitted ``name`` must now set it, and should tag an existing flow log with that name first, because EC2 rejects a
     new flow log with the same settings and destination as another flow log on the resource.
