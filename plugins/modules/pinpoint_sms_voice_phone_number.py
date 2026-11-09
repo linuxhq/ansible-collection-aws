@@ -102,13 +102,13 @@ options:
       - With O(state=absent), a number in a pool is disassociated from the pool
         before it is released.
       - With O(state=absent), the module fails without changes, including in
-        check mode, when the number is the last phone number in its pool,
-        because AWS does not allow it to be disassociated. Delete the pool with
-        M(linuxhq.aws.pinpoint_sms_voice_phone_pool) first. Sender IDs in the
-        pool do not count as phone numbers, and this module never deletes pools.
-      - When the pool is already being deleted, the last phone number is
-        released instead, and check mode reports that change, because deleting
-        the pool disassociates it.
+        check mode, when the number is the only origination identity in its
+        pool, because AWS does not allow it to be disassociated. Delete the pool
+        with M(linuxhq.aws.pinpoint_sms_voice_phone_pool) first. This module
+        never deletes pools.
+      - When the pool is already being deleted, that number is released
+        instead, and check mode reports that change, because deleting the pool
+        disassociates it.
     type: str
   pool_id:
     description:
@@ -670,7 +670,7 @@ def ensure_absent(client, module):
     changed = current is not None
     response = current
 
-    # Only the pool module deletes pools, so the last phone number in a pool is never released here.
+    # Only the pool module deletes pools, so a pool's only origination identity is never released here.
     if changed and module.check_mode and current.get("PoolId"):
         require_not_last_pool_phone_number(client, module, current)
 

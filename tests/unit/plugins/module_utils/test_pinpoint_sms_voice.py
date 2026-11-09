@@ -4,7 +4,9 @@ import pytest
 from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    is_last_phone_number,
     is_phone_number_reference,
+    last_phone_number_message,
     list_tags,
     predicted_origination_identity,
 )
@@ -114,3 +116,36 @@ def test_predicted_origination_identity_matches_the_associated_identity(
 )
 def test_phone_number_reference_matches_only_phone_number_ids_and_arns(origination_identity, expected):
     assert is_phone_number_reference(origination_identity) is expected
+
+
+PHONE_ITEM = {"OriginationIdentity": "phone-1", "OriginationIdentityArn": PHONE_ARN, "PhoneNumber": "+12065550100"}
+SENDER_ITEM = {"OriginationIdentity": "sender-1", "OriginationIdentityArn": SENDER_ARN}
+OTHER_SENDER_ITEM = {"OriginationIdentity": "sender-2"}
+
+
+@pytest.mark.parametrize(
+    ("originations", "identities", "expected"),
+    [
+        ([PHONE_ITEM], ("phone-1",), True),
+        ([PHONE_ITEM], (PHONE_ARN,), True),
+        ([PHONE_ITEM], ("phone-2",), False),
+        ([SENDER_ITEM], ("sender-1",), True),
+        ([SENDER_ITEM], (SENDER_ARN,), True),
+        ([SENDER_ITEM, OTHER_SENDER_ITEM], ("sender-1",), False),
+        # Live: AWS accepts removing a phone number while a sender ID remains in the pool.
+        ([PHONE_ITEM, SENDER_ITEM], ("phone-1",), False),
+        ([PHONE_ITEM, SENDER_ITEM], ("sender-1",), False),
+        ([], ("phone-1",), False),
+    ],
+)
+def test_is_last_phone_number_matches_only_a_pools_sole_identity(originations, identities, expected):
+    assert is_last_phone_number(originations, identities) is expected
+
+
+def test_last_phone_number_message_names_the_identity_type():
+    assert last_phone_number_message("phone-1", "pool-1").startswith(
+        "Phone number phone-1 is the last phone number in Pinpoint SMS Voice V2 pool pool-1, "
+    )
+    assert last_phone_number_message("sender-1", "pool-1", False).startswith(
+        "Origination identity sender-1 is the last origination identity in Pinpoint SMS Voice V2 pool pool-1, "
+    )

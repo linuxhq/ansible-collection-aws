@@ -133,6 +133,40 @@ products:
   returned: always
   type: list
   elements: dict
+  contains:
+    product:
+      description: The product metadata.
+      returned: when returned by AWS
+      type: dict
+      contains:
+        attributes:
+          description: The product attributes, which vary by service.
+          returned: when returned by AWS
+          type: dict
+        product_family:
+          description: The category of the product.
+          returned: when returned by AWS
+          type: str
+        sku:
+          description: The SKU of the product.
+          returned: when returned by AWS
+          type: str
+    publication_date:
+      description: The date and time the price list was published.
+      returned: when returned by AWS
+      type: str
+    service_code:
+      description: The service code of the product.
+      returned: when returned by AWS
+      type: str
+    terms:
+      description: The pricing terms of the product, keyed by term type such as C(on_demand) and C(reserved).
+      returned: when returned by AWS
+      type: dict
+    version:
+      description: The version of the price list.
+      returned: when returned by AWS
+      type: str
 service_code:
   description:
     - The queried AWS service code.

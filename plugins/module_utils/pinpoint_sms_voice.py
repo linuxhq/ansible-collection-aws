@@ -77,14 +77,23 @@ def predicted_origination_identity(origination_identity, iso_country_code):
 
 
 def is_last_phone_number(originations, identities):
-    """Return whether the phone number named by identities is the only phone number in a pool's originations."""
-    phone_numbers = [origination for origination in originations if is_phone_number_identity(origination)]
-    return len(phone_numbers) == 1 and identity_matches(phone_numbers[0], identities)
+    """Return whether identities name a pool's only origination identity, which AWS refuses to disassociate.
+
+    Live: AWS answers LAST_PHONE_NUMBER for a sole phone number or sender ID alike, and accepts removing a phone
+    number while a sender ID remains in the pool.
+    """
+    return len(originations) == 1 and identity_matches(originations[0], identities)
 
 
-def last_phone_number_message(phone_number, pool_id):
+def last_phone_number_message(identity, pool_id, phone_number=True):
+    """Return the failure message for a pool's last identity; phone_number is False when it may be a sender ID."""
+    subject = (
+        f"Phone number {identity} is the last phone number"
+        if phone_number
+        else f"Origination identity {identity} is the last origination identity"
+    )
     return (
-        f"Phone number {phone_number} is the last phone number in Pinpoint SMS Voice V2 pool {pool_id}, "
+        f"{subject} in Pinpoint SMS Voice V2 pool {pool_id}, "
         "which AWS does not allow to be disassociated; delete the pool with "
         "linuxhq.aws.pinpoint_sms_voice_phone_pool first"
     )
