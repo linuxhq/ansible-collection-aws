@@ -101,10 +101,8 @@ def last_phone_number_message(identity, pool_id, phone_number=True):
 
 def is_last_phone_number_conflict(error):
     """Return whether a ConflictException ClientError has the LAST_PHONE_NUMBER reason."""
-    response = getattr(error, "response", None) or {}
     # botocore adds modeled error members, such as Reason, beside Error in the parsed response.
-    reason = response.get("Reason") or (response.get("Error") or {}).get("Reason")
-    return reason == "LAST_PHONE_NUMBER"
+    return error.response.get("Reason") == "LAST_PHONE_NUMBER"
 
 
 def pool_is_deleting(client, module, pool_id):

@@ -66,8 +66,8 @@ options:
       - This is required to create flow logs when O(log_destination_type) is C(s3) or C(kinesis-data-firehose).
       - When O(log_destination_type) is C(cloud-watch-logs), this or O(log_group_name) is required to create
         flow logs.
-      - This is mutually exclusive with O(log_group_name).
       - This must not be empty when O(state=present).
+      - This is mutually exclusive with O(log_group_name).
     type: str
   log_destination_type:
     description:
@@ -88,8 +88,8 @@ options:
       - The CloudWatch Logs log group name for flow log data.
       - When O(log_destination_type) is C(cloud-watch-logs), this or O(log_destination) is required to create
         flow logs.
-      - This is mutually exclusive with O(log_destination).
       - This must not be empty when O(state=present).
+      - This is mutually exclusive with O(log_destination).
     type: str
   max_aggregation_interval:
     description:

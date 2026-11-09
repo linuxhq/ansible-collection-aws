@@ -154,7 +154,7 @@ def test_absent_does_not_validate_unused_routes():
     ensure_absent.assert_called_once_with(None, module)
 
 
-def test_create_without_tags_does_not_gate_tag_specifications():
+def test_name_lookup_gates_only_describe_parameters():
     client = Mock()
     module = FakeModule(
         {
@@ -190,39 +190,6 @@ def test_create_without_tags_does_not_gate_tag_specifications():
             )
         },
     )
-
-
-def test_name_only_create_does_not_gate_separate_tag_api():
-    client = Mock()
-    module = FakeModule(
-        {
-            "name": "main",
-            "purge_routes": False,
-            "purge_tags": True,
-            "routes": None,
-            "state": "present",
-            "tags": None,
-            "transit_gateway_id": "tgw-1",
-            "transit_gateway_route_table_id": None,
-        },
-        client=client,
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        patch.object(plugin, "require_client_methods") as require_methods,
-        patch.object(plugin, "ensure_present"),
-    ):
-        plugin.main()
-
-    assert require_methods.call_args.args[3] == {
-        "describe_transit_gateway_route_tables": (
-            "Filters",
-            "MaxResults",
-            "NextToken",
-            "TransitGatewayRouteTableIds",
-        )
-    }
 
 
 def identifier_params(state, **identifiers):
