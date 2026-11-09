@@ -56,14 +56,19 @@ options:
         description:
           - The EKS Auto Mode node pools.
           - When omitted while EKS Auto Mode compute is enabled, the existing node pools are kept.
+          - An empty list while EKS Auto Mode compute is enabled disables the built-in node pools, and EKS then
+            removes the cluster's node role.
         elements: str
         type: list
       node_role_arn:
         description:
           - The IAM role ARN used by EKS Auto Mode nodes.
-          - When omitted while EKS Auto Mode compute is enabled, the existing node role is kept.
-          - This cannot be changed while EKS Auto Mode compute stays enabled; the module fails before any change if it
-            differs from the cluster's node role.
+          - When omitted while EKS Auto Mode compute is enabled, the existing node role is kept if node pools remain.
+          - EKS rejects a node role without node pools; for an existing cluster with EKS Auto Mode compute enabled, the
+            module fails before any change if this is set while the requested or existing node pools are empty.
+          - This cannot be changed while EKS Auto Mode compute stays enabled and the cluster has a node role; the module
+            fails before any change if it differs from the cluster's node role.
+          - A cluster with EKS Auto Mode compute enabled and no node role accepts a node role together with node pools.
         type: str
     type: dict
   deletion_protection:
@@ -804,9 +809,12 @@ def auto_mode_request(current, config_request):
 
         if field == "computeConfig" and config.get("enabled") is True:
             # EKS clears node pools and the node role when an enabled request omits them.
-            for key in ("nodePools", "nodeRoleArn"):
-                if key not in config and key in current_config:
-                    config[key] = current_config[key]
+            if "nodePools" not in config and "nodePools" in current_config:
+                config["nodePools"] = current_config["nodePools"]
+
+            # EKS rejects a node role without node pools.
+            if "nodeRoleArn" not in config and "nodeRoleArn" in current_config and config.get("nodePools"):
+                config["nodeRoleArn"] = current_config["nodeRoleArn"]
 
         if config:
             for key in reversed(path):
@@ -1198,14 +1206,33 @@ def ensure_present(client, module, deadline=None):
         if value is not None and value != current_network_config.get(camel_field):
             module.fail_json(msg=f"Cannot modify kubernetes_network_config.{field} for existing EKS cluster {name}")
 
-    # EKS rejects a new node role while Auto Mode compute stays enabled; it accepts one when disabling or enabling.
+    # EKS rejects a node role without node pools, and removes the node role when the node pools are emptied.
     current_compute_config = current.get("computeConfig") or {}
     compute_config = desired.get("compute_config") or {}
     node_role_arn = compute_config.get("node_role_arn")
+    compute_enabled = compute_config.get("enabled")
+    if compute_enabled is None:
+        compute_enabled = current_compute_config.get("enabled")
+
+    node_pools = compute_config.get("node_pools")
+    if node_pools is None:
+        node_pools = current_compute_config.get("nodePools")
+
+    if compute_enabled is True and node_role_arn and not node_pools:
+        module.fail_json(
+            msg=(
+                "compute_config.node_role_arn requires compute_config.node_pools while EKS Auto Mode compute is "
+                f"enabled for existing EKS cluster {name}"
+            )
+        )
+
+    # EKS rejects a new node role while Auto Mode compute stays enabled and the cluster has a node role; it accepts
+    # one when disabling or enabling, or when the cluster has no node role.
     if (
         current_compute_config.get("enabled") is True
         and compute_config.get("enabled") is not False
         and node_role_arn is not None
+        and current_compute_config.get("nodeRoleArn")
         and node_role_arn != current_compute_config.get("nodeRoleArn")
     ):
         module.fail_json(

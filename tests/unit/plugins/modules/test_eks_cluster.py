@@ -1418,6 +1418,83 @@ def test_auto_mode_node_role_is_allowed_when_unchanged_or_compute_is_toggled(
         )
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_auto_mode_empty_node_pools_omit_the_cluster_node_role(check_mode):
+    # Live probe: EKS rejects {enabled, nodePools: [], nodeRoleArn} and accepts {enabled, nodePools: []}.
+    params = eks_params(deletion_protection=True, compute_config={"enabled": True, "node_pools": []})
+
+    client, result = run_present(FakeModule(params, check_mode=check_mode), [AUTO_MODE_CLUSTER, AUTO_MODE_CLUSTER])
+
+    assert result["changed"] is True
+    if check_mode:
+        assert client.mock_calls == []
+    else:
+        assert client.update_cluster_config.call_args_list == [
+            call(name="example", deletionProtection=True),
+            call(
+                name="example",
+                computeConfig={"enabled": True, "nodePools": []},
+                kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
+                storageConfig={"blockStorage": {"enabled": True}},
+            ),
+        ]
+
+
+NO_NODE_ROLE_AUTO_MODE_CLUSTER = dict(AUTO_MODE_CLUSTER, computeConfig={"enabled": True, "nodePools": []})
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("current", "compute_config"),
+    [
+        (AUTO_MODE_CLUSTER, {"enabled": True, "node_pools": [], "node_role_arn": "arn:a"}),
+        (AUTO_MODE_CLUSTER, {"enabled": None, "node_pools": [], "node_role_arn": "arn:b"}),
+        (NO_NODE_ROLE_AUTO_MODE_CLUSTER, {"enabled": True, "node_role_arn": "arn:b"}),
+        (NO_NODE_ROLE_AUTO_MODE_CLUSTER, {"enabled": None, "node_pools": [], "node_role_arn": "arn:b"}),
+    ],
+)
+def test_auto_mode_node_role_without_node_pools_fails_before_any_update(current, compute_config, check_mode):
+    client = Mock()
+    module = FakeModule(eks_params(deletion_protection=True, compute_config=compute_config), check_mode=check_mode)
+    with patch.object(plugin, "describe_cluster", return_value=current), pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == (
+        "compute_config.node_role_arn requires compute_config.node_pools while EKS Auto Mode compute is enabled for "
+        "existing EKS cluster example"
+    )
+    assert "changed" not in raised.value.values
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_auto_mode_node_role_is_allowed_with_node_pools_when_the_cluster_has_no_node_role(check_mode):
+    # Live probe: EKS accepts a node role with node pools on an enabled cluster that has no node pools or node role.
+    params = eks_params(
+        deletion_protection=True,
+        compute_config={"enabled": True, "node_pools": ["general-purpose"], "node_role_arn": "arn:b"},
+    )
+
+    client, result = run_present(
+        FakeModule(params, check_mode=check_mode),
+        [NO_NODE_ROLE_AUTO_MODE_CLUSTER, NO_NODE_ROLE_AUTO_MODE_CLUSTER],
+    )
+
+    assert result["changed"] is True
+    if check_mode:
+        assert client.mock_calls == []
+    else:
+        assert client.update_cluster_config.call_args_list == [
+            call(name="example", deletionProtection=True),
+            call(
+                name="example",
+                computeConfig={"enabled": True, "nodePools": ["general-purpose"], "nodeRoleArn": "arn:b"},
+                kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
+                storageConfig={"blockStorage": {"enabled": True}},
+            ),
+        ]
+
+
 def test_auto_mode_load_balancing_updates_with_matching_create_only_network_settings():
     current = {
         "name": "example",
@@ -1510,7 +1587,8 @@ def test_auto_mode_request_fills_omitted_enabled_flags_from_the_cluster():
 @pytest.mark.parametrize(
     ("compute_config", "expected"),
     [
-        ({"nodePools": []}, {"enabled": True, "nodePools": [], "nodeRoleArn": "arn:node"}),
+        # EKS rejects a node role without node pools (live probe), so the cluster's role is not copied.
+        ({"nodePools": []}, {"enabled": True, "nodePools": []}),
         (
             {"nodePools": ["general-purpose"], "nodeRoleArn": "arn:other"},
             {"enabled": True, "nodePools": ["general-purpose"], "nodeRoleArn": "arn:other"},
