@@ -74,7 +74,9 @@ options:
   deletion_protection:
     description:
       - Whether deletion protection is enabled for the cluster.
-      - AWS rejects deleting a cluster while deletion protection is enabled.
+      - AWS rejects deleting an active cluster while deletion protection is enabled.
+      - With O(state=absent), the module refuses to delete a cluster that has deletion protection enabled,
+        including a creating or failed cluster that AWS would delete.
       - When omitted while creating a cluster, AWS uses its default value.
       - When omitted while updating a cluster, the existing value is left unchanged.
       - This requires botocore C(1.40.3) or later.

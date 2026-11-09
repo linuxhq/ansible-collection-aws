@@ -336,6 +336,8 @@ options:
           - AWS defaults to C(add).
           - EC2 supports C(start) only for IKEv2, so the tunnel's IKE versions, from O(tunnel_options[].ike_versions)
             or already set on the tunnel, must include C(ikev2). The module checks an existing tunnel before any change.
+          - When O(enable_acceleration=true), the AWS guide requires the customer gateway to initiate the IKE
+            negotiation, so use C(add).
         type: str
         choices: [add, start]
         version_added: "2.6.0"

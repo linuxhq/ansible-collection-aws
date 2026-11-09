@@ -1466,15 +1466,11 @@ def test_name_is_the_name_tag_of_a_new_flow_log_whatever_tags_set(check_mode):
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize(
-    ("name", "expected"),
-    [("main", ["fl-named-old"])],
-)
-def test_absent_with_name_deletes_only_the_flow_log_with_that_name(name, expected, check_mode):
+def test_absent_with_name_deletes_only_the_flow_log_with_that_name(check_mode):
     client = Mock()
     client.delete_flow_logs.return_value = {}
     params = dict(dict.fromkeys(plugin.ABSENT_MATCH_FIELDS), name="main")
-    params.update({"destination_options": None, "name": name, "resource_ids": ["vpc-1"], "tags": {"Name": "other"}})
+    params.update({"destination_options": None, "resource_ids": ["vpc-1"], "tags": {"Name": "other"}})
     flow_logs = [dict(NAMED_OLD_FLOW_LOG), dict(OTHER_NAME_FLOW_LOG), dict(UNTAGGED_FLOW_LOG)]
     with (
         patch.object(plugin, "get_flow_logs", return_value=flow_logs),
@@ -1484,11 +1480,11 @@ def test_absent_with_name_deletes_only_the_flow_log_with_that_name(name, expecte
         plugin.ensure_absent(client, FakeModule(params, check_mode=check_mode))
 
     assert raised.value.values["changed"] is True
-    assert raised.value.values["flow_log_ids"] == expected
+    assert raised.value.values["flow_log_ids"] == ["fl-named-old"]
     if check_mode:
         client.delete_flow_logs.assert_not_called()
     else:
-        client.delete_flow_logs.assert_called_once_with(FlowLogIds=expected, aws_retry=True)
+        client.delete_flow_logs.assert_called_once_with(FlowLogIds=["fl-named-old"], aws_retry=True)
 
 
 @pytest.mark.parametrize("state", ["present", "absent"])

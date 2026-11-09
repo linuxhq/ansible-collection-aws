@@ -1,0 +1,9 @@
+---
+trivial:
+  - ec2_flow_log - reword unreleased changelog entries that still described a check mode create without ``tags`` as
+    returning empty tags and the removed flow log purge, as every created flow log now carries its ``Name`` tag.
+  - ec2_flow_log - drop a single-case parametrization from a unit test.
+  - ec2_vpc_vpn - document that the AWS guide requires the customer gateway to initiate IKE for an accelerated
+    connection, so ``tunnel_options[].startup_action`` should be ``add``.
+  - eks_cluster - document that AWS rejects deleting only an active cluster with deletion protection enabled, while
+    the module refuses to delete any cluster that has it enabled.

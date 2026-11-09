@@ -2,7 +2,7 @@
 bugfixes:
   - ec2_flow_log - delete flow logs and describe newly created flow logs in batches of at most 100 flow log IDs,
     because EC2 ``DeleteFlowLogs`` and ``DescribeFlowLogs`` return ``InternalError`` for more than 100 IDs even
-    though the API documents 1000, so removing, purging, or creating more than 100 flow logs no longer fails;
+    though the API documents 1000, so removing, replacing, or creating more than 100 flow logs no longer fails;
     report ``changed=true`` when a later delete batch fails after an earlier batch deleted flow logs; and when EC2
     rejects a delete request because a flow log is already gone, delete only the flow logs that still exist
     instead of failing.
