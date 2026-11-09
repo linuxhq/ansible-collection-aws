@@ -877,3 +877,31 @@ def test_check_mode_predicts_request_without_waiting():
     assert result.value.values == {"changed": True}
     query.assert_called_once()
     client.request_certificate.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:team", "AWS:team", "Aws:team"])
+def test_reserved_tag_key_fails_before_any_tag_write(key, check_mode):
+    client = Mock()
+    client.list_tags_for_certificate.return_value = {"Tags": [{"Key": "Old", "Value": "x"}]}
+
+    result = run_tagged_request(client, {key: "a"}, check_mode=check_mode)
+
+    assert result["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
+    assert result.get("changed", False) is False
+    client.add_tags_to_certificate.assert_not_called()
+    client.remove_tags_from_certificate.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_unchanged_reserved_tag_key_and_aws_value_are_accepted(check_mode):
+    client = Mock()
+    client.list_tags_for_certificate.return_value = {"Tags": [{"Key": "aws:team", "Value": "a"}]}
+
+    result = run_tagged_request(client, {"aws:team": "a", "Team": "aws:platform"}, check_mode=check_mode)
+
+    assert result["changed"] is True
+    if check_mode:
+        client.add_tags_to_certificate.assert_not_called()
+    else:
+        client.add_tags_to_certificate.assert_called_once()

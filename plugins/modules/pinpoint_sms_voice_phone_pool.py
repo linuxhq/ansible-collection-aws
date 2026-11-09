@@ -292,6 +292,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_cli
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_arn_tags,
+    require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tags,
 )
@@ -650,6 +651,11 @@ def pool_changes(module, current, tags):
         tags,
         purge_tags=module.params["purge_tags"] if module.params["tags"] is not None else False,
     )
+    # Live: SMS Voice V2 rejects these keys, after any pool update or tag removal of the same run. A create sends its
+    # tags in its only write.
+    if current is not None:
+        require_no_reserved_tag_keys(module, tags_to_set)
+
     require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 200, "Pinpoint SMS Voice V2 pool")
     return update_request, tags_to_set, tag_keys_to_unset
 

@@ -360,6 +360,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     reconcile_arn_tags,
+    require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tag_list,
     require_valid_tags,
@@ -593,6 +594,8 @@ def phone_number_changes(client, module, current):
 
         current_tags = boto3_tag_list_to_ansible_dict(current["Tags"])
         tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge_tags=module.params["purge_tags"])
+        # Live: SMS Voice V2 rejects these keys, after any settings update or tag removal of the same run.
+        require_no_reserved_tag_keys(module, tags_to_set)
         require_resulting_tag_limit(
             module, current_tags, tags_to_set, tag_keys_to_unset, 200, "Pinpoint SMS Voice V2 phone number"
         )

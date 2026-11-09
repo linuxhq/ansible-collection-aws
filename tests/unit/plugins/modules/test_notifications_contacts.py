@@ -532,3 +532,56 @@ def test_tags_are_limited_to_the_50_a_contact_can_hold():
         "tags": tags,
     }
     assert_module_rejects(plugin, params, "tags must contain at most 50 entries")
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner", "Aws:owner"])
+def test_reserved_tag_key_fails_before_any_tag_write(key, check_mode):
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"tags": {"old": "x"}}
+    module = FakeModule(
+        {
+            "email_address": "ops@example.com",
+            "name": "Operations",
+            "purge_tags": True,
+            "tags": {key: "me"},
+        },
+        check_mode=check_mode,
+    )
+    contact = {"address": "ops@example.com", "arn": "arn:contact", "name": "Operations"}
+    with (
+        patch.object(plugin, "get_contact_by_address", return_value=contact),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
+    assert raised.value.values.get("changed", False) is False
+    client.untag_resource.assert_not_called()
+    client.tag_resource.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_unchanged_reserved_tag_key_keeps_working(check_mode):
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"tags": {"aws:owner": "me"}}
+    module = FakeModule(
+        {
+            "email_address": "ops@example.com",
+            "name": "Operations",
+            "purge_tags": True,
+            "tags": {"aws:owner": "me"},
+        },
+        check_mode=check_mode,
+    )
+    contact = {"address": "ops@example.com", "arn": "arn:contact", "name": "Operations"}
+    with (
+        patch.object(plugin, "get_contact_by_address", return_value=contact),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+    client.tag_resource.assert_not_called()

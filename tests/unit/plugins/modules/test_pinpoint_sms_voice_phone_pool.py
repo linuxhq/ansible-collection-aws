@@ -1505,3 +1505,39 @@ def test_new_pool_check_mode_predicts_the_settings_a_real_create_returns(wait):
     assert set(real) - set(predicted) == UNPREDICTED_NEW_POOL_FIELDS
     # Shared routes are not inherited from the origination identity, and AWS disables them on a new pool.
     assert predicted["shared_routes_enabled"] is False
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner", "Aws:owner"])
+def test_reserved_tag_key_fails_before_updating_the_pool(key, check_mode):
+    client = Mock()
+    module = FakeModule(
+        present_params(deletion_protection_enabled=True, purge_tags=True, tags={key: "me"}),
+        check_mode=check_mode,
+    )
+    existing_tags = [{"Key": "Name", "Value": "primary"}, {"Key": "old", "Value": "x"}]
+    with (
+        patch.object(plugin, "find_pool", return_value=active_pool(Tags=existing_tags)),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
+    assert raised.value.values.get("changed", False) is False
+    client.update_pool.assert_not_called()
+    client.untag_resource.assert_not_called()
+    client.tag_resource.assert_not_called()
+
+
+def test_reserved_tag_key_is_left_to_aws_on_a_new_pool():
+    client = Mock()
+    module = create_params("phone-1", check_mode=True)
+    module.params["tags"] = {"aws:owner": "me"}
+    with (
+        patch.object(plugin, "find_pool", return_value=None),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True

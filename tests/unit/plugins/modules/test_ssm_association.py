@@ -821,3 +821,23 @@ def test_resulting_50_tags_update_the_association():
         aws_retry=True,
     )
     client.remove_tags_from_resource.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner", "Aws:owner"])
+def test_reserved_tag_key_fails_before_updating_the_association(key, check_mode):
+    client = Mock()
+    module = FakeModule(
+        params(purge_tags=True, schedule_expression="rate(2 hours)", tags={key: "me"}),
+        check_mode=check_mode,
+    )
+    existing_tags = [{"Key": "old", "Value": "x"}]
+    with patch.object(plugin, "association_with_tags", side_effect=lambda *args: dict(args[2], Tags=existing_tags)):
+        result = run_present(client, module, current_association())
+
+    assert isinstance(result, ModuleFail)
+    assert result.values["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
+    assert result.values.get("changed", False) is False
+    client.update_association.assert_not_called()
+    client.add_tags_to_resource.assert_not_called()
+    client.remove_tags_from_resource.assert_not_called()

@@ -651,6 +651,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.eks import has_valid_cluster_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
+    require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tags,
     updated_tags,
@@ -1439,6 +1440,8 @@ def ensure_present(client, module, deadline=None):
             tags,
             purge_tags=module.params["purge_tags"],
         )
+        # Live: EKS rejects these keys, after any configuration update, version update, or tag removal of the same run.
+        require_no_reserved_tag_keys(module, tags_to_set)
         require_resulting_tag_limit(module, current.get("tags") or {}, tags_to_set, tag_keys_to_unset, 50, "cluster")
 
     tags_changed = bool(tags_to_set or tag_keys_to_unset)

@@ -4042,3 +4042,55 @@ def test_other_endpoints_are_left_to_aws_on_a_dual_stack_accelerator(
     )
 
     plugin.require_dual_stack_endpoints(module, ip_address_type or (accelerator or {}).get("IpAddressType"))
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner", "Aws:owner"])
+def test_reserved_tag_key_fails_before_any_write(key, check_mode):
+    module, current, client = tag_limit_case(check_mode, {"old": "x"}, {key: "me"})
+    with (
+        patch.object(plugin, "get_accelerator", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_accelerator") as waiter,
+        patch.object(plugin, "ensure_listeners") as listeners,
+        patch.object(plugin, "reconcile_arn_tags") as tagger,
+        pytest.raises(ModuleFail) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
+    assert result.value.values.get("changed", False) is False
+    waiter.assert_not_called()
+    listeners.assert_not_called()
+    tagger.assert_not_called()
+    client.update_accelerator.assert_not_called()
+    client.tag_resource.assert_not_called()
+    client.untag_resource.assert_not_called()
+
+
+def test_stored_reserved_tag_key_and_aws_value_keep_working():
+    module, current, client = tag_limit_case(True, {"aws:owner": "me"}, {"aws:owner": "me", "Env": "aws:prod"})
+    with (
+        patch.object(plugin, "get_accelerator", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_accelerator", return_value=current),
+        patch.object(plugin, "ensure_listeners", return_value=(False, [])),
+        patch.object(plugin, "reconcile_arn_tags", return_value=True) as tagger,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
+
+    tagger.assert_not_called()
+
+
+def test_reserved_tag_key_is_left_to_aws_on_a_new_accelerator():
+    module = FakeModule(dict(present_params([]), tags={"aws:owner": "me"}), check_mode=True)
+    client = Mock()
+    with (
+        patch.object(plugin, "get_accelerator", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True

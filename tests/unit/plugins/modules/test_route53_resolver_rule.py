@@ -1546,3 +1546,45 @@ def test_create_fails_cleanly_when_the_rule_is_gone_after_waiting():
 
     assert raised.value.values["changed"] is True
     assert raised.value.values["msg"] == "AWS Route53 Resolver did not return the created rule main"
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner", "Aws:owner"])
+def test_reserved_tag_key_fails_before_updating_the_rule(key, check_mode):
+    client = Mock()
+    module = FakeModule(
+        rule_params(
+            purge_tags=True,
+            tags={key: "me"},
+            target_ips=[
+                {"ip": "192.0.2.2", "ipv6": None, "port": None, "protocol": None, "server_name_indication": None}
+            ],
+        ),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(
+            plugin, "get_resolver_rule_by_name", return_value=existing_rule(Tags=[{"Key": "old", "Value": "x"}])
+        ),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
+    assert raised.value.values.get("changed", False) is False
+    client.update_resolver_rule.assert_not_called()
+    client.untag_resource.assert_not_called()
+    client.tag_resource.assert_not_called()
+
+
+def test_reserved_tag_key_is_left_to_aws_on_a_new_rule():
+    client = Mock()
+    with (
+        patch.object(plugin, "get_resolver_rule_by_name", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(rule_params(tags={"aws:owner": "me"}), check_mode=True))
+
+    assert raised.value.values["changed"] is True

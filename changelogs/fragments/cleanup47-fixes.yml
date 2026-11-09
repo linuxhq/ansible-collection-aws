@@ -1,0 +1,25 @@
+---
+bugfixes:
+  - acm_certificate_request - fail before any write when ``tags`` sets a key beginning with ``aws:`` on an existing
+    certificate, in any letter case, which ACM rejects after a tag removal of the same run.
+  - ec2_vpc_prefix_list - return ``prefix_list.entries`` in the same sorted order on every path, instead of EC2's
+    order after a waited create or update.
+  - eks_cluster - fail before any write when ``tags`` sets a key beginning with ``aws:`` on an existing cluster, in any
+    letter case, which EKS rejects after the configuration, version, and tag removal writes of the same run.
+  - global_accelerator - fail before any write when ``tags`` sets a key beginning with ``aws:`` on an existing
+    accelerator, in any letter case, which AWS rejects after the accelerator, listener, and endpoint group writes.
+  - notifications_contacts - fail before any write when ``tags`` sets a key beginning with ``aws:`` on an existing
+    contact, in any letter case, which AWS rejects after a tag removal of the same run.
+  - pinpoint_sms_voice_phone_number - fail before any write when ``tags`` sets a key beginning with ``aws:`` on an
+    existing number, in any letter case, which AWS rejects after the settings and tag removal writes of the same run.
+  - pinpoint_sms_voice_phone_pool - fail before any write when ``tags`` sets a key beginning with ``aws:`` on an
+    existing pool, in any letter case, which AWS rejects after the pool and tag removal writes of the same run.
+  - route53_resolver - fail before any write when ``tags`` sets a key beginning with ``aws:`` on an existing endpoint,
+    in any letter case, which Route 53 Resolver rejects after the endpoint, address, and tag removal writes of the same
+    run.
+  - route53_resolver_rule - fail before any write when ``tags`` sets a key beginning with ``aws:`` on an existing rule,
+    in any letter case, which Route 53 Resolver rejects after the rule and tag removal writes of the same run.
+  - ssm_association - fail before any write when ``tags`` sets a key beginning with ``aws:`` on an existing association,
+    in any letter case, which AWS rejects after the association and tag removal writes of the same run.
+  - ssm_document - fail before any write when ``tags`` sets a key beginning with ``aws:`` on an existing document, in
+    any letter case, which AWS rejects after the document, promotion, and tag removal writes of the same run.

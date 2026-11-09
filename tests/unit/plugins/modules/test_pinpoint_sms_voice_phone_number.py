@@ -2090,3 +2090,26 @@ def test_check_mode_new_number_predicts_what_a_real_request_returns(wait, pool_i
     assert predicted["status"] == ("ACTIVE" if wait else "PENDING")
     assert predicted["deletion_protection_enabled"] is False
     assert ("international_sending_enabled" in predicted) is not legacy
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner", "Aws:owner"])
+def test_reserved_tag_key_fails_before_updating_settings(key, check_mode):
+    client = Mock()
+    module = FakeModule(
+        phone_number_params(deletion_protection_enabled=False, purge_tags=True, tags={key: "me"}),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "query_list", return_value=[existing_number(PhoneNumberArn=PHONE_NUMBER_ARN)]),
+        patch.object(plugin, "phone_number_tags", return_value={"old": "x"}),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
+    assert raised.value.values.get("changed", False) is False
+    client.update_phone_number.assert_not_called()
+    client.untag_resource.assert_not_called()
+    client.tag_resource.assert_not_called()
