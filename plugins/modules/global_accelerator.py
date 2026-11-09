@@ -131,8 +131,10 @@ options:
                 description:
                   - Whether client IP address preservation is enabled for the
                     endpoint.
-                  - When omitted, AWS applies the default for the endpoint
-                    type.
+                  - When omitted for a new endpoint, AWS applies the default
+                    for the endpoint type.
+                  - When omitted for an existing endpoint, the existing value is
+                    left unchanged.
                   - AWS does not support C(true) for Elastic IP address
                     endpoints, whether given by allocation ID or by ARN.
                   - AWS does not support C(true) for Network Load Balancer
@@ -141,6 +143,8 @@ options:
                     whether given by instance ID or by ARN, or for internal
                     Application Load Balancer endpoints, which always preserve
                     client IP addresses.
+                  - AWS does not support C(false) for Application Load Balancer
+                    endpoints of a C(DUAL_STACK) accelerator.
                 type: bool
               endpoint_id:
                 description:
@@ -154,6 +158,8 @@ options:
                     and the ID as the same endpoint.
                   - An endpoint group must not name one Elastic IP address or
                     EC2 instance both by ID and by ARN.
+                  - AWS does not support Elastic IP address endpoints for a
+                    C(DUAL_STACK) accelerator.
                   - This must not be empty or blank.
                 required: true
                 type: str
@@ -176,7 +182,10 @@ options:
           health_check_interval_seconds:
             description:
               - Time in seconds between health checks for the endpoints.
-              - When omitted, AWS applies its default.
+              - When omitted while creating an endpoint group, AWS applies its
+                default.
+              - When omitted while updating an endpoint group, the existing
+                value is left unchanged.
             choices:
               - 10
               - 30
@@ -186,7 +195,10 @@ options:
               - Path for HTTP or HTTPS health checks.
               - This must start with C(/), contain only AWS-supported path
                 characters, and contain at most 255 characters.
-              - When omitted, AWS applies its default.
+              - When omitted while creating an endpoint group, AWS applies its
+                default.
+              - When omitted while updating an endpoint group, the existing
+                value is left unchanged.
               - AWS does not store a path for C(TCP) health checks, so this is
                 not compared when the health check protocol is C(TCP).
             type: str
@@ -194,12 +206,18 @@ options:
             description:
               - Port used for endpoint health checks.
               - This must be between C(1) and C(65535).
-              - When omitted, AWS uses the first port of the listener.
+              - When omitted while creating an endpoint group, AWS uses the
+                first port of the listener.
+              - When omitted while updating an endpoint group, the existing
+                value is left unchanged.
             type: int
           health_check_protocol:
             description:
               - Protocol used for endpoint health checks.
-              - When omitted, AWS applies its default.
+              - When omitted while creating an endpoint group, AWS applies its
+                default.
+              - When omitted while updating an endpoint group, the existing
+                value is left unchanged.
             choices:
               - HTTP
               - HTTPS
@@ -239,13 +257,19 @@ options:
               - Number of consecutive health checks required to set an
                 endpoint as healthy or unhealthy.
               - This must be between C(1) and C(10).
-              - When omitted, AWS applies its default.
+              - When omitted while creating an endpoint group, AWS applies its
+                default.
+              - When omitted while updating an endpoint group, the existing
+                value is left unchanged.
             type: int
           traffic_dial_percentage:
             description:
               - Percentage of traffic to send to the endpoint group.
               - This must be between C(0) and C(100).
-              - When omitted, AWS applies its default.
+              - When omitted while creating an endpoint group, AWS applies its
+                default.
+              - When omitted while updating an endpoint group, the existing
+                value is left unchanged.
             type: float
         type: list
       port_ranges:
@@ -1211,6 +1235,39 @@ def ec2_endpoint_arn(endpoint_id, resource_types=("elastic-ip", "instance")):
     return None
 
 
+def require_dual_stack_endpoints(module, ip_address_type):
+    """Fail for the requested endpoints AWS refuses on a dual-stack accelerator."""
+    if ip_address_type != "DUAL_STACK":
+        return
+
+    for listener in module.params["listeners"] or []:
+        for endpoint_group in listener.get("endpoint_groups") or []:
+            region = endpoint_group["endpoint_group_region"]
+            for configuration in endpoint_group.get("endpoint_configurations") or []:
+                endpoint_id = configuration["endpoint_id"]
+                # Live: AWS rejects both at the endpoint group write, which follows any accelerator and listener writes.
+                if endpoint_id.startswith("eipalloc-") or ec2_endpoint_arn(endpoint_id, ("elastic-ip",)) is not None:
+                    module.fail_json(
+                        msg=(
+                            f"Endpoint group {region} endpoint {endpoint_id} is an Elastic IP address, "
+                            "which a DUAL_STACK accelerator does not support"
+                        )
+                    )
+
+                endpoint_arn = parse_aws_arn(endpoint_id) or {}
+                if (
+                    configuration.get("client_ip_preservation_enabled") is False
+                    and endpoint_arn.get("service") == "elasticloadbalancing"
+                    and (endpoint_arn.get("resource_id") or "").startswith("app/")
+                ):
+                    module.fail_json(
+                        msg=(
+                            f"Endpoint group {region} endpoint {endpoint_id} is an Application Load Balancer, "
+                            "which does not support client_ip_preservation_enabled=false on a DUAL_STACK accelerator"
+                        )
+                    )
+
+
 def endpoint_key(endpoint_id):
     """Return the ID that identifies a requested endpoint: the resource ID of an EC2 ARN, otherwise the ID as given."""
     endpoint_arn = ec2_endpoint_arn(endpoint_id)
@@ -1918,6 +1975,8 @@ def ensure_present(client, module, deadline=None):
         module.fail_json(msg=f"AWS Global Accelerator {module.params['arn']} does not exist")
 
     created = accelerator is None
+    # When omitted, a new accelerator is IPV4 and an existing one keeps its type.
+    require_dual_stack_endpoints(module, module.params["ip_address_type"] or (accelerator or {}).get("IpAddressType"))
 
     current_tags = {}
     if accelerator is not None and tags is not None:

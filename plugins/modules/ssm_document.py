@@ -612,7 +612,7 @@ def ensure_present(client, module):
                 wait_for_document(client, module, "active", new_version, changed=True, deadline=deadline)
                 # UpdateDocument cannot change tags, so keep the tags already read rather than any in the response.
                 updated.pop("Tags", None)
-                current = dict(current or {}, **updated, Content=desired_content)
+                current = dict(current, **updated, Content=desired_content)
 
             try:
                 client.update_document_default_version(
@@ -677,7 +677,7 @@ def ensure_present(client, module):
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
 
     document = current
-    if (current or {}).get("Name") is not None:
+    if current.get("Name") is not None:
         document = boto3_resource_to_ansible_dict(
             dict(current, Content=document_content(current)),
             ignore_list=["Content"],

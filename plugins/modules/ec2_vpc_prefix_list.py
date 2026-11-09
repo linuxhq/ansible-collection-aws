@@ -273,6 +273,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     EC2_BLANK_CHARACTERS,
     apply_tag_deltas,
     reconcile_ec2_tags,
+    require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tag_list,
     require_valid_tags,
@@ -642,6 +643,8 @@ def ensure_present(client, module, owner_id, deadline=None):
         if tags is not None:
             current_tags = boto3_tag_list_to_ansible_dict(current.get("Tags", []))
             tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge_tags=purge_tags)
+            # Live: EC2 rejects these keys, after any entry or size change of the same run.
+            require_no_reserved_tag_keys(module, tags_to_set)
             require_resulting_tag_limit(
                 module, current_tags, tags_to_set, tag_keys_to_unset, 50, "EC2 VPC managed prefix list"
             )

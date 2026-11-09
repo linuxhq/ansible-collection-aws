@@ -121,7 +121,7 @@ def test_documented_returns_cover_the_sdk_shape():
     assert_documents_shape(documented_returns(plugin)["association"]["contains"], "ssm", "AssociationDescription")
 
 
-def test_targets_apply_defaults_and_ignore_order():
+def test_targets_ignore_order():
     left = [
         {"key": "tag:Role", "values": ["web", "api", "web"]},
         {"key": "InstanceIds", "values": ["i-2", "i-1"]},

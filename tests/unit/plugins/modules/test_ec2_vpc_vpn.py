@@ -3113,3 +3113,25 @@ def test_documented_returns_cover_connection_and_tunnel_fields():
     tunnel = returns["options"]["contains"]["tunnel_options"]["contains"]
     assert snake("TunnelOption", {"PreSharedKey"}) <= set(tunnel)
     assert_documents_shape(tunnel["log_options"]["contains"], "ec2", "VpnTunnelLogOptions")
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner"])
+def test_reserved_tag_keys_fail_before_any_write(params, connection, check_mode, key):
+    # Live: EC2 rejects them in any letter case, after the option and tunnel changes of the same run.
+    params.update(purge_tags=False, tags={key: "x"}, tunnel_options=[{"ike_versions": ["ikev2"]}])
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), connection)
+
+    assert raised.value.values == {"msg": "tag keys beginning with aws: are reserved and cannot be set"}
+    assert client.mock_calls == []
+
+
+def test_unchanged_reserved_tag_key_is_not_set(params, connection):
+    connection["Tags"].append({"Key": "aws:owner", "Value": "x"})
+    params.update(purge_tags=False, tags={"aws:owner": "x"})
+    with pytest.raises(ModuleExit) as raised:
+        plugin.ensure_present(Mock(), FakeModule(params, check_mode=True), connection)
+
+    assert raised.value.values["changed"] is False

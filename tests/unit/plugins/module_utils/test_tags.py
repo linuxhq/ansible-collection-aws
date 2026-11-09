@@ -12,6 +12,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     reconcile_arn_tags,
     reconcile_ec2_tags,
     reconcile_ssm_tags,
+    require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tag_list,
     require_valid_tags,
@@ -470,3 +471,17 @@ def test_reconcile_tags_report_the_supplied_changed_state(reconcile, resource, r
         reconcile(FakeModule({}), client, resource, {}, ["old"], "resource", changed=changed)
 
     assert raised.value.values["changed"] is changed
+
+
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner", "Aws:owner"])
+def test_reserved_tag_keys_are_rejected_in_any_letter_case(key):
+    with pytest.raises(ModuleFail) as raised:
+        require_no_reserved_tag_keys(FakeModule({}), {"Env": "x", key: "y"})
+
+    assert raised.value.values == {"msg": "tag keys beginning with aws: are reserved and cannot be set"}
+
+
+@pytest.mark.parametrize("tags", [{}, {"awsowner": "x"}, {"Env": "aws:owner"}], ids=["empty", "no-colon", "value"])
+def test_reserved_tag_key_check_accepts_other_tags(tags):
+    # Live: EC2 and IAM accept a value that begins with aws:, and a key without the colon.
+    require_no_reserved_tag_keys(FakeModule({}), tags)

@@ -429,7 +429,13 @@ def create_resolver_rule(client, module, request, deadline=None):
     rule = validate_resolver_rule(module, rule, "create_resolver_rule", changed=True)
 
     if module.params["wait"]:
-        return wait_for_resolver_rule_status(client, module, rule["Id"], "complete", changed=True, deadline=deadline)
+        rule = wait_for_resolver_rule_status(client, module, rule["Id"], "complete", changed=True, deadline=deadline)
+        if rule is None:
+            module.fail_json(
+                changed=True, msg=f"AWS Route53 Resolver did not return the created rule {request['Name']}"
+            )
+
+        return rule
 
     rule = dict(rule)
     for field, value in request.items():

@@ -1753,3 +1753,38 @@ def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
         "changed": True,
         "msg": "Unable to wait for EC2 VPC managed prefix list pl-1 to become ready",
     }
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner"])
+def test_reserved_tag_keys_fail_before_any_write(key, check_mode):
+    # Live: EC2 rejects them in any letter case (InvalidParameterValue), after any entry or size change of the same run.
+    module = FakeModule(main_params(wait=False, tags={key: "me"}), check_mode=check_mode, client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_aws_account_id", return_value=OWNER),
+        patch.object(plugin, "get_current", return_value=(prefix_list(), [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(plugin, "modify_prefix_list") as modify,
+        patch.object(plugin, "reconcile_ec2_tags") as reconcile,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": "tag keys beginning with aws: are reserved and cannot be set"}
+    modify.assert_not_called()
+    reconcile.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_unchanged_reserved_tag_key_keeps_working(check_mode):
+    result, _modify, reconcile = run_present_main(
+        {"tags": {"aws:owner": "me"}},
+        prefix_list(Tags=[{"Key": "aws:owner", "Value": "me"}]),
+        [{"Cidr": "192.0.2.0/24"}],
+        check_mode=check_mode,
+    )
+
+    assert result["changed"] is False
+    assert result["prefix_list"]["tags"] == {"aws:owner": "me"}
+    reconcile.assert_not_called()

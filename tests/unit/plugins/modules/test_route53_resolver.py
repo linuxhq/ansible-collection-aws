@@ -1,6 +1,7 @@
 from unittest.mock import ANY, Mock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 from botocore.session import get_session
 
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
@@ -2598,3 +2599,24 @@ def test_tags_with_characters_aws_accepts_reach_aws():
         plugin.main()
 
     module.client.assert_called_once()
+
+
+def test_create_fails_cleanly_when_the_endpoint_is_gone_after_waiting():
+    client = Mock(
+        create_resolver_endpoint=Mock(return_value={"ResolverEndpoint": existing_endpoint()}),
+        get_resolver_endpoint=Mock(
+            side_effect=ClientError(
+                {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}}, "GetResolverEndpoint"
+            )
+        ),
+    )
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
+        patch.object(plugin, "custom_waiter"),
+        patch.object(plugin, "run_waiter"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(endpoint_params(wait=True)))
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"] == "AWS Route53 Resolver did not return the created endpoint main"

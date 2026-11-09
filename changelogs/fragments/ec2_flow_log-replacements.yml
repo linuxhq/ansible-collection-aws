@@ -1,7 +1,7 @@
 ---
 minor_changes:
-  - ec2_flow_log - add the ``RegionalNatGateway`` resource type; ``traffic_type`` is sent for it only when
-    provided.
+  - ec2_flow_log - add the ``RegionalNatGateway`` resource type; ``traffic_type`` defaults to ``ALL`` for it, as for
+    the VPC, subnet, and network interface resource types.
 bugfixes:
   - ec2_flow_log - send a client token with ``CreateFlowLogs`` so SDK retries of a request that already
     succeeded do not create duplicate flow logs.

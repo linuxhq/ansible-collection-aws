@@ -378,6 +378,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
     ec2_tag_methods,
     reconcile_ec2_tags,
+    require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tags,
     updated_tags,
@@ -744,6 +745,8 @@ def ensure_present(client, module):
                 tags,
                 purge_tags=module.params["purge_tags"],
             )
+            # Live: EC2 rejects these keys, after any tag removal or flow log creation of the same run.
+            require_no_reserved_tag_keys(module, tags_to_set)
             require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "EC2 flow log")
 
             if tags_to_set or tag_keys_to_unset:

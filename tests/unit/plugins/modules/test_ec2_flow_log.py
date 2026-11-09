@@ -1616,3 +1616,24 @@ def test_replacement_tag_limit_fails_before_creating_flow_logs(check_mode):
 
     assert raised.value.values["msg"] == "The resulting EC2 flow log tags must contain at most 50 entries"
     client.create_flow_logs.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner"])
+def test_reserved_tag_keys_fail_before_creating_or_tagging_flow_logs(key, check_mode):
+    # Live: EC2 rejects them in any letter case, after any earlier write of the same run.
+    client = Mock()
+    existing = dict(OLD_FLOW_LOG, LogDestination="arn:aws:s3:::new-bucket", Tags=[{"Key": "Name", "Value": "main"}])
+    params = present_params(resource_ids=["vpc-1", "vpc-2"], purge_tags=False, tags={key: "x"})
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[existing]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
+    assert raised.value.values.get("changed", False) is False
+    client.create_flow_logs.assert_not_called()
+    client.create_tags.assert_not_called()
+    client.delete_tags.assert_not_called()

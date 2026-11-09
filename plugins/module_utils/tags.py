@@ -87,6 +87,12 @@ def require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_u
         module.fail_json(msg=f"The resulting {description} tags must contain at most {max_tags} entries")
 
 
+def require_no_reserved_tag_keys(module, tags_to_set):
+    """Fail when a tag to set has the reserved aws: key prefix, which EC2 and IAM reject in any letter case."""
+    if any(key.lower().startswith("aws:") for key in tags_to_set):
+        module.fail_json(msg="tag keys beginning with aws: are reserved and cannot be set")
+
+
 def require_valid_tag_list(module, tags, msg, changed=False):
     """Validate an AWS tag list; changed reports whether the resource was already modified, for failure results."""
     if not isinstance(tags, list) or any(
