@@ -443,7 +443,7 @@ def test_tag_failure_reports_whether_tags_were_removed(current_tags, changed):
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_resulting_tag_limit_fails_before_tagging(check_mode):
     client = Mock()
-    existing_tags = {f"old{index}": "" for index in range(200)}
+    existing_tags = {f"old{index}": "" for index in range(50)}
     existing_tags["aws:reserved"] = ""
     client.list_tags_for_resource.return_value = {"tags": existing_tags}
     module = FakeModule(
@@ -463,7 +463,7 @@ def test_resulting_tag_limit_fails_before_tagging(check_mode):
     ):
         plugin.ensure_present(client, module)
 
-    assert raised.value.values["msg"] == "The resulting AWS Notifications contact tags must contain at most 200 entries"
+    assert raised.value.values["msg"] == "The resulting AWS Notifications contact tags must contain at most 50 entries"
     assert raised.value.values.get("changed", False) is False
     client.tag_resource.assert_not_called()
     client.untag_resource.assert_not_called()
@@ -519,3 +519,16 @@ def test_tags_with_characters_aws_accepts_reach_aws():
 
     ensure_present.assert_called_once()
     assert module.params["tags"] == tags
+
+
+def test_tags_are_limited_to_the_50_a_contact_can_hold():
+    # Live: TagResource rejects a 51st user tag ("The resultant tag set must not have more than 50 user tags").
+    tags = {f"key{index}": "" for index in range(51)}
+    params = {
+        "email_address": "ops@example.com",
+        "name": "Operations",
+        "purge_tags": True,
+        "state": "present",
+        "tags": tags,
+    }
+    assert_module_rejects(plugin, params, "tags must contain at most 50 entries")

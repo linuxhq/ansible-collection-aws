@@ -168,6 +168,8 @@ options:
           - The action after a dead peer detection timeout. C(clear) ends the IKE session, C(restart) restarts the IKE
             initiation, and C(none) takes no action.
           - AWS defaults to C(clear).
+          - When O(enable_acceleration=true), the AWS guide requires the customer gateway to initiate the IKE
+            negotiation, so do not use C(restart).
         type: str
         choices: [clear, none, restart]
         version_added: "2.6.0"
@@ -818,6 +820,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_cli
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     ec2_tag_methods,
     reconcile_ec2_tags,
+    require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tags,
 )
@@ -1659,6 +1662,8 @@ def ensure_present(client, module, connection):
         options["TunnelBandwidth"] = bandwidth
 
     tags_to_set, tags_to_remove = desired_tags(module, connection)
+    # Live: EC2 rejects these keys, after any option or tunnel change of the same run.
+    require_no_reserved_tag_keys(module, tags_to_set)
 
     current_routes = {
         route["DestinationCidrBlock"]

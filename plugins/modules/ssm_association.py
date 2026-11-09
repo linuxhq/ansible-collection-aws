@@ -409,13 +409,12 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.validation import requ
 ASSOCIATION_VERSION_DELAY = 1
 ASSOCIATION_VERSION_TIMEOUT = 60
 CRON_ONLY_PARAMETERS = ("ApplyOnlyAtCronInterval", "Duration", "ScheduleOffset")
-TARGET_DEFAULTS = {"values": []}
 
 
 def comparable_targets(targets):
     normalized = []
     for target in targets or []:
-        item = dict(TARGET_DEFAULTS, **target)
+        item = dict(target)
 
         if item.get("values"):
             item["values"] = sorted(set(item["values"]))

@@ -1694,3 +1694,28 @@ def test_route_waits_share_one_wait_timeout_budget():
     assert raised.value.values["msg"] == "Timed out waiting for EC2 transit gateway route 10.0.1.0/24 to become active"
     assert raised.value.values["changed"] is False
     assert clock["now"] == 10
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner"])
+def test_reserved_tag_keys_fail_before_any_write(key, check_mode):
+    # Live: EC2 rejects them in any letter case, after the DeleteTags of the same reconcile.
+    client = Mock()
+    table = {
+        "State": "available",
+        "Tags": [{"Key": "old", "Value": ""}],
+        "TransitGatewayRouteTableId": "tgw-rtb-1",
+    }
+    module = FakeModule(present_params(name="main", purge_tags=True, tags={key: "x"}), check_mode=check_mode)
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(tag_utils, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
+    assert raised.value.values.get("changed", False) is False
+    client.create_tags.assert_not_called()
+    client.delete_tags.assert_not_called()

@@ -443,8 +443,37 @@ cluster:
       description: The certificate authority data for the cluster.
       returned: when the cluster exists, except for a create predicted in check mode
       type: dict
+    client_request_token:
+      description: The unique, case-sensitive identifier provided to ensure request idempotency.
+      returned: when returned by AWS
+      type: str
     compute_config:
       description: The EKS Auto Mode compute configuration.
+      returned: when returned by AWS
+      type: dict
+    connector_config:
+      description: The EKS Connector configuration of a registered cluster.
+      returned: when returned by AWS
+      type: dict
+      contains:
+        activation_expiry:
+          description: The expiration time of the connected cluster's activation.
+          returned: when returned by AWS
+          type: str
+        activation_id:
+          description: The unique ID of the connected cluster's activation.
+          returned: when returned by AWS
+          type: str
+        provider:
+          description: The cluster's cloud service provider.
+          returned: when returned by AWS
+          type: str
+        role_arn:
+          description: The ARN of the role that communicates with the Kubernetes cluster.
+          returned: when returned by AWS
+          type: str
+    control_plane_scaling_config:
+      description: The control plane scaling tier configuration.
       returned: when returned by AWS
       type: dict
     created_at:
@@ -464,8 +493,28 @@ cluster:
       description: The Kubernetes API server endpoint.
       returned: when the cluster is active, except for a create predicted in check mode
       type: str
+    health:
+      description: The health of the cluster.
+      returned: when returned by AWS
+      type: dict
+    id:
+      description: The ID of a local cluster on AWS Outposts.
+      returned: when returned by AWS
+      type: str
     identity:
       description: The identity provider information for the cluster.
+      returned: when returned by AWS
+      type: dict
+    kube_api_server_config:
+      description: The Kubernetes API server configuration.
+      returned: when returned by AWS
+      type: dict
+    kube_controller_manager_config:
+      description: The Kubernetes controller manager configuration.
+      returned: when returned by AWS
+      type: dict
+    kube_scheduler_config:
+      description: The Kubernetes scheduler configuration.
       returned: when returned by AWS
       type: dict
     kubernetes_network_config:
@@ -480,6 +529,10 @@ cluster:
       description: The cluster name.
       returned: when the cluster exists
       type: str
+    outpost_config:
+      description: The configuration of a local cluster on AWS Outposts.
+      returned: when returned by AWS
+      type: dict
     platform_version:
       description: The EKS platform version.
       returned: when the cluster exists, except for a create predicted in check mode

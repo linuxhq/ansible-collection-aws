@@ -182,6 +182,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
+    require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tags,
 )
@@ -296,6 +297,11 @@ def ensure_present(client, module):
             tags,
             purge_tags=module.params["purge_tags"],
         )
+        # Live: IAM rejects these keys, after any client ID, thumbprint, or tag removal of the same run. A create sends
+        # its tags in its only write.
+        if current is not None:
+            require_no_reserved_tag_keys(module, tags_to_set)
+
         require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "OIDC provider")
 
     resource_changed = (current_comparable or {}) != desired

@@ -872,3 +872,48 @@ def test_written_client_ids_are_returned_in_the_order_iam_keeps(current_client_i
     assert stored != sorted(stored)
     assert results[False]["open_id_connect_provider"]["client_id_list"] == stored
     assert results[True] == results[False]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("key", ["aws:owner", "AWS:owner"])
+def test_reserved_tag_keys_fail_before_any_write(key, check_mode):
+    # Live: IAM rejects them in any letter case (InvalidInput), after the client ID and thumbprint writes of an update.
+    client = Mock()
+    module = FakeModule(oidc_params(client_id_list=["keep", "new"], tags={key: "x"}), check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_provider_by_url", return_value=oidc_provider()),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
+    assert raised.value.values.get("changed", False) is False
+    client.add_client_id_to_open_id_connect_provider.assert_not_called()
+    client.tag_open_id_connect_provider.assert_not_called()
+
+
+def test_unchanged_reserved_tag_key_keeps_working():
+    client = Mock()
+    module = FakeModule(oidc_params(purge_tags=False, tags={"aws:owner": "x"}), check_mode=True)
+    with (
+        patch.object(
+            plugin, "get_provider_by_url", return_value=oidc_provider(Tags=[{"Key": "aws:owner", "Value": "x"}])
+        ),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
+
+
+def test_create_leaves_reserved_tag_keys_to_iam():
+    # The create is the only write, so IAM's rejection needs no earlier check.
+    module = FakeModule(oidc_params(tags={"aws:owner": "x"}), check_mode=True)
+    with (
+        patch.object(plugin, "get_provider_by_url", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    assert raised.value.values["changed"] is True

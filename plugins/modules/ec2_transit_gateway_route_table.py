@@ -308,6 +308,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     EC2_BLANK_TAG_VALUE_CHARACTERS,
     apply_tag_deltas,
     reconcile_ec2_tags,
+    require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tags,
 )
@@ -850,6 +851,8 @@ def ensure_present(client, module):
             desired_route_table_tags,
             purge_tags=purge_tags,
         )
+        # Live: EC2 rejects these keys, after any tag removal of the same run.
+        require_no_reserved_tag_keys(module, tags_to_set)
         require_resulting_tag_limit(
             module,
             route_table_tags,

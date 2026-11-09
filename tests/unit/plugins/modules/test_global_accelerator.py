@@ -3948,3 +3948,97 @@ def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
     waiter.wait.assert_called_once()
     assert isinstance(result, ModuleFail)
     assert result.values == {"changed": True, "msg": "Timed out waiting for AWS Global Accelerator arn:accelerator"}
+
+
+ALB_ARN = "arn:aws:elasticloadbalancing:us-west-2:123456789012:loadbalancer/app/example/0123456789abcdef"
+NLB_ARN = "arn:aws:elasticloadbalancing:us-west-2:123456789012:loadbalancer/net/example/0123456789abcdef"
+DUAL_STACK_ACCELERATOR = {
+    "AcceleratorArn": "arn:example",
+    "Enabled": True,
+    "IpAddressType": "DUAL_STACK",
+    "IpSets": [],
+    "Name": "example",
+    "Status": "DEPLOYED",
+}
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("ip_address_type", "accelerator"),
+    [("DUAL_STACK", None), (None, DUAL_STACK_ACCELERATOR), ("DUAL_STACK", DUAL_STACK_ACCELERATOR)],
+    ids=["new", "existing-omitted", "existing-supplied"],
+)
+@pytest.mark.parametrize(
+    ("endpoint_id", "preservation", "message"),
+    [
+        (
+            EIP_ALLOCATION_ID,
+            None,
+            (
+                f"Endpoint group us-west-2 endpoint {EIP_ALLOCATION_ID} is an Elastic IP address, "
+                "which a DUAL_STACK accelerator does not support"
+            ),
+        ),
+        (
+            EIP_ARN,
+            None,
+            (
+                f"Endpoint group us-west-2 endpoint {EIP_ARN} is an Elastic IP address, "
+                "which a DUAL_STACK accelerator does not support"
+            ),
+        ),
+        (
+            ALB_ARN,
+            False,
+            (
+                f"Endpoint group us-west-2 endpoint {ALB_ARN} is an Application Load Balancer, "
+                "which does not support client_ip_preservation_enabled=false on a DUAL_STACK accelerator"
+            ),
+        ),
+    ],
+    ids=["eip", "eip-arn", "alb-false"],
+)
+def test_endpoints_aws_refuses_on_a_dual_stack_accelerator_fail_before_any_write(
+    check_mode, ip_address_type, accelerator, endpoint_id, preservation, message
+):
+    # Live: CreateEndpointGroup rejects both with InvalidArgumentException, after the accelerator and listener writes.
+    client = Mock()
+    module = FakeModule(
+        dict(
+            present_params(client_ip_preservation_listeners(endpoint_id, preservation)), ip_address_type=ip_address_type
+        ),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "get_accelerator", return_value=accelerator),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {"msg": message}
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize(
+    ("ip_address_type", "accelerator", "endpoint_id", "preservation"),
+    [
+        ("IPV4", None, EIP_ALLOCATION_ID, None),
+        (None, None, EIP_ALLOCATION_ID, None),
+        (None, dict(DUAL_STACK_ACCELERATOR, IpAddressType="IPV4"), ALB_ARN, False),
+        ("DUAL_STACK", None, ALB_ARN, True),
+        ("DUAL_STACK", None, ALB_ARN, None),
+        ("DUAL_STACK", None, NLB_ARN, False),
+        ("DUAL_STACK", None, "i-0123456789abcdef0", None),
+    ],
+    ids=["ipv4-eip", "new-omitted-eip", "ipv4-alb-false", "alb-true", "alb-omitted", "nlb-false", "instance"],
+)
+def test_other_endpoints_are_left_to_aws_on_a_dual_stack_accelerator(
+    ip_address_type, accelerator, endpoint_id, preservation
+):
+    module = FakeModule(
+        dict(
+            present_params(client_ip_preservation_listeners(endpoint_id, preservation)), ip_address_type=ip_address_type
+        )
+    )
+
+    plugin.require_dual_stack_endpoints(module, ip_address_type or (accelerator or {}).get("IpAddressType"))

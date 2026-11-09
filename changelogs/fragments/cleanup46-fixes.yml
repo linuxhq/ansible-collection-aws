@@ -1,0 +1,30 @@
+---
+bugfixes:
+  - ec2_flow_log - fail before any write when ``tags`` sets a key beginning with ``aws:``, in any letter case, which
+    EC2 rejects after the earlier writes of the same run.
+  - ec2_transit_gateway_route_table - fail before any write when ``tags`` sets a key beginning with ``aws:``, in any
+    letter case, which EC2 rejects after a tag removal of the same run.
+  - ec2_vpc_prefix_list - fail before any write when ``tags`` sets a key beginning with ``aws:``, in any letter case,
+    which EC2 rejects after an entry or size change of the same run.
+  - ec2_vpc_vpn - fail before any write when ``tags`` sets a key beginning with ``aws:``, in any letter case, which EC2
+    rejects after the option and tunnel changes of the same run.
+  - global_accelerator - fail before any write for an Elastic IP address endpoint, or ``client_ip_preservation_enabled``
+    set to ``false`` on an Application Load Balancer endpoint, of a ``DUAL_STACK`` accelerator, which AWS rejects after
+    the accelerator and listener writes.
+  - iam_oidc_provider - fail before any write when ``tags`` sets a key beginning with ``aws:`` on an existing provider,
+    in any letter case, which IAM rejects after the client ID, thumbprint, and tag removal writes of the same run.
+  - notifications_contacts - limit ``tags`` to 50 entries, the limit AWS enforces on a contact, instead of 200.
+  - route53_resolver - fail cleanly with ``changed=true`` instead of a traceback when the created endpoint is gone after
+    waiting.
+  - route53_resolver_rule - fail cleanly with ``changed=true`` instead of a traceback when the created rule is gone
+    after waiting.
+trivial:
+  - ec2_flow_log - reword an unreleased changelog entry that still described ``traffic_type`` for the
+    ``RegionalNatGateway`` resource type as sent only when provided.
+  - ec2_vpc_vpn - document that the AWS guide requires the customer gateway to initiate IKE for an accelerated
+    connection, so ``tunnel_options[].dpd_timeout_action`` should not be ``restart``.
+  - eks_cluster - document the remaining ``cluster`` members returned by AWS.
+  - eks_cluster_info - document the remaining ``clusters`` members returned by AWS.
+  - global_accelerator - document that omitted endpoint group settings keep their existing values on an update.
+  - ssm_association - remove a target default that had no effect.
+  - ssm_document - remove two unreachable fallbacks.

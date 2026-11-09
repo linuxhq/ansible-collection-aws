@@ -571,6 +571,11 @@ def create_resolver_endpoint(client, module, desired, deadline=None):
             changed=True,
             deadline=deadline,
         )
+        if endpoint is None:
+            module.fail_json(
+                changed=True,
+                msg=f"AWS Route53 Resolver did not return the created endpoint {desired['name']}",
+            )
     else:
         endpoint = dict(endpoint)
         endpoint["IpAddresses"] = [

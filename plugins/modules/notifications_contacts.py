@@ -36,7 +36,7 @@ options:
     default: present
     type: str
 notes:
-  - O(tags) accepts at most 200 entries; keys must contain 1 to 128 characters
+  - O(tags) accepts at most 50 entries; keys must contain 1 to 128 characters
     and values at most 256 characters, and both may contain only letters,
     numbers, spaces, C(_), C(.), C(:), C(/), C(=), C(+), C(-), and C(@).
 extends_documentation_fragment:
@@ -245,7 +245,7 @@ def ensure_present(client, module):
             purge_tags=module.params["purge_tags"],
         )
         require_resulting_tag_limit(
-            module, contact["tags"], tags_to_set, tag_keys_to_unset, 200, "AWS Notifications contact"
+            module, contact["tags"], tags_to_set, tag_keys_to_unset, 50, "AWS Notifications contact"
         )
 
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
@@ -413,7 +413,7 @@ def main():
                 )
             )
 
-    require_valid_tags(module, module.params["tags"] if state == "present" else None, 200, restricted_characters=True)
+    require_valid_tags(module, module.params["tags"] if state == "present" else None, 50, restricted_characters=True)
     client = module.client(
         "notificationscontacts",
         retry_decorator=AWSRetry.jittered_backoff(),
