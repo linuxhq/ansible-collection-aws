@@ -347,38 +347,34 @@ def pool_with_origination_identities(client, module, pool, changed=False, missin
     With missing_ok, a pool deleted since it was described returns None instead of failing.
     """
     pool = dict(pool)
-    pool_id = pool.get("PoolId")
+    pool_id = pool["PoolId"]
 
-    if pool_id:
-        msg = f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}"
-        try:
-            response = paginated_query_with_retries(
-                client,
-                "list_pool_origination_identities",
-                # A shared pool requires its full ARN.
-                PoolId=pool.get("PoolArn") or pool_id,
-            )
-        except is_boto3_error_code("ResourceNotFoundException") as e:
-            if missing_ok:
-                return None
+    msg = f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}"
+    try:
+        response = paginated_query_with_retries(
+            client,
+            "list_pool_origination_identities",
+            # A shared pool requires its full ARN.
+            PoolId=pool.get("PoolArn") or pool_id,
+        )
+    except is_boto3_error_code("ResourceNotFoundException") as e:
+        if missing_ok:
+            return None
 
-            module.fail_json_aws(e, changed=changed, msg=msg)
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, changed=changed, msg=msg)
+        module.fail_json_aws(e, changed=changed, msg=msg)
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, changed=changed, msg=msg)
 
-        pool["OriginationIdentities"] = response.get("OriginationIdentities") if isinstance(response, dict) else None
-        if not isinstance(pool["OriginationIdentities"], list) or any(
-            not isinstance(identity, dict)
-            or not any(isinstance(identity.get(key), str) for key in ("OriginationIdentity", "OriginationIdentityArn"))
-            for identity in pool["OriginationIdentities"]
-        ):
-            module.fail_json(
-                changed=changed,
-                msg=f"AWS returned malformed origination identities for Pinpoint SMS Voice V2 pool {pool_id}",
-            )
-
-    else:
-        pool["OriginationIdentities"] = []
+    pool["OriginationIdentities"] = response.get("OriginationIdentities") if isinstance(response, dict) else None
+    if not isinstance(pool["OriginationIdentities"], list) or any(
+        not isinstance(identity, dict)
+        or not any(isinstance(identity.get(key), str) for key in ("OriginationIdentity", "OriginationIdentityArn"))
+        for identity in pool["OriginationIdentities"]
+    ):
+        module.fail_json(
+            changed=changed,
+            msg=f"AWS returned malformed origination identities for Pinpoint SMS Voice V2 pool {pool_id}",
+        )
 
     return pool
 
@@ -691,13 +687,7 @@ def ensure_present(client, module):
             msg=f"Cannot modify message_type for existing Pinpoint SMS Voice V2 pool {current.get('PoolId')}"
         )
 
-    if (
-        wait
-        and not module.check_mode
-        and current is not None
-        and current.get("Status") != "ACTIVE"
-        and current.get("PoolId")
-    ):
+    if wait and not module.check_mode and current is not None and current.get("Status") != "ACTIVE":
         current = pool_with_details(
             client, module, wait_for_pool_active(client, module, pool_reference(module, current))
         )
@@ -708,23 +698,11 @@ def ensure_present(client, module):
 
     changed = current is None or bool(update_request or tags_to_set or tag_keys_to_unset)
 
-    if (
-        (wait or changed)
-        and module.check_mode
-        and current is not None
-        and current.get("Status") != "ACTIVE"
-        and current.get("PoolId")
-    ):
+    if (wait or changed) and module.check_mode and current is not None and current.get("Status") != "ACTIVE":
         # A real run first waits for the pool to become ACTIVE.
         current = dict(current, Status="ACTIVE")
 
-    if (
-        changed
-        and not module.check_mode
-        and current is not None
-        and current.get("Status") != "ACTIVE"
-        and current.get("PoolId")
-    ):
+    if changed and not module.check_mode and current is not None and current.get("Status") != "ACTIVE":
         current = pool_with_details(
             client, module, wait_for_pool_active(client, module, pool_reference(module, current))
         )
@@ -804,7 +782,7 @@ def ensure_present(client, module):
 
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
 
-        if wait and pool_changed and current.get("PoolId"):
+        if wait and pool_changed:
             if current.get("Status") != "ACTIVE":
                 current = pool_with_details(
                     client,

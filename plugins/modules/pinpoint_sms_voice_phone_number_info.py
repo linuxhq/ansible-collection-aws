@@ -349,11 +349,7 @@ def main():
             )
         )
 
-    matching_phone_number_ids = [
-        phone_number["phone_number_id"]
-        for phone_number in normalized_phone_numbers
-        if phone_number.get("phone_number_id")
-    ]
+    matching_phone_number_ids = [phone_number["phone_number_id"] for phone_number in normalized_phone_numbers]
 
     module.exit_json(
         changed=False,

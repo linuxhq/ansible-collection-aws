@@ -149,6 +149,9 @@ options:
                     client IP addresses.
                   - AWS does not support C(false) for Application Load Balancer
                     endpoints of a C(DUAL_STACK) accelerator.
+                  - AWS requires C(true) for a dual-stack Network Load Balancer
+                    endpoint added to a C(DUAL_STACK) accelerator, and rejects
+                    C(false) or an omitted value.
                 type: bool
               endpoint_id:
                 description:

@@ -1,0 +1,13 @@
+---
+bugfixes:
+  - ec2_vpc_vpn - accept ``tunnel_options[].tunnel_inside_cidr`` on an IPv6 VPN connection, where EC2 stores an IPv4
+    inside CIDR on each tunnel beside the IPv6 one.
+trivial:
+  - global_accelerator - document that AWS requires client IP address preservation for a dual-stack Network Load
+    Balancer endpoint of a DUAL_STACK accelerator.
+  - eks_cluster - document that secrets is the only supported encryption resource and that the option no longer
+    affects what is encrypted on Kubernetes 1.28 or later.
+  - pinpoint_sms_voice_phone_pool, pinpoint_sms_voice_phone_pool_info, pinpoint_sms_voice_phone_number_info - remove
+    guards for a missing ID that response validation already excludes.
+  - acm_certificate_request - name the ACM KeyAlgorithm model correctly in a comment.
+  - iam_oidc_provider - reuse provider_lists to find the lists that differ, and remove an unused unit test patch.
