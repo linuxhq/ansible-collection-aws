@@ -10,7 +10,8 @@
     - name: Ensure sender id belongs to this scenario
       ansible.builtin.assert:
         that:
-          - _pinpoint_sms_voice_sender_id_info_dict['MOLECULEPA/DE'].tags.molecule ==
+          - _pinpoint_sms_voice_sender_id_info_list | length == 1
+          - _pinpoint_sms_voice_sender_id_info_list.0.tags.molecule ==
               'pinpoint_sms_voice_phone_pool_associate'
 
     - name: Ensure pool origination identities are verified
@@ -30,12 +31,12 @@
           - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].origination_identities |
             selectattr('origination_identity', 'eq', 'MOLECULEPA') |
             map(attribute='origination_identity_arn') |
-            list == [_pinpoint_sms_voice_sender_id_info_dict['MOLECULEPA/DE'].sender_id_arn]
+            list == [_pinpoint_sms_voice_sender_id_info_list.0.sender_id_arn]
 
     - name: Ensure sender id association is queried by arn
       linuxhq.aws.pinpoint_sms_voice_phone_pool_associate:
         iso_country_code: DE
-        origination_identity: "{{ _pinpoint_sms_voice_sender_id_info_dict['MOLECULEPA/DE'].sender_id_arn }}"
+        origination_identity: "{{ _pinpoint_sms_voice_sender_id_info_list.0.sender_id_arn }}"
         pool_id: "{{ _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].pool_id }}"
         state: present
         validate_certs: true
@@ -47,7 +48,7 @@
           - __pinpoint_sms_voice_phone_pool_associate_query is not changed
           - __pinpoint_sms_voice_phone_pool_associate_query.association.origination_identity == 'MOLECULEPA'
           - __pinpoint_sms_voice_phone_pool_associate_query.association.origination_identity_arn ==
-            _pinpoint_sms_voice_sender_id_info_dict['MOLECULEPA/DE'].sender_id_arn
+            _pinpoint_sms_voice_sender_id_info_list.0.sender_id_arn
           - __pinpoint_sms_voice_phone_pool_associate_query.association.iso_country_code == 'DE'
 
     - name: Ensure inventory lists are formatted
@@ -96,7 +97,7 @@
     - name: Ensure sender id disassociation is queried by arn
       linuxhq.aws.pinpoint_sms_voice_phone_pool_associate:
         iso_country_code: DE
-        origination_identity: "{{ _pinpoint_sms_voice_sender_id_info_dict['MOLECULEPA/DE'].sender_id_arn }}"
+        origination_identity: "{{ _pinpoint_sms_voice_sender_id_info_list.0.sender_id_arn }}"
         pool_id: "{{ _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].pool_id }}"
         state: absent
         validate_certs: true
@@ -138,5 +139,5 @@
     - name: Ensure sender id release is verified
       ansible.builtin.assert:
         that:
-          - "'MOLECULEPA/DE' not in _pinpoint_sms_voice_sender_id_info_dict"
+          - _pinpoint_sms_voice_sender_id_info_list == []
 ...

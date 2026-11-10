@@ -30,6 +30,10 @@ provisioner:
   inventory:
     group_vars:
       all:
+        pinpoint_sms_voice_sender_id_info_sender_ids:
+          - sender_id: MOLECULESID
+            iso_country_code: DE
+
         pinpoint_sms_voice_sender_id_list:
           - sender_id: MOLECULESID
             iso_country_code: DE

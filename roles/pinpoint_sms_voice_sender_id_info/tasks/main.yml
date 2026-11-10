@@ -23,9 +23,6 @@
   ansible.builtin.set_fact:
     _pinpoint_sms_voice_sender_id_info_dict:
       "{{ dict(_pinpoint_sms_voice_sender_id_info_list |
-               map(attribute='sender_id') |
-               zip(_pinpoint_sms_voice_sender_id_info_list |
-                   map(attribute='iso_country_code')) |
-               map('join', '/') |
+               map(attribute='sender_id_arn') |
                zip(_pinpoint_sms_voice_sender_id_info_list)) }}"
 ...
