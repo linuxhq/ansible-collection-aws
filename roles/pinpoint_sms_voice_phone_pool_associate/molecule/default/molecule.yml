@@ -45,15 +45,6 @@ provisioner:
               - SMS
             number_type: SIMULATOR
 
-        pinpoint_sms_voice_phone_pool_list:
-          - name: molecule-pinpoint-pool
-            origination_identity:
-              "{{ _pinpoint_sms_voice_phone_number_info_dict[
-                    'molecule-pinpoint-simulator-1'
-                  ].phone_number_id }}"
-            iso_country_code: US
-            message_type: TRANSACTIONAL
-
         pinpoint_sms_voice_phone_pool_associate_list:
           - pool_id:
               "{{ _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].pool_id }}"
@@ -67,6 +58,30 @@ provisioner:
                   "{{ _pinpoint_sms_voice_phone_number_info_dict[
                         'molecule-pinpoint-simulator-2'
                       ].phone_number_id }}"
+
+          - pool_id:
+              "{{ _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].pool_id }}"
+            iso_country_code: DE
+            associations:
+              - origination_identity: MOLECULEPA
+
+        pinpoint_sms_voice_phone_pool_list:
+          - name: molecule-pinpoint-pool
+            origination_identity:
+              "{{ _pinpoint_sms_voice_phone_number_info_dict[
+                    'molecule-pinpoint-simulator-1'
+                  ].phone_number_id }}"
+            iso_country_code: US
+            message_type: TRANSACTIONAL
+
+        pinpoint_sms_voice_sender_id_list:
+          - sender_id: MOLECULEPA
+            iso_country_code: DE
+            deletion_protection_enabled: false
+            message_types:
+              - TRANSACTIONAL
+            tags:
+              molecule: pinpoint_sms_voice_phone_pool_associate
 
 scenario:
   test_sequence:
