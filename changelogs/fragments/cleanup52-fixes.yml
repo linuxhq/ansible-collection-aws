@@ -1,0 +1,12 @@
+---
+bugfixes:
+  - eks_cluster - treat an omitted or empty ``encryption_config[].resources`` as ``secrets``, the value EKS stores, so a
+    task that leaves it out converges instead of failing with ``Cannot modify encryption_config``, and check mode
+    predicts what EKS returns.
+trivial:
+  - ec2_transit_gateway_route_table - remove an assignment that a later line always overwrites with the same value.
+  - ec2_vpc_prefix_list - remove a fallback for a value that is always a list.
+  - iam_oidc_provider - remove a URL comparison that can never differ, because the lookup only returns a matching
+    provider.
+  - pinpoint_sms_voice_phone_pool - give the other-country unit test the requested message type so that it exercises
+    the country check.

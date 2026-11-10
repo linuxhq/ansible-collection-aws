@@ -270,7 +270,7 @@ def ensure_present(client, module):
     tags = module.params["tags"]
     url = module.params["url"]
     current = get_provider_by_url(client, module, url)
-    desired = {"url": normalize_provider_url(url)}
+    desired = {}
     # STS matches a token's issuer to the provider URL exactly, trailing slash included, and IAM stores the URL as sent
     # without its https:// prefix, so a new provider keeps the given URL. Only the lookup above normalizes it.
     created_url = url[len("https://") :]
@@ -285,9 +285,7 @@ def ensure_present(client, module):
         current_comparable = {
             "client_id_list": sorted(set(current.get("ClientIDList") or [])),
             "thumbprint_list": sorted({thumbprint.lower() for thumbprint in current.get("ThumbprintList") or []}),
-            "url": normalize_provider_url(current.get("Url")),
         }
-        current_comparable = {key: value for key, value in current_comparable.items() if key in desired}
 
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:
@@ -304,7 +302,7 @@ def ensure_present(client, module):
 
         require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "OIDC provider")
 
-    resource_changed = (current_comparable or {}) != desired
+    resource_changed = current is None or bool(provider_lists(desired, current_comparable))
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:

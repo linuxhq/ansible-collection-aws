@@ -986,7 +986,6 @@ def ensure_present(client, module):
                                 msg=f"Unable to {action} EC2 transit gateway route {destination_cidr_block}",
                             )
 
-                        mutated = True
                         current_route = validated_routes(
                             module,
                             [response.get("Route") if isinstance(response, dict) else None],
