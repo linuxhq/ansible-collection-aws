@@ -87,13 +87,15 @@ subnet_groups:
           returned: always
           type: str
         subnet_outpost:
-          description: The Outpost the subnet belongs to.
-          returned: when the subnet is on an Outpost
+          description:
+            - The Outpost the subnet belongs to.
+            - This is empty unless the subnet is on an Outpost.
+          returned: when returned by AWS
           type: dict
           contains:
             arn:
               description: The ARN of the Outpost.
-              returned: when returned by AWS
+              returned: when the subnet is on an Outpost
               type: str
         subnet_status:
           description: The subnet status.
