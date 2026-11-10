@@ -1,0 +1,16 @@
+---
+- name: Ensure aws end user messaging sms sender ids are batched
+  tags:
+    - pinpoint_sms_voice_sender_id
+  ansible.builtin.include_tasks:
+    apply:
+      tags:
+        - pinpoint_sms_voice_sender_id
+    file: include.yml
+  loop:
+    "{{ pinpoint_sms_voice_sender_id_list |
+        batch(pinpoint_sms_voice_sender_id_batch) }}"
+  loop_control:
+    label: "{{ __pinpoint_sms_voice_sender_id_list | length }}"
+    loop_var: __pinpoint_sms_voice_sender_id_list
+...

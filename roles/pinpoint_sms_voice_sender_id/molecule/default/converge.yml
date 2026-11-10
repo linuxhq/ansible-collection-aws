@@ -1,0 +1,11 @@
+---
+- name: Converge
+  hosts: all
+  roles:
+    - role: pinpoint_sms_voice_sender_id
+      pinpoint_sms_voice_sender_id_list: []
+      tags:
+        - molecule-idempotence-notest
+
+    - pinpoint_sms_voice_sender_id
+...

@@ -43,6 +43,8 @@ action_groups:
     - pinpoint_sms_voice_phone_pool_associate
     - pinpoint_sms_voice_phone_pool_info
     - pinpoint_sms_voice_phone_pool
+    - pinpoint_sms_voice_sender_id_info
+    - pinpoint_sms_voice_sender_id
     - rds_subnet_group_info
     - route53_delegation_set_info
     - route53_delegation_set

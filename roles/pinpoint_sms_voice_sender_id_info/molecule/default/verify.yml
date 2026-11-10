@@ -1,0 +1,113 @@
+---
+- name: Verify
+  hosts: all
+  tasks:
+    - name: Ensure role is included without filters
+      ansible.builtin.include_role:
+        name: pinpoint_sms_voice_sender_id_info
+
+    - name: Ensure sender id under test is selected
+      ansible.builtin.set_fact:
+        pinpoint_sms_voice_sender_id_info_molecule:
+          "{{ _pinpoint_sms_voice_sender_id_info_list |
+              selectattr('sender_id', 'eq', 'MOLECULEINF') |
+              selectattr('iso_country_code', 'eq', 'DE') |
+              first }}"
+
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - pinpoint_sms_voice_sender_id_info_molecule.deletion_protection_enabled is false
+          - pinpoint_sms_voice_sender_id_info_molecule.message_types |
+              map('upper') |
+              list == ['TRANSACTIONAL']
+          - pinpoint_sms_voice_sender_id_info_molecule.monthly_leasing_price is defined
+          - pinpoint_sms_voice_sender_id_info_molecule.registered is boolean
+          - pinpoint_sms_voice_sender_id_info_molecule.sender_id_arn is defined
+          - pinpoint_sms_voice_sender_id_info_molecule.tags.molecule ==
+              'pinpoint_sms_voice_sender_id_info'
+          - _pinpoint_sms_voice_sender_id_info_dict[pinpoint_sms_voice_sender_id_info_molecule.sender_id_arn] ==
+              pinpoint_sms_voice_sender_id_info_molecule
+
+    - name: Ensure role is included with sender ids
+      ansible.builtin.include_role:
+        name: pinpoint_sms_voice_sender_id_info
+      vars:
+        pinpoint_sms_voice_sender_id_info_sender_ids:
+          - sender_id: MOLECULEINF
+            iso_country_code: DE
+
+          - sender_id: MOLECULENO
+            iso_country_code: DE
+
+    - name: Ensure info with sender ids is verified
+      ansible.builtin.assert:
+        that:
+          - _pinpoint_sms_voice_sender_id_info_list | length == 1
+          - _pinpoint_sms_voice_sender_id_info_list.0.sender_id == 'MOLECULEINF'
+
+    - name: Ensure role is included with sender id and arn
+      ansible.builtin.include_role:
+        name: pinpoint_sms_voice_sender_id_info
+      vars:
+        pinpoint_sms_voice_sender_id_info_sender_ids:
+          - sender_id: MOLECULEINF
+            iso_country_code: DE
+
+          - sender_id: "{{ pinpoint_sms_voice_sender_id_info_molecule.sender_id_arn }}"
+            iso_country_code: DE
+
+    - name: Ensure info with sender id and arn is verified
+      ansible.builtin.assert:
+        that:
+          - _pinpoint_sms_voice_sender_id_info_list | length == 1
+          - _pinpoint_sms_voice_sender_id_info_list.0.sender_id_arn ==
+              pinpoint_sms_voice_sender_id_info_molecule.sender_id_arn
+
+    - name: Ensure role is included with filters and owner
+      ansible.builtin.include_role:
+        name: pinpoint_sms_voice_sender_id_info
+      vars:
+        pinpoint_sms_voice_sender_id_info_filters:
+          iso-country-code: DE
+          message-type: TRANSACTIONAL
+          sender-id: MOLECULEINF
+        pinpoint_sms_voice_sender_id_info_max_results: 5
+        pinpoint_sms_voice_sender_id_info_owner: SELF
+
+    - name: Ensure info with filters and owner is verified
+      ansible.builtin.assert:
+        that:
+          - _pinpoint_sms_voice_sender_id_info_list | length == 1
+          - _pinpoint_sms_voice_sender_id_info_dict[pinpoint_sms_voice_sender_id_info_molecule.sender_id_arn].sender_id ==
+              'MOLECULEINF'
+
+    - name: Ensure role is included with non-matching filters
+      ansible.builtin.include_role:
+        name: pinpoint_sms_voice_sender_id_info
+      vars:
+        pinpoint_sms_voice_sender_id_info_filters:
+          sender-id: MOLECULEINF
+          message-type: PROMOTIONAL
+
+    - name: Ensure info with non-matching filters is empty
+      ansible.builtin.assert:
+        that:
+          - _pinpoint_sms_voice_sender_id_info_list == []
+          - _pinpoint_sms_voice_sender_id_info_dict == {}
+
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        pinpoint_sms_voice_sender_id_list:
+          "{{ pinpoint_sms_voice_sender_id_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _verify }}"
+      loop:
+        - pinpoint_sms_voice_sender_id
+      loop_control:
+        label: "{{ _verify }}"
+        loop_var: _verify
+...

@@ -7,6 +7,11 @@
         - molecule-idempotence-notest
       check_mode: false
 
+    - role: pinpoint_sms_voice_sender_id
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
     - role: pinpoint_sms_voice_phone_pool
       tags:
         - molecule-idempotence-notest

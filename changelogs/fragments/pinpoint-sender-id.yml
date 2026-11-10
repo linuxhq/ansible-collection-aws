@@ -1,0 +1,9 @@
+---
+minor_changes:
+  - pinpoint_sms_voice_sender_id - add a module and role to request, update, tag, and release AWS End User Messaging
+    SMS sender IDs.
+  - pinpoint_sms_voice_sender_id_info - add a module and role to gather information about AWS End User Messaging SMS
+    sender IDs.
+trivial:
+  - pinpoint_sms_voice_phone_pool_associate - cover sender ID pool associations in the Molecule scenario again, with a
+    sender ID the scenario requests and releases through the pinpoint_sms_voice_sender_id role.

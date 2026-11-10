@@ -1,0 +1,47 @@
+---
+- name: Ensure aws end user messaging sms sender ids are managed
+  tags:
+    - pinpoint_sms_voice_sender_id
+  linuxhq.aws.pinpoint_sms_voice_sender_id:
+    deletion_protection_enabled:
+      "{{ _sender_id.deletion_protection_enabled | d(omit) }}"
+    iso_country_code: "{{ _sender_id.iso_country_code }}"
+    message_types: "{{ _sender_id.message_types | d(omit) }}"
+    purge_tags: "{{ _sender_id.purge_tags | d(omit) }}"
+    sender_id: "{{ _sender_id.sender_id }}"
+    state: "{{ _sender_id.state | d('present') }}"
+    tags: "{{ _sender_id.tags | d(omit) }}"
+    validate_certs: true
+  register: __pinpoint_sms_voice_sender_id_result
+  loop: "{{ __pinpoint_sms_voice_sender_id_list }}"
+  loop_control:
+    label: "{{ _sender_id.sender_id | d(none) }}"
+    loop_var: _sender_id
+  async:
+    "{{ ansible_check_mode |
+        ternary(0, pinpoint_sms_voice_sender_id_async) }}"
+  poll: "{{ pinpoint_sms_voice_sender_id_poll }}"
+  when:
+    - _sender_id.sender_id is defined
+    - _sender_id.iso_country_code is defined
+  changed_when:
+    - ansible_check_mode | bool
+    - __pinpoint_sms_voice_sender_id_result.changed | bool
+
+- name: Ensure managed aws end user messaging sms sender id jobs are complete
+  tags:
+    - pinpoint_sms_voice_sender_id
+  ansible.builtin.async_status:
+    jid: "{{ _jid.ansible_job_id }}"
+  register: __pinpoint_sms_voice_sender_id_status
+  loop: "{{ __pinpoint_sms_voice_sender_id_result.results }}"
+  loop_control:
+    label: "{{ _jid._sender_id.sender_id | d(none) }}"
+    loop_var: _jid
+  delay: "{{ pinpoint_sms_voice_sender_id_delay }}"
+  retries: "{{ pinpoint_sms_voice_sender_id_retries }}"
+  when:
+    - _jid.ansible_job_id is defined
+  until:
+    - __pinpoint_sms_voice_sender_id_status.finished | bool
+...

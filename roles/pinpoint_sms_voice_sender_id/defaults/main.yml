@@ -1,0 +1,8 @@
+---
+pinpoint_sms_voice_sender_id_async: 300
+pinpoint_sms_voice_sender_id_batch: 10
+pinpoint_sms_voice_sender_id_delay: 3
+pinpoint_sms_voice_sender_id_list: []
+pinpoint_sms_voice_sender_id_poll: 0
+pinpoint_sms_voice_sender_id_retries: 100
+...
