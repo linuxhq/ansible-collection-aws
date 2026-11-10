@@ -1260,9 +1260,9 @@ def test_existing_ipv6_connection_without_a_gateway_is_managed(params, connectio
         )
 
 
-@pytest.mark.parametrize("check_mode", [True, False])
 @pytest.mark.parametrize("existing", [True, False])
-def test_ipv4_tunnel_cidr_rejected_on_ipv6_connection(params, connection, check_mode, existing):
+def test_ipv4_tunnel_cidr_is_valid_on_ipv6_connection(params, connection, existing):
+    # Live: EC2 accepts and stores an IPv4 inside CIDR on an IPv6 connection, on create and on modify.
     params.update(
         customer_gateway_id="cgw-123",
         transit_gateway_id="tgw-123",
@@ -1275,13 +1275,45 @@ def test_ipv4_tunnel_cidr_rejected_on_ipv6_connection(params, connection, check_
     else:
         params["tunnel_inside_ip_version"] = "ipv6"
 
-    client = Mock()
-    module = FakeModule(params, check_mode=check_mode)
+    module = FakeModule(params)
     plugin.validate_inputs(module)
-    with pytest.raises(ModuleFail, match="tunnel_inside_cidr requires tunnel_inside_ip_version=ipv4"):
-        plugin.ensure_present(client, module, connection if existing else None)
+    plugin.validate_configuration(module, connection if existing else None)
 
-    assert client.mock_calls == []
+
+def test_ipv4_tunnel_cidr_converges_on_ipv6_connection(params, connection):
+    connection["Options"]["TunnelInsideIpVersion"] = "ipv6"
+    connection["Options"]["TunnelOptions"][0]["TunnelInsideCidr"] = "169.254.22.0/30"
+    params["tunnel_options"] = [{"outside_ip_address": "203.0.113.1", "tunnel_inside_cidr": "169.254.23.0/30"}]
+    assert plugin.tunnel_deltas(FakeModule(params), connection) == [
+        ("203.0.113.1", {"TunnelInsideCidr": "169.254.23.0/30"})
+    ]
+
+    connection["Options"]["TunnelOptions"][0]["TunnelInsideCidr"] = "169.254.23.0/30"
+    assert plugin.tunnel_deltas(FakeModule(params), connection) == []
+
+
+def test_ipv4_tunnel_cidrs_are_sent_when_creating_ipv6_connection(params, connection):
+    params.update(
+        customer_gateway_id="cgw-123",
+        transit_gateway_id="tgw-123",
+        tunnel_inside_ip_version="ipv6",
+        tunnel_options=[{"tunnel_inside_cidr": "169.254.20.0/30"}, {"tunnel_inside_cidr": "169.254.21.0/30"}],
+    )
+    connection.pop("VpnGatewayId")
+    connection["TransitGatewayId"] = "tgw-123"
+    connection["Options"]["TunnelInsideIpVersion"] = "ipv6"
+    client = Mock()
+    client.create_vpn_connection.return_value = {"VpnConnection": connection}
+    client.describe_vpn_connections.return_value = {"VpnConnections": [connection]}
+    with patch.object(plugin, "wait_for_connection"):
+        ensure(client, FakeModule(params), None)
+
+    options = client.create_vpn_connection.call_args.kwargs["Options"]
+    assert options["TunnelInsideIpVersion"] == "ipv6"
+    assert options["TunnelOptions"] == [
+        {"TunnelInsideCidr": "169.254.20.0/30"},
+        {"TunnelInsideCidr": "169.254.21.0/30"},
+    ]
 
 
 @pytest.mark.parametrize("option", ["local_ipv6_network_cidr", "remote_ipv6_network_cidr"])

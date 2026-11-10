@@ -118,7 +118,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
-# Keep this list synchronized with ACM's CertificateKeyAlgorithm model so
+# Keep this list synchronized with ACM's KeyAlgorithm model so
 # list_certificates does not omit certificates that use non-default key types.
 CERTIFICATE_KEY_TYPES = [
     "RSA_1024",

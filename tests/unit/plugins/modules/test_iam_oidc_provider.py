@@ -487,7 +487,6 @@ def test_oidc_can_replace_audience_at_capacity(current_count, new_count):
     )
     with (
         patch.object(plugin, "get_provider_by_url", return_value=current),
-        patch.object(plugin, "get_provider_by_arn", return_value=dict(current, ClientIDList=desired)),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit),
     ):

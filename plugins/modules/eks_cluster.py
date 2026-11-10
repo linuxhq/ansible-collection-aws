@@ -101,7 +101,9 @@ options:
         type: dict
       resources:
         description:
-          - The resources to encrypt.
+          - The resources to encrypt. The only supported value is V(secrets).
+          - For a cluster running Kubernetes 1.28 or later, EKS encrypts all Kubernetes API data by default, and this no
+            longer affects which resources are encrypted.
         elements: str
         type: list
     type: list

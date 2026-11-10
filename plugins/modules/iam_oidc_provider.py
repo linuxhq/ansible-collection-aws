@@ -352,12 +352,9 @@ def ensure_present(client, module):
         else:
             arn = current["OpenIDConnectProviderArn"]
             provider_changed = False
-            client_ids_changed = (
-                "client_id_list" in desired and current_comparable["client_id_list"] != desired["client_id_list"]
-            )
-            thumbprints_changed = (
-                "thumbprint_list" in desired and current_comparable["thumbprint_list"] != desired["thumbprint_list"]
-            )
+            written = provider_lists(desired, current_comparable)
+            client_ids_changed = "ClientIDList" in written
+            thumbprints_changed = "ThumbprintList" in written
             current_client_ids = set(current.get("ClientIDList") or [])
             removed_client_ids, added_client_ids = (
                 client_id_changes(current, desired) if client_ids_changed else ([], [])

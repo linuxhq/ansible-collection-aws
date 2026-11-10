@@ -344,7 +344,9 @@ options:
         choices: [add, start]
         version_added: "2.6.0"
       tunnel_inside_cidr:
-        description: An unreserved IPv4 /30 network in C(169.254.0.0/16).
+        description:
+          - An unreserved IPv4 /30 network in C(169.254.0.0/16).
+          - This also applies to an IPv6 VPN connection, where each tunnel has both an IPv4 and an IPv6 inside CIDR.
         type: str
       tunnel_inside_ipv6_cidr:
         description: An IPv6 /126 network in C(fd00::/8). Requires an IPv6 VPN connection.
@@ -1506,9 +1508,6 @@ def validate_configuration(module, connection=None, changed=False):
         module.fail_json(changed=changed, msg="IPv6 VPN connections require a transit gateway")
 
     for tunnel in module.params["tunnel_options"] or []:
-        if tunnel.get("tunnel_inside_cidr") is not None and family != "ipv4":
-            module.fail_json(changed=changed, msg="tunnel_inside_cidr requires tunnel_inside_ip_version=ipv4")
-
         if tunnel.get("tunnel_inside_ipv6_cidr") is not None and family != "ipv6":
             module.fail_json(changed=changed, msg="tunnel_inside_ipv6_cidr requires tunnel_inside_ip_version=ipv6")
 

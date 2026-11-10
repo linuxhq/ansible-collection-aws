@@ -315,33 +315,31 @@ def main():
     normalized_pools = []
     for pool in pools:
         validate_pool(module, pool)
-        pool_id = pool.get("PoolId")
-        origination_identities = []
+        pool_id = pool["PoolId"]
 
-        if pool_id:
-            try:
-                response = paginated_query_with_retries(
-                    client,
-                    "list_pool_origination_identities",
-                    # A shared pool requires its full ARN.
-                    PoolId=pool.get("PoolArn") or pool_id,
-                )
-            except is_boto3_error_code("ResourceNotFoundException"):
-                continue
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}",
-                )
+        try:
+            response = paginated_query_with_retries(
+                client,
+                "list_pool_origination_identities",
+                # A shared pool requires its full ARN.
+                PoolId=pool.get("PoolArn") or pool_id,
+            )
+        except is_boto3_error_code("ResourceNotFoundException"):
+            continue
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}",
+            )
 
-            origination_identities = response.get("OriginationIdentities") if isinstance(response, dict) else None
-            if not isinstance(origination_identities, list) or any(
-                not isinstance(identity, dict) or not isinstance(identity.get("OriginationIdentity"), str)
-                for identity in origination_identities
-            ):
-                module.fail_json(
-                    msg=f"AWS returned malformed origination identities for Pinpoint SMS Voice V2 pool {pool_id}"
-                )
+        origination_identities = response.get("OriginationIdentities") if isinstance(response, dict) else None
+        if not isinstance(origination_identities, list) or any(
+            not isinstance(identity, dict) or not isinstance(identity.get("OriginationIdentity"), str)
+            for identity in origination_identities
+        ):
+            module.fail_json(
+                msg=f"AWS returned malformed origination identities for Pinpoint SMS Voice V2 pool {pool_id}"
+            )
 
         arn = pool.get("PoolArn")
         tags = []
@@ -359,7 +357,7 @@ def main():
             )
         )
 
-    matching_pool_ids = [pool["pool_id"] for pool in normalized_pools if pool.get("pool_id")]
+    matching_pool_ids = [pool["pool_id"] for pool in normalized_pools]
 
     module.exit_json(
         changed=False,
