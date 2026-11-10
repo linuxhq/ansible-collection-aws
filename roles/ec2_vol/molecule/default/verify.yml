@@ -10,6 +10,9 @@
   post_tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
+        ec2_instance_list:
+          "{{ ec2_instance_list |
+              map('combine', {'state': 'absent'}) }}"
         ec2_vol_list:
           - instance: none
             volumes:
@@ -17,9 +20,6 @@
                   map('combine', {'state': 'absent'}) +
                   ec2_vol_list.1.volumes |
                   map('combine', {'state': 'absent'}) }}"
-        ec2_instance_list:
-          "{{ ec2_instance_list |
-              map('combine', {'state': 'absent'}) }}"
         ec2_vpc_net_list:
           "{{ ec2_vpc_net_list |
               map('combine', {'state': 'absent'}) }}"

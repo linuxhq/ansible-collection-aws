@@ -56,6 +56,17 @@ provisioner:
             instance_type: t3a.medium
             vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
 
+        ec2_vpc_net_list:
+          - name: molecule
+            cidr_block: 192.168.0.0/24
+
+        ec2_vpc_subnet_list:
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            subnets:
+              - name: molecule-a
+                az: us-east-1a
+                cidr: 192.168.0.0/24
+
         elb_target_group_list:
           - name: molecule-lambda
             modify_targets: false
@@ -100,17 +111,6 @@ provisioner:
                 Port: 8081
             unhealthy_threshold_count: 3
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
-
-        ec2_vpc_net_list:
-          - name: molecule
-            cidr_block: 192.168.0.0/24
-
-        ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
-            subnets:
-              - name: molecule-a
-                az: us-east-1a
-                cidr: 192.168.0.0/24
 
 scenario:
   test_sequence:

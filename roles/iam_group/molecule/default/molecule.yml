@@ -30,14 +30,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-        iam_user_list:
-          - name: molecule-admin
-            purge_policies: true
-          - name: molecule-kopia
-            purge_policies: true
-          - name: molecule-molecule
-            purge_policies: true
-
         iam_group_list:
           - name: molecule-admin
             managed_policies:
@@ -60,6 +52,14 @@ provisioner:
             purge_policies: true
             users:
               - molecule-molecule
+
+        iam_user_list:
+          - name: molecule-admin
+            purge_policies: true
+          - name: molecule-kopia
+            purge_policies: true
+          - name: molecule-molecule
+            purge_policies: true
 
 scenario:
   test_sequence:

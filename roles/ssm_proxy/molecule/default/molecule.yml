@@ -108,6 +108,10 @@ provisioner:
                 az: us-east-1a
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(25, 1) }}"
 
+        iam_instance_profile_list:
+          - name: molecule-instance
+            role: molecule-instance
+
         iam_role_list:
           - name: molecule-instance
             assume_role_policy_document:
@@ -120,10 +124,6 @@ provisioner:
                     - sts:AssumeRole
             managed_policies:
               - ssm-instance
-
-        iam_instance_profile_list:
-          - name: molecule-instance
-            role: molecule-instance
 
         ssm_proxy_host: "{{ _ec2_instance_info_dict['molecule'].private_ip_address }}"
         ssm_proxy_instance: molecule

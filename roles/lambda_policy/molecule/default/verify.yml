@@ -12,14 +12,14 @@
         elb_target_group_list:
           "{{ elb_target_group_list |
               map('combine', {'state': 'absent'}) }}"
-        lambda_policy_list:
-          "{{ lambda_policy_list |
+        iam_role_list:
+          "{{ iam_role_list |
               map('combine', {'state': 'absent'}) }}"
         lambda_list:
           "{{ lambda_list |
               map('combine', {'state': 'absent'}) }}"
-        iam_role_list:
-          "{{ iam_role_list |
+        lambda_policy_list:
+          "{{ lambda_policy_list |
               map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included

@@ -30,6 +30,7 @@ provisioner:
   inventory:
     group_vars:
       all:
+        ssm_document_info_name: molecule-command-shell
         ssm_document_list:
           - name: molecule-command-shell
             tags:
@@ -69,7 +70,6 @@ provisioner:
                 shellProfile:
                   linux: cd
                   windows: ''
-        ssm_document_info_name: molecule-command-shell
 
 scenario:
   test_sequence:

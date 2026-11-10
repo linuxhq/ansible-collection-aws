@@ -30,10 +30,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-        ec2_vpc_net_list:
-          - name: molecule
-            cidr_block: 10.0.0.0/16
-
         ec2_vpc_igw_info_filters:
           attachment.state:
             - available
@@ -43,6 +39,10 @@ provisioner:
             tags:
               molecule: ec2_vpc_igw_info
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+
+        ec2_vpc_net_list:
+          - name: molecule
+            cidr_block: 10.0.0.0/16
 
 scenario:
   test_sequence:
