@@ -43,8 +43,6 @@ def test_query_list_falls_back_for_non_pageable_marker_operations():
         ("Marker", "NextMarker"),
         ("NextMarker", "NextMarker"),
         ("NextToken", "NextToken"),
-        ("marker", "marker"),
-        ("nextMarker", "nextMarker"),
         ("nextToken", "nextToken"),
     ):
         client = Mock()
@@ -77,19 +75,18 @@ def test_query_list_rejects_repeated_manual_pagination_markers():
 
 
 def test_query_list_rejects_truncated_response_without_marker():
-    for truncated_name in ("IsTruncated", "isTruncated"):
-        client = Mock()
-        client.can_paginate.return_value = False
-        client.list_items.return_value = {truncated_name: True, "Items": [1]}
-        module = FakeModule({})
-        with (
-            patch.object(sdk, "get_boto3_client_method_parameters", return_value=["Marker"]),
-            patch.object(sdk, "get_client_method_output_members", return_value=["Marker", truncated_name]),
-            pytest.raises(ModuleFail) as raised,
-        ):
-            sdk.query_list(module, client, "list_items", "Items", "unable to list")
+    client = Mock()
+    client.can_paginate.return_value = False
+    client.list_items.return_value = {"IsTruncated": True, "Items": [1]}
+    module = FakeModule({})
+    with (
+        patch.object(sdk, "get_boto3_client_method_parameters", return_value=["Marker"]),
+        patch.object(sdk, "get_client_method_output_members", return_value=["Marker", "IsTruncated"]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        sdk.query_list(module, client, "list_items", "Items", "unable to list")
 
-        assert raised.value.values["msg"] == "unable to list: truncated response without a marker"
+    assert raised.value.values["msg"] == "unable to list: truncated response without a marker"
 
 
 def test_query_list_ignores_echoed_request_marker():
@@ -130,18 +127,17 @@ def test_query_list_does_not_follow_echoed_marker_when_next_marker_is_missing():
 
 
 def test_query_list_stops_when_response_is_not_truncated():
-    for truncated_name, marker_name in (("IsTruncated", "Marker"), ("isTruncated", "marker")):
-        client = Mock()
-        client.can_paginate.return_value = False
-        client.list_items.return_value = {"Items": [1], marker_name: "echoed", truncated_name: False}
-        with (
-            patch.object(sdk, "get_boto3_client_method_parameters", return_value=[marker_name]),
-            patch.object(sdk, "get_client_method_output_members", return_value=[marker_name, truncated_name]),
-        ):
-            result = sdk.query_list(FakeModule({}), client, "list_items", "Items", "unable to list")
+    client = Mock()
+    client.can_paginate.return_value = False
+    client.list_items.return_value = {"Items": [1], "Marker": "echoed", "IsTruncated": False}
+    with (
+        patch.object(sdk, "get_boto3_client_method_parameters", return_value=["Marker"]),
+        patch.object(sdk, "get_client_method_output_members", return_value=["Marker", "IsTruncated"]),
+    ):
+        result = sdk.query_list(FakeModule({}), client, "list_items", "Items", "unable to list")
 
-        assert result == [1]
-        client.list_items.assert_called_once_with(aws_retry=True)
+    assert result == [1]
+    client.list_items.assert_called_once_with(aws_retry=True)
 
 
 def test_reads_client_method_output_members():

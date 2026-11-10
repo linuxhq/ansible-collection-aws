@@ -1631,7 +1631,7 @@ def ensure_present(client, module, connection):
         connection = create_connection(client, module)
 
     # Failures after the first modification report changed=True.
-    mutated = changed and not module.check_mode
+    mutated = changed
     connection_id = connection["VpnConnectionId"]
     if connection["State"] == "deleting":
         module.fail_json(

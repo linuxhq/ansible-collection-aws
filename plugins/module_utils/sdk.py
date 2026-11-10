@@ -30,23 +30,12 @@ def query_list(module, client, method_name, result_key, error_msg, changed=False
         output_members = get_client_method_output_members(client, method_name)
         # Operations such as Route53 ListReusableDelegationSets echo the request
         # Marker and return the next page in NextMarker.
-        response_marker_names = ["NextMarker", "NextToken", "nextMarker", "nextToken"]
-        if "NextMarker" not in output_members and "nextMarker" not in output_members:
-            response_marker_names.extend(["Marker", "marker"])
+        response_marker_names = ["NextMarker", "NextToken", "nextToken"]
+        if "NextMarker" not in output_members:
+            response_marker_names.append("Marker")
 
         marker_name = next(
-            (
-                name
-                for name in (
-                    "Marker",
-                    "NextMarker",
-                    "NextToken",
-                    "marker",
-                    "nextMarker",
-                    "nextToken",
-                )
-                if name in available_parameters
-            ),
+            (name for name in ("Marker", "NextMarker", "NextToken", "nextToken") if name in available_parameters),
             None,
         )
         items = []
@@ -54,12 +43,12 @@ def query_list(module, client, method_name, result_key, error_msg, changed=False
         while True:
             response = method(**kwargs, aws_retry=True)
             items.extend(response.get(result_key, []))
-            if response.get("IsTruncated") is False or response.get("isTruncated") is False:
+            if response.get("IsTruncated") is False:
                 return items
 
             marker = next((response[name] for name in response_marker_names if response.get(name)), None)
             if not marker:
-                if response.get("IsTruncated") or response.get("isTruncated"):
+                if response.get("IsTruncated"):
                     module.fail_json(changed=changed, msg=f"{error_msg}: truncated response without a marker")
 
                 return items

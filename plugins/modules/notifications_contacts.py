@@ -172,7 +172,7 @@ def get_contact_by_address(client, module):
 
     for contact in contacts:
         validate_contact(module, contact, "Unable to list AWS Notifications contacts")
-        if contact.get("address") == email_address:
+        if contact["address"] == email_address:
             return contact
 
     return None
