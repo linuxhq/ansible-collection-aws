@@ -24,6 +24,7 @@ None
 
 * [ec2\_security\_group\_info](../ec2_security_group_info)
 * [ec2\_vpc\_subnet\_info](../ec2_vpc_subnet_info)
+* [kms\_key\_info](../kms_key_info)
 
 ## Example Playbook
 

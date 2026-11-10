@@ -2,6 +2,9 @@
 bugfixes:
   - kms_key_info role - omit ``filters`` when ``kms_key_info_filters`` is empty, so the ``kms_key_info_alias`` and
     ``kms_key_info_key_id`` inputs no longer fail because ``filters`` was always passed.
+minor_changes:
+  - eks_cluster role - add ``kms_key_info`` as a dependency, so ``encryption_config`` key ARNs can come from
+    ``_kms_key_info_dict``.
 trivial:
-  - Molecule scenarios - cover an IPv6 VPN connection, sender ID pool associations, EKS cluster encryption with a
-    temporary KMS key, and an ses_sandbox scenario that never submits account details.
+  - Molecule scenarios - cover an IPv6 VPN connection, EKS cluster encryption with a temporary KMS key, and an
+    ses_sandbox scenario that never submits account details.
