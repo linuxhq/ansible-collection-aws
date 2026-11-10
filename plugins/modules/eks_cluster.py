@@ -446,6 +446,24 @@ cluster:
       description: The certificate authority data for the cluster.
       returned: when the cluster exists and is not an EKS Connector cluster, except for a create predicted in check mode
       type: dict
+      contains:
+        active:
+          description: The certificate authority that currently signs certificates for the cluster.
+          returned: when returned by AWS
+          type: dict
+          contains:
+            activated_by:
+              description: The entity that activated the current signing certificate authority, either C(CUSTOMER) or C(EKS).
+              returned: when returned by AWS
+              type: str
+            id:
+              description: The ID of the certificate authority that currently signs certificates for the cluster.
+              returned: when returned by AWS
+              type: str
+        data:
+          description: The Base64-encoded certificate data required to communicate with the cluster.
+          returned: when returned by AWS
+          type: str
     client_request_token:
       description: The unique, case-sensitive identifier provided to ensure request idempotency.
       returned: when returned by AWS
@@ -454,6 +472,20 @@ cluster:
       description: The EKS Auto Mode compute configuration.
       returned: when returned by AWS
       type: dict
+      contains:
+        enabled:
+          description: Whether the EKS Auto Mode compute capability is enabled.
+          returned: when returned by AWS
+          type: bool
+        node_pools:
+          description: The EKS Auto Mode node pools.
+          returned: when returned by AWS
+          type: list
+          elements: str
+        node_role_arn:
+          description: The ARN of the IAM role that EKS assigns to EKS Auto Mode EC2 managed instances.
+          returned: when returned by AWS
+          type: str
     connector_config:
       description: The EKS Connector configuration of a registered cluster.
       returned: when returned by AWS
@@ -479,6 +511,11 @@ cluster:
       description: The control plane scaling tier configuration.
       returned: when returned by AWS
       type: dict
+      contains:
+        tier:
+          description: The control plane scaling tier.
+          returned: when returned by AWS
+          type: str
     created_at:
       description: The time the cluster was created.
       returned: when the cluster exists, except for a create predicted in check mode
@@ -492,6 +529,21 @@ cluster:
       returned: when configured
       type: list
       elements: dict
+      contains:
+        provider:
+          description: The KMS key that encrypts the resources.
+          returned: when returned by AWS
+          type: dict
+          contains:
+            key_arn:
+              description: The ARN or alias of the KMS key.
+              returned: when returned by AWS
+              type: str
+        resources:
+          description: The Kubernetes resources encrypted with the KMS key.
+          returned: when returned by AWS
+          type: list
+          elements: str
     endpoint:
       description: The Kubernetes API server endpoint.
       returned: when the cluster is active and is not an EKS Connector cluster, except for a create predicted
@@ -501,6 +553,26 @@ cluster:
       description: The health of the cluster.
       returned: when returned by AWS
       type: dict
+      contains:
+        issues:
+          description: The health issues of the cluster.
+          returned: when returned by AWS
+          type: list
+          elements: dict
+          contains:
+            code:
+              description: The error code of the issue.
+              returned: when returned by AWS
+              type: str
+            message:
+              description: A description of the issue.
+              returned: when returned by AWS
+              type: str
+            resource_ids:
+              description: The resource IDs that the issue relates to.
+              returned: when returned by AWS
+              type: list
+              elements: str
     id:
       description: The ID of a local cluster on AWS Outposts.
       returned: when returned by AWS
@@ -509,26 +581,154 @@ cluster:
       description: The identity provider information for the cluster.
       returned: when returned by AWS
       type: dict
+      contains:
+        oidc:
+          description: The OpenID Connect identity provider information.
+          returned: when returned by AWS
+          type: dict
+          contains:
+            issuer:
+              description: The issuer URL for the OIDC identity provider.
+              returned: when returned by AWS
+              type: str
     kube_api_server_config:
       description: The Kubernetes API server configuration.
       returned: when returned by AWS
       type: dict
+      contains:
+        event_ttl:
+          description: The duration that Kubernetes events are retained.
+          returned: when returned by AWS
+          type: str
+        service_node_port_range:
+          description: The port range for NodePort services.
+          returned: when returned by AWS
+          type: dict
+          contains:
+            max_port:
+              description: The maximum port number in the range.
+              returned: when returned by AWS
+              type: int
+            min_port:
+              description: The minimum port number in the range.
+              returned: when returned by AWS
+              type: int
     kube_controller_manager_config:
       description: The Kubernetes controller manager configuration.
       returned: when returned by AWS
       type: dict
+      contains:
+        horizontal_pod_autoscaler_controller_config:
+          description: The horizontal pod autoscaler controller configuration.
+          returned: when returned by AWS
+          type: dict
+          contains:
+            horizontal_pod_autoscaler_sync_period:
+              description: The interval between each sync of the horizontal pod autoscaler.
+              returned: when returned by AWS
+              type: str
+        pod_gc_controller_config:
+          description: The pod garbage collection controller configuration.
+          returned: when returned by AWS
+          type: dict
+          contains:
+            terminated_pod_gc_threshold:
+              description: The number of terminated pods that can exist before the garbage collector starts deleting them.
+              returned: when returned by AWS
+              type: int
     kube_scheduler_config:
       description: The Kubernetes scheduler configuration.
       returned: when returned by AWS
       type: dict
+      contains:
+        node_resources_fit:
+          description: The node resource fit scoring configuration for the scheduler.
+          returned: when returned by AWS
+          type: dict
+          contains:
+            scoring_strategy:
+              description: The scoring strategy used to rank nodes during scheduling.
+              returned: when returned by AWS
+              type: dict
+              contains:
+                resources:
+                  description: The resource weights used for scoring nodes.
+                  returned: when returned by AWS
+                  type: list
+                  elements: dict
+                  contains:
+                    name:
+                      description: The name of the resource (for example, C(cpu) or C(memory)).
+                      returned: when returned by AWS
+                      type: str
+                    weight:
+                      description: The weight assigned to the resource for scoring.
+                      returned: when returned by AWS
+                      type: int
+                type:
+                  description: The scoring strategy type.
+                  returned: when returned by AWS
+                  type: str
     kubernetes_network_config:
       description: The Kubernetes network configuration.
       returned: when the cluster exists and is not an EKS Connector cluster, except for a create predicted in check mode
       type: dict
+      contains:
+        elastic_load_balancing:
+          description: The EKS Auto Mode load balancing capability configuration.
+          returned: when returned by AWS
+          type: dict
+          contains:
+            enabled:
+              description: Whether the EKS Auto Mode load balancing capability is enabled.
+              returned: when returned by AWS
+              type: bool
+            gateway_api:
+              description: The Kubernetes Gateway API configuration of the load balancing capability.
+              returned: when returned by AWS
+              type: dict
+              contains:
+                crds:
+                  description: The Gateway API custom resource definition (CRD) management configuration.
+                  returned: when returned by AWS
+                  type: dict
+                  contains:
+                    managed:
+                      description: Whether Gateway API CRD management is enabled.
+                      returned: when returned by AWS
+                      type: bool
+        ip_family:
+          description: The IP family used to assign Kubernetes C(Pod) and C(Service) objects IP addresses.
+          returned: when returned by AWS
+          type: str
+        service_ipv4_cidr:
+          description: The CIDR block that Kubernetes C(Pod) and C(Service) object IP addresses are assigned from.
+          returned: when returned by AWS
+          type: str
+        service_ipv6_cidr:
+          description: The CIDR block that Kubernetes pod and service IP addresses are assigned from when the cluster uses the C(ipv6) IP family.
+          returned: when returned by AWS
+          type: str
     logging:
       description: The control plane logging configuration.
       returned: when the cluster exists and is not an EKS Connector cluster, except for a create predicted in check mode
       type: dict
+      contains:
+        cluster_logging:
+          description: The cluster control plane logging configuration.
+          returned: when returned by AWS
+          type: list
+          elements: dict
+          contains:
+            enabled:
+              description: Whether the log types export their control plane logs to CloudWatch Logs.
+              returned: when returned by AWS
+              type: bool
+            types:
+              description: The available cluster control plane log types.
+              returned: when returned by AWS
+              type: list
+              elements: str
     name:
       description: The cluster name.
       returned: when the cluster exists
@@ -537,6 +737,42 @@ cluster:
       description: The configuration of a local cluster on AWS Outposts.
       returned: when returned by AWS
       type: dict
+      contains:
+        control_plane_instance_type:
+          description: The EC2 instance type of the Kubernetes control plane instances of a local cluster on AWS Outposts.
+          returned: when returned by AWS
+          type: str
+        control_plane_placement:
+          description: The placement configuration of the control plane instances of a local cluster on AWS Outposts.
+          returned: when returned by AWS
+          type: dict
+          contains:
+            group_name:
+              description: The name of the placement group for the Kubernetes control plane instances.
+              returned: when returned by AWS
+              type: str
+            spread_level:
+              description: The spread level used with the placement group for the control plane instances.
+              returned: when returned by AWS
+              type: str
+        etcd_instance_type:
+          description: The EC2 instance type of the etcd instances of a local cluster on AWS Outposts.
+          returned: when returned by AWS
+          type: str
+        etcd_placement:
+          description: The placement configuration of the etcd instances of a local cluster on AWS Outposts.
+          returned: when returned by AWS
+          type: dict
+          contains:
+            spread_level:
+              description: The spread level used with the placement group for the etcd instances.
+              returned: when returned by AWS
+              type: str
+        outpost_arns:
+          description: The ARNs of the Outposts used by the local cluster.
+          returned: when returned by AWS
+          type: list
+          elements: str
     platform_version:
       description: The EKS platform version.
       returned: when the cluster exists and is not an EKS Connector cluster, except for a create predicted in check mode
@@ -545,6 +781,29 @@ cluster:
       description: The remote node and pod networks for EKS hybrid nodes.
       returned: when configured
       type: dict
+      contains:
+        remote_node_networks:
+          description: The list of network CIDRs that can contain hybrid nodes.
+          returned: when returned by AWS
+          type: list
+          elements: dict
+          contains:
+            cidrs:
+              description: A network CIDR that can contain hybrid nodes.
+              returned: when returned by AWS
+              type: list
+              elements: str
+        remote_pod_networks:
+          description: The list of network CIDRs that can contain pods that run Kubernetes webhooks on hybrid nodes.
+          returned: when returned by AWS
+          type: list
+          elements: dict
+          contains:
+            cidrs:
+              description: A network CIDR that can contain pods that run Kubernetes webhooks on hybrid nodes.
+              returned: when returned by AWS
+              type: list
+              elements: str
     resources_vpc_config:
       description: The cluster VPC configuration.
       returned: when the cluster exists and is not an EKS Connector cluster
@@ -599,6 +858,16 @@ cluster:
       description: The EKS Auto Mode storage configuration.
       returned: when returned by AWS
       type: dict
+      contains:
+        block_storage:
+          description: The EKS Auto Mode block storage capability configuration.
+          returned: when returned by AWS
+          type: dict
+          contains:
+            enabled:
+              description: Whether the EKS Auto Mode block storage capability is enabled.
+              returned: when returned by AWS
+              type: bool
     tags:
       description: The cluster tags with key case preserved.
       returned: when the cluster exists
@@ -622,6 +891,11 @@ cluster:
       description: The zonal shift configuration.
       returned: when returned by AWS
       type: dict
+      contains:
+        enabled:
+          description: Whether the zonal shift is enabled.
+          returned: when returned by AWS
+          type: bool
 name:
   description:
     - The EKS cluster name.

@@ -146,10 +146,34 @@ command:
       description: Alarm configuration associated with the command.
       returned: when available
       type: dict
+      contains:
+        alarms:
+          description: CloudWatch alarms in the configuration.
+          returned: when available
+          type: list
+          elements: dict
+          contains:
+            name:
+              description: CloudWatch alarm name.
+              returned: when available
+              type: str
+        ignore_poll_alarm_failure:
+          description: Whether the command keeps running when AWS cannot retrieve the alarm status.
+          returned: when available
+          type: bool
     cloud_watch_output_config:
       description: CloudWatch Logs output configuration for the command.
       returned: when available
       type: dict
+      contains:
+        cloud_watch_log_group_name:
+          description: CloudWatch Logs log group that receives the command output.
+          returned: when available
+          type: str
+        cloud_watch_output_enabled:
+          description: Whether command output is sent to CloudWatch Logs.
+          returned: when available
+          type: bool
     command_id:
       description: Command ID assigned by AWS Systems Manager.
       returned: when available
@@ -206,6 +230,20 @@ command:
       description: Notification configuration for the command.
       returned: when available
       type: dict
+      contains:
+        notification_arn:
+          description: ARN of the SNS topic that receives command status notifications.
+          returned: when available
+          type: str
+        notification_events:
+          description: Command status events that send notifications.
+          returned: when available
+          type: list
+          elements: str
+        notification_type:
+          description: Notification type, C(Command) for command status changes or C(Invocation) for per-target invocation status changes.
+          returned: when available
+          type: str
     output_s3_bucket_name:
       description: S3 bucket used for command output.
       returned: when available
@@ -255,6 +293,16 @@ command:
       returned: when available
       type: list
       elements: dict
+      contains:
+        Key:
+          description: Target key, such as C(InstanceIds) or C(tag:Name).
+          returned: when available
+          type: str
+        Values:
+          description: Target values for the key.
+          returned: when available
+          type: list
+          elements: str
     timeout_seconds:
       description:
         - The number of seconds AWS Systems Manager waits for the command to
@@ -267,6 +315,15 @@ command:
       returned: when available
       type: list
       elements: dict
+      contains:
+        name:
+          description: CloudWatch alarm name.
+          returned: when available
+          type: str
+        state:
+          description: State of the CloudWatch alarm, C(UNKNOWN) or C(ALARM).
+          returned: when available
+          type: str
 command_id:
   description:
     - The AWS Systems Manager command ID.
@@ -283,6 +340,15 @@ command_invocations:
       description: CloudWatch Logs output configuration for the invocation.
       returned: when available
       type: dict
+      contains:
+        cloud_watch_log_group_name:
+          description: CloudWatch Logs log group that receives the command output.
+          returned: when available
+          type: str
+        cloud_watch_output_enabled:
+          description: Whether command output is sent to CloudWatch Logs.
+          returned: when available
+          type: bool
     command_id:
       description: Command ID associated with the invocation.
       returned: when available
@@ -368,6 +434,20 @@ command_invocations:
       description: Notification configuration for the invocation.
       returned: when available
       type: dict
+      contains:
+        notification_arn:
+          description: ARN of the SNS topic that receives command status notifications.
+          returned: when available
+          type: str
+        notification_events:
+          description: Command status events that send notifications.
+          returned: when available
+          type: list
+          elements: str
+        notification_type:
+          description: Notification type, C(Command) for command status changes or C(Invocation) for per-target invocation status changes.
+          returned: when available
+          type: str
     requested_date_time:
       description: Time when the command was requested.
       returned: when available

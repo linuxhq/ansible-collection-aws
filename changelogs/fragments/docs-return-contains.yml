@@ -1,0 +1,6 @@
+---
+trivial:
+  - ec2_flow_log, ec2_flow_log_info, ec2_instance_type_info, eks_cluster, eks_cluster_info, glue_connection_info,
+    rds_subnet_group_info, service_quota, service_quota_info, ssm_association, ssm_document, ssm_document_info,
+    ssm_send_command, wafv2_web_acl_info, wafv2_web_acl_logging - document nested fixed-shape return values with
+    ``contains`` blocks.

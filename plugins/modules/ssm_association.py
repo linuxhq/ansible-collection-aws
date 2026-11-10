@@ -320,6 +320,79 @@ association:
       returned: when configured
       type: list
       elements: dict
+      contains:
+        accounts:
+          description: The AWS accounts or organizational units targeted by the association.
+          returned: when available
+          type: list
+          elements: str
+        exclude_accounts:
+          description: The AWS accounts or organizational units excluded from the expanded targets.
+          returned: when available
+          type: list
+          elements: str
+        execution_role_name:
+          description: The Automation execution role used in the target accounts and regions.
+          returned: when available
+          type: str
+        include_child_organization_units:
+          description: Whether child organizational units of the targeted organizational units are included.
+          returned: when available
+          type: bool
+        regions:
+          description: The AWS regions targeted by the association.
+          returned: when available
+          type: list
+          elements: str
+        target_location_alarm_configuration:
+          description: The CloudWatch alarm configuration applied in the target accounts and regions.
+          returned: when available
+          type: dict
+          contains:
+            alarms:
+              description: The CloudWatch alarms in the configuration.
+              returned: when available
+              type: list
+              elements: dict
+              contains:
+                name:
+                  description: CloudWatch alarm name.
+                  returned: when available
+                  type: str
+            ignore_poll_alarm_failure:
+              description: Whether the run continues when AWS cannot retrieve the alarm status.
+              returned: when available
+              type: bool
+        target_location_max_concurrency:
+          description: The maximum number of accounts and regions allowed to run concurrently.
+          returned: when available
+          type: str
+        target_location_max_errors:
+          description: The maximum number of errors allowed before AWS stops queueing runs in additional accounts and regions.
+          returned: when available
+          type: str
+        targets:
+          description:
+            - The targets within each account and region.
+            - Each target also contains C(values), the list of target value
+              strings; read it as C(target["values"]) because Jinja dot notation
+              cannot access a key named C(values).
+          returned: when available
+          type: list
+          elements: dict
+          contains:
+            key:
+              description: Target key.
+              returned: always
+              type: str
+        targets_max_concurrency:
+          description: The maximum number of targets allowed to run in parallel in each account and region.
+          returned: when available
+          type: str
+        targets_max_errors:
+          description: The maximum number of errors allowed before AWS stops running on additional targets in each account and region.
+          returned: when available
+          type: str
     target_maps:
       description:
         - Mappings of document parameters to target resources.
@@ -346,6 +419,15 @@ association:
       returned: when available
       type: list
       elements: dict
+      contains:
+        name:
+          description: CloudWatch alarm name.
+          returned: when available
+          type: str
+        state:
+          description: The state of the CloudWatch alarm, C(UNKNOWN) or C(ALARM).
+          returned: when available
+          type: str
 association_id:
   description: The AWS Systems Manager association identifier.
   returned: when an association exists

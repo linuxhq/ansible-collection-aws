@@ -162,6 +162,27 @@ document:
       returned: when the document has attachments
       type: list
       elements: dict
+      contains:
+        hash:
+          description: The cryptographic hash value of the attachment content.
+          returned: when available
+          type: str
+        hash_type:
+          description: The hash algorithm used to calculate the hash value.
+          returned: when available
+          type: str
+        name:
+          description: The name of the attachment.
+          returned: when available
+          type: str
+        size:
+          description: The size of the attachment in bytes.
+          returned: when available
+          type: int
+        url:
+          description: The URL location of the attachment content.
+          returned: when available
+          type: str
     content:
       description:
         - Document content, parsed from JSON and returned exactly as AWS stores it.
@@ -196,6 +217,23 @@ document:
       returned: when configured
       type: list
       elements: dict
+      contains:
+        name:
+          description: The name or ARN of the required SSM document.
+          returned: when available
+          type: str
+        require_type:
+          description: The document type of the required SSM document.
+          returned: when available
+          type: str
+        version:
+          description: The document version required by the current document.
+          returned: when available
+          type: str
+        version_name:
+          description: The version of the artifact associated with the required document.
+          returned: when available
+          type: str
     review_status:
       description: The review status of the document version.
       returned: when returned by AWS

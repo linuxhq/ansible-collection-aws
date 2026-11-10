@@ -77,6 +77,11 @@ subnet_groups:
           description: The subnet Availability Zone.
           returned: always
           type: dict
+          contains:
+            name:
+              description: The name of the Availability Zone.
+              returned: when returned by AWS
+              type: str
         subnet_identifier:
           description: The subnet ID.
           returned: always
@@ -85,6 +90,11 @@ subnet_groups:
           description: The Outpost the subnet belongs to.
           returned: when the subnet is on an Outpost
           type: dict
+          contains:
+            arn:
+              description: The ARN of the Outpost.
+              returned: when returned by AWS
+              type: str
         subnet_status:
           description: The subnet status.
           returned: always

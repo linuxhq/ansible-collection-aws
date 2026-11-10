@@ -318,6 +318,16 @@ flow_logs:
       returned: when available
       type: list
       elements: dict
+      contains:
+        resource_type:
+          description: Resource type of the tag keys used by the EC2 tag fields.
+          returned: when available
+          type: str
+        tag_keys:
+          description: Tag keys on the tagged resources displayed by the EC2 tag fields.
+          returned: when available
+          type: list
+          elements: str
     tags:
       description:
         - Tags of the flow log.
