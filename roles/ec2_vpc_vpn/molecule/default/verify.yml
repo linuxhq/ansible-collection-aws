@@ -89,6 +89,16 @@
           - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase2_integrity_algorithms.0.value == 'SHA2-256'
           - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase1_dh_group_numbers.0.value == 16
           - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase2_dh_group_numbers.0.value == 16
+          - _ec2_vpc_vpn_info_dict['molecule-02'].vpn_connection_id is defined
+          - _ec2_vpc_vpn_info_dict['molecule-02'].customer_gateway_id == ec2_vpc_vpn_list_update.2.customer_gateway_id
+          - _ec2_vpc_vpn_info_dict['molecule-02'].transit_gateway_id == ec2_vpc_vpn_list_update.2.transit_gateway_id
+          - _ec2_vpc_vpn_info_dict['molecule-02'].state == 'available'
+          - _ec2_vpc_vpn_info_dict['molecule-02'].tags.Name == 'molecule-02'
+          - _ec2_vpc_vpn_info_dict['molecule-02'].options.tunnel_inside_ip_version == 'ipv6'
+          - _ec2_vpc_vpn_info_dict['molecule-02'].options.tunnel_options | length == 2
+          - _ec2_vpc_vpn_info_dict['molecule-02'].options.tunnel_options |
+            map(attribute='tunnel_inside_ipv6_cidr') |
+            sort == ['fd00::100/126', 'fd00::200/126']
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:

@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - kms_key_info role - omit ``filters`` when ``kms_key_info_filters`` is empty, so the ``kms_key_info_alias`` and
+    ``kms_key_info_key_id`` inputs no longer fail because ``filters`` was always passed.
+trivial:
+  - Molecule scenarios - cover an IPv6 VPN connection, sender ID pool associations, EKS cluster encryption with a
+    temporary KMS key, and an ses_sandbox scenario that never submits account details.

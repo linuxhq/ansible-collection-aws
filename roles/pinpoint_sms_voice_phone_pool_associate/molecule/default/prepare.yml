@@ -1,0 +1,28 @@
+---
+- name: Prepare
+  hosts: all
+  tasks:
+    - name: Ensure sender id information is gathered
+      ansible.builtin.command:
+        cmd: >
+          aws pinpoint-sms-voice-v2 describe-sender-ids
+            --filters Name=sender-id,Values=MOLECULE Name=iso-country-code,Values=DE
+            --query SenderIds
+            --output json
+      register: __pinpoint_sms_voice_sender_id_query
+      changed_when: false
+
+    - name: Ensure sender id is requested
+      ansible.builtin.command:
+        cmd: >
+          aws pinpoint-sms-voice-v2 request-sender-id
+            --sender-id MOLECULE
+            --iso-country-code DE
+            --message-types TRANSACTIONAL
+            --no-deletion-protection-enabled
+      changed_when: true
+      when:
+        - __pinpoint_sms_voice_sender_id_query.stdout |
+          from_json |
+          length == 0
+...

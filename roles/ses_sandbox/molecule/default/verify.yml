@@ -1,21 +1,62 @@
 ---
 - name: Verify
   hosts: all
+  check_mode: true
   tasks:
-    - name: Ensure account details are queried
+    - name: Ensure account information is queried
+      linuxhq.aws.ses_sandbox_info:
+        validate_certs: true
+      register: __ses_sandbox_info_query
+
+    - name: Ensure account details are queried without a request
+      linuxhq.aws.ses_sandbox:
+        validate_certs: true
+      check_mode: false
+      register: __ses_sandbox_query
+
+    - name: Ensure account details without a request are verified
+      ansible.builtin.assert:
+        that:
+          - __ses_sandbox_query is not changed
+          - __ses_sandbox_query.account.production_access_enabled | d(false) ==
+            __ses_sandbox_info_query.account.production_access_enabled | d(false)
+          - __ses_sandbox_query.account.details | d({}) ==
+            __ses_sandbox_info_query.account.details | d({})
+
+    - name: Ensure an account details request is predicted
       linuxhq.aws.ses_sandbox:
         additional_contact_email_addresses:
-          - jake@molecule.org
           - john@molecule.org
+          - jake@molecule.org
         use_case_description: |
           New account creation
         website_url: 'https://github.com/ansible/molecule'
       check_mode: true
-      register: __ses_sandbox_query
+      register: __ses_sandbox_request_query
 
-    - name: Ensure account details are verified
+    - name: Ensure the predicted account details request is verified
       ansible.builtin.assert:
         that:
-          - __ses_sandbox_query is not changed
-          - __ses_sandbox_query.account.details.website_url == 'https://github.com/ansible/molecule'
+          - __ses_sandbox_request_query.account.details.website_url == 'https://github.com/ansible/molecule'
+          - __ses_sandbox_request_query.account.details.additional_contact_email_addresses ==
+            ['jake@molecule.org', 'john@molecule.org']
+          - __ses_sandbox_request_query.account.production_access_enabled | d(false) ==
+            __ses_sandbox_info_query.account.production_access_enabled | d(false)
+          - __ses_sandbox_request_query.account.details.review_details | d({}) ==
+            __ses_sandbox_info_query.account.details.review_details | d({})
+          - __ses_sandbox_request_query is changed or
+            __ses_sandbox_info_query.account.production_access_enabled | d(false) | bool or
+            __ses_sandbox_info_query.account.details.review_details | d({}) | length > 0
+
+    - name: Ensure the role predicts an account details request
+      ansible.builtin.import_role:
+        name: ses_sandbox
+      vars:
+        ses_sandbox_additional_contact_email_addresses:
+          - jake@molecule.org
+          - john@molecule.org
+        ses_sandbox_use_case_description: |
+          New account creation
+        ses_sandbox_website_url: 'https://github.com/ansible/molecule'
+      check_mode: true
 ...

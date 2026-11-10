@@ -76,8 +76,18 @@ provisioner:
                   - cidr_ip: 0.0.0.0/0
                     proto: -1
 
+        kms_key_info_filters:
+          alias: molecule-eks
+
+        kms_key_list:
+          - name: molecule-eks
+            pending_window: 7
+
         eks_cluster_list_create:
           - name: molecule-eks1
+            encryption_config:
+              - provider:
+                  key_arn: "{{ _kms_key_info_dict['molecule-eks'].key_arn }}"
             resources_vpc_config:
               endpoint_private_access: true
               endpoint_public_access: false
@@ -107,6 +117,9 @@ provisioner:
 
         eks_cluster_list_update:
           - name: molecule-eks1
+            encryption_config:
+              - provider:
+                  key_arn: "{{ _kms_key_info_dict['molecule-eks'].key_arn }}"
             resources_vpc_config:
               endpoint_private_access: false
               endpoint_public_access: true

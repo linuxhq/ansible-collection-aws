@@ -68,6 +68,12 @@ provisioner:
                         'molecule-pinpoint-simulator-2'
                       ].phone_number_id }}"
 
+          - pool_id:
+              "{{ _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].pool_id }}"
+            iso_country_code: DE
+            associations:
+              - origination_identity: MOLECULE
+
 scenario:
   test_sequence:
     - dependency
