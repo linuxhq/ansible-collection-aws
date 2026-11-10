@@ -42,6 +42,7 @@ options:
     description:
       - Sender IDs used to limit the result set.
       - Sender IDs that do not exist are omitted from the results.
+      - A sender ID found by more than one entry, such as by its ID and by its ARN, is returned once.
       - This must contain at most 5 entries.
       - Mutually exclusive with O(owner).
     elements: dict
@@ -159,8 +160,6 @@ sender_ids:
       type: dict
 """
 
-import re
-
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -188,16 +187,17 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.validation import requ
 
 
 def unique_sender_ids(sender_ids):
-    """Return SenderIdAndCountry entries without repeats of one sender ID given as an ID and an ARN.
+    """Return SenderIdAndCountry entries without exact repeats.
 
-    The ARN form is kept because a sender ID shared from another account can only be described by its ARN.
+    A plain ID and an ARN are both kept: sender IDs with one name and country can exist in several accounts, and
+    only an ARN names one shared from another account. describe_sender_ids_by_id drops a resource found twice.
     """
     unique = {}
     for entry in sender_ids:
-        arn = re.fullmatch(r"arn:.*:sender-id/([^/]+)/[^/]+", entry["sender_id"])
-        key = (arn.group(1) if arn else entry["sender_id"], entry["iso_country_code"])
-        if key not in unique or entry["sender_id"].startswith("arn:"):
-            unique[key] = {"IsoCountryCode": entry["iso_country_code"], "SenderId": entry["sender_id"]}
+        unique[(entry["sender_id"], entry["iso_country_code"])] = {
+            "IsoCountryCode": entry["iso_country_code"],
+            "SenderId": entry["sender_id"],
+        }
 
     return list(unique.values())
 
@@ -228,7 +228,13 @@ def describe_sender_ids_by_id(module, client, request):
 
         sender_ids.extend(found)
 
-    return sender_ids
+    # A sender ID requested both by its ID and by its ARN is returned once, keyed by the ARN AWS reports.
+    unique = {}
+    for index, sender_id in enumerate(sender_ids):
+        arn = sender_id.get("SenderIdArn") if isinstance(sender_id, dict) else None
+        unique.setdefault(arn if isinstance(arn, str) else index, sender_id)
+
+    return list(unique.values())
 
 
 def validate_sender_id(module, sender_id):

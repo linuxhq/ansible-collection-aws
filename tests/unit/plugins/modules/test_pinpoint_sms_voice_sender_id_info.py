@@ -150,28 +150,57 @@ def test_only_missing_sender_ids_return_empty_results():
     assert raised.value.values["sender_ids"] == []
 
 
-@pytest.mark.parametrize(
-    ("sender_ids", "expected"),
-    [
-        (
-            [
+SHARED_ARN = "arn:aws:sms-voice:us-east-1:210987654321:sender-id/EXAMPLE/DE"
+
+
+def test_only_exact_repeats_are_removed_from_requests():
+    # One name and country can belong to several accounts, so a local ID and ARNs of other accounts all stay.
+    assert plugin.unique_sender_ids(
+        [
+            {"sender_id": "EXAMPLE", "iso_country_code": "DE"},
+            {"sender_id": ARN, "iso_country_code": "DE"},
+            {"sender_id": SHARED_ARN, "iso_country_code": "DE"},
+            {"sender_id": "EXAMPLE", "iso_country_code": "DE"},
+            {"sender_id": "EXAMPLE", "iso_country_code": "FR"},
+        ]
+    ) == [
+        {"IsoCountryCode": "DE", "SenderId": "EXAMPLE"},
+        {"IsoCountryCode": "DE", "SenderId": ARN},
+        {"IsoCountryCode": "DE", "SenderId": SHARED_ARN},
+        {"IsoCountryCode": "FR", "SenderId": "EXAMPLE"},
+    ]
+
+
+def test_same_named_sender_ids_of_different_accounts_are_all_returned():
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"Tags": []}
+    module = FakeModule(
+        params(
+            sender_ids=[
                 {"sender_id": "EXAMPLE", "iso_country_code": "DE"},
                 {"sender_id": ARN, "iso_country_code": "DE"},
-                {"sender_id": "EXAMPLE", "iso_country_code": "FR"},
-            ],
-            [
-                {"IsoCountryCode": "DE", "SenderId": ARN},
-                {"IsoCountryCode": "FR", "SenderId": "EXAMPLE"},
-            ],
+                {"sender_id": SHARED_ARN, "iso_country_code": "DE"},
+            ]
         ),
-        (
-            [{"sender_id": ARN, "iso_country_code": "DE"}, {"sender_id": "EXAMPLE", "iso_country_code": "DE"}],
-            [{"IsoCountryCode": "DE", "SenderId": ARN}],
-        ),
-    ],
-)
-def test_ids_and_arns_of_one_sender_id_are_described_once(sender_ids, expected):
-    assert plugin.unique_sender_ids(sender_ids) == expected
+        client=client,
+    )
+    own = {"IsoCountryCode": "DE", "SenderId": "EXAMPLE", "SenderIdArn": ARN}
+    shared = {"IsoCountryCode": "DE", "SenderId": "EXAMPLE", "SenderIdArn": SHARED_ARN}
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=[{"SenderIds": [own]}, {"SenderIds": [own]}, {"SenderIds": [shared]}],
+        ) as query,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert query.call_count == 3
+    # The local sender ID, found by its ID and by its ARN, is returned once.
+    assert [sender_id["sender_id_arn"] for sender_id in raised.value.values["sender_ids"]] == [ARN, SHARED_ARN]
 
 
 def test_id_lookup_fails_on_other_errors():
