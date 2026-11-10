@@ -102,6 +102,7 @@ options:
       resources:
         description:
           - The resources to encrypt. The only supported value is V(secrets).
+          - When omitted or empty, EKS uses V(secrets).
           - For a cluster running Kubernetes 1.28 or later, EKS encrypts all Kubernetes API data by default, and this no
             longer affects which resources are encrypted.
         elements: str
@@ -1085,6 +1086,11 @@ def desired_cluster(module, create=False):
 
     if desired.get("encryption_config") == []:
         del desired["encryption_config"]
+
+    # EKS stores an omitted or empty resources list as ["secrets"], the only value it accepts.
+    for entry in desired.get("encryption_config") or []:
+        if not entry.get("resources"):
+            entry["resources"] = ["secrets"]
 
     # CreateCluster rejects an empty remote node or pod network list, so an empty list means none, and a configuration
     # without networks is omitted. An update still sends empty lists, because that is how EKS removes existing remote

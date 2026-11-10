@@ -964,7 +964,7 @@ def comparable_prefix_list(prefix_list):
 def comparable_entries(entries):
     normalized_entries = boto3_resource_list_to_ansible_dict(entries, transform_tags=False, force_tags=False)
     result = []
-    for entry in normalized_entries or []:
+    for entry in normalized_entries:
         normalized_entry = {}
         # EC2 returns a cleared description as no description, so an empty one is never sent or compared.
         for field in ("cidr", "description"):

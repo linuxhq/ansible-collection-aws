@@ -447,7 +447,7 @@ def test_identity_in_another_country_pool_does_not_conflict():
             "pool_id": None,
         }
     )
-    pool = {"PoolId": "pool-1", "Status": "ACTIVE"}
+    pool = {"MessageType": "TRANSACTIONAL", "PoolId": "pool-1", "Status": "ACTIVE"}
 
     with (
         patch.object(plugin, "describe_pools", return_value=[pool]),

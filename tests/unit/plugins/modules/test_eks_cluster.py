@@ -1,3 +1,4 @@
+import copy
 from unittest.mock import ANY, Mock, call, patch
 
 import pytest
@@ -1330,6 +1331,78 @@ def test_create_only_settings_compare_the_current_value(overrides, message):
         assert raised.value.values["changed"] is False
 
     assert client.mock_calls == []
+
+
+STORED_ENCRYPTION = [{"provider": {"keyArn": "arn:key"}, "resources": ["secrets"]}]
+ENCRYPTED_CLUSTER = {"name": "example", "arn": "arn:example", "status": "ACTIVE", "encryptionConfig": STORED_ENCRYPTION}
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "resources",
+    [{}, {"resources": None}, {"resources": []}, {"resources": ["secrets"]}],
+    ids=["omitted", "null", "empty", "explicit"],
+)
+def test_omitted_or_empty_encryption_resources_match_what_eks_stores(resources, check_mode):
+    params = eks_params(encryption_config=[{"provider": {"key_arn": "arn:key"}, **resources}])
+
+    client, result = run_present(FakeModule(params, check_mode=check_mode), [ENCRYPTED_CLUSTER])
+
+    assert result["changed"] is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "encryption",
+    [
+        {"provider": {"key_arn": "arn:other"}},
+        {"provider": {"key_arn": "arn:other"}, "resources": []},
+        {"provider": {"key_arn": "arn:key"}, "resources": ["configmaps"]},
+    ],
+    ids=["other-key-omitted", "other-key-empty", "other-resources"],
+)
+def test_defaulted_encryption_resources_still_detect_a_different_configuration(encryption, check_mode):
+    module = FakeModule(eks_params(encryption_config=[encryption]), check_mode=check_mode)
+    with (
+        patch.object(plugin, "describe_cluster", return_value=ENCRYPTED_CLUSTER),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    assert raised.value.values["msg"] == "Cannot modify encryption_config for existing EKS cluster example"
+
+
+@pytest.mark.parametrize(
+    ("resources", "expected"),
+    [
+        ({}, ["secrets"]),
+        ({"resources": None}, ["secrets"]),
+        ({"resources": []}, ["secrets"]),
+        ({"resources": ["secrets"]}, ["secrets"]),
+        ({"resources": ["configmaps"]}, ["configmaps"]),
+    ],
+    ids=["omitted", "null", "empty", "explicit", "other-value"],
+)
+def test_create_sends_and_predicts_the_encryption_resources_eks_stores(resources, expected):
+    encryption = {"provider": {"key_arn": "arn:key"}, **resources}
+    params = eks_params(
+        encryption_config=[encryption],
+        resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
+        role_arn="arn:role",
+    )
+    original = copy.deepcopy(encryption)
+    stored = [{"provider": {"keyArn": "arn:key"}, "resources": expected}]
+    client = Mock(create_cluster=Mock(return_value={"cluster": dict(CREATED_CLUSTER, encryptionConfig=stored)}))
+
+    client, real = run_present(FakeModule(params), [None, dict(DESCRIBED_CLUSTER, encryptionConfig=stored)], client)
+    check_client, check = run_present(FakeModule(params, check_mode=True), [None])
+
+    assert client.create_cluster.call_args.kwargs["encryptionConfig"] == stored
+    assert check_client.mock_calls == []
+    assert check["cluster"]["encryption_config"] == real["cluster"]["encryption_config"]
+    assert check["cluster"]["encryption_config"][0]["resources"] == expected
+    assert encryption == original
 
 
 AUTO_MODE_CLUSTER = {
