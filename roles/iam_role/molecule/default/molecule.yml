@@ -39,6 +39,17 @@ provisioner:
               Action:
                 - sts:AssumeRole
 
+        iam_role_list:
+          "{{ iam_role_name_list |
+              map(
+                'combine', {
+                  'assume_role_policy_document': iam_role_assume_role_policy_document,
+                  'create_instance_profile': false,
+                  'delete_instance_profile': true,
+                  'managed_policies': iam_role_managed_policy_list
+                }
+              ) }}"
+
         iam_role_managed_policy_list:
           - AmazonEC2ReadOnlyAccess
           - AmazonVPCReadOnlyAccess
@@ -57,17 +68,6 @@ provisioner:
           - name: molecule-role-10
           - name: molecule-role-11
           - name: molecule-role-12
-
-        iam_role_list:
-          "{{ iam_role_name_list |
-              map(
-                'combine', {
-                  'assume_role_policy_document': iam_role_assume_role_policy_document,
-                  'create_instance_profile': false,
-                  'delete_instance_profile': true,
-                  'managed_policies': iam_role_managed_policy_list
-                }
-              ) }}"
 
 scenario:
   test_sequence:

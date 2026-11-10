@@ -1,0 +1,3 @@
+---
+trivial:
+  - Molecule scenarios - sort inventory variables and the facts set by "Ensure inventory lists are formatted" alphabetically.

@@ -62,6 +62,9 @@
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
+        ec2_transit_gateway_list:
+          "{{ ec2_transit_gateway_list |
+              map('combine', {'state': 'absent'}) }}"
         ec2_transit_gateway_route_table_list:
           - name: molecule
             transit_gateway_id:
@@ -77,14 +80,11 @@
         ec2_transit_gateway_vpc_attachment_list:
           "{{ ec2_transit_gateway_vpc_attachment_list |
               map('combine', {'state': 'absent'}) }}"
-        ec2_transit_gateway_list:
-          "{{ ec2_transit_gateway_list |
+        ec2_vpc_net_list:
+          "{{ ec2_vpc_net_list |
               map('combine', {'state': 'absent'}) }}"
         ec2_vpc_subnet_list:
           "{{ ec2_vpc_subnet_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_net_list:
-          "{{ ec2_vpc_net_list |
               map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included
