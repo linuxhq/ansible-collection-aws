@@ -16,6 +16,24 @@
       register: __pinpoint_sms_voice_sender_id_query
       changed_when: false
 
+    - name: Ensure sender id tags are gathered
+      ansible.builtin.command:
+        cmd: >
+          aws pinpoint-sms-voice-v2 list-tags-for-resource
+            --resource-arn {{ __pinpoint_sms_voice_sender_id_query.stdout }}
+            --query Tags
+            --output json
+      register: __pinpoint_sms_voice_sender_id_tags
+      changed_when: false
+
+    - name: Ensure sender id belongs to this scenario
+      ansible.builtin.assert:
+        that:
+          - (__pinpoint_sms_voice_sender_id_tags.stdout |
+             from_json |
+             items2dict(key_name='Key', value_name='Value')).get('molecule-scenario') ==
+            'pinpoint_sms_voice_phone_pool_associate'
+
     - name: Ensure pool origination identities are verified
       ansible.builtin.assert:
         that:
