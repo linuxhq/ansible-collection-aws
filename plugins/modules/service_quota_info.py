@@ -91,6 +91,15 @@ quota:
       description: The reason the quota value could not be retrieved.
       returned: when returned by AWS
       type: dict
+      contains:
+        error_code:
+          description: The error code.
+          returned: when returned by AWS
+          type: str
+        error_message:
+          description: The error message.
+          returned: when returned by AWS
+          type: str
     global_quota:
       description: Whether the quota is global.
       returned: when returned by AWS
@@ -99,6 +108,15 @@ quota:
       description: The period over which the quota is measured.
       returned: when returned by AWS
       type: dict
+      contains:
+        period_unit:
+          description: The time unit of the period.
+          returned: when returned by AWS
+          type: str
+        period_value:
+          description: The number of time units in the period.
+          returned: when returned by AWS
+          type: int
     quota_applied_at_level:
       description: Whether the quota applies to the account or to resources.
       returned: when returned by AWS
@@ -118,6 +136,23 @@ quota:
           resource in the scope.
       returned: when returned by AWS
       type: dict
+      contains:
+        adjustable_at_level:
+          description: The level at which an increase can be requested, C(ACCOUNT), C(PER_RESOURCE), or C(ALL).
+          returned: when returned by AWS
+          type: str
+        context_id:
+          description: The ARN of the resource the quota value applies to, or C(*) for every resource in the scope.
+          returned: when returned by AWS
+          type: str
+        context_scope:
+          description: The scope the quota value is applied to, C(RESOURCE) or C(ACCOUNT).
+          returned: when returned by AWS
+          type: str
+        context_scope_type:
+          description: The resource type to which the quota can be applied.
+          returned: when returned by AWS
+          type: str
     quota_name:
       description: The quota name.
       returned: when returned by AWS
@@ -138,6 +173,23 @@ quota:
       description: The CloudWatch metric that tracks usage of the quota.
       returned: when returned by AWS
       type: dict
+      contains:
+        metric_dimensions:
+          description: The metric dimensions as name/value pairs, with names in their original case.
+          returned: when returned by AWS
+          type: dict
+        metric_name:
+          description: The name of the metric.
+          returned: when returned by AWS
+          type: str
+        metric_namespace:
+          description: The namespace of the metric.
+          returned: when returned by AWS
+          type: str
+        metric_statistic_recommendation:
+          description: The metric statistic recommended for determining quota usage.
+          returned: when returned by AWS
+          type: str
 quota_code:
   description: The gathered quota code.
   returned: always

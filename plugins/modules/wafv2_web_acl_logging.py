@@ -91,6 +91,49 @@ logging_configuration:
       description: The logging filter configuration.
       returned: when available
       type: dict
+      contains:
+        default_behavior:
+          description: How logs that match no filter are handled, C(KEEP) or C(DROP).
+          returned: when available
+          type: str
+        filters:
+          description: The filters applied to the logs.
+          returned: when available
+          type: list
+          elements: dict
+          contains:
+            behavior:
+              description: How logs that satisfy the filter are handled, C(KEEP) or C(DROP).
+              returned: when available
+              type: str
+            conditions:
+              description: The match conditions of the filter.
+              returned: when available
+              type: list
+              elements: dict
+              contains:
+                action_condition:
+                  description: The action setting that a log record must contain to meet the condition.
+                  returned: when available
+                  type: dict
+                  contains:
+                    action:
+                      description: The rule action, such as C(ALLOW), C(BLOCK), or C(COUNT).
+                      returned: when available
+                      type: str
+                label_name_condition:
+                  description: The fully qualified label name that a log record must contain to meet the condition.
+                  returned: when available
+                  type: dict
+                  contains:
+                    label_name:
+                      description: The fully qualified label name.
+                      returned: when available
+                      type: str
+            requirement:
+              description: Whether a log must match all or any of the conditions, C(MEETS_ALL) or C(MEETS_ANY).
+              returned: when available
+              type: str
     managed_by_firewall_manager:
       description: Whether AWS Firewall Manager manages the configuration.
       returned: when available
@@ -100,6 +143,28 @@ logging_configuration:
       returned: when available
       type: list
       elements: dict
+      contains:
+        method:
+          description: Present when the HTTP method is redacted.
+          returned: when available
+          type: dict
+        query_string:
+          description: Present when the query string is redacted.
+          returned: when available
+          type: dict
+        single_header:
+          description: The single header that is redacted.
+          returned: when available
+          type: dict
+          contains:
+            name:
+              description: The name of the redacted header.
+              returned: when available
+              type: str
+        uri_path:
+          description: Present when the request URI path is redacted.
+          returned: when available
+          type: dict
     resource_arn:
       description: The ARN of the AWS WAFv2 web ACL.
       returned: always

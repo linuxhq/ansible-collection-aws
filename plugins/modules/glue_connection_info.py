@@ -112,6 +112,15 @@ connections:
               description: The OAuth2 client application.
               returned: when configured
               type: dict
+              contains:
+                aws_managed_client_application_reference:
+                  description: The reference to the AWS managed client application on the SaaS side.
+                  returned: when configured
+                  type: str
+                user_managed_client_application_client_id:
+                  description: The client ID of a user managed client application.
+                  returned: when configured
+                  type: str
             o_auth2_grant_type:
               description: The OAuth2 grant type.
               returned: when configured

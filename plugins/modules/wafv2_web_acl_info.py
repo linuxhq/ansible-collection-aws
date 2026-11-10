@@ -88,6 +88,21 @@ web_acls:
       description: Application integration configuration for the web ACL.
       returned: when available
       type: dict
+      contains:
+        attributes:
+          description:
+            - The application attributes.
+            - Each attribute also contains C(values), the list of attribute value
+              strings; read it as C(attribute["values"]) because Jinja dot
+              notation cannot access a key named C(values).
+          returned: when available
+          type: list
+          elements: dict
+          contains:
+            name:
+              description: The attribute name.
+              returned: when available
+              type: str
     arn:
       description: ARN of the web ACL.
       returned: always
@@ -121,10 +136,30 @@ web_acls:
       description: CAPTCHA configuration inherited by rules.
       returned: when available
       type: dict
+      contains:
+        immunity_time_property:
+          description: How long a CAPTCHA timestamp in the token remains valid after the client solves a CAPTCHA puzzle.
+          returned: when available
+          type: dict
+          contains:
+            immunity_time:
+              description: The number of seconds that WAF considers the timestamp valid.
+              returned: when available
+              type: int
     challenge_config:
       description: Challenge configuration inherited by rules.
       returned: when available
       type: dict
+      contains:
+        immunity_time_property:
+          description: How long a challenge timestamp in the token remains valid after the client responds to a challenge.
+          returned: when available
+          type: dict
+          contains:
+            immunity_time:
+              description: The number of seconds that WAF considers the timestamp valid.
+              returned: when available
+              type: int
     custom_response_bodies:
       description:
         - Custom response bodies available to web ACL rules.
@@ -135,10 +170,100 @@ web_acls:
       description: Data protection configuration for the web ACL.
       returned: when available
       type: dict
+      contains:
+        data_protections:
+          description: Data protection configurations for specific web request field types.
+          returned: when available
+          type: list
+          elements: dict
+          contains:
+            action:
+              description: How the field is protected.
+              returned: when available
+              type: str
+            exclude_rate_based_details:
+              description: Whether rate-based rule details are also excluded from the data protection for the field.
+              returned: when available
+              type: bool
+            exclude_rule_match_details:
+              description: Whether rule match details are also excluded from the data protection for the field.
+              returned: when available
+              type: bool
+            field:
+              description: The field type and optional keys that the protection applies to.
+              returned: when available
+              type: dict
+              contains:
+                field_keys:
+                  description: The keys to protect for the field type.
+                  returned: when available
+                  type: list
+                  elements: str
+                field_type:
+                  description: The web request component type to protect.
+                  returned: when available
+                  type: str
     default_action:
       description: Action applied when no rule matches.
       returned: always
       type: dict
+      contains:
+        allow:
+          description: Present when WAF allows requests by default.
+          returned: when available
+          type: dict
+          contains:
+            custom_request_handling:
+              description: Custom handling for the web request.
+              returned: when available
+              type: dict
+              contains:
+                insert_headers:
+                  description: The HTTP headers to insert into the request.
+                  returned: when available
+                  type: list
+                  elements: dict
+                  contains:
+                    name:
+                      description: The name of the custom header.
+                      returned: when available
+                      type: str
+                    value:
+                      description: The value of the custom header.
+                      returned: when available
+                      type: str
+        block:
+          description: Present when WAF blocks requests by default.
+          returned: when available
+          type: dict
+          contains:
+            custom_response:
+              description: A custom response for the web request.
+              returned: when available
+              type: dict
+              contains:
+                custom_response_body_key:
+                  description: The key of the custom response body that WAF returns to the client.
+                  returned: when available
+                  type: str
+                response_code:
+                  description: The HTTP status code to return to the client.
+                  returned: when available
+                  type: int
+                response_headers:
+                  description: The HTTP headers to use in the response.
+                  returned: when available
+                  type: list
+                  elements: dict
+                  contains:
+                    name:
+                      description: The name of the custom header.
+                      returned: when available
+                      type: str
+                    value:
+                      description: The value of the custom header.
+                      returned: when available
+                      type: str
     description:
       description: Description of the web ACL.
       returned: when available
@@ -159,6 +284,44 @@ web_acls:
       description: Monetization configuration for the web ACL.
       returned: when available
       type: dict
+      contains:
+        crypto_config:
+          description: The cryptocurrency payment configuration, including the blockchain networks and wallet addresses that receive payments.
+          returned: when available
+          type: dict
+          contains:
+            payment_networks:
+              description: The blockchain payment networks configured to receive payments.
+              returned: when available
+              type: list
+              elements: dict
+              contains:
+                chain:
+                  description: The blockchain network for receiving payments.
+                  returned: when available
+                  type: str
+                prices:
+                  description: The price configuration for this payment network.
+                  returned: when available
+                  type: list
+                  elements: dict
+                  contains:
+                    amount:
+                      description: The price per request as a decimal string in the specified currency.
+                      returned: when available
+                      type: str
+                    currency:
+                      description: The cryptocurrency for payment.
+                      returned: when available
+                      type: str
+                wallet_address:
+                  description: The wallet address on the blockchain network where payments are sent.
+                  returned: when available
+                  type: str
+        currency_mode:
+          description: Whether the configuration uses real or test currency, C(REAL) or C(TEST).
+          returned: when available
+          type: str
     name:
       description: Name of the web ACL.
       returned: always
@@ -167,16 +330,147 @@ web_acls:
       description: On-source DDoS protection configuration.
       returned: when available
       type: dict
+      contains:
+        alb_low_reputation_mode:
+          description: The level of DDoS protection that applies to web ACLs associated with Application Load Balancers.
+          returned: when available
+          type: str
     post_process_firewall_manager_rule_groups:
       description: Firewall Manager rule groups evaluated after the web ACL rules.
       returned: when available
       type: list
       elements: dict
+      contains:
+        firewall_manager_statement:
+          description: The Firewall Manager rule group reference statement.
+          returned: when available
+          type: dict
+        name:
+          description: The name of the rule group.
+          returned: when available
+          type: str
+        override_action:
+          description: The action used in place of the action that results from the rule group evaluation.
+          returned: when available
+          type: dict
+          contains:
+            count:
+              description: Present when the rule group evaluation result is overridden to count only.
+              returned: when available
+              type: dict
+              contains:
+                custom_request_handling:
+                  description: Custom handling for the web request.
+                  returned: when available
+                  type: dict
+                  contains:
+                    insert_headers:
+                      description: The HTTP headers to insert into the request.
+                      returned: when available
+                      type: list
+                      elements: dict
+                      contains:
+                        name:
+                          description: The name of the custom header.
+                          returned: when available
+                          type: str
+                        value:
+                          description: The value of the custom header.
+                          returned: when available
+                          type: str
+            none:
+              description: Present when the rule group evaluation result is not overridden.
+              returned: when available
+              type: dict
+        priority:
+          description: The order in which WAF evaluates the rule group, starting from the lowest priority.
+          returned: when available
+          type: int
+        visibility_config:
+          description: The CloudWatch metrics and web request sampling configuration.
+          returned: when available
+          type: dict
+          contains:
+            cloud_watch_metrics_enabled:
+              description: Whether the associated resource sends metrics to CloudWatch.
+              returned: when available
+              type: bool
+            metric_name:
+              description: The name of the CloudWatch metric dimension.
+              returned: when available
+              type: str
+            sampled_requests_enabled:
+              description: Whether WAF stores a sampling of the web requests that match the rules.
+              returned: when available
+              type: bool
     pre_process_firewall_manager_rule_groups:
       description: Firewall Manager rule groups evaluated before the web ACL rules.
       returned: when available
       type: list
       elements: dict
+      contains:
+        firewall_manager_statement:
+          description: The Firewall Manager rule group reference statement.
+          returned: when available
+          type: dict
+        name:
+          description: The name of the rule group.
+          returned: when available
+          type: str
+        override_action:
+          description: The action used in place of the action that results from the rule group evaluation.
+          returned: when available
+          type: dict
+          contains:
+            count:
+              description: Present when the rule group evaluation result is overridden to count only.
+              returned: when available
+              type: dict
+              contains:
+                custom_request_handling:
+                  description: Custom handling for the web request.
+                  returned: when available
+                  type: dict
+                  contains:
+                    insert_headers:
+                      description: The HTTP headers to insert into the request.
+                      returned: when available
+                      type: list
+                      elements: dict
+                      contains:
+                        name:
+                          description: The name of the custom header.
+                          returned: when available
+                          type: str
+                        value:
+                          description: The value of the custom header.
+                          returned: when available
+                          type: str
+            none:
+              description: Present when the rule group evaluation result is not overridden.
+              returned: when available
+              type: dict
+        priority:
+          description: The order in which WAF evaluates the rule group, starting from the lowest priority.
+          returned: when available
+          type: int
+        visibility_config:
+          description: The CloudWatch metrics and web request sampling configuration.
+          returned: when available
+          type: dict
+          contains:
+            cloud_watch_metrics_enabled:
+              description: Whether the associated resource sends metrics to CloudWatch.
+              returned: when available
+              type: bool
+            metric_name:
+              description: The name of the CloudWatch metric dimension.
+              returned: when available
+              type: str
+            sampled_requests_enabled:
+              description: Whether WAF stores a sampling of the web requests that match the rules.
+              returned: when available
+              type: bool
     retrofitted_by_firewall_manager:
       description: Whether Firewall Manager retrofitted the web ACL.
       returned: when available
@@ -186,6 +480,249 @@ web_acls:
       returned: when available
       type: list
       elements: dict
+      contains:
+        action:
+          description: The action that WAF takes on a web request that matches the rule statement.
+          returned: when available
+          type: dict
+          contains:
+            allow:
+              description: Present when WAF allows the web request.
+              returned: when available
+              type: dict
+              contains:
+                custom_request_handling:
+                  description: Custom handling for the web request.
+                  returned: when available
+                  type: dict
+                  contains:
+                    insert_headers:
+                      description: The HTTP headers to insert into the request.
+                      returned: when available
+                      type: list
+                      elements: dict
+                      contains:
+                        name:
+                          description: The name of the custom header.
+                          returned: when available
+                          type: str
+                        value:
+                          description: The value of the custom header.
+                          returned: when available
+                          type: str
+            block:
+              description: Present when WAF blocks the web request.
+              returned: when available
+              type: dict
+              contains:
+                custom_response:
+                  description: A custom response for the web request.
+                  returned: when available
+                  type: dict
+                  contains:
+                    custom_response_body_key:
+                      description: The key of the custom response body that WAF returns to the client.
+                      returned: when available
+                      type: str
+                    response_code:
+                      description: The HTTP status code to return to the client.
+                      returned: when available
+                      type: int
+                    response_headers:
+                      description: The HTTP headers to use in the response.
+                      returned: when available
+                      type: list
+                      elements: dict
+                      contains:
+                        name:
+                          description: The name of the custom header.
+                          returned: when available
+                          type: str
+                        value:
+                          description: The value of the custom header.
+                          returned: when available
+                          type: str
+            captcha:
+              description: Present when WAF runs a CAPTCHA check against the web request.
+              returned: when available
+              type: dict
+              contains:
+                custom_request_handling:
+                  description: Custom handling for the web request when its token is valid and unexpired.
+                  returned: when available
+                  type: dict
+                  contains:
+                    insert_headers:
+                      description: The HTTP headers to insert into the request.
+                      returned: when available
+                      type: list
+                      elements: dict
+                      contains:
+                        name:
+                          description: The name of the custom header.
+                          returned: when available
+                          type: str
+                        value:
+                          description: The value of the custom header.
+                          returned: when available
+                          type: str
+            challenge:
+              description: Present when WAF runs a challenge check against the web request.
+              returned: when available
+              type: dict
+              contains:
+                custom_request_handling:
+                  description: Custom handling for the web request when its token is valid and unexpired.
+                  returned: when available
+                  type: dict
+                  contains:
+                    insert_headers:
+                      description: The HTTP headers to insert into the request.
+                      returned: when available
+                      type: list
+                      elements: dict
+                      contains:
+                        name:
+                          description: The name of the custom header.
+                          returned: when available
+                          type: str
+                        value:
+                          description: The value of the custom header.
+                          returned: when available
+                          type: str
+            count:
+              description: Present when WAF counts the web request and continues evaluating the remaining rules.
+              returned: when available
+              type: dict
+              contains:
+                custom_request_handling:
+                  description: Custom handling for the web request.
+                  returned: when available
+                  type: dict
+                  contains:
+                    insert_headers:
+                      description: The HTTP headers to insert into the request.
+                      returned: when available
+                      type: list
+                      elements: dict
+                      contains:
+                        name:
+                          description: The name of the custom header.
+                          returned: when available
+                          type: str
+                        value:
+                          description: The value of the custom header.
+                          returned: when available
+                          type: str
+            monetize:
+              description: Present when WAF returns an HTTP 402 Payment Required response with a price manifest.
+              returned: when available
+              type: dict
+              contains:
+                price_multiplier:
+                  description: The multiplier applied to the base price defined in the web ACL monetization configuration.
+                  returned: when available
+                  type: str
+        captcha_config:
+          description: How WAF handles CAPTCHA evaluations for the rule.
+          returned: when available
+          type: dict
+          contains:
+            immunity_time_property:
+              description: How long a CAPTCHA timestamp in the token remains valid after the client solves a CAPTCHA puzzle.
+              returned: when available
+              type: dict
+              contains:
+                immunity_time:
+                  description: The number of seconds that WAF considers the timestamp valid.
+                  returned: when available
+                  type: int
+        challenge_config:
+          description: How WAF handles challenge evaluations for the rule.
+          returned: when available
+          type: dict
+          contains:
+            immunity_time_property:
+              description: How long a challenge timestamp in the token remains valid after the client responds to a challenge.
+              returned: when available
+              type: dict
+              contains:
+                immunity_time:
+                  description: The number of seconds that WAF considers the timestamp valid.
+                  returned: when available
+                  type: int
+        name:
+          description: The name of the rule.
+          returned: when available
+          type: str
+        override_action:
+          description: The action used in place of the action that results from the rule group evaluation.
+          returned: when available
+          type: dict
+          contains:
+            count:
+              description: Present when the rule group evaluation result is overridden to count only.
+              returned: when available
+              type: dict
+              contains:
+                custom_request_handling:
+                  description: Custom handling for the web request.
+                  returned: when available
+                  type: dict
+                  contains:
+                    insert_headers:
+                      description: The HTTP headers to insert into the request.
+                      returned: when available
+                      type: list
+                      elements: dict
+                      contains:
+                        name:
+                          description: The name of the custom header.
+                          returned: when available
+                          type: str
+                        value:
+                          description: The value of the custom header.
+                          returned: when available
+                          type: str
+            none:
+              description: Present when the rule group evaluation result is not overridden.
+              returned: when available
+              type: dict
+        priority:
+          description: The order in which WAF evaluates the rule, starting from the lowest priority.
+          returned: when available
+          type: int
+        rule_labels:
+          description: Labels applied to web requests that match the rule statement.
+          returned: when available
+          type: list
+          elements: dict
+          contains:
+            name:
+              description: The label string.
+              returned: when available
+              type: str
+        statement:
+          description: The WAF processing statement for the rule, such as a byte match or size constraint statement.
+          returned: when available
+          type: dict
+        visibility_config:
+          description: The CloudWatch metrics and web request sampling configuration.
+          returned: when available
+          type: dict
+          contains:
+            cloud_watch_metrics_enabled:
+              description: Whether the associated resource sends metrics to CloudWatch.
+              returned: when available
+              type: bool
+            metric_name:
+              description: The name of the CloudWatch metric dimension.
+              returned: when available
+              type: str
+            sampled_requests_enabled:
+              description: Whether WAF stores a sampling of the web requests that match the rules.
+              returned: when available
+              type: bool
     tags:
       description:
         - Tags of the web ACL.
@@ -201,6 +738,19 @@ web_acls:
       description: Sampling, metrics, and CloudWatch configuration.
       returned: always
       type: dict
+      contains:
+        cloud_watch_metrics_enabled:
+          description: Whether the associated resource sends metrics to CloudWatch.
+          returned: when available
+          type: bool
+        metric_name:
+          description: The name of the CloudWatch metric dimension.
+          returned: when available
+          type: str
+        sampled_requests_enabled:
+          description: Whether WAF stores a sampling of the web requests that match the rules.
+          returned: when available
+          type: bool
 """
 
 import json
