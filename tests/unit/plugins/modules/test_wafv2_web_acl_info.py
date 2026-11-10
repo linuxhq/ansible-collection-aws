@@ -171,7 +171,7 @@ def test_cloudfront_scope_outside_us_east_1_fails_before_aws():
 
 
 def test_byte_values_are_returned_as_json_safe_text():
-    acl = {"ARN": "arn:web-acl", "CustomResponseBodies": {"body": {"Content": bytearray(b"hello")}}, **SUMMARY}
+    acl = {"ARN": "arn:web-acl", "CustomResponseBodies": {"body": {"Content": b"hello"}}, **SUMMARY}
     result, _require, _query = run(FakeModule(params(id="acl-1"), client=acl_client(acl)), [SUMMARY])
 
     assert result.values["web_acls"][0]["custom_response_bodies"]["body"]["content"] == "hello"

@@ -229,10 +229,8 @@ RESOURCE_TYPE_MAPS = {
 
 
 def json_default(value):
-    if isinstance(value, (bytes, bytearray)):
-        return to_text(bytes(value) if isinstance(value, bytearray) else value, errors="surrogate_or_strict")
-
-    return value.isoformat() if hasattr(value, "isoformat") else str(value)
+    # SearchString is the only WebACL member JSON cannot encode; botocore returns blobs as bytes.
+    return to_text(value, errors="surrogate_or_strict")
 
 
 def association_config(config):

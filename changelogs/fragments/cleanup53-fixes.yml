@@ -1,0 +1,6 @@
+---
+trivial:
+  - ec2_vpc_vpn - Remove a check-mode clause that could never apply after a connection is created.
+  - notifications_contacts - Read a contact's address directly once it has been validated.
+  - query_list - Remove lowercase marker and truncation handling that no paged AWS operation uses.
+  - wafv2_web_acl_info - Remove JSON conversion branches for value types that a web ACL cannot contain.
