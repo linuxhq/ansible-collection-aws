@@ -4,6 +4,8 @@ dependencies:
     tags: eks_cluster
   - role: ec2_vpc_subnet_info
     tags: eks_cluster
+  - role: kms_key_info
+    tags: eks_cluster
 galaxy_info:
   role_name: eks_cluster
   author: Taylor Kimball

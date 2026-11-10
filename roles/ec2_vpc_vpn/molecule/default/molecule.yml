@@ -41,6 +41,8 @@ provisioner:
             ip_address: 1.1.1.10
           - name: molecule-01
             ip_address: 1.1.1.11
+          - name: molecule-02
+            ip_address: 1.1.1.12
 
         ec2_transit_gateway_info_filters:
           state:
@@ -80,6 +82,17 @@ provisioner:
                 phase2_encryption_algorithms: [AES256]
                 phase2_integrity_algorithms: [SHA2-256]
                 phase2_dh_group_numbers: [16]
+
+          - name: molecule-02
+            customer_gateway_id:
+              "{{ _ec2_customer_gateway_info_dict['molecule-02'].customer_gateway_id }}"
+            transit_gateway_id:
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+            tunnel_inside_ip_version: ipv6
+            wait_timeout: 1200
+            tunnel_options:
+              - tunnel_inside_ipv6_cidr: fd00::100/126
+              - tunnel_inside_ipv6_cidr: fd00::200/126
 
         ec2_vpc_vpn_list_update:
           - name: molecule-00
@@ -129,6 +142,17 @@ provisioner:
                 phase2_encryption_algorithms: [AES128]
               - phase1_encryption_algorithms: [AES128]
                 phase2_encryption_algorithms: [AES128]
+
+          - name: molecule-02
+            customer_gateway_id:
+              "{{ _ec2_customer_gateway_info_dict['molecule-02'].customer_gateway_id }}"
+            transit_gateway_id:
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+            tunnel_inside_ip_version: ipv6
+            wait_timeout: 1200
+            tunnel_options:
+              - tunnel_inside_ipv6_cidr: fd00::100/126
+              - tunnel_inside_ipv6_cidr: fd00::200/126
 
 scenario:
   test_sequence:

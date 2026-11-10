@@ -24,6 +24,11 @@
         - molecule-idempotence-notest
       check_mode: false
 
+    - role: kms_key
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
     - role: eks_cluster
       eks_cluster_list: []
       tags:
