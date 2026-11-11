@@ -296,3 +296,39 @@ def test_connection_schema_version_filter_requires_newer_botocore(filters, gated
         )
     else:
         module.require_botocore_at_least.assert_not_called()
+
+
+@pytest.mark.parametrize("name", ["example", None])
+@pytest.mark.parametrize("hide_password", [True, False])
+def test_hide_password_removes_scram_password(name, hide_password):
+    properties = {
+        "KAFKA_BOOTSTRAP_SERVERS": "broker:9096",
+        "KAFKA_SASL_MECHANISM": "SCRAM-SHA-512",
+        "KAFKA_SASL_SCRAM_USERNAME": "user",
+        "KAFKA_SASL_SCRAM_PASSWORD": "EXAMPLE-PASSWORD",
+    }
+    connection = {
+        "Name": "example",
+        "ConnectionType": "KAFKA",
+        "ConnectionProperties": dict(properties),
+        "SparkProperties": dict(properties),
+    }
+    client = Mock(get_connection=Mock(return_value={"Connection": connection}))
+    module = FakeModule(glue_params(name=name, hide_password=hide_password), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[connection]),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    returned = result.value.values["connections"][0]
+    expected = dict(properties)
+    if hide_password:
+        del expected["KAFKA_SASL_SCRAM_PASSWORD"]
+
+    assert returned["connection_properties"] == expected
+    assert returned["spark_properties"] == expected
+    assert returned["connection_type"] == "KAFKA"
+    assert connection["ConnectionProperties"] == properties
