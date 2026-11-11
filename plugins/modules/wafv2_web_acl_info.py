@@ -85,7 +85,7 @@ web_acls:
   elements: dict
   contains:
     application_config:
-      description: Application integration configuration for the web ACL.
+      description: Application attributes recorded when the web ACL was created, which WAF uses to recommend protection packs.
       returned: when available
       type: dict
       contains:

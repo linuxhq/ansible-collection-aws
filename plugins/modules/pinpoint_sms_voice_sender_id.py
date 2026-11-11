@@ -124,6 +124,8 @@ sender_id:
       description:
         - The types of messages the sender ID sends, as AWS returns them.
         - C(DescribeSenderIds) returns them in title case, such as C(Transactional).
+        - C(RequestSenderId), C(UpdateSenderId) and C(ReleaseSenderId) return them in upper case, such as
+          C(TRANSACTIONAL), so a run that requests, updates or releases the sender ID returns upper case.
       returned: when returned by AWS
       type: list
       elements: str
@@ -304,6 +306,15 @@ def require_message_types(module, current):
         )
 
 
+def predict_write_message_types(sender_id):
+    """Return a described sender ID with its message types in the letter case a write response uses."""
+    if "MessageTypes" not in sender_id:
+        return sender_id
+
+    # Live: UpdateSenderId and ReleaseSenderId return TRANSACTIONAL where DescribeSenderIds returns Transactional.
+    return dict(sender_id, MessageTypes=[message_type.upper() for message_type in sender_id["MessageTypes"]])
+
+
 def update_sender_id(client, module, current):
     try:
         response = client.update_sender_id(
@@ -370,7 +381,7 @@ def ensure_present(client, module, current):
 
     if module.check_mode:
         if update:
-            current["DeletionProtectionEnabled"] = deletion_protection_enabled
+            current = dict(predict_write_message_types(current), DeletionProtectionEnabled=deletion_protection_enabled)
 
         exit_result(module, changed, apply_tag_deltas(current, tags_to_set, tag_keys_to_unset))
 
@@ -412,7 +423,8 @@ def ensure_absent(client, module, current):
         # A real run returns the ReleaseSenderId response, and botocore drops the members its model lacks, so keep
         # only the described fields that response models.
         released_fields = client.meta.service_model.shape_for("ReleaseSenderIdResult").members
-        exit_result(module, True, {key: value for key, value in current.items() if key in released_fields})
+        released = {key: value for key, value in current.items() if key in released_fields}
+        exit_result(module, True, predict_write_message_types(released))
 
     require_client_methods(module, client, SERVICE, {"release_sender_id": ("IsoCountryCode", "SenderId")})
     try:

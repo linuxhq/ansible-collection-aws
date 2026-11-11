@@ -531,7 +531,7 @@ cluster:
       elements: dict
       contains:
         provider:
-          description: The KMS key that encrypts the resources.
+          description: The KMS key used for envelope encryption of Kubernetes API data.
           returned: when returned by AWS
           type: dict
           contains:
@@ -540,7 +540,9 @@ cluster:
               returned: when returned by AWS
               type: str
         resources:
-          description: The Kubernetes resources encrypted with the KMS key.
+          description:
+            - The resources stored for the encryption configuration, C(secrets).
+            - For a cluster running Kubernetes 1.28 or later, this no longer affects which resources are encrypted.
           returned: when returned by AWS
           type: list
           elements: str
@@ -702,11 +704,11 @@ cluster:
           returned: when returned by AWS
           type: str
         service_ipv4_cidr:
-          description: The CIDR block that Kubernetes C(Pod) and C(Service) object IP addresses are assigned from.
+          description: The CIDR block Kubernetes assigns service IP addresses from.
           returned: when returned by AWS
           type: str
         service_ipv6_cidr:
-          description: The CIDR block that Kubernetes pod and service IP addresses are assigned from when the cluster uses the C(ipv6) IP family.
+          description: The CIDR block Kubernetes assigns service IP addresses from when the cluster uses the C(ipv6) IP family.
           returned: when returned by AWS
           type: str
     logging:

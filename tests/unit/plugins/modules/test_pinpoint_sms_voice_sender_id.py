@@ -414,6 +414,50 @@ def test_message_types_described_in_title_case_match(check_mode):
     assert result.values["sender_id"]["message_types"] == ["Transactional"]
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_update_returns_message_types_in_the_update_response_case(check_mode):
+    # Live: UpdateSenderId returns TRANSACTIONAL for a sender ID DescribeSenderIds reports as Transactional.
+    client = model_client()
+    client.update_sender_id.return_value = dict(described(DeletionProtectionEnabled=True), ResponseMetadata={})
+    module = FakeModule(params(deletion_protection_enabled=True), check_mode=check_mode, client=client)
+    result, _require, _paginate = run(module, describe=described(MessageTypes=["Transactional"]))
+
+    assert result.values["changed"] is True
+    assert result.values["sender_id"]["message_types"] == ["TRANSACTIONAL"]
+    assert result.values["sender_id"]["deletion_protection_enabled"] is True
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_tag_only_change_keeps_described_message_types(check_mode):
+    # No UpdateSenderId call is made, so the described values are returned in both modes.
+    client = model_client()
+    module = FakeModule(params(tags={"Team": "Ops"}), check_mode=check_mode, client=client)
+    result, _require, _paginate = run(module, describe=described(MessageTypes=["Transactional"]))
+
+    assert result.values["changed"] is True
+    assert result.values["sender_id"]["message_types"] == ["Transactional"]
+    client.update_sender_id.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_release_returns_message_types_in_the_release_response_case(check_mode):
+    # Live: ReleaseSenderId returns TRANSACTIONAL for a sender ID DescribeSenderIds reports as Transactional.
+    client = model_client()
+    client.release_sender_id.return_value = dict(described(), ResponseMetadata={})
+    del client.release_sender_id.return_value["DeletionProtectionEnabled"]
+    module = FakeModule(params(state="absent"), check_mode=check_mode, client=client)
+    result, _require, _paginate = run(module, describe=described(MessageTypes=["Transactional"]))
+
+    assert result.values["changed"] is True
+    assert result.values["sender_id"]["message_types"] == ["TRANSACTIONAL"]
+
+
+def test_predict_write_message_types_keeps_a_sender_id_without_message_types():
+    sender_id = {"SenderId": "EXAMPLE"}
+
+    assert plugin.predict_write_message_types(sender_id) is sender_id
+
+
 def test_title_case_message_type_mismatch_fails():
     module = FakeModule(params(message_types=["PROMOTIONAL"]), client=model_client())
     result, _require, _paginate = run(module, describe=described(MessageTypes=["Transactional"]))

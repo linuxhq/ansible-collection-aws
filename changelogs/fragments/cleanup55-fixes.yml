@@ -1,0 +1,12 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_sender_id - return ``message_types`` in upper case in check mode when updating or releasing a
+    sender ID, as the real ``UpdateSenderId`` and ``ReleaseSenderId`` responses do, instead of the title case that
+    ``DescribeSenderIds`` returns.
+trivial:
+  - eks_cluster, eks_cluster_info - correct the ``encryption_config[].provider``, ``encryption_config[].resources``,
+    ``kubernetes_network_config.service_ipv4_cidr`` and ``kubernetes_network_config.service_ipv6_cidr`` return
+    descriptions.
+  - wafv2_web_acl_info - correct the ``web_acls[].application_config`` return description.
+  - rds_subnet_group_info - document that ``subnets[].subnet_outpost`` is returned as an empty dictionary for a subnet
+    that is not on an Outpost.
