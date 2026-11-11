@@ -602,16 +602,37 @@ def test_list_tags_error_is_reported():
 
 def test_sdk_methods_are_checked_before_writes():
     client = model_client()
+    client.list_tags_for_resource.return_value = {"Tags": [{"Key": "Old", "Value": "x"}]}
+    client.update_sender_id.return_value = dict(described(DeletionProtectionEnabled=True), ResponseMetadata={})
     module = FakeModule(params(deletion_protection_enabled=True, tags={"New": "1"}), client=client)
-    result, require, _paginate = run(module, describe=described(), tags=[{"Key": "Old", "Value": "x"}])
+    # One parent records the capability checks and the writes in a single ordered trace.
+    trace = Mock()
+    for write in ("update_sender_id", "untag_resource", "tag_resource"):
+        trace.attach_mock(getattr(client, write), write)
 
-    assert result.values["changed"] is True
-    assert require.call_args_list == [
-        call(
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods", trace.require),
+        patch.object(plugin, "paginated_query_with_retries", return_value={"SenderIds": [described()]}),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is True
+    assert [name for name, _args, _kwargs in trace.mock_calls] == [
+        "require",
+        "require",
+        "require",
+        "update_sender_id",
+        "untag_resource",
+        "tag_resource",
+    ]
+    assert trace.mock_calls[:3] == [
+        call.require(
             module, client, "Pinpoint SMS Voice V2", {"describe_sender_ids": ("MaxResults", "NextToken", "SenderIds")}
         ),
-        call(module, client, "Pinpoint SMS Voice V2", {"list_tags_for_resource": ("ResourceArn",)}),
-        call(
+        call.require(module, client, "Pinpoint SMS Voice V2", {"list_tags_for_resource": ("ResourceArn",)}),
+        call.require(
             module,
             client,
             "Pinpoint SMS Voice V2",
@@ -622,6 +643,9 @@ def test_sdk_methods_are_checked_before_writes():
             },
         ),
     ]
+    trace.update_sender_id.assert_called_once()
+    trace.untag_resource.assert_called_once()
+    trace.tag_resource.assert_called_once()
 
 
 def test_unsupported_sdk_fails_before_writes():

@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - ssm_document - detect a content change between a boolean and a number, such as ``true`` and ``1``, which the
+    comparison treated as equal; the document is now updated, and ``document_version=$DEFAULT`` no longer promotes a
+    ``$LATEST`` version that differs only in that way.
+  - ec2_placement_group_info - return a placement group once when more than 200 ``group_names`` are split into several
+    requests and wildcards match the same group in more than one request.

@@ -183,6 +183,63 @@ def test_default_version_promotes_matching_latest_without_duplicate_update():
     client.update_document_default_version.assert_called_once_with(DocumentVersion="2", Name="example", aws_retry=True)
 
 
+def automation_content(flag):
+    return {"schemaVersion": "0.3", "mainSteps": [{"inputs": {"InputPayload": {"flag": flag}}, "name": "run"}]}
+
+
+@pytest.mark.parametrize(("stored", "requested"), [(1, True), (True, 1), (0, False), (False, 0)])
+def test_boolean_and_number_content_values_differ(stored, requested):
+    client = Mock()
+    client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2"}}
+    current = document(automation_content(stored), DocumentType="Automation")
+    updated = document(automation_content(requested), DocumentType="Automation", DocumentVersion="2")
+    module = FakeModule(params(content=automation_content(requested), document_type="Automation"))
+    result, _wait, _get = run_present(client, module, [current, updated])
+
+    assert result.values["changed"]
+    client.update_document.assert_called_once()
+    assert json.loads(client.update_document.call_args.kwargs["Content"]) == automation_content(requested)
+    assert result.values["document"]["content"]["mainSteps"][0]["inputs"]["InputPayload"]["flag"] is requested
+
+
+@pytest.mark.parametrize("flag", [True, 1, 1.5])
+def test_identical_boolean_and_number_content_is_unchanged(flag):
+    client = Mock()
+    current = document(automation_content(flag), DocumentType="Automation")
+    module = FakeModule(params(content=automation_content(flag), document_type="Automation"))
+    result, _wait, _get = run_present(client, module, [current, current])
+
+    assert not result.values["changed"]
+    client.update_document.assert_not_called()
+    client.update_document_default_version.assert_not_called()
+
+
+def test_integer_and_float_content_values_stay_equal():
+    assert plugin.same_json({"a": [1, {"b": 2}]}, {"a": [1.0, {"b": 2.0}]})
+    assert not plugin.same_json({"a": [1]}, {"a": [True]})
+    assert not plugin.same_json({"a": 1}, {"a": 1, "b": 2})
+    assert not plugin.same_json([1], [1, 2])
+    assert plugin.same_json(None, None)
+    assert not plugin.same_json(None, {"content": {}})
+
+
+def test_default_version_does_not_promote_latest_differing_only_by_boolean_or_number():
+    client = Mock()
+    client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "3"}}
+    current = document(automation_content(0), DocumentType="Automation")
+    latest = document(automation_content(1), DocumentType="Automation", DocumentVersion="2")
+    updated = document(automation_content(True), DocumentType="Automation", DocumentVersion="3")
+    module = FakeModule(
+        params(content=automation_content(True), document_type="Automation", document_version="$DEFAULT")
+    )
+    result, _wait, _get = run_present(client, module, [current, latest, updated])
+
+    assert result.values["changed"]
+    client.update_document.assert_called_once()
+    assert client.update_document.call_args.kwargs["DocumentVersion"] == "$LATEST"
+    client.update_document_default_version.assert_called_once_with(DocumentVersion="3", Name="example", aws_retry=True)
+
+
 def test_default_version_waits_for_a_transitional_latest_before_promoting():
     client = Mock()
     current = document({"schemaVersion": "1.2"})

@@ -1293,14 +1293,22 @@ def test_absent_reports_unchanged_when_every_flow_log_is_already_gone():
     params = dict(dict.fromkeys(plugin.ABSENT_MATCH_FIELDS), name="main")
     params.update({"destination_options": None, "resource_ids": ["vpc-1"]})
     with (
-        patch.object(plugin, "get_flow_logs", return_value=[{"FlowLogId": "fl-1", "ResourceId": "vpc-1"}]),
-        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(
+            plugin,
+            "get_flow_logs",
+            return_value=[{"FlowLogId": "fl-1", "ResourceId": "vpc-1", "Tags": [{"Key": "Name", "Value": "main"}]}],
+        ),
+        patch.object(plugin, "query_list", return_value=[]) as query,
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_absent(client, FakeModule(params))
 
     assert raised.value.values["changed"] is False
+    client.delete_flow_logs.assert_called_once()
+    assert client.delete_flow_logs.call_args.kwargs["FlowLogIds"] == ["fl-1"]
+    query.assert_called_once()
+    assert query.call_args.kwargs["FlowLogIds"] == ["fl-1"]
 
 
 def test_failed_retry_after_not_found_reports_earlier_deletes_as_changed():
