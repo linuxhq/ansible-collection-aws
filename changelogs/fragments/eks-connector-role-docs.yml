@@ -1,0 +1,4 @@
+---
+trivial:
+  - eks_cluster and eks_cluster_info - describe the returned connector_config.role_arn as the EKS Connector agent
+    role that the connected cluster uses to communicate with AWS services.

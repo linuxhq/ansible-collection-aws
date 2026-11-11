@@ -141,7 +141,7 @@ clusters:
           returned: when returned by AWS
           type: str
         role_arn:
-          description: The ARN of the role that communicates with the Kubernetes cluster.
+          description: The ARN of the EKS Connector agent role, which the connected cluster uses to communicate with AWS services.
           returned: when returned by AWS
           type: str
     control_plane_scaling_config:
