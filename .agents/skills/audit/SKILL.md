@@ -108,4 +108,4 @@ The repository's rules win over this checklist.
 - Scenarios do not depend on earlier runs.
 - Test edits keep the facts later steps rely on.
 - No test resources remain, even after a failed or stopped run.
-- No secrets in facts, logs, or output.
+- Tasks that handle secrets use task-level `no_log`.
