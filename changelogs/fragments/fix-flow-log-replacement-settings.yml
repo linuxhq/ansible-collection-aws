@@ -1,0 +1,11 @@
+---
+bugfixes:
+  - ec2_flow_log - a flow log replaced because a setting changed now keeps the ``log_format`` and
+    ``max_aggregation_interval`` of the flow log it replaces when these options are omitted, and its
+    ``destination_options`` when both flow logs deliver to S3, instead of taking the EC2 defaults; supplied
+    options, including each ``destination_options`` suboption, still win.
+  - ec2_transit_gateway_route_table - check that the installed botocore supports searching transit gateway
+    routes before creating the route table or changing its tags when ``routes`` will be reconciled, so an older
+    botocore fails with nothing changed instead of partway through the run.
+  - ec2_vpc_prefix_list_info - return a prefix list once when ``prefix_list_ids`` values in different
+    200-value batches, such as a wildcard and an exact ID, match the same list.

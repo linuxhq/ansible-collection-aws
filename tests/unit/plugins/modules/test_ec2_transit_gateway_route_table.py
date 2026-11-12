@@ -3,7 +3,9 @@ from unittest.mock import ANY, Mock, patch
 
 import pytest
 import yaml
+from botocore.session import get_session
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import sdk as sdk_utils
 from ansible_collections.linuxhq.aws.plugins.module_utils import tags as tag_utils
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_transit_gateway_route_table as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules import utils
@@ -190,6 +192,85 @@ def test_name_lookup_gates_only_describe_parameters():
             )
         },
     )
+
+
+def ec2_client_without_route_search_next_token():
+    """Return a mock client with the real EC2 model, without SearchTransitGatewayRoutes NextToken (botocore < 1.42.37)."""
+    client = Mock()
+    client._service_model = get_session().get_service_model("ec2")
+    client.meta.method_to_api_mapping = {
+        "describe_transit_gateway_route_tables": "DescribeTransitGatewayRouteTables",
+        "search_transit_gateway_routes": "SearchTransitGatewayRoutes",
+    }
+    return client
+
+
+def without_next_token(parameters):
+    def available(client, method_name):
+        names = parameters(client, method_name)
+        return [name for name in names if not (method_name == "search_transit_gateway_routes" and name == "NextToken")]
+
+    return available
+
+
+@pytest.mark.parametrize(
+    "overrides, found",
+    [
+        # A tag change on an existing table would be written before the first route search.
+        ({"tags": {"Env": "test"}, "purge_tags": False}, {"TransitGatewayRouteTableId": "tgw-rtb-1"}),
+        # A missing table would be created before the first route search.
+        ({"name": "main", "transit_gateway_id": "tgw-1", "transit_gateway_route_table_id": None}, None),
+    ],
+)
+def test_unsupported_route_search_fails_before_any_write(overrides, found):
+    client = ec2_client_without_route_search_next_token()
+    route = {"blackhole": True, "destination_cidr_block": "10.0.0.0/8", "state": "present"}
+    module = FakeModule(present_params(purge_routes=False, routes=[route], **overrides), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(
+            sdk_utils,
+            "get_boto3_client_method_parameters",
+            without_next_token(sdk_utils.get_boto3_client_method_parameters),
+        ),
+        patch.object(
+            plugin,
+            "find_route_table",
+            return_value=dict(found, State="available", TransitGatewayId="tgw-1") if found else None,
+        ),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "changed": False,
+        "msg": "Installed botocore does not support EC2 search_transit_gateway_routes parameter NextToken",
+    }
+    client.create_tags.assert_not_called()
+    client.create_transit_gateway_route_table.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "routes, purge_routes, searched",
+    [
+        (None, True, False),
+        ([], False, False),
+        ([], True, True),
+        ([{"blackhole": True, "destination_cidr_block": "10.0.0.0/8", "state": "present"}], False, True),
+    ],
+)
+def test_route_search_support_is_checked_only_when_routes_will_be_searched(routes, purge_routes, searched):
+    client = Mock()
+    module = FakeModule(present_params(purge_routes=purge_routes, routes=routes), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require_methods,
+        patch.object(plugin, "ensure_present"),
+    ):
+        plugin.main()
+
+    require_methods.assert_called_once()
+    assert ("search_transit_gateway_routes" in require_methods.call_args.args[3]) is searched
 
 
 def identifier_params(state, **identifiers):

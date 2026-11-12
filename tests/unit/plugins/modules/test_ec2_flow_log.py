@@ -1610,6 +1610,142 @@ def test_replacements_with_different_tags_are_created_in_separate_requests():
     ]
 
 
+PARQUET_FLOW_LOG = dict(
+    OLD_FLOW_LOG,
+    DestinationOptions={"FileFormat": "parquet", "HiveCompatiblePartitions": True, "PerHourPartition": True},
+    LogFormat="${version} ${srcaddr} ${dstaddr}",
+    MaxAggregationInterval=60,
+)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_destination_only_replacement_keeps_the_omitted_settings(check_mode):
+    client = Mock()
+    result = run_present(client, FakeModule(present_params(), check_mode=check_mode), [dict(PARQUET_FLOW_LOG)])
+
+    assert result["deleted_flow_log_ids"] == ["fl-old"]
+    if check_mode:
+        client.create_flow_logs.assert_not_called()
+        predicted = result["flow_logs"][0]
+        assert predicted["log_destination"] == "arn:aws:s3:::new-bucket"
+        assert predicted["destination_options"] == {
+            "file_format": "parquet",
+            "hive_compatible_partitions": True,
+            "per_hour_partition": True,
+        }
+        assert predicted["log_format"] == "${version} ${srcaddr} ${dstaddr}"
+        assert predicted["max_aggregation_interval"] == 60
+    else:
+        request = client.create_flow_logs.call_args.kwargs
+        assert request["LogDestination"] == "arn:aws:s3:::new-bucket"
+        assert request["DestinationOptions"] == {
+            "FileFormat": "parquet",
+            "HiveCompatiblePartitions": True,
+            "PerHourPartition": True,
+        }
+        assert request["LogFormat"] == "${version} ${srcaddr} ${dstaddr}"
+        assert request["MaxAggregationInterval"] == 60
+
+
+def test_supplied_settings_override_only_themselves_in_a_replacement():
+    client = Mock()
+    module = FakeModule(
+        present_params(
+            destination_options={
+                "file_format": "plain-text",
+                "hive_compatible_partitions": None,
+                "per_hour_partition": None,
+            },
+            log_format="${version}",
+        )
+    )
+    run_present(client, module, [dict(PARQUET_FLOW_LOG)])
+
+    request = client.create_flow_logs.call_args.kwargs
+    assert request["DestinationOptions"] == {
+        "FileFormat": "plain-text",
+        "HiveCompatiblePartitions": True,
+        "PerHourPartition": True,
+    }
+    assert request["LogFormat"] == "${version}"
+    assert request["MaxAggregationInterval"] == 60
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_replacement_delivering_to_cloudwatch_logs_drops_the_s3_destination_options(check_mode):
+    client = Mock()
+    module = FakeModule(
+        present_params(
+            deliver_logs_permission_arn="arn:aws:iam::123456789012:role/flow-logs",
+            log_destination=None,
+            log_destination_type="cloud-watch-logs",
+            log_group_name="flow-logs",
+        ),
+        check_mode=check_mode,
+    )
+    result = run_present(client, module, [dict(PARQUET_FLOW_LOG)])
+
+    if check_mode:
+        predicted = result["flow_logs"][0]
+        assert "destination_options" not in predicted
+        assert predicted["log_format"] == "${version} ${srcaddr} ${dstaddr}"
+        assert predicted["max_aggregation_interval"] == 60
+    else:
+        request = client.create_flow_logs.call_args.kwargs
+        assert "DestinationOptions" not in request
+        assert request["LogFormat"] == "${version} ${srcaddr} ${dstaddr}"
+        assert request["MaxAggregationInterval"] == 60
+
+
+def test_replacements_with_different_kept_settings_are_created_in_separate_requests():
+    client = Mock()
+    client.create_flow_logs.side_effect = lambda **kwargs: {
+        "FlowLogIds": [f"fl-new-{resource_id}" for resource_id in kwargs["ResourceIds"]],
+        "Unsuccessful": [],
+    }
+    client.delete_flow_logs.return_value = {}
+    flow_logs = [
+        dict(PARQUET_FLOW_LOG, FlowLogId="fl-old-1"),
+        dict(OLD_FLOW_LOG, FlowLogId="fl-old-2", MaxAggregationInterval=600, ResourceId="vpc-2"),
+        dict(PARQUET_FLOW_LOG, FlowLogId="fl-old-3", ResourceId="vpc-3"),
+    ]
+    module = FakeModule(present_params(resource_ids=["vpc-1", "vpc-2", "vpc-3"]))
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=flow_logs),
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods") as require_methods,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
+
+    requests = [
+        (
+            call.kwargs["ResourceIds"],
+            call.kwargs.get("DestinationOptions"),
+            call.kwargs.get("LogFormat"),
+            call.kwargs["MaxAggregationInterval"],
+        )
+        for call in client.create_flow_logs.call_args_list
+    ]
+    assert requests == [
+        (
+            ["vpc-1", "vpc-3"],
+            {"FileFormat": "parquet", "HiveCompatiblePartitions": True, "PerHourPartition": True},
+            "${version} ${srcaddr} ${dstaddr}",
+            60,
+        ),
+        (["vpc-2"], None, None, 600),
+    ]
+    # The SDK check covers every parameter of every request before the first create.
+    create_check = [
+        call.args[3]["create_flow_logs"]
+        for call in require_methods.call_args_list
+        if "create_flow_logs" in call.args[3]
+    ]
+    assert len(create_check) == 1
+    assert {"DestinationOptions", "LogFormat", "MaxAggregationInterval"} <= set(create_check[0])
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_replacement_tag_limit_fails_before_creating_flow_logs(check_mode):
     client = Mock()

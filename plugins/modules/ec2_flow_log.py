@@ -123,6 +123,10 @@ options:
         by this option.
       - A replacement flow log gets the tags of the flow log it replaces, changed by O(tags) and O(purge_tags) as
         they would change the tags of a kept flow log. Tags with the reserved C(aws:) prefix are not copied.
+      - A replacement flow log also keeps the O(log_format) and O(max_aggregation_interval) of the flow log it
+        replaces when these options are omitted, and its O(destination_options) when both flow logs deliver to
+        S3. Each supplied option, including each O(destination_options) suboption, replaces only its own kept
+        value.
       - This must not be empty or made only of spaces, tabs, carriage returns, and line feeds, because EC2 stores
         such a C(Name) tag as an empty value.
     required: true
@@ -351,6 +355,7 @@ state:
   type: str
 """
 
+import json
 import re
 import uuid
 
@@ -359,7 +364,7 @@ try:
 except ImportError:
     pass
 
-from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
+from ansible.module_utils.common.dict_transformations import camel_dict_to_snake_dict, snake_dict_to_camel_dict
 
 from ansible_collections.amazon.aws.plugins.module_utils.arn import parse_aws_arn
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import is_boto3_error_code
@@ -474,6 +479,34 @@ def desired_tags(module):
         return None
 
     return dict(tags, Name=module.params["name"])
+
+
+def replacement_settings(settings, replaced):
+    """Return the create settings for a replacement, keeping the replaced flow log's settings the task omits."""
+    kept = {}
+    if isinstance(replaced.get("LogFormat"), str) and replaced["LogFormat"]:
+        kept["log_format"] = replaced["LogFormat"]
+
+    if replaced.get("MaxAggregationInterval") in (60, 600):
+        kept["max_aggregation_interval"] = replaced["MaxAggregationInterval"]
+
+    effective = dict(kept, **settings)
+    # Destination options apply only to S3, so they are kept only when both flow logs deliver to S3.
+    if settings["log_destination_type"] == "s3" and replaced.get("LogDestinationType") == "s3":
+        replaced_options = replaced.get("DestinationOptions")
+        replaced_options = camel_dict_to_snake_dict(replaced_options if isinstance(replaced_options, dict) else {})
+        destination_options = {
+            key: value
+            for key, value in replaced_options.items()
+            if (key == "file_format" and value in ("plain-text", "parquet"))
+            or (key in ("hive_compatible_partitions", "per_hour_partition") and isinstance(value, bool))
+        }
+        # Each supplied suboption replaces only its own kept value.
+        destination_options.update(settings.get("destination_options", {}))
+        if destination_options:
+            effective["destination_options"] = destination_options
+
+    return effective
 
 
 def matching_flow_logs(module, flow_logs, desired):
@@ -696,7 +729,6 @@ def ensure_present(client, module):
         desired["traffic_type"] = module.params["traffic_type"] or "ALL"
 
     desired.update(desired_match_fields(module, PRESENT_MATCH_FIELDS))
-    destination_options = comparable_destination_options(module)
     flow_logs = get_flow_logs(client, module)
     current = matching_flow_logs(module, flow_logs, desired)
     for resource_id in resource_ids:
@@ -723,13 +755,19 @@ def ensure_present(client, module):
 
     matched_resource_ids = {flow_log.get("ResourceId") for flow_log in current}
     missing_resource_ids = [resource_id for resource_id in resource_ids if resource_id not in matched_resource_ids]
+    # name is sent as the Name tag, not as a flow log setting.
+    create_settings = {key: value for key, value in desired.items() if key != "name"}
+    created_settings = {}
     created_tags = {}
     for resource_id in missing_resource_ids:
         # A replacement keeps the tags of the flow log it replaces, as a kept flow log would; EC2 rejects aws: keys.
         replaced_tags = {}
+        created_settings[resource_id] = create_settings
         for flow_log in superseded_flow_logs:
             if flow_log.get("ResourceId") == resource_id:
                 replaced_tags.update(boto3_tag_list_to_ansible_dict(flow_log.get("Tags") or []))
+                # It also keeps the settings the task omits; as with tags, the last replaced flow log wins.
+                created_settings[resource_id] = replacement_settings(create_settings, flow_log)
 
         replaced_tags = {key: value for key, value in replaced_tags.items() if not key.lower().startswith("aws:")}
         if tags is None:
@@ -741,8 +779,6 @@ def ensure_present(client, module):
             require_resulting_tag_limit(module, replaced_tags, tags_to_set, tag_keys_to_unset, 50, "EC2 flow log")
             created_tags[resource_id] = updated_tags(replaced_tags, tags_to_set, tag_keys_to_unset)
 
-    # name is sent as the Name tag, not as a flow log setting.
-    create_settings = {key: value for key, value in desired.items() if key != "name"}
     if missing_resource_ids:
         require_create_parameters(module, desired)
 
@@ -780,33 +816,38 @@ def ensure_present(client, module):
 
     if missing_resource_ids:
         if not module.check_mode:
-            base_request = snake_dict_to_camel_dict(
-                dict(create_settings, resource_type=resource_type), capitalize_first=True
-            )
+            # One request carries one set of settings and tags, so resources are grouped by those of their new flow log.
+            groups = {}
+            for resource_id in missing_resource_ids:
+                base_request = snake_dict_to_camel_dict(
+                    dict(created_settings[resource_id], resource_type=resource_type), capitalize_first=True
+                )
+                group_tags = tuple(sorted(created_tags[resource_id].items()))
+                group_key = (json.dumps(base_request, sort_keys=True), group_tags)
+                groups.setdefault(group_key, (base_request, group_tags, []))[2].append(resource_id)
+
             # Every flow log is created with at least its Name tag.
+            create_parameters = dict.fromkeys(
+                parameter for base_request, _tags, _ids in groups.values() for parameter in base_request
+            )
             require_client_methods(
                 module,
                 client,
                 "EC2",
-                {"create_flow_logs": tuple(base_request) + ("ClientToken", "ResourceIds", "TagSpecifications")},
+                {"create_flow_logs": tuple(create_parameters) + ("ClientToken", "ResourceIds", "TagSpecifications")},
             )
 
             batch_size = MAX_RESOURCE_IDS_PER_CREATE
             if resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
                 batch_size = MAX_TRANSIT_GATEWAY_RESOURCE_IDS_PER_CREATE
 
-            # One request carries one tag set, so resources are grouped by the tags of their new flow log.
-            tag_groups = {}
-            for resource_id in missing_resource_ids:
-                tag_groups.setdefault(tuple(sorted(created_tags[resource_id].items())), []).append(resource_id)
-
             batches = [
-                (group_tags, batch)
-                for group_tags, group_resource_ids in tag_groups.items()
+                (base_request, group_tags, batch)
+                for base_request, group_tags, group_resource_ids in groups.values()
                 for batch in chunks(group_resource_ids, batch_size)
             ]
             created_flow_log_ids = []
-            for group_tags, batch in batches:
+            for base_request, group_tags, batch in batches:
                 # One token per request makes SDK retries of a request that already succeeded idempotent.
                 request = dict(
                     base_request,
@@ -880,10 +921,6 @@ def ensure_present(client, module):
             if resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
                 predicted["max_aggregation_interval"] = 60
 
-            predicted.update(create_settings)
-            if desired["log_destination_type"] == "s3":
-                predicted["destination_options"] = dict(S3_DESTINATION_OPTION_DEFAULTS, **destination_options)
-
             if desired["log_destination_type"] == "cloud-watch-logs" and "log_destination" in desired:
                 arn = parse_aws_arn(desired["log_destination"]) or {}
                 if arn.get("service") == "logs" and arn.get("resource_type") == "log-group":
@@ -895,7 +932,13 @@ def ensure_present(client, module):
                     predicted,
                     flow_log_status="ACTIVE",
                     resource_id=resource_id,
+                    **created_settings[resource_id],
                 )
+                if desired["log_destination_type"] == "s3":
+                    flow_log["destination_options"] = dict(
+                        S3_DESTINATION_OPTION_DEFAULTS, **created_settings[resource_id].get("destination_options", {})
+                    )
+
                 flow_log = snake_dict_to_camel_dict(flow_log, capitalize_first=True)
                 flow_log["Tags"] = ansible_dict_to_boto3_tag_list(created_tags[resource_id])
 
