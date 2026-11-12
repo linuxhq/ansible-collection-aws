@@ -207,17 +207,23 @@ def main():
     )
 
     placement_groups = []
+    seen_group_ids = set()
     for request in requests:
-        placement_groups.extend(
-            query_list(
-                module,
-                client,
-                "describe_placement_groups",
-                "PlacementGroups",
-                "Unable to describe EC2 placement groups",
-                **request,
-            )
-        )
+        for placement_group in query_list(
+            module,
+            client,
+            "describe_placement_groups",
+            "PlacementGroups",
+            "Unable to describe EC2 placement groups",
+            **request,
+        ):
+            # A group-name wildcard can match the same group in more than one batch.
+            group_id = placement_group.get("GroupId") if isinstance(placement_group, dict) else None
+            if group_id is not None and group_id in seen_group_ids:
+                continue
+
+            seen_group_ids.add(group_id)
+            placement_groups.append(placement_group)
 
     if any(not isinstance(placement_group, dict) for placement_group in placement_groups):
         module.fail_json(msg="EC2 returned invalid placement group information")
@@ -238,7 +244,7 @@ def main():
             )
 
         for group_id in unmatched_group_ids:
-            # A group matches at most one group-name batch, so stop at the first match.
+            # One batch that returns the group is enough, so stop at the first match.
             for request in requests:
                 shared_groups = describe_placement_group_by_id(client, module, group_id, request)
                 if any(not isinstance(placement_group, dict) for placement_group in shared_groups):

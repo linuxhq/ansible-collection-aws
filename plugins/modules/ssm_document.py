@@ -358,6 +358,20 @@ def comparable_document(document):
     }
 
 
+def same_json(left, right):
+    """Compare JSON values with ==, except that a boolean never equals a number."""
+    if isinstance(left, bool) or isinstance(right, bool):
+        return type(left) is type(right) and left == right
+
+    if isinstance(left, dict) and isinstance(right, dict):
+        return left.keys() == right.keys() and all(same_json(value, right[key]) for key, value in left.items())
+
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(same_json(*pair) for pair in zip(left, right))
+
+    return left == right
+
+
 def fail_failed_document(module, document, changed=False):
     name = module.params["name"]
     module.fail_json(
@@ -525,7 +539,7 @@ def ensure_present(client, module):
         if current_comparable["document_type"] != desired_comparable["document_type"]:
             module.fail_json(msg=f"Unable to update AWS Systems Manager document {name}: immutable fields differ")
 
-        changed = current_comparable != desired_comparable
+        changed = not same_json(current_comparable, desired_comparable)
         if changed and document_version not in UPDATABLE_DOCUMENT_VERSIONS:
             module.fail_json(
                 msg=(
@@ -542,7 +556,7 @@ def ensure_present(client, module):
     default_version_to_promote = None
     if resource_changed and current is not None and document_version == "$DEFAULT":
         latest = current_document(client, module, include_tags=False, document_version="$LATEST", deadline=deadline)
-        if comparable_document(latest) == desired_comparable:
+        if same_json(comparable_document(latest), desired_comparable):
             if latest.get("Status") == "Failed":
                 fail_failed_document(module, latest)
 
@@ -674,7 +688,7 @@ def ensure_present(client, module):
         if resource_changed or default_version_to_promote:
             # Only creation reaches here with a numbered version, which is always version 1.
             refreshed = get_document(client, module, changed=True)
-            if refreshed and comparable_document(refreshed) == desired_comparable:
+            if refreshed and same_json(comparable_document(refreshed), desired_comparable):
                 if "Tags" in current:
                     # Document updates and promotions cannot change tags, so the tags already read still apply.
                     refreshed["Tags"] = current["Tags"]

@@ -193,6 +193,24 @@ def test_group_names_are_batched_with_the_other_filter_values():
     assert [group["group_id"] for group in raised.value.values["placement_groups"]] == ["pg-199", "pg-1"]
 
 
+def test_a_group_matched_by_wildcards_in_two_batches_is_returned_once():
+    # "prod-*" in the first batch and "prod-api" in the second both match one group.
+    group_names = ["prod-*"] + [f"name-{index}" for index in range(199)] + ["prod-api"]
+    api = {"GroupId": "pg-api", "GroupName": "prod-api", "State": "available", "Strategy": "cluster"}
+    web = {"GroupId": "pg-web", "GroupName": "prod-web", "State": "available", "Strategy": "cluster"}
+    module = FakeModule(params(group_names=group_names), client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", side_effect=[[api, web], [api]]) as query,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert query.call_count == 2
+    assert [group["group_id"] for group in raised.value.values["placement_groups"]] == ["pg-api", "pg-web"]
+
+
 def test_shared_group_id_is_described_with_each_group_name_batch_until_found():
     shared = {"GroupId": "pg-shared", "GroupName": "name-199", "State": "available", "Strategy": "cluster"}
     client = Mock()
