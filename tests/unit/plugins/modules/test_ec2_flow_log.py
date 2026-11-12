@@ -1746,6 +1746,123 @@ def test_replacements_with_different_kept_settings_are_created_in_separate_reque
     assert {"DestinationOptions", "LogFormat", "MaxAggregationInterval"} <= set(create_check[0])
 
 
+TAG_FIELD_FORMAT = "${version} ${instance-tag}"
+TAG_FIELD_FLOW_LOG = dict(
+    OLD_FLOW_LOG,
+    LogFormat=TAG_FIELD_FORMAT,
+    TagFieldSpecifications=[{"ResourceType": "instance", "TagKeys": ["Name", "Team"]}],
+)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_replacement_keeps_the_tag_field_specifications_of_a_kept_log_format(check_mode):
+    # Live: EC2 rejects a format with tag fields without TagFieldSpecifications.
+    client = Mock()
+    result = run_present(client, FakeModule(present_params(), check_mode=check_mode), [dict(TAG_FIELD_FLOW_LOG)])
+
+    assert result["deleted_flow_log_ids"] == ["fl-old"]
+    if check_mode:
+        client.create_flow_logs.assert_not_called()
+        predicted = result["flow_logs"][0]
+        assert predicted["log_format"] == TAG_FIELD_FORMAT
+        assert predicted["tag_field_specifications"] == [{"resource_type": "instance", "tag_keys": ["Name", "Team"]}]
+    else:
+        request = client.create_flow_logs.call_args.kwargs
+        assert request["LogFormat"] == TAG_FIELD_FORMAT
+        assert request["TagFieldSpecifications"] == [{"ResourceType": "instance", "TagKeys": ["Name", "Team"]}]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("specifications", [None, []])
+def test_replacement_without_tag_field_specifications_sends_and_predicts_none(specifications, check_mode):
+    client = Mock()
+    replaced = dict(OLD_FLOW_LOG, LogFormat="${version}", TagFieldSpecifications=specifications)
+    result = run_present(client, FakeModule(present_params(), check_mode=check_mode), [replaced])
+
+    if check_mode:
+        assert result["flow_logs"][0]["log_format"] == "${version}"
+        assert "tag_field_specifications" not in result["flow_logs"][0]
+    else:
+        assert client.create_flow_logs.call_args.kwargs["LogFormat"] == "${version}"
+        assert "TagFieldSpecifications" not in client.create_flow_logs.call_args.kwargs
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_supplied_log_format_does_not_keep_the_tag_field_specifications(check_mode):
+    client = Mock()
+    module = FakeModule(present_params(log_format=TAG_FIELD_FORMAT), check_mode=check_mode)
+    result = run_present(client, module, [dict(TAG_FIELD_FLOW_LOG)])
+
+    if check_mode:
+        assert "tag_field_specifications" not in result["flow_logs"][0]
+    else:
+        request = client.create_flow_logs.call_args.kwargs
+        assert request["LogFormat"] == TAG_FIELD_FORMAT
+        assert "TagFieldSpecifications" not in request
+
+
+def test_replacements_with_different_tag_field_specifications_are_created_in_separate_requests():
+    client = Mock()
+    client.create_flow_logs.side_effect = lambda **kwargs: {
+        "FlowLogIds": [f"fl-new-{resource_id}" for resource_id in kwargs["ResourceIds"]],
+        "Unsuccessful": [],
+    }
+    client.delete_flow_logs.return_value = {}
+    flow_logs = [
+        dict(TAG_FIELD_FLOW_LOG, FlowLogId="fl-old-1"),
+        dict(
+            TAG_FIELD_FLOW_LOG,
+            FlowLogId="fl-old-2",
+            ResourceId="vpc-2",
+            TagFieldSpecifications=[{"ResourceType": "instance", "TagKeys": ["Owner"]}],
+        ),
+    ]
+    module = FakeModule(present_params(resource_ids=["vpc-1", "vpc-2"]))
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=flow_logs),
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods") as require_methods,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
+
+    requests = [
+        (call.kwargs["ResourceIds"], call.kwargs["LogFormat"], call.kwargs["TagFieldSpecifications"])
+        for call in client.create_flow_logs.call_args_list
+    ]
+    assert requests == [
+        (["vpc-1"], TAG_FIELD_FORMAT, [{"ResourceType": "instance", "TagKeys": ["Name", "Team"]}]),
+        (["vpc-2"], TAG_FIELD_FORMAT, [{"ResourceType": "instance", "TagKeys": ["Owner"]}]),
+    ]
+    create_check = [
+        call.args[3]["create_flow_logs"]
+        for call in require_methods.call_args_list
+        if "create_flow_logs" in call.args[3]
+    ]
+    assert len(create_check) == 1
+    assert "TagFieldSpecifications" in create_check[0]
+
+
+def test_tag_field_specifications_are_not_checked_when_none_are_sent():
+    client = Mock()
+    client.create_flow_logs.return_value = {"FlowLogIds": ["fl-new"]}
+    client.delete_flow_logs.return_value = {}
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[dict(OLD_FLOW_LOG, LogFormat="${version}")]),
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods") as require_methods,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, FakeModule(present_params()))
+
+    create_check = [
+        call.args[3]["create_flow_logs"]
+        for call in require_methods.call_args_list
+        if "create_flow_logs" in call.args[3]
+    ]
+    assert "TagFieldSpecifications" not in create_check[0]
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_replacement_tag_limit_fails_before_creating_flow_logs(check_mode):
     client = Mock()

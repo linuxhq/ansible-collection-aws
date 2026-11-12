@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -175,6 +176,17 @@ def test_byte_values_are_returned_as_json_safe_text():
     result, _require, _query = run(FakeModule(params(id="acl-1"), client=acl_client(acl)), [SUMMARY])
 
     assert result.values["web_acls"][0]["custom_response_bodies"]["body"]["content"] == "hello"
+
+
+def test_non_utf8_search_string_bytes_are_replaced():
+    # Live: WAF stores and returns a SearchString of b"\xff\xfe"; lone surrogates make the controller fail the task.
+    statement = {"ByteMatchStatement": {"SearchString": b"\xff\xfeadmin\xc3\xa9", "PositionalConstraint": "CONTAINS"}}
+    acl = {"ARN": "arn:web-acl", "Rules": [{"Name": "rule", "Statement": statement}], **SUMMARY}
+    result, _require, _query = run(FakeModule(params(id="acl-1"), client=acl_client(acl)), [SUMMARY])
+
+    search_string = result.values["web_acls"][0]["rules"][0]["statement"]["byte_match_statement"]["search_string"]
+    assert search_string == "��adminé"
+    json.dumps(result.values, ensure_ascii=False).encode("utf-8")
 
 
 @pytest.mark.parametrize("option", ["id", "name"])

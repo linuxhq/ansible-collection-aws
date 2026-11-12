@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - ec2_flow_log - a replacement flow log that keeps the log format of the flow log it replaces now also keeps its
+    tag field specifications, which EC2 requires when the format contains EC2 tag fields such as
+    ``${instance-tag}``; such replacements previously failed on every run while check mode predicted success.
+  - wafv2_web_acl_info - replace the bytes of a byte match ``search_string`` that are not valid UTF-8 with U+FFFD
+    instead of returning lone surrogates, which made the controller fail the task.
