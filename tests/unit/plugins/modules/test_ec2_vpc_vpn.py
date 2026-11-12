@@ -3171,14 +3171,14 @@ def test_documented_returns_cover_connection_and_tunnel_fields():
     returns = documented_returns(plugin)["vpn_connection"]["contains"]
     model = Session().get_service_model("ec2")
 
-    def snake(shape_name, excluded):
-        names = [name for name in model.shape_for(shape_name).members if name not in excluded]
+    def snake(shape_name):
+        names = model.shape_for(shape_name).members
         return {plugin.camel_dict_to_snake_dict({name: None}).popitem()[0] for name in names}
 
-    assert snake("VpnConnection", {"CustomerGatewayConfiguration"}) <= set(returns)
+    assert snake("VpnConnection") <= set(returns)
     assert_documents_shape(returns["options"]["contains"], "ec2", "VpnConnectionOptions")
     tunnel = returns["options"]["contains"]["tunnel_options"]["contains"]
-    assert snake("TunnelOption", {"PreSharedKey"}) <= set(tunnel)
+    assert snake("TunnelOption") <= set(tunnel)
     assert_documents_shape(tunnel["log_options"]["contains"], "ec2", "VpnTunnelLogOptions")
 
 

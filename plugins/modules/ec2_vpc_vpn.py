@@ -403,7 +403,9 @@ attributes:
 notes:
   - This rewritten implementation was introduced in collection release 2.4.0.
   - Results include the customer gateway XML and pre-shared keys, including AWS-generated keys, as EC2 returns
-    them. Ansible does not mask them; protect the output with task-level C(no_log).
+    them. Ansible masks a key supplied in O(tunnel_options[].pre_shared_key) wherever it appears in the results;
+    other keys and the rest of the configuration are returned as EC2 provides them, so protect the output with
+    task-level C(no_log).
   - O(name) owns the Name tag even when O(tags) is omitted or empty.
   - O(tags) keys must not be blank. EC2 stores a tag value made only of spaces,
     tabs, carriage returns, and line feeds as an empty value, so such a value is
@@ -504,7 +506,8 @@ vpn_connection:
     customer_gateway_configuration:
       description:
         - The customer gateway configuration XML, which can include the tunnels' pre-shared keys.
-        - Ansible does not mask it; protect the output with task-level C(no_log).
+        - Ansible masks only a key supplied in O(tunnel_options[].pre_shared_key); protect the output with task-level
+          C(no_log).
       returned: when provided by EC2
       type: str
     vpn_gateway_id:
@@ -638,7 +641,8 @@ vpn_connection:
               description:
                 - The tunnel's pre-shared key.
                 - EC2 omits it for a key stored in Secrets Manager.
-                - Ansible does not mask it; protect the output with task-level C(no_log).
+                - Ansible masks it only when it matches a key supplied in O(tunnel_options[].pre_shared_key);
+                  protect the output with task-level C(no_log).
               returned: when provided by EC2
               type: str
             tunnel_inside_cidr:

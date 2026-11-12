@@ -1864,6 +1864,71 @@ def test_tag_field_specifications_are_not_checked_when_none_are_sent():
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "field", ["instance-tag", "instance-tag-2", "interface-tag", "interface-tag-2", "asg-tag", "asg-tag-2"]
+)
+def test_replacement_drops_a_tag_field_log_format_without_specifications(field, check_mode):
+    # botocore before 1.43.26 does not return TagFieldSpecifications; live, EC2 rejects the format without them.
+    client = Mock()
+    module = FakeModule(present_params(resource_ids=["vpc-1", "vpc-2"]), check_mode=check_mode)
+    flow_logs = [
+        dict(OLD_FLOW_LOG, LogFormat="${version} ${srcaddr}"),
+        dict(OLD_FLOW_LOG, FlowLogId="fl-old-2", ResourceId="vpc-2", LogFormat=f"${{version}} ${{{field}}}"),
+    ]
+    client.create_flow_logs.side_effect = lambda **kwargs: {
+        "FlowLogIds": [f"fl-new-{resource_id}" for resource_id in kwargs["ResourceIds"]]
+    }
+    client.delete_flow_logs.return_value = {}
+    created = [{"FlowLogId": f"fl-new-{resource_id}", "ResourceId": resource_id} for resource_id in ("vpc-1", "vpc-2")]
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=flow_logs),
+        patch.object(plugin, "query_list", return_value=created),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    result = raised.value.values
+
+    assert module.warnings == [
+        (
+            "Replaced flow logs fl-old-2 use EC2 tag fields in their log format, which need botocore 1.43.26 or "
+            "later to keep, so EC2's default format is used; set log_format to choose one"
+        )
+    ]
+    assert result["deleted_flow_log_ids"] == ["fl-old", "fl-old-2"]
+    if check_mode:
+        client.create_flow_logs.assert_not_called()
+        predicted = {flow_log["resource_id"]: flow_log for flow_log in result["flow_logs"]}
+        assert predicted["vpc-1"]["log_format"] == "${version} ${srcaddr}"
+        assert "log_format" not in predicted["vpc-2"]
+    else:
+        requests = {
+            tuple(call.kwargs["ResourceIds"]): call.kwargs.get("LogFormat")
+            for call in client.create_flow_logs.call_args_list
+        }
+        assert requests == {("vpc-1",): "${version} ${srcaddr}", ("vpc-2",): None}
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "flow_log", [dict(TAG_FIELD_FLOW_LOG), dict(OLD_FLOW_LOG, LogFormat="${version} ${instance-id}")]
+)
+def test_replacement_keeps_a_log_format_without_a_warning_when_it_can(flow_log, check_mode):
+    client = Mock()
+    module = FakeModule(present_params(), check_mode=check_mode)
+    result = run_present(client, module, [flow_log])
+
+    assert module.warnings == []
+    if check_mode:
+        assert result["flow_logs"][0]["log_format"] == flow_log["LogFormat"]
+    else:
+        request = client.create_flow_logs.call_args.kwargs
+        assert request["LogFormat"] == flow_log["LogFormat"]
+        assert request.get("TagFieldSpecifications") == flow_log.get("TagFieldSpecifications")
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
 def test_replacement_tag_limit_fails_before_creating_flow_logs(check_mode):
     client = Mock()
     replaced_tags = [{"Key": "Name", "Value": "main"}] + [{"Key": f"old{index}", "Value": ""} for index in range(49)]

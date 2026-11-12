@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ec2_flow_log - with botocore older than 1.43.26, which does not return tag field specifications, a replacement
+    no longer keeps a log format with EC2 tag fields, which EC2 rejected without them; it uses EC2's default format
+    and warns, as before the log format was kept.
