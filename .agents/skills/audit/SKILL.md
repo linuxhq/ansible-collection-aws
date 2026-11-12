@@ -1,6 +1,6 @@
 ---
 name: audit
-description: Review modules with fresh reviewers from the primary agent, fix approved findings, have a second agent review each change, and open pull requests until two full passes find nothing.
+description: Review modules with fresh reviewers from the primary agent, fix every confirmed finding, have a second agent review each change, and open pull requests until two full passes find nothing.
 ---
 
 # audit
@@ -70,7 +70,8 @@ user. The repository's rules win over this checklist.
   wrong, confirmed, or needs a live check.
 - Cite the ledger entry, rule, code, or reproduction behind each class.
 - Settle "needs a live check" with a probe, not reasoning.
-- Bring behavior or contract choices to the user before fixing.
+- Ask the user only when a finding has two valid paths; name the
+  recommended one.
 
 ## Live probes
 
@@ -84,7 +85,7 @@ user. The repository's rules win over this checklist.
 ## Fixes
 
 - Branch from an up-to-date default branch.
-- Fix only confirmed findings the user approves.
+- Fix every confirmed finding without asking for approval.
 - Make breaking changes only with explicit approval.
 - Fix each bug at its source and check siblings for the same pattern.
 - Add a regression test and changelog entry for each fix.
