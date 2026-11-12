@@ -14,6 +14,15 @@ user. The repository's rules win over this checklist.
 - Full audit: every file under `plugins/`, split into groups, reviewed in
   passes until two consecutive passes find nothing.
 
+## Setup
+
+- Before the first review, enable the second agent's stop-time review gate:
+
+| Agent  | Command                              |
+| ------ | ------------------------------------ |
+| Claude | `/codex:setup --enable-review-gate`  |
+| Codex  | `$claude:setup --enable-review-gate` |
+
 ## Review passes
 
 - The primary agent's own reviewers review; no other agent reviews files.
