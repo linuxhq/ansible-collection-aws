@@ -1,34 +1,95 @@
 ---
 name: audit
-description: Review a group of related modules with the user, fix approved findings, verify, and open a pull request.
+description: Review modules with fresh, independent reviewers, fix approved findings, verify, and open pull requests until two full passes find nothing.
 ---
 
 # audit
 
-Audit one group of related modules at a time, chosen by the user.
+Audit one group of related modules, or the whole collection, chosen by the
+user. The repository's rules win over this checklist.
 
-The repository's rules win over this checklist.
+## Modes
 
-## Workflow
+- Group audit: one group the user names; one review pass, then fixes.
+- Full audit: every file under `plugins/`, split into groups, reviewed in
+  passes until two consecutive passes find nothing.
 
-- Read the agent instructions and every imported rule.
+## Review passes
+
+- Each pass uses new reviewers; never reuse a reviewer from an earlier pass.
+- Give each reviewer one group, the brief, and the decisions ledger, not
+  earlier findings or conclusions.
+- Reviewers read the agent instructions and every imported rule first.
+- Reviewers read every assigned file in full, including docs, examples,
+  returns, helpers they call, and unit tests.
+- Reviewers find what outside the group depends on it.
+- Reviewers check docs and examples against the provider's API reference and
+  guides, and SDK behavior against the pinned SDK model.
+- Reviewers are read-only: no edits, no git changes, no live calls.
+- Reviewers report findings with evidence and mark breaking changes, open
+  decisions, and anything unverified.
+- Every pass has two independent halves: the primary agent's reviewers and a
+  second, different agent reviewing the same groups.
+- A pass is clean only when both halves find nothing.
+- Done means two consecutive clean passes after the last merged change.
+- Any merged fix, however small, restarts the count.
+
+## Decisions ledger
+
+- Keep a ledger of settled items: user decisions, dropped findings, and
+  out-of-scope classes, each with where it was decided.
+- Give the ledger to every reviewer; settled items are not reported again.
+- Record every pass's outcome and every new decision in the ledger.
+- Only the user reopens a settled item.
+
+## Scope
+
+- A value the provider rejects on the run's first write, with nothing
+  changed, is out of scope.
+- A rejection is in scope when an earlier write in the same run has already
+  happened, or when the module already validates that constraint and
+  disagrees with the provider.
+- Check-mode predictions are in scope when the value follows from the inputs.
+
+## Triage
+
+- Classify every finding before fixing it: previously decided, out of scope,
+  wrong, confirmed, or needs a live check.
+- Cite the ledger entry, rule, code, or reproduction behind each class.
+- Settle "needs a live check" with a probe, not reasoning.
+- Bring behavior or contract choices to the user before fixing.
+
+## Live probes
+
+- Run probes only with the user's authorized credentials and environment.
+- Name probe resources with a unique, recognizable prefix.
+- Delete everything a probe creates, even after a failure, and verify it.
+- Report side effects a probe could not undo, such as service-linked roles.
+- Never touch resources the probe did not create.
+
+## Fixes
+
 - Branch from an up-to-date default branch.
-- Read the group's modules, helpers, roles, and tests in full.
-- Find what outside the group depends on it.
-- Review each module from every angle below until a pass finds nothing new.
-- Verify unclear API behavior with read-only calls or approved test resources.
-- Report issues, optimizations, and inconsistencies with evidence.
-- Mark breaking changes, open decisions, and anything unverified.
-- Fix only what the user approves.
+- Fix only confirmed findings the user approves.
 - Make breaking changes only with explicit approval.
-- Check siblings and open branches for each bug found.
+- Fix each bug at its source and check siblings for the same pattern.
 - Add a regression test and changelog entry for each fix.
 - Run formatting, lint, sanity, and unit tests.
-- Run affected Molecule scenarios one at a time.
+- Verify behavior changes live, against the default branch and the fix.
+- Run affected Molecule scenarios on the final commit, one at a time.
 - Wait for running tests instead of working around them.
+- Have the second agent review the final commit; fix what it confirms and
+  review again.
 - Commit, push, and open a pull request; do not merge.
 - Keep pull request descriptions in sync with the final commits.
 - State only what was verified.
+
+## Merging
+
+- Merge only when the user says so.
+- Merge only after every CI check has finished and passed; rerun
+  infrastructure failures first.
+- Remove merged branches and worktrees.
 
 ## Checklist
 
@@ -54,6 +115,8 @@ The repository's rules win over this checklist.
 - Every status is handled, including failed and deleting.
 - Waits end on terminal states within their timeout.
 - Reused names and tokens work after a delete.
+- Comparisons do not treat Booleans and numbers as equal.
+- Inherited settings carry the settings they depend on.
 
 ### Lookups
 
@@ -61,17 +124,20 @@ The repository's rules win over this checklist.
 - Info modules return empty results when nothing matches.
 - Manager modules fail on missing required resources.
 - Manager modules report no change for already-absent resources.
+- Batched queries drop duplicates when a filter accepts wildcards.
 
 ### Check mode and failures
 
 - Check mode predicts the real result and changes nothing.
 - The next run converges after a partial failure.
 - Failures name the operation, resource, and blocker.
+- SDK capability checks run before any write.
 
 ### Results and docs
 
 - Result keys follow the naming convention; values are unchanged.
 - User-defined keys keep their case at every level.
+- Binary values are returned as valid UTF-8.
 - Docs match options, defaults, and return values.
 - Version requirements are checked and documented.
 - Existing version checks stay, even for old versions.
@@ -94,6 +160,7 @@ The repository's rules win over this checklist.
 ### Tests
 
 - Unit tests cover each behavior change.
+- Each regression test fails without its fix.
 - Changelog entries match the change; breaking changes are marked.
 
 ### Molecule
