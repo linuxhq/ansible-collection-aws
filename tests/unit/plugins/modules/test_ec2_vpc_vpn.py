@@ -191,7 +191,10 @@ def test_pending_vpn_check_mode_predicts_unallocated_tunnels(params, connection,
 
     assert result.value.values["changed"] is bool(desired)
     assert result.value.values["vpn_connection"]["state"] == "pending"
-    assert "customer_gateway_configuration" not in result.value.values["vpn_connection"]
+    assert (
+        result.value.values["vpn_connection"]["customer_gateway_configuration"]
+        == connection["CustomerGatewayConfiguration"]
+    )
     assert client.mock_calls == []
     waiter.assert_not_called()
 
@@ -316,19 +319,46 @@ def test_omitted_options_leave_existing_configuration_unchanged(params, connecti
     assert result["vpn_connection"]["tags"]["OwnerTeam"] == "NetworkOps"
 
 
-def test_results_remove_generated_secrets_without_mutating_input(connection):
+def test_results_return_generated_secrets_without_mutating_input(connection):
+    # Provider data is returned unmodified; callers protect it with task-level no_log.
     original = deepcopy(connection)
     result = plugin.normalize_connection(connection)
-    assert "SECRET" not in json.dumps(result)
-    assert "customer_gateway_configuration" not in result
+    assert result["customer_gateway_configuration"] == "<xml>EXAMPLE_GENERATED_SECRET</xml>"
+    assert [tunnel["pre_shared_key"] for tunnel in result["options"]["tunnel_options"]] == [
+        "EXAMPLE_GENERATED_SECRET",
+        "EXAMPLE_SECOND_SECRET",
+    ]
     assert connection == original
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+def test_unchanged_connection_returns_secrets_ec2_returned(params, connection, check_mode):
+    client = Mock()
+    result = ensure(client, FakeModule(params, check_mode=check_mode), connection)
+    assert result["changed"] is False
+    assert client.mock_calls == []
+    assert result["vpn_connection"]["customer_gateway_configuration"] == connection["CustomerGatewayConfiguration"]
+    assert [tunnel["pre_shared_key"] for tunnel in result["vpn_connection"]["options"]["tunnel_options"]] == [
+        "EXAMPLE_GENERATED_SECRET",
+        "EXAMPLE_SECOND_SECRET",
+    ]
+
+
+def test_results_omit_a_key_ec2_does_not_return(connection):
+    # Live: EC2 omits PreSharedKey for a key stored in Secrets Manager; nothing is invented in its place.
+    del connection["CustomerGatewayConfiguration"]
+    connection["Options"]["TunnelOptions"][1].pop("PreSharedKey")
+    result = plugin.normalize_connection(connection)
+    assert "customer_gateway_configuration" not in result
+    assert result["options"]["tunnel_options"][0]["pre_shared_key"] == "EXAMPLE_GENERATED_SECRET"
+    assert "pre_shared_key" not in result["options"]["tunnel_options"][1]
 
 
 def test_results_allow_null_tunnel_options(connection):
     connection["Options"]["TunnelOptions"] = None
     result = plugin.normalize_connection(connection)
     assert result["options"]["tunnel_options"] is None
-    assert "customer_gateway_configuration" not in result
+    assert result["customer_gateway_configuration"] == connection["CustomerGatewayConfiguration"]
 
 
 def test_null_tags_are_normalized_and_compared(params, connection):
@@ -2138,10 +2168,14 @@ def test_moving_a_key_out_of_secrets_manager_sets_the_supplied_key(params, conne
     client = Mock()
     client.describe_vpn_connections.return_value = {"VpnConnections": [updated]}
     with patch.object(plugin, "wait_for_connection"):
-        assert ensure(client, FakeModule(params, check_mode=check_mode), connection)["changed"] is True
+        result = ensure(client, FakeModule(params, check_mode=check_mode), connection)
 
+    assert result["changed"] is True
+    tunnel = result["vpn_connection"]["options"]["tunnel_options"][1]
     if check_mode:
         assert client.mock_calls == []
+        # Check mode returns the current connection, so it predicts no key EC2 has not returned.
+        assert "pre_shared_key" not in tunnel
     else:
         client.modify_vpn_tunnel_options.assert_called_once_with(
             VpnConnectionId="vpn-123",
@@ -2150,6 +2184,7 @@ def test_moving_a_key_out_of_secrets_manager_sets_the_supplied_key(params, conne
             PreSharedKeyStorage="Standard",
             aws_retry=True,
         )
+        assert tunnel["pre_shared_key"] == "EXAMPLE_REPLACEMENT"
 
     client.reset_mock()
     assert ensure(client, FakeModule(params, check_mode=check_mode), updated)["changed"] is False

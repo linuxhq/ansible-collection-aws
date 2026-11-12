@@ -402,7 +402,8 @@ attributes:
     support: none
 notes:
   - This rewritten implementation was introduced in collection release 2.4.0.
-  - Results exclude customer gateway XML and pre-shared keys, including AWS-generated keys.
+  - Results include the customer gateway XML and pre-shared keys, including AWS-generated keys, as EC2 returns
+    them. Ansible does not mask them; protect the output with task-level C(no_log).
   - O(name) owns the Name tag even when O(tags) is omitted or empty.
   - O(tags) keys must not be blank. EC2 stores a tag value made only of spaces,
     tabs, carriage returns, and line feeds as an empty value, so such a value is
@@ -480,7 +481,11 @@ EXAMPLES = r"""
 
 RETURN = r"""
 vpn_connection:
-  description: The current connection with snake_case keys and without secrets. Empty when absent or creation is predicted.
+  description:
+    - The current connection with snake_case keys, as EC2 returns it. Empty when absent or creation is predicted.
+    - Includes RV(vpn_connection.customer_gateway_configuration) and each tunnel's
+      RV(vpn_connection.options.tunnel_options[].pre_shared_key) when EC2 returns them; protect the output with
+      task-level C(no_log).
   returned: always
   type: dict
   contains:
@@ -495,6 +500,12 @@ vpn_connection:
     customer_gateway_id:
       description: The customer gateway ID.
       returned: when a connection exists
+      type: str
+    customer_gateway_configuration:
+      description:
+        - The customer gateway configuration XML, which can include the tunnels' pre-shared keys.
+        - Ansible does not mask it; protect the output with task-level C(no_log).
+      returned: when provided by EC2
       type: str
     vpn_gateway_id:
       description: The virtual private gateway ID.
@@ -569,7 +580,7 @@ vpn_connection:
           returned: when provided by EC2
           type: str
     options:
-      description: Connection and tunnel options with pre-shared keys removed.
+      description: Connection and tunnel options.
       returned: when a connection exists
       type: dict
       contains:
@@ -614,13 +625,20 @@ vpn_connection:
           returned: when provided by EC2
           type: str
         tunnel_options:
-          description: Tunnel configuration with pre-shared keys removed.
+          description: Tunnel configuration.
           returned: when provided by EC2
           type: list
           elements: dict
           contains:
             outside_ip_address:
               description: The tunnel outside IP address.
+              returned: when provided by EC2
+              type: str
+            pre_shared_key:
+              description:
+                - The tunnel's pre-shared key.
+                - EC2 omits it for a key stored in Secrets Manager.
+                - Ansible does not mask it; protect the output with task-level C(no_log).
               returned: when provided by EC2
               type: str
             tunnel_inside_cidr:
@@ -925,12 +943,7 @@ RESERVED_TUNNEL_IPV4_NETWORKS = {f"169.254.{index}.0/30" for index in range(6)} 
 
 
 def normalize_connection(connection):
-    result = deepcopy(connection)
-    result.pop("CustomerGatewayConfiguration", None)
-
-    for tunnel in result.get("Options", {}).get("TunnelOptions") or []:
-        tunnel.pop("PreSharedKey", None)
-
+    result = dict(connection)
     tags = boto3_tag_list_to_ansible_dict(result.pop("Tags", None) or [])
     result = camel_dict_to_snake_dict(result)
     result["tags"] = tags

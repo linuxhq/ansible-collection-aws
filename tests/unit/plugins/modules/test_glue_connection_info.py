@@ -300,7 +300,8 @@ def test_connection_schema_version_filter_requires_newer_botocore(filters, gated
 
 @pytest.mark.parametrize("name", ["example", None])
 @pytest.mark.parametrize("hide_password", [True, False])
-def test_hide_password_removes_scram_password(name, hide_password):
+def test_scram_password_is_returned_unmodified(name, hide_password):
+    # Glue still returns this password with HidePassword=true; the module returns provider data unmodified.
     properties = {
         "KAFKA_BOOTSTRAP_SERVERS": "broker:9096",
         "KAFKA_SASL_MECHANISM": "SCRAM-SHA-512",
@@ -318,17 +319,16 @@ def test_hide_password_removes_scram_password(name, hide_password):
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[connection]),
+        patch.object(plugin, "query_list", return_value=[connection]) as query_list,
         pytest.raises(ModuleExit) as result,
     ):
         plugin.main()
 
     returned = result.value.values["connections"][0]
-    expected = dict(properties)
-    if hide_password:
-        del expected["KAFKA_SASL_SCRAM_PASSWORD"]
-
-    assert returned["connection_properties"] == expected
-    assert returned["spark_properties"] == expected
+    assert returned["connection_properties"] == properties
+    assert returned["spark_properties"] == properties
+    assert returned["connection_properties"]["KAFKA_SASL_SCRAM_PASSWORD"] == "EXAMPLE-PASSWORD"
+    request = (client.get_connection if name else query_list).call_args.kwargs
+    assert request["HidePassword"] is hide_password
     assert returned["connection_type"] == "KAFKA"
     assert connection["ConnectionProperties"] == properties
