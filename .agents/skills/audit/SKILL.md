@@ -1,6 +1,6 @@
 ---
 name: audit
-description: Review modules with fresh, independent reviewers, fix approved findings, verify, and open pull requests until two full passes find nothing.
+description: Review modules with fresh reviewers from the primary agent, fix approved findings, have a second agent review each change, and open pull requests until two full passes find nothing.
 ---
 
 # audit
@@ -14,9 +14,14 @@ user. The repository's rules win over this checklist.
 - Full audit: every file under `plugins/`, split into groups, reviewed in
   passes until two consecutive passes find nothing.
 
-## Setup
+## Second agent
 
-- Before the first review, enable the second agent's stop-time review gate:
+- The second agent is the other coding agent: Codex when Claude is primary,
+  Claude when Codex is primary.
+- It runs only through the stop-time review gate and the change review in
+  Fixes, after a change is committed.
+- Never start the second agent for review passes, triage, or live probes.
+- Before the first review, enable its stop-time review gate:
 
 | Agent  | Command                              |
 | ------ | ------------------------------------ |
@@ -25,7 +30,7 @@ user. The repository's rules win over this checklist.
 
 ## Review passes
 
-- The primary agent's own reviewers review; no other agent reviews files.
+- Only the primary agent's own subagents review files.
 - Each pass uses new reviewers; never reuse a reviewer from an earlier pass.
 - Give each reviewer one group, the brief, and the decisions ledger, not
   earlier findings or conclusions.
