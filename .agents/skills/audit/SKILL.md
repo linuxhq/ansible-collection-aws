@@ -70,9 +70,8 @@ it for reviews, triage, or probes.
 - It opens a pull request describing only what was verified, and never
   merges.
 - The pull request title names what changed as a conventional commit, such
-  as `fix(ec2_flow_log): keep tag field specifications` or
-  `docs(ec2_vpc_vpn): describe key masking`; never `pass 11` or
-  `audit findings`.
+  as `fix(<module>): <what was fixed>` or `docs(<module>): <what changed>`;
+  never `pass 11` or `audit findings`.
 
 ## 5. Merge
 
