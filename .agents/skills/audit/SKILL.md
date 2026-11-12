@@ -47,8 +47,9 @@ it for reviews, triage, or probes.
 - Classify it: previously decided, out of scope, wrong, confirmed, or needs a
   live check.
 - Out of scope: a value the provider rejects on the run's first write with
-  nothing changed. In scope: a rejection after an earlier write in the same
-  run, or a check the module already makes that disagrees with the provider.
+  nothing changed.
+- In scope: a rejection after an earlier write in the same run, or a check
+  the module already makes that disagrees with the provider.
 - Settle "needs a live check" with a probe:
   - use only the user's authorized credentials and environment;
   - name resources with a unique prefix;
