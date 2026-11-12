@@ -36,12 +36,11 @@ options:
   hide_password:
     default: true
     description:
-      - Whether to hide passwords in the returned connection properties.
-      - Glue does not hide C(KAFKA_SASL_SCRAM_PASSWORD), so when this is
-        V(true) the module also removes that property from the returned
-        connection and compute environment properties.
-      - Setting this to V(false) returns secrets in C(connection_properties)
-        that Ansible does not mask; register and handle the result with care.
+      - Whether to ask Glue to hide passwords in the returned connection properties.
+      - Passed to Glue as its C(HidePassword) request flag.
+      - Glue still returns C(KAFKA_SASL_SCRAM_PASSWORD) when this is V(true).
+      - The module returns the connection properties as Glue provides them and
+        Ansible does not mask them; protect the output with task-level C(no_log).
     type: bool
   name:
     description:
@@ -71,6 +70,12 @@ EXAMPLES = r"""
   linuxhq.aws.glue_connection_info:
     name: molecule
 
+- name: Gather information about a Kafka Glue connection that may return a SCRAM password
+  linuxhq.aws.glue_connection_info:
+    name: kafka
+  register: glue_connection
+  no_log: true
+
 - name: Gather information about Glue connections using filters
   linuxhq.aws.glue_connection_info:
     filters:
@@ -83,8 +88,8 @@ connections:
     - A list of AWS Glue connections.
     - Keys in C(connection_properties), C(spark_properties), C(athena_properties),
       C(python_properties), and C(token_url_parameters_map) are returned as provided by the Glue API.
-    - When O(hide_password=true), passwords are omitted from these properties, including
-      C(KAFKA_SASL_SCRAM_PASSWORD), which the module removes because Glue returns it.
+    - When O(hide_password=true), Glue omits passwords from these properties, but it still returns
+      C(KAFKA_SASL_SCRAM_PASSWORD); protect the output with task-level C(no_log).
   returned: always
   type: list
   elements: dict
@@ -146,7 +151,10 @@ connections:
       type: list
       elements: str
     connection_properties:
-      description: Connection configuration properties returned by AWS Glue.
+      description:
+        - Connection configuration properties returned by AWS Glue, unmodified.
+        - Glue still returns C(KAFKA_SASL_SCRAM_PASSWORD) when O(hide_password=true); protect the output with
+          task-level C(no_log).
       returned: when configured
       type: dict
     connection_schema_version:
@@ -242,25 +250,12 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 
-PROPERTY_FIELDS = ("AthenaProperties", "ConnectionProperties", "PythonProperties", "SparkProperties")
-
 
 def validate_connections(module, connections):
     if not isinstance(connections, list) or any(not isinstance(connection, dict) for connection in connections):
         module.fail_json(msg="Unable to get AWS Glue connections: AWS returned an invalid response")
 
     return connections
-
-
-def remove_scram_password(connection):
-    # Glue honors HidePassword for other passwords but still returns this one.
-    connection = dict(connection)
-    for field in PROPERTY_FIELDS:
-        if isinstance(connection.get(field), dict):
-            connection[field] = dict(connection[field])
-            connection[field].pop("KAFKA_SASL_SCRAM_PASSWORD", None)
-
-    return connection
 
 
 def main():
@@ -336,12 +331,9 @@ def main():
         )
         connections = validate_connections(module, connections)
 
-    if module.params["hide_password"]:
-        connections = [remove_scram_password(connection) for connection in connections]
-
     results = boto3_resource_list_to_ansible_dict(
         connections,
-        ignore_list=list(PROPERTY_FIELDS),
+        ignore_list=["AthenaProperties", "ConnectionProperties", "PythonProperties", "SparkProperties"],
         transform_tags=False,
         force_tags=False,
     )
