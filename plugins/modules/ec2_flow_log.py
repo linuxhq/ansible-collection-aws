@@ -129,6 +129,8 @@ options:
         value.
       - A kept O(log_format) also keeps the tag field specifications that EC2 tag fields in that format require.
         A supplied O(log_format) is sent without them.
+      - Keeping a log format with EC2 tag fields requires botocore 1.43.26 or later; with an older botocore, the
+        replacement uses EC2's default format and the module warns.
       - This must not be empty or made only of spaces, tabs, carriage returns, and line feeds, because EC2 stores
         such a C(Name) tag as an empty value.
     required: true
@@ -444,6 +446,9 @@ TRANSIT_GATEWAY_RESOURCE_TYPES = (
     "TransitGatewayAttachment",
 )
 
+# EC2 tag fields of the flow log record format, which require TagFieldSpecifications.
+TAG_FIELD_PATTERN = re.compile(r"\$\{(?:instance|interface|asg)-tag(?:-2)?\}")
+
 # EC2 stores these documented defaults for omitted S3 destination options and returns all three.
 S3_DESTINATION_OPTION_DEFAULTS = {
     "file_format": "plain-text",
@@ -498,6 +503,10 @@ def replacement_settings(settings, replaced):
             ]
             if tag_field_specifications:
                 kept["tag_field_specifications"] = tag_field_specifications
+
+        # botocore before 1.43.26 does not return the specifications, so EC2's default format is used instead.
+        if "tag_field_specifications" not in kept and TAG_FIELD_PATTERN.search(kept["log_format"]):
+            del kept["log_format"]
 
     if replaced.get("MaxAggregationInterval") in (60, 600):
         kept["max_aggregation_interval"] = replaced["MaxAggregationInterval"]
@@ -771,15 +780,26 @@ def ensure_present(client, module):
     create_settings = {key: value for key, value in desired.items() if key != "name"}
     created_settings = {}
     created_tags = {}
+    dropped_format_flow_log_ids = []
     for resource_id in missing_resource_ids:
         # A replacement keeps the tags of the flow log it replaces, as a kept flow log would; EC2 rejects aws: keys.
         replaced_tags = {}
+        replaced = {}
         created_settings[resource_id] = create_settings
         for flow_log in superseded_flow_logs:
             if flow_log.get("ResourceId") == resource_id:
+                replaced = flow_log
                 replaced_tags.update(boto3_tag_list_to_ansible_dict(flow_log.get("Tags") or []))
                 # It also keeps the settings the task omits; as with tags, the last replaced flow log wins.
                 created_settings[resource_id] = replacement_settings(create_settings, flow_log)
+
+        replaced_format = replaced.get("LogFormat")
+        if (
+            isinstance(replaced_format, str)
+            and TAG_FIELD_PATTERN.search(replaced_format)
+            and "log_format" not in created_settings[resource_id]
+        ):
+            dropped_format_flow_log_ids.append(replaced["FlowLogId"])
 
         replaced_tags = {key: value for key, value in replaced_tags.items() if not key.lower().startswith("aws:")}
         if tags is None:
@@ -790,6 +810,13 @@ def ensure_present(client, module):
             )
             require_resulting_tag_limit(module, replaced_tags, tags_to_set, tag_keys_to_unset, 50, "EC2 flow log")
             created_tags[resource_id] = updated_tags(replaced_tags, tags_to_set, tag_keys_to_unset)
+
+    if dropped_format_flow_log_ids:
+        module.warn(
+            f"Replaced flow logs {', '.join(dropped_format_flow_log_ids)} use EC2 tag fields in their log format, "
+            "which need botocore 1.43.26 or later to keep, so EC2's default format is used; set log_format to "
+            "choose one"
+        )
 
     if missing_resource_ids:
         require_create_parameters(module, desired)
