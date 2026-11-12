@@ -24,7 +24,7 @@ user. The repository's rules win over this checklist.
   returns, helpers they call, and unit tests.
 - Reviewers find what outside the group depends on it.
 - Reviewers check docs and examples against the provider's API reference and
-  guides, and SDK behavior against the pinned SDK model.
+  guides, and client library behavior against the pinned library version.
 - Reviewers are read-only: no edits, no git changes, no live calls.
 - Reviewers report findings with evidence and mark breaking changes, open
   decisions, and anything unverified.
@@ -64,7 +64,8 @@ user. The repository's rules win over this checklist.
 - Run probes only with the user's authorized credentials and environment.
 - Name probe resources with a unique, recognizable prefix.
 - Delete everything a probe creates, even after a failure, and verify it.
-- Report side effects a probe could not undo, such as service-linked roles.
+- Report side effects a probe could not undo, such as resources the provider
+  creates on first use.
 - Never touch resources the probe did not create.
 
 ## Fixes
@@ -124,14 +125,14 @@ user. The repository's rules win over this checklist.
 - Info modules return empty results when nothing matches.
 - Manager modules fail on missing required resources.
 - Manager modules report no change for already-absent resources.
-- Batched queries drop duplicates when a filter accepts wildcards.
+- Batched queries drop duplicates when one item can match several batches.
 
 ### Check mode and failures
 
 - Check mode predicts the real result and changes nothing.
 - The next run converges after a partial failure.
 - Failures name the operation, resource, and blocker.
-- SDK capability checks run before any write.
+- Version and capability checks run before any write.
 
 ### Results and docs
 
