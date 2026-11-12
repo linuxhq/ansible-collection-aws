@@ -127,6 +127,8 @@ options:
         replaces when these options are omitted, and its O(destination_options) when both flow logs deliver to
         S3. Each supplied option, including each O(destination_options) suboption, replaces only its own kept
         value.
+      - A kept O(log_format) also keeps the tag field specifications that EC2 tag fields in that format require.
+        A supplied O(log_format) is sent without them.
       - This must not be empty or made only of spaces, tabs, carriage returns, and line feeds, because EC2 stores
         such a C(Name) tag as an empty value.
     required: true
@@ -486,6 +488,16 @@ def replacement_settings(settings, replaced):
     kept = {}
     if isinstance(replaced.get("LogFormat"), str) and replaced["LogFormat"]:
         kept["log_format"] = replaced["LogFormat"]
+        # EC2 rejects a format with EC2 tag fields without the tag field specifications that go with it.
+        tag_field_specifications = replaced.get("TagFieldSpecifications")
+        if "log_format" not in settings and isinstance(tag_field_specifications, list):
+            tag_field_specifications = [
+                camel_dict_to_snake_dict(specification)
+                for specification in tag_field_specifications
+                if isinstance(specification, dict)
+            ]
+            if tag_field_specifications:
+                kept["tag_field_specifications"] = tag_field_specifications
 
     if replaced.get("MaxAggregationInterval") in (60, 600):
         kept["max_aggregation_interval"] = replaced["MaxAggregationInterval"]

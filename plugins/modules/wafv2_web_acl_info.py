@@ -342,7 +342,9 @@ web_acls:
       elements: dict
       contains:
         firewall_manager_statement:
-          description: The Firewall Manager rule group reference statement.
+          description:
+            - The Firewall Manager rule group reference statement.
+            - Bytes of a byte match C(search_string) that are not valid UTF-8 are replaced with U+FFFD.
           returned: when available
           type: dict
         name:
@@ -410,7 +412,9 @@ web_acls:
       elements: dict
       contains:
         firewall_manager_statement:
-          description: The Firewall Manager rule group reference statement.
+          description:
+            - The Firewall Manager rule group reference statement.
+            - Bytes of a byte match C(search_string) that are not valid UTF-8 are replaced with U+FFFD.
           returned: when available
           type: dict
         name:
@@ -703,7 +707,9 @@ web_acls:
               returned: when available
               type: str
         statement:
-          description: The WAF processing statement for the rule, such as a byte match or size constraint statement.
+          description:
+            - The WAF processing statement for the rule, such as a byte match or size constraint statement.
+            - Bytes of a byte match C(search_string) that are not valid UTF-8 are replaced with U+FFFD.
           returned: when available
           type: dict
         visibility_config:
@@ -779,8 +785,10 @@ RESOURCE_TYPE_MAPS = {
 
 
 def json_default(value):
-    # SearchString is the only WebACL member JSON cannot encode; botocore returns blobs as bytes.
-    return to_text(value, errors="surrogate_or_strict")
+    # SearchString is the only WebACL member JSON cannot encode; botocore returns blobs as bytes. WAF stores any
+    # bytes, and the controller rejects the lone surrogates that surrogate_* handlers decode invalid UTF-8 to, so
+    # invalid UTF-8 becomes U+FFFD.
+    return to_text(value, errors="replace")
 
 
 def association_config(config):
