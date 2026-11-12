@@ -1,6 +1,6 @@
 ---
 name: audit
-description: Review modules with fresh, independent reviewers, fix approved findings, verify, and open pull requests until two full passes find nothing.
+description: Review modules with fresh reviewers from the primary agent, fix approved findings, have a second agent review each change, and open pull requests until two full passes find nothing.
 ---
 
 # audit
@@ -14,8 +14,23 @@ user. The repository's rules win over this checklist.
 - Full audit: every file under `plugins/`, split into groups, reviewed in
   passes until two consecutive passes find nothing.
 
+## Second agent
+
+- The second agent is the other coding agent: Codex when Claude is primary,
+  Claude when Codex is primary.
+- It runs only through the stop-time review gate and the change review in
+  Fixes, after a change is committed.
+- Never start the second agent for review passes, triage, or live probes.
+- Before the first review, enable its stop-time review gate:
+
+| Agent  | Command                              |
+| ------ | ------------------------------------ |
+| Claude | `/codex:setup --enable-review-gate`  |
+| Codex  | `$claude:setup --enable-review-gate` |
+
 ## Review passes
 
+- Only the primary agent's own subagents review files.
 - Each pass uses new reviewers; never reuse a reviewer from an earlier pass.
 - Give each reviewer one group, the brief, and the decisions ledger, not
   earlier findings or conclusions.
@@ -28,9 +43,7 @@ user. The repository's rules win over this checklist.
 - Reviewers are read-only: no edits, no git changes, no live calls.
 - Reviewers report findings with evidence and mark breaking changes, open
   decisions, and anything unverified.
-- Every pass has two independent halves: the primary agent's reviewers and a
-  second, different agent reviewing the same groups.
-- A pass is clean only when both halves find nothing.
+- A pass is clean when no reviewer reports a confirmed finding.
 - Done means two consecutive clean passes after the last merged change.
 - Any merged fix, however small, restarts the count.
 
@@ -79,8 +92,8 @@ user. The repository's rules win over this checklist.
 - Verify behavior changes live, against the default branch and the fix.
 - Run affected Molecule scenarios on the final commit, one at a time.
 - Wait for running tests instead of working around them.
-- Have the second agent review the final commit; fix what it confirms and
-  review again.
+- Have a second, different agent review only the change, on its final
+  commit; fix what it confirms and have it review again.
 - Commit, push, and open a pull request; do not merge.
 - Keep pull request descriptions in sync with the final commits.
 - State only what was verified.
