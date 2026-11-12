@@ -328,6 +328,7 @@ ROUTE_STATE_ORDER = {
     "pending": 2,
     "deleting": 3,
 }
+SEARCH_ROUTES_PARAMETERS = ("Filters", "MaxResults", "NextToken", "TransitGatewayRouteTableId")
 
 
 def route_table_id(route_table):
@@ -534,14 +535,7 @@ def search_routes(client, module, transit_gateway_route_table_id, filters, chang
         module,
         client,
         "EC2",
-        {
-            "search_transit_gateway_routes": (
-                "Filters",
-                "MaxResults",
-                "NextToken",
-                "TransitGatewayRouteTableId",
-            )
-        },
+        {"search_transit_gateway_routes": SEARCH_ROUTES_PARAMETERS},
         changed=changed,
     )
     routes = query_list(
@@ -1256,12 +1250,13 @@ def main():
         if module.params.get("transit_gateway_route_table_id")
         else ("Filters", "MaxResults", "NextToken", "TransitGatewayRouteTableIds")
     )
-    require_client_methods(
-        module,
-        client,
-        "EC2",
-        {"describe_transit_gateway_route_tables": describe_parameters},
-    )
+    required_methods = {"describe_transit_gateway_route_tables": describe_parameters}
+    # Route reconciliation searches routes after the table and its tags are written,
+    # so an SDK without that support fails before AWS is modified.
+    if routes is not None and (routes or module.params["purge_routes"]):
+        required_methods["search_transit_gateway_routes"] = SEARCH_ROUTES_PARAMETERS
+
+    require_client_methods(module, client, "EC2", required_methods)
 
     if state == "present":
         ensure_present(client, module)

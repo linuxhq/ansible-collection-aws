@@ -293,6 +293,29 @@ def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings():
     ]
 
 
+def test_a_prefix_list_matched_in_two_batches_is_returned_once():
+    # "pl-*" in the first batch and "pl-api" in the second both match one list.
+    prefix_list_ids = ["pl-*"] + [f"pl-{index}" for index in range(199)] + ["pl-api"]
+    api = {"PrefixListId": "pl-api", "PrefixListName": "api"}
+    web = {"PrefixListId": "pl-web", "PrefixListName": "web"}
+    module = FakeModule({"filters": None, "prefix_list_ids": prefix_list_ids, "target_version": None}, client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", side_effect=[[api, web], [api]]) as query,
+        patch.object(plugin, "paginated_query_with_retries", return_value={"Entries": []}) as entries,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert query.call_count == 2
+    assert [call.kwargs["PrefixListId"] for call in entries.call_args_list] == ["pl-api", "pl-web"]
+    assert [prefix_list["prefix_list_id"] for prefix_list in raised.value.values["prefix_lists"]] == [
+        "pl-api",
+        "pl-web",
+    ]
+
+
 def test_prefix_list_ids_are_batched_with_the_other_filter_values():
     prefix_list_ids = [f"pl-{index}" for index in range(200)]
     module = FakeModule(

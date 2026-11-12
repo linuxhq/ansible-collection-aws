@@ -246,24 +246,29 @@ def main():
     )
 
     prefix_lists = []
+    seen_prefix_list_ids = set()
     for batch_filters in filter_batches:
         request = {}
         if batch_filters:
             request["Filters"] = ansible_dict_to_string_filter_list(batch_filters)
 
-        prefix_lists.extend(
-            validate_prefix_lists(
+        for prefix_list in validate_prefix_lists(
+            module,
+            query_list(
                 module,
-                query_list(
-                    module,
-                    client,
-                    "describe_managed_prefix_lists",
-                    "PrefixLists",
-                    "Unable to describe EC2 VPC managed prefix lists",
-                    **request,
-                ),
-            )
-        )
+                client,
+                "describe_managed_prefix_lists",
+                "PrefixLists",
+                "Unable to describe EC2 VPC managed prefix lists",
+                **request,
+            ),
+        ):
+            # A prefix-list-id wildcard can match the same list in more than one batch.
+            if prefix_list["PrefixListId"] in seen_prefix_list_ids:
+                continue
+
+            seen_prefix_list_ids.add(prefix_list["PrefixListId"])
+            prefix_lists.append(prefix_list)
 
     if prefix_lists:
         require_client_methods(
