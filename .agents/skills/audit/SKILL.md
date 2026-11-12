@@ -69,6 +69,10 @@ it for reviews, triage, or probes.
   reviews again on the final commit.
 - It opens a pull request describing only what was verified, and never
   merges.
+- The pull request title names what changed as a conventional commit, such
+  as `fix(ec2_flow_log): keep tag field specifications` or
+  `docs(ec2_vpc_vpn): describe key masking`; never `pass 11` or
+  `audit findings`.
 
 ## 5. Merge
 
