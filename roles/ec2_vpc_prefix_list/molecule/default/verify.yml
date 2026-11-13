@@ -28,7 +28,7 @@
             _pl.entries | sort(attribute='cidr')
           - __ec2_vpc_prefix_list_dict[_pl.name].max_entries ==
             _pl.max_entries | d(_pl.entries | length)
-          - __ec2_vpc_prefix_list_dict[_pl.name].tags == {'Name': _pl.name}
+          - "__ec2_vpc_prefix_list_dict[_pl.name].tags == {'Name': _pl.name}"
           - __ec2_vpc_prefix_list_dict[_pl.name].state in ['create-complete', 'modify-complete']
       loop: "{{ ec2_vpc_prefix_list_entries }}"
       loop_control:
