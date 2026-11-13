@@ -4,6 +4,7 @@ import pytest
 from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    identity_matches,
     is_last_phone_number,
     is_phone_number_reference,
     last_phone_number_message,
@@ -64,6 +65,37 @@ def test_list_tags_rejects_malformed_tags(response):
 
 PHONE_ARN = "arn:aws:sms-voice:us-east-1:123456789012:phone-number/phone-1"
 SENDER_ARN = "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US"
+PHONE_ID = "phone-720f0a64a09b4e1ebdcc8273b27bd3fc"
+LISTED_PHONE_ARN = f"arn:aws:sms-voice:us-east-1:123456789012:phone-number/{PHONE_ID}"
+LISTED_SENDER_ARN = "arn:aws:sms-voice:us-east-1:123456789012:sender-id/AUDITMIXCDB/US"
+
+
+@pytest.mark.parametrize(
+    ("identity", "expected"),
+    [
+        ("AUDITMIXCDB", True),
+        # Live: AWS puts a sender ID requested as AuditMixcdb in its ARN as AUDITMIXCDB.
+        ("AuditMixcdb", True),
+        ("auditmixcdb", True),
+        (LISTED_SENDER_ARN, True),
+        (LISTED_SENDER_ARN.replace("AUDITMIXCDB", "AuditMixcdb"), True),
+        ("OTHER", False),
+    ],
+)
+def test_sender_ids_match_without_letter_case(identity, expected):
+    origination = {"OriginationIdentity": "AUDITMIXCDB", "OriginationIdentityArn": LISTED_SENDER_ARN}
+
+    assert identity_matches(origination, (identity,)) is expected
+
+
+@pytest.mark.parametrize(
+    ("identity", "expected"),
+    [(PHONE_ID, True), (LISTED_PHONE_ARN, True), (PHONE_ID.upper(), False), (LISTED_PHONE_ARN.upper(), False)],
+)
+def test_phone_numbers_match_exactly(identity, expected):
+    origination = {"OriginationIdentity": PHONE_ID, "OriginationIdentityArn": LISTED_PHONE_ARN, "PhoneNumber": "+1"}
+
+    assert identity_matches(origination, (identity,)) is expected
 
 
 @pytest.mark.parametrize(

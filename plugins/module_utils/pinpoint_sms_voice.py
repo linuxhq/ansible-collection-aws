@@ -49,11 +49,24 @@ def is_phone_number_reference(origination_identity):
 
 
 def identity_matches(origination, identities):
-    """Return whether an origination item's ID or ARN is one of identities."""
+    """Return whether an origination item's ID or ARN is one of identities.
+
+    Phone number IDs and ARNs match exactly. Live: AWS treats sender IDs without letter case; it describes a sender ID
+    requested as AuP2Mix in uppercase, puts AUP2MIX in its ARN, and lists the ID in a pool in the case it was associated
+    with. So a sender ID and its ARN match without letter case, as pinpoint_sms_voice_sender_id compares them.
+    """
+    if is_phone_number_identity(origination):
+        return any(
+            origination.get(key) in identities
+            for key in ("OriginationIdentity", "OriginationIdentityArn")
+            if origination.get(key)
+        )
+
+    wanted = {identity.upper() for identity in identities if isinstance(identity, str)}
     return any(
-        origination.get(key) in identities
+        origination[key].upper() in wanted
         for key in ("OriginationIdentity", "OriginationIdentityArn")
-        if origination.get(key)
+        if isinstance(origination.get(key), str)
     )
 
 

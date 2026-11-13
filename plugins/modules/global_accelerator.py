@@ -237,6 +237,12 @@ options:
               - This must contain at most 10 entries.
               - When omitted, existing overrides are left unmanaged; an empty
                 list removes all overrides from the endpoint group.
+              - AWS rejects listener port ranges that include the endpoint
+                port of a stored override, or that leave out the listener port
+                of one. Overrides this run removes, and endpoint groups
+                O(purge_endpoint_groups) deletes, are released before the
+                listener changes they conflict with, as are obsolete listeners
+                O(purge_listeners) deletes.
             elements: dict
             suboptions:
               endpoint_port:
@@ -1716,6 +1722,89 @@ def ensure_endpoint_groups(
     return changed, results
 
 
+def port_in_ranges(port, port_ranges):
+    return any(port_range["from_port"] <= port <= port_range["to_port"] for port_range in port_ranges)
+
+
+def port_override_releases(module, current_groups, desired_groups, listener_port_ranges, written_port_ranges):
+    """Return the endpoint group writes that release stored port overrides the listener writes would conflict with.
+
+    Live: CreateListener and UpdateListener reject port ranges that include the endpoint port of a stored port override
+    (InvalidPortRangeException "already in port overrides"), and UpdateListener rejects port ranges that leave out the
+    listener port of one ("in use by port overrides"). Only overrides this run removes are released. Each entry pairs
+    a current endpoint group with the port overrides it keeps, or None when purge_endpoint_groups deletes the group.
+    listener_port_ranges are the listener's port ranges after this run; written_port_ranges are those of every listener
+    this run creates or updates.
+    """
+    desired_by_region = {endpoint_group["endpoint_group_region"]: endpoint_group for endpoint_group in desired_groups}
+    releases = []
+    for current in current_groups:
+        desired = desired_by_region.get(current["endpoint_group_region"])
+        if desired is None and not module.params["purge_endpoint_groups"]:
+            continue
+
+        if desired is not None and desired["port_overrides"] is None:
+            continue
+
+        requested = normalized_port_overrides(desired["port_overrides"] if desired is not None else [])
+        overrides = normalized_port_overrides(current.get("port_overrides"))
+        conflicting = [
+            port_override
+            for port_override in overrides
+            if port_override not in requested
+            and (
+                port_in_ranges(port_override["endpoint_port"], written_port_ranges)
+                or not port_in_ranges(port_override["listener_port"], listener_port_ranges)
+            )
+        ]
+        if conflicting:
+            kept = None
+            if desired is not None:
+                kept = [port_override for port_override in overrides if port_override not in conflicting]
+
+            releases.append((current, kept))
+
+    return releases
+
+
+def release_port_overrides(client, module, current_groups, releases, changed=False):
+    """Apply port_override_releases entries and update current_groups to match; changed is as for ensure_listeners."""
+    for current, kept in releases:
+        endpoint_group_arn = current["endpoint_group_arn"]
+        index = current_groups.index(current)
+        if kept is None:
+            delete_endpoint_group(client, module, endpoint_group_arn, changed=changed)
+            changed = True
+            current_groups.pop(index)
+            continue
+
+        try:
+            response = client.update_endpoint_group(
+                EndpointGroupArn=endpoint_group_arn,
+                PortOverrides=[
+                    {"EndpointPort": item["endpoint_port"], "ListenerPort": item["listener_port"]} for item in kept
+                ],
+                aws_retry=True,
+            )
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(
+                e,
+                changed=changed,
+                msg=f"Unable to release port overrides of AWS Global Accelerator endpoint group {endpoint_group_arn}",
+            )
+
+        changed = True
+        endpoint_group = validate_endpoint_group(
+            module,
+            response.get("EndpointGroup") if isinstance(response, dict) else None,
+            expected_arn=endpoint_group_arn,
+            changed=True,
+        )
+        current_groups[index] = boto3_resource_to_ansible_dict(endpoint_group, transform_tags=False, force_tags=False)
+
+    return changed
+
+
 def endpoint_port_release_order(module, plans, changed=False):
     """Return the indexes of plans in the order their endpoint group writes run.
 
@@ -1824,11 +1913,22 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
     plans.extend(([], desired["endpoint_groups"]) for desired in creates)
     endpoint_group_order = endpoint_port_release_order(module, plans, changed=mutated)
 
-    # Release only obsolete listeners whose ports the listener writes need.
-    conflicting_deletes = [
-        current for current in deletes if any(listeners_overlap(current, desired) for desired in desired_changes)
-    ]
-    if conflicting_deletes and not module.check_mode:
+    # Release only obsolete listeners whose ports, or whose port override endpoint ports, the listener writes need.
+    written_port_ranges = [port_range for desired in desired_changes for port_range in desired["port_ranges"]]
+    conflicting_deletes = []
+    if not module.check_mode:
+        for current in deletes:
+            if any(listeners_overlap(current, desired) for desired in desired_changes) or (
+                written_port_ranges
+                and any(
+                    port_in_ranges(port_override["endpoint_port"], written_port_ranges)
+                    for endpoint_group in get_endpoint_groups(client, module, current["listener_arn"], changed=mutated)
+                    for port_override in endpoint_group.get("port_overrides") or []
+                )
+            ):
+                conflicting_deletes.append(current)
+
+    if conflicting_deletes:
         for current in conflicting_deletes:
             delete_listener(
                 client, module, accelerator_arn, current["listener_arn"], changed=mutated, deadline=deadline
@@ -1836,6 +1936,25 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
             mutated = True
             deletes.remove(current)
 
+        wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True, deadline=deadline)
+
+    # Port overrides this run removes are released before the listener writes they would conflict with.
+    released = False
+    if not module.check_mode:
+        for current, desired in matched + updates:
+            current_groups = current_endpoint_groups.get(current["listener_arn"])
+            if current_groups is None:
+                continue
+
+            releases = port_override_releases(
+                module, current_groups, desired["endpoint_groups"], desired["port_ranges"], written_port_ranges
+            )
+            if releases:
+                mutated = release_port_overrides(client, module, current_groups, releases, changed=mutated)
+                released = True
+
+    if released:
+        changed = True
         wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True, deadline=deadline)
 
     # Each entry also records the port AWS checks health on by default: the first port of the ranges in the order AWS

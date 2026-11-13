@@ -329,6 +329,46 @@ def test_pool_lookup_uses_name_tag_to_disambiguate_sender_pools():
     assert result["PoolId"] == "pool-2"
 
 
+@pytest.mark.parametrize(
+    "origination_identity",
+    ["AuP2Mix", "aup2mix", "AUP2MIX", "arn:aws:sms-voice:us-east-1:123456789012:sender-id/AuP2Mix/DE"],
+)
+def test_pool_lookup_finds_a_sender_id_without_letter_case(origination_identity):
+    # Live: a pool lists a sender ID in the case it was associated with and puts it in the ARN in uppercase.
+    module = FakeModule(
+        {
+            "iso_country_code": "DE",
+            "message_type": "TRANSACTIONAL",
+            "name": "main",
+            "origination_identity": origination_identity,
+            "pool_id": None,
+        }
+    )
+    pool = {"MessageType": "TRANSACTIONAL", "PoolId": "pool-1", "Status": "ACTIVE"}
+    listed = {
+        "IsoCountryCode": "DE",
+        "OriginationIdentity": "AuP2Mix",
+        "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/AUP2MIX/DE",
+    }
+
+    with (
+        patch.object(plugin, "describe_pools", return_value=[pool]),
+        patch.object(
+            plugin,
+            "pool_with_origination_identities",
+            side_effect=lambda client, module, pool, **kwargs: dict(pool, OriginationIdentities=[listed]),
+        ),
+        patch.object(
+            plugin,
+            "pool_with_tags",
+            side_effect=lambda client, module, pool, **kwargs: dict(pool, Tags=[{"Key": "Name", "Value": "main"}]),
+        ),
+    ):
+        result = plugin.find_pool(Mock(), module)
+
+    assert result["PoolId"] == "pool-1"
+
+
 PHONE_ORIGINATION = {
     "IsoCountryCode": "US",
     "OriginationIdentity": "phone-1",

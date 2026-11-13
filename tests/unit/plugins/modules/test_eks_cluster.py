@@ -3445,6 +3445,66 @@ def test_next_minor_downgrade_and_unparsed_versions_reach_the_version_update(ver
     client.update_cluster_version.assert_called_once_with(name="example", version=version)
 
 
+@pytest.mark.parametrize("wait", [True, False])
+def test_upgrade_policy_is_sent_after_the_version_update_completes(wait):
+    # EKS changes the support policy only while the cluster runs a version in standard support
+    # (https://docs.aws.amazon.com/eks/latest/userguide/extended-support-control.html).
+    params = eks_params(
+        deletion_protection=True,
+        upgrade_policy={"support_type": "STANDARD"},
+        version="1.31",
+        wait=wait,
+    )
+    current = dict(ACTIVE_ON_1_30, upgradePolicy={"supportType": "EXTENDED"})
+    updated = dict(current, deletionProtection=True, upgradePolicy={"supportType": "STANDARD"}, version="1.31")
+    client = Mock()
+    client.update_cluster_config.side_effect = [
+        {"update": {"id": "update-1", "status": "InProgress"}},
+        {"update": {"id": "update-3", "status": "InProgress"}},
+    ]
+    client.update_cluster_version.return_value = {"update": {"id": "update-2", "status": "InProgress"}}
+    with (
+        patch.object(plugin, "describe_cluster", side_effect=[current, updated]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        patch.object(plugin, "wait_for_cluster"),
+        patch.object(plugin, "wait_for_update") as wait_for_update,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        client.attach_mock(wait_for_update, "wait_for_update")
+        plugin.ensure_present(client, FakeModule(params))
+
+    # wait_for_update(client, module, update_id, ...) is recorded with the update ID it waits for.
+    calls = [(name, args[2] if name == "wait_for_update" else kwargs) for name, args, kwargs in client.mock_calls]
+    expected = [
+        ("update_cluster_config", {"name": "example", "deletionProtection": True}),
+        ("wait_for_update", "update-1"),
+        ("update_cluster_version", {"name": "example", "version": "1.31"}),
+        ("wait_for_update", "update-2"),
+        ("update_cluster_config", {"name": "example", "upgradePolicy": {"supportType": "STANDARD"}}),
+    ]
+    if wait:
+        expected.append(("wait_for_update", "update-3"))
+
+    assert calls == expected
+    check = run_present(FakeModule(params, check_mode=True), [current])[1]
+    assert check["changed"] is raised.value.values["changed"] is True
+    assert check["cluster"]["upgrade_policy"] == {"support_type": "STANDARD"}
+    assert check["cluster"]["version"] == "1.31"
+
+
+def test_upgrade_policy_without_a_version_change_keeps_its_place():
+    params = eks_params(deletion_protection=True, upgrade_policy={"support_type": "STANDARD"}, wait=False)
+    current = dict(ACTIVE_ON_1_30, upgradePolicy={"supportType": "EXTENDED"})
+
+    client = run_present(FakeModule(params), [current])[0]
+
+    assert client.update_cluster_config.call_args_list == [
+        call(name="example", deletionProtection=True),
+        call(name="example", upgradePolicy={"supportType": "STANDARD"}),
+    ]
+
+
 @pytest.mark.parametrize(
     "version, expected",
     [("1.30", (1, 30)), ("10.2", (10, 2)), ("1.30.1", None), ("v1.30", None), ("", None), (None, None)],

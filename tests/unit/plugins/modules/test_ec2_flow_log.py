@@ -752,13 +752,43 @@ def test_regional_nat_gateway_sends_traffic_type_defaulting_to_all(traffic_type,
     assert request["TrafficType"] == expected
 
 
-def test_regional_nat_gateway_without_traffic_type_does_not_match_a_reject_flow_log():
-    flow_log = dict(OLD_FLOW_LOG, LogDestination="arn:aws:s3:::new-bucket", ResourceId="nat-1", TrafficType="REJECT")
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("resource_type", ["RegionalNatGateway", "VPC"])
+def test_omitted_traffic_type_matches_a_flow_log_of_any_traffic_type(resource_type, check_mode):
+    flow_log = dict(OLD_FLOW_LOG, LogDestination="arn:aws:s3:::new-bucket", ResourceId="res-1", TrafficType="REJECT")
     client = Mock()
-    module = FakeModule(present_params(resource_ids=["nat-1"], resource_type="RegionalNatGateway"))
-    run_present(client, module, [flow_log])
+    module = FakeModule(present_params(resource_ids=["res-1"], resource_type=resource_type), check_mode=check_mode)
+    result = run_present(client, module, [flow_log])
 
+    assert result["changed"] is False
+    client.create_flow_logs.assert_not_called()
+    client.delete_flow_logs.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("traffic_type", ["ACCEPT", "REJECT"])
+def test_replacement_keeps_the_traffic_type_the_task_omits(traffic_type, check_mode):
+    flow_log = dict(OLD_FLOW_LOG, TrafficType=traffic_type)
+    client = Mock()
+    result = run_present(client, FakeModule(present_params(), check_mode=check_mode), [flow_log])
+
+    assert result["changed"] is True
+    if check_mode:
+        client.create_flow_logs.assert_not_called()
+        assert [item["traffic_type"] for item in result["flow_logs"]] == [traffic_type]
+    else:
+        assert client.create_flow_logs.call_args.kwargs["TrafficType"] == traffic_type
+        client.delete_flow_logs.assert_called_once_with(FlowLogIds=["fl-old"], aws_retry=True)
+
+
+def test_supplied_traffic_type_replaces_a_flow_log_of_another_traffic_type():
+    flow_log = dict(OLD_FLOW_LOG, LogDestination="arn:aws:s3:::new-bucket", TrafficType="REJECT")
+    client = Mock()
+    result = run_present(client, FakeModule(present_params(traffic_type="ALL")), [flow_log])
+
+    assert result["changed"] is True
     assert client.create_flow_logs.call_args.kwargs["TrafficType"] == "ALL"
+    client.delete_flow_logs.assert_called_once_with(FlowLogIds=["fl-old"], aws_retry=True)
 
 
 def test_traffic_type_is_handled_for_every_resource_type():

@@ -68,6 +68,9 @@ options:
       - A pool matches when it holds this identity, its C(Name) tag equals
         O(name), its message type equals O(message_type), and, when
         O(iso_country_code) is provided, the identity's country equals it.
+      - AWS treats sender IDs without letter case, so a sender ID or sender ID
+        ARN matches a pool's identity in any letter case. Phone number IDs and
+        ARNs match exactly.
       - A phone number can belong to only one pool, so the module fails when
         a phone number already belongs to a pool that does not match.
       - A sender ID can belong to several pools, so pools that hold the sender

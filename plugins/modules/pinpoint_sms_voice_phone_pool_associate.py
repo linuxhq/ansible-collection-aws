@@ -42,6 +42,9 @@ options:
       - Origination identity to associate with the pool.
       - This can be a phone number ID, phone number ARN, sender ID, or sender
         ID ARN.
+      - AWS treats sender IDs without letter case, so a sender ID or sender ID
+        ARN matches an association in any letter case. Phone number IDs and
+        ARNs match exactly.
       - This must not be empty when O(state=present).
     required: true
     type: str
@@ -334,6 +337,11 @@ def ensure_present(client, module):
             predicted_origination_identity(module.params["origination_identity"], module.params["iso_country_code"]),
             **pool,
         )
+        # Live: AssociateOriginationIdentity returns a sender ID requested as AuP2Mix as AUP2MIX.
+        if not module.params["origination_identity"].startswith("arn:") and not is_phone_number_reference(
+            module.params["origination_identity"]
+        ):
+            association["OriginationIdentity"] = association["OriginationIdentity"].upper()
 
     exit_result(module, changed, association)
 

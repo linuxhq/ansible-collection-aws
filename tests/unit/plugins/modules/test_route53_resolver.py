@@ -1761,6 +1761,52 @@ def test_removing_a_failed_address_predicts_the_addresses_a_real_run_returns(wai
         assert values["resolver_endpoint"]["ip_addresses"] == expected
 
 
+@pytest.mark.parametrize(
+    "ip_addresses",
+    [
+        # The failed address is dropped from the request.
+        None,
+        # The failed address is replaced.
+        [
+            {"ip": "192.0.2.1", "subnet_id": "subnet-1"},
+            {"ip": "192.0.2.2", "subnet_id": "subnet-2"},
+            {"ip": "192.0.2.3", "subnet_id": "subnet-3"},
+        ],
+    ],
+)
+def test_waited_repair_of_an_action_needed_endpoint_predicts_operational(ip_addresses):
+    params = endpoint_params(wait=True)
+    operational = existing_endpoint()
+    if ip_addresses is not None:
+        params["ip_addresses"] = ip_addresses
+        operational["IpAddresses"].append(
+            {"Ip": "192.0.2.3", "IpId": "rni-4", "SubnetId": "subnet-3", "Status": "ATTACHED"}
+        )
+
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        client.associate_resolver_endpoint_ip_address.return_value = {"ResolverEndpoint": in_flight_endpoint()}
+        client.disassociate_resolver_endpoint_ip_address.return_value = {"ResolverEndpoint": in_flight_endpoint()}
+        with (
+            patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint_with_failed_address()),
+            patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+            patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+            # The waiter returns the endpoint only once it is OPERATIONAL and fails on ACTION_NEEDED.
+            patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=operational),
+            pytest.raises(ModuleExit) as raised,
+        ):
+            plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+        results[check_mode] = raised.value.values
+        if check_mode:
+            assert client.mock_calls == []
+
+    for values in results.values():
+        assert values["changed"] is True
+        assert values["resolver_endpoint"]["status"] == "OPERATIONAL"
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize(
     ("wait", "expected_status"),

@@ -22,6 +22,7 @@
           - _query.identities.0.dkim_attributes.signing_attributes_origin == 'AWS_SES'
           - _query.identities.0.dkim_attributes.signing_enabled | bool
           - _query.identities.0.dkim_attributes.tokens | length == 3
+          - _query.identities.0.dkim_attributes.signing_hosted_zone | length > 0
           - _query.identities.0.verification_token | length > 0
       loop: "{{ __ses_identity_verify.results }}"
       loop_control:
@@ -35,10 +36,25 @@
           {%- for _query in __ses_identity_verify.results -%}
           {%- for _token in _query.identities.0.dkim_attributes.tokens -%}
           {%- set _ = records.append({'name': _token ~ '._domainkey.' ~ _query._identity.identity,
+                                      'value': _token ~ '.' ~
+                                               _query.identities.0.dkim_attributes.signing_hosted_zone,
                                       'zone': _query._identity.zone}) -%}
           {%- endfor -%}
           {%- endfor -%}
           {{ records }}
+
+    - name: Ensure a dkim record points to another dkim domain, as an earlier role version could set it
+      amazon.aws.route53:
+        overwrite: true
+        record: "{{ __ses_identity_dkim_record_list.0.name }}"
+        state: present
+        type: CNAME
+        value: "{{ __ses_identity_dkim_record_list.0.name.split('.') | first }}.dkim.ap-southeast-4.amazonses.com"
+        zone: "{{ __ses_identity_dkim_record_list.0.zone }}"
+
+    - name: Ensure ses identity role corrects the dkim record
+      ansible.builtin.include_role:
+        name: ses_identity
 
     - name: Ensure identity dkim records are queried
       amazon.aws.route53:
@@ -77,6 +93,18 @@
               map('length') |
               max == 0
 
+    - name: Ensure identity dkim record values are verified
+      ansible.builtin.assert:
+        that:
+          - _record.resource_record_sets.0.resource_records |
+            map(attribute='value') |
+            map('regex_replace', '[.]$', '') |
+            list == [_record._record.value | regex_replace('[.]$', '')]
+      loop: "{{ __ses_identity_dkim_records.results }}"
+      loop_control:
+        label: "{{ _record._record.name }}"
+        loop_var: _record
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         route53_zone_list:
@@ -92,11 +120,43 @@
           "{{ sqs_queue_list |
               map('combine', {'state': 'absent'}) }}"
 
+    - name: Ensure a dkim record points to another dkim domain before removal
+      amazon.aws.route53:
+        overwrite: true
+        record: "{{ __ses_identity_dkim_record_list.0.name }}"
+        state: present
+        type: CNAME
+        value: "{{ __ses_identity_dkim_record_list.0.name.split('.') | first }}.dkim.ap-southeast-4.amazonses.com"
+        zone: "{{ __ses_identity_dkim_record_list.0.zone }}"
+
+    - name: Ensure ses identity role is included
+      ansible.builtin.include_role:
+        name: ses_identity
+
+    - name: Ensure identity dkim records are queried after removal
+      amazon.aws.route53:
+        record: "{{ _record.name }}"
+        state: get
+        type: CNAME
+        zone: "{{ _record.zone }}"
+      register: __ses_identity_dkim_removed
+      loop: "{{ __ses_identity_dkim_record_list }}"
+      loop_control:
+        label: "{{ _record.name }}"
+        loop_var: _record
+
+    - name: Ensure identity dkim records are removed
+      ansible.builtin.assert:
+        that:
+          - __ses_identity_dkim_removed.results |
+            map(attribute='resource_record_sets') |
+            map('length') |
+            max == 0
+
     - name: Ensure roles are included
       ansible.builtin.include_role:
         name: "{{ _verify }}"
       loop:
-        - ses_identity
         - sns_topic
         - sqs_queue
         - route53_zone

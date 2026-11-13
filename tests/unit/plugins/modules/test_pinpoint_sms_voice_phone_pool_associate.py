@@ -265,9 +265,10 @@ def test_present_unchanged_returns_the_pool_id_and_arn(check_mode):
 def test_present_new_association_returns_the_listed_pool_arn_in_every_mode(pool_id, check_mode):
     pool_arn = "arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1"
     client = Mock()
+    # Live: AssociateOriginationIdentity returns a sender ID in uppercase whatever case it was requested in.
     client.associate_origination_identity.return_value = {
         "IsoCountryCode": "US",
-        "OriginationIdentity": "sender-2",
+        "OriginationIdentity": "SENDER-2",
         "PoolArn": pool_arn,
         "PoolId": "pool-1",
     }
@@ -302,10 +303,65 @@ def test_present_new_association_returns_the_listed_pool_arn_in_every_mode(pool_
     assert raised.value.values["changed"] is True
     assert raised.value.values["association"] == {
         "iso_country_code": "US",
-        "origination_identity": "sender-2",
+        "origination_identity": "SENDER-2",
         "pool_arn": pool_arn,
         "pool_id": "pool-1",
     }
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("state", ["absent", "present"])
+@pytest.mark.parametrize(
+    "origination_identity", ["AuP2Mix", "aup2mix", "arn:aws:sms-voice:us-east-1:123456789012:sender-id/AuP2Mix/DE"]
+)
+def test_sender_id_association_is_found_without_letter_case(origination_identity, state, check_mode):
+    # Live: a pool lists a sender ID in the case it was associated with and puts it in the ARN in uppercase.
+    listed = {
+        "IsoCountryCode": "DE",
+        "OriginationIdentity": "AUP2MIX",
+        "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/AUP2MIX/DE",
+    }
+    phone = {
+        "IsoCountryCode": "US",
+        "OriginationIdentity": "phone-1",
+        "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:phone-number/phone-1",
+        "PhoneNumber": "+12065550100",
+    }
+    client = Mock()
+    client.disassociate_origination_identity.return_value = dict(listed, PoolArn="arn:pool-1", PoolId="pool-1")
+    module = FakeModule(
+        associate_params(iso_country_code="DE", origination_identity=origination_identity, state=state),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            return_value={"OriginationIdentities": [phone, listed], "PoolArn": "arn:pool-1", "PoolId": "pool-1"},
+        ),
+        patch.object(plugin, "pool_is_deleting", return_value=False),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        getattr(plugin, f"ensure_{state}")(client, module)
+
+    client.associate_origination_identity.assert_not_called()
+    assert raised.value.values["changed"] is (state == "absent")
+    assert client.disassociate_origination_identity.called is (state == "absent" and not check_mode)
+
+
+def test_check_mode_predicts_the_uppercase_sender_id_aws_returns():
+    module = FakeModule(associate_params(iso_country_code="DE", origination_identity="AuP2Mix"), check_mode=True)
+    with (
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            return_value={"OriginationIdentities": [], "PoolArn": "arn:pool-1", "PoolId": "pool-1"},
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    assert raised.value.values["association"]["origination_identity"] == "AUP2MIX"
 
 
 def test_malformed_listed_association_reports_unchanged():
