@@ -5,6 +5,12 @@
     - sns_sms_attributes
 
     - role: sns_sms_attributes
+      sns_sms_attributes_default_sender_id: Molecule
+      tags:
+        - molecule-idempotence-notest
+
+    - role: sns_sms_attributes
+      sns_sms_attributes_default_sender_id: ""
       sns_sms_attributes_default_sms_type: Transactional
       sns_sms_attributes_delivery_status_success_sampling_rate: 0
 ...

@@ -84,7 +84,7 @@ def test_accepts_four_capabilities():
     ):
         plugin.main()
 
-    require.assert_called_once_with(
+    assert require.call_args_list[0] == call(
         module,
         client,
         "Pinpoint SMS Voice V2",
@@ -98,6 +98,8 @@ def test_accepts_four_capabilities():
             )
         },
     )
+    # Check mode checks the request as the real run does.
+    assert list(require.call_args_list[1].args[3]) == ["request_phone_number"]
     client.request_phone_number.assert_not_called()
 
 
@@ -455,6 +457,7 @@ def test_check_mode_projects_deduplicated_request_without_client_token():
     )
     with (
         patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -1424,6 +1427,7 @@ def test_number_without_the_requested_name_is_not_adopted():
         patch.object(
             plugin, "phone_number_tags", side_effect=lambda client, module, number, **kwargs: named_tags(number)
         ),
+        patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -1467,6 +1471,7 @@ def test_tags_without_name_adopt_the_only_fixed_attribute_match():
         patch.object(
             plugin, "phone_number_tags", side_effect=lambda client, module, number, **kwargs: named_tags(number)
         ),
+        patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -1509,6 +1514,7 @@ def test_check_mode_projects_the_opt_out_list_name_from_an_arn():
     )
     with (
         patch.object(plugin, "query_list", return_value=[existing_number()]),
+        patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -2145,3 +2151,36 @@ def test_reserved_tag_key_fails_before_updating_settings(key, check_mode):
     client.update_phone_number.assert_not_called()
     client.untag_resource.assert_not_called()
     client.tag_resource.assert_not_called()
+
+
+def require_without_international_sending(module, client, service, methods, changed=False):
+    """Fail as require_client_methods does with a botocore older than 1.40.14, which lacks InternationalSendingEnabled."""
+    for method, parameters in methods.items():
+        if "InternationalSendingEnabled" in parameters:
+            module.fail_json(
+                changed=changed,
+                msg=f"Installed botocore does not support {service} {method} parameter InternationalSendingEnabled",
+            )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("existing", [True, False], ids=["update", "request"])
+def test_check_mode_runs_the_sdk_checks_the_real_run_fails_on(existing, check_mode):
+    # Older botocore also drops InternationalSendingEnabled from DescribePhoneNumbers, so an update is always predicted.
+    current = {key: value for key, value in existing_number().items() if key != "InternationalSendingEnabled"}
+    client = model_client()
+    module = FakeModule(phone_number_params(international_sending_enabled=False), check_mode=check_mode)
+    with (
+        patch.object(plugin, "query_list", return_value=[current] if existing else []),
+        patch.object(plugin, "require_client_methods", side_effect=require_without_international_sending),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    method = "update_phone_number" if existing else "request_phone_number"
+    assert raised.value.values == {
+        "changed": False,
+        "msg": f"Installed botocore does not support Pinpoint SMS Voice V2 {method} parameter InternationalSendingEnabled",
+    }
+    client.update_phone_number.assert_not_called()
+    client.request_phone_number.assert_not_called()

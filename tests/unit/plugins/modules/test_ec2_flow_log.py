@@ -1746,6 +1746,118 @@ def test_replacements_with_different_kept_settings_are_created_in_separate_reque
     assert {"DestinationOptions", "LogFormat", "MaxAggregationInterval"} <= set(create_check[0])
 
 
+FIREHOSE_STREAM = "arn:aws:firehose:us-west-2:210987654321:deliverystream/flow-logs"
+CROSS_ACCOUNT_ROLE = "arn:aws:iam::210987654321:role/flow-logs-delivery"
+FIREHOSE_FLOW_LOG = dict(
+    OLD_FLOW_LOG,
+    DeliverCrossAccountRole=CROSS_ACCOUNT_ROLE,
+    DeliverLogsPermissionArn=ROLE_ARN,
+    LogDestination=FIREHOSE_STREAM,
+    LogDestinationType="kinesis-data-firehose",
+    MaxAggregationInterval=600,
+)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_replacement_keeps_the_delivery_roles_of_the_same_destination_type(check_mode):
+    # The roles are omitted, so the flow log with them matches until another setting changes and replaces it.
+    client = Mock()
+    module = FakeModule(
+        present_params(
+            log_destination=FIREHOSE_STREAM,
+            log_destination_type="kinesis-data-firehose",
+            max_aggregation_interval=60,
+        ),
+        check_mode=check_mode,
+    )
+    result = run_present(client, module, [dict(FIREHOSE_FLOW_LOG)])
+
+    assert result["deleted_flow_log_ids"] == ["fl-old"]
+    if check_mode:
+        client.create_flow_logs.assert_not_called()
+        predicted = result["flow_logs"][0]
+        assert predicted["deliver_cross_account_role"] == CROSS_ACCOUNT_ROLE
+        assert predicted["deliver_logs_permission_arn"] == ROLE_ARN
+        assert predicted["max_aggregation_interval"] == 60
+    else:
+        request = client.create_flow_logs.call_args.kwargs
+        assert request["DeliverCrossAccountRole"] == CROSS_ACCOUNT_ROLE
+        assert request["DeliverLogsPermissionArn"] == ROLE_ARN
+        assert request["MaxAggregationInterval"] == 60
+
+
+def test_supplied_delivery_roles_replace_the_kept_roles():
+    client = Mock()
+    other_role = "arn:aws:iam::123456789012:role/other"
+    module = FakeModule(
+        present_params(
+            deliver_logs_permission_arn=other_role,
+            log_destination=FIREHOSE_STREAM,
+            log_destination_type="kinesis-data-firehose",
+            max_aggregation_interval=60,
+        )
+    )
+    run_present(client, module, [dict(FIREHOSE_FLOW_LOG)])
+
+    request = client.create_flow_logs.call_args.kwargs
+    assert request["DeliverCrossAccountRole"] == CROSS_ACCOUNT_ROLE
+    assert request["DeliverLogsPermissionArn"] == other_role
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"log_destination": "arn:aws:s3:::new-bucket", "log_destination_type": "s3"},
+        {
+            "deliver_logs_permission_arn": "arn:aws:iam::123456789012:role/other",
+            "log_destination": None,
+            "log_destination_type": "cloud-watch-logs",
+            "log_group_name": "flow-logs",
+        },
+    ],
+)
+def test_replacement_to_another_destination_type_does_not_keep_the_delivery_roles(overrides, check_mode):
+    client = Mock()
+    result = run_present(
+        client, FakeModule(present_params(**overrides), check_mode=check_mode), [dict(FIREHOSE_FLOW_LOG)]
+    )
+
+    if check_mode:
+        settings = result["flow_logs"][0]
+        keys = ("deliver_cross_account_role", "deliver_logs_permission_arn")
+    else:
+        settings = client.create_flow_logs.call_args.kwargs
+        keys = ("DeliverCrossAccountRole", "DeliverLogsPermissionArn")
+
+    assert settings.get(keys[0]) is None
+    assert settings.get(keys[1]) == overrides.get("deliver_logs_permission_arn")
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_cloud_watch_logs_replacement_uses_the_kept_permission_role(check_mode):
+    old = dict(
+        OLD_FLOW_LOG,
+        DeliverLogsPermissionArn=ROLE_ARN,
+        LogDestination="arn:aws:logs:us-west-2:123456789012:log-group:old",
+        LogDestinationType="cloud-watch-logs",
+        LogGroupName="old",
+    )
+    client = Mock()
+    module = FakeModule(
+        present_params(log_destination=None, log_destination_type="cloud-watch-logs", log_group_name="new"),
+        check_mode=check_mode,
+    )
+    result = run_present(client, module, [old])
+
+    assert result["changed"] is True
+    assert result["deleted_flow_log_ids"] == ["fl-old"]
+    if check_mode:
+        assert result["flow_logs"][0]["deliver_logs_permission_arn"] == ROLE_ARN
+    else:
+        assert client.create_flow_logs.call_args.kwargs["DeliverLogsPermissionArn"] == ROLE_ARN
+
+
 TAG_FIELD_FORMAT = "${version} ${instance-tag}"
 TAG_FIELD_FLOW_LOG = dict(
     OLD_FLOW_LOG,

@@ -47,17 +47,17 @@ options:
       - The OIDC provider URL.
       - The URL must begin with C(https://) when O(state=present).
       - The URL must be at most 255 characters and identify a host that is not empty or whitespace-only.
-      - Matching against an existing provider ignores the C(https://) prefix
-        and any trailing slash, and compares the host case-insensitively.
+      - An existing provider matches only when its URL equals O(url) exactly,
+        apart from the C(https://) prefix, whose case is ignored. AWS STS
+        matches the C(iss) claim of a token to the provider URL exactly,
+        including any trailing slash and the host's case, and IAM keeps URLs
+        that differ only in these as separate providers.
       - A new provider is created with the URL exactly as given, apart from a
-        lower-case C(https://) prefix, because AWS STS matches the C(iss) claim
-        of a token to the provider URL exactly, including any trailing slash.
-        Give the URL exactly as the identity provider's tokens state their issuer.
-      - An existing provider whose URL differs from O(url) only in a trailing
-        slash or host case is managed as the matching provider; no provider
-        with the exact URL is created while it exists.
-      - When several existing providers match, the one whose URL equals O(url)
-        exactly, apart from the C(https://) prefix, is managed.
+        lower-case C(https://) prefix. Give the URL exactly as the identity
+        provider's tokens state their issuer.
+      - A provider whose URL differs from O(url) only in a trailing slash or
+        host case is never changed or deleted; O(state=present) creates the
+        provider with the exact URL beside it.
     required: true
     type: str
 notes:
@@ -177,7 +177,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
     get_provider_by_arn,
     get_provider_by_url,
-    normalize_provider_url,
+    provider_url,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
@@ -272,8 +272,8 @@ def ensure_present(client, module):
     current = get_provider_by_url(client, module, url)
     desired = {}
     # STS matches a token's issuer to the provider URL exactly, trailing slash included, and IAM stores the URL as sent
-    # without its https:// prefix, so a new provider keeps the given URL. Only the lookup above normalizes it.
-    created_url = url[len("https://") :]
+    # without its https:// prefix, so a new provider keeps the given URL, which the lookup above matched exactly.
+    created_url = provider_url(url)
     if module.params["client_id_list"] is not None:
         desired["client_id_list"] = sorted(set(module.params["client_id_list"]))
 
@@ -518,8 +518,7 @@ def main():
             module.fail_json(msg="url must begin with https://")
 
         # IAM rejects a whitespace-only host, which identifies no provider either.
-        normalized_url = normalize_provider_url(module.params["url"])
-        if not normalized_url.partition("/")[0].strip():
+        if not provider_url(module.params["url"]).partition("/")[0].strip():
             module.fail_json(msg="url must identify an OIDC provider host")
 
         if len(module.params["url"]) > 255:

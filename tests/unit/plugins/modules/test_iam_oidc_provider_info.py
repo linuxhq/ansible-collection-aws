@@ -58,8 +58,8 @@ def test_empty_listing_does_not_require_provider_get():
     )
 
 
-def test_url_filter_normalizes_scheme_and_ignores_other_arns():
-    module = FakeModule({"arn": None, "url": "https://example.com/id"}, client=Mock())
+def test_url_filter_ignores_the_scheme_case_and_other_arns():
+    module = FakeModule({"arn": None, "url": "HTTPS://example.com/id"}, client=Mock())
     provider = {
         "OpenIDConnectProviderArn": "arn:aws:iam::1:oidc-provider/example.com/id",
         "Url": "example.com/id",
@@ -73,7 +73,7 @@ def test_url_filter_normalizes_scheme_and_ignores_other_arns():
             "query_list",
             return_value=[
                 {"Arn": "arn:aws:iam::1:oidc-provider/other.example.com"},
-                {"Arn": "arn:aws:iam::1:oidc-provider/EXAMPLE.com/id"},
+                {"Arn": "arn:aws:iam::1:oidc-provider/example.com/id"},
             ],
         ),
         patch.object(iam_oidc, "get_provider_by_arn", return_value=provider) as get,
@@ -83,6 +83,26 @@ def test_url_filter_normalizes_scheme_and_ignores_other_arns():
 
     assert raised.value.values["open_id_connect_providers"][0]["url"] == "example.com/id"
     get.assert_called_once()
+
+
+@pytest.mark.parametrize("url", ["https://example.com/id", "https://example.com/id/", "https://Example.com/id"])
+def test_url_filter_returns_nothing_for_a_near_match(url):
+    # Live: IAM keeps URLs that differ only in a trailing slash or host case as separate providers.
+    near_matches = {"https://example.com/id": "example.com/id/", "https://example.com/id/": "example.com/id"}
+    stored = near_matches.get(url, "example.com/id")
+    module = FakeModule({"arn": None, "url": url}, client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(iam_oidc, "require_client_methods"),
+        patch.object(iam_oidc, "query_list", return_value=[{"Arn": f"arn:aws:iam::1:oidc-provider/{stored}"}]),
+        patch.object(iam_oidc, "get_provider_by_arn") as get,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["open_id_connect_providers"] == []
+    get.assert_not_called()
 
 
 @pytest.mark.parametrize(

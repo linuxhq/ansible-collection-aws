@@ -32,7 +32,8 @@ options:
       - When provided, this must be exactly two uppercase letters.
       - This field is optional for origination identities that are not
         country-specific.
-      - Creating a pool without this requires botocore 1.42.80 or later.
+      - Creating a pool without this requires botocore 1.42.80 or later; the
+        module checks this before any change, including in check mode.
       - AWS requires this to create a pool from a phone number, so the module
         fails without changes, including in check mode, when this is omitted,
         O(origination_identity) is a phone number ID or ARN, and no matching
@@ -680,6 +681,12 @@ def ensure_present(client, module):
                 "iso_country_code is required to create a Pinpoint SMS Voice V2 pool from phone number "
                 f"{module.params['origination_identity']}"
             )
+        )
+
+    # botocore before 1.42.80 requires IsoCountryCode for CreatePool and refuses the request without it.
+    if current is None and module.params["iso_country_code"] is None:
+        module.require_botocore_at_least(
+            "1.42.80", reason="to create a Pinpoint SMS Voice V2 pool without iso_country_code"
         )
 
     if current is not None and current.get("MessageType") != message_type:

@@ -1,0 +1,4 @@
+---
+trivial:
+  - eks_cluster - the Molecule scenario now verifies the version, endpoint access, public access CIDRs, and Name tag
+    that its update phase sets.

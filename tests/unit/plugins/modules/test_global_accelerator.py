@@ -3,7 +3,7 @@ import random
 from unittest.mock import ANY, Mock, patch
 
 import pytest
-from botocore.exceptions import WaiterError
+from botocore.exceptions import ClientError, WaiterError
 from botocore.session import Session
 from botocore.stub import Stubber
 
@@ -4094,3 +4094,142 @@ def test_reserved_tag_key_is_left_to_aws_on_a_new_accelerator():
         plugin.ensure_present(client, module)
 
     assert result.value.values["changed"] is True
+
+
+def port_override_listener_groups(overrides_by_listener):
+    """List one us-east-1 endpoint group per listener ARN with the given port override endpoint ports."""
+    return {
+        arn: [
+            {
+                "endpoint_descriptions": [],
+                "endpoint_group_arn": f"{arn}/group",
+                "endpoint_group_region": "us-east-1",
+                "port_overrides": [{"endpoint_port": port, "listener_port": listener_port} for port in ports],
+            }
+        ]
+        for arn, (listener_port, ports) in overrides_by_listener.items()
+    }
+
+
+def run_port_override_move(module, listener_ports, endpoint_groups):
+    """Run ensure_listeners against endpoint groups that reject an endpoint port another group in the region uses."""
+    held = {
+        group["endpoint_group_arn"]: {override["endpoint_port"] for override in group["port_overrides"]}
+        for groups in endpoint_groups.values()
+        for group in groups
+    }
+    client = Mock()
+
+    def update_endpoint_group(EndpointGroupArn, aws_retry, **request):
+        ports = {override["EndpointPort"] for override in request.get("PortOverrides", [])}
+        if any(ports & other for arn, other in held.items() if arn != EndpointGroupArn):
+            raise ClientError(
+                {"Error": {"Code": "InvalidArgumentException", "Message": "port in use"}}, "UpdateEndpointGroup"
+            )
+
+        held[EndpointGroupArn] = ports
+        return {
+            "EndpointGroup": {
+                "EndpointGroupArn": EndpointGroupArn,
+                "EndpointGroupRegion": "us-east-1",
+                "PortOverrides": request.get("PortOverrides", []),
+            }
+        }
+
+    client.update_endpoint_group.side_effect = update_endpoint_group
+    with (
+        patch.object(plugin, "get_listeners", return_value=listed_listeners(listener_ports)),
+        patch.object(
+            plugin,
+            "get_endpoint_groups",
+            side_effect=lambda client, module, listener_arn, changed=False: endpoint_groups[listener_arn],
+        ),
+        patch.object(
+            plugin,
+            "delete_endpoint_group",
+            side_effect=lambda client, module, arn, changed=False: held.pop(arn),
+        ) as delete_endpoint_group,
+        patch.object(plugin, "wait_for_accelerator"),
+    ):
+        result = plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    return client, delete_endpoint_group, held, result
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("arns", [("arn:a", "arn:b"), ("arn:b", "arn:a")], ids=["releasing-first", "taking-first"])
+@pytest.mark.parametrize("release", ["override-removed", "group-purged"])
+def test_port_override_endpoint_port_moves_between_listeners_in_one_run(check_mode, arns, release):
+    # Live: AWS rejects an endpoint port another port override in the region still uses, so the listener that releases
+    # it is reconciled first whatever the listener order.
+    releasing_arn, taking_arn = arns
+    endpoint_groups = port_override_listener_groups({releasing_arn: (80, [8080]), taking_arn: (443, [])})
+    releasing = dict(
+        review_desired(80, 80),
+        endpoint_groups=(
+            [unset_endpoint_group(endpoint_group_region="us-east-1", port_overrides=[])]
+            if release == "override-removed"
+            else []
+        ),
+    )
+    taking = dict(
+        review_desired(443, 443),
+        endpoint_groups=[
+            unset_endpoint_group(
+                endpoint_group_region="us-east-1", port_overrides=[{"endpoint_port": 8080, "listener_port": 443}]
+            )
+        ],
+    )
+    module = FakeModule(
+        {"listeners": [taking, releasing], "purge_endpoint_groups": True, "purge_listeners": True},
+        check_mode=check_mode,
+    )
+    client, delete_endpoint_group, held, (changed, listeners) = run_port_override_move(
+        module, {releasing_arn: (80, 80), taking_arn: (443, 443)}, endpoint_groups
+    )
+
+    assert changed is True
+    taken = next(listener for listener in listeners if listener["listener_arn"] == taking_arn)
+    assert taken["endpoint_groups"][0]["port_overrides"] == [{"endpoint_port": 8080, "listener_port": 443}]
+    if check_mode:
+        client.update_endpoint_group.assert_not_called()
+        delete_endpoint_group.assert_not_called()
+    else:
+        assert held[f"{taking_arn}/group"] == {8080}
+        assert held.get(f"{releasing_arn}/group", set()) == set()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_port_override_endpoint_port_swap_between_listeners_fails_before_any_write(check_mode):
+    endpoint_groups = port_override_listener_groups({"arn:a": (80, [8080]), "arn:b": (443, [9090])})
+    entries = [
+        dict(
+            review_desired(80, 80),
+            endpoint_groups=[
+                unset_endpoint_group(
+                    endpoint_group_region="us-east-1", port_overrides=[{"endpoint_port": 9090, "listener_port": 80}]
+                )
+            ],
+        ),
+        dict(
+            review_desired(443, 443),
+            endpoint_groups=[
+                unset_endpoint_group(
+                    endpoint_group_region="us-east-1", port_overrides=[{"endpoint_port": 8080, "listener_port": 443}]
+                )
+            ],
+        ),
+    ]
+    module = FakeModule(
+        {"listeners": entries, "purge_endpoint_groups": True, "purge_listeners": True}, check_mode=check_mode
+    )
+    with pytest.raises(ModuleFail) as raised:
+        run_port_override_move(module, {"arn:a": (80, 80), "arn:b": (443, 443)}, endpoint_groups)
+
+    assert raised.value.values == {
+        "changed": False,
+        "msg": (
+            "Unable to reconcile AWS Global Accelerator endpoint groups: port override endpoint ports 8080 in "
+            "us-east-1, 9090 in us-east-1 move between listeners in both directions; move them in separate runs"
+        ),
+    }

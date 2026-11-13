@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number - check mode now runs the SDK capability checks for the request and update it
+    predicts, so it fails where the real run fails, for example with ``international_sending_enabled`` on botocore
+    older than 1.40.14.

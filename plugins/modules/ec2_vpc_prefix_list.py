@@ -81,7 +81,8 @@ options:
       - Whether to wait for managed prefix list create, update, and delete operations.
       - Even when O(wait=false), the module waits for the prefix list to become ready between the requests
         of a create with more than 100 entries or of an update that needs several requests, and before it
-        changes or deletes a prefix list that is in a C(*-in-progress) state. When O(state=present), it also
+        changes or deletes a prefix list that is in a C(*-in-progress) state. When O(state=absent), a prefix
+        list whose operation fails while the module waits is deleted. When O(state=present), it also
         waits for a prefix list in the C(delete-in-progress) state to be deleted before creating it again.
         These waits use O(wait_delay) and are bounded by O(wait_timeout).
       - When O(state=present), check mode also waits for a prefix list in a C(*-in-progress) state to become
@@ -398,10 +399,27 @@ EC2_WAITER_MODEL_DATA = {
     },
 }
 
+# Before a delete, a failed create, modify, or restore is also a final state; such a prefix list can be deleted.
+EC2_WAITER_MODEL_DATA = dict(
+    EC2_WAITER_MODEL_DATA,
+    managed_prefix_list_deletable=dict(
+        EC2_WAITER_MODEL_DATA["managed_prefix_list_ready"],
+        acceptors=[
+            (
+                dict(acceptor, state="success")
+                if acceptor["expected"] in ("create-failed", "modify-failed", "restore-failed")
+                else acceptor
+            )
+            for acceptor in EC2_WAITER_MODEL_DATA["managed_prefix_list_ready"]["acceptors"]
+        ],
+    ),
+)
+
 # EC2 accepts at most this many entries in each create, add, or remove request.
 MAX_ENTRIES_PER_REQUEST = 100
 IN_PROGRESS_STATES = {"create-in-progress", "modify-in-progress", "restore-in-progress"}
 WAITER_TARGET_STATES = {
+    "managed_prefix_list_deletable": "deletable",
     "managed_prefix_list_deleted": "deleted",
     "managed_prefix_list_ready": "ready",
 }
@@ -546,7 +564,9 @@ def ensure_absent(client, module, owner_id):
         wait_for_prefix_list_state(client, module, prefix_list_id, "managed_prefix_list_deleted", deadline=deadline)
     elif changed and not module.check_mode:
         if state in IN_PROGRESS_STATES:
-            wait_for_ready_state(client, module, prefix_list_id, deadline=deadline)
+            wait_for_prefix_list_state(
+                client, module, prefix_list_id, "managed_prefix_list_deletable", deadline=deadline
+            )
 
         changed = delete_prefix_list(client, module, prefix_list_id, deadline=deadline)
 

@@ -28,7 +28,8 @@ options:
       - This is optional for origination identities that are not
         country-specific.
       - Without this, associating an origination identity, or disassociating
-        one that is not a phone number, requires botocore 1.42.80 or later.
+        one that is not a phone number, requires botocore 1.42.80 or later;
+        the module checks this before any change, including in check mode.
       - AWS requires this to associate a phone number, so with
         O(state=present) the module fails without changes, including in check
         mode, when this is omitted and O(origination_identity) is a phone
@@ -302,6 +303,12 @@ def ensure_present(client, module):
             )
         )
 
+    # botocore before 1.42.80 requires IsoCountryCode for AssociateOriginationIdentity and refuses the request without it.
+    if changed and module.params["iso_country_code"] is None:
+        module.require_botocore_at_least(
+            "1.42.80", reason="to associate an origination identity without iso_country_code"
+        )
+
     if changed and not module.check_mode:
         try:
             association = client.associate_origination_identity(
@@ -357,17 +364,24 @@ def ensure_absent(client, module):
             msg=last_phone_number_message(origination_identity, pool_id, is_phone_number_identity(association)),
         )
 
+    request = association_request(module)
+    # AWS requires a phone number's country to disassociate it, and lists a phone number under its only country.
+    if changed and "IsoCountryCode" not in request and is_phone_number_identity(association):
+        request = scrub_none_parameters(dict(request, IsoCountryCode=association.get("IsoCountryCode")))
+
+    # botocore before 1.42.80 requires IsoCountryCode for DisassociateOriginationIdentity and refuses the request
+    # without it.
+    if changed and "IsoCountryCode" not in request:
+        module.require_botocore_at_least(
+            "1.42.80", reason="to disassociate an origination identity without iso_country_code"
+        )
+
     if changed and module.check_mode:
         # A real run returns the DisassociateOriginationIdentity response, without the listed capabilities or number.
         association = {key: value for key, value in association.items() if key not in DISASSOCIATE_OMITTED_FIELDS}
 
     if changed and not module.check_mode:
         response = None
-        request = association_request(module)
-        # AWS requires a phone number's country to disassociate it, and lists a phone number under its only country.
-        if "IsoCountryCode" not in request and is_phone_number_identity(association):
-            request = scrub_none_parameters(dict(request, IsoCountryCode=association.get("IsoCountryCode")))
-
         try:
             response = client.disassociate_origination_identity(
                 **request,

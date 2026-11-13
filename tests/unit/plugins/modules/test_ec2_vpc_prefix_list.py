@@ -1651,14 +1651,14 @@ def test_absent_waits_for_an_in_progress_prefix_list_before_deleting(state):
     module = FakeModule({"name": "main", "wait": False})
     with (
         patch.object(plugin, "get_customer_managed_prefix_list_by_name", return_value=prefix_list(State=state)),
-        patch.object(plugin, "wait_for_ready_state") as wait,
+        patch.object(plugin, "wait_for_prefix_list_state") as wait,
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_absent(client, module, OWNER)
 
     assert raised.value.values["changed"] is True
-    wait.assert_called_once_with(client, module, "pl-1", deadline=ANY)
+    wait.assert_called_once_with(client, module, "pl-1", "managed_prefix_list_deletable", deadline=ANY)
     client.delete_managed_prefix_list.assert_called_once_with(PrefixListId="pl-1", aws_retry=True)
 
 
@@ -1811,3 +1811,43 @@ def test_waited_write_returns_entries_in_the_sorted_order_of_every_other_path(br
         plugin.ensure_present(client, module, OWNER)
 
     assert result.value.values["prefix_list"]["entries"] == sorted_entries
+
+
+@pytest.mark.parametrize(
+    ("in_progress", "failed"),
+    [
+        ("create-in-progress", "create-failed"),
+        ("modify-in-progress", "modify-failed"),
+        ("restore-in-progress", "restore-failed"),
+    ],
+)
+def test_absent_deletes_an_in_progress_prefix_list_whose_operation_fails(in_progress, failed):
+    client = Mock()
+    client.describe_managed_prefix_lists.side_effect = [
+        {"PrefixLists": [{"PrefixListId": "pl-1", "State": in_progress}]},
+        {"PrefixLists": [{"PrefixListId": "pl-1", "State": failed}]},
+    ]
+    module = FakeModule({"name": "main", "wait": False, "wait_delay": 1, "wait_timeout": 600})
+
+    def custom_waiter(waiter_client, model_data, waiter_name):
+        model = WaiterModel({"version": 2, "waiters": model_data}).get_waiter(waiter_name)
+        return Waiter(waiter_name, model, waiter_client.describe_managed_prefix_lists)
+
+    with (
+        patch.object(plugin, "get_customer_managed_prefix_list_by_name", return_value=prefix_list(State=in_progress)),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "custom_waiter", side_effect=custom_waiter),
+        patch("botocore.waiter.time.sleep"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module, OWNER)
+
+    assert raised.value.values["changed"] is True
+    client.delete_managed_prefix_list.assert_called_once_with(PrefixListId="pl-1", aws_retry=True)
+
+
+def test_deletable_waiter_handles_every_prefix_list_state():
+    shapes = Loader().load_service_model("ec2", "service-2")["shapes"]
+    acceptors = plugin.EC2_WAITER_MODEL_DATA["managed_prefix_list_deletable"]["acceptors"]
+
+    assert {acceptor["expected"] for acceptor in acceptors} == set(shapes["PrefixListState"]["enum"])

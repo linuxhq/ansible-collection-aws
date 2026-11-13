@@ -21,10 +21,10 @@ options:
   url:
     description:
       - Optional IAM OIDC provider URL used to limit the result set.
-      - Matching ignores the C(https://) prefix and any trailing slash, and compares
-        the host case-insensitively.
-      - When several providers match, only the one whose URL equals O(url)
-        exactly, apart from the C(https://) prefix, is returned.
+      - Only the provider whose URL equals O(url) exactly, apart from the
+        C(https://) prefix, whose case is ignored, is returned. A provider
+        whose URL differs only in a trailing slash or host case is a separate
+        provider and is not returned.
       - Mutually exclusive with O(arn).
     type: str
 extends_documentation_fragment:

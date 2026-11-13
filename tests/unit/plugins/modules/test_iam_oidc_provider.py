@@ -749,46 +749,124 @@ def test_new_provider_is_created_with_the_url_as_given(check_mode, url, stored_u
         )
 
 
-# A provider created before URLs were kept as given has no trailing slash and a lower-case host; lookups still
-# normalize, so it stays the managed provider and nothing new is created.
-@pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize(
-    ("url", "existing_url"),
+# Live: IAM keeps URLs that differ only in a trailing slash or host case as separate providers, and STS matches a
+# token's issuer exactly, so only the provider with the exact URL is managed.
+NEAR_MATCH_CASES = pytest.mark.parametrize(
+    ("url", "near_matches"),
     [
-        (
-            "https://sts.windows.net/00000000-0000-0000-0000-000000000000/",
-            "sts.windows.net/00000000-0000-0000-0000-000000000000",
-        ),
-        (
-            "https://sts.windows.net/00000000-0000-0000-0000-000000000000",
-            "sts.windows.net/00000000-0000-0000-0000-000000000000/",
-        ),
-        ("https://Example.com/id/", "example.com/id"),
+        ("https://x.example.com/id", ["x.example.com/id/", "X.example.com/id"]),
+        ("https://x.example.com/id/", ["x.example.com/id", "X.example.com/id/"]),
+        ("https://X.example.com/id", ["x.example.com/id", "X.example.com/id/"]),
     ],
-    ids=["slash-requested-slashless-exists", "slashless-requested-slash-exists", "host-case-and-slash"],
+    ids=["slashless", "slash", "host-case"],
 )
-def test_lookup_still_manages_a_provider_differing_only_in_slash_or_host_case(check_mode, url, existing_url):
-    arn = f"arn:aws:iam::123456789012:oidc-provider/{existing_url}"
+
+
+def iam_with(stored_urls):
+    """Return a mock IAM client and the providers it lists, keyed by ARN; creates and deletes change them."""
+    providers = {f"arn:aws:iam::123456789012:oidc-provider/{stored}": stored for stored in stored_urls}
     client = Mock()
-    client.get_open_id_connect_provider.return_value = {
+    client.get_open_id_connect_provider.side_effect = lambda OpenIDConnectProviderArn, aws_retry: {
         "ClientIDList": [],
         "ThumbprintList": ["a" * 40],
-        "Url": existing_url,
+        "Url": providers[OpenIDConnectProviderArn],
     }
+
+    def create(Url, aws_retry, **kwargs):
+        arn = f"arn:aws:iam::123456789012:oidc-provider/{Url[len('https://'):]}"
+        providers[arn] = Url[len("https://") :]
+        return {"OpenIDConnectProviderArn": arn}
+
+    client.create_open_id_connect_provider.side_effect = create
+    client.delete_open_id_connect_provider.side_effect = lambda OpenIDConnectProviderArn, aws_retry: providers.pop(
+        OpenIDConnectProviderArn
+    )
+    return client, providers
+
+
+def run_against(client, providers, function, params, check_mode=False):
     with (
-        patch.object(iam_oidc, "query_list", return_value=[{"Arn": arn}]),
+        patch.object(iam_oidc, "query_list", side_effect=lambda *args, **kwargs: [{"Arn": arn} for arn in providers]),
         patch.object(iam_oidc, "require_client_methods"),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(
-            client, FakeModule(oidc_params(thumbprint_list=["a" * 40], url=url), check_mode=check_mode)
-        )
+        function(client, FakeModule(params, check_mode=check_mode))
 
-    assert raised.value.values["changed"] is False
-    assert raised.value.values["open_id_connect_provider_arn"] == arn
-    assert raised.value.values["open_id_connect_provider"]["url"] == existing_url
+    return raised.value.values
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@NEAR_MATCH_CASES
+def test_present_creates_the_exact_provider_beside_near_matches(check_mode, url, near_matches):
+    client, providers = iam_with(near_matches)
+    exact = url[len("https://") :]
+
+    result = run_against(client, providers, plugin.ensure_present, oidc_params(url=url), check_mode=check_mode)
+
+    assert result["changed"] is True
+    assert result["open_id_connect_provider"]["url"] == exact
+    if check_mode:
+        client.create_open_id_connect_provider.assert_not_called()
+        return
+
+    client.create_open_id_connect_provider.assert_called_once_with(Url=url, aws_retry=True)
+    assert sorted(providers.values()) == sorted(near_matches + [exact])
+    client.delete_open_id_connect_provider.assert_not_called()
+
+    # A second run, in either mode, finds the exact provider and changes nothing.
+    for second_check_mode in (False, True):
+        result = run_against(client, providers, plugin.ensure_present, oidc_params(url=url), second_check_mode)
+        assert result["changed"] is False
+        assert result["open_id_connect_provider_arn"] == f"arn:aws:iam::123456789012:oidc-provider/{exact}"
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@NEAR_MATCH_CASES
+def test_present_manages_only_the_exact_provider(check_mode, url, near_matches):
+    exact = url[len("https://") :]
+    client, providers = iam_with(near_matches + [exact])
+
+    result = run_against(client, providers, plugin.ensure_present, oidc_params(url=url), check_mode=check_mode)
+
+    assert result["changed"] is False
+    assert result["open_id_connect_provider_arn"] == f"arn:aws:iam::123456789012:oidc-provider/{exact}"
     client.create_open_id_connect_provider.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@NEAR_MATCH_CASES
+def test_absent_leaves_near_matches_alone(check_mode, url, near_matches):
+    client, providers = iam_with(near_matches)
+
+    result = run_against(client, providers, plugin.ensure_absent, {"url": url}, check_mode=check_mode)
+
+    assert result["changed"] is False
+    assert "open_id_connect_provider_arn" not in result
+    client.delete_open_id_connect_provider.assert_not_called()
+    assert sorted(providers.values()) == sorted(near_matches)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@NEAR_MATCH_CASES
+def test_absent_deletes_only_the_exact_provider(check_mode, url, near_matches):
+    exact = url[len("https://") :]
+    exact_arn = f"arn:aws:iam::123456789012:oidc-provider/{exact}"
+    client, providers = iam_with(near_matches + [exact])
+
+    result = run_against(client, providers, plugin.ensure_absent, {"url": url}, check_mode=check_mode)
+
+    assert result["changed"] is True
+    assert result["open_id_connect_provider_arn"] == exact_arn
+    if check_mode:
+        client.delete_open_id_connect_provider.assert_not_called()
+        return
+
+    client.delete_open_id_connect_provider.assert_called_once_with(OpenIDConnectProviderArn=exact_arn, aws_retry=True)
+    assert sorted(providers.values()) == sorted(near_matches)
+    for second_check_mode in (False, True):
+        result = run_against(client, providers, plugin.ensure_absent, {"url": url}, check_mode=second_check_mode)
+        assert result["changed"] is False
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

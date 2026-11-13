@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - ec2_vpc_vpn - an empty ``log_group_arn`` or ``bgp_log_group_arn`` now matches a tunnel without a log group, which
+    EC2 omits, so it no longer reports a change and modifies the tunnel.
