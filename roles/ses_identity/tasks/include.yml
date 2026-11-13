@@ -55,6 +55,7 @@
       SES did not return the DKIM signing hosted zone of identity {{ _identity.identity }};
       botocore 1.42.8 or later is required to read it
   when:
+    - _identity.state == 'present'
     - __ses_identity_dkim_attributes.tokens | d([]) | length > 0
     - __ses_identity_dkim_attributes.signing_hosted_zone | d('') | length == 0
 
@@ -83,7 +84,10 @@
     record: "{{ _dkim }}._domainkey.{{ _identity.identity }}"
     state: "{{ _identity.state }}"
     type: CNAME
-    value: "{{ _dkim }}.{{ __ses_identity_dkim_attributes.signing_hosted_zone }}"
+    # An omitted value deletes the stored record, whichever DKIM domain an earlier run pointed it to.
+    value:
+      "{{ omit if _identity.state == 'absent' else
+          _dkim ~ '.' ~ __ses_identity_dkim_attributes.signing_hosted_zone }}"
     zone: "{{ _identity.zone }}"
   loop: "{{ __ses_identity_value_dkim }}"
   loop_control:
