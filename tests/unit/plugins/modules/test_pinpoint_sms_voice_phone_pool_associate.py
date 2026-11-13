@@ -1006,3 +1006,57 @@ def test_absent_without_a_country_requires_botocore_1_42_80_before_disassociatin
         client.disassociate_origination_identity.assert_not_called()
     else:
         module.require_botocore_at_least.assert_not_called()
+
+
+@pytest.mark.parametrize(("listed_after", "replayed"), [([], True), ([{"OriginationIdentity": "sender-1"}], False)])
+def test_client_token_reused_after_a_disassociation_fails_naming_the_token(listed_after, replayed):
+    # Live: AssociateOriginationIdentity with a token reused after a disassociation returns the earlier association,
+    # and ListPoolOriginationIdentities shows that the identity was not associated again.
+    client = Mock()
+    client.associate_origination_identity.return_value = {"OriginationIdentity": "sender-1", "PoolId": "pool-1"}
+    module = FakeModule(
+        {
+            "client_token": "token-1",
+            "iso_country_code": None,
+            "origination_identity": "sender-1",
+            "pool_id": "pool-1",
+            "state": "present",
+        }
+    )
+    listings = [{"OriginationIdentities": []}, {"OriginationIdentities": listed_after}]
+    with (
+        patch.object(plugin, "paginated_query_with_retries", side_effect=listings),
+        pytest.raises(ModuleFail if replayed else ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    if replayed:
+        assert raised.value.values == {
+            "msg": (
+                "client_token token-1 was already used to associate origination identity sender-1 with Pinpoint SMS "
+                "Voice V2 pool pool-1, which has since been disassociated; use a new client_token or omit it"
+            ),
+        }
+    else:
+        assert raised.value.values["changed"] is True
+
+
+def test_association_without_client_token_is_not_listed_again():
+    client = Mock()
+    client.associate_origination_identity.return_value = {"OriginationIdentity": "sender-1", "PoolId": "pool-1"}
+    module = FakeModule(
+        {
+            "client_token": None,
+            "iso_country_code": None,
+            "origination_identity": "sender-1",
+            "pool_id": "pool-1",
+            "state": "present",
+        }
+    )
+    with (
+        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": []}) as listing,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_present(client, module)
+
+    assert listing.call_count == 1

@@ -7,3 +7,7 @@ bugfixes:
   - pinpoint_sms_voice_phone_pool - when CreatePool answers a reused ``client_token`` with a pool that was since
     deleted, the module now fails with ``changed=false`` and names the token. Before, it reported a new pool that AWS
     no longer has, or waited for it until ``wait_timeout``.
+  - pinpoint_sms_voice_phone_pool_associate - when AssociateOriginationIdentity answers a reused ``client_token``
+    with the earlier association of an identity that was since disassociated, the module now fails with
+    ``changed=false`` and names the token. Before, it reported the identity as associated although AWS did not
+    associate it again, and every rerun did the same.
