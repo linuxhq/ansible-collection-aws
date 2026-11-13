@@ -47,18 +47,6 @@
           first |
           d({}) }}"
 
-- name: Ensure aws simple email service identity dkim signing hosted zone is returned
-  tags:
-    - ses_identity
-  ansible.builtin.fail:
-    msg: >-
-      SES did not return the DKIM signing hosted zone of identity {{ _identity.identity }};
-      botocore 1.42.8 or later is required to read it
-  when:
-    - _identity.state == 'present'
-    - __ses_identity_dkim_attributes.tokens | d([]) | length > 0
-    - __ses_identity_dkim_attributes.signing_hosted_zone | d('') | length == 0
-
 - name: Ensure aws simple email service identity dns records are generated
   tags:
     - ses_identity
