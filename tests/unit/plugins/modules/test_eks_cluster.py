@@ -2220,6 +2220,104 @@ def test_enabling_auto_mode_on_a_standard_cluster_sends_every_capability():
     )
 
 
+MATCHED_AUTO_MODE_CLUSTER = {
+    "name": "example",
+    "arn": "arn:example",
+    "status": "ACTIVE",
+    "computeConfig": {"enabled": True, "nodePools": ["general-purpose"], "nodeRoleArn": "arn:node"},
+    "kubernetesNetworkConfig": {"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": True}},
+    "storageConfig": {"blockStorage": {"enabled": True}},
+}
+STANDARD_LOAD_BALANCING_CLUSTER = {
+    "name": "example",
+    "arn": "arn:example",
+    "status": "ACTIVE",
+    "kubernetesNetworkConfig": {"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": False}},
+}
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("current", "overrides", "values"),
+    [
+        # EKS does not return computeConfig or storageConfig for a standard cluster.
+        (
+            STANDARD_LOAD_BALANCING_CLUSTER,
+            {"compute_config": {"enabled": True, "node_pools": ["general-purpose"], "node_role_arn": "arn:node"}},
+            (True, False, False),
+        ),
+        (
+            STANDARD_LOAD_BALANCING_CLUSTER,
+            {
+                "compute_config": {"enabled": True, "node_pools": ["general-purpose"], "node_role_arn": "arn:node"},
+                "kubernetes_network_config": {"elastic_load_balancing": {"enabled": True}},
+            },
+            (True, True, False),
+        ),
+        (MATCHED_AUTO_MODE_CLUSTER, {"storage_config": {"block_storage": {"enabled": False}}}, (True, True, False)),
+        (
+            MATCHED_AUTO_MODE_CLUSTER,
+            {"kubernetes_network_config": {"elastic_load_balancing": {"enabled": False}}},
+            (True, False, True),
+        ),
+    ],
+    ids=["enable_compute_only", "enable_without_storage", "disable_storage_only", "disable_load_balancing_only"],
+)
+def test_mismatched_auto_mode_enablement_fails_before_any_update(current, overrides, values, check_mode):
+    # EKS requires compute, load balancing, and block storage to be enabled or disabled together, and the Auto Mode
+    # request is sent after the other updates, such as this logging change.
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    module = FakeModule(
+        eks_params(logging={"cluster_logging": [{"enabled": True, "types": ["api"]}]}, **overrides),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=dict(current)),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        patch.object(plugin, "wait_for_update"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    compute, load_balancing, block_storage = values
+    assert raised.value.values == {
+        "msg": (
+            "compute_config.enabled, kubernetes_network_config.elastic_load_balancing.enabled, and "
+            "storage_config.block_storage.enabled must all be true or all be false for EKS Auto Mode; "
+            f"EKS cluster example would have compute {compute}, load balancing {load_balancing}, and block storage "
+            f"{block_storage}"
+        )
+    }
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_auto_mode_change_with_omitted_enablement_uses_the_clusters_matching_values(check_mode):
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    module = FakeModule(eks_params(compute_config={"node_pools": ["system"]}), check_mode=check_mode)
+    with (
+        patch.object(plugin, "describe_cluster", return_value=dict(MATCHED_AUTO_MODE_CLUSTER)),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    if check_mode:
+        client.update_cluster_config.assert_not_called()
+    else:
+        client.update_cluster_config.assert_called_once_with(
+            name="example",
+            computeConfig={"enabled": True, "nodePools": ["system"], "nodeRoleArn": "arn:node"},
+            kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
+            storageConfig={"blockStorage": {"enabled": True}},
+        )
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_disabled_zonal_shift_matches_a_cluster_that_never_set_it(check_mode):
     # EKS returns zonalShiftConfig as null, which botocore drops, until zonal shift is configured.

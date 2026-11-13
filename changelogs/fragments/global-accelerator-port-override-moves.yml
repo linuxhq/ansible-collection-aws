@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - global_accelerator - a port override endpoint port can now move between listeners' endpoint groups in one region
+    in one run; endpoint groups that release the port are updated or deleted before those that take it. Before, AWS
+    rejected the endpoint group that took the port when it came first, and every rerun failed the same way. Ports that
+    would move between listeners in both directions now fail before any listener change.

@@ -914,8 +914,15 @@ LOG_FIELDS = {
     "bgp_log_output_format": "BgpLogOutputFormat",
 }
 
-# EC2 omits a log option that was never set; these are its AWS defaults.
-LOG_DEFAULTS = {"LogEnabled": False, "LogOutputFormat": "json", "BgpLogEnabled": False, "BgpLogOutputFormat": "json"}
+# EC2 omits a log option that was never set; these are its AWS defaults. An omitted log group equals "", which clears it.
+LOG_DEFAULTS = {
+    "LogEnabled": False,
+    "LogGroupArn": "",
+    "LogOutputFormat": "json",
+    "BgpLogEnabled": False,
+    "BgpLogGroupArn": "",
+    "BgpLogOutputFormat": "json",
+}
 
 TUNNEL_CHOICES = {
     "ike_versions": ["ikev1", "ikev2"],

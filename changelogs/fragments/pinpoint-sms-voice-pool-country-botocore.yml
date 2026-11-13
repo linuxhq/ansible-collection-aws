@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_pool - creating a pool without ``iso_country_code`` now fails before any change, including
+    in check mode, with botocore older than 1.42.80, which requires the country; the documented minimum is enforced.
+  - pinpoint_sms_voice_phone_pool_associate - associating, or disassociating, an origination identity without
+    ``iso_country_code`` now fails before any change, including in check mode, with botocore older than 1.42.80,
+    which requires the country; the documented minimum is enforced.

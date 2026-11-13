@@ -1545,3 +1545,35 @@ def test_reserved_tag_key_is_left_to_aws_on_a_new_pool():
         plugin.ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("iso_country_code", "existing", "required"),
+    [(None, False, True), ("US", False, False), (None, True, False)],
+    ids=["create-without-country", "create-with-country", "existing-without-country"],
+)
+def test_new_pool_without_a_country_requires_botocore_1_42_80_before_any_write(
+    iso_country_code, existing, required, check_mode
+):
+    # botocore before 1.42.80 requires IsoCountryCode in CreatePool and refuses the request without it.
+    old_botocore = ModuleFail({"msg": "botocore 1.42.80 required"})
+    client = Mock()
+    module = FakeModule(
+        main_params(iso_country_code=iso_country_code, origination_identity="MYSENDER"), check_mode=check_mode
+    )
+    module.require_botocore_at_least = Mock(side_effect=old_botocore)
+    with (
+        patch.object(plugin, "find_pool", return_value=active_pool() if existing else None),
+        pytest.raises((ModuleExit, ModuleFail)) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    if required:
+        assert raised.value is old_botocore
+        module.require_botocore_at_least.assert_called_once_with(
+            "1.42.80", reason="to create a Pinpoint SMS Voice V2 pool without iso_country_code"
+        )
+        client.create_pool.assert_not_called()
+    else:
+        module.require_botocore_at_least.assert_not_called()

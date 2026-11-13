@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - ec2_vpc_prefix_list - with ``state=absent``, a prefix list whose create, modify, or restore fails while the module
+    waits for it is now deleted in the same run instead of failing the wait.

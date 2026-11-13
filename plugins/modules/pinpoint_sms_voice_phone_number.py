@@ -605,12 +605,6 @@ def phone_number_changes(client, module, current):
 
 def update_phone_number(client, module, current, updates):
     phone_number_id = current["PhoneNumberId"]
-    require_client_methods(
-        module,
-        client,
-        "Pinpoint SMS Voice V2",
-        {"update_phone_number": ("PhoneNumberId",) + tuple(updates)},
-    )
     try:
         # A shared number must be addressed by the ARN the caller gave.
         response = client.update_phone_number(
@@ -918,17 +912,21 @@ def ensure_present(client, module):
             )
 
         tags_changed = bool(tags_to_set or tag_keys_to_unset)
-        if tags_changed and not module.check_mode:
-            if not current.get("PhoneNumberArn"):
-                module.fail_json(msg="AWS did not return the phone number ARN required for tagging")
+        if tags_changed and not module.check_mode and not current.get("PhoneNumberArn"):
+            module.fail_json(msg="AWS did not return the phone number ARN required for tagging")
 
-            methods = {}
-            if tags_to_set:
-                methods["tag_resource"] = ("ResourceArn", "Tags")
+        # Check mode checks the SDK as the real run does, so it fails where the real run fails before any write.
+        methods = {}
+        if updates:
+            methods["update_phone_number"] = ("PhoneNumberId",) + tuple(updates)
 
-            if tag_keys_to_unset:
-                methods["untag_resource"] = ("ResourceArn", "TagKeys")
+        if tags_to_set:
+            methods["tag_resource"] = ("ResourceArn", "Tags")
 
+        if tag_keys_to_unset:
+            methods["untag_resource"] = ("ResourceArn", "TagKeys")
+
+        if methods:
             require_client_methods(module, client, "Pinpoint SMS Voice V2", methods)
 
         changed = bool(updates) or tags_changed
@@ -980,6 +978,13 @@ def ensure_present(client, module):
         }
     )
     request = snake_dict_to_camel_dict(parameters, capitalize_first=True)
+    # Check mode checks the SDK as the real run does, so it fails where the real run fails before any write.
+    require_client_methods(
+        module,
+        client,
+        "Pinpoint SMS Voice V2",
+        {"request_phone_number": tuple(request)},
+    )
 
     if module.check_mode:
         # A real run returns the waited DescribePhoneNumbers item or the RequestPhoneNumber response, and botocore
@@ -1000,12 +1005,6 @@ def ensure_present(client, module):
 
         exit_result(module, True, predicted)
 
-    require_client_methods(
-        module,
-        client,
-        "Pinpoint SMS Voice V2",
-        {"request_phone_number": tuple(request)},
-    )
     try:
         response = client.request_phone_number(**request, aws_retry=True)
     except (BotoCoreError, ClientError) as e:

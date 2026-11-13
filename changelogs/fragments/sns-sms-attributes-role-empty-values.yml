@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - sns_sms_attributes role - an empty string or zero in a role variable is now passed to the module, so an empty
+    string clears the attribute, instead of being omitted.

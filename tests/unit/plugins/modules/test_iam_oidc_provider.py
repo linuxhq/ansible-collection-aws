@@ -53,13 +53,15 @@ def test_absent_tolerates_provider_disappearing_during_delete():
     module = FakeModule({"url": "https://example.com/id"})
     current = {"OpenIDConnectProviderArn": "arn:provider"}
     with (
-        patch.object(plugin, "get_provider_by_url", return_value=current),
+        patch.object(plugin, "get_providers_by_url", return_value=[current]),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_absent(client, module)
 
     assert raised.value.values["changed"] is False
+    assert raised.value.values["open_id_connect_provider_arn"] == "arn:provider"
+    assert raised.value.values["open_id_connect_provider_arns"] == ["arn:provider"]
 
 
 def test_module_contract():
@@ -916,3 +918,94 @@ def test_create_leaves_reserved_tag_keys_to_iam():
         plugin.ensure_present(Mock(), module)
 
     assert raised.value.values["changed"] is True
+
+
+def run_absent_against(providers, url, check_mode=False):
+    """Run state=absent against IAM providers keyed by their stored URL; deletions remove them."""
+    client = Mock()
+    client.get_open_id_connect_provider.side_effect = lambda OpenIDConnectProviderArn, aws_retry: {
+        "ClientIDList": [],
+        "ThumbprintList": [],
+        "Url": providers[OpenIDConnectProviderArn],
+    }
+    client.delete_open_id_connect_provider.side_effect = lambda OpenIDConnectProviderArn, aws_retry: providers.pop(
+        OpenIDConnectProviderArn
+    )
+    with (
+        patch.object(iam_oidc, "query_list", side_effect=lambda *args, **kwargs: [{"Arn": arn} for arn in providers]),
+        patch.object(iam_oidc, "require_client_methods"),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, FakeModule({"url": url}, check_mode=check_mode))
+
+    return client, raised.value.values
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "url", ["https://oidc.example.com/id", "https://oidc.example.com/id/", "https://OIDC.example.com/id"]
+)
+def test_absent_deletes_every_provider_whose_url_matches_in_one_run(check_mode, url):
+    # Live: IAM keeps URLs that differ only in a trailing slash or host case as separate providers.
+    stored_urls = ["oidc.example.com/id/", "OIDC.example.com/id", "oidc.example.com/id"]
+    providers = {f"arn:aws:iam::123456789012:oidc-provider/{stored}": stored for stored in stored_urls}
+    providers["arn:aws:iam::123456789012:oidc-provider/other.example.com/id"] = "other.example.com/id"
+    exact = f"arn:aws:iam::123456789012:oidc-provider/{url[len('https://'):]}"
+    matching = [exact] + [
+        f"arn:aws:iam::123456789012:oidc-provider/{stored}"
+        for stored in stored_urls
+        if f"arn:aws:iam::123456789012:oidc-provider/{stored}" != exact
+    ]
+
+    client, result = run_absent_against(providers, url, check_mode=check_mode)
+
+    assert result["changed"] is True
+    assert result["open_id_connect_provider_arn"] == exact
+    assert result["open_id_connect_provider_arns"] == matching
+    if check_mode:
+        client.delete_open_id_connect_provider.assert_not_called()
+        return
+
+    assert [
+        call.kwargs["OpenIDConnectProviderArn"] for call in client.delete_open_id_connect_provider.call_args_list
+    ] == (matching)
+    assert list(providers) == ["arn:aws:iam::123456789012:oidc-provider/other.example.com/id"]
+
+    # A second run, in either mode, finds nothing left to delete.
+    for second_check_mode in (False, True):
+        client, result = run_absent_against(providers, url, check_mode=second_check_mode)
+        assert result["changed"] is False
+        assert result["open_id_connect_provider_arns"] == []
+        assert "open_id_connect_provider_arn" not in result
+        client.delete_open_id_connect_provider.assert_not_called()
+
+
+def test_absent_failure_after_an_earlier_delete_reports_changed():
+    providers = {
+        "arn:aws:iam::123456789012:oidc-provider/oidc.example.com/id": "oidc.example.com/id",
+        "arn:aws:iam::123456789012:oidc-provider/oidc.example.com/id/": "oidc.example.com/id/",
+    }
+    client = Mock()
+    client.get_open_id_connect_provider.side_effect = lambda OpenIDConnectProviderArn, aws_retry: {
+        "Url": providers[OpenIDConnectProviderArn]
+    }
+    client.delete_open_id_connect_provider.side_effect = [
+        None,
+        plugin.ClientError({"Error": {"Code": "AccessDenied", "Message": "denied"}}, "DeleteOpenIDConnectProvider"),
+    ]
+    with (
+        patch.object(iam_oidc, "query_list", return_value=[{"Arn": arn} for arn in providers]),
+        patch.object(iam_oidc, "require_client_methods"),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, FakeModule({"url": "https://oidc.example.com/id"}))
+
+    assert raised.value.values == {
+        "changed": True,
+        "msg": (
+            "Unable to delete AWS IAM OIDC provider arn:aws:iam::123456789012:oidc-provider/oidc.example.com/id/ "
+            "for https://oidc.example.com/id"
+        ),
+    }

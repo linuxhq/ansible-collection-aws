@@ -47,6 +47,10 @@ options:
     description:
       - The EKS Auto Mode compute configuration.
       - This requires botocore C(1.35.72) or later.
+      - EKS requires O(compute_config.enabled), O(kubernetes_network_config.elastic_load_balancing.enabled), and
+        O(storage_config.block_storage.enabled) to be all true or all false. When an existing cluster's EKS Auto
+        Mode settings change, the module fails before any change if these values differ, using the cluster's value
+        for an omitted one and treating a setting EKS does not return as false.
     suboptions:
       enabled:
         description:
@@ -116,6 +120,8 @@ options:
         description:
           - The EKS Auto Mode load balancing configuration.
           - This requires botocore C(1.35.72) or later.
+          - EKS requires the same O(kubernetes_network_config.elastic_load_balancing.enabled) value as
+            O(compute_config.enabled) and O(storage_config.block_storage.enabled); see O(compute_config).
         suboptions:
           enabled:
             description:
@@ -283,6 +289,8 @@ options:
     description:
       - The EKS Auto Mode storage configuration.
       - This requires botocore C(1.35.72) or later.
+      - EKS requires the same O(storage_config.block_storage.enabled) value as O(compute_config.enabled) and
+        O(kubernetes_network_config.elastic_load_balancing.enabled); see O(compute_config).
     suboptions:
       block_storage:
         description:
@@ -1711,7 +1719,29 @@ def ensure_present(client, module, deadline=None):
             module.fail_json(msg="remote_network_config requires an IPv4 cluster")
 
     if auto_mode_changed:
-        # EKS requires compute, load balancing, and storage enablement in one request.
+        # EKS requires compute, load balancing, and storage to be enabled or disabled together in one request. The
+        # request is sent after the other updates, so mismatched values fail here before any of them.
+        compared = with_auto_mode_defaults(current)
+        enabled = {}
+        for field, path in AUTO_MODE_FIELDS.items():
+            current_config = compared[field]
+            desired_config = config_request.get(field) or {}
+            for key in path:
+                current_config = current_config[key]
+                desired_config = desired_config.get(key) or {}
+
+            enabled[field] = desired_config.get("enabled", current_config["enabled"])
+
+        if len(set(enabled.values())) > 1:
+            module.fail_json(
+                msg=(
+                    "compute_config.enabled, kubernetes_network_config.elastic_load_balancing.enabled, and "
+                    "storage_config.block_storage.enabled must all be true or all be false for EKS Auto Mode; "
+                    f"EKS cluster {name} would have compute {enabled['computeConfig']}, load balancing "
+                    f"{enabled['kubernetesNetworkConfig']}, and block storage {enabled['storageConfig']}"
+                )
+            )
+
         update_requests.append(auto_mode_request(current, config_request))
 
     config_changed = bool(update_requests)

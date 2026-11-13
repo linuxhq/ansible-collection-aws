@@ -33,7 +33,8 @@ options:
     description:
       - The ARN of the IAM role that permits delivery to CloudWatch Logs.
       - This is required to create flow logs when O(log_destination_type) is C(cloud-watch-logs), the default
-        when O(state=present).
+        when O(state=present), unless a replacement keeps the value of the flow log it replaces, as described for
+        O(name).
       - This must not be empty when O(state=present).
     type: str
   destination_options:
@@ -125,8 +126,10 @@ options:
         they would change the tags of a kept flow log. Tags with the reserved C(aws:) prefix are not copied.
       - A replacement flow log also keeps the O(log_format) and O(max_aggregation_interval) of the flow log it
         replaces when these options are omitted, and its O(destination_options) when both flow logs deliver to
-        S3. Each supplied option, including each O(destination_options) suboption, replaces only its own kept
-        value.
+        S3. It keeps the O(deliver_cross_account_role) and O(deliver_logs_permission_arn) of the flow log it
+        replaces when these options are omitted and both flow logs deliver to the same O(log_destination_type),
+        C(cloud-watch-logs) or C(kinesis-data-firehose). Each supplied option, including each
+        O(destination_options) suboption, replaces only its own kept value.
       - A kept O(log_format) also keeps the tag field specifications that EC2 tag fields in that format require.
         A supplied O(log_format) is sent without them.
       - Keeping a log format with EC2 tag fields requires botocore 1.43.26 or later; with an older botocore, the
@@ -511,6 +514,19 @@ def replacement_settings(settings, replaced):
     if replaced.get("MaxAggregationInterval") in (60, 600):
         kept["max_aggregation_interval"] = replaced["MaxAggregationInterval"]
 
+    # The delivery roles authorize delivery to CloudWatch Logs or Kinesis Data Firehose, so they are kept only when
+    # both flow logs deliver to the same one of these destination types.
+    if (
+        settings["log_destination_type"] != "s3"
+        and replaced.get("LogDestinationType") == settings["log_destination_type"]
+    ):
+        for key, field in (
+            ("deliver_cross_account_role", "DeliverCrossAccountRole"),
+            ("deliver_logs_permission_arn", "DeliverLogsPermissionArn"),
+        ):
+            if isinstance(replaced.get(field), str) and replaced[field]:
+                kept[key] = replaced[field]
+
     effective = dict(kept, **settings)
     # Destination options apply only to S3, so they are kept only when both flow logs deliver to S3.
     if settings["log_destination_type"] == "s3" and replaced.get("LogDestinationType") == "s3":
@@ -818,8 +834,9 @@ def ensure_present(client, module):
             "choose one"
         )
 
-    if missing_resource_ids:
-        require_create_parameters(module, desired)
+    # A replacement may get the settings EC2 requires from the flow log it replaces.
+    for resource_id in missing_resource_ids:
+        require_create_parameters(module, created_settings[resource_id])
 
     tags_changed = []
     if tags is not None:

@@ -41,10 +41,15 @@ class FakeModule:
         self.params = params
         self.region = region
         self.warnings = []
+        self.botocore_requirements = []
         self._client = client
 
     def client(self, *args, **kwargs):
         return self._client
+
+    def require_botocore_at_least(self, desired, reason=None):
+        # The pinned botocore meets every requirement; tests replace this to simulate an older one.
+        self.botocore_requirements.append((desired, reason))
 
     def warn(self, warning):
         self.warnings.append(warning)

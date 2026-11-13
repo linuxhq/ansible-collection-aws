@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - eks_cluster - when an existing cluster's EKS Auto Mode settings change, the module now fails before any change,
+    including in check mode, when the compute, load balancing, and block storage ``enabled`` values would differ,
+    which EKS rejects; before, EKS rejected the request after the run's other updates were applied.

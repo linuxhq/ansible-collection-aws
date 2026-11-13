@@ -98,7 +98,8 @@ def get_provider(client, module, arn):
     return get_provider_by_arn(client, module, arn)
 
 
-def get_provider_by_url(client, module, url):
+def matching_providers(client, module, url):
+    """Yield each existing provider whose URL normalizes to url, the one with the URL exactly as given first."""
     desired_url = normalize_provider_url(url)
     exact_url = url[len("https://") :] if url.lower().startswith("https://") else url
     candidates = [
@@ -114,6 +115,12 @@ def get_provider_by_url(client, module, url):
         provider = get_provider(client, module, arn)
 
         if provider and normalize_provider_url(provider.get("Url")) == desired_url:
-            return provider
+            yield provider
 
-    return None
+
+def get_provider_by_url(client, module, url):
+    return next(matching_providers(client, module, url), None)
+
+
+def get_providers_by_url(client, module, url):
+    return list(matching_providers(client, module, url))

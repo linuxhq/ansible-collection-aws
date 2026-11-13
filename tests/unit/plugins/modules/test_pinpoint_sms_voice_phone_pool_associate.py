@@ -869,3 +869,84 @@ def test_absent_check_mode_predicts_the_disassociate_response(phone_number, iso_
         "pool_arn": POOL_1_ARN,
         "pool_id": "pool-1",
     }
+
+
+OLD_BOTOCORE = ModuleFail({"msg": "botocore 1.42.80 required"})
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("iso_country_code", "required"),
+    [(None, True), ("US", False)],
+    ids=["without-country", "with-country"],
+)
+def test_present_without_a_country_requires_botocore_1_42_80_before_associating(iso_country_code, required, check_mode):
+    # botocore before 1.42.80 requires IsoCountryCode in AssociateOriginationIdentity and refuses the request.
+    client = Mock()
+    module = FakeModule(
+        associate_params(iso_country_code=iso_country_code, origination_identity="sender-1"), check_mode=check_mode
+    )
+    module.require_botocore_at_least = Mock(side_effect=OLD_BOTOCORE)
+    client.associate_origination_identity.return_value = dict(SENDER_1, PoolId="pool-1")
+    with (
+        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": [PHONE_1]}),
+        pytest.raises(ModuleFail if required else ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    if required:
+        assert raised.value is OLD_BOTOCORE
+        module.require_botocore_at_least.assert_called_once_with(
+            "1.42.80", reason="to associate an origination identity without iso_country_code"
+        )
+        client.associate_origination_identity.assert_not_called()
+    else:
+        module.require_botocore_at_least.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_present_existing_association_without_a_country_needs_no_botocore_check(check_mode):
+    module = FakeModule(associate_params(iso_country_code=None, origination_identity="sender-1"), check_mode=check_mode)
+    module.require_botocore_at_least = Mock(side_effect=OLD_BOTOCORE)
+    with (
+        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": [SENDER_1]}),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    assert raised.value.values["changed"] is False
+    module.require_botocore_at_least.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("origination_identity", "iso_country_code", "required"),
+    [("sender-1", None, True), ("sender-1", "US", False), ("phone-1", None, False)],
+    ids=["sender-without-country", "sender-with-country", "phone-number-listed-country"],
+)
+def test_absent_without_a_country_requires_botocore_1_42_80_before_disassociating(
+    origination_identity, iso_country_code, required, check_mode
+):
+    # A phone number is disassociated with the country AWS lists for it, so only other identities go without one.
+    client = Mock()
+    client.disassociate_origination_identity.return_value = {
+        "OriginationIdentity": origination_identity,
+        "PoolId": "pool-1",
+    }
+    module = absent_params(origination_identity, check_mode=check_mode)
+    module.params["iso_country_code"] = iso_country_code
+    module.require_botocore_at_least = Mock(side_effect=OLD_BOTOCORE)
+    with (
+        patch.object(plugin, "current_associations", return_value=({"PoolId": "pool-1"}, [PHONE_1, PHONE_2, SENDER_1])),
+        pytest.raises(ModuleFail if required else ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    if required:
+        assert raised.value is OLD_BOTOCORE
+        module.require_botocore_at_least.assert_called_once_with(
+            "1.42.80", reason="to disassociate an origination identity without iso_country_code"
+        )
+        client.disassociate_origination_identity.assert_not_called()
+    else:
+        module.require_botocore_at_least.assert_not_called()

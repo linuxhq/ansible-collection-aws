@@ -2599,6 +2599,24 @@ def test_log_group_arn_is_sent_while_its_logging_is_enabled_or_to_clear_it(
         )
 
 
+@pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("prefix", ["", "bgp_"], ids=["log", "bgp_log"])
+@pytest.mark.parametrize("log_enabled", [False, None], ids=["disabled", "omitted"])
+@pytest.mark.parametrize("stored", [None, ""], ids=["never_set", "empty"])
+def test_empty_log_group_arn_matches_a_tunnel_without_a_log_group(
+    module_spec, default_tunnels, check_mode, prefix, log_enabled, stored
+):
+    # EC2 omits a log group that was never set, which "" would only clear again.
+    if stored is not None:
+        for tunnel in default_tunnels["Options"]["TunnelOptions"]:
+            tunnel["LogOptions"]["CloudWatchLogOptions"][plugin.LOG_FIELDS[f"{prefix}log_group_arn"]] = stored
+
+    params = log_tunnel_params(module_spec, {f"{prefix}log_enabled": log_enabled, f"{prefix}log_group_arn": ""})
+    client = Mock()
+    assert ensure(client, FakeModule(params, check_mode=check_mode), default_tunnels)["changed"] is False
+    assert client.mock_calls == []
+
+
 def test_shared_log_group_arn_follows_each_tunnels_logging(module_spec, default_tunnels):
     first = default_tunnels["Options"]["TunnelOptions"][0]
     first["LogOptions"]["CloudWatchLogOptions"].update(LogEnabled=True, LogGroupArn=LOG_GROUP_ARN)

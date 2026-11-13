@@ -58,6 +58,7 @@ options:
         with the exact URL is created while it exists.
       - When several existing providers match, the one whose URL equals O(url)
         exactly, apart from the C(https://) prefix, is managed.
+      - When O(state=absent), every existing provider that matches is deleted.
     required: true
     type: str
 notes:
@@ -139,8 +140,18 @@ open_id_connect_provider:
 open_id_connect_provider_arn:
   description:
     - The IAM OIDC provider ARN.
+    - When O(state=absent) and several providers matched, this is the first of RV(open_id_connect_provider_arns), the
+      provider O(state=present) would manage.
   returned: when an OIDC provider exists or existed before deletion
   type: str
+open_id_connect_provider_arns:
+  description:
+    - The ARNs of the IAM OIDC providers that matched O(url) and existed before deletion, starting with the provider
+      O(state=present) would manage.
+  returned: when state is absent
+  type: list
+  elements: str
+  version_added: "2.6.0"
 state:
   description:
     - The requested state.
@@ -177,6 +188,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
     get_provider_by_arn,
     get_provider_by_url,
+    get_providers_by_url,
     normalize_provider_url,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
@@ -190,9 +202,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 
 def ensure_absent(client, module):
     url = module.params["url"]
-    current = get_provider_by_url(client, module, url)
-    changed = current is not None
-    arn = (current or {}).get("OpenIDConnectProviderArn")
+    # IAM keeps URLs that differ only in a trailing slash or host case as separate providers; all of them are deleted,
+    # so a second run finds none.
+    arns = [provider["OpenIDConnectProviderArn"] for provider in get_providers_by_url(client, module, url)]
+    changed = bool(arns)
 
     if changed and not module.check_mode:
         require_client_methods(
@@ -201,23 +214,28 @@ def ensure_absent(client, module):
             "IAM",
             {"delete_open_id_connect_provider": ("OpenIDConnectProviderArn",)},
         )
-        try:
-            client.delete_open_id_connect_provider(
-                OpenIDConnectProviderArn=arn,
-                aws_retry=True,
-            )
-        except is_boto3_error_code("NoSuchEntity"):
-            changed = False
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to delete AWS IAM OIDC provider {url}")
+        changed = False
+        for arn in arns:
+            try:
+                client.delete_open_id_connect_provider(
+                    OpenIDConnectProviderArn=arn,
+                    aws_retry=True,
+                )
+            except is_boto3_error_code("NoSuchEntity"):
+                continue
+            except (BotoCoreError, ClientError) as e:
+                module.fail_json_aws(e, changed=changed, msg=f"Unable to delete AWS IAM OIDC provider {arn} for {url}")
+
+            changed = True
 
     result = {
         "changed": changed,
+        "open_id_connect_provider_arns": arns,
         "state": "absent",
         "url": url,
     }
-    if arn:
-        result["open_id_connect_provider_arn"] = arn
+    if arns:
+        result["open_id_connect_provider_arn"] = arns[0]
 
     module.exit_json(**result)
 

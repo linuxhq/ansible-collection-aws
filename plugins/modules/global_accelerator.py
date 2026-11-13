@@ -250,6 +250,11 @@ options:
                     O(listeners[].endpoint_groups[].endpoint_group_region),
                     whichever listener it belongs to. The module checks this
                     against O(listeners) before making any change.
+                  - An endpoint port can move to another listener's endpoint
+                    group in one run; the endpoint groups that release it are
+                    updated or deleted first. The module fails before changing
+                    any listener when listeners would exchange endpoint ports
+                    in both directions, which needs separate runs.
                 required: true
                 type: int
               listener_port:
@@ -1584,18 +1589,28 @@ def delete_listener(client, module, accelerator_arn, listener_arn, changed=False
 
 
 def ensure_endpoint_groups(
-    client, module, listener_arn, endpoint_groups, mutated=False, default_health_check_port=None, accelerator_arn=None
+    client,
+    module,
+    listener_arn,
+    endpoint_groups,
+    mutated=False,
+    default_health_check_port=None,
+    accelerator_arn=None,
+    current_endpoint_groups=None,
 ):
     """Reconcile endpoint groups; mutated reports earlier modifications, for failure results.
 
     default_health_check_port is the port AWS checks health on when a created group omits health_check_port, if it is
     known, for check-mode predictions. accelerator_arn is the ARN of the accelerator, when it exists, which decides the
-    IDs AWS lists endpoints given by ARN under.
+    IDs AWS lists endpoints given by ARN under. current_endpoint_groups are the listener's endpoint groups when they
+    were already listed.
     """
+    if current_endpoint_groups is None and listener_arn is not None:
+        current_endpoint_groups = get_endpoint_groups(client, module, listener_arn, changed=mutated)
+
     current_by_region = {}
-    if listener_arn is not None:
-        for endpoint_group in get_endpoint_groups(client, module, listener_arn, changed=mutated):
-            current_by_region[endpoint_group["endpoint_group_region"]] = endpoint_group
+    for endpoint_group in current_endpoint_groups or []:
+        current_by_region[endpoint_group["endpoint_group_region"]] = endpoint_group
 
     changed = False
     results = []
@@ -1701,6 +1716,77 @@ def ensure_endpoint_groups(
     return changed, results
 
 
+def endpoint_port_release_order(module, plans, changed=False):
+    """Return the indexes of plans in the order their endpoint group writes run.
+
+    Each plan is a pair of a listener's current endpoint groups and its desired endpoint groups, or None when this run
+    leaves its groups alone. AWS rejects a port override endpoint port that another endpoint group in the region still
+    uses, so a listener whose writes release a port runs before another listener whose writes take it. changed reports
+    earlier modifications, for failure results.
+    """
+    releases = []
+    claims = []
+    for current_groups, desired_groups in plans:
+        current_ports = {
+            (endpoint_group["endpoint_group_region"], port_override["endpoint_port"])
+            for endpoint_group in current_groups
+            for port_override in endpoint_group.get("port_overrides") or []
+        }
+        final_ports = current_ports
+        if desired_groups is not None:
+            desired_by_region = {
+                endpoint_group["endpoint_group_region"]: endpoint_group for endpoint_group in desired_groups
+            }
+            # Omitted port overrides, and groups left in place without purge_endpoint_groups, keep their ports.
+            final_ports = {
+                (region, port)
+                for region, port in current_ports
+                if (region not in desired_by_region and not module.params["purge_endpoint_groups"])
+                or (region in desired_by_region and desired_by_region[region].get("port_overrides") is None)
+            }
+            final_ports.update(
+                (region, port_override["endpoint_port"])
+                for region, endpoint_group in desired_by_region.items()
+                for port_override in endpoint_group.get("port_overrides") or []
+            )
+
+        releases.append(current_ports - final_ports)
+        claims.append(final_ports - current_ports)
+
+    order = []
+    remaining = list(range(len(plans)))
+    while remaining:
+        ready = next(
+            (
+                index
+                for index in remaining
+                if not any(releases[other] & claims[index] for other in remaining if other != index)
+            ),
+            None,
+        )
+        if ready is None:
+            # Each remaining listener takes a port that another one still holds, as in a swap.
+            ports = sorted(
+                {
+                    f"{port} in {region}"
+                    for index in remaining
+                    for region, port in claims[index] & set().union(*(releases[other] for other in remaining))
+                }
+            )
+            module.fail_json(
+                changed=changed,
+                msg=(
+                    "Unable to reconcile AWS Global Accelerator endpoint groups: port override endpoint ports "
+                    f"{', '.join(ports)} move between listeners in both directions; move them in separate runs"
+                ),
+            )
+
+        order.append(ready)
+        remaining.remove(ready)
+
+    return order
+
+
 def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=None):
     """Reconcile listeners; mutated reports earlier modifications, for failure results."""
     current_listeners = []
@@ -1720,6 +1806,23 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
                 msg="Unable to update AWS Global Accelerator listeners: desired ports overlap retained listener "
                 f"{current['listener_arn']}",
             )
+
+    # Endpoint groups are reconciled per listener after the listener writes, in the order of their result entries: the
+    # matched, updated, and created listeners. Existing groups are listed first so a port override endpoint port that
+    # moves between listeners is released before it is taken, and a swap fails before any listener write.
+    current_endpoint_groups = {}
+    plans = []
+    for current, desired in matched + updates:
+        desired_groups = None if desired is None else desired["endpoint_groups"]
+        current_groups = []
+        if desired_groups is not None:
+            current_groups = get_endpoint_groups(client, module, current["listener_arn"], changed=mutated)
+            current_endpoint_groups[current["listener_arn"]] = current_groups
+
+        plans.append((current_groups, desired_groups))
+
+    plans.extend(([], desired["endpoint_groups"]) for desired in creates)
+    endpoint_group_order = endpoint_port_release_order(module, plans, changed=mutated)
 
     # Release only obsolete listeners whose ports the listener writes need.
     conflicting_deletes = [
@@ -1856,7 +1959,8 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
         wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True, deadline=deadline)
 
     results = []
-    for result, desired, default_health_check_port in result_listeners:
+    for index in endpoint_group_order:
+        result, desired, default_health_check_port = result_listeners[index]
         if desired is not None and desired["endpoint_groups"] is not None:
             endpoint_groups_changed, endpoint_groups = ensure_endpoint_groups(
                 client,
@@ -1866,6 +1970,7 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
                 mutated=mutated,
                 default_health_check_port=default_health_check_port,
                 accelerator_arn=accelerator_arn,
+                current_endpoint_groups=current_endpoint_groups.get(result.get("listener_arn")),
             )
             changed = changed or endpoint_groups_changed
             mutated = mutated or (endpoint_groups_changed and not module.check_mode)
