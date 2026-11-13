@@ -588,6 +588,11 @@ def ensure_present(client, module, deadline=None):
                 ResolverEndpointId=request["ResolverEndpointId"],
                 TargetIps=target_ips_with_aws_defaults(request["TargetIps"]),
             )
+            if module.params["wait"]:
+                # A waited update returns the rule once it is COMPLETE, or fails; a repaired rule drops its failure.
+                rule["Status"] = "COMPLETE"
+                if failed:
+                    rule.pop("StatusMessage", None)
         else:
             # A tag-only change keeps the stored values.
             rule = dict(rule)

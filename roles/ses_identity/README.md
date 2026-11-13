@@ -4,7 +4,7 @@ Manage aws simple email service identities
 
 ## Requirements
 
-None
+- botocore 1.42.8 or later, which returns the DKIM signing hosted zone that the DKIM CNAME records point to.
 
 ## Role Variables
 

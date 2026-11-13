@@ -1,0 +1,7 @@
+---
+breaking_changes:
+  - ec2_flow_log - when ``traffic_type`` is omitted, a flow log with any traffic type now matches, and a replacement
+    keeps the traffic type of the flow log it replaces, as omitted ``log_format`` and ``max_aggregation_interval``
+    already do. A new flow log on a ``VPC``, ``Subnet``, ``NetworkInterface``, or ``RegionalNatGateway`` resource still
+    logs ``ALL`` traffic. Before, an omitted ``traffic_type`` meant ``ALL``, so an existing ``ACCEPT`` or ``REJECT``
+    flow log was replaced with an ``ALL`` one. Set ``traffic_type=ALL`` to keep that behavior.

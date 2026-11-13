@@ -821,6 +821,11 @@ def ensure_present(client, module, deadline=None):
             if module.params["wait"] and (has_failed_ip_addresses or not keep_ip_addresses):
                 projected_desired["ip_address_count"] = len(desired["ip_addresses"])
 
+            # A waited update or address change, including the repair of an ACTION_NEEDED endpoint, returns the
+            # endpoint once it is OPERATIONAL.
+            if module.params["wait"] and resource_changed:
+                projected_desired["status"] = "OPERATIONAL"
+
             # Without a wait, an update that no address change follows returns the UpdateResolverEndpoint response.
             if (
                 not module.params["wait"]

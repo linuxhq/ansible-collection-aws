@@ -932,6 +932,30 @@ def test_failed_rule_is_repaired_by_sending_the_desired_configuration():
     )
 
 
+def test_check_mode_predicts_the_complete_rule_a_waited_repair_returns():
+    failed = existing_rule(Status="FAILED", StatusMessage="Target 192.0.2.1 is unreachable")
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        client.update_resolver_rule.return_value = {"ResolverRule": existing_rule(Status="UPDATING")}
+        with (
+            patch.object(plugin, "get_resolver_rule_by_name", return_value=failed),
+            # The waiter returns the rule only once it is COMPLETE and fails on FAILED.
+            patch.object(plugin, "wait_for_resolver_rule_status", return_value=existing_rule()),
+            pytest.raises(ModuleExit) as result,
+        ):
+            plugin.ensure_present(client, FakeModule(rule_params(wait=True), check_mode=check_mode))
+
+        results[check_mode] = result.value.values
+        if check_mode:
+            assert client.mock_calls == []
+
+    assert results[True] == results[False]
+    assert results[True]["changed"] is True
+    assert results[True]["resolver_rule"]["status"] == "COMPLETE"
+    assert "status_message" not in results[True]["resolver_rule"]
+
+
 def test_rule_that_fails_after_a_change_reports_the_aws_status_message():
     module = FakeModule(rule_params())
     failed = existing_rule(Status="FAILED", StatusMessage="Target 192.0.2.1 is unreachable")

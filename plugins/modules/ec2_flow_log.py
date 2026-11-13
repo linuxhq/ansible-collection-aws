@@ -174,8 +174,9 @@ options:
     description:
       - The type of traffic to log.
       - This is not supported when O(resource_type) is C(TransitGateway) or C(TransitGatewayAttachment).
-      - Defaults to C(ALL) when O(state=present) and O(resource_type) is C(VPC), C(Subnet),
-        C(NetworkInterface), or C(RegionalNatGateway).
+      - When omitted, a flow log with any traffic type matches, and a replacement keeps the traffic type of the
+        flow log it replaces. A new flow log on a C(VPC), C(Subnet), C(NetworkInterface), or C(RegionalNatGateway)
+        resource logs C(ALL) traffic.
     choices:
       - ACCEPT
       - REJECT
@@ -434,6 +435,7 @@ PRESENT_MATCH_FIELDS = (
     "log_group_name",
     "max_aggregation_interval",
     "name",
+    "traffic_type",
 )
 
 # EC2 requires TrafficType for every resource type except the transit gateway types.
@@ -762,9 +764,6 @@ def ensure_present(client, module):
     desired = {
         "log_destination_type": module.params["log_destination_type"] or "cloud-watch-logs",
     }
-    if resource_type in TRAFFIC_TYPE_RESOURCE_TYPES:
-        desired["traffic_type"] = module.params["traffic_type"] or "ALL"
-
     desired.update(desired_match_fields(module, PRESENT_MATCH_FIELDS))
     flow_logs = get_flow_logs(client, module)
     current = matching_flow_logs(module, flow_logs, desired)
@@ -801,13 +800,20 @@ def ensure_present(client, module):
         # A replacement keeps the tags of the flow log it replaces, as a kept flow log would; EC2 rejects aws: keys.
         replaced_tags = {}
         replaced = {}
-        created_settings[resource_id] = create_settings
+        created_settings[resource_id] = dict(create_settings)
         for flow_log in superseded_flow_logs:
             if flow_log.get("ResourceId") == resource_id:
                 replaced = flow_log
                 replaced_tags.update(boto3_tag_list_to_ansible_dict(flow_log.get("Tags") or []))
                 # It also keeps the settings the task omits; as with tags, the last replaced flow log wins.
                 created_settings[resource_id] = replacement_settings(create_settings, flow_log)
+
+        if resource_type in TRAFFIC_TYPE_RESOURCE_TYPES and "traffic_type" not in created_settings[resource_id]:
+            # EC2 requires a traffic type: an omitted one keeps the replaced flow log's, and is ALL for a new one.
+            traffic_type = replaced.get("TrafficType")
+            created_settings[resource_id]["traffic_type"] = (
+                traffic_type if traffic_type in ("ACCEPT", "REJECT", "ALL") else "ALL"
+            )
 
         replaced_format = replaced.get("LogFormat")
         if (

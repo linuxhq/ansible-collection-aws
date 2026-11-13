@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - route53_resolver - check mode now predicts status ``OPERATIONAL`` when ``wait=true`` and the run updates the
+    endpoint or its addresses, including the removal of failed addresses from an ``ACTION_NEEDED`` endpoint, as the
+    real run returns.
+  - route53_resolver_rule - check mode now predicts status ``COMPLETE`` when ``wait=true`` and the run updates the
+    rule, as the real run returns. For a ``FAILED`` rule it no longer predicts the failure message.

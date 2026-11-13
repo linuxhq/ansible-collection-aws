@@ -35,18 +35,34 @@
     # In check mode a new identity is not created, so its DKIM cannot be predicted.
     - not ansible_check_mode or __ses_identity_info_query.identities | length > 0
 
+- name: Ensure aws simple email service identity dkim attributes are generated
+  tags:
+    - ses_identity
+  ansible.builtin.set_fact:
+    __ses_identity_dkim_attributes:
+      "{{ __ses_identity_dkim.dkim_attributes
+          if __ses_identity_dkim.dkim_attributes is defined else
+          __ses_identity_info_query.identities |
+          map(attribute='dkim_attributes', default={}) |
+          first |
+          d({}) }}"
+
+- name: Ensure aws simple email service identity dkim signing hosted zone is returned
+  tags:
+    - ses_identity
+  ansible.builtin.fail:
+    msg: >-
+      SES did not return the DKIM signing hosted zone of identity {{ _identity.identity }};
+      botocore 1.42.8 or later is required to read it
+  when:
+    - __ses_identity_dkim_attributes.tokens | d([]) | length > 0
+    - __ses_identity_dkim_attributes.signing_hosted_zone | d('') | length == 0
+
 - name: Ensure aws simple email service identity dns records are generated
   tags:
     - ses_identity
   ansible.builtin.set_fact:
-    __ses_identity_value_dkim:
-      "{{ __ses_identity_dkim.dkim_attributes.tokens
-          if __ses_identity_dkim.dkim_attributes is defined else
-          __ses_identity_info_query.identities |
-          map(attribute='dkim_attributes', default={}) |
-          map(attribute='tokens', default=[]) |
-          first |
-          d([]) }}"
+    __ses_identity_value_dkim: "{{ __ses_identity_dkim_attributes.tokens | d([]) }}"
 
 - name: Ensure aws simple email service identity dmarc records are managed
   tags:
@@ -65,7 +81,7 @@
     record: "{{ _dkim }}._domainkey.{{ _identity.identity }}"
     state: "{{ _identity.state }}"
     type: CNAME
-    value: "{{ _dkim }}.{{ __ses_identity_dkim_domain }}.amazonses.com"
+    value: "{{ _dkim }}.{{ __ses_identity_dkim_attributes.signing_hosted_zone }}"
     zone: "{{ _identity.zone }}"
   loop: "{{ __ses_identity_value_dkim }}"
   loop_control:

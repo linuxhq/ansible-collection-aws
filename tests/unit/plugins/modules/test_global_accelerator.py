@@ -75,6 +75,7 @@ def test_listener_consolidation_releases_conflicting_ports_first(check_mode):
     client.update_listener.side_effect = update
     with (
         patch.object(plugin, "get_listeners", return_value=current),
+        patch.object(plugin, "get_endpoint_groups", return_value=[]),
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "delete_listener", side_effect=delete),
         patch.object(
@@ -996,6 +997,7 @@ class SimulatedAccelerator:
         module = FakeModule({"listeners": entries, "purge_endpoint_groups": True, "purge_listeners": True})
         with (
             patch.object(plugin, "get_listeners", side_effect=self.listeners),
+            patch.object(plugin, "get_endpoint_groups", return_value=[]),
             patch.object(plugin, "delete_listener", side_effect=self.delete),
             patch.object(plugin, "wait_for_accelerator"),
         ):
@@ -2537,6 +2539,7 @@ def test_listener_replacement_retries_after_freeing_quota():
             return_value=([], [], [desired], [current]),
         ),
         patch.object(plugin, "get_listeners", return_value=[current]),
+        patch.object(plugin, "get_endpoint_groups", return_value=[]),
         patch.object(plugin, "delete_listener") as delete_listener,
         patch.object(plugin, "wait_for_accelerator") as wait_for_accelerator,
         patch.object(plugin, "require_client_methods"),
@@ -2695,6 +2698,7 @@ def test_listener_writes_release_conflicts_then_update_then_create_with_one_toke
     module = FakeModule({"listeners": desired, "purge_listeners": True})
     with (
         patch.object(plugin, "get_listeners", return_value=current),
+        patch.object(plugin, "get_endpoint_groups", return_value=[]),
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "delete_listener", side_effect=lambda c, m, a, arn, **kw: events.append(("delete", arn))),
         patch.object(plugin, "wait_for_accelerator", side_effect=lambda *args, **kwargs: events.append(("wait",))),
@@ -4233,3 +4237,238 @@ def test_port_override_endpoint_port_swap_between_listeners_fails_before_any_wri
             "us-east-1, 9090 in us-east-1 move between listeners in both directions; move them in separate runs"
         ),
     }
+
+
+def run_listener_writes_against_port_overrides(module, current_listeners, endpoint_groups):
+    """Run ensure_listeners with listener writes that AWS rejects while a stored port override conflicts with them.
+
+    Live (us-west-2 API): with listener TCP 80 and an us-east-1 endpoint group override 80->8080, CreateListener TCP 8080
+    fails with InvalidPortRangeException "already in port overrides", and UpdateListener 80->81 fails with
+    InvalidPortRangeException "port 80 is in use by port overrides".
+    """
+    stored = {
+        group["endpoint_group_arn"]: [dict(override) for override in group["port_overrides"]]
+        for groups in endpoint_groups.values()
+        for group in groups
+    }
+    owner = {group["endpoint_group_arn"]: arn for arn, groups in endpoint_groups.items() for group in groups}
+    ranges = {listener["listener_arn"]: listener["port_ranges"] for listener in current_listeners}
+    events = []
+    client = Mock()
+
+    def reject_conflicts(arn, port_ranges, operation):
+        for group_arn, overrides in stored.items():
+            for override in overrides:
+                if plugin.port_in_ranges(override["endpoint_port"], port_ranges):
+                    message = "already in port overrides"
+                elif owner[group_arn] == arn and not plugin.port_in_ranges(override["listener_port"], port_ranges):
+                    message = "in use by port overrides"
+                else:
+                    continue
+
+                raise ClientError({"Error": {"Code": "InvalidPortRangeException", "Message": message}}, operation)
+
+    def listener_response(arn, port_ranges):
+        return {
+            "Listener": {"ClientAffinity": "NONE", "ListenerArn": arn, "PortRanges": port_ranges, "Protocol": "TCP"}
+        }
+
+    def update_listener(ListenerArn, PortRanges, aws_retry, **request):
+        port_ranges = [{"from_port": item["FromPort"], "to_port": item["ToPort"]} for item in PortRanges]
+        reject_conflicts(ListenerArn, port_ranges, "UpdateListener")
+        ranges[ListenerArn] = port_ranges
+        events.append(("update_listener", ListenerArn))
+        return listener_response(ListenerArn, PortRanges)
+
+    def create_listener(PortRanges, aws_retry, **request):
+        port_ranges = [{"from_port": item["FromPort"], "to_port": item["ToPort"]} for item in PortRanges]
+        reject_conflicts("arn:new", port_ranges, "CreateListener")
+        ranges["arn:new"] = port_ranges
+        events.append(("create_listener", "arn:new"))
+        return listener_response("arn:new", PortRanges)
+
+    def update_endpoint_group(EndpointGroupArn, aws_retry, **request):
+        overrides = [
+            {"endpoint_port": item["EndpointPort"], "listener_port": item["ListenerPort"]}
+            for item in request.get("PortOverrides", [])
+        ]
+        listener_ranges = ranges[owner[EndpointGroupArn]]
+        if any(not plugin.port_in_ranges(item["listener_port"], listener_ranges) for item in overrides):
+            raise ClientError(
+                {"Error": {"Code": "InvalidArgumentException", "Message": "listener port"}}, "UpdateEndpointGroup"
+            )
+
+        stored[EndpointGroupArn] = overrides
+        events.append(("update_endpoint_group", EndpointGroupArn, overrides))
+        return {
+            "EndpointGroup": {
+                "EndpointGroupArn": EndpointGroupArn,
+                "EndpointGroupRegion": "us-east-1",
+                "PortOverrides": request.get("PortOverrides", []),
+            }
+        }
+
+    def delete_endpoint_group(client, module, arn, changed=False):
+        stored.pop(arn)
+        events.append(("delete_endpoint_group", arn))
+
+    def delete_listener(client, module, accelerator_arn, arn, changed=False, deadline=None):
+        for group in endpoint_groups.get(arn, []):
+            stored.pop(group["endpoint_group_arn"])
+
+        events.append(("delete_listener", arn))
+
+    client.update_listener.side_effect = update_listener
+    client.create_listener.side_effect = create_listener
+    client.update_endpoint_group.side_effect = update_endpoint_group
+    with (
+        patch.object(plugin, "get_listeners", return_value=current_listeners),
+        patch.object(
+            plugin,
+            "get_endpoint_groups",
+            side_effect=lambda client, module, listener_arn, changed=False: endpoint_groups.get(listener_arn, []),
+        ),
+        patch.object(plugin, "delete_endpoint_group", side_effect=delete_endpoint_group),
+        patch.object(plugin, "delete_listener", side_effect=delete_listener),
+        patch.object(plugin, "wait_for_accelerator"),
+    ):
+        result = plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    return events, stored, result
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("release", ["override-removed", "group-purged"])
+def test_removed_port_override_is_released_before_a_listener_takes_its_endpoint_port(check_mode, release):
+    endpoint_groups = port_override_listener_groups({"arn:a": (80, [8080])})
+    kept = dict(
+        review_desired(80, 80),
+        endpoint_groups=(
+            [unset_endpoint_group(endpoint_group_region="us-east-1", port_overrides=[])]
+            if release == "override-removed"
+            else []
+        ),
+    )
+    module = FakeModule(
+        {"listeners": [kept, review_desired(8080, 8080)], "purge_endpoint_groups": True, "purge_listeners": True},
+        check_mode=check_mode,
+    )
+
+    events, stored, (changed, listeners) = run_listener_writes_against_port_overrides(
+        module, [review_listener("arn:a", 80, 80)], endpoint_groups
+    )
+
+    assert changed is True
+    assert [single_range(listener) for listener in listeners] == [(80, 80), (8080, 8080)]
+    groups = listeners[0]["endpoint_groups"]
+    assert [group["port_overrides"] for group in groups] == ([[]] if release == "override-removed" else [])
+    if check_mode:
+        assert events == []
+        return
+
+    released = (
+        ("update_endpoint_group", "arn:a/group", [])
+        if release == "override-removed"
+        else ("delete_endpoint_group", "arn:a/group")
+    )
+    assert events == [released, ("create_listener", "arn:new")]
+    assert stored.get("arn:a/group", []) == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_removed_port_override_is_released_before_its_listener_port_leaves_the_listener(check_mode):
+    endpoint_groups = port_override_listener_groups({"arn:a": (80, [8080])})
+    moved = dict(
+        review_desired(81, 81),
+        endpoint_groups=[
+            unset_endpoint_group(
+                endpoint_group_region="us-east-1", port_overrides=[{"endpoint_port": 8080, "listener_port": 81}]
+            )
+        ],
+    )
+    module = FakeModule(
+        {"listeners": [moved], "purge_endpoint_groups": True, "purge_listeners": True}, check_mode=check_mode
+    )
+
+    events, stored, (changed, listeners) = run_listener_writes_against_port_overrides(
+        module, [review_listener("arn:a", 80, 80)], endpoint_groups
+    )
+
+    assert changed is True
+    assert listeners[0]["endpoint_groups"][0]["port_overrides"] == [{"endpoint_port": 8080, "listener_port": 81}]
+    if check_mode:
+        assert events == []
+        return
+
+    assert events == [
+        ("update_endpoint_group", "arn:a/group", []),
+        ("update_listener", "arn:a"),
+        ("update_endpoint_group", "arn:a/group", [{"endpoint_port": 8080, "listener_port": 81}]),
+    ]
+    assert stored["arn:a/group"] == [{"endpoint_port": 8080, "listener_port": 81}]
+
+
+def test_released_port_overrides_keep_the_overrides_the_run_requests():
+    endpoint_groups = port_override_listener_groups({"arn:a": (80, [8080, 9090])})
+    kept = dict(
+        review_desired(80, 80),
+        endpoint_groups=[
+            unset_endpoint_group(
+                endpoint_group_region="us-east-1", port_overrides=[{"endpoint_port": 9090, "listener_port": 80}]
+            )
+        ],
+    )
+    module = FakeModule(
+        {"listeners": [kept, review_desired(8080, 8080)], "purge_endpoint_groups": True, "purge_listeners": True}
+    )
+
+    events, stored = run_listener_writes_against_port_overrides(
+        module, [review_listener("arn:a", 80, 80)], endpoint_groups
+    )[:2]
+
+    # The group then already matches the request, so it is not written again.
+    assert events == [
+        ("update_endpoint_group", "arn:a/group", [{"endpoint_port": 9090, "listener_port": 80}]),
+        ("create_listener", "arn:new"),
+    ]
+    assert stored["arn:a/group"] == [{"endpoint_port": 9090, "listener_port": 80}]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_omitted_port_overrides_are_not_released(check_mode):
+    endpoint_groups = port_override_listener_groups({"arn:a": (80, [8080])})
+    kept = dict(review_desired(80, 80), endpoint_groups=[unset_endpoint_group(endpoint_group_region="us-east-1")])
+    module = FakeModule(
+        {"listeners": [kept, review_desired(8080, 8080)], "purge_endpoint_groups": True, "purge_listeners": True},
+        check_mode=check_mode,
+    )
+
+    if check_mode:
+        assert (
+            run_listener_writes_against_port_overrides(module, [review_listener("arn:a", 80, 80)], endpoint_groups)[0]
+            == []
+        )
+        return
+
+    # The requested state keeps the override, so AWS rejects the listener.
+    with pytest.raises(ModuleFail):
+        run_listener_writes_against_port_overrides(module, [review_listener("arn:a", 80, 80)], endpoint_groups)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_purged_listener_holding_an_override_endpoint_port_is_deleted_before_a_listener_takes_it(check_mode):
+    # A UDP listener is not reused for a TCP entry and its ports do not overlap the new listener, but the endpoint port
+    # of its port override does.
+    endpoint_groups = port_override_listener_groups({"arn:a": (80, [8080])})
+    module = FakeModule(
+        {"listeners": [review_desired(8080, 8080)], "purge_endpoint_groups": True, "purge_listeners": True},
+        check_mode=check_mode,
+    )
+
+    events, _stored, (changed, listeners) = run_listener_writes_against_port_overrides(
+        module, [dict(review_listener("arn:a", 80, 80), protocol="UDP")], endpoint_groups
+    )
+
+    assert changed is True
+    assert [single_range(listener) for listener in listeners] == [(8080, 8080)]
+    assert events == ([] if check_mode else [("delete_listener", "arn:a"), ("create_listener", "arn:new")])

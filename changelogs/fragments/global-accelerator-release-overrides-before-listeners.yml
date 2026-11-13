@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - global_accelerator - port overrides that the run removes, endpoint groups that ``purge_endpoint_groups`` deletes,
+    and listeners that ``purge_listeners`` deletes are now released before the listener changes that conflict with
+    their port overrides. AWS rejects listener port ranges that include the endpoint port of a stored override or that
+    leave out the listener port of one, so before, a run that turned an override endpoint port into a listener port,
+    or moved an overridden listener port, failed after earlier writes, and every rerun failed the same way.

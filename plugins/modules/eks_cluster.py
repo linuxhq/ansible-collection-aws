@@ -314,6 +314,8 @@ options:
           - The support type for the cluster.
           - When omitted while creating a cluster, AWS uses C(EXTENDED).
           - When omitted while updating a cluster, the existing value is left unchanged.
+          - EKS changes the support type only while the cluster runs a Kubernetes version in standard support.
+            When O(version) also changes, the support type is updated after the version update completes.
         type: str
     type: dict
   version:
@@ -1809,6 +1811,15 @@ def ensure_present(client, module, deadline=None):
     if methods:
         require_client_methods(module, client, "EKS", methods)
 
+    # EKS changes the support policy only while the cluster runs a version in standard support, so with a version
+    # update in the same run the policy is sent after that update completes.
+    policy_requests = []
+    if version_changed:
+        policy_requests = [update_request for update_request in update_requests if "upgradePolicy" in update_request]
+        update_requests = [
+            update_request for update_request in update_requests if "upgradePolicy" not in update_request
+        ]
+
     # Failures after the first successful change report changed=True.
     mutated = False
     for index, update_request in enumerate(update_requests):
@@ -1844,8 +1855,24 @@ def ensure_present(client, module, deadline=None):
         )
         update_id = update["id"]
 
-        if wait:
+        if wait or policy_requests:
             wait_for_update(client, module, update_id, changed=True, deadline=deadline)
+            wait_for_cluster(client, module, "cluster_active", changed=True, deadline=deadline)
+
+    for update_request in policy_requests:
+        try:
+            response = UPDATE_RETRY(client.update_cluster_config)(**update_request)
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, changed=mutated, msg=f"Unable to update EKS cluster {name} upgrade policy")
+
+        update = validate_update(
+            module,
+            response.get("update") if isinstance(response, dict) else None,
+            changed=True,
+        )
+
+        if wait:
+            wait_for_update(client, module, update["id"], changed=True, deadline=deadline)
             wait_for_cluster(client, module, "cluster_active", changed=True, deadline=deadline)
 
     if tag_keys_to_unset:

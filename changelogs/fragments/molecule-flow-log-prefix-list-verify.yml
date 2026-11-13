@@ -1,0 +1,6 @@
+---
+trivial:
+  - ec2_flow_log - the Molecule scenario now verifies the created flow logs, replaces one with a new aggregation
+    interval and checks that it keeps its traffic type, and checks that the flow logs are deleted.
+  - ec2_vpc_prefix_list - the Molecule scenario now verifies the entries, descriptions, maximum entries, and Name tag
+    of the updated prefix lists, and waits until they are deleted.

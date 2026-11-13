@@ -2,6 +2,39 @@
 - name: Verify
   hosts: all
   pre_tasks:
+    - name: Ensure prefix lists are queried
+      linuxhq.aws.ec2_vpc_prefix_list_info:
+        filters:
+          prefix-list-name: "{{ ec2_vpc_prefix_list_entries | map(attribute='name') | list }}"
+        validate_certs: true
+      register: __ec2_vpc_prefix_list_query
+
+    - name: Ensure prefix lists are verified
+      vars:
+        __ec2_vpc_prefix_list_current:
+          "{{ __ec2_vpc_prefix_list_query.prefix_lists |
+              rejectattr('state', 'eq', 'delete-complete') |
+              list }}"
+        __ec2_vpc_prefix_list_dict:
+          "{{ dict(__ec2_vpc_prefix_list_current |
+                   json_query('[].prefix_list_name') |
+                   zip(__ec2_vpc_prefix_list_current)) }}"
+      ansible.builtin.assert:
+        that:
+          - __ec2_vpc_prefix_list_current | length == 2
+          - __ec2_vpc_prefix_list_dict[_pl.name].address_family == 'IPv4'
+          - __ec2_vpc_prefix_list_dict[_pl.name].entries |
+            sort(attribute='cidr') ==
+            _pl.entries | sort(attribute='cidr')
+          - __ec2_vpc_prefix_list_dict[_pl.name].max_entries ==
+            _pl.max_entries | d(_pl.entries | length)
+          - __ec2_vpc_prefix_list_dict[_pl.name].tags == {'Name': _pl.name}
+          - __ec2_vpc_prefix_list_dict[_pl.name].state in ['create-complete', 'modify-complete']
+      loop: "{{ ec2_vpc_prefix_list_entries }}"
+      loop_control:
+        label: "{{ _pl.name }}"
+        loop_var: _pl
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_vpc_prefix_list_entries:
@@ -10,4 +43,18 @@
 
   roles:
     - ec2_vpc_prefix_list
+
+  post_tasks:
+    - name: Ensure prefix lists are deleted
+      linuxhq.aws.ec2_vpc_prefix_list_info:
+        filters:
+          prefix-list-name: "{{ ec2_vpc_prefix_list_entries | map(attribute='name') | list }}"
+        validate_certs: true
+      register: __ec2_vpc_prefix_list_deleted
+      until:
+        - __ec2_vpc_prefix_list_deleted.prefix_lists |
+          rejectattr('state', 'eq', 'delete-complete') |
+          list | length == 0
+      retries: 20
+      delay: 15
 ...

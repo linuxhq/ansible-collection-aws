@@ -9,6 +9,94 @@
     - ec2_vpc_subnet_info
 
   post_tasks:
+    - name: Ensure flow log names and resource ids are set
+      ansible.builtin.set_fact:
+        __ec2_flow_log_names: "{{ ec2_flow_log_list | map(attribute='name') | list }}"
+        __ec2_flow_log_resource_ids: "{{ ec2_flow_log_list | map(attribute='resource_ids') | flatten }}"
+
+    - name: Ensure flow logs are queried
+      linuxhq.aws.ec2_flow_log_info:
+        resource_ids: "{{ __ec2_flow_log_resource_ids }}"
+        validate_certs: true
+      register: __ec2_flow_log_query
+
+    - name: Ensure flow logs are verified
+      vars:
+        __ec2_flow_log_matches:
+          "{{ __ec2_flow_log_query.flow_logs |
+              selectattr('tags.Name', 'defined') |
+              selectattr('tags.Name', 'eq', _flow_log.name) |
+              list }}"
+      ansible.builtin.assert:
+        that:
+          - __ec2_flow_log_matches | length == 1
+          - __ec2_flow_log_matches.0.resource_id == _flow_log.resource_ids.0
+          - __ec2_flow_log_matches.0.log_destination_type == 's3'
+          - __ec2_flow_log_matches.0.log_destination == ec2_flow_log_bucket_resource
+          - __ec2_flow_log_matches.0.max_aggregation_interval ==
+            (60 if _flow_log.resource_type is match('TransitGateway') else 600)
+          - _flow_log.traffic_type is not defined or
+            __ec2_flow_log_matches.0.traffic_type == _flow_log.traffic_type
+      loop: "{{ ec2_flow_log_list }}"
+      loop_control:
+        label: "{{ _flow_log.name }}"
+        loop_var: _flow_log
+
+    - name: Ensure subnet flow log is replaced with a new aggregation interval and its traffic type
+      linuxhq.aws.ec2_flow_log:
+        log_destination: "{{ ec2_flow_log_bucket_resource }}"
+        log_destination_type: s3
+        max_aggregation_interval: 60
+        name: molecule-subnet
+        resource_ids: "{{ ec2_flow_log_list[1].resource_ids }}"
+        resource_type: Subnet
+        validate_certs: true
+      register: __ec2_flow_log_replaced
+
+    - name: Ensure replaced subnet flow log is queried
+      linuxhq.aws.ec2_flow_log_info:
+        resource_ids: "{{ ec2_flow_log_list[1].resource_ids }}"
+        validate_certs: true
+      register: __ec2_flow_log_replaced_query
+
+    - name: Ensure subnet flow log replacement is verified
+      vars:
+        __ec2_flow_log_original:
+          "{{ __ec2_flow_log_query.flow_logs |
+              selectattr('tags.Name', 'defined') |
+              selectattr('tags.Name', 'eq', 'molecule-subnet') |
+              first }}"
+        __ec2_flow_log_matches:
+          "{{ __ec2_flow_log_replaced_query.flow_logs |
+              selectattr('tags.Name', 'defined') |
+              selectattr('tags.Name', 'eq', 'molecule-subnet') |
+              list }}"
+      ansible.builtin.assert:
+        that:
+          - __ec2_flow_log_replaced is changed
+          - __ec2_flow_log_replaced.deleted_flow_log_ids == [__ec2_flow_log_original.flow_log_id]
+          - __ec2_flow_log_matches | length == 1
+          - __ec2_flow_log_matches.0.flow_log_id != __ec2_flow_log_original.flow_log_id
+          - __ec2_flow_log_matches.0.max_aggregation_interval == 60
+          - __ec2_flow_log_matches.0.traffic_type == 'ACCEPT'
+          - __ec2_flow_log_matches.0.log_destination == ec2_flow_log_bucket_resource
+
+    - name: Ensure replaced subnet flow log is idempotent
+      linuxhq.aws.ec2_flow_log:
+        log_destination: "{{ ec2_flow_log_bucket_resource }}"
+        log_destination_type: s3
+        max_aggregation_interval: 60
+        name: molecule-subnet
+        resource_ids: "{{ ec2_flow_log_list[1].resource_ids }}"
+        resource_type: Subnet
+        validate_certs: true
+      register: __ec2_flow_log_rerun
+
+    - name: Ensure replaced subnet flow log rerun reports no change
+      ansible.builtin.assert:
+        that:
+          - __ec2_flow_log_rerun is not changed
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_flow_log_list:
@@ -30,11 +118,28 @@
           "{{ s3_bucket_list |
               map('combine', {'state': 'absent'}) }}"
 
+    - name: Ensure flow log role is included
+      ansible.builtin.include_role:
+        name: ec2_flow_log
+
+    - name: Ensure flow logs are deleted
+      linuxhq.aws.ec2_flow_log_info:
+        resource_ids: "{{ __ec2_flow_log_resource_ids }}"
+        validate_certs: true
+      register: __ec2_flow_log_deleted
+
+    - name: Ensure flow log deletion is verified
+      ansible.builtin.assert:
+        that:
+          - __ec2_flow_log_deleted.flow_logs |
+            selectattr('tags.Name', 'defined') |
+            selectattr('tags.Name', 'in', __ec2_flow_log_names) |
+            list | length == 0
+
     - name: Ensure roles are included
       ansible.builtin.include_role:
         name: "{{ _verify }}"
       loop:
-        - ec2_flow_log
         - ec2_transit_gateway_vpc_attachment
         - ec2_transit_gateway
         - ec2_vpc_subnet

@@ -28,28 +28,6 @@
           unique |
           first }}"
 
-- name: Ensure aws simple email service dkim domain is generated
-  tags:
-    - ses_identity
-  ansible.builtin.set_fact:
-    __ses_identity_dkim_domain:
-      "{{ 'dkim.' ~ __ses_identity_region if
-          __ses_identity_region in __ses_identity_dkim_domains else
-          'dkim' }}"
-  vars:
-    __ses_identity_dkim_domains:
-      - af-south-1
-      - ap-northeast-3
-      - ap-south-2
-      - ap-southeast-3
-      - ap-southeast-5
-      - ca-west-1
-      - eu-central-2
-      - eu-south-1
-      - il-central-1
-      - me-central-1
-      - us-gov-east-1
-
 - name: Ensure aws simple email service identity tasks are included
   tags:
     - ses_identity

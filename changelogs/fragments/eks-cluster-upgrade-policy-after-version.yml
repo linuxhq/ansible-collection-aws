@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - eks_cluster - when ``version`` and ``upgrade_policy.support_type`` both change, the support type is now updated
+    after the version update completes. EKS changes the support type only while the cluster runs a Kubernetes version
+    in standard support, so before, a cluster in extended support could not move to a newer version and ``STANDARD``
+    in one task, and every rerun failed before the version update.

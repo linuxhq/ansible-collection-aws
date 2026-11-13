@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_pool - a sender ID ``origination_identity`` now matches a pool's identity in any letter
+    case, as ``pinpoint_sms_voice_sender_id`` matches sender IDs. AWS treats sender IDs without letter case and puts
+    them in their ARNs in uppercase, so before, a sender ID given in another case than the pool holds created another
+    pool on every run.
+  - pinpoint_sms_voice_phone_pool_associate - a sender ID ``origination_identity`` now matches an association in any
+    letter case, so a sender ID given in another case than the pool holds is no longer associated again on every run
+    or reported absent while it is associated. Check mode predicts a new sender ID association in uppercase, as AWS
+    returns it.
