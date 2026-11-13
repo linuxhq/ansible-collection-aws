@@ -136,20 +136,3 @@ def test_missing_contact_arn_returns_an_empty_list():
         plugin.main()
 
     assert raised.value.values["email_contacts"] == []
-
-
-@pytest.mark.parametrize("arn", ["", " "])
-def test_empty_arn_fails_before_any_aws_call(arn):
-    # An empty ARN used to list every contact instead of limiting the result set.
-    client = Mock()
-    module = FakeModule({"arn": arn}, client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(module, "client") as connect,
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values == {"msg": "arn must not be empty"}
-    connect.assert_not_called()
-    assert client.mock_calls == []

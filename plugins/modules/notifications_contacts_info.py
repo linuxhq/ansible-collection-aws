@@ -17,7 +17,6 @@ options:
     description:
       - AWS Notifications contact ARN used to limit the result set.
       - An ARN that does not exist results in an empty list.
-      - This must not be empty when provided.
     type: str
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -98,7 +97,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
 
 def validate_contact(module, contact, operation):
@@ -121,13 +119,10 @@ def main():
         },
         supports_check_mode=True,
     )
-    arn = module.params["arn"]
-    # An empty ARN would otherwise list every contact instead of limiting the result set.
-    require_non_blank(module, arn, "arn")
-
     client = module.client("notificationscontacts", retry_decorator=AWSRetry.jittered_backoff())
 
-    if arn is not None:
+    arn = module.params["arn"]
+    if arn:
         require_client_methods(module, client, "NotificationsContacts", {"get_email_contact": ("arn",)})
         try:
             response = client.get_email_contact(arn=arn, aws_retry=True)

@@ -1,3 +1,0 @@
----
-bugfixes:
-  - notifications_contacts_info - an empty ``arn`` now fails instead of listing every contact.
