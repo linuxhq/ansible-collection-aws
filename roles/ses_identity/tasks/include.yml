@@ -78,6 +78,8 @@
   tags:
     - ses_identity
   amazon.aws.route53:
+    # A record from an earlier run can point to another DKIM domain, which is replaced.
+    overwrite: true
     record: "{{ _dkim }}._domainkey.{{ _identity.identity }}"
     state: "{{ _identity.state }}"
     type: CNAME

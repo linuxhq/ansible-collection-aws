@@ -43,6 +43,19 @@
           {%- endfor -%}
           {{ records }}
 
+    - name: Ensure a dkim record points to another dkim domain, as an earlier role version could set it
+      amazon.aws.route53:
+        overwrite: true
+        record: "{{ __ses_identity_dkim_record_list.0.name }}"
+        state: present
+        type: CNAME
+        value: "{{ __ses_identity_dkim_record_list.0.name.split('.') | first }}.dkim.ap-southeast-4.amazonses.com"
+        zone: "{{ __ses_identity_dkim_record_list.0.zone }}"
+
+    - name: Ensure ses identity role corrects the dkim record
+      ansible.builtin.include_role:
+        name: ses_identity
+
     - name: Ensure identity dkim records are queried
       amazon.aws.route53:
         record: "{{ _record.name }}"

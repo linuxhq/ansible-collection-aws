@@ -1,6 +1,6 @@
 ---
 bugfixes:
   - ses_identity role - DKIM CNAME records now point to the signing hosted zone that SES returns for each identity,
-    instead of a domain derived from a fixed list of regions, which missed regions such as ap-southeast-4. The role
-    now requires botocore 1.42.8 or later and fails, naming the identity, when SES returns DKIM tokens without the
+    instead of a domain derived from a fixed list of regions, which missed regions such as ap-southeast-4. An existing
+    DKIM CNAME record that points elsewhere is replaced. The role now requires botocore 1.42.8 or later and fails, naming the identity, when SES returns DKIM tokens without the
     signing hosted zone.
