@@ -1,0 +1,12 @@
+---
+breaking_changes:
+  - iam_oidc_provider - ``url`` now matches only the provider whose URL equals it exactly, apart from the ``https://``
+    prefix. A provider whose URL differs only in a trailing slash or host case, which IAM keeps as a separate provider
+    and STS does not match to a token's issuer, is no longer managed; ``state=present`` creates the provider with the
+    exact URL beside it.
+  - iam_oidc_provider_info - ``url`` now returns only the provider whose URL equals it exactly, apart from the
+    ``https://`` prefix; a provider whose URL differs only in a trailing slash or host case is not returned.
+bugfixes:
+  - iam_oidc_provider - ``state=absent`` now deletes only the provider with the exact URL and leaves providers whose
+    URL differs only in a trailing slash or host case alone, so a second run reports no change. Before, each run
+    deleted another such provider.

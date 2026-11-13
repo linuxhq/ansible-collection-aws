@@ -17,18 +17,9 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
 
 
-def normalize_provider_url(url):
-    if url is None:
-        return None
-
-    normalized = url
-    if normalized.lower().startswith("https://"):
-        normalized = normalized[8:]
-
-    normalized = normalized.rstrip("/")
-    host, separator, path = normalized.partition("/")
-
-    return host.lower() + separator + path
+def provider_url(url):
+    """Return url as IAM stores it for a provider, in its ARN and Url: without a leading https:// of any case."""
+    return url[len("https://") :] if url.lower().startswith("https://") else url
 
 
 def validate_provider_summaries(module, providers):
@@ -98,29 +89,18 @@ def get_provider(client, module, arn):
     return get_provider_by_arn(client, module, arn)
 
 
-def matching_providers(client, module, url):
-    """Yield each existing provider whose URL normalizes to url, the one with the URL exactly as given first."""
-    desired_url = normalize_provider_url(url)
-    exact_url = url[len("https://") :] if url.lower().startswith("https://") else url
-    candidates = [
-        provider_summary["Arn"]
-        for provider_summary in list_provider_summaries(client, module)
-        if normalize_provider_url(provider_summary["Arn"].partition(":oidc-provider/")[2]) == desired_url
-    ]
-    # IAM keeps URLs that differ only in a trailing slash or host case as separate providers, and STS matches a token's
-    # issuer exactly, so the provider with the URL exactly as given wins over a normalized match. The sort is stable,
-    # so the listed order decides otherwise.
-    candidates.sort(key=lambda arn: arn.partition(":oidc-provider/")[2] != exact_url)
-    for arn in candidates:
-        provider = get_provider(client, module, arn)
-
-        if provider and normalize_provider_url(provider.get("Url")) == desired_url:
-            yield provider
-
-
 def get_provider_by_url(client, module, url):
-    return next(matching_providers(client, module, url), None)
+    """Return the provider whose URL is exactly url, apart from the https:// prefix, or None.
 
+    IAM keeps URLs that differ only in a trailing slash or host case as separate providers, and STS matches a token's
+    issuer to the provider URL exactly, so only the exact URL identifies a provider.
+    """
+    desired_url = provider_url(url)
+    for provider_summary in list_provider_summaries(client, module):
+        arn = provider_summary["Arn"]
+        if arn.partition(":oidc-provider/")[2] == desired_url:
+            provider = get_provider(client, module, arn)
+            if provider and provider_url(provider["Url"]) == desired_url:
+                return provider
 
-def get_providers_by_url(client, module, url):
-    return list(matching_providers(client, module, url))
+    return None

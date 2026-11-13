@@ -47,18 +47,17 @@ options:
       - The OIDC provider URL.
       - The URL must begin with C(https://) when O(state=present).
       - The URL must be at most 255 characters and identify a host that is not empty or whitespace-only.
-      - Matching against an existing provider ignores the C(https://) prefix
-        and any trailing slash, and compares the host case-insensitively.
+      - An existing provider matches only when its URL equals O(url) exactly,
+        apart from the C(https://) prefix, whose case is ignored. AWS STS
+        matches the C(iss) claim of a token to the provider URL exactly,
+        including any trailing slash and the host's case, and IAM keeps URLs
+        that differ only in these as separate providers.
       - A new provider is created with the URL exactly as given, apart from a
-        lower-case C(https://) prefix, because AWS STS matches the C(iss) claim
-        of a token to the provider URL exactly, including any trailing slash.
-        Give the URL exactly as the identity provider's tokens state their issuer.
-      - An existing provider whose URL differs from O(url) only in a trailing
-        slash or host case is managed as the matching provider; no provider
-        with the exact URL is created while it exists.
-      - When several existing providers match, the one whose URL equals O(url)
-        exactly, apart from the C(https://) prefix, is managed.
-      - When O(state=absent), every existing provider that matches is deleted.
+        lower-case C(https://) prefix. Give the URL exactly as the identity
+        provider's tokens state their issuer.
+      - A provider whose URL differs from O(url) only in a trailing slash or
+        host case is never changed or deleted; O(state=present) creates the
+        provider with the exact URL beside it.
     required: true
     type: str
 notes:
@@ -140,18 +139,8 @@ open_id_connect_provider:
 open_id_connect_provider_arn:
   description:
     - The IAM OIDC provider ARN.
-    - When O(state=absent) and several providers matched, this is the first of RV(open_id_connect_provider_arns), the
-      provider O(state=present) would manage.
   returned: when an OIDC provider exists or existed before deletion
   type: str
-open_id_connect_provider_arns:
-  description:
-    - The ARNs of the IAM OIDC providers that matched O(url) and existed before deletion, starting with the provider
-      O(state=present) would manage.
-  returned: when state is absent
-  type: list
-  elements: str
-  version_added: "2.6.0"
 state:
   description:
     - The requested state.
@@ -188,8 +177,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
     get_provider_by_arn,
     get_provider_by_url,
-    get_providers_by_url,
-    normalize_provider_url,
+    provider_url,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
@@ -202,10 +190,9 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 
 def ensure_absent(client, module):
     url = module.params["url"]
-    # IAM keeps URLs that differ only in a trailing slash or host case as separate providers; all of them are deleted,
-    # so a second run finds none.
-    arns = [provider["OpenIDConnectProviderArn"] for provider in get_providers_by_url(client, module, url)]
-    changed = bool(arns)
+    current = get_provider_by_url(client, module, url)
+    changed = current is not None
+    arn = (current or {}).get("OpenIDConnectProviderArn")
 
     if changed and not module.check_mode:
         require_client_methods(
@@ -214,28 +201,23 @@ def ensure_absent(client, module):
             "IAM",
             {"delete_open_id_connect_provider": ("OpenIDConnectProviderArn",)},
         )
-        changed = False
-        for arn in arns:
-            try:
-                client.delete_open_id_connect_provider(
-                    OpenIDConnectProviderArn=arn,
-                    aws_retry=True,
-                )
-            except is_boto3_error_code("NoSuchEntity"):
-                continue
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(e, changed=changed, msg=f"Unable to delete AWS IAM OIDC provider {arn} for {url}")
-
-            changed = True
+        try:
+            client.delete_open_id_connect_provider(
+                OpenIDConnectProviderArn=arn,
+                aws_retry=True,
+            )
+        except is_boto3_error_code("NoSuchEntity"):
+            changed = False
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, msg=f"Unable to delete AWS IAM OIDC provider {url}")
 
     result = {
         "changed": changed,
-        "open_id_connect_provider_arns": arns,
         "state": "absent",
         "url": url,
     }
-    if arns:
-        result["open_id_connect_provider_arn"] = arns[0]
+    if arn:
+        result["open_id_connect_provider_arn"] = arn
 
     module.exit_json(**result)
 
@@ -290,8 +272,8 @@ def ensure_present(client, module):
     current = get_provider_by_url(client, module, url)
     desired = {}
     # STS matches a token's issuer to the provider URL exactly, trailing slash included, and IAM stores the URL as sent
-    # without its https:// prefix, so a new provider keeps the given URL. Only the lookup above normalizes it.
-    created_url = url[len("https://") :]
+    # without its https:// prefix, so a new provider keeps the given URL, which the lookup above matched exactly.
+    created_url = provider_url(url)
     if module.params["client_id_list"] is not None:
         desired["client_id_list"] = sorted(set(module.params["client_id_list"]))
 
@@ -536,8 +518,7 @@ def main():
             module.fail_json(msg="url must begin with https://")
 
         # IAM rejects a whitespace-only host, which identifies no provider either.
-        normalized_url = normalize_provider_url(module.params["url"])
-        if not normalized_url.partition("/")[0].strip():
+        if not provider_url(module.params["url"]).partition("/")[0].strip():
             module.fail_json(msg="url must identify an OIDC provider host")
 
         if len(module.params["url"]) > 255:

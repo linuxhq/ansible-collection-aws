@@ -1,9 +1,0 @@
----
-bugfixes:
-  - iam_oidc_provider - ``state=absent`` now deletes every provider whose URL differs from ``url`` only in a trailing
-    slash or host case, which IAM keeps as separate providers, so a second run reports no change. Before, it deleted
-    one per run.
-minor_changes:
-  - iam_oidc_provider - with ``state=absent``, return ``open_id_connect_provider_arns``, the ARNs of every matching
-    provider. ``open_id_connect_provider_arn`` is still returned and remains the provider ``state=present`` would
-    manage.
