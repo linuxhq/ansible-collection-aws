@@ -2,6 +2,7 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 import re
+from datetime import datetime, timezone
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -15,6 +16,21 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import scrub_none_parameters
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
+
+
+def request_time():
+    """Return the current time in the whole seconds of the CreatedTimestamp that creation responses carry."""
+    return datetime.now(timezone.utc).replace(microsecond=0)
+
+
+def created_before(resource, requested_at):
+    """Return whether a creation response describes a resource created before the request was sent.
+
+    Live: a request that reuses a client token after its resource was released or deleted returns that resource, with
+    its original CreatedTimestamp, although AWS no longer has it.
+    """
+    created = resource.get("CreatedTimestamp")
+    return isinstance(created, datetime) and created < requested_at
 
 
 def unique_resource_ids(identifiers):

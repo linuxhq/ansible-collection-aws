@@ -913,8 +913,7 @@ def test_tgw_absence_waits_until_deleting_route_disappears():
     assert get.call_count == 2
 
 
-@pytest.mark.parametrize("case", ["pending_table", "pending_route", "deleting_route", "purge_pending_table"])
-def test_present_check_mode_skips_transition_waits(case):
+def run_present_transition(case, check_mode):
     desired = {
         "destination_cidr_block": "10.0.0.0/8",
         "state": "present",
@@ -932,7 +931,7 @@ def test_present_check_mode_skips_transition_waits(case):
             "purge_routes": case == "purge_pending_table",
             "wait": case != "purge_pending_table",
         },
-        check_mode=True,
+        check_mode=check_mode,
     )
     table = {"TransitGatewayRouteTableId": "tgw-rtb-1", "State": "pending" if "table" in case else "available"}
     route = {
@@ -942,22 +941,49 @@ def test_present_check_mode_skips_transition_waits(case):
         "TransitGatewayAttachments": [{"TransitGatewayAttachmentId": "tgw-attach-1"}],
     }
     client = Mock()
+    client.create_transit_gateway_route.return_value = {"Route": dict(route, State="pending")}
+    if check_mode:
+        waits = {
+            "wait_for_route_table": {"side_effect": AssertionError("Unexpected table wait")},
+            "wait_for_route": {"side_effect": AssertionError("Unexpected route wait")},
+            "wait_for_route_absent": {"side_effect": AssertionError("Unexpected deletion wait")},
+        }
+    else:
+        # The real waits end on the settled table and route.
+        waits = {
+            "wait_for_route_table": {"return_value": dict(table, State="available")},
+            "wait_for_route": {"return_value": dict(route, State="active")},
+            "wait_for_route_absent": {"return_value": None},
+        }
+
     with (
         patch.object(plugin, "find_route_table", return_value=table),
         patch.object(plugin, "get_route", return_value=route),
         patch.object(plugin, "static_routes", return_value=[]),
-        patch.object(plugin, "wait_for_route_table", side_effect=AssertionError("Unexpected table wait")),
-        patch.object(plugin, "wait_for_route", side_effect=AssertionError("Unexpected route wait")),
-        patch.object(plugin, "wait_for_route_absent", side_effect=AssertionError("Unexpected deletion wait")),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_route_table", **waits["wait_for_route_table"]),
+        patch.object(plugin, "wait_for_route", **waits["wait_for_route"]),
+        patch.object(plugin, "wait_for_route_absent", **waits["wait_for_route_absent"]),
         pytest.raises(ModuleExit) as result,
     ):
         plugin.ensure_present(client, module)
 
-    assert result.value.values["changed"] is (case == "deleting_route")
-    if case == "deleting_route":
-        assert result.value.values["routes"][0]["state"] == "active"
+    return result.value.values, client
 
-    assert client.mock_calls == []
+
+@pytest.mark.parametrize("case", ["pending_table", "pending_route", "deleting_route", "purge_pending_table"])
+def test_present_check_mode_skips_transition_waits(case):
+    check, check_client = run_present_transition(case, check_mode=True)
+    real, _real_client = run_present_transition(case, check_mode=False)
+
+    # Check mode predicts the settled table and routes that the real run's waits return.
+    assert check == real
+    assert check["changed"] is (case == "deleting_route")
+    assert check["transit_gateway_route_table"]["state"] == "available"
+    if case in ("pending_route", "deleting_route"):
+        assert check["routes"][0]["state"] == "active"
+
+    assert check_client.mock_calls == []
 
 
 @pytest.mark.parametrize("purge_routes", [True, False])
@@ -1120,15 +1146,21 @@ def test_check_mode_absent_predicts_the_result_a_real_delete_returns(wait, state
     assert "routes" not in real
 
 
-def test_absent_check_mode_skips_deleting_route_wait():
-    module = FakeModule({"wait": True}, check_mode=True)
+@pytest.mark.parametrize("wait", [True, False])
+def test_absent_check_mode_skips_deleting_route_wait(wait):
+    route = {"Type": "static", "State": "deleting", "DestinationCidrBlock": "10.0.0.0/8"}
     client = Mock()
     with patch.object(plugin, "wait_for_route_absent", side_effect=AssertionError("Unexpected route wait")):
-        changed, _route = plugin.ensure_route_absent(
-            client, module, "tgw-rtb-1", "10.0.0.0/8", {"Type": "static", "State": "deleting"}
+        check = plugin.ensure_route_absent(
+            client, FakeModule({"wait": wait}, check_mode=True), "tgw-rtb-1", "10.0.0.0/8", route
         )
 
-    assert changed is False
+    with patch.object(plugin, "wait_for_route_absent", return_value=None) as wait_for_route_absent:
+        real = plugin.ensure_route_absent(Mock(), FakeModule({"wait": wait}), "tgw-rtb-1", "10.0.0.0/8", route)
+
+    # A waited real run finds no route once EC2 stops returning it; check mode predicts the same.
+    assert check == real == (False, None if wait else route)
+    assert wait_for_route_absent.call_count == int(wait)
     assert client.mock_calls == []
 
 

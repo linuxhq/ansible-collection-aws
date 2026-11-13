@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - eks_cluster - when ``version`` does not change, the ``upgrade_policy`` update is now sent before the other
+    cluster configuration updates. EKS rejects a support type change for a cluster in extended support, so before,
+    that rejection came after earlier updates had applied, and every rerun failed the same way.
+  - eks_cluster - check mode now fails like a real run for a ``FAILED`` cluster when the real run would wait for it,
+    that is with ``wait=true`` or when anything changes. Before, check mode predicted success.

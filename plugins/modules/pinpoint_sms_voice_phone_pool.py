@@ -19,6 +19,8 @@ options:
     description:
       - Unique idempotency token for the pool request.
       - When omitted, AWS generates an idempotency token for the request.
+      - AWS answers a request that reuses a token with the pool the earlier request created, even after that pool was
+        deleted. The module then fails without creating a pool; use a new token for each pool.
     type: str
   deletion_protection_enabled:
     description:
@@ -286,11 +288,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    created_before,
     identity_matches,
     is_phone_number_identity,
     is_phone_number_reference,
     list_tags,
     predicted_origination_identity,
+    request_time,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
@@ -737,12 +741,27 @@ def ensure_present(client, module):
             )
             request = snake_dict_to_camel_dict(parameters, capitalize_first=True)
 
+            requested_at = request_time()
             try:
                 current = client.create_pool(**request, aws_retry=True)
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(e, msg="Unable to create Pinpoint SMS Voice V2 pool")
 
             validate_pool(module, current, "creating a pool", changed=True)
+            if module.params["client_token"] is not None and created_before(current, requested_at):
+                # Live: a token reused after a delete returns the deleted pool, which DescribePools no longer has.
+                pools = describe_pools(client, module, changed=True, PoolIds=[current["PoolId"]])
+                replayed = select_pool_by_id(module, pools, current["PoolId"], changed=True)
+                if replayed is None or replayed.get("Status") == "DELETING":
+                    module.fail_json(
+                        msg=(
+                            f"client_token {module.params['client_token']} was already used to create AWS End User "
+                            f"Messaging SMS phone pool {current['PoolId']}, which has since been deleted; use a new "
+                            "client_token or omit it"
+                        ),
+                        pool_id=current["PoolId"],
+                    )
+
             current.pop("ResponseMetadata", None)
             current["OriginationIdentities"] = [
                 predicted_origination_identity(module.params["origination_identity"], module.params["iso_country_code"])

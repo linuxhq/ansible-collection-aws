@@ -7,12 +7,14 @@
         name: ssm_association_info
       vars:
         ssm_association_info_filters:
-          Name: "{{ ssm_association_list_update.0.name }}"
+          AssociationName: "{{ ssm_association_list_update.0.association_name }}"
 
     - name: Ensure updated association is verified
       ansible.builtin.assert:
         that:
           - _ssm_association_info_list | length == 1
+          - _ssm_association_info_list.0.association_name == ssm_association_list_update.0.association_name
+          - _ssm_association_info_list.0.name == ssm_association_list_update.0.name
           - _ssm_association_info_list.0.schedule_expression == ssm_association_list_update.0.schedule_expression
           - _ssm_association_info_list.0.targets == ssm_association_list_update.0.targets
           - _ssm_association_info_list.0.tags.molecule == 'ssm_association'
@@ -25,4 +27,17 @@
 
   roles:
     - ssm_association
+
+  post_tasks:
+    - name: Ensure association info is gathered after removal
+      ansible.builtin.include_role:
+        name: ssm_association_info
+      vars:
+        ssm_association_info_filters:
+          AssociationName: "{{ ssm_association_list_update.0.association_name }}"
+
+    - name: Ensure removed association is verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_association_info_list == []
 ...

@@ -1,0 +1,7 @@
+---
+minor_changes:
+  - ec2_flow_log - with ``state=present``, an empty string for ``deliver_cross_account_role`` or
+    ``deliver_logs_permission_arn`` now means no role. It matches only flow logs without that role, and a replacement
+    does not keep the role of the flow log it replaces. The empty value is not sent to EC2. An omitted role is still
+    kept on replacement, and a whitespace-only value still fails. Before, an empty value failed, so a kept role could
+    not be dropped when a replacement moved to a destination that does not use it.

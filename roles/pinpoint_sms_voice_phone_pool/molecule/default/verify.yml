@@ -6,20 +6,40 @@
     - pinpoint_sms_voice_phone_pool_info
 
   post_tasks:
+    - name: Ensure fixtures are selected
+      ansible.builtin.set_fact:
+        __pinpoint_sms_voice_phone_number_verify:
+          "{{ _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-simulator'] }}"
+        __pinpoint_sms_voice_phone_pool_verify:
+          "{{ _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'] }}"
+
+    - name: Ensure created pool is verified
+      ansible.builtin.assert:
+        that:
+          - __pinpoint_sms_voice_phone_pool_verify.message_type == 'TRANSACTIONAL'
+          - __pinpoint_sms_voice_phone_pool_verify.status == 'ACTIVE'
+          - __pinpoint_sms_voice_phone_pool_verify.origination_identities |
+            map(attribute='origination_identity') | list ==
+              [__pinpoint_sms_voice_phone_number_verify.phone_number_id]
+          - __pinpoint_sms_voice_phone_pool_verify.tags | dict2items | length == 2
+          - __pinpoint_sms_voice_phone_pool_verify.tags.Name == 'molecule-pinpoint-pool'
+          - __pinpoint_sms_voice_phone_pool_verify.tags.molecule == 'pinpoint_sms_voice_phone_pool'
+          - __pinpoint_sms_voice_phone_number_verify.pool_id == __pinpoint_sms_voice_phone_pool_verify.pool_id
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         pinpoint_sms_voice_phone_number_list:
           "{{ pinpoint_sms_voice_phone_number_list |
               map('combine',
                   {'phone_number_id':
-                   _pinpoint_sms_voice_phone_number_info_list.0.phone_number_id,
+                   __pinpoint_sms_voice_phone_number_verify.phone_number_id,
                    'state':
                    'absent'}) }}"
         pinpoint_sms_voice_phone_pool_list:
           "{{ pinpoint_sms_voice_phone_pool_list |
               map('combine',
                   {'pool_id':
-                   _pinpoint_sms_voice_phone_pool_info_list.0.pool_id,
+                   __pinpoint_sms_voice_phone_pool_verify.pool_id,
                    'state':
                    'absent'}) }}"
 
@@ -32,4 +52,22 @@
       loop_control:
         label: "{{ _verify }}"
         loop_var: _verify
+
+    - name: Ensure information about aws end user messaging sms phone pools is gathered after deletion
+      ansible.builtin.include_role:
+        name: pinpoint_sms_voice_phone_pool_info
+
+    - name: Ensure information about aws end user messaging sms phone numbers is gathered after release
+      ansible.builtin.include_role:
+        name: pinpoint_sms_voice_phone_number_info
+
+    - name: Ensure deleted pool and released phone number are verified
+      ansible.builtin.assert:
+        that:
+          - _pinpoint_sms_voice_phone_pool_info_list |
+            selectattr('pool_id', 'equalto', __pinpoint_sms_voice_phone_pool_verify.pool_id) |
+            rejectattr('status', 'equalto', 'DELETING') | list == []
+          - _pinpoint_sms_voice_phone_number_info_list |
+            selectattr('phone_number_id', 'equalto', __pinpoint_sms_voice_phone_number_verify.phone_number_id) |
+            rejectattr('status', 'equalto', 'DELETED') | list == []
 ...

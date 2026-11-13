@@ -1265,8 +1265,9 @@ def test_listener_creation_without_purge_fails_on_unlisted_overlap(check_mode):
 def test_provider_limits_are_rejected():
     cases = [
         (
-            {"name": "n" * 256, "ip_addresses": None, "listeners": None},
-            "name must contain at most 255 characters",
+            # Live: CreateAccelerator accepts a 64-character name and rejects 65 with InvalidArgumentException.
+            {"name": "n" * 65, "ip_addresses": None, "listeners": None},
+            "name must contain at most 64 characters",
         ),
         (
             {
@@ -2823,6 +2824,53 @@ def test_accelerator_creates_with_identical_inputs_use_unique_tokens():
 
     first, second = client.create_accelerator.call_args_list
     assert first.kwargs["IdempotencyToken"] != second.kwargs["IdempotencyToken"]
+
+
+@pytest.mark.parametrize("token", ["fixed-token", None])
+def test_create_replaying_a_renamed_accelerator_fails_before_any_other_write(token):
+    # Live: CreateAccelerator with a token reused after a rename returns the same ARN with the new name.
+    client = Mock()
+    client.create_accelerator.return_value = {
+        "Accelerator": {
+            "AcceleratorArn": "arn:accelerator",
+            "Enabled": True,
+            "IpAddressType": "IPV4",
+            "Name": "renamed",
+            "Status": "DEPLOYED",
+        }
+    }
+    module = FakeModule(
+        {
+            "enabled": None,
+            "idempotency_token": token,
+            "ip_address_type": None,
+            "ip_addresses": None,
+            "listeners": [],
+            "name": "example",
+            "purge_listeners": True,
+            "tags": {"Env": "prod"},
+            "purge_tags": True,
+            "wait": True,
+        }
+    )
+    with (
+        patch.object(plugin, "get_accelerator", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_listener_writes"),
+        patch.object(plugin, "require_endpoint_group_writes"),
+        patch.object(plugin, "ensure_listeners", side_effect=AssertionError("Unexpected listener write")),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    sent = client.create_accelerator.call_args.kwargs["IdempotencyToken"]
+    assert sent == (token or sent)
+    assert raised.value.values["msg"] == (
+        f"idempotency_token {sent} was already used to create AWS Global Accelerator arn:accelerator "
+        "(now named renamed), not example; use a new idempotency_token or omit it"
+    )
+    assert raised.value.values.get("changed", False) is False
+    assert [name for name, _args, _kwargs in client.mock_calls] == ["create_accelerator"]
 
 
 def review_listener(arn, start, end):

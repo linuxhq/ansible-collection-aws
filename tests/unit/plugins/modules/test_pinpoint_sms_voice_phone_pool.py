@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -1617,3 +1618,58 @@ def test_new_pool_without_a_country_requires_botocore_1_42_80_before_any_write(
         client.create_pool.assert_not_called()
     else:
         module.require_botocore_at_least.assert_not_called()
+
+
+REQUESTED_AT = datetime(2026, 11, 13, 17, 18, 30, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize("described", [[], [{"PoolId": "pool-1", "Status": "DELETING"}]])
+@pytest.mark.parametrize("wait", [True, False])
+def test_client_token_reused_after_a_delete_fails_naming_the_token(wait, described):
+    # Live: CreatePool with a token reused after a delete returns the deleted pool, CREATING, with its original
+    # CreatedTimestamp, and DescribePools then reports it as not found.
+    client = Mock()
+    client.create_pool.return_value = active_pool(
+        CreatedTimestamp=REQUESTED_AT - timedelta(seconds=35), Status="CREATING"
+    )
+    module = FakeModule(
+        present_params(client_token="token-1", iso_country_code="US", origination_identity="phone-1", wait=wait)
+    )
+    with (
+        patch.object(plugin, "find_pool", return_value=None),
+        patch.object(plugin, "request_time", return_value=REQUESTED_AT),
+        patch.object(plugin, "describe_pools", return_value=described) as describe_pools,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "msg": (
+            "client_token token-1 was already used to create AWS End User Messaging SMS phone pool pool-1, "
+            "which has since been deleted; use a new client_token or omit it"
+        ),
+        "pool_id": "pool-1",
+    }
+    describe_pools.assert_called_once_with(client, module, changed=True, PoolIds=["pool-1"])
+    client.tag_resource.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "client_token, created",
+    [("token-1", REQUESTED_AT), (None, REQUESTED_AT - timedelta(seconds=35))],
+)
+def test_new_pool_is_not_checked_for_a_reused_token(client_token, created):
+    client = Mock()
+    client.create_pool.return_value = active_pool(CreatedTimestamp=created, Status="CREATING")
+    module = FakeModule(
+        present_params(client_token=client_token, iso_country_code="US", origination_identity="phone-1")
+    )
+    with (
+        patch.object(plugin, "find_pool", return_value=None),
+        patch.object(plugin, "request_time", return_value=REQUESTED_AT),
+        patch.object(plugin, "describe_pools", side_effect=AssertionError("Unexpected describe")),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True

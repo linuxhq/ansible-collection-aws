@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - acm_certificate role - Amazon-issued certificates are now always passed to ``linuxhq.aws.acm_certificate_request``,
+    and the validation record and wait tasks use the ``certificate_arn`` it returns. Before, the role skipped the
+    request whenever any certificate for the domain name existed, so a changed ``subject_alternative_names`` list or
+    a failed, expired, or timed-out certificate never converged, and the records came from an arbitrary certificate
+    for that domain name.

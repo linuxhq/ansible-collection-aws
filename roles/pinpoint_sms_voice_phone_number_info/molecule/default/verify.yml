@@ -6,24 +6,29 @@
       ansible.builtin.include_role:
         name: pinpoint_sms_voice_phone_number_info
 
+    - name: Ensure requested phone number is selected
+      ansible.builtin.set_fact:
+        __pinpoint_sms_voice_phone_number_verify:
+          "{{ _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-simulator'] }}"
+
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _pinpoint_sms_voice_phone_number_info_list.0.iso_country_code == 'US'
-          - _pinpoint_sms_voice_phone_number_info_list.0.message_type == 'TRANSACTIONAL'
-          - _pinpoint_sms_voice_phone_number_info_list.0.number_capabilities.0 == 'SMS'
-          - _pinpoint_sms_voice_phone_number_info_list.0.number_type == 'SIMULATOR'
-          - _pinpoint_sms_voice_phone_number_info_list.0.phone_number is defined
-          - _pinpoint_sms_voice_phone_number_info_list.0.phone_number_arn is defined
-          - _pinpoint_sms_voice_phone_number_info_list.0.phone_number_id is defined
-          - _pinpoint_sms_voice_phone_number_info_list.0.status == 'ACTIVE'
-          - _pinpoint_sms_voice_phone_number_info_list.0.tags.molecule ==
+          - __pinpoint_sms_voice_phone_number_verify.iso_country_code == 'US'
+          - __pinpoint_sms_voice_phone_number_verify.message_type == 'TRANSACTIONAL'
+          - __pinpoint_sms_voice_phone_number_verify.number_capabilities.0 == 'SMS'
+          - __pinpoint_sms_voice_phone_number_verify.number_type == 'SIMULATOR'
+          - __pinpoint_sms_voice_phone_number_verify.phone_number is defined
+          - __pinpoint_sms_voice_phone_number_verify.phone_number_arn is defined
+          - __pinpoint_sms_voice_phone_number_verify.phone_number_id is defined
+          - __pinpoint_sms_voice_phone_number_verify.status == 'ACTIVE'
+          - __pinpoint_sms_voice_phone_number_verify.tags.molecule ==
               'pinpoint_sms_voice_phone_number_info'
 
     - name: Ensure phone number id filter target is generated
       ansible.builtin.set_fact:
         pinpoint_sms_voice_phone_number_info_id_filter:
-          "{{ _pinpoint_sms_voice_phone_number_info_list.0.phone_number_id }}"
+          "{{ __pinpoint_sms_voice_phone_number_verify.phone_number_id }}"
 
     - name: Ensure role is included with phone number id
       ansible.builtin.include_role:
@@ -60,7 +65,7 @@
           "{{ pinpoint_sms_voice_phone_number_list |
               map('combine',
                   {'phone_number_id':
-                   _pinpoint_sms_voice_phone_number_info_list.0.phone_number_id,
+                   __pinpoint_sms_voice_phone_number_verify.phone_number_id,
                    'state':
                    'absent'}) }}"
 

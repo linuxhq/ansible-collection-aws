@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -2184,3 +2185,54 @@ def test_check_mode_runs_the_sdk_checks_the_real_run_fails_on(existing, check_mo
     }
     client.update_phone_number.assert_not_called()
     client.request_phone_number.assert_not_called()
+
+
+REQUESTED_AT = datetime(2026, 11, 13, 17, 17, 19, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize("wait", [True, False])
+def test_client_token_reused_after_a_release_fails_naming_the_token(wait):
+    # Live: RequestPhoneNumber with a token reused after a release returns the released number, PENDING, with its
+    # original CreatedTimestamp, and DescribePhoneNumbers then reports it as not found.
+    client = Mock()
+    client.request_phone_number.return_value = existing_number(
+        CreatedTimestamp=REQUESTED_AT - timedelta(seconds=6), Status="PENDING"
+    )
+    module = FakeModule(phone_number_params(client_token="token-1", wait=wait))
+    with (
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "request_time", return_value=REQUESTED_AT),
+        patch.object(plugin, "get_phone_number", return_value=None) as get_phone_number,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "msg": (
+            "client_token token-1 was already used to request AWS End User Messaging SMS phone number phone-1, "
+            "which has since been released; use a new client_token or omit it"
+        ),
+        "phone_number_id": "phone-1",
+    }
+    get_phone_number.assert_called_once_with(client, module, "phone-1", changed=True)
+
+
+@pytest.mark.parametrize(
+    "client_token, created",
+    [("token-1", REQUESTED_AT), (None, REQUESTED_AT - timedelta(seconds=6))],
+)
+def test_new_number_request_is_not_checked_for_a_reused_token(client_token, created):
+    client = Mock()
+    client.request_phone_number.return_value = existing_number(CreatedTimestamp=created, Status="PENDING")
+    module = FakeModule(phone_number_params(client_token=client_token))
+    with (
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "request_time", return_value=REQUESTED_AT),
+        patch.object(plugin, "get_phone_number", side_effect=AssertionError("Unexpected describe")),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True

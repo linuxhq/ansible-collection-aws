@@ -32,6 +32,7 @@ provisioner:
       all:
         ssm_association_list:
           - name: AWS-UpdateSSMAgent
+            association_name: molecule-ssm-association-info
             tags:
               molecule: ssm_association_info
             schedule_expression: 'cron(0 0 * * ? *)'

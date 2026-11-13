@@ -3493,16 +3493,88 @@ def test_upgrade_policy_is_sent_after_the_version_update_completes(wait):
     assert check["cluster"]["version"] == "1.31"
 
 
-def test_upgrade_policy_without_a_version_change_keeps_its_place():
+def test_upgrade_policy_without_a_version_change_is_sent_first():
     params = eks_params(deletion_protection=True, upgrade_policy={"support_type": "STANDARD"}, wait=False)
     current = dict(ACTIVE_ON_1_30, upgradePolicy={"supportType": "EXTENDED"})
 
     client = run_present(FakeModule(params), [current])[0]
 
+    # EKS rejects the support type change for a cluster in extended support, so it goes before any other update.
     assert client.update_cluster_config.call_args_list == [
+        call(name="example", upgradePolicy={"supportType": "STANDARD"}),
         call(name="example", deletionProtection=True),
+    ]
+
+
+def test_rejected_upgrade_policy_without_a_version_change_fails_before_any_other_update():
+    params = eks_params(deletion_protection=True, upgrade_policy={"support_type": "STANDARD"}, wait=False)
+    current = dict(ACTIVE_ON_1_30, upgradePolicy={"supportType": "EXTENDED"})
+    client = Mock()
+    client.update_cluster_config.side_effect = plugin.ClientError(
+        {"Error": {"Code": "InvalidRequestException", "Message": "extended support"}}, "UpdateClusterConfig"
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        patch.object(plugin, "wait_for_cluster"),
+        patch.object(plugin, "wait_for_update"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params))
+
+    assert raised.value.values["changed"] is False
+    assert client.update_cluster_config.call_args_list == [
         call(name="example", upgradePolicy={"supportType": "STANDARD"}),
     ]
+
+
+@pytest.mark.parametrize(
+    "wait, overrides",
+    [
+        (True, {}),
+        (True, {"deletion_protection": True}),
+        (False, {"deletion_protection": True}),
+        (False, {"tags": {"a": "b"}}),
+    ],
+)
+def test_check_mode_fails_like_the_real_run_for_a_failed_cluster(wait, overrides):
+    # The ClusterActive waiter stops with a failure as soon as the cluster reports FAILED.
+    params = eks_params(wait=wait, **overrides)
+    failed = dict(ACTIVE_ON_1_30, status="FAILED")
+    results = {}
+    for check_mode in (False, True):
+        client = Mock()
+        module = FakeModule(params, check_mode=check_mode)
+        waiter_error = WaiterError("cluster_active", "terminal failure state", {})
+        with (
+            patch.object(plugin, "describe_cluster", return_value=failed),
+            patch.object(plugin, "require_client_methods"),
+            patch.object(plugin, "require_nested_request_parameters"),
+            patch.object(client, "get_waiter", return_value=Mock(wait=Mock(side_effect=waiter_error))),
+            pytest.raises(ModuleFail) as raised,
+        ):
+            plugin.ensure_present(client, module)
+
+        results[check_mode] = raised.value.values
+        client.update_cluster_config.assert_not_called()
+        client.tag_resource.assert_not_called()
+
+    assert (
+        results[True]["msg"] == results[False]["msg"] == "Unable to wait for AWS EKS cluster example to become active"
+    )
+    assert results[True].get("changed", False) is results[False].get("changed", False) is False
+
+
+def test_check_mode_reports_a_failed_cluster_unchanged_without_wait():
+    client, result = run_present(
+        FakeModule(eks_params(wait=False), check_mode=True), [dict(ACTIVE_ON_1_30, status="FAILED")]
+    )
+
+    # A real run without a change or a wait does not wait for the cluster either.
+    assert result["changed"] is False
+    assert result["cluster"]["status"] == "FAILED"
+    assert client.mock_calls == []
 
 
 @pytest.mark.parametrize(

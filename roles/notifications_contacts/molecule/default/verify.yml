@@ -1,13 +1,41 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
+  tasks:
+    - name: Ensure information about aws notifications contacts is gathered
+      ansible.builtin.include_role:
+        name: notifications_contacts_info
+
+    - name: Ensure created contacts are verified
+      ansible.builtin.assert:
+        that:
+          - _notifications_contacts_info_dict[_emailcontact.email_address] is defined
+          - _notifications_contacts_info_dict[_emailcontact.email_address].arn is defined
+          - _notifications_contacts_info_dict[_emailcontact.email_address].name == _emailcontact.name
+          - _notifications_contacts_info_dict[_emailcontact.email_address].status == 'inactive'
+          - _notifications_contacts_info_dict[_emailcontact.email_address].tags.Name == _emailcontact.name
+      loop: "{{ notifications_contacts_list }}"
+      loop_control:
+        label: "{{ _emailcontact.email_address }}"
+        loop_var: _emailcontact
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         notifications_contacts_list:
           "{{ notifications_contacts_list |
               map('combine', {'state': 'absent'}) }}"
 
-  roles:
-    - notifications_contacts
+    - name: Ensure aws notifications contacts are absent
+      ansible.builtin.include_role:
+        name: notifications_contacts
+
+    - name: Ensure information about aws notifications contacts is gathered after removal
+      ansible.builtin.include_role:
+        name: notifications_contacts_info
+
+    - name: Ensure removed contacts are verified
+      ansible.builtin.assert:
+        that:
+          - notifications_contacts_list | map(attribute='email_address') |
+            select('in', _notifications_contacts_info_dict) | list == []
 ...

@@ -35,6 +35,8 @@ options:
     description:
       - Unique idempotency token for the phone number request.
       - When omitted, AWS generates an idempotency token for the request.
+      - AWS answers a request that reuses a token with the number the earlier request returned, even after that
+        number was released. The module then fails without requesting a number; use a new token for each request.
     type: str
   deletion_protection_enabled:
     description:
@@ -186,7 +188,7 @@ EXAMPLES = r"""
     number_capabilities:
       - SMS
     number_type: SIMULATOR
-    client_token: simulator-sms-request
+    client_token: "{{ simulator_request_token }}"
 
 - name: Ensure a phone number is absent
   linuxhq.aws.pinpoint_sms_voice_phone_number:
@@ -348,10 +350,12 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    created_before,
     is_last_phone_number,
     is_last_phone_number_conflict,
     last_phone_number_message,
     pool_is_deleting,
+    request_time,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
@@ -1005,6 +1009,7 @@ def ensure_present(client, module):
 
         exit_result(module, True, predicted)
 
+    requested_at = request_time()
     try:
         response = client.request_phone_number(**request, aws_retry=True)
     except (BotoCoreError, ClientError) as e:
@@ -1015,6 +1020,19 @@ def ensure_present(client, module):
 
     response.pop("ResponseMetadata", None)
     validate_phone_number(module, response, "requesting a phone number", changed=True)
+
+    if module.params["client_token"] is not None and created_before(response, requested_at):
+        # Live: a token reused after a release returns the released number, which DescribePhoneNumbers no longer has.
+        replayed = get_phone_number(client, module, response["PhoneNumberId"], changed=True)
+        if replayed is None or replayed.get("Status") == "DELETED":
+            module.fail_json(
+                msg=(
+                    f"client_token {module.params['client_token']} was already used to request AWS End User "
+                    f"Messaging SMS phone number {response['PhoneNumberId']}, which has since been released; "
+                    "use a new client_token or omit it"
+                ),
+                phone_number_id=response["PhoneNumberId"],
+            )
 
     if wait and response.get("Status") != "ACTIVE":
         response = wait_for_phone_number_active(client, module, response["PhoneNumberId"], changed=True)
