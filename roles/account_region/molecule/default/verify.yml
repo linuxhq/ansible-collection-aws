@@ -32,13 +32,17 @@
                  from_json | dict2items | selectattr('value', 'in', ['DISABLED', 'DISABLING']) |
                  map(attribute='key') | list }}
 
+        - name: Ensure regions that were disabled before the run are selected
+          ansible.builtin.set_fact:
+            __account_region_restore_list: >-
+              {{ account_region_list | selectattr('name', 'in', __account_region_disabled_names) |
+                 map('combine', {'state': 'absent'}) | list }}
+
         - name: Ensure regions that were disabled before the run are disabled again
           ansible.builtin.include_role:
             name: account_region
           vars:
-            account_region_list: >-
-              {{ account_region_list | selectattr('name', 'in', __account_region_disabled_names) |
-                 map('combine', {'state': 'absent'}) | list }}
+            account_region_list: "{{ __account_region_restore_list }}"
 
         - name: Ensure restored aws account region opt-in statuses are gathered
           linuxhq.aws.account_region:
