@@ -703,6 +703,35 @@ def test_absent_log_format_with_extra_spacing_deletes_the_flow_log_ec2_stored():
     client.delete_flow_logs.assert_called_once_with(FlowLogIds=["fl-old"], aws_retry=True)
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("option", "field"),
+    [
+        ("deliver_cross_account_role", "DeliverCrossAccountRole"),
+        ("deliver_logs_permission_arn", "DeliverLogsPermissionArn"),
+    ],
+)
+def test_absent_empty_delivery_role_deletes_only_flow_logs_without_that_role(option, field, check_mode):
+    client = Mock()
+    client.delete_flow_logs.return_value = {}
+    without_role = dict(OLD_FLOW_LOG, FlowLogId="fl-without-role")
+    with_role = dict(OLD_FLOW_LOG, FlowLogId="fl-with-role", **{field: ROLE_ARN})
+    module = FakeModule(present_params(log_destination=None, state="absent", **{option: ""}), check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[without_role, with_role]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["flow_log_ids"] == ["fl-without-role"]
+    if check_mode:
+        client.delete_flow_logs.assert_not_called()
+    else:
+        client.delete_flow_logs.assert_called_once_with(FlowLogIds=["fl-without-role"], aws_retry=True)
+
+
 def test_create_sdk_check_covers_every_request_parameter():
     client = Mock()
     client.create_flow_logs.return_value = {"FlowLogIds": ["fl-new"]}

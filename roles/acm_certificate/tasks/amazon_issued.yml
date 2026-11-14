@@ -29,6 +29,7 @@
     record: "{{ _dns.resource_record.name }}"
     state: present
     type: "{{ _dns.resource_record.type }}"
+    validate_certs: true
     value: "{{ _dns.resource_record.value }}"
     zone: "{{ _certificate.zone }}"
   loop: "{{ __acm_certificate_status.certificates.0.domain_validation_options }}"

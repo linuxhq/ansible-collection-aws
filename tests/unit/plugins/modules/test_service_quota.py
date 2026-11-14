@@ -90,6 +90,26 @@ def test_validate_current_quota_rejects_invalid_value(quota):
     assert raised.value.values["msg"] == "AWS service quota ec2/L-1 did not return a valid value"
 
 
+@pytest.mark.parametrize(
+    ("error_reason", "suffix"),
+    [
+        (
+            {"ErrorCode": "DEPENDENCY_ACCESS_DENIED_ERROR", "ErrorMessage": "Access denied for ec2"},
+            ": DEPENDENCY_ACCESS_DENIED_ERROR: Access denied for ec2",
+        ),
+        ({"ErrorCode": "DEPENDENCY_THROTTLING_ERROR"}, ": DEPENDENCY_THROTTLING_ERROR"),
+        ({}, ""),
+        ("invalid", ""),
+    ],
+    ids=["code-and-message", "code-only", "empty", "invalid"],
+)
+def test_validate_current_quota_names_the_error_reason(error_reason, suffix):
+    with pytest.raises(ModuleFail) as raised:
+        plugin.validate_current_quota(FakeModule({}), {"ErrorReason": error_reason}, "ec2", "L-1")
+
+    assert raised.value.values["msg"] == f"AWS service quota ec2/L-1 did not return a valid value{suffix}"
+
+
 def test_validate_current_quota_accepts_large_integer_without_crashing():
     plugin.validate_current_quota(FakeModule({}), {"Value": 10**400}, "ec2", "L-1")
 

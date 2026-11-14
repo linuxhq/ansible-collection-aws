@@ -48,8 +48,8 @@ options:
     description:
       - The document parameters to pass to the command.
       - Each value must be a list of strings, as the Systems Manager
-        C(SendCommand) API requires.
-      - Values and their list entries must not be null.
+        C(SendCommand) API requires. The module fails before sending the
+        command, including in check mode, for any other value or list entry.
       - AWS treats parameter values as sensitive, so Ansible masks them in the
         module's output and logs.
     default: {}
@@ -604,12 +604,10 @@ def main():
     for option in ("max_concurrency", "max_errors"):
         require_non_blank(module, module.params[option], option)
 
-    # botocore rejects a null parameter value or list entry, so check mode must not report a send for it.
-    if any(
-        values is None or (isinstance(values, list) and any(value is None for value in values))
-        for values in module.params["parameters"].values()
-    ):
-        module.fail_json(msg="parameters must not contain a null value")
+    # botocore rejects any value but a list of strings, so check mode must not report a send for it.
+    for name, values in module.params["parameters"].items():
+        if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+            module.fail_json(msg=f"parameters.{name} must be a list of strings")
 
     require_positive_wait_bounds(module)
 

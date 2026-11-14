@@ -679,10 +679,24 @@ def test_check_mode_rejects_blank_values_before_aws(overrides, message):
         ({"max_concurrency": " "}, "max_concurrency must not be empty"),
         ({"max_errors": ""}, "max_errors must not be empty"),
         ({"max_errors": "\t"}, "max_errors must not be empty"),
-        ({"parameters": {"commands": None}}, "parameters must not contain a null value"),
-        ({"parameters": {"commands": ["echo", None]}}, "parameters must not contain a null value"),
+        ({"parameters": {"commands": None}}, "parameters.commands must be a list of strings"),
+        ({"parameters": {"commands": ["echo", None]}}, "parameters.commands must be a list of strings"),
+        ({"parameters": {"commands": "uptime"}}, "parameters.commands must be a list of strings"),
+        (
+            {"parameters": {"commands": ["uptime"], "executionTimeout": [3600]}},
+            "parameters.executionTimeout must be a list of strings",
+        ),
     ],
-    ids=["empty-concurrency", "blank-concurrency", "empty-errors", "blank-errors", "null-value", "null-entry"],
+    ids=[
+        "empty-concurrency",
+        "blank-concurrency",
+        "empty-errors",
+        "blank-errors",
+        "null-value",
+        "null-entry",
+        "string-value",
+        "int-entry",
+    ],
 )
 def test_rejects_values_send_command_refuses_before_aws(overrides, message, check_mode):
     # botocore or AWS refuses these on the only write, so check mode must not report a send for them.

@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ec2_flow_log - with ``state=absent``, an empty string for ``deliver_cross_account_role`` or
+    ``deliver_logs_permission_arn`` now matches flow logs without that role, as it does with ``state=present``.
+    Before, the empty value matched no flow log, so an item switched to ``state=absent`` kept its flow log.

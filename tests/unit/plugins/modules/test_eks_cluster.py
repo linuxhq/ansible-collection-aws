@@ -3632,3 +3632,108 @@ def test_stored_reserved_tag_key_with_the_same_value_keeps_working(check_mode):
 
     assert raised.value.values["changed"] is False
     client.tag_resource.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("current_mode", "requested_mode"),
+    [("API", "API_AND_CONFIG_MAP"), ("API", "CONFIG_MAP"), ("API_AND_CONFIG_MAP", "CONFIG_MAP")],
+)
+def test_authentication_mode_changes_eks_refuses_fail_before_any_update(current_mode, requested_mode, check_mode):
+    # EKS never disables access entries once enabled and cannot enable the ConfigMap method later; without a version
+    # change the upgrade policy update would otherwise be applied first.
+    current = dict(
+        STANDARD_CLUSTER, accessConfig={"authenticationMode": current_mode}, upgradePolicy={"supportType": "EXTENDED"}
+    )
+    params = eks_params(
+        access_config=access_config_params(requested_mode),
+        deletion_protection=True,
+        upgrade_policy={"support_type": "STANDARD"},
+    )
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "wait_for_cluster") as wait_for_cluster,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values == {
+        "msg": (
+            f"Cannot change access_config.authentication_mode from {current_mode} to {requested_mode} for existing "
+            "EKS cluster example; EKS only allows CONFIG_MAP to API_AND_CONFIG_MAP or API, and API_AND_CONFIG_MAP to "
+            "API"
+        )
+    }
+    assert client.mock_calls == []
+    wait_for_cluster.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("current_mode", "requested_mode"),
+    [("CONFIG_MAP", "API_AND_CONFIG_MAP"), ("CONFIG_MAP", "API"), ("API_AND_CONFIG_MAP", "API")],
+)
+def test_authentication_mode_changes_eks_accepts_are_sent(current_mode, requested_mode):
+    current = dict(STANDARD_CLUSTER, accessConfig={"authenticationMode": current_mode})
+    params = eks_params(access_config=access_config_params(requested_mode))
+
+    client, result = run_present(
+        FakeModule(params), [current, dict(current, accessConfig={"authenticationMode": requested_mode})]
+    )
+
+    assert result["changed"] is True
+    client.update_cluster_config.assert_called_once_with(
+        name="example", accessConfig={"authenticationMode": requested_mode}
+    )
+
+
+AUTO_MODE_ENABLED = {
+    "compute_config": {"enabled": True},
+    "kubernetes_network_config": {"elastic_load_balancing": {"enabled": True}},
+    "storage_config": {"block_storage": {"enabled": True}},
+}
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("access_config", [None, access_config_params("CONFIG_MAP")], ids=["omitted", "config-map"])
+def test_enabling_auto_mode_on_a_config_map_cluster_fails_before_any_update(access_config, check_mode):
+    # EKS Auto Mode requires access entries; the Auto Mode request is sent last, after the deletion protection update.
+    params = eks_params(access_config=access_config, deletion_protection=True, **AUTO_MODE_ENABLED)
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=CONFIG_MAP_CLUSTER),
+        patch.object(plugin, "wait_for_cluster") as wait_for_cluster,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values == {
+        "msg": "EKS Auto Mode requires access_config.authentication_mode API or API_AND_CONFIG_MAP for existing EKS "
+        "cluster example"
+    }
+    assert client.mock_calls == []
+    wait_for_cluster.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_auto_mode_follows_an_access_change_away_from_config_map(check_mode):
+    params = eks_params(access_config=access_config_params("API"), deletion_protection=True, **AUTO_MODE_ENABLED)
+
+    client, result = run_present(FakeModule(params, check_mode=check_mode), [CONFIG_MAP_CLUSTER])
+
+    assert result["changed"] is True
+    assert result["cluster"]["access_config"] == {"authentication_mode": "API"}
+    assert result["cluster"]["compute_config"]["enabled"] is True
+    if check_mode:
+        assert client.mock_calls == []
+    else:
+        assert client.update_cluster_config.call_args_list == [
+            call(name="example", accessConfig={"authenticationMode": "API"}),
+            call(name="example", deletionProtection=True),
+            call(
+                name="example",
+                computeConfig={"enabled": True},
+                kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
+                storageConfig={"blockStorage": {"enabled": True}},
+            ),
+        ]

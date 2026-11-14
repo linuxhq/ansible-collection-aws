@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - service_quota - include the ``ErrorReason`` code and message Service Quotas returns with a quota that has no
+    valid value in the failure message, so a missing permission on the owning service can be told apart from
+    throttling or an outage.

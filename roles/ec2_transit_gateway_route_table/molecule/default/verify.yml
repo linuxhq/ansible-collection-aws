@@ -7,7 +7,35 @@
     - ec2_vpc_net_info
     - ec2_vpc_subnet_info
 
+  vars:
+    __molecule_transit_gateway_id: "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+    __molecule_transit_gateway_attachment_id:
+      "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule'].transit_gateway_attachment_id }}"
+
   post_tasks:
+    - name: Ensure molecule-rtb route table is queried
+      linuxhq.aws.ec2_transit_gateway_route_table_info:
+        filters:
+          "tag:Name": molecule-rtb
+          transit-gateway-id: "{{ __molecule_transit_gateway_id }}"
+      register: __molecule_rtb_query
+
+    - name: Ensure molecule-rtb routes are replaced and purged
+      ansible.builtin.assert:
+        that:
+          - __molecule_rtb_query.transit_gateway_route_tables | length == 1
+          - _rtb.state == 'available'
+          - _static | map(attribute='destination_cidr_block') | sort == ['10.10.0.0/16', '10.20.0.0/16']
+          - (_static | selectattr('destination_cidr_block', 'eq', '10.10.0.0/16') | first).state == 'blackhole'
+          - (_static | selectattr('destination_cidr_block', 'eq', '10.20.0.0/16') | first).state == 'active'
+          - (_static | selectattr('destination_cidr_block', 'eq', '10.20.0.0/16') | first).transit_gateway_attachments |
+            map(attribute='transit_gateway_attachment_id') | list == [__molecule_transit_gateway_attachment_id]
+          - _rtb.routes | selectattr('destination_cidr_block', 'eq', '10.30.0.0/16') |
+            rejectattr('state', 'in', ['deleted', 'deleting']) | list | length == 0
+      vars:
+        _rtb: "{{ __molecule_rtb_query.transit_gateway_route_tables.0 }}"
+        _static: "{{ _rtb.routes | selectattr('type', 'eq', 'static') | list }}"
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_transit_gateway_list:
@@ -47,4 +75,17 @@
       loop_control:
         label: "{{ _verify }}"
         loop_var: _verify
+
+    - name: Ensure molecule-rtb route table is queried after teardown
+      linuxhq.aws.ec2_transit_gateway_route_table_info:
+        filters:
+          "tag:Name": molecule-rtb
+          transit-gateway-id: "{{ __molecule_rtb_query.transit_gateway_route_tables.0.transit_gateway_id }}"
+      register: __molecule_rtb_absent_query
+
+    - name: Ensure molecule-rtb route table is gone
+      ansible.builtin.assert:
+        that:
+          - __molecule_rtb_absent_query.transit_gateway_route_tables |
+            rejectattr('state', 'in', ['deleted', 'deleting']) | list | length == 0
 ...

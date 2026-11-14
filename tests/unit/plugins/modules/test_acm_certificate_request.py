@@ -408,9 +408,15 @@ def test_rejects_matching_certificate_without_creation_time():
     client.request_certificate.assert_not_called()
 
 
+REQUESTED_NAMES = ["example.com", "www.example.com", "api.example.com"]
+
+
 def request_new_certificate(idempotency_token=None):
     client = Mock()
     client.request_certificate.return_value = {"CertificateArn": "arn:new"}
+    client.describe_certificate.return_value = {
+        "Certificate": {"Status": "PENDING_VALIDATION", "SubjectAlternativeNames": REQUESTED_NAMES}
+    }
     module = FakeModule(
         {
             "domain_name": "Example.COM",
@@ -452,6 +458,78 @@ def test_supplied_idempotency_token_is_sent_unchanged():
     request = request_new_certificate("Custom_Token_1")
 
     assert request["IdempotencyToken"] == "Custom_Token_1"
+
+
+def run_token_request(described):
+    client = Mock()
+    client.request_certificate.return_value = {"CertificateArn": "arn:replayed"}
+    if isinstance(described, Exception):
+        client.describe_certificate.side_effect = described
+    else:
+        client.describe_certificate.return_value = {"Certificate": described}
+
+    module = FakeModule(
+        {
+            "domain_name": "example.com",
+            "idempotency_token": "Token_1",
+            "purge_tags": True,
+            "subject_alternative_names": ["www.example.com"],
+            "tags": None,
+        },
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(plugin, "query_list", return_value=[]) as query,
+        pytest.raises((ModuleExit, ModuleFail)) as raised,
+    ):
+        plugin.main()
+
+    client.request_certificate.assert_called_once()
+    client.describe_certificate.assert_called_once_with(CertificateArn="arn:replayed", aws_retry=True)
+    assert require.call_args_list[1].args[3]["describe_certificate"] == ("CertificateArn",)
+    return raised.value, query
+
+
+@pytest.mark.parametrize(
+    ("described", "reason"),
+    [
+        # Live: a token and names repeated within the hour return the earlier certificate after it FAILED.
+        ({"Status": "FAILED", "SubjectAlternativeNames": ["example.com", "www.example.com"]}, "which is FAILED"),
+        (
+            {"Status": "PENDING_VALIDATION", "SubjectAlternativeNames": ["example.com"]},
+            "which has other domain names",
+        ),
+        (
+            plugin.ClientError({"Error": {"Code": "ResourceNotFoundException"}}, "DescribeCertificate"),
+            "which AWS Certificate Manager no longer describes",
+        ),
+    ],
+    ids=["failed", "other-names", "missing"],
+)
+def test_supplied_token_returning_a_certificate_that_cannot_be_reused_fails_without_changes(described, reason):
+    result, query = run_token_request(described)
+
+    assert isinstance(result, ModuleFail)
+    assert result.values == {
+        "msg": (
+            "idempotency_token Token_1 was already used to request AWS Certificate Manager certificate arn:replayed, "
+            f"{reason}; use a new idempotency_token or omit it"
+        ),
+        "certificate_arn": "arn:replayed",
+    }
+    # The certificate listing wait is skipped.
+    assert query.call_count == 1
+
+
+def test_supplied_token_returning_a_usable_certificate_is_reported_as_requested():
+    result, _query = run_token_request(
+        {"Status": "PENDING_VALIDATION", "SubjectAlternativeNames": ["WWW.example.com", "example.com"]}
+    )
+
+    assert isinstance(result, ModuleExit)
+    assert result.values == {"changed": True, "certificate_arn": "arn:replayed"}
 
 
 def issued_certificate(arn, **overrides):

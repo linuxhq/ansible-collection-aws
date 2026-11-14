@@ -1,6 +1,25 @@
 ---
 - name: Converge
   hosts: all
+  pre_tasks:
+    - name: Ensure original aws iam account aliases are gathered
+      linuxhq.aws.iam_account_alias_info:
+        validate_certs: true
+      register: __iam_account_alias_original
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    - name: Ensure original aws iam account aliases are saved
+      ansible.builtin.copy:
+        content: "{{ __iam_account_alias_original.account_aliases | to_json }}"
+        dest: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/original-account-aliases.json"
+        force: false
+        mode: '0600'
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
   roles:
     - role: iam_account_alias
       tags:

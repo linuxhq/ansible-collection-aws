@@ -20,7 +20,8 @@ options:
       - Unique idempotency token for the pool request.
       - When omitted, AWS generates an idempotency token for the request.
       - AWS answers a request that reuses a token with the pool the earlier request created, even after that pool was
-        deleted. The module then fails without creating a pool; use a new token for each pool.
+        deleted, or when it no longer holds O(origination_identity) or has another C(Name) tag. The module then fails
+        without creating a pool; use a new token for each pool, or set O(pool_id) to manage the existing pool.
     type: str
   deletion_protection_enabled:
     description:
@@ -486,7 +487,8 @@ def wait_for_pool_active(client, module, pool_id, changed=False):
     )
 
 
-def find_pool(client, module):
+def find_pool(client, module, listed=None):
+    """Return the matching pool; when listed is a set, add the ID of every pool described while matching."""
     if module.params["pool_id"] is not None:
         return get_pool_by_id(client, module, module.params["pool_id"])
 
@@ -500,6 +502,9 @@ def find_pool(client, module):
     # Pools are not filtered by message type, so a phone number held by a pool of the other message type is
     # reported as a conflict instead of predicting a CreatePool request that AWS rejects.
     for pool in describe_pools(client, module, Owner="SELF"):
+        if listed is not None:
+            listed.add(pool.get("PoolId"))
+
         if pool.get("Status") == "DELETING":
             continue
 
@@ -672,7 +677,8 @@ def ensure_present(client, module):
     deletion_protection_enabled = module.params["deletion_protection_enabled"]
     message_type = module.params["message_type"]
     wait = module.params["wait"]
-    current = find_pool(client, module)
+    listed_pool_ids = set()
+    current = find_pool(client, module, listed_pool_ids)
     if current is None and module.params.get("pool_id") is not None:
         module.fail_json(msg=f"Pinpoint SMS Voice V2 pool {module.params['pool_id']} does not exist")
 
@@ -759,6 +765,19 @@ def ensure_present(client, module):
                         f"client_token {module.params['client_token']} was already used to create AWS End User "
                         f"Messaging SMS phone pool {pool_id}, which has since been deleted; use a new "
                         "client_token or omit it"
+                    ),
+                    pool_id=pool_id,
+                )
+
+            if module.params["client_token"] is not None and pool_id in listed_pool_ids:
+                # Live: a reused token returns the pool the earlier request created without creating another, even
+                # when that pool no longer matches; it was described before the request and did not match.
+                module.fail_json(
+                    msg=(
+                        f"client_token {module.params['client_token']} was already used to create AWS End User "
+                        f"Messaging SMS phone pool {pool_id}, which no longer holds origination identity "
+                        f"{module.params['origination_identity']} or has another Name tag; use a new client_token "
+                        "or omit it, or set pool_id to manage that pool"
                     ),
                     pool_id=pool_id,
                 )

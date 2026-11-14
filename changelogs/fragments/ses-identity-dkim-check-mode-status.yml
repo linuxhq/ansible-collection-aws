@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - ses_identity_dkim - when check mode predicts new Easy DKIM tokens, predict the ``PENDING`` status AWS reports
+    for them, and do not warn about the ``FAILED`` status of the keys they replace. Before, switching an identity with
+    failed supplied keys to Easy DKIM in check mode kept ``FAILED`` and warned about DKIM CNAME records that did not
+    exist yet.

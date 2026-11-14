@@ -1,0 +1,8 @@
+---
+trivial:
+  - ec2_transit_gateway_route_table - the Molecule scenario now checks that the replaced route sends traffic to the
+    attachment, that the purged route is gone, and that the route table is gone after teardown.
+  - acm_certificate - the Molecule scenario now checks that each Amazon-issued domain has one certificate with the
+    requested names and published validation records, and that both are gone after teardown.
+  - iam_account_alias_info - the Molecule scenario now uses an alias unique to each run, checks the empty result after
+    removal, and restores the alias the account had before the run.

@@ -124,11 +124,28 @@ def test_check_mode_predicts_generation_without_calling_aws():
     assert result.values["dkim_attributes"] == {
         "signing_attributes_origin": "AWS_SES",
         "signing_enabled": True,
-        "status": "NOT_STARTED",
+        "status": "PENDING",
         "tokens": [],
     }
     client.put_email_identity_dkim_signing_attributes.assert_not_called()
     client.put_email_identity_dkim_attributes.assert_not_called()
+
+
+def test_check_mode_switch_from_failed_supplied_keys_predicts_pending_easy_dkim_without_a_warning():
+    # The FAILED status belongs to the supplied keys the run replaces; live, AWS reports PENDING for the new tokens.
+    current = {"SigningAttributesOrigin": "EXTERNAL", "SigningEnabled": True, "Status": "FAILED", "Tokens": ["sel"]}
+    module = FakeModule(params(), client=client_with(current), check_mode=True)
+    result, _require = run(module)
+
+    assert result.values["changed"] is True
+    assert result.values["dkim_attributes"] == {
+        "signing_attributes_origin": "AWS_SES",
+        "signing_enabled": True,
+        "status": "PENDING",
+        "tokens": [],
+    }
+    assert module.warnings == []
+    module.client().put_email_identity_dkim_signing_attributes.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

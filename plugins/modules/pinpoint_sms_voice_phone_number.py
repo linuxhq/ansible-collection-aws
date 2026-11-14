@@ -36,7 +36,9 @@ options:
       - Unique idempotency token for the phone number request.
       - When omitted, AWS generates an idempotency token for the request.
       - AWS answers a request that reuses a token with the number the earlier request returned, even after that
-        number was released. The module then fails without requesting a number; use a new token for each request.
+        number was released, or when it no longer matches the requested attributes, O(pool_id), or C(Name) tag. The
+        module then fails without requesting a number; use a new token for each request, or set
+        O(phone_number_id) to manage the existing number.
     type: str
   deletion_protection_enabled:
     description:
@@ -1028,6 +1030,21 @@ def ensure_present(client, module):
                 f"client_token {module.params['client_token']} was already used to request AWS End User "
                 f"Messaging SMS phone number {response['PhoneNumberId']}, which has since been released; "
                 "use a new client_token or omit it"
+            ),
+            phone_number_id=response["PhoneNumberId"],
+        )
+
+    if module.params["client_token"] is not None and response["PhoneNumberId"] in {
+        phone_number["PhoneNumberId"] for phone_number in phone_numbers
+    }:
+        # Live: a reused token returns the number the earlier request returned without requesting another, even when
+        # that number no longer matches; it was described before the request and did not match.
+        module.fail_json(
+            msg=(
+                f"client_token {module.params['client_token']} was already used to request AWS End User "
+                f"Messaging SMS phone number {response['PhoneNumberId']}, which no longer matches the requested "
+                "attributes, pool, or Name tag; use a new client_token or omit it, or set phone_number_id to manage "
+                "that number"
             ),
             phone_number_id=response["PhoneNumberId"],
         )

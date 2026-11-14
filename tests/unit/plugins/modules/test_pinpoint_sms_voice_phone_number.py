@@ -2254,3 +2254,31 @@ def test_new_number_without_a_client_token_is_not_described():
         plugin.ensure_present(client, module)
 
     assert result.value.values["changed"] is True
+
+
+# Live: RequestPhoneNumber with a token reused after the number's Name tag changed returns that number, PENDING, and
+# requests no number.
+@pytest.mark.parametrize("wait", [True, False])
+def test_client_token_reused_for_a_number_that_no_longer_matches_fails_without_changes(wait):
+    client = Mock()
+    client.request_phone_number.return_value = existing_number(Status="PENDING")
+    module = FakeModule(phone_number_params(client_token="token-1", tags={"Name": "primary"}, wait=wait))
+    with (
+        patch.object(plugin, "query_list", return_value=[existing_number(PhoneNumberArn="arn:phone-1")]),
+        patch.object(plugin, "phone_number_tags", return_value={"Name": "renamed"}),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_phone_number", return_value=existing_number()),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "msg": (
+            "client_token token-1 was already used to request AWS End User Messaging SMS phone number phone-1, "
+            "which no longer matches the requested attributes, pool, or Name tag; use a new client_token or omit "
+            "it, or set phone_number_id to manage that number"
+        ),
+        "phone_number_id": "phone-1",
+    }
+    client.request_phone_number.assert_called_once()
+    client.tag_resource.assert_not_called()

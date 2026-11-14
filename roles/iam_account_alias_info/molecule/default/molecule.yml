@@ -30,7 +30,8 @@ provisioner:
   inventory:
     group_vars:
       all:
-        iam_account_alias_name: "molecule-{{ ansible_facts.date_time.date }}"
+        iam_account_alias_name: >-
+          molecule-{{ (lookup('ansible.builtin.file', '${MOLECULE_STATE_FILE}') | from_yaml).run_uuid }}
 
 scenario:
   test_sequence:
