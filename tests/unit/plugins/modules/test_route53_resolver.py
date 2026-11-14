@@ -391,6 +391,27 @@ def test_endpoint_list_limits_are_rejected():
             ),
             "ip_addresses entries must be unique",
         ),
+        # An endpoint holds each IPv4 and IPv6 address once, whatever the other fields of the entries.
+        (
+            dict(
+                base,
+                ip_addresses=[
+                    {"ip": "192.0.2.1", "subnet_id": "subnet-1"},
+                    {"ip": "192.0.2.1", "ipv6": "2001:db8::1", "subnet_id": "subnet-1"},
+                ],
+            ),
+            "ip_addresses entries must be unique",
+        ),
+        (
+            dict(
+                base,
+                ip_addresses=[
+                    {"ipv6": "2001:db8::1", "subnet_id": "subnet-1"},
+                    {"ip": "192.0.2.2", "ipv6": "2001:DB8:0::1", "subnet_id": "subnet-2"},
+                ],
+            ),
+            "ip_addresses entries must be unique",
+        ),
         (dict(base, protocols=[]), "protocols must contain 1 or 2 entries"),
         (
             dict(base, security_group_ids=[]),
@@ -2713,3 +2734,66 @@ def test_reserved_tag_key_is_left_to_aws_on_a_new_endpoint():
         plugin.ensure_present(client, FakeModule(endpoint_params(tags={"aws:owner": "me"}), check_mode=True))
 
     assert raised.value.values["changed"] is True
+
+
+DUALSTACK_ADDRESSES = [
+    {"Ip": "10.0.0.10", "Ipv6": "2001:db8::10", "IpId": "rni-x", "SubnetId": "subnet-1", "Status": "ATTACHED"},
+    {"Ip": "10.0.1.10", "Ipv6": "2001:db8:1::10", "IpId": "rni-y", "SubnetId": "subnet-2", "Status": "ATTACHED"},
+]
+KEPT_SECOND = {"ip": "10.0.1.10", "ipv6": "2001:db8:1::10", "subnet_id": "subnet-2"}
+NEW_THIRD = {"ip": "10.0.1.11", "ipv6": "2001:db8:1::11", "subnet_id": "subnet-2"}
+
+
+@pytest.mark.parametrize(
+    "reused",
+    [
+        # The IPv4 address stays and the IPv6 address changes, and the reverse.
+        {"ip": "10.0.0.10", "ipv6": "2001:db8::20", "subnet_id": "subnet-1"},
+        {"ip": "10.0.0.20", "ipv6": "2001:DB8::10", "subnet_id": "subnet-1"},
+    ],
+)
+def test_address_that_reuses_an_address_to_remove_is_added_after_that_removal(reused):
+    # Live: AssociateResolverEndpointIpAddress refuses an address another address of the endpoint holds with
+    # ResourceExistsException RSLVR-00407, so the current address is removed first.
+    changes = plugin.ip_address_changes(DUALSTACK_ADDRESSES, [NEW_THIRD, reused, KEPT_SECOND])
+
+    assert [(operation, address.get("IpId") or address) for operation, address in changes] == [
+        ("add", NEW_THIRD),
+        ("remove", "rni-x"),
+        ("add", reused),
+    ]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_reused_address_on_an_endpoint_with_two_addresses_fails_before_any_write(check_mode):
+    # Live: DisassociateResolverEndpointIpAddress refuses to leave fewer than 2 addresses with
+    # InvalidRequestException RSLVR-00505, so the reused address can never be added.
+    current = existing_endpoint(IpAddresses=DUALSTACK_ADDRESSES, ResolverEndpointType="DUALSTACK")
+    ip_addresses = [{"ip": "10.0.0.10", "ipv6": "2001:db8::20", "subnet_id": "subnet-1"}, KEPT_SECOND]
+    client = Mock()
+    module = FakeModule(
+        endpoint_params(ip_addresses=ip_addresses, protocols=["Do53", "DoH"], tags={"Env": "prod"}),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "changed": False,
+        "msg": (
+            "Cannot replace the AWS Route53 Resolver endpoint main address that holds 10.0.0.10: the requested entry "
+            "that reuses it can be added only after that address is removed, and AWS removes an address only from an "
+            "endpoint with more than 2 addresses. Add another address in an earlier run. The existing endpoint has "
+            "not been modified."
+        ),
+    }
+    assert client.update_resolver_endpoint.call_count == 0
+    assert client.associate_resolver_endpoint_ip_address.call_count == 0
+    assert client.disassociate_resolver_endpoint_ip_address.call_count == 0
+    assert client.tag_resource.call_count == 0

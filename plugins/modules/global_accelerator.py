@@ -62,6 +62,9 @@ options:
       - Unique idempotency token for accelerator creation.
       - When omitted, a unique token is generated for each creation attempt.
       - This option is only used when creating an accelerator.
+      - AWS answers a creation that reuses a token with the accelerator the earlier creation made, even one renamed
+        since. When that accelerator's name differs from O(name), the module fails without changing anything; use
+        a new token for each new accelerator.
       - This must contain at most 255 characters.
     type: str
   ip_addresses:
@@ -331,7 +334,7 @@ options:
       - Name of the accelerator.
       - This is required when O(state=present).
       - O(arn) or O(name) is required.
-      - This must contain at most 255 characters.
+      - This must contain at most 64 characters.
     type: str
   purge_endpoint_groups:
     description:
@@ -2353,6 +2356,15 @@ def ensure_present(client, module, deadline=None):
             response.get("Accelerator") if isinstance(response, dict) else None,
             changed=True,
         )
+        if accelerator.get("Name") != desired["name"]:
+            # Live: a reused token answers with the accelerator it created, under its current name.
+            module.fail_json(
+                msg=(
+                    f"idempotency_token {token} was already used to create AWS Global Accelerator "
+                    f"{accelerator.get('AcceleratorArn')} (now named {accelerator.get('Name')}), "
+                    f"not {desired['name']}; use a new idempotency_token or omit it"
+                ),
+            )
     elif created and module.check_mode:
         # Predict the AWS creation defaults for omitted settings and the status a real run returns after waiting.
         accelerator = {
@@ -2600,8 +2612,8 @@ def main():
     state = module.params["state"]
     require_positive_wait_bounds(module, always=True)
 
-    if len(module.params.get("name") or "") > 255:
-        module.fail_json(msg="name must contain at most 255 characters")
+    if len(module.params.get("name") or "") > 64:
+        module.fail_json(msg="name must contain at most 64 characters")
 
     if state == "present":
         ip_addresses = module.params["ip_addresses"] or []

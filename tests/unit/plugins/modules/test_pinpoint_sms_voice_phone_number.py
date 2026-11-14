@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -2184,3 +2185,72 @@ def test_check_mode_runs_the_sdk_checks_the_real_run_fails_on(existing, check_mo
     }
     client.update_phone_number.assert_not_called()
     client.request_phone_number.assert_not_called()
+
+
+# Live: RequestPhoneNumber with a token reused after a release returns the released number, PENDING, with its
+# original CreatedTimestamp, and DescribePhoneNumbers then reports it as not found. A new number is described at once.
+LATER_THAN_THE_CONTROLLER = datetime(2099, 1, 1, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    "described, describes",
+    [([None, None, None], 3), ([existing_number(Status="DELETED")], 1)],
+)
+@pytest.mark.parametrize("wait", [True, False])
+def test_client_token_reused_after_a_release_fails_naming_the_token(wait, described, describes):
+    # The check does not depend on the controller clock: the replayed number may look newer than the request.
+    client = Mock()
+    client.request_phone_number.return_value = existing_number(
+        CreatedTimestamp=LATER_THAN_THE_CONTROLLER, Status="PENDING"
+    )
+    module = FakeModule(phone_number_params(client_token="token-1", wait=wait))
+    with (
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(pinpoint_sms_voice.time, "sleep") as sleep,
+        patch.object(plugin, "get_phone_number", side_effect=described) as get_phone_number,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "msg": (
+            "client_token token-1 was already used to request AWS End User Messaging SMS phone number phone-1, "
+            "which has since been released; use a new client_token or omit it"
+        ),
+        "phone_number_id": "phone-1",
+    }
+    assert get_phone_number.call_args_list == [call(client, module, "phone-1", changed=True)] * describes
+    assert sleep.call_count == describes - 1
+
+
+def test_new_number_with_a_client_token_is_described_until_visible():
+    client = Mock()
+    client.request_phone_number.return_value = existing_number(Status="PENDING")
+    module = FakeModule(phone_number_params(client_token="token-1"))
+    with (
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(pinpoint_sms_voice.time, "sleep") as sleep,
+        patch.object(plugin, "get_phone_number", side_effect=[None, existing_number(Status="PENDING")]),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    sleep.assert_called_once_with(pinpoint_sms_voice.REPLAY_CHECK_DELAY)
+
+
+def test_new_number_without_a_client_token_is_not_described():
+    client = Mock()
+    client.request_phone_number.return_value = existing_number(Status="PENDING")
+    module = FakeModule(phone_number_params())
+    with (
+        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_phone_number", side_effect=AssertionError("Unexpected describe")),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True

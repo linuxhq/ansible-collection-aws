@@ -27,7 +27,10 @@ options:
   deliver_cross_account_role:
     description:
       - The ARN of the IAM role that permits delivery to a cross-account destination.
-      - This must not be empty when O(state=present).
+      - When O(state=present), an empty string means no role. It matches only flow logs without one, and a
+        replacement does not keep the role of the flow log it replaces, as described for O(name). The empty value
+        is not sent to EC2.
+      - This must not be made only of whitespace when O(state=present).
     type: str
   deliver_logs_permission_arn:
     description:
@@ -35,7 +38,10 @@ options:
       - This is required to create flow logs when O(log_destination_type) is C(cloud-watch-logs), the default
         when O(state=present), unless a replacement keeps the value of the flow log it replaces, as described for
         O(name).
-      - This must not be empty when O(state=present).
+      - When O(state=present), an empty string means no role. It matches only flow logs without one, and a
+        replacement does not keep the role of the flow log it replaces, as described for O(name). The empty value
+        is not sent to EC2.
+      - This must not be made only of whitespace when O(state=present).
     type: str
   destination_options:
     description:
@@ -129,7 +135,8 @@ options:
         S3. It keeps the O(deliver_cross_account_role) and O(deliver_logs_permission_arn) of the flow log it
         replaces when these options are omitted and both flow logs deliver to the same O(log_destination_type),
         C(cloud-watch-logs) or C(kinesis-data-firehose). Each supplied option, including each
-        O(destination_options) suboption, replaces only its own kept value.
+        O(destination_options) suboption, replaces only its own kept value. An empty string for a delivery role
+        keeps no role.
       - A kept O(log_format) also keeps the tag field specifications that EC2 tag fields in that format require.
         A supplied O(log_format) is sent without them.
       - Keeping a log format with EC2 tag fields requires botocore 1.43.26 or later; with an older botocore, the
@@ -436,6 +443,12 @@ PRESENT_MATCH_FIELDS = (
     "max_aggregation_interval",
     "name",
     "traffic_type",
+)
+
+# With state=present, an empty string for these options means no role, matched and kept as such but never sent.
+DELIVERY_ROLE_OPTIONS = (
+    "deliver_cross_account_role",
+    "deliver_logs_permission_arn",
 )
 
 # EC2 requires TrafficType for every resource type except the transit gateway types.
@@ -765,6 +778,11 @@ def ensure_present(client, module):
         "log_destination_type": module.params["log_destination_type"] or "cloud-watch-logs",
     }
     desired.update(desired_match_fields(module, PRESENT_MATCH_FIELDS))
+    for option in DELIVERY_ROLE_OPTIONS:
+        if module.params[option] == "":
+            # EC2 omits a role the flow log does not have, so None matches only flow logs without it.
+            desired[option] = None
+
     flow_logs = get_flow_logs(client, module)
     current = matching_flow_logs(module, flow_logs, desired)
     for resource_id in resource_ids:
@@ -807,6 +825,11 @@ def ensure_present(client, module):
                 replaced_tags.update(boto3_tag_list_to_ansible_dict(flow_log.get("Tags") or []))
                 # It also keeps the settings the task omits; as with tags, the last replaced flow log wins.
                 created_settings[resource_id] = replacement_settings(create_settings, flow_log)
+
+        # A role set to "" overrides the kept role and is not sent.
+        created_settings[resource_id] = {
+            key: value for key, value in created_settings[resource_id].items() if value is not None
+        }
 
         if resource_type in TRAFFIC_TYPE_RESOURCE_TYPES and "traffic_type" not in created_settings[resource_id]:
             # EC2 requires a traffic type: an omitted one keeps the replaced flow log's, and is ALL for a new one.
@@ -1133,6 +1156,10 @@ def main():
             "log_format",
             "log_group_name",
         ):
+            # An empty delivery role means no role; only whitespace is still refused.
+            if option in DELIVERY_ROLE_OPTIONS and module.params[option] == "":
+                continue
+
             require_non_blank(module, module.params[option], option)
 
         if module.params["traffic_type"] is not None and resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:

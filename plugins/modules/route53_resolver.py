@@ -35,6 +35,10 @@ options:
       - New addresses are added before unwanted ones are removed. On an endpoint that already has as many addresses
         as the account's per-endpoint quota allows (6 by default), AWS therefore refuses a replacement with
         C(LimitExceededException); remove the unwanted address in a separate run first.
+      - AWS refuses an address whose IPv4 or IPv6 address another address of the endpoint still holds, so an entry
+        that keeps one of these of a current address but changes the other is added only after that current address
+        is removed. AWS removes an address only from an endpoint with more than 2 addresses, so when such a removal
+        would leave fewer, the module fails without modifying the endpoint; add another address in an earlier run.
     elements: dict
     suboptions:
       ip:
@@ -790,6 +794,13 @@ def ensure_present(client, module, deadline=None):
                 ),
             )
 
+        # Address changes follow any endpoint update, so an order AWS would refuse fails before that update.
+        listed_ip_addresses = endpoint.get("IpAddresses") or []
+        if desired_type == "DUALSTACK" and current["resolver_endpoint_type"] != "DUALSTACK":
+            listed_ip_addresses = ip_addresses_with_requested_ipv6(endpoint, desired["ip_addresses"])
+
+        ordered_ip_address_changes(module, listed_ip_addresses, desired["ip_addresses"])
+
     if changed and module.check_mode:
         # Removing failed addresses is an address change too; without a wait it returns the requested addresses.
         keep_ip_addresses = (
@@ -841,7 +852,7 @@ def ensure_present(client, module, deadline=None):
                 if projected_desired.get("resolver_endpoint_type") == "DUALSTACK":
                     listed_ip_addresses = ip_addresses_with_requested_ipv6(endpoint, desired["ip_addresses"])
 
-                changes = ip_address_changes(listed_ip_addresses, desired["ip_addresses"])
+                changes = ordered_ip_address_changes(module, listed_ip_addresses, desired["ip_addresses"])
                 last_operation, last_ip_address = changes[-1] if changes else (None, None)
                 if last_operation == "add" or (
                     last_operation == "remove" and ip_address_status(last_ip_address) not in FAILED_IP_ADDRESS_STATUSES
@@ -1028,8 +1039,27 @@ def ensure_present(client, module, deadline=None):
     module.exit_json(**result)
 
 
+class IpAddressOrderError(Exception):
+    """The address changes cannot be ordered so that AWS accepts each of them; the argument is the shared address."""
+
+
+def shares_ip_address(listed, desired):
+    """Return an IPv4 or IPv6 address that a listed endpoint address holds and a desired entry sets, or None."""
+    # A failed address has no network interface, so it holds no address.
+    if ip_address_status(listed) in FAILED_IP_ADDRESS_STATUSES:
+        return None
+
+    listed, desired = comparable_ip_address(listed), comparable_ip_address(desired)
+    return next(
+        (listed[field] for field in ("ip", "ipv6") if listed.get(field) and listed[field] == desired.get(field)), None
+    )
+
+
 def ip_address_changes(listed_ip_addresses, desired_ip_addresses):
-    """Return the ordered ("add" | "remove", address) changes that turn the listed addresses into the desired ones."""
+    """Return the ordered ("add" | "remove", address) changes that turn the listed addresses into the desired ones.
+
+    Raises IpAddressOrderError when an addition must wait for a removal that AWS would refuse.
+    """
     failed_ip_addresses = [
         ip_address for ip_address in listed_ip_addresses if ip_address_status(ip_address) in FAILED_IP_ADDRESS_STATUSES
     ]
@@ -1059,21 +1089,69 @@ def ip_address_changes(listed_ip_addresses, desired_ip_addresses):
     changes = []
     address_count = len(current_ip_addresses) + len(failed_ip_addresses)
     while ip_addresses_to_add or ip_addresses_to_remove:
-        if ip_addresses_to_add and (address_count < 20 or not ip_addresses_to_remove):
-            changes.append(("add", ip_addresses_to_add.pop(0)))
+        # Live: AWS refuses an address that another address of the endpoint holds (RSLVR-00407), so an addition that
+        # reuses the IPv4 or IPv6 address of an address to remove waits for that removal.
+        addable = next(
+            (
+                index
+                for index, ip_address in enumerate(ip_addresses_to_add)
+                if not any(shares_ip_address(removed, ip_address) for removed in ip_addresses_to_remove)
+            ),
+            None,
+        )
+        if addable is not None and (address_count < 20 or not ip_addresses_to_remove):
+            changes.append(("add", ip_addresses_to_add.pop(addable)))
             address_count += 1
-        else:
-            changes.append(("remove", ip_addresses_to_remove.pop(0)))
-            address_count -= 1
+            continue
+
+        # Remove first an address that a waiting addition reuses.
+        removable, shared = 0, None
+        for index, removed in enumerate(ip_addresses_to_remove):
+            shared = next(
+                (
+                    address
+                    for address in (shares_ip_address(removed, added) for added in ip_addresses_to_add)
+                    if address
+                ),
+                None,
+            )
+            if shared:
+                removable = index
+                break
+
+        if shared and address_count <= 2:
+            # Live: AWS removes an address only from an endpoint with more than 2 addresses (RSLVR-00505).
+            raise IpAddressOrderError(shared)
+
+        changes.append(("remove", ip_addresses_to_remove.pop(removable)))
+        address_count -= 1
 
     return changes
+
+
+def ordered_ip_address_changes(module, listed_ip_addresses, desired_ip_addresses, changed=False):
+    """Return ip_address_changes(), or fail when AWS would refuse them; changed reports earlier modifications."""
+    try:
+        return ip_address_changes(listed_ip_addresses, desired_ip_addresses)
+    except IpAddressOrderError as e:
+        module.fail_json(
+            changed=changed,
+            msg=(
+                f"Cannot replace the AWS Route53 Resolver endpoint {module.params['name']} address that holds {e.args[0]}: "
+                "the requested entry that reuses it can be added only after that address is removed, and AWS removes "
+                "an address only from an endpoint with more than 2 addresses. Add another address in an earlier run."
+                + ("" if changed else " The existing endpoint has not been modified.")
+            ),
+        )
 
 
 def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, changed=False, deadline=None):
     """Replace endpoint IP addresses; changed reports whether the endpoint was already modified."""
     resolver_endpoint_id = endpoint.get("Id")
     desired_ip_addresses = desired["ip_addresses"]
-    changes = ip_address_changes(endpoint.get("IpAddresses") or [], desired_ip_addresses)
+    changes = ordered_ip_address_changes(
+        module, endpoint.get("IpAddresses") or [], desired_ip_addresses, changed=changed
+    )
     if not changes:
         return endpoint
 
@@ -1392,14 +1470,13 @@ def main():
         if not 2 <= len(module.params["ip_addresses"] or []) <= 20:
             module.fail_json(msg="ip_addresses must contain 2 to 20 entries")
 
-        # Several subnet-only entries may request addresses in the same subnet.
-        comparable_ip_address_values = comparable_ip_addresses(
-            entry for entry in module.params["ip_addresses"] if entry.get("ip") or entry.get("ipv6")
-        )
-        if len({json.dumps(item, sort_keys=True) for item in comparable_ip_address_values}) != len(
-            comparable_ip_address_values
-        ):
-            module.fail_json(msg="ip_addresses entries must be unique")
+        # Several subnet-only entries may request addresses in the same subnet, but an endpoint holds each IPv4 and
+        # IPv6 address only once.
+        comparable_ip_address_values = comparable_ip_addresses(module.params["ip_addresses"])
+        for field in ("ip", "ipv6"):
+            values = [entry[field] for entry in comparable_ip_address_values if entry.get(field)]
+            if len(set(values)) != len(values):
+                module.fail_json(msg="ip_addresses entries must be unique")
 
         if module.params["protocols"] is not None and not 1 <= len(set(module.params["protocols"])) <= 2:
             module.fail_json(msg="protocols must contain 1 or 2 entries")

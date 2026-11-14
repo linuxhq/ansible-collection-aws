@@ -1,0 +1,13 @@
+---
+trivial:
+  - iam_account_alias - the Molecule scenario now uses an alias unique to each run, checks that it is set and then
+    removed, and restores the alias the account had before the run.
+  - account_region - the Molecule scenario now records each region's opt-in status before the run, checks that the
+    regions are enabled, and disables again only the regions that were disabled before the run.
+  - notifications_contacts, notifications_hub - the Molecule scenarios now check the created contacts and registered
+    hubs, and their removal or deregistration.
+  - ssm_association, ssm_association_info - the Molecule scenarios now manage associations with their own
+    ``association_name`` and filter on it, so they no longer adopt or delete other associations of the document.
+  - pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_pool, pinpoint_sms_voice_phone_number_info,
+    pinpoint_sms_voice_phone_pool_info - the Molecule scenarios now select their phone number and pool by Name, and
+    the phone number and pool scenarios check the created attributes, tags, pool membership, and removal.

@@ -43,7 +43,9 @@ provisioner:
             tags:
               molecule: pinpoint_sms_voice_phone_pool
             origination_identity:
-              "{{ _pinpoint_sms_voice_phone_number_info_list.0.phone_number_id }}"
+              "{{ _pinpoint_sms_voice_phone_number_info_dict[
+                    'molecule-pinpoint-simulator'
+                  ].phone_number_id }}"
             iso_country_code: US
             message_type: TRANSACTIONAL
 

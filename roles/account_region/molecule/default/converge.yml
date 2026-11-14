@@ -1,6 +1,34 @@
 ---
 - name: Converge
   hosts: all
+  pre_tasks:
+    - name: Ensure original aws account region opt-in statuses are gathered
+      linuxhq.aws.account_region:
+        name: "{{ _region.name }}"
+        state: present
+        validate_certs: true
+      loop: "{{ account_region_list }}"
+      loop_control:
+        label: "{{ _region.name }}"
+        loop_var: _region
+      register: __account_region_original
+      tags:
+        - molecule-idempotence-notest
+      check_mode: true
+      changed_when: false
+
+    - name: Ensure original aws account region opt-in statuses are saved
+      ansible.builtin.copy:
+        content: >-
+          {{ dict(__account_region_original.results | map(attribute='name') |
+                  zip(__account_region_original.results | map(attribute='previous_region_opt_status'))) | to_json }}
+        dest: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/original-region-opt-statuses.json"
+        force: false
+        mode: '0600'
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
   roles:
     - role: account_region
       account_region_list: []

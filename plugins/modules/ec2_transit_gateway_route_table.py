@@ -703,15 +703,18 @@ def ensure_route_absent(
     wait = module.params["wait"] and not module.check_mode
 
     if route is None or route.get("State") in ROUTE_DELETED_STATES:
-        if wait and route and route.get("State") == "deleting":
-            wait_for_route_absent(
-                client,
-                module,
-                transit_gateway_route_table_id,
-                destination_cidr_block,
-                changed=changed,
-                deadline=deadline,
-            )
+        if module.params["wait"] and route and route.get("State") == "deleting":
+            # A real run waits until EC2 stops returning the route, so check mode predicts no route.
+            if not module.check_mode:
+                wait_for_route_absent(
+                    client,
+                    module,
+                    transit_gateway_route_table_id,
+                    destination_cidr_block,
+                    changed=changed,
+                    deadline=deadline,
+                )
+
             return False, None
 
         return False, route
@@ -772,6 +775,8 @@ def ensure_present(client, module):
     purge_routes = module.params["purge_routes"]
     wait = module.params["wait"] and not module.check_mode
     route_table = find_route_table(client, module)
+    # Check mode predicts a waited pending table as available, but a pending table cannot be searched for routes.
+    table_pending = False
 
     changed = False
 
@@ -827,10 +832,15 @@ def ensure_present(client, module):
             transit_gateway_route_table=normalize_route_table(route_table),
             transit_gateway_route_table_id=route_table_id(route_table),
         )
-    elif not module.check_mode and route_table.get("State") == "pending" and (wait or manage_routes):
-        route_table = wait_for_route_table(
-            client, module, route_table_id(route_table), {"available"}, deadline=deadline
-        )
+    elif route_table.get("State") == "pending" and (module.params["wait"] or manage_routes):
+        if module.check_mode:
+            # A real run waits for the pending table to become available.
+            table_pending = True
+            route_table = dict(route_table, State="available")
+        else:
+            route_table = wait_for_route_table(
+                client, module, route_table_id(route_table), {"available"}, deadline=deadline
+            )
 
     # Failures after the first modification report changed=True.
     mutated = changed and not module.check_mode
@@ -884,7 +894,7 @@ def ensure_present(client, module):
 
         # A table that does not exist yet or is still pending has no routes, and searching
         # a pending table fails, so check mode predicts each present route as an addition.
-        if module.check_mode and (not transit_gateway_route_table_id or route_table.get("State") == "pending"):
+        if module.check_mode and (not transit_gateway_route_table_id or table_pending):
             for desired_route in desired_routes:
                 if desired_route["state"] != "present":
                     continue
@@ -934,7 +944,10 @@ def ensure_present(client, module):
 
                     if desired_route_matches(current_route, desired_route):
                         current_route_changed = False
-                        if wait and current_route.get("State") == "pending":
+                        if module.check_mode and module.params["wait"] and current_route.get("State") == "pending":
+                            # A real run waits for the matching route; only a non-blackhole route can be pending.
+                            current_route = dict(current_route, State="active")
+                        elif wait and current_route.get("State") == "pending":
                             current_route = wait_for_route(
                                 client,
                                 module,

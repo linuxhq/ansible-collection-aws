@@ -19,6 +19,8 @@ options:
     description:
       - Unique idempotency token for the pool request.
       - When omitted, AWS generates an idempotency token for the request.
+      - AWS answers a request that reuses a token with the pool the earlier request created, even after that pool was
+        deleted. The module then fails without creating a pool; use a new token for each pool.
     type: str
   deletion_protection_enabled:
     description:
@@ -289,6 +291,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
     identity_matches,
     is_phone_number_identity,
     is_phone_number_reference,
+    is_replayed_deleted_resource,
     list_tags,
     predicted_origination_identity,
 )
@@ -743,6 +746,23 @@ def ensure_present(client, module):
                 module.fail_json_aws(e, msg="Unable to create Pinpoint SMS Voice V2 pool")
 
             validate_pool(module, current, "creating a pool", changed=True)
+            pool_id = current["PoolId"]
+            if module.params["client_token"] is not None and is_replayed_deleted_resource(
+                lambda: select_pool_by_id(
+                    module, describe_pools(client, module, changed=True, PoolIds=[pool_id]), pool_id, changed=True
+                ),
+                "DELETING",
+            ):
+                # Live: a token reused after a delete returns the deleted pool, which DescribePools no longer has.
+                module.fail_json(
+                    msg=(
+                        f"client_token {module.params['client_token']} was already used to create AWS End User "
+                        f"Messaging SMS phone pool {pool_id}, which has since been deleted; use a new "
+                        "client_token or omit it"
+                    ),
+                    pool_id=pool_id,
+                )
+
             current.pop("ResponseMetadata", None)
             current["OriginationIdentities"] = [
                 predicted_origination_identity(module.params["origination_identity"], module.params["iso_country_code"])

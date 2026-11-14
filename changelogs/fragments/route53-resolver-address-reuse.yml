@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - route53_resolver - ``ip_addresses`` entries that set the same ``ip`` or the same ``ipv6`` address (compared in
+    canonical form) now fail as not unique before any change. Before, only fully identical entries were refused, so
+    a repeated address in entries that differed in another field failed after earlier changes, on every run.
+  - route53_resolver - an entry that keeps the IPv4 or IPv6 address of a current endpoint address but changes the
+    other one is now added after that current address is removed, because AWS refuses an address another address of
+    the endpoint holds. When that removal would leave the endpoint with fewer than 2 addresses, which AWS refuses,
+    the module fails before modifying the endpoint. Before, the addition was sent first and failed after earlier
+    changes, on every run.

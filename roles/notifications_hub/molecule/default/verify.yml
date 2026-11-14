@@ -1,13 +1,47 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
+  tasks:
+    - name: Ensure information about aws notifications hubs is gathered
+      ansible.builtin.include_role:
+        name: notifications_hub_info
+
+    - name: Ensure registered hubs are verified
+      ansible.builtin.assert:
+        that:
+          - _notifications_hub_info_dict[_hub] is defined
+          - _notifications_hub_info_dict[_hub].status_summary.status in ['ACTIVE', 'REGISTERING']
+      loop: "{{ ['us-east-1'] + notifications_hub_list | map(attribute='region') | list }}"
+      loop_control:
+        label: "{{ _hub }}"
+        loop_var: _hub
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         notifications_hub_list:
           "{{ notifications_hub_list |
               map('combine', {'state': 'absent'}) }}"
 
-  roles:
-    - notifications_hub
+    - name: Ensure aws notifications hubs are absent
+      ansible.builtin.include_role:
+        name: notifications_hub
+
+    - name: Ensure information about aws notifications hubs is gathered after deregistration
+      ansible.builtin.include_role:
+        name: notifications_hub_info
+
+    - name: Ensure deregistered hubs are verified
+      ansible.builtin.assert:
+        that:
+          - _notifications_hub_info_dict[_hub.region] is not defined or
+            _notifications_hub_info_dict[_hub.region].status_summary.status in ['DEREGISTERING', 'INACTIVE']
+      loop: "{{ notifications_hub_list }}"
+      loop_control:
+        label: "{{ _hub.region }}"
+        loop_var: _hub
+
+    - name: Ensure default hub is verified
+      ansible.builtin.assert:
+        that:
+          - _notifications_hub_info_dict['us-east-1'].status_summary.status in ['ACTIVE', 'REGISTERING']
 ...

@@ -9,14 +9,16 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].association_id is defined
-          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].name ==
+          - _ssm_association_info_dict['molecule-ssm-association-info'].association_id is defined
+          - _ssm_association_info_dict['molecule-ssm-association-info'].association_name ==
+              ssm_association_list.0.association_name
+          - _ssm_association_info_dict['molecule-ssm-association-info'].name ==
               ssm_association_list.0.name
-          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].schedule_expression ==
+          - _ssm_association_info_dict['molecule-ssm-association-info'].schedule_expression ==
               ssm_association_list.0.schedule_expression
-          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].tags.molecule ==
+          - _ssm_association_info_dict['molecule-ssm-association-info'].tags.molecule ==
               'ssm_association_info'
-          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].targets ==
+          - _ssm_association_info_dict['molecule-ssm-association-info'].targets ==
               ssm_association_list.0.targets
 
     - name: Ensure role is included with filters
@@ -24,13 +26,14 @@
         name: ssm_association_info
       vars:
         ssm_association_info_filters:
-          Name: AWS-UpdateSSMAgent
+          AssociationName: molecule-ssm-association-info
 
     - name: Ensure info with filters is verified
       ansible.builtin.assert:
         that:
-          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].association_id is defined
-          - _ssm_association_info_dict['AWS-UpdateSSMAgent'].name ==
+          - _ssm_association_info_list | length == 1
+          - _ssm_association_info_dict['molecule-ssm-association-info'].association_id is defined
+          - _ssm_association_info_dict['molecule-ssm-association-info'].name ==
               ssm_association_list.0.name
 
     - name: Ensure inventory lists are formatted
@@ -47,4 +50,16 @@
       loop_control:
         label: "{{ _verify }}"
         loop_var: _verify
+
+    - name: Ensure role is included with filters after removal
+      ansible.builtin.include_role:
+        name: ssm_association_info
+      vars:
+        ssm_association_info_filters:
+          AssociationName: molecule-ssm-association-info
+
+    - name: Ensure removed association is verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_association_info_list == []
 ...

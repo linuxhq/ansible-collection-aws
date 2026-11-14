@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - global_accelerator - when CreateAccelerator answers a reused ``idempotency_token`` with an accelerator whose
+    name differs from ``name`` (Global Accelerator replays the earlier creation, even after a rename), the module
+    now fails without changing anything and names the token and the returned accelerator. Before, it managed the
+    renamed accelerator's listeners as if it had just created it, and every rerun did the same.
+  - global_accelerator - ``name`` now must contain at most 64 characters, the limit Global Accelerator enforces.
+    Before, the module allowed 255 characters, so check mode predicted a creation or rename AWS rejects.

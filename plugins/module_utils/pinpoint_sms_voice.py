@@ -2,6 +2,7 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 import re
+import time
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -15,6 +16,28 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import scrub_none_parameters
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
+
+# Bounded checks that a resource a creation with a caller client token returned exists.
+REPLAY_CHECKS = 3
+REPLAY_CHECK_DELAY = 5
+
+
+def is_replayed_deleted_resource(lookup, deleted_status):
+    """Return whether a creation answered a reused client token with a resource that was since deleted.
+
+    Live: a request that reuses a client token after its resource was released or deleted returns that resource,
+    although AWS no longer describes it; a new resource is described at once. lookup returns the described resource
+    or None, and is retried a bounded number of times in case the new resource is not visible yet.
+    """
+    for attempt in range(REPLAY_CHECKS):
+        found = lookup()
+        if found is not None:
+            return found.get("Status") == deleted_status
+
+        if attempt < REPLAY_CHECKS - 1:
+            time.sleep(REPLAY_CHECK_DELAY)
+
+    return True
 
 
 def unique_resource_ids(identifiers):

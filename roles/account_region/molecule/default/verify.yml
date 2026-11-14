@@ -1,13 +1,70 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        account_region_list:
-          "{{ account_region_list |
-              map('combine', {'state': 'absent'}) }}"
+  tasks:
+    - name: Ensure aws account regions are verified
+      block:
+        - name: Ensure aws account region opt-in statuses are gathered
+          linuxhq.aws.account_region:
+            name: "{{ _region.name }}"
+            state: present
+            validate_certs: true
+          loop: "{{ account_region_list }}"
+          loop_control:
+            label: "{{ _region.name }}"
+            loop_var: _region
+          register: __account_region_enabled
+          check_mode: true
+          changed_when: false
 
-  roles:
-    - account_region
+        - name: Ensure enabled regions are verified
+          ansible.builtin.assert:
+            that:
+              - __account_region_enabled.results | map(attribute='region_opt_status') |
+                reject('in', ['ENABLED', 'ENABLED_BY_DEFAULT']) | list == []
+
+      always:
+        - name: Ensure original aws account region opt-in statuses are loaded
+          ansible.builtin.set_fact:
+            __account_region_disabled_names: >-
+              {{ lookup('ansible.builtin.file',
+                 lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') ~ '/original-region-opt-statuses.json') |
+                 from_json | dict2items | selectattr('value', 'in', ['DISABLED', 'DISABLING']) |
+                 map(attribute='key') | list }}
+
+        - name: Ensure regions that were disabled before the run are selected
+          ansible.builtin.set_fact:
+            __account_region_restore_list: >-
+              {{ account_region_list | selectattr('name', 'in', __account_region_disabled_names) |
+                 map('combine', {'state': 'absent'}) | list }}
+
+        - name: Ensure regions that were disabled before the run are disabled again
+          ansible.builtin.include_role:
+            name: account_region
+          vars:
+            account_region_list: "{{ __account_region_restore_list }}"
+
+        - name: Ensure restored aws account region opt-in statuses are gathered
+          linuxhq.aws.account_region:
+            name: "{{ _region }}"
+            state: absent
+            validate_certs: true
+          loop: "{{ __account_region_disabled_names }}"
+          loop_control:
+            label: "{{ _region }}"
+            loop_var: _region
+          register: __account_region_disabled
+          check_mode: true
+          changed_when: false
+
+        - name: Ensure restored regions are verified
+          ansible.builtin.assert:
+            that:
+              - __account_region_disabled.results | map(attribute='region_opt_status') |
+                reject('in', ['DISABLED', 'DISABLING']) | list == []
+
+        - name: Ensure saved aws account region opt-in statuses file is absent
+          ansible.builtin.file:
+            path: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/original-region-opt-statuses.json"
+            state: absent
 ...

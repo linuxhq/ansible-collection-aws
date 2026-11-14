@@ -7,31 +7,12 @@
     subject_alternative_names: "{{ _certificate.subject_alternative_names | d(omit) }}"
     validate_certs: true
   register: __acm_certificate_request
-  when:
-    - _certificate.domain_name not in __acm_certificate_dict.keys()
-
-- name: Ensure aws certificate manager certificate pause is executed
-  tags:
-    - acm_certificate
-  ansible.builtin.pause:
-    seconds: 10
-  when:
-    - __acm_certificate_request is not skipped
-
-- name: Ensure aws certificate manager certificate info tasks are included
-  tags:
-    - acm_certificate
-  ansible.builtin.include_tasks:
-    apply:
-      tags:
-        - acm_certificate
-    file: info.yml
 
 - name: Ensure aws certificate manager certificate resource records are available
   tags:
     - acm_certificate
   community.aws.acm_certificate_info:
-    certificate_arn: "{{ __acm_certificate_dict[_certificate.domain_name].certificate_arn }}"
+    certificate_arn: "{{ __acm_certificate_request.certificate_arn }}"
     validate_certs: true
   register: __acm_certificate_status
   when:

@@ -1,7 +1,9 @@
+from datetime import datetime, timezone
 from unittest.mock import Mock, call, patch
 
 import pytest
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import pinpoint_sms_voice
 from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_phone_pool as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -1617,3 +1619,70 @@ def test_new_pool_without_a_country_requires_botocore_1_42_80_before_any_write(
         client.create_pool.assert_not_called()
     else:
         module.require_botocore_at_least.assert_not_called()
+
+
+# Live: CreatePool with a token reused after a delete returns the deleted pool, CREATING, with its original
+# CreatedTimestamp, and DescribePools then reports it as not found. A new pool is described at once.
+LATER_THAN_THE_CONTROLLER = datetime(2099, 1, 1, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    "described, describes",
+    [([[], [], []], 3), ([[{"PoolId": "pool-1", "Status": "DELETING"}]], 1)],
+)
+@pytest.mark.parametrize("wait", [True, False])
+def test_client_token_reused_after_a_delete_fails_naming_the_token(wait, described, describes):
+    # The check does not depend on the controller clock: the replayed pool may look newer than the request.
+    client = Mock()
+    client.create_pool.return_value = active_pool(CreatedTimestamp=LATER_THAN_THE_CONTROLLER, Status="CREATING")
+    module = FakeModule(
+        present_params(client_token="token-1", iso_country_code="US", origination_identity="phone-1", wait=wait)
+    )
+    with (
+        patch.object(plugin, "find_pool", return_value=None),
+        patch.object(pinpoint_sms_voice.time, "sleep") as sleep,
+        patch.object(plugin, "describe_pools", side_effect=described) as describe_pools,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "msg": (
+            "client_token token-1 was already used to create AWS End User Messaging SMS phone pool pool-1, "
+            "which has since been deleted; use a new client_token or omit it"
+        ),
+        "pool_id": "pool-1",
+    }
+    assert describe_pools.call_args_list == [call(client, module, changed=True, PoolIds=["pool-1"])] * describes
+    assert sleep.call_count == describes - 1
+    client.tag_resource.assert_not_called()
+
+
+def test_new_pool_with_a_client_token_is_described_until_visible():
+    client = Mock()
+    client.create_pool.return_value = active_pool(Status="CREATING")
+    module = FakeModule(present_params(client_token="token-1", iso_country_code="US", origination_identity="phone-1"))
+    with (
+        patch.object(plugin, "find_pool", return_value=None),
+        patch.object(pinpoint_sms_voice.time, "sleep") as sleep,
+        patch.object(plugin, "describe_pools", side_effect=[[], [active_pool(Status="CREATING")]]),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    sleep.assert_called_once_with(pinpoint_sms_voice.REPLAY_CHECK_DELAY)
+
+
+def test_new_pool_without_a_client_token_is_not_described():
+    client = Mock()
+    client.create_pool.return_value = active_pool(Status="CREATING")
+    module = FakeModule(present_params(client_token=None, iso_country_code="US", origination_identity="phone-1"))
+    with (
+        patch.object(plugin, "find_pool", return_value=None),
+        patch.object(plugin, "describe_pools", side_effect=AssertionError("Unexpected describe")),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True

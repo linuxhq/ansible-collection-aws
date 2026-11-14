@@ -923,11 +923,10 @@ def test_create_without_settings_ec2_requires_fails_before_aws(overrides, messag
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
-        ({"deliver_cross_account_role": ""}, "deliver_cross_account_role must not be empty"),
         ({"deliver_cross_account_role": " "}, "deliver_cross_account_role must not be empty"),
         (
             {
-                "deliver_logs_permission_arn": "",
+                "deliver_logs_permission_arn": " \t",
                 "log_destination": None,
                 "log_destination_type": None,
                 "log_group_name": "flow",
@@ -1832,6 +1831,99 @@ def test_supplied_delivery_roles_replace_the_kept_roles():
     request = client.create_flow_logs.call_args.kwargs
     assert request["DeliverCrossAccountRole"] == CROSS_ACCOUNT_ROLE
     assert request["DeliverLogsPermissionArn"] == other_role
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "overrides, kept",
+    [
+        ({"deliver_cross_account_role": ""}, {"deliver_logs_permission_arn": ROLE_ARN}),
+        ({"deliver_logs_permission_arn": ""}, {"deliver_cross_account_role": CROSS_ACCOUNT_ROLE}),
+        ({"deliver_cross_account_role": "", "deliver_logs_permission_arn": ""}, {}),
+    ],
+)
+def test_empty_delivery_roles_are_not_kept_on_replacement(overrides, kept, check_mode):
+    # A same-account Firehose destination needs neither role, so "" drops the roles the replaced flow log had.
+    client = Mock()
+    module = FakeModule(
+        present_params(
+            log_destination=FIREHOSE_STREAM,
+            log_destination_type="kinesis-data-firehose",
+            max_aggregation_interval=600,
+            **overrides,
+        ),
+        check_mode=check_mode,
+    )
+    result = run_present(client, module, [dict(FIREHOSE_FLOW_LOG)])
+
+    assert result["changed"] is True
+    assert result["deleted_flow_log_ids"] == ["fl-old"]
+    if check_mode:
+        client.create_flow_logs.assert_not_called()
+        settings = {key: result["flow_logs"][0].get(key) for key in plugin.DELIVERY_ROLE_OPTIONS}
+    else:
+        request = client.create_flow_logs.call_args.kwargs
+        settings = {
+            "deliver_cross_account_role": request.get("DeliverCrossAccountRole"),
+            "deliver_logs_permission_arn": request.get("DeliverLogsPermissionArn"),
+        }
+        # The empty value is never sent to EC2.
+        assert "" not in request.values()
+
+    assert settings == dict(dict.fromkeys(plugin.DELIVERY_ROLE_OPTIONS), **kept)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_empty_delivery_role_matches_a_flow_log_without_one(check_mode):
+    existing = {key: value for key, value in FIREHOSE_FLOW_LOG.items() if key != "DeliverCrossAccountRole"}
+    client = Mock()
+    module = FakeModule(
+        present_params(
+            deliver_cross_account_role="",
+            log_destination=FIREHOSE_STREAM,
+            log_destination_type="kinesis-data-firehose",
+            max_aggregation_interval=600,
+        ),
+        check_mode=check_mode,
+    )
+    result = run_present(client, module, [existing])
+
+    assert result["changed"] is False
+    client.create_flow_logs.assert_not_called()
+    client.delete_flow_logs.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_empty_permission_role_for_cloud_watch_logs_fails_before_aws(check_mode):
+    # EC2 requires DeliverLogsPermissionArn for CloudWatch Logs, so "" cannot keep or omit it.
+    old = dict(
+        OLD_FLOW_LOG,
+        DeliverLogsPermissionArn=ROLE_ARN,
+        LogDestinationType="cloud-watch-logs",
+        LogGroupName="old",
+    )
+    client = Mock()
+    module = FakeModule(
+        present_params(
+            deliver_logs_permission_arn="",
+            log_destination=None,
+            log_destination_type="cloud-watch-logs",
+            log_group_name="new",
+        ),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "get_flow_logs", return_value=[old]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == (
+        "deliver_logs_permission_arn is required to create flow logs when log_destination_type is cloud-watch-logs"
+    )
+    client.create_flow_logs.assert_not_called()
+    client.delete_flow_logs.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

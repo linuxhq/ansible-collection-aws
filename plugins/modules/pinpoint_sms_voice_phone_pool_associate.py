@@ -20,6 +20,9 @@ options:
     description:
       - Unique idempotency token for association requests.
       - When omitted, AWS generates an idempotency token for the request.
+      - AWS answers a request that reuses a token with the earlier association, even after that origination identity
+        was disassociated, without associating it again. The module then fails; use a new token for each
+        association.
     type: str
   iso_country_code:
     description:
@@ -192,8 +195,11 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.validation import requ
 DISASSOCIATE_OMITTED_FIELDS = ("NumberCapabilities", "PhoneNumber")
 
 
-def current_associations(client, module):
-    """Return the pool fields the listing reports once, and the pool's associations with those fields added."""
+def current_associations(client, module, changed=False):
+    """Return the pool fields the listing reports once, and the pool's associations with those fields added.
+
+    changed reports whether the pool was already modified, for failure results.
+    """
     try:
         response = paginated_query_with_retries(
             client,
@@ -202,21 +208,24 @@ def current_associations(client, module):
         )
     except is_boto3_error_code("ResourceNotFoundException"):
         if module.params["state"] == "present":
-            module.fail_json(msg=f"Pinpoint SMS Voice V2 pool {module.params['pool_id']} does not exist")
+            module.fail_json(
+                changed=changed, msg=f"Pinpoint SMS Voice V2 pool {module.params['pool_id']} does not exist"
+            )
 
         return {}, []
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
+            changed=changed,
             msg=f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {module.params['pool_id']}",
         )
 
     associations = response.get("OriginationIdentities") if isinstance(response, dict) else None
     if not isinstance(associations, list):
-        module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 origination identity data")
+        module.fail_json(changed=changed, msg="AWS returned malformed Pinpoint SMS Voice V2 origination identity data")
 
     for association in associations:
-        validate_association(module, association, require_pool=False)
+        validate_association(module, association, require_pool=False, changed=changed)
 
     # Listed items omit the pool, which the response returns once; add it as AssociateOriginationIdentity does.
     pool = scrub_none_parameters(
@@ -331,6 +340,17 @@ def ensure_present(client, module):
 
         validate_association(module, association, changed=True)
         association.pop("ResponseMetadata", None)
+        if module.params["client_token"] is not None and (
+            current_association(module, current_associations(client, module, changed=True)[1]) is None
+        ):
+            # Live: a token reused after a disassociation returns the earlier association without associating again.
+            module.fail_json(
+                msg=(
+                    f"client_token {module.params['client_token']} was already used to associate origination "
+                    f"identity {origination_identity} with Pinpoint SMS Voice V2 pool {module.params['pool_id']}, "
+                    "which has since been disassociated; use a new client_token or omit it"
+                ),
+            )
     elif changed and module.check_mode:
         # AWS returns the pool ID even when the pool is requested by ARN, and the pool ARN the listing reports.
         association = dict(

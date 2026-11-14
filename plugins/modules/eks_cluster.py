@@ -316,6 +316,8 @@ options:
           - When omitted while updating a cluster, the existing value is left unchanged.
           - EKS changes the support type only while the cluster runs a Kubernetes version in standard support.
             When O(version) also changes, the support type is updated after the version update completes.
+            Otherwise it is updated before any other cluster configuration, so a rejected change fails with
+            nothing changed.
         type: str
     type: dict
   version:
@@ -1241,15 +1243,19 @@ def describe_cluster(client, module, changed=False):
     )
 
 
+def wait_for_cluster_error(module, waiter_name):
+    # Botocore's waiters stop on a terminal state that rules out the target state (such as FAILED or
+    # DELETING while waiting for ACTIVE) as well as on timeouts, so the message names neither.
+    return f"Unable to wait for AWS EKS cluster {module.params['name']} to become {waiter_name.replace('cluster_', '')}"
+
+
 def wait_for_cluster(client, module, waiter_name, changed=False, accept_failed=False, deadline=None):
     """Wait for the cluster; accept_failed ends the wait without failing when the cluster is FAILED or gone.
 
     deadline limits the wait to what is left of the run's shared wait_timeout budget.
     """
     name = module.params["name"]
-    # Botocore's waiters stop on a terminal state that rules out the target state (such as FAILED or
-    # DELETING while waiting for ACTIVE) as well as on timeouts, so the message names neither.
-    error_msg = f"Unable to wait for AWS EKS cluster {name} to become {waiter_name.replace('cluster_', '')}"
+    error_msg = wait_for_cluster_error(module, waiter_name)
     waiter = client.get_waiter(waiter_name)
     wait_delay = module.params["wait_delay"]
     attempts = 1 + int(remaining_wait_timeout(module, deadline, error_msg, changed=changed) / wait_delay)
@@ -1551,6 +1557,10 @@ def ensure_present(client, module, deadline=None):
 
         exit_result(module, True, cluster, "present")
 
+    if wait and module.check_mode and current.get("status") == "FAILED":
+        # The ClusterActive waiter of a real run fails at once on a FAILED cluster.
+        module.fail_json(msg=wait_for_cluster_error(module, "cluster_active"))
+
     if wait and not module.check_mode and current.get("status") != "ACTIVE":
         wait_for_cluster(client, module, "cluster_active", deadline=deadline)
         current = describe_cluster(client, module)
@@ -1774,6 +1784,10 @@ def ensure_present(client, module, deadline=None):
         wait_for_cluster(client, module, "cluster_active", deadline=deadline)
         return ensure_present(client, module, deadline=deadline)
 
+    if resource_changed and module.check_mode and current.get("status") == "FAILED":
+        # A real run waits for the cluster to become ACTIVE before changing it, and that wait fails on FAILED.
+        module.fail_json(msg=wait_for_cluster_error(module, "cluster_active"))
+
     if module.check_mode and current.get("status") in CLUSTER_TRANSITION_STATUSES and (wait or resource_changed):
         # The real run waits for the cluster to become ACTIVE before changing it, and when wait=true.
         current = dict(current, status="ACTIVE")
@@ -1812,13 +1826,16 @@ def ensure_present(client, module, deadline=None):
         require_client_methods(module, client, "EKS", methods)
 
     # EKS changes the support policy only while the cluster runs a version in standard support, so with a version
-    # update in the same run the policy is sent after that update completes.
+    # update in the same run the policy is sent after that update completes. Otherwise it is sent first, so a
+    # rejection fails before any other update applies.
     policy_requests = []
     if version_changed:
         policy_requests = [update_request for update_request in update_requests if "upgradePolicy" in update_request]
         update_requests = [
             update_request for update_request in update_requests if "upgradePolicy" not in update_request
         ]
+    else:
+        update_requests = sorted(update_requests, key=lambda update_request: "upgradePolicy" not in update_request)
 
     # Failures after the first successful change report changed=True.
     mutated = False

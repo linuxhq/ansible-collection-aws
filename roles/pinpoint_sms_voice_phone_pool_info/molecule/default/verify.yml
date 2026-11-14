@@ -59,14 +59,14 @@
           "{{ pinpoint_sms_voice_phone_number_list |
               map('combine',
                   {'phone_number_id':
-                   _pinpoint_sms_voice_phone_number_info_list.0.phone_number_id,
+                   _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-simulator'].phone_number_id,
                    'state':
                    'absent'}) }}"
         pinpoint_sms_voice_phone_pool_list:
           "{{ pinpoint_sms_voice_phone_pool_list |
               map('combine',
                   {'pool_id':
-                   _pinpoint_sms_voice_phone_pool_info_list.0.pool_id,
+                   pinpoint_sms_voice_phone_pool_info_id_filter,
                    'state':
                    'absent'}) }}"
 
