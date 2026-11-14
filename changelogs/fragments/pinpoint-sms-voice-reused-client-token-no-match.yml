@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number - when RequestPhoneNumber answers a reused ``client_token`` with a number that
+    still exists but no longer matches the requested attributes, ``pool_id``, or ``Name`` tag, the module now fails
+    with ``changed=false`` and names the token. Before, it reported a new number on every run without converging
+    the existing one.
+  - pinpoint_sms_voice_phone_pool - when CreatePool answers a reused ``client_token`` with a pool that still exists
+    but no longer holds ``origination_identity`` or has another ``Name`` tag, the module now fails with
+    ``changed=false`` and names the token. Before, it reported a new pool on every run without converging the
+    existing one.

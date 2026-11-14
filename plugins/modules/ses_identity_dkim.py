@@ -18,6 +18,9 @@ description:
     V(FAILED), including in check mode. Check that the DKIM CNAME records are
     published and correct, or, for an identity with keys you supplied, the
     DKIM TXT record at C(<selector>._domainkey.<domain>).
+  - When the module generates new tokens, AWS reports V(PENDING) for them, so
+    check mode predicts V(PENDING) and does not warn about the status of the
+    tokens or keys they replace.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -190,7 +193,9 @@ def main():
     if changed and module.check_mode:
         current = dict(current, SigningEnabled=signing_enabled)
         if generate_tokens:
-            current.update(SigningAttributesOrigin="AWS_SES", Tokens=[])
+            # Live: right after new Easy DKIM tokens are generated, AWS reports PENDING for them, whatever the status
+            # of the keys they replace.
+            current.update(SigningAttributesOrigin="AWS_SES", Status="PENDING", Tokens=[])
     elif changed:
         if generate_tokens:
             try:

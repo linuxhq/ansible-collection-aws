@@ -1686,3 +1686,38 @@ def test_new_pool_without_a_client_token_is_not_described():
         plugin.ensure_present(client, module)
 
     assert result.value.values["changed"] is True
+
+
+# Live: CreatePool with a token reused after the pool's Name tag changed returns that pool, CREATING, with the tags of
+# the earlier request, and creates no pool.
+@pytest.mark.parametrize(
+    "identities, name",
+    [([SENDER_ORIGINATION], "renamed"), ([], "primary")],
+    ids=["renamed", "identity-removed"],
+)
+def test_client_token_reused_for_a_pool_that_no_longer_matches_fails_without_changes(identities, name):
+    listed = {"MessageType": "TRANSACTIONAL", "PoolArn": "arn:pool", "PoolId": "pool-1", "Status": "ACTIVE"}
+    client = Mock()
+    client.create_pool.return_value = active_pool(Status="CREATING")
+    client.list_tags_for_resource.return_value = {"Tags": [{"Key": "Name", "Value": name}]}
+    module = FakeModule(
+        present_params(client_token="token-1", iso_country_code="US", origination_identity="sender-1", pool_id=None)
+    )
+    with (
+        patch.object(plugin, "describe_pools", side_effect=[[listed], [active_pool()]]),
+        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": identities}),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "msg": (
+            "client_token token-1 was already used to create AWS End User Messaging SMS phone pool pool-1, which no "
+            "longer holds origination identity sender-1 or has another Name tag; use a new client_token or omit it, "
+            "or set pool_id to manage that pool"
+        ),
+        "pool_id": "pool-1",
+    }
+    client.create_pool.assert_called_once()
+    client.tag_resource.assert_not_called()
+    client.associate_origination_identity.assert_not_called()

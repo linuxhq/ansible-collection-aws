@@ -28,7 +28,9 @@ options:
           - The cluster authentication mode.
           - When omitted while creating a cluster, AWS uses C(CONFIG_MAP).
           - When omitted while updating a cluster, the existing value is left unchanged.
-          - AWS only permits changes from C(CONFIG_MAP) to C(API_AND_CONFIG_MAP) to C(API).
+          - EKS only permits changes from C(CONFIG_MAP) to C(API_AND_CONFIG_MAP) or C(API), and from
+            C(API_AND_CONFIG_MAP) to C(API). For an existing cluster, the module fails before any change when another
+            change is requested.
         type: str
       bootstrap_cluster_creator_admin_permissions:
         description:
@@ -51,6 +53,9 @@ options:
         O(storage_config.block_storage.enabled) to be all true or all false. When an existing cluster's EKS Auto
         Mode settings change, the module fails before any change if these values differ, using the cluster's value
         for an omitted one and treating a setting EKS does not return as false.
+      - EKS Auto Mode requires O(access_config.authentication_mode) C(API) or C(API_AND_CONFIG_MAP). When enabling it
+        on an existing cluster, the module fails before any change if the cluster's authentication mode is
+        C(CONFIG_MAP) after an O(access_config.authentication_mode) change in the same task.
     suboptions:
       enabled:
         description:
@@ -1023,6 +1028,14 @@ RESOURCES_VPC_CONFIG_NETWORK_FIELDS = [
 
 CLUSTER_TRANSITION_STATUSES = {"CREATING", "PENDING", "UPDATING"}
 
+# The authentication modes EKS accepts as a change from each mode; it never disables access entries once enabled, and
+# cannot enable the ConfigMap method later.
+AUTHENTICATION_MODE_CHANGES = {
+    "API": (),
+    "API_AND_CONFIG_MAP": ("API",),
+    "CONFIG_MAP": ("API", "API_AND_CONFIG_MAP"),
+}
+
 CLUSTER_MAPPING_FIELDS = (
     "accessConfig",
     "computeConfig",
@@ -1707,6 +1720,20 @@ def ensure_present(client, module, deadline=None):
                 )
             )
 
+    # EKS rejects other authentication mode changes; failing here keeps other updates from applying first.
+    requested_mode = (changes.get("accessConfig") or {}).get("authenticationMode")
+    current_mode = (current.get("accessConfig") or {}).get("authenticationMode")
+    if requested_mode is not None and requested_mode not in AUTHENTICATION_MODE_CHANGES.get(
+        current_mode, (requested_mode,)
+    ):
+        module.fail_json(
+            msg=(
+                f"Cannot change access_config.authentication_mode from {current_mode} to {requested_mode} for existing "
+                f"EKS cluster {name}; EKS only allows CONFIG_MAP to API_AND_CONFIG_MAP or API, and API_AND_CONFIG_MAP "
+                "to API"
+            )
+        )
+
     # EKS keeps the cluster's networks for an omitted list, rejects remote pod networks without remote node networks,
     # and accepts empty remote node networks only together with empty remote pod networks.
     remote_network_config = changes.get("remoteNetworkConfig")
@@ -1751,6 +1778,17 @@ def ensure_present(client, module, deadline=None):
                     "storage_config.block_storage.enabled must all be true or all be false for EKS Auto Mode; "
                     f"EKS cluster {name} would have compute {enabled['computeConfig']}, load balancing "
                     f"{enabled['kubernetesNetworkConfig']}, and block storage {enabled['storageConfig']}"
+                )
+            )
+
+        # EKS Auto Mode requires access entries, which a CONFIG_MAP cluster lacks; an access change in the same run is
+        # applied first.
+        cluster_access_config = changes.get("accessConfig") or current.get("accessConfig") or {}
+        if enabled["computeConfig"] is True and cluster_access_config.get("authenticationMode") == "CONFIG_MAP":
+            module.fail_json(
+                msg=(
+                    "EKS Auto Mode requires access_config.authentication_mode API or API_AND_CONFIG_MAP for existing "
+                    f"EKS cluster {name}"
                 )
             )
 

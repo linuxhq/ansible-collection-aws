@@ -1,13 +1,109 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
+  tasks:
+    - name: Ensure amazon issued molecule certificates are queried
+      community.aws.acm_certificate_info:
+        domain_name: "{{ _certificate.domain_name }}"
+        validate_certs: true
+      loop: "{{ acm_certificate_list | selectattr('type', 'eq', 'amazon_issued') }}"
+      loop_control:
+        label: "{{ _certificate.domain_name }}"
+        loop_var: _certificate
+      register: __molecule_certificate_query
+
+    - name: Ensure each amazon issued molecule domain has one certificate
+      ansible.builtin.assert:
+        that:
+          - _query.certificates | length == 1
+          - _query.certificates.0.status in ['PENDING_VALIDATION', 'ISSUED']
+          - _query.certificates.0.subject_alternative_names | sort ==
+            ([_query._certificate.domain_name] + _query._certificate.subject_alternative_names | d([])) | sort
+          - _query.certificates.0.domain_validation_options | length ==
+            _query.certificates.0.subject_alternative_names | length
+          - _query.certificates.0.domain_validation_options |
+            selectattr('resource_record', 'defined') | list | length ==
+            _query.certificates.0.domain_validation_options | length
+      loop: "{{ __molecule_certificate_query.results }}"
+      loop_control:
+        label: "{{ _query._certificate.domain_name }}"
+        loop_var: _query
+
+    - name: Ensure amazon issued molecule validation records are listed
+      ansible.builtin.set_fact:
+        __molecule_validation_records: "{{ __molecule_validation_records | d([]) + _records }}"
+      vars:
+        _records: >-
+          {{ _query.certificates.0.domain_validation_options |
+             map(attribute='resource_record') |
+             map('combine', {'zone': _query._certificate.zone}) }}
+      loop: "{{ __molecule_certificate_query.results }}"
+      loop_control:
+        label: "{{ _query._certificate.domain_name }}"
+        loop_var: _query
+
+    - name: Ensure amazon issued molecule validation records are gathered
+      amazon.aws.route53:
+        record: "{{ _record.name }}"
+        state: get
+        type: "{{ _record.type }}"
+        validate_certs: true
+        zone: "{{ _record.zone }}"
+      loop: "{{ __molecule_validation_records }}"
+      loop_control:
+        label: "{{ _record.name }}"
+        loop_var: _record
+      register: __molecule_record_query
+
+    - name: Ensure amazon issued molecule validation records exist
+      ansible.builtin.assert:
+        that:
+          - _query.resource_record_sets | length == 1
+          - _query._record.value in
+            (_query.resource_record_sets.0.resource_records | map(attribute='value'))
+      loop: "{{ __molecule_record_query.results }}"
+      loop_control:
+        label: "{{ _query._record.name }}"
+        loop_var: _query
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         acm_certificate_list:
           "{{ acm_certificate_list |
               map('combine', {'state': 'absent'}) }}"
 
-  roles:
-    - acm_certificate
+    - name: Ensure molecule certificates are absent
+      ansible.builtin.include_role:
+        name: acm_certificate
+
+    - name: Ensure amazon issued molecule certificates are queried after teardown
+      community.aws.acm_certificate_info:
+        domain_name: "{{ _certificate.domain_name }}"
+        validate_certs: true
+      loop: "{{ acm_certificate_list | selectattr('type', 'eq', 'amazon_issued') }}"
+      loop_control:
+        label: "{{ _certificate.domain_name }}"
+        loop_var: _certificate
+      register: __molecule_certificate_absent_query
+
+    - name: Ensure amazon issued molecule validation records are gathered after teardown
+      amazon.aws.route53:
+        record: "{{ _record.name }}"
+        state: get
+        type: "{{ _record.type }}"
+        validate_certs: true
+        zone: "{{ _record.zone }}"
+      loop: "{{ __molecule_validation_records }}"
+      loop_control:
+        label: "{{ _record.name }}"
+        loop_var: _record
+      register: __molecule_record_absent_query
+
+    - name: Ensure amazon issued molecule certificates and validation records are gone
+      ansible.builtin.assert:
+        that:
+          - __molecule_certificate_absent_query.results |
+            map(attribute='certificates') | flatten | length == 0
+          - __molecule_record_absent_query.results |
+            map(attribute='resource_record_sets') | flatten | length == 0
 ...

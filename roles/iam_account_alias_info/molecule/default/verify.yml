@@ -1,25 +1,59 @@
 ---
 - name: Verify
   hosts: all
-  roles:
-    - iam_account_alias_info
+  tasks:
+    - name: Ensure aws iam account alias info is verified
+      block:
+        - name: Ensure information about aws iam account aliases is gathered
+          ansible.builtin.include_role:
+            name: iam_account_alias_info
 
-  post_tasks:
-    - name: Ensure info is verified
-      ansible.builtin.assert:
-        that:
-          - _iam_account_alias_info_list.0 == iam_account_alias_name
+        - name: Ensure info is verified
+          ansible.builtin.assert:
+            that:
+              - _iam_account_alias_info_list == [iam_account_alias_name]
 
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        iam_account_alias_state: absent
+        - name: Ensure aws iam account alias is absent
+          ansible.builtin.include_role:
+            name: iam_account_alias
+          vars:
+            iam_account_alias_state: absent
 
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - iam_account_alias
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
+        - name: Ensure information about aws iam account aliases is gathered after removal
+          ansible.builtin.include_role:
+            name: iam_account_alias_info
+
+        - name: Ensure empty info is verified
+          ansible.builtin.assert:
+            that:
+              - _iam_account_alias_info_list == []
+
+      always:
+        - name: Ensure original aws iam account aliases are loaded
+          ansible.builtin.set_fact:
+            __iam_account_alias_original_list: >-
+              {{ lookup('ansible.builtin.file',
+                 lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') ~ '/original-account-aliases.json') | from_json }}
+
+        - name: Ensure original aws iam account alias is restored
+          ansible.builtin.include_role:
+            name: iam_account_alias
+          vars:
+            iam_account_alias_name: "{{ __iam_account_alias_original_list[0] }}"
+            iam_account_alias_state: present
+          when:
+            - __iam_account_alias_original_list | length > 0
+
+        - name: Ensure test aws iam account alias is absent
+          ansible.builtin.include_role:
+            name: iam_account_alias
+          vars:
+            iam_account_alias_state: absent
+          when:
+            - __iam_account_alias_original_list | length == 0
+
+        - name: Ensure saved aws iam account aliases file is absent
+          ansible.builtin.file:
+            path: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/original-account-aliases.json"
+            state: absent
 ...

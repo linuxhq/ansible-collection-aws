@@ -27,9 +27,9 @@ options:
   deliver_cross_account_role:
     description:
       - The ARN of the IAM role that permits delivery to a cross-account destination.
-      - When O(state=present), an empty string means no role. It matches only flow logs without one, and a
-        replacement does not keep the role of the flow log it replaces, as described for O(name). The empty value
-        is not sent to EC2.
+      - An empty string means no role. It matches only flow logs without one in either O(state). With
+        O(state=present), a replacement does not keep the role of the flow log it replaces, as described for O(name).
+        The empty value is not sent to EC2.
       - This must not be made only of whitespace when O(state=present).
     type: str
   deliver_logs_permission_arn:
@@ -38,9 +38,9 @@ options:
       - This is required to create flow logs when O(log_destination_type) is C(cloud-watch-logs), the default
         when O(state=present), unless a replacement keeps the value of the flow log it replaces, as described for
         O(name).
-      - When O(state=present), an empty string means no role. It matches only flow logs without one, and a
-        replacement does not keep the role of the flow log it replaces, as described for O(name). The empty value
-        is not sent to EC2.
+      - An empty string means no role. It matches only flow logs without one in either O(state). With
+        O(state=present), a replacement does not keep the role of the flow log it replaces, as described for O(name).
+        The empty value is not sent to EC2.
       - This must not be made only of whitespace when O(state=present).
     type: str
   destination_options:
@@ -445,7 +445,7 @@ PRESENT_MATCH_FIELDS = (
     "traffic_type",
 )
 
-# With state=present, an empty string for these options means no role, matched and kept as such but never sent.
+# An empty string for these options means no role, matched and kept as such but never sent.
 DELIVERY_ROLE_OPTIONS = (
     "deliver_cross_account_role",
     "deliver_logs_permission_arn",
@@ -485,6 +485,11 @@ def comparable_destination_options(module):
 
 def desired_match_fields(module, fields):
     desired = {field: module.params[field] for field in fields if module.params[field] is not None}
+    for option in DELIVERY_ROLE_OPTIONS:
+        if desired.get(option) == "":
+            # EC2 omits a role the flow log does not have, so None matches only flow logs without it.
+            desired[option] = None
+
     if "log_format" in desired:
         # EC2 stores a log format with each run of spaces and tabs between fields replaced by one space. It rejects
         # leading and trailing whitespace; such a run becomes one space here, which EC2 still rejects.
@@ -778,10 +783,6 @@ def ensure_present(client, module):
         "log_destination_type": module.params["log_destination_type"] or "cloud-watch-logs",
     }
     desired.update(desired_match_fields(module, PRESENT_MATCH_FIELDS))
-    for option in DELIVERY_ROLE_OPTIONS:
-        if module.params[option] == "":
-            # EC2 omits a role the flow log does not have, so None matches only flow logs without it.
-            desired[option] = None
 
     flow_logs = get_flow_logs(client, module)
     current = matching_flow_logs(module, flow_logs, desired)

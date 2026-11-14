@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - eks_cluster - fail before any change, and in check mode, when ``access_config.authentication_mode`` requests a
+    change EKS refuses. EKS only allows ``CONFIG_MAP`` to ``API_AND_CONFIG_MAP`` or ``API``, and
+    ``API_AND_CONFIG_MAP`` to ``API``. Before, check mode predicted the change, and a real run could apply an
+    ``upgrade_policy`` update before EKS rejected the access change. The option documentation now lists
+    ``CONFIG_MAP`` to ``API`` as allowed.
+  - eks_cluster - fail before any change, and in check mode, when EKS Auto Mode would be enabled on an existing
+    cluster whose authentication mode stays ``CONFIG_MAP``, since EKS Auto Mode requires access entries. Before, the
+    Auto Mode update was rejected after the other updates of the same run had been applied.

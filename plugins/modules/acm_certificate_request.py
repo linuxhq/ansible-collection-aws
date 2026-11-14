@@ -41,6 +41,10 @@ options:
       - When omitted, a unique token is generated for each certificate request, so a request made within the last hour
         for a certificate that has since failed or been deleted is not replayed.
       - A supplied token is sent unchanged; ACM treats requests that repeat a token within one hour as a single request.
+      - ACM answers a request that repeats a token and the requested names within one hour with the certificate the
+        earlier request created while that certificate exists, even when it is no longer C(PENDING_VALIDATION) or
+        C(ISSUED), for example C(FAILED). The module then fails without requesting a certificate; use a new token or
+        omit it.
       - ACM requires a token of 1 to 32 ASCII word characters.
       - This option is only used when requesting a certificate.
     type: str
@@ -260,12 +264,11 @@ def request_certificate(module, client, domain_name, idempotency_token, subject_
             "ValidationMethod": "DNS",
         }
     )
-    require_client_methods(
-        module,
-        client,
-        "AWS Certificate Manager",
-        {"request_certificate": tuple(request)},
-    )
+    methods = {"request_certificate": tuple(request)}
+    if module.params["idempotency_token"] is not None:
+        methods["describe_certificate"] = ("CertificateArn",)
+
+    require_client_methods(module, client, "AWS Certificate Manager", methods)
 
     try:
         response = client.request_certificate(**request, aws_retry=True)
@@ -283,6 +286,56 @@ def request_certificate(module, client, domain_name, idempotency_token, subject_
         )
 
     return certificate_arn
+
+
+def require_requested_certificate(module, client, certificate_arn, idempotency_token, desired_names):
+    """Fail when a supplied token returned an existing certificate the module would not reuse.
+
+    Live: ACM answers a request that repeats a token and the requested names within one hour with the certificate the
+    earlier request created while it exists, even after it FAILED; it requests a new certificate after a delete, or
+    for other names. A new certificate can take a few seconds to be described, so a missing one is not a replay.
+    """
+    response = None
+    for attempt in range(CERTIFICATE_LIST_ATTEMPTS):
+        if attempt:
+            time.sleep(CERTIFICATE_LIST_DELAY)
+
+        try:
+            response = client.describe_certificate(CertificateArn=certificate_arn, aws_retry=True)
+            break
+        except is_boto3_error_code("ResourceNotFoundException"):
+            continue
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(
+                e,
+                changed=True,
+                msg=f"Unable to describe AWS Certificate Manager certificate {certificate_arn}",
+            )
+
+    if response is None:
+        # The listing wait that follows warns when ACM never shows the certificate.
+        return
+
+    certificate = response.get("Certificate") if isinstance(response, dict) else None
+    if not isinstance(certificate, dict) or not certificate.get("Status"):
+        module.fail_json(
+            changed=True,
+            msg=f"AWS Certificate Manager did not return a status for certificate {certificate_arn}",
+        )
+
+    status = certificate["Status"]
+    names = {name.lower() for name in certificate.get("SubjectAlternativeNames") or [] if isinstance(name, str)}
+    if status in ("PENDING_VALIDATION", "ISSUED") and names == desired_names:
+        return
+
+    reason = "which has other domain names" if names != desired_names else f"which is {status}"
+    module.fail_json(
+        msg=(
+            f"idempotency_token {idempotency_token} was already used to request AWS Certificate Manager certificate "
+            f"{certificate_arn}, {reason}; use a new idempotency_token or omit it"
+        ),
+        certificate_arn=certificate_arn,
+    )
 
 
 def wait_for_certificate_listing(module, client, certificate_arn):
@@ -457,6 +510,9 @@ def main():
         certificate_arn = request_certificate(
             module, client, domain_name, idempotency_token, subject_alternative_names, tags
         )
+        if idempotency_token is not None:
+            require_requested_certificate(module, client, certificate_arn, idempotency_token, desired_names)
+
         wait_for_certificate_listing(module, client, certificate_arn)
         changed = True
     elif tags is not None:

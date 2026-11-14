@@ -453,7 +453,17 @@ def validate_current_quota(module, quota, service_code, quota_code):
         or isinstance(value, float)
         and not math.isfinite(value)
     ):
-        module.fail_json(msg=f"AWS service quota {service_code}/{quota_code} did not return a valid value")
+        msg = f"AWS service quota {service_code}/{quota_code} did not return a valid value"
+        # ErrorReason explains why Service Quotas could not read the value from the owning service.
+        error_reason = quota.get("ErrorReason")
+        if isinstance(error_reason, dict):
+            details = [
+                str(error_reason[key]) for key in ("ErrorCode", "ErrorMessage") if error_reason.get(key) is not None
+            ]
+            if details:
+                msg = f"{msg}: {': '.join(details)}"
+
+        module.fail_json(msg=msg)
 
 
 def validate_quota_request(module, request, service_code, quota_code, desired_value=None, status=None, changed=False):

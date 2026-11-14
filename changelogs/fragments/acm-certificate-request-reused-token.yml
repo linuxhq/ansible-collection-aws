@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - acm_certificate_request - when a supplied ``idempotency_token`` makes ACM return a certificate that the module
+    would not reuse, such as the earlier request's certificate that has since ``FAILED``, the module now fails with
+    ``changed=false`` and names the token. Before, it reported a new certificate on every run within the hour without
+    converging.

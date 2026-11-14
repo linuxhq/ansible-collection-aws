@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ssm_send_command - fail before sending the command, including in check mode, unless every ``parameters`` value is
+    a list of strings. Before, only null values were refused, so check mode predicted a send for a plain string value
+    or a non-string list entry that botocore then rejected.

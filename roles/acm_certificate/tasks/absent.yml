@@ -6,6 +6,7 @@
     record: "{{ _dns.resource_record.name }}"
     state: absent
     type: "{{ _dns.resource_record.type }}"
+    validate_certs: true
     value: "{{ _dns.resource_record.value }}"
     zone: "{{ _certificate.zone }}"
   loop: "{{ __acm_certificate_dict[_certificate.domain_name].domain_validation_options | d([]) }}"
@@ -21,4 +22,5 @@
   community.aws.acm_certificate:
     domain_name: "{{ _certificate.domain_name }}"
     state: absent
+    validate_certs: true
 ...
