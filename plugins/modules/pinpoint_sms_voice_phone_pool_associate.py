@@ -20,9 +20,10 @@ options:
     description:
       - Unique idempotency token for association requests.
       - When omitted, AWS generates an idempotency token for the request.
-      - AWS answers a request that reuses a token with the earlier association, even after that origination identity
-        was disassociated, without associating it again. The module then fails; use a new token for each
-        association.
+      - AWS answers a request that repeats an earlier request's token, pool, and origination identity with the
+        earlier association, even after that origination identity was disassociated, without associating it again.
+        The module then fails; use a new token for each association.
+      - AWS rejects a request that reuses a token for another origination identity with a C(ConflictException).
     type: str
   iso_country_code:
     description:

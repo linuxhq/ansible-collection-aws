@@ -1,13 +1,55 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
+  tasks:
+    - name: Ensure aws iam oidc providers are queried
+      linuxhq.aws.iam_oidc_provider_info:
+        url: "{{ _provider.url }}"
+        validate_certs: true
+      register: __iam_oidc_provider_verify
+      loop: "{{ iam_oidc_provider_list }}"
+      loop_control:
+        label: "{{ _provider.url }}"
+        loop_var: _provider
+
+    - name: Ensure aws iam oidc providers are verified
+      ansible.builtin.assert:
+        that:
+          - _query.open_id_connect_providers | length == 1
+          - _query.open_id_connect_providers.0.url == _query._provider.url | regex_replace('^https://', '')
+          - _query.open_id_connect_providers.0.client_id_list | sort == _query._provider.client_id_list | sort
+          - _query.open_id_connect_providers.0.thumbprint_list | sort == _query._provider.thumbprint_list | sort
+          - _query.open_id_connect_providers.0.tags == {'Name': _query._provider.name}
+      loop: "{{ __iam_oidc_provider_verify.results }}"
+      loop_control:
+        label: "{{ _query._provider.url }}"
+        loop_var: _query
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         iam_oidc_provider_list:
           "{{ iam_oidc_provider_list |
               map('combine', {'state': 'absent'}) }}"
 
-  roles:
-    - iam_oidc_provider
+    - name: Ensure aws iam oidc providers are removed
+      ansible.builtin.include_role:
+        name: iam_oidc_provider
+
+    - name: Ensure aws iam oidc providers are queried after removal
+      linuxhq.aws.iam_oidc_provider_info:
+        url: "{{ _provider.url }}"
+        validate_certs: true
+      register: __iam_oidc_provider_removed
+      loop: "{{ iam_oidc_provider_list }}"
+      loop_control:
+        label: "{{ _provider.url }}"
+        loop_var: _provider
+
+    - name: Ensure aws iam oidc providers are absent
+      ansible.builtin.assert:
+        that:
+          - __iam_oidc_provider_removed.results |
+            map(attribute='open_id_connect_providers') |
+            map('length') |
+            max == 0
 ...

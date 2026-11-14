@@ -1,0 +1,6 @@
+---
+trivial:
+  - pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_pool, and pinpoint_sms_voice_phone_pool_associate -
+    document that AWS replays a reused ``client_token`` only for a request with the same parameters, and that
+    RequestPhoneNumber and AssociateOriginationIdentity reject a reused token with other parameters with a
+    ``ConflictException``.

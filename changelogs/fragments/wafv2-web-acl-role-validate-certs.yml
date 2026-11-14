@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - wafv2_web_acl role - pass ``validate_certs=true`` to the ``amazon.aws.cloudwatchlogs_log_group`` tasks and the
+    ``community.aws.wafv2_web_acl`` absent task, like the role's other AWS tasks, so TLS certificate validation
+    cannot be turned off for them through ``module_defaults`` or the environment.

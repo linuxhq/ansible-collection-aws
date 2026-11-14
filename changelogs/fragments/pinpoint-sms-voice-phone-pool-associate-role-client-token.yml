@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_pool_associate role - read ``client_token`` from each ``associations[]`` item and
+    document it, so each association request can use its own token. The role no longer reads the undocumented
+    pool-level ``client_token`` key, which it sent with every association of the pool, so a second association failed
+    with a ``ConflictException`` for a reused token.

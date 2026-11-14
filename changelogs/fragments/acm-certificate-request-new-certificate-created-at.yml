@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - acm_certificate_request - with a supplied ``idempotency_token``, a certificate that ACM created for the request is
+    now reported with ``changed=true`` and its ``certificate_arn`` even when ACM has already set it to another status,
+    such as ``FAILED`` with ``ADDITIONAL_VERIFICATION_REQUIRED``. The module now treats the returned certificate as a
+    replayed earlier request only when it was created more than a few seconds before the request. Before, a new
+    certificate that failed within seconds was reported as a reused token with ``changed=false``.

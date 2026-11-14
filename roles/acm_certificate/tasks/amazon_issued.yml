@@ -18,7 +18,9 @@
   when:
     - not ansible_check_mode
   until:
-    - __acm_certificate_status.certificates.0.domain_validation_options.0.resource_record is defined
+    - __acm_certificate_status.certificates.0.domain_validation_options | d([]) | length > 0
+    - __acm_certificate_status.certificates.0.domain_validation_options |
+        selectattr('resource_record', 'undefined') | list | length == 0
   delay: 5
   retries: 60
 

@@ -35,10 +35,12 @@ options:
     description:
       - Unique idempotency token for the phone number request.
       - When omitted, AWS generates an idempotency token for the request.
-      - AWS answers a request that reuses a token with the number the earlier request returned, even after that
-        number was released, or when it no longer matches the requested attributes, O(pool_id), or C(Name) tag. The
-        module then fails without requesting a number; use a new token for each request, or set
-        O(phone_number_id) to manage the existing number.
+      - AWS answers a request that repeats an earlier request's token and parameters with the number that request
+        returned, even after that number was released or its pool or C(Name) tag changed. The module then fails
+        without requesting a number; use a new token for each request, or set O(phone_number_id) to manage the
+        existing number.
+      - AWS rejects a request that reuses a token with other parameters, such as other attributes, O(pool_id), or
+        C(Name) tag, with a C(ConflictException).
     type: str
   deletion_protection_enabled:
     description:

@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
 import pytest
@@ -10,6 +11,13 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleFail,
     assert_module_contract,
 )
+
+# Replayed certificates were created by an earlier request.
+EARLIER = datetime.now(timezone.utc) - timedelta(minutes=10)
+
+
+def created_now():
+    return datetime.now(timezone.utc)
 
 
 @pytest.fixture(autouse=True)
@@ -415,7 +423,11 @@ def request_new_certificate(idempotency_token=None):
     client = Mock()
     client.request_certificate.return_value = {"CertificateArn": "arn:new"}
     client.describe_certificate.return_value = {
-        "Certificate": {"Status": "PENDING_VALIDATION", "SubjectAlternativeNames": REQUESTED_NAMES}
+        "Certificate": {
+            "CreatedAt": created_now(),
+            "Status": "PENDING_VALIDATION",
+            "SubjectAlternativeNames": REQUESTED_NAMES,
+        }
     }
     module = FakeModule(
         {
@@ -496,9 +508,12 @@ def run_token_request(described):
     ("described", "reason"),
     [
         # Live: a token and names repeated within the hour return the earlier certificate after it FAILED.
-        ({"Status": "FAILED", "SubjectAlternativeNames": ["example.com", "www.example.com"]}, "which is FAILED"),
         (
-            {"Status": "PENDING_VALIDATION", "SubjectAlternativeNames": ["example.com"]},
+            {"CreatedAt": EARLIER, "Status": "FAILED", "SubjectAlternativeNames": ["example.com", "www.example.com"]},
+            "which is FAILED",
+        ),
+        (
+            {"CreatedAt": EARLIER, "Status": "PENDING_VALIDATION", "SubjectAlternativeNames": ["example.com"]},
             "which has other domain names",
         ),
     ],
@@ -521,11 +536,56 @@ def test_supplied_token_returning_a_certificate_that_cannot_be_reused_fails_with
 
 def test_supplied_token_returning_a_usable_certificate_is_reported_as_requested():
     result, _query = run_token_request(
-        {"Status": "PENDING_VALIDATION", "SubjectAlternativeNames": ["WWW.example.com", "example.com"]}
+        {
+            "CreatedAt": EARLIER,
+            "Status": "PENDING_VALIDATION",
+            "SubjectAlternativeNames": ["WWW.example.com", "example.com"],
+        }
     )
 
     assert isinstance(result, ModuleExit)
     assert result.values == {"changed": True, "certificate_arn": "arn:replayed"}
+
+
+@pytest.mark.parametrize(
+    "created_at",
+    [
+        created_now,
+        # Clock skew between the managed node and AWS of a few seconds.
+        lambda: datetime.now(timezone.utc) - plugin.REQUEST_CLOCK_SKEW + timedelta(seconds=1),
+    ],
+    ids=["after-request", "within-clock-skew"],
+)
+@pytest.mark.parametrize("status", ["FAILED", "VALIDATION_TIMED_OUT", "PENDING_VALIDATION"])
+def test_supplied_token_certificate_created_by_the_request_is_reported_as_requested(created_at, status):
+    # Live: a new certificate went FAILED (ADDITIONAL_VERIFICATION_REQUIRED) 4 seconds after it was requested.
+    result, query = run_token_request(
+        {
+            "CreatedAt": created_at(),
+            "FailureReason": "ADDITIONAL_VERIFICATION_REQUIRED",
+            "Status": status,
+            "SubjectAlternativeNames": ["example.com", "www.example.com"],
+        }
+    )
+
+    assert isinstance(result, ModuleExit)
+    assert result.values == {"changed": True, "certificate_arn": "arn:replayed"}
+    # The certificate listing wait runs.
+    assert query.call_count == 1 + plugin.CERTIFICATE_LIST_ATTEMPTS
+
+
+@pytest.mark.parametrize("created_at", [None, "2026-11-13T00:00:00Z"])
+def test_supplied_token_certificate_without_a_creation_time_fails_as_changed(created_at):
+    result, _query = run_token_request(
+        {"CreatedAt": created_at, "Status": "FAILED", "SubjectAlternativeNames": ["example.com", "www.example.com"]}
+    )
+
+    assert isinstance(result, ModuleFail)
+    assert result.values == {
+        "changed": True,
+        "msg": "AWS Certificate Manager did not return a creation time for certificate arn:replayed",
+        "certificate_arn": "arn:replayed",
+    }
 
 
 def issued_certificate(arn, **overrides):
@@ -985,7 +1045,11 @@ def test_supplied_token_certificate_not_yet_described_is_retried_and_not_treated
     # A new certificate can take a few seconds to be described.
     not_found = plugin.ClientError({"Error": {"Code": "ResourceNotFoundException"}}, "DescribeCertificate")
     pending = {
-        "Certificate": {"Status": "PENDING_VALIDATION", "SubjectAlternativeNames": ["example.com", "www.example.com"]}
+        "Certificate": {
+            "CreatedAt": created_now(),
+            "Status": "PENDING_VALIDATION",
+            "SubjectAlternativeNames": ["example.com", "www.example.com"],
+        }
     }
     result, _query = run_token_request(not_found)
     assert isinstance(result, ModuleExit)

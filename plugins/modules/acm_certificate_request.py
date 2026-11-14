@@ -45,6 +45,10 @@ options:
         earlier request created while that certificate exists, even when it is no longer C(PENDING_VALIDATION) or
         C(ISSUED), for example C(FAILED). The module then fails without requesting a certificate; use a new token or
         omit it.
+      - A certificate that ACM created during this request is never treated as a replay; it is returned with
+        RV(certificate_arn) and C(changed=true) even when ACM has already set it to another status, for example
+        C(FAILED). The module detects a replay when the returned certificate was created more than a few seconds
+        before the request, so the clocks of the managed node and AWS must agree to within a few seconds.
       - ACM requires a token of 1 to 32 ASCII word characters.
       - This option is only used when requesting a certificate.
     type: str
@@ -92,6 +96,7 @@ certificate_arn:
 import re
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -137,6 +142,9 @@ CERTIFICATE_KEY_TYPES = [
 # ListCertificates lags RequestCertificate by a few seconds.
 CERTIFICATE_LIST_ATTEMPTS = 30
 CERTIFICATE_LIST_DELAY = 2
+
+# A certificate created later than this before the request is the one the request created.
+REQUEST_CLOCK_SKEW = timedelta(seconds=5)
 
 
 def summary_can_match(summary, desired_names):
@@ -288,12 +296,14 @@ def request_certificate(module, client, domain_name, idempotency_token, subject_
     return certificate_arn
 
 
-def require_requested_certificate(module, client, certificate_arn, idempotency_token, desired_names):
+def require_requested_certificate(module, client, certificate_arn, idempotency_token, desired_names, requested_at):
     """Fail when a supplied token returned an existing certificate the module would not reuse.
 
     Live: ACM answers a request that repeats a token and the requested names within one hour with the certificate the
     earlier request created while it exists, even after it FAILED; it requests a new certificate after a delete, or
     for other names. A new certificate can take a few seconds to be described, so a missing one is not a replay.
+    Live: a new certificate can already be FAILED seconds after the request, so only its creation time tells a new
+    certificate from a replayed one.
     """
     response = None
     for attempt in range(CERTIFICATE_LIST_ATTEMPTS):
@@ -322,6 +332,18 @@ def require_requested_certificate(module, client, certificate_arn, idempotency_t
             changed=True,
             msg=f"AWS Certificate Manager did not return a status for certificate {certificate_arn}",
         )
+
+    created_at = certificate.get("CreatedAt")
+    if not isinstance(created_at, datetime):
+        module.fail_json(
+            changed=True,
+            msg=f"AWS Certificate Manager did not return a creation time for certificate {certificate_arn}",
+            certificate_arn=certificate_arn,
+        )
+
+    if created_at >= requested_at - REQUEST_CLOCK_SKEW:
+        # This request created the certificate.
+        return
 
     status = certificate["Status"]
     names = {name.lower() for name in certificate.get("SubjectAlternativeNames") or [] if isinstance(name, str)}
@@ -507,11 +529,14 @@ def main():
         if module.check_mode:
             module.exit_json(changed=True)
 
+        requested_at = datetime.now(timezone.utc)
         certificate_arn = request_certificate(
             module, client, domain_name, idempotency_token, subject_alternative_names, tags
         )
         if idempotency_token is not None:
-            require_requested_certificate(module, client, certificate_arn, idempotency_token, desired_names)
+            require_requested_certificate(
+                module, client, certificate_arn, idempotency_token, desired_names, requested_at
+            )
 
         wait_for_certificate_listing(module, client, certificate_arn)
         changed = True
