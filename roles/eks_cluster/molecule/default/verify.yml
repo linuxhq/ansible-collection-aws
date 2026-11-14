@@ -24,7 +24,9 @@
             ['69.107.10.200/29']
           - _eks_cluster_info_dict['molecule-eks1'].tags.Name == 'molecule-eks1'
           - _eks_cluster_info_dict['molecule-eks2'].status == 'ACTIVE'
-          - _eks_cluster_info_dict['molecule-eks2'].encryption_config | d([]) == []
+          - _eks_cluster_info_dict['molecule-eks2'].encryption_config ==
+            [dict(provider=dict(key_arn=_kms_key_info_dict['molecule-eks'].key_arn),
+                  resources=['secrets'])]
           - _eks_cluster_info_dict['molecule-eks2'].version == '1.35'
           - _eks_cluster_info_dict['molecule-eks2'].resources_vpc_config.endpoint_private_access
           - not _eks_cluster_info_dict['molecule-eks2'].resources_vpc_config.endpoint_public_access

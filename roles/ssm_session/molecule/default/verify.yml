@@ -31,6 +31,12 @@
       retries: 30
       delay: 10
 
+    - name: Ensure command return values are unmasked
+      ansible.builtin.assert:
+        that:
+          - __ssm_send_command_result.command.parameters.commands == ['touch /tmp/molecule']
+          - __ssm_send_command_result.command_id == __ssm_send_command_result.command.command_id
+
     - name: Ensure command result is gathered
       ansible.builtin.stat:
         path: /tmp/molecule

@@ -50,8 +50,8 @@ options:
       - Each value must be a list of strings, as the Systems Manager
         C(SendCommand) API requires. The module fails before sending the
         command, including in check mode, for any other value or list entry.
-      - AWS treats parameter values as sensitive, so Ansible masks them in the
-        module's output and logs.
+      - Parameter values are not masked in the module's output and logs. Set
+        C(no_log) on the task when a value is secret.
     default: {}
     type: dict
   targets:
@@ -261,8 +261,7 @@ command:
         - The document parameters sent with the command.
         - Parameter names are returned unchanged, so they keep the casing AWS
           reports rather than being converted to snake_case.
-        - Parameter values are masked in Ansible output because O(parameters)
-          is treated as sensitive.
+        - Parameter values are returned as AWS reports them.
       returned: when available
       type: dict
     requested_date_time:
@@ -550,7 +549,7 @@ def main():
         "instance_ids": {"elements": "str", "type": "list"},
         "max_concurrency": {"type": "str"},
         "max_errors": {"type": "str"},
-        "parameters": {"default": {}, "no_log": True, "type": "dict"},
+        "parameters": {"default": {}, "type": "dict"},
         "targets": {
             "elements": "dict",
             "options": {

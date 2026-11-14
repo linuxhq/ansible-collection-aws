@@ -113,6 +113,10 @@ provisioner:
             wait: true
 
           - name: molecule-eks2
+            # Associates encryption with the existing unencrypted cluster alongside its version and endpoint updates.
+            encryption_config:
+              - provider:
+                  key_arn: "{{ _kms_key_info_dict['molecule-eks'].key_arn }}"
             resources_vpc_config:
               endpoint_private_access: true
               endpoint_public_access: false

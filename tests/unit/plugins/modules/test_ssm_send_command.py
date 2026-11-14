@@ -4,6 +4,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
+from ansible.module_utils.common.parameters import remove_values
+
 from ansible_collections.linuxhq.aws.plugins.module_utils import sdk, wait
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_send_command as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -66,8 +69,21 @@ def test_equivalent_targets_are_sent_once():
 
 def test_module_contract():
     options = assert_module_contract(plugin)
-    # AWS marks SendCommand parameters as sensitive.
-    assert options["argument_spec"]["parameters"]["no_log"] is True
+    # Modules return provider data unmodified; callers set task-level no_log for secret parameters.
+    assert "no_log" not in options["argument_spec"]["parameters"]
+
+
+def test_parameter_values_do_not_mask_returned_values():
+    # Ansible masks every no_log value wherever it occurs in the result, including inside command_id.
+    argument_spec = assert_module_contract(plugin)["argument_spec"]
+    validated = ArgumentSpecValidator(argument_spec).validate(send_params(parameters={"commands": ["a60b", "1600"]}))
+    result = {
+        "command": {"command_id": "a60b-1600", "parameters": {"commands": ["a60b", "1600"]}},
+        "command_id": "a60b-1600",
+    }
+
+    assert validated.error_messages == []
+    assert remove_values(result, validated._no_log_values) == result
 
 
 def test_command_normalization_preserves_compatible_request_keys():

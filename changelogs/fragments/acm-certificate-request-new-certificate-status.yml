@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - acm_certificate_request - check the status of every newly requested certificate, not only when
+    ``idempotency_token`` is supplied. ACM can set a new certificate to ``FAILED`` seconds after the request, for
+    example with ``ADDITIONAL_VERIFICATION_REQUIRED``, so the module now describes the certificate until it is no
+    longer ``PENDING_VALIDATION`` or has every DNS validation resource record (up to about one minute), and fails with
+    ``changed=true``, ``certificate_arn``, and the status and failure reason when it is not ``PENDING_VALIDATION`` or
+    ``ISSUED``. Before, with the token omitted, the module reported success with the ARN of a ``FAILED`` certificate.

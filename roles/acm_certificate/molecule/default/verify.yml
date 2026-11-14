@@ -46,6 +46,8 @@
           - _query.certificates | length == 1
           - _query.certificates.0.type == 'IMPORTED'
           - _query.certificates.0.domain_name == _query._certificate.domain_name
+          - _query.certificates.0.certificate | trim ==
+            lookup('ansible.builtin.file', molecule_certificate_dir ~ '/' ~ _query._certificate.domain_name ~ '.crt') | trim
       loop: "{{ __molecule_imported_certificate_query.results }}"
       loop_control:
         label: "{{ _query._certificate.domain_name }}"
