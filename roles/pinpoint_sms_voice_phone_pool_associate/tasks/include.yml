@@ -3,7 +3,7 @@
   tags:
     - pinpoint_sms_voice_phone_pool_associate
   linuxhq.aws.pinpoint_sms_voice_phone_pool_associate:
-    client_token: "{{ _association.0.client_token | d(omit) }}"
+    client_token: "{{ _association.1.client_token | d(omit) }}"
     iso_country_code: "{{ _association.0.iso_country_code }}"
     origination_identity: "{{ _association.1.origination_identity }}"
     pool_id: "{{ _association.0.pool_id }}"

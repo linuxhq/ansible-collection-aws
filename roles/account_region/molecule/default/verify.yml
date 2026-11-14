@@ -15,12 +15,13 @@
             loop_var: _region
           register: __account_region_enabled
           check_mode: true
-          changed_when: false
 
+        # Check mode predicts region_opt_status; previous_region_opt_status is the status AWS returned.
         - name: Ensure enabled regions are verified
           ansible.builtin.assert:
             that:
-              - __account_region_enabled.results | map(attribute='region_opt_status') |
+              - __account_region_enabled is not changed
+              - __account_region_enabled.results | map(attribute='previous_region_opt_status') |
                 reject('in', ['ENABLED', 'ENABLED_BY_DEFAULT']) | list == []
 
       always:
@@ -55,12 +56,12 @@
             loop_var: _region
           register: __account_region_disabled
           check_mode: true
-          changed_when: false
 
         - name: Ensure restored regions are verified
           ansible.builtin.assert:
             that:
-              - __account_region_disabled.results | map(attribute='region_opt_status') |
+              - __account_region_disabled is not changed
+              - __account_region_disabled.results | map(attribute='previous_region_opt_status') |
                 reject('in', ['DISABLED', 'DISABLING']) | list == []
 
         - name: Ensure saved aws account region opt-in statuses file is absent

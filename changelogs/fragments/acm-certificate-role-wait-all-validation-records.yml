@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - acm_certificate role - wait until ACM publishes the DNS validation record of every domain on the certificate
+    before creating the Route 53 records. Before, the role waited only for the first domain's record, and ACM can
+    publish the records of some domains first, so the record task could fail on a domain without one.

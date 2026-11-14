@@ -19,9 +19,10 @@ options:
     description:
       - Unique idempotency token for the pool request.
       - When omitted, AWS generates an idempotency token for the request.
-      - AWS answers a request that reuses a token with the pool the earlier request created, even after that pool was
-        deleted, or when it no longer holds O(origination_identity) or has another C(Name) tag. The module then fails
-        without creating a pool; use a new token for each pool, or set O(pool_id) to manage the existing pool.
+      - AWS answers a request that repeats an earlier request's token and parameters with the pool that request
+        created, even after that pool was deleted, or after it stopped holding O(origination_identity) or its
+        C(Name) tag changed. The module then fails without creating a pool; use a new token for each pool, or set
+        O(pool_id) to manage the existing pool.
     type: str
   deletion_protection_enabled:
     description:

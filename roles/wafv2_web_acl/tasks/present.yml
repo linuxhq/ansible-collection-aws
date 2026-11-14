@@ -26,6 +26,7 @@
     log_group_name: "aws-waf-logs-{{ _webacl.name }}"
     state: present
     tags: "{{ _webacl.tags | d({}) | combine({'Name': _webacl.name}) }}"
+    validate_certs: true
   register: __wafv2_web_acl_log_group
 
 - name: Ensure aws wafv2 web acl logging configuration is present

@@ -153,6 +153,39 @@
             map('length') |
             max == 0
 
+    - name: Ensure identities are queried after removal
+      linuxhq.aws.ses_identity_info:
+        name: "{{ _identity.identity }}"
+      register: __ses_identity_removed
+      loop: "{{ ses_identity_list }}"
+      loop_control:
+        label: "{{ _identity.identity }}"
+        loop_var: _identity
+
+    - name: Ensure identity dmarc and spf records are queried after removal
+      amazon.aws.route53:
+        record: "{{ _record.1 ~ _record.0.identity }}"
+        state: get
+        type: TXT
+        zone: "{{ _record.0.zone }}"
+      register: __ses_identity_txt_removed
+      loop: "{{ ses_identity_list | product(['_dmarc.', '']) | list }}"
+      loop_control:
+        label: "{{ _record.1 ~ _record.0.identity }}"
+        loop_var: _record
+
+    - name: Ensure identities and their dmarc and spf records are removed
+      ansible.builtin.assert:
+        that:
+          - __ses_identity_removed.results |
+            map(attribute='identities') |
+            map('length') |
+            max == 0
+          - __ses_identity_txt_removed.results |
+            map(attribute='resource_record_sets') |
+            map('length') |
+            max == 0
+
     - name: Ensure roles are included
       ansible.builtin.include_role:
         name: "{{ _verify }}"

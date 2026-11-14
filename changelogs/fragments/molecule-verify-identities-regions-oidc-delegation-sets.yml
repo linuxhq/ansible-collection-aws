@@ -1,0 +1,12 @@
+---
+trivial:
+  - ses_identity - the Molecule scenario now checks that the identities and their DMARC and SPF records are gone after
+    the absent run.
+  - account_region - the Molecule scenario now checks the opt-in status AWS returned, not the status check mode
+    predicts, and that the queries report no change.
+  - iam_oidc_provider - the Molecule scenario now checks the created provider's URL, client IDs, thumbprints, and tags,
+    and that it is gone after teardown.
+  - route53_delegation_set - the Molecule scenario now checks that each delegation set exists with four name servers,
+    and that each is gone after teardown.
+  - sqs_queue_info - the Molecule scenario now counts queues under the ``molecule-info-`` prefix only, so queues
+    from other scenarios cannot change the result.
