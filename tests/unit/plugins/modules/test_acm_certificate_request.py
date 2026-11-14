@@ -472,7 +472,7 @@ def test_supplied_idempotency_token_is_sent_unchanged():
     assert request["IdempotencyToken"] == "Custom_Token_1"
 
 
-def run_token_request(described):
+def run_token_request(described, listed=()):
     client = Mock()
     client.request_certificate.return_value = {"CertificateArn": "arn:replayed"}
     if isinstance(described, Exception):
@@ -493,13 +493,21 @@ def run_token_request(described):
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods") as require,
-        patch.object(plugin, "query_list", return_value=[]) as query,
+        patch.object(
+            plugin,
+            "query_list",
+            side_effect=lambda *args, **kwargs: (
+                list(listed) if kwargs.get("CertificateStatuses") == plugin.CERTIFICATE_STATUSES else []
+            ),
+        ) as query,
         pytest.raises((ModuleExit, ModuleFail)) as raised,
     ):
         plugin.main()
 
     client.request_certificate.assert_called_once()
     client.describe_certificate.assert_called_with(CertificateArn="arn:replayed", aws_retry=True)
+    # Every status is listed before the request.
+    assert query.call_args_list[1].kwargs["CertificateStatuses"] == plugin.CERTIFICATE_STATUSES
     assert require.call_args_list[1].args[3]["describe_certificate"] == ("CertificateArn",)
     return raised.value, query
 
@@ -531,7 +539,7 @@ def test_supplied_token_returning_a_certificate_that_cannot_be_reused_fails_with
         "certificate_arn": "arn:replayed",
     }
     # The certificate listing wait is skipped.
-    assert query.call_count == 1
+    assert query.call_count == 2
 
 
 def test_supplied_token_returning_a_usable_certificate_is_reported_as_requested():
@@ -571,7 +579,49 @@ def test_supplied_token_certificate_created_by_the_request_is_reported_as_reques
     assert isinstance(result, ModuleExit)
     assert result.values == {"changed": True, "certificate_arn": "arn:replayed"}
     # The certificate listing wait runs.
-    assert query.call_count == 1 + plugin.CERTIFICATE_LIST_ATTEMPTS
+    assert query.call_count == 2 + plugin.CERTIFICATE_LIST_ATTEMPTS
+
+
+@pytest.mark.parametrize("domain_name", ["example.com", "EXAMPLE.com"])
+def test_supplied_token_replaying_a_certificate_listed_before_the_request_fails_without_changes(domain_name):
+    # A certificate that FAILED right after an earlier request is replayed within the clock-skew window.
+    result, _query = run_token_request(
+        {
+            "CreatedAt": created_now(),
+            "FailureReason": "ADDITIONAL_VERIFICATION_REQUIRED",
+            "Status": "FAILED",
+            "SubjectAlternativeNames": ["example.com", "www.example.com"],
+        },
+        listed=[
+            {"CertificateArn": "arn:other", "DomainName": "other.example.com"},
+            {"CertificateArn": "arn:replayed", "DomainName": domain_name},
+        ],
+    )
+
+    assert isinstance(result, ModuleFail)
+    assert result.values == {
+        "msg": (
+            "idempotency_token Token_1 was already used to request AWS Certificate Manager certificate arn:replayed, "
+            "which is FAILED; use a new idempotency_token or omit it"
+        ),
+        "certificate_arn": "arn:replayed",
+    }
+
+
+def test_list_certificate_arns_matches_the_domain_name_in_any_status():
+    summaries = [
+        {"CertificateArn": "arn:failed", "DomainName": "Example.com", "Status": "FAILED"},
+        {"CertificateArn": "arn:other", "DomainName": "other.example.com"},
+        {"CertificateArn": "arn:no-domain"},
+        "invalid",
+    ]
+    with patch.object(plugin, "query_list", return_value=summaries) as query:
+        assert plugin.list_certificate_arns(FakeModule({}), Mock(), "example.com") == {"arn:failed"}
+
+    assert query.call_args.kwargs == {
+        "CertificateStatuses": plugin.CERTIFICATE_STATUSES,
+        "Includes": {"keyTypes": plugin.CERTIFICATE_KEY_TYPES},
+    }
 
 
 @pytest.mark.parametrize("created_at", [None, "2026-11-13T00:00:00Z"])

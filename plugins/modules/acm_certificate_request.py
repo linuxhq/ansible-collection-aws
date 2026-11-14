@@ -47,8 +47,9 @@ options:
         omit it.
       - A certificate that ACM created during this request is never treated as a replay; it is returned with
         RV(certificate_arn) and C(changed=true) even when ACM has already set it to another status, for example
-        C(FAILED). The module detects a replay when the returned certificate was created more than a few seconds
-        before the request, so the clocks of the managed node and AWS must agree to within a few seconds.
+        C(FAILED). The module detects a replay when ACM listed the returned certificate, in any status, before the
+        request, or when the certificate was created more than a few seconds before the request, so the clocks of
+        the managed node and AWS must agree to within a few seconds.
       - ACM requires a token of 1 to 32 ASCII word characters.
       - This option is only used when requesting a certificate.
     type: str
@@ -126,6 +127,17 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
+
+# Every ACM CertificateStatus, so a certificate in any status is listed.
+CERTIFICATE_STATUSES = [
+    "PENDING_VALIDATION",
+    "ISSUED",
+    "INACTIVE",
+    "EXPIRED",
+    "VALIDATION_TIMED_OUT",
+    "REVOKED",
+    "FAILED",
+]
 
 # Keep this list synchronized with ACM's KeyAlgorithm model so
 # list_certificates does not omit certificates that use non-default key types.
@@ -258,6 +270,27 @@ def find_matching_certificate(module, client, normalized_domain_name, desired_na
     return matched["CertificateArn"] if matched is not None else None
 
 
+def list_certificate_arns(module, client, normalized_domain_name):
+    """Return the ARNs of every listed certificate for the domain name, in any status."""
+    summaries = query_list(
+        module,
+        client,
+        "list_certificates",
+        "CertificateSummaryList",
+        "Unable to list AWS Certificate Manager certificates",
+        CertificateStatuses=CERTIFICATE_STATUSES,
+        Includes={"keyTypes": CERTIFICATE_KEY_TYPES},
+    )
+
+    return {
+        summary.get("CertificateArn")
+        for summary in summaries
+        if isinstance(summary, dict)
+        and isinstance(summary.get("DomainName"), str)
+        and summary["DomainName"].lower() == normalized_domain_name
+    }
+
+
 def request_certificate(module, client, domain_name, idempotency_token, subject_alternative_names, tags):
     """Request a DNS-validated certificate and return its ARN."""
     if idempotency_token is None:
@@ -296,14 +329,16 @@ def request_certificate(module, client, domain_name, idempotency_token, subject_
     return certificate_arn
 
 
-def require_requested_certificate(module, client, certificate_arn, idempotency_token, desired_names, requested_at):
+def require_requested_certificate(
+    module, client, certificate_arn, idempotency_token, desired_names, listed_arns, requested_at
+):
     """Fail when a supplied token returned an existing certificate the module would not reuse.
 
     Live: ACM answers a request that repeats a token and the requested names within one hour with the certificate the
     earlier request created while it exists, even after it FAILED; it requests a new certificate after a delete, or
     for other names. A new certificate can take a few seconds to be described, so a missing one is not a replay.
-    Live: a new certificate can already be FAILED seconds after the request, so only its creation time tells a new
-    certificate from a replayed one.
+    Live: a new certificate can already be FAILED seconds after the request, so its status cannot tell a new
+    certificate from a replayed one; a certificate listed before the request, or created before it, is replayed.
     """
     response = None
     for attempt in range(CERTIFICATE_LIST_ATTEMPTS):
@@ -341,7 +376,7 @@ def require_requested_certificate(module, client, certificate_arn, idempotency_t
             certificate_arn=certificate_arn,
         )
 
-    if created_at >= requested_at - REQUEST_CLOCK_SKEW:
+    if certificate_arn not in listed_arns and created_at >= requested_at - REQUEST_CLOCK_SKEW:
         # This request created the certificate.
         return
 
@@ -529,13 +564,17 @@ def main():
         if module.check_mode:
             module.exit_json(changed=True)
 
+        listed_arns = None
+        if idempotency_token is not None:
+            listed_arns = list_certificate_arns(module, client, normalized_domain_name)
+
         requested_at = datetime.now(timezone.utc)
         certificate_arn = request_certificate(
             module, client, domain_name, idempotency_token, subject_alternative_names, tags
         )
         if idempotency_token is not None:
             require_requested_certificate(
-                module, client, certificate_arn, idempotency_token, desired_names, requested_at
+                module, client, certificate_arn, idempotency_token, desired_names, listed_arns, requested_at
             )
 
         wait_for_certificate_listing(module, client, certificate_arn)
