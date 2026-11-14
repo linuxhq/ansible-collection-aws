@@ -239,7 +239,7 @@ import ipaddress
 import uuid
 
 try:
-    from botocore.exceptions import BotoCoreError, ClientError
+    from botocore.exceptions import BotoCoreError, ClientError, WaiterError
 except ImportError:
     pass
 
@@ -264,6 +264,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
     scrub_none_parameters,
 )
+from ansible_collections.amazon.aws.plugins.module_utils.waiter import custom_waiter_config
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
@@ -281,8 +282,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     custom_waiter,
+    remaining_wait_timeout,
     require_positive_wait_bounds,
-    run_waiter,
     wait_deadline,
 )
 
@@ -607,8 +608,8 @@ def ensure_present(client, module, owner_id, deadline=None):
     if (current or {}).get("State") == "create-failed":
         module.fail_json(
             msg=(
-                f"EC2 VPC managed prefix list {current['PrefixListId']} failed to create. "
-                "Remove it with state=absent before creating it again."
+                f"EC2 VPC managed prefix list {current['PrefixListId']} failed to create"
+                f"{state_message_detail(current)}. Remove it with state=absent before creating it again."
             )
         )
 
@@ -907,12 +908,22 @@ def wait_for_ready_state(client, module, prefix_list_id, changed=False, deadline
     )
 
 
+def state_message_detail(prefix_list):
+    """Return EC2's reason for a failed state, which names the blocking resources, as a message suffix."""
+    state_message = prefix_list.get("StateMessage") if isinstance(prefix_list, dict) else None
+    if not isinstance(state_message, str) or not state_message:
+        return ""
+
+    return f" ({state_message})"
+
+
 def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name, changed=False, deadline=None):
     """Wait for a prefix list state; changed reports earlier modifications, for failure results.
 
     deadline limits the wait to what is left of the run's shared wait_timeout budget.
     """
     target_state = WAITER_TARGET_STATES[waiter_name]
+    error_msg = f"Unable to wait for EC2 VPC managed prefix list {prefix_list_id} to become {target_state}"
     require_client_methods(
         module,
         client,
@@ -920,14 +931,19 @@ def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name, chan
         {"describe_managed_prefix_lists": ("PrefixListIds",)},
         changed=changed,
     )
-    run_waiter(
-        module,
-        custom_waiter(client, EC2_WAITER_MODEL_DATA, waiter_name),
-        f"Unable to wait for EC2 VPC managed prefix list {prefix_list_id} to become {target_state}",
-        changed=changed,
-        deadline=deadline,
-        PrefixListIds=[prefix_list_id],
-    )
+    timeout = remaining_wait_timeout(module, deadline, error_msg, changed=changed)
+    try:
+        custom_waiter(client, EC2_WAITER_MODEL_DATA, waiter_name).wait(
+            PrefixListIds=[prefix_list_id],
+            WaiterConfig=custom_waiter_config(timeout, default_pause=module.params["wait_delay"]),
+        )
+    except WaiterError as e:
+        # A terminal failure state carries EC2's StateMessage only in the last DescribeManagedPrefixLists response.
+        prefix_lists = e.last_response.get("PrefixLists") if isinstance(e.last_response, dict) else None
+        prefix_list = prefix_lists[0] if isinstance(prefix_lists, list) and prefix_lists else None
+        module.fail_json_aws(e, changed=changed, msg=error_msg + state_message_detail(prefix_list))
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, changed=changed, msg=error_msg)
 
 
 def get_customer_managed_prefix_list_by_name(client, module, owner_id, changed=False):

@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_pool_associate - do not send O(client_token) to DisassociateOriginationIdentity with
+    O(state=absent). AWS answered a disassociation that reused a token with the earlier result, even after the
+    origination identity was associated again, so the module reported a change while the identity stayed in the pool.

@@ -29,6 +29,28 @@
         label: "{{ _query._certificate.domain_name }}"
         loop_var: _query
 
+    - name: Ensure imported molecule certificates are queried
+      community.aws.acm_certificate_info:
+        domain_name: "{{ _certificate.domain_name }}"
+        validate_certs: true
+      loop: "{{ acm_certificate_list | selectattr('type', 'eq', 'imported') }}"
+      loop_control:
+        label: "{{ _certificate.domain_name }}"
+        loop_var: _certificate
+      register: __molecule_imported_certificate_query
+
+    - name: Ensure each imported molecule domain has one imported certificate
+      ansible.builtin.assert:
+        that:
+          - __molecule_imported_certificate_query.results | length == 2
+          - _query.certificates | length == 1
+          - _query.certificates.0.type == 'IMPORTED'
+          - _query.certificates.0.domain_name == _query._certificate.domain_name
+      loop: "{{ __molecule_imported_certificate_query.results }}"
+      loop_control:
+        label: "{{ _query._certificate.domain_name }}"
+        loop_var: _query
+
     - name: Ensure amazon issued molecule validation records are listed
       ansible.builtin.set_fact:
         __molecule_validation_records: "{{ __molecule_validation_records | d([]) + _records }}"
@@ -76,11 +98,11 @@
       ansible.builtin.include_role:
         name: acm_certificate
 
-    - name: Ensure amazon issued molecule certificates are queried after teardown
+    - name: Ensure molecule certificates are queried after teardown
       community.aws.acm_certificate_info:
         domain_name: "{{ _certificate.domain_name }}"
         validate_certs: true
-      loop: "{{ acm_certificate_list | selectattr('type', 'eq', 'amazon_issued') }}"
+      loop: "{{ acm_certificate_list }}"
       loop_control:
         label: "{{ _certificate.domain_name }}"
         loop_var: _certificate
@@ -99,7 +121,7 @@
         loop_var: _record
       register: __molecule_record_absent_query
 
-    - name: Ensure amazon issued molecule certificates and validation records are gone
+    - name: Ensure molecule certificates and amazon issued validation records are gone
       ansible.builtin.assert:
         that:
           - __molecule_certificate_absent_query.results |

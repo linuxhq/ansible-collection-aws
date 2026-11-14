@@ -60,6 +60,7 @@
     record: "_dmarc.{{ _identity.identity }}"
     state: "{{ _identity.state }}"
     type: TXT
+    validate_certs: true
     value: '"v=DMARC1; p=quarantine;"'
     zone: "{{ _identity.zone }}"
 
@@ -72,6 +73,7 @@
     record: "{{ _dkim }}._domainkey.{{ _identity.identity }}"
     state: "{{ _identity.state }}"
     type: CNAME
+    validate_certs: true
     # An omitted value deletes the stored record, whichever DKIM domain an earlier run pointed it to.
     value:
       "{{ omit if _identity.state == 'absent' else
@@ -89,6 +91,7 @@
     record: "{{ _identity.identity }}"
     state: "{{ _identity.state }}"
     type: TXT
+    validate_certs: true
     value: '"v=spf1 include:amazonses.com -all"'
     zone: "{{ _identity.zone }}"
 

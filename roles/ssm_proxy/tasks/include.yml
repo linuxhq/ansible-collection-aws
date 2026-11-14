@@ -13,6 +13,7 @@
     filters:
       instance-state-name: running
       'tag:Name': "{{ ssm_proxy_instance }}"
+    validate_certs: true
   register: __ssm_proxy_instance
 
 - name: Ensure aws session manager proxy instance is connected

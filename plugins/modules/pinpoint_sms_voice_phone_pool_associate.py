@@ -24,6 +24,9 @@ options:
         earlier association, even after that origination identity was disassociated, without associating it again.
         The module then fails; use a new token for each association.
       - AWS rejects a request that reuses a token for another origination identity with a C(ConflictException).
+      - This is used only with O(state=present). With O(state=absent), the module does not send it, because AWS
+        answers a disassociation that repeats an earlier token with the earlier result, without disassociating the
+        origination identity again.
     type: str
   iso_country_code:
     description:
@@ -393,7 +396,8 @@ def ensure_absent(client, module):
             msg=last_phone_number_message(origination_identity, pool_id, is_phone_number_identity(association)),
         )
 
-    request = association_request(module)
+    # Live: AWS replays a disassociation that reuses a token, even after a re-association, without disassociating.
+    request = {key: value for key, value in association_request(module).items() if key != "ClientToken"}
     # AWS requires a phone number's country to disassociate it, and lists a phone number under its only country.
     if changed and "IsoCountryCode" not in request and is_phone_number_identity(association):
         request = scrub_none_parameters(dict(request, IsoCountryCode=association.get("IsoCountryCode")))
@@ -480,7 +484,9 @@ def main():
 
     if state == "absent":
         methods["describe_pools"] = ("PoolIds",)
-        methods["disassociate_origination_identity"] = origination_parameters
+        methods["disassociate_origination_identity"] = tuple(
+            parameter for parameter in origination_parameters if parameter != "ClientToken"
+        )
 
     require_client_methods(module, client, "Pinpoint SMS Voice V2", methods)
 

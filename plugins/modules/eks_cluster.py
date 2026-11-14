@@ -93,8 +93,10 @@ options:
   encryption_config:
     description:
       - The cluster encryption configuration.
-      - This can only be set when creating a cluster.
-      - The module fails if this differs from the existing cluster.
+      - When the existing cluster has no encryption configuration, the module adds this one with
+        AssociateEncryptionConfig. EKS cannot remove encryption from a cluster once it is added.
+      - The module fails if this differs from the encryption configuration of the existing cluster.
+      - Adding encryption to an existing cluster requires botocore C(1.20.17) or later.
       - This must contain at most one entry.
       - An empty list is treated the same as omitting this option.
     elements: dict
@@ -1585,8 +1587,16 @@ def ensure_present(client, module, deadline=None):
         if desired_boto3.get(camel_field) is None:
             continue
 
+        # EKS adds encryption to a cluster without it through AssociateEncryptionConfig, but cannot change it later.
+        if field == "encryption_config" and not current.get(camel_field):
+            continue
+
         if changed(current.get(camel_field), desired_boto3[camel_field]):
             module.fail_json(msg=f"Cannot modify {field} for existing EKS cluster {name}")
+
+    encryption_request = None
+    if desired_boto3.get("encryptionConfig") and not current.get("encryptionConfig"):
+        encryption_request = {"clusterName": name, "encryptionConfig": desired_boto3["encryptionConfig"]}
 
     # EKS rejects these after creation; failing here keeps other updates from applying first.
     current_network_config = current.get("kubernetesNetworkConfig") or {}
@@ -1794,7 +1804,10 @@ def ensure_present(client, module, deadline=None):
 
         update_requests.append(auto_mode_request(current, config_request))
 
-    config_changed = bool(update_requests)
+    if encryption_request is not None:
+        changes["encryptionConfig"] = encryption_request["encryptionConfig"]
+
+    config_changed = bool(update_requests or encryption_request)
     version_changed = version is not None and version != current.get("version")
     if version_changed:
         # A real run rechecks a cluster that is not ACTIVE after waiting for it, when its version is current.
@@ -1847,6 +1860,11 @@ def ensure_present(client, module, deadline=None):
         require_nested_request_parameters(module, client, "UpdateClusterConfig", update_request)
 
     methods = {}
+    if encryption_request is not None:
+        methods["associate_encryption_config"] = tuple(encryption_request)
+        # EKS runs one update at a time, so the association is sent first and waited on like the other updates.
+        update_requests.insert(0, encryption_request)
+
     if version_changed:
         methods["update_cluster_version"] = ("name", "version")
 
@@ -1879,8 +1897,14 @@ def ensure_present(client, module, deadline=None):
     mutated = False
     for index, update_request in enumerate(update_requests):
         try:
-            response = UPDATE_RETRY(client.update_cluster_config)(**update_request)
+            if update_request is encryption_request:
+                response = UPDATE_RETRY(client.associate_encryption_config)(**update_request)
+            else:
+                response = UPDATE_RETRY(client.update_cluster_config)(**update_request)
         except (BotoCoreError, ClientError) as e:
+            if update_request is encryption_request:
+                module.fail_json_aws(e, changed=mutated, msg=f"Unable to associate encryption with EKS cluster {name}")
+
             module.fail_json_aws(e, changed=mutated, msg=f"Unable to update EKS cluster {name}")
 
         mutated = True

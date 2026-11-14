@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - global_accelerator - with O(purge_listeners=false), fail before any change when a requested
+    O(listeners[].endpoint_groups[].port_overrides[].endpoint_port) is within the port ranges of an existing
+    listener the module keeps, or when a requested listener overlaps one. AWS rejects that endpoint port, and the
+    module previously reached the rejection only after updating the accelerator and its listeners.

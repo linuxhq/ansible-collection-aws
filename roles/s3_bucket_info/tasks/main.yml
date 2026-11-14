@@ -7,6 +7,7 @@
     name: "{{ s3_bucket_info_name or omit }}"
     name_filter: "{{ s3_bucket_info_name_filter or omit }}"
     transform_location: "{{ s3_bucket_info_transform_location }}"
+    validate_certs: true
   register: __s3_bucket_info_query
 
 - name: Ensure list of aws simple storage service buckets is generated

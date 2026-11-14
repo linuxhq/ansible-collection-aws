@@ -258,7 +258,9 @@ options:
                     override in an endpoint group with the same
                     O(listeners[].endpoint_groups[].endpoint_group_region),
                     whichever listener it belongs to. The module checks this
-                    against O(listeners) before making any change.
+                    against O(listeners), and against the existing listeners
+                    that O(purge_listeners=false) keeps, before making any
+                    change.
                   - An endpoint port can move to another listener's endpoint
                     group in one run; the endpoint groups that release it are
                     updated or deleted first. The module fails before changing
@@ -1879,25 +1881,61 @@ def endpoint_port_release_order(module, plans, changed=False):
     return order
 
 
-def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=None):
-    """Reconcile listeners; mutated reports earlier modifications, for failure results."""
-    current_listeners = []
-    if accelerator_arn is not None:
-        current_listeners = get_listeners(client, module, accelerator_arn, changed=mutated)
+def require_compatible_retained_listeners(module, current_listeners, changed=False):
+    """Fail when a listener purge_listeners=false keeps would make AWS reject a requested listener or endpoint group.
 
+    changed reports whether the accelerator was already modified, for failure results.
+    """
+    matched, updates, creates = reconcile_listeners(module, current_listeners)[:3]
+    desired_changes = [desired for current, desired in updates] + creates
+    for current, unused_desired in matched:
+        if any(listeners_overlap(current, desired) for desired in desired_changes):
+            module.fail_json(
+                changed=changed,
+                msg="Unable to update AWS Global Accelerator listeners: desired ports overlap retained listener "
+                f"{current['listener_arn']}",
+            )
+
+    # Live: Create/UpdateEndpointGroup reject an endpoint port within any listener's port ranges, of either protocol.
+    # main() checks the requested listeners' own port ranges before any AWS call.
+    endpoint_ports = sorted(
+        {
+            port_override["endpoint_port"]
+            for desired in [desired for current, desired in matched + updates] + creates
+            if desired is not None
+            for endpoint_group in desired["endpoint_groups"] or []
+            for port_override in endpoint_group.get("port_overrides") or []
+        }
+    )
+    for current in [current for current, desired in matched if desired is None]:
+        blocked = [str(port) for port in endpoint_ports if port_in_ranges(port, current["port_ranges"])]
+        if blocked:
+            module.fail_json(
+                changed=changed,
+                msg=(
+                    "Unable to update AWS Global Accelerator endpoint groups: port override endpoint ports "
+                    f"{', '.join(blocked)} are within the port ranges of retained listener {current['listener_arn']}"
+                ),
+            )
+
+
+def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=None, current_listeners=None):
+    """Reconcile listeners; mutated reports earlier modifications, for failure results.
+
+    current_listeners holds the accelerator's listeners when the caller already listed them.
+    """
+    if current_listeners is None:
+        current_listeners = []
+        if accelerator_arn is not None:
+            current_listeners = get_listeners(client, module, accelerator_arn, changed=mutated)
+
+    require_compatible_retained_listeners(module, current_listeners, changed=mutated)
     matched, updates, creates, deletes = reconcile_listeners(module, current_listeners)
     changed = bool(updates or creates or deletes)
     result_listeners = []
 
     updates = ordered_listener_updates(module, updates, changed=mutated)
     desired_changes = [desired for current, desired in updates] + creates
-    for current, unused_desired in matched:
-        if any(listeners_overlap(current, desired) for desired in desired_changes):
-            module.fail_json(
-                changed=mutated,
-                msg="Unable to update AWS Global Accelerator listeners: desired ports overlap retained listener "
-                f"{current['listener_arn']}",
-            )
 
     # Endpoint groups are reconciled per listener after the listener writes, in the order of their result entries: the
     # matched, updated, and created listeners. Existing groups are listed first so a port override endpoint port that
@@ -2298,6 +2336,12 @@ def ensure_present(client, module, deadline=None):
         # A real run waits for the accelerator to deploy and checks it again.
         accelerator = dict(accelerator, Status="DEPLOYED")
 
+    # Listeners that purge_listeners=false keeps are checked before the accelerator is updated.
+    current_listeners = None
+    if accelerator is not None and module.params["listeners"] is not None and not module.params["purge_listeners"]:
+        current_listeners = get_listeners(client, module, accelerator["AcceleratorArn"])
+        require_compatible_retained_listeners(module, current_listeners)
+
     if not module.check_mode:
         # Later writes are checked before the first change, so an older botocore fails without modifying anything.
         tag_methods = {}
@@ -2456,6 +2500,7 @@ def ensure_present(client, module, deadline=None):
             accelerator.get("AcceleratorArn"),
             mutated=mutated,
             deadline=deadline,
+            current_listeners=current_listeners,
         )
         changed = changed or listeners_changed
         mutated = mutated or (listeners_changed and not module.check_mode)

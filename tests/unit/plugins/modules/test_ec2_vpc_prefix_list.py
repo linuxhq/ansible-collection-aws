@@ -1,6 +1,7 @@
 from unittest.mock import ANY, Mock, call, patch
 
 import pytest
+from botocore.exceptions import WaiterError
 from botocore.loaders import Loader
 from botocore.waiter import Waiter, WaiterModel
 
@@ -1486,6 +1487,21 @@ def test_create_failed_prefix_list_is_not_modified():
     modify.assert_not_called()
 
 
+def test_create_failed_prefix_list_failure_includes_the_state_message():
+    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}]))
+    current = prefix_list(State="create-failed", StateMessage="Unable to create the prefix list.")
+    with (
+        patch.object(plugin, "get_current", return_value=(current, [])),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(Mock(), module, OWNER)
+
+    assert raised.value.values["msg"] == (
+        "EC2 VPC managed prefix list pl-1 failed to create (Unable to create the prefix list.). "
+        "Remove it with state=absent before creating it again."
+    )
+
+
 def test_lookup_ignores_prefix_lists_owned_by_other_accounts():
     own = prefix_list()
     shared = prefix_list(OwnerId="210987654321", PrefixListId="pl-shared")
@@ -1526,17 +1542,57 @@ def test_lookup_validates_owned_prefix_lists():
     [("managed_prefix_list_ready", "ready"), ("managed_prefix_list_deleted", "deleted")],
 )
 def test_wait_failure_names_target_state(waiter_name, target_state):
-    module = FakeModule({})
+    module = FakeModule({"wait_delay": 1, "wait_timeout": 60})
     with (
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "custom_waiter"),
-        patch.object(plugin, "run_waiter") as run_waiter,
+        patch.object(plugin, "custom_waiter", return_value=failing_waiter()),
+        pytest.raises(ModuleFail) as raised,
     ):
         plugin.wait_for_prefix_list_state(Mock(), module, "pl-1", waiter_name)
 
-    assert (
-        run_waiter.call_args.args[2] == f"Unable to wait for EC2 VPC managed prefix list pl-1 to become {target_state}"
+    assert raised.value.values["msg"] == f"Unable to wait for EC2 VPC managed prefix list pl-1 to become {target_state}"
+
+
+FAILED_RESIZE_MESSAGE = (
+    "Unable to modify maximum entries from (2) to (100). The following VPC Security Group resources do not have "
+    "sufficient capacity [sg-1]."
+)
+
+
+@pytest.mark.parametrize("waiter_name", ["managed_prefix_list_ready", "managed_prefix_list_deleted"])
+@pytest.mark.parametrize("state", ["create-failed", "modify-failed", "restore-failed", "delete-failed"])
+def test_wait_failure_includes_the_state_message(waiter_name, state):
+    target_state = plugin.WAITER_TARGET_STATES[waiter_name]
+    module = FakeModule({"wait_delay": 1, "wait_timeout": 60})
+    # Live: a failed resize names the security groups without capacity only in StateMessage.
+    response = {"PrefixLists": [prefix_list(State=state, StateMessage=FAILED_RESIZE_MESSAGE)]}
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "custom_waiter", return_value=failing_waiter(response)),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.wait_for_prefix_list_state(Mock(), module, "pl-1", waiter_name, changed=True)
+
+    assert raised.value.values["msg"] == (
+        f"Unable to wait for EC2 VPC managed prefix list pl-1 to become {target_state} " f"({FAILED_RESIZE_MESSAGE})"
     )
+    assert raised.value.values["changed"] is True
+
+
+@pytest.mark.parametrize(
+    "response",
+    [None, {}, {"PrefixLists": []}, {"PrefixLists": "bad"}, {"PrefixLists": ["bad"]}, {"PrefixLists": [{}]}],
+)
+def test_wait_failure_without_a_state_message_keeps_the_plain_message(response):
+    module = FakeModule({"wait_delay": 1, "wait_timeout": 60})
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "custom_waiter", return_value=failing_waiter(response)),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.wait_for_prefix_list_state(Mock(), module, "pl-1", "managed_prefix_list_ready")
+
+    assert raised.value.values["msg"] == "Unable to wait for EC2 VPC managed prefix list pl-1 to become ready"
 
 
 @pytest.mark.parametrize(("description", "changed"), [("new", True), ("old", False)])
@@ -1562,8 +1618,9 @@ def test_tag_failure_reports_whether_entries_were_modified(description, changed)
     assert modify.called is changed
 
 
-def failing_waiter(module, waiter, error_msg, changed=False, **kwargs):
-    module.fail_json(changed=changed, msg=error_msg)
+def failing_waiter(last_response=None):
+    """Return a waiter that fails as botocore does on a terminal failure state."""
+    return Mock(wait=Mock(side_effect=WaiterError("waiter", "terminal failure state", last_response)))
 
 
 def test_wait_failure_after_create_reports_changed():
@@ -1572,8 +1629,7 @@ def test_wait_failure_after_create_reports_changed():
     with (
         patch.object(plugin, "get_current", return_value=(None, None)),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "custom_waiter"),
-        patch.object(plugin, "run_waiter", side_effect=failing_waiter),
+        patch.object(plugin, "custom_waiter", return_value=failing_waiter()),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module, OWNER)
@@ -1587,8 +1643,7 @@ def test_wait_failure_before_any_change_reports_unchanged():
     with (
         patch.object(plugin, "get_current", return_value=(prefix_list(State="modify-in-progress"), [])),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "custom_waiter"),
-        patch.object(plugin, "run_waiter", side_effect=failing_waiter),
+        patch.object(plugin, "custom_waiter", return_value=failing_waiter()),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(Mock(), module, OWNER)

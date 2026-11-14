@@ -834,6 +834,48 @@ def test_absent_phone_number_with_country_sends_the_given_country():
     )
 
 
+def test_absent_does_not_send_the_client_token():
+    client = Mock()
+    client.disassociate_origination_identity.return_value = {"OriginationIdentity": "phone-1", "PoolId": "pool-1"}
+    module = absent_params()
+    module.params["client_token"] = "token-1"
+    module.params["iso_country_code"] = "US"
+    with (
+        patch.object(plugin, "current_associations", return_value=({"PoolId": "pool-1"}, [PHONE_1, PHONE_2])),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    client.disassociate_origination_identity.assert_called_once_with(
+        IsoCountryCode="US",
+        OriginationIdentity="phone-1",
+        PoolId="arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1",
+        aws_retry=True,
+    )
+    assert raised.value.values["changed"] is True
+
+
+def test_absent_capabilities_do_not_require_the_client_token():
+    module = FakeModule(
+        {
+            "client_token": "token-1",
+            "iso_country_code": "US",
+            "origination_identity": "phone-1",
+            "pool_id": "pool-1",
+            "state": "absent",
+        },
+        client=Mock(),
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(plugin, "ensure_absent"),
+    ):
+        plugin.main()
+
+    assert "ClientToken" not in require.call_args.args[3]["disassociate_origination_identity"]
+
+
 PHONE_NUMBER_ID = "phone-720f0a64a09b4e1ebdcc8273b27bd3fc"
 PHONE_NUMBER_ARN = f"arn:aws:sms-voice:us-east-1:123456789012:phone-number/{PHONE_NUMBER_ID}"
 
