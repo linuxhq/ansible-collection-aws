@@ -14,16 +14,20 @@
     __ssm_parameter_info_region:
       "{{ __ssm_parameter_info_az.availability_zones.0.region_name }}"
 
+- name: Ensure empty list of aws systems manager parameters is generated
+  tags:
+    - ssm_parameter_info
+  ansible.builtin.set_fact:
+    _ssm_parameter_info_list: []
+
 - name: Ensure list of aws systems manager parameters is generated
   tags:
     - ssm_parameter_info
   ansible.builtin.set_fact:
     _ssm_parameter_info_list:
-      "{{ _ssm_parameter_info_list |
-          d([]) +
+      "{{ _ssm_parameter_info_list +
           [{'name': _parameter.name,
             'value': __ssm_parameter_info_lookup}] }}"
-  register: _ssm_parameter_info_result
   loop: "{{ ssm_parameter_info_list }}"
   loop_control:
     label: "{{ _parameter.name | d(none) }}"
@@ -40,14 +44,6 @@
                  on_missing=ssm_parameter_info_on_missing,
                  recursive=_parameter.recursive | d(false),
                  region=__ssm_parameter_info_region) }}"
-
-- name: Ensure empty list of aws systems manager parameters is generated
-  tags:
-    - ssm_parameter_info
-  ansible.builtin.set_fact:
-    _ssm_parameter_info_list: []
-  when:
-    - _ssm_parameter_info_result is skipped
 
 - name: Ensure dict of aws systems manager parameters is generated
   tags:

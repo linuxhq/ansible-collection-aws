@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - ssm_session role - trim ``ssm_session_shell_profile_linux`` and ``ssm_session_shell_profile_windows`` before
+    storing them in the ``SSM-SessionManagerRunShell`` document. Before, the ``trim`` filter applied only to the empty
+    fallback, so a profile written as a YAML block scalar was stored with its trailing newline. An existing document
+    whose profile has surrounding whitespace is updated once.

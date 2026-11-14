@@ -16,8 +16,8 @@
         runAsEnabled: true
         runAsDefaultUser: "{{ ssm_session_default_user }}"
         shellProfile:
-          linux: "{{ ssm_session_shell_profile_linux or '' | trim }}"
-          windows: "{{ ssm_session_shell_profile_windows or '' | trim }}"
+          linux: "{{ (ssm_session_shell_profile_linux or '') | trim }}"
+          windows: "{{ (ssm_session_shell_profile_windows or '') | trim }}"
         s3BucketName: "{{ __ssm_session_account }}-{{ __ssm_session_region }}-{{ ssm_session_bucket_sessions_name }}"
         s3EncryptionEnabled: true
     document_type: Session

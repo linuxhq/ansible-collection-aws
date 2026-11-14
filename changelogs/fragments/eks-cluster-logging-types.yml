@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - eks_cluster - restrict O(logging.cluster_logging[].types) to the EKS log types (V(api), V(audit),
+    V(authenticator), V(controllerManager), V(scheduler)), and fail before any change when a log type is listed as
+    both enabled and disabled. Before, EKS rejected an unknown log type only after the encryption, authentication
+    mode, or deletion protection updates of the same task had been applied, check mode predicted success, and a log
+    type listed as both enabled and disabled was sent to EKS on every run.

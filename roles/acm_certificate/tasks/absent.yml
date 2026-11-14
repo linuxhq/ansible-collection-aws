@@ -1,4 +1,12 @@
 ---
+- name: Ensure aws certificate manager certificate is absent
+  tags:
+    - acm_certificate
+  community.aws.acm_certificate:
+    domain_name: "{{ _certificate.domain_name }}"
+    state: absent
+    validate_certs: true
+
 - name: Ensure aws certificate manager certificate resource records are absent
   tags:
     - acm_certificate
@@ -15,12 +23,4 @@
     loop_var: _dns
   when:
     - _certificate.type == 'amazon_issued'
-
-- name: Ensure aws certificate manager certificate is absent
-  tags:
-    - acm_certificate
-  community.aws.acm_certificate:
-    domain_name: "{{ _certificate.domain_name }}"
-    state: absent
-    validate_certs: true
 ...

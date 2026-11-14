@@ -13,6 +13,30 @@
           - _ssm_parameter_info_dict['/molecule/sys/username'].value == ssm_parameter_list.2.value
           - _ssm_parameter_info_dict['/molecule/sys/password'].value == ssm_parameter_list.3.value
 
+    - name: Ensure info is gathered for the first parameter
+      ansible.builtin.include_role:
+        name: ssm_parameter_info
+      vars:
+        ssm_parameter_info_list:
+          - name: "{{ ssm_parameter_list.0.name }}"
+
+    - name: Ensure info is gathered again for the sys parameters
+      ansible.builtin.include_role:
+        name: ssm_parameter_info
+      vars:
+        ssm_parameter_info_list:
+          - name: "{{ ssm_parameter_list.2.name }}"
+          - name: "{{ ssm_parameter_list.3.name }}"
+
+    - name: Ensure only the second call's parameters are published
+      ansible.builtin.assert:
+        that:
+          - _ssm_parameter_info_list | map(attribute='name') ==
+            [ssm_parameter_list.2.name, ssm_parameter_list.3.name]
+          - _ssm_parameter_info_dict | dict2items | map(attribute='key') | sort ==
+            [ssm_parameter_list.2.name, ssm_parameter_list.3.name] | sort
+          - _ssm_parameter_info_dict[ssm_parameter_list.3.name].value == ssm_parameter_list.3.value
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ssm_parameter_list:

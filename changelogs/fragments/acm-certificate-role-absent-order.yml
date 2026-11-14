@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - acm_certificate role - delete the certificate before its Route 53 DNS validation records. Before, the validation
+    records were deleted first, so when ACM refused the certificate delete (for example, while the certificate was
+    still in use by a load balancer) the certificate stayed in service without the records ACM managed renewal needs.
