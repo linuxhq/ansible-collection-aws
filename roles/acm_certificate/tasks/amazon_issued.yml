@@ -8,14 +8,6 @@
     validate_certs: true
   register: __acm_certificate_request
 
-- name: Ensure aws certificate manager certificate pause is executed
-  tags:
-    - acm_certificate
-  ansible.builtin.pause:
-    seconds: 10
-  when:
-    - __acm_certificate_request is not skipped
-
 - name: Ensure aws certificate manager certificate resource records are available
   tags:
     - acm_certificate
