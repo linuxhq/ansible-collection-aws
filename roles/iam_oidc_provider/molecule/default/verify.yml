@@ -19,7 +19,7 @@
           - _query.open_id_connect_providers.0.url == _query._provider.url | regex_replace('^https://', '')
           - _query.open_id_connect_providers.0.client_id_list | sort == _query._provider.client_id_list | sort
           - _query.open_id_connect_providers.0.thumbprint_list | sort == _query._provider.thumbprint_list | sort
-          - _query.open_id_connect_providers.0.tags == {'Name': _query._provider.name}
+          - _query.open_id_connect_providers.0.tags == dict(Name=_query._provider.name)
       loop: "{{ __iam_oidc_provider_verify.results }}"
       loop_control:
         label: "{{ _query._provider.url }}"
