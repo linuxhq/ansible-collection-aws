@@ -1,0 +1,10 @@
+---
+trivial:
+  - acm_certificate role Molecule - generate the imported certificates and keys with ``openssl`` in ``prepare.yml`` on
+    each run instead of embedding certificates that expire on 2027-02-25, after which ACM would refuse to import them,
+    and verify that the generated certificates were imported.
+  - eks_cluster role Molecule - associate the KMS key with the existing unencrypted ``molecule-eks2`` cluster in the
+    update phase, alongside its version and endpoint updates, and verify its encryption configuration.
+  - ssm_document role Molecule verify - assert that the test documents are gone after the absent pass.
+  - wafv2_web_acl role Molecule verify - assert that the web ACLs and their log groups are gone after the absent pass.
+  - ssm_session role Molecule verify - assert that ``ssm_send_command`` returns its parameters and command ID unmasked.

@@ -20,6 +20,24 @@ def created_now():
     return datetime.now(timezone.utc)
 
 
+def settled_new_certificate(names, **overrides):
+    """Describe a new PENDING_VALIDATION certificate after ACM added every DNS validation resource record."""
+    return {
+        "Certificate": dict(
+            {
+                "CreatedAt": created_now(),
+                "DomainValidationOptions": [
+                    {"DomainName": name, "ResourceRecord": {"Name": f"_x.{name}."}, "ValidationMethod": "DNS"}
+                    for name in names
+                ],
+                "Status": "PENDING_VALIDATION",
+                "SubjectAlternativeNames": names,
+            },
+            **overrides,
+        )
+    }
+
+
 @pytest.fixture(autouse=True)
 def no_sleep():
     with patch.object(plugin.time, "sleep") as sleep:
@@ -29,6 +47,7 @@ def no_sleep():
 def test_sdk_validation_matches_used_parameters():
     client = Mock()
     client.request_certificate.return_value = {"CertificateArn": "arn:new"}
+    client.describe_certificate.return_value = settled_new_certificate(["example.com", "www.example.com"])
     module = FakeModule(
         {
             "domain_name": "example.com",
@@ -68,6 +87,7 @@ def test_sdk_validation_matches_used_parameters():
         ]
     }
     assert require.call_args_list[1].args[3] == {
+        "describe_certificate": ("CertificateArn",),
         "request_certificate": (
             "DomainName",
             "IdempotencyToken",
@@ -249,16 +269,19 @@ def test_reuses_the_newest_matching_dns_certificate():
 
 def test_replaces_candidate_that_is_no_longer_pending_or_issued():
     client = Mock()
-    client.describe_certificate.return_value = {
-        "Certificate": {
-            "CertificateArn": "arn:expired",
-            "CreatedAt": 1,
-            "DomainValidationOptions": [{"ValidationMethod": "DNS"}],
-            "Status": "EXPIRED",
-            "SubjectAlternativeNames": ["example.com"],
-            "Type": "AMAZON_ISSUED",
-        }
-    }
+    client.describe_certificate.side_effect = [
+        {
+            "Certificate": {
+                "CertificateArn": "arn:expired",
+                "CreatedAt": 1,
+                "DomainValidationOptions": [{"ValidationMethod": "DNS"}],
+                "Status": "EXPIRED",
+                "SubjectAlternativeNames": ["example.com"],
+                "Type": "AMAZON_ISSUED",
+            }
+        },
+        settled_new_certificate(["example.com"]),
+    ]
     client.request_certificate.return_value = {"CertificateArn": "arn:new"}
     module = FakeModule(
         {
@@ -1134,13 +1157,7 @@ def test_unchanged_reserved_tag_key_and_aws_value_are_accepted(check_mode):
 def test_supplied_token_certificate_not_yet_described_is_retried_and_not_treated_as_a_replay(no_sleep):
     # A new certificate can take a few seconds to be described.
     not_found = plugin.ClientError({"Error": {"Code": "ResourceNotFoundException"}}, "DescribeCertificate")
-    pending = {
-        "Certificate": {
-            "CreatedAt": created_now(),
-            "Status": "PENDING_VALIDATION",
-            "SubjectAlternativeNames": ["example.com", "www.example.com"],
-        }
-    }
+    pending = settled_new_certificate(["example.com", "www.example.com"])
     result, _query = run_token_request(not_found)
     assert isinstance(result, ModuleExit)
     assert result.values == {"changed": True, "certificate_arn": "arn:replayed"}
@@ -1168,3 +1185,89 @@ def test_supplied_token_certificate_not_yet_described_is_retried_and_not_treated
 
     assert raised.value.values == {"changed": True, "certificate_arn": "arn:new"}
     assert client.describe_certificate.call_count == 3
+
+
+def run_untokened_request(described):
+    client = Mock()
+    client.request_certificate.return_value = {"CertificateArn": "arn:new"}
+    client.describe_certificate.side_effect = described
+    module = FakeModule(
+        {
+            "domain_name": "example.com",
+            "idempotency_token": None,
+            "purge_tags": True,
+            "subject_alternative_names": ["www.example.com"],
+            "tags": None,
+        },
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]) as query,
+        pytest.raises((ModuleExit, ModuleFail)) as raised,
+    ):
+        plugin.main()
+
+    client.request_certificate.assert_called_once()
+    return raised.value, client, query
+
+
+@pytest.mark.parametrize(
+    ("status", "failure_reason", "detail"),
+    [
+        ("FAILED", "ADDITIONAL_VERIFICATION_REQUIRED", "FAILED (ADDITIONAL_VERIFICATION_REQUIRED)"),
+        ("VALIDATION_TIMED_OUT", None, "VALIDATION_TIMED_OUT"),
+    ],
+    ids=["failed", "timed-out"],
+)
+def test_omitted_token_unusable_new_certificate_fails_as_changed(status, failure_reason, detail):
+    # Live: a new certificate was PENDING_VALIDATION without a resource record 2 seconds after the request and
+    # FAILED (ADDITIONAL_VERIFICATION_REQUIRED) 4.5 seconds after it.
+    names = ["example.com", "www.example.com"]
+    unusable = settled_new_certificate(names, Status=status)
+    for option in unusable["Certificate"]["DomainValidationOptions"]:
+        del option["ResourceRecord"]
+
+    if failure_reason:
+        unusable["Certificate"]["FailureReason"] = failure_reason
+
+    pending = settled_new_certificate(names)
+    del pending["Certificate"]["DomainValidationOptions"][1]["ResourceRecord"]
+
+    result, client, query = run_untokened_request([pending, unusable])
+
+    assert isinstance(result, ModuleFail)
+    assert result.values == {
+        "changed": True,
+        "msg": "AWS Certificate Manager certificate arn:new is " + detail,
+        "certificate_arn": "arn:new",
+    }
+    assert client.describe_certificate.call_count == 2
+    # The certificate listing wait is skipped.
+    query.assert_called_once()
+
+
+def test_omitted_token_new_certificate_is_described_until_every_resource_record_is_set():
+    not_found = plugin.ClientError({"Error": {"Code": "ResourceNotFoundException"}}, "DescribeCertificate")
+    names = ["example.com", "www.example.com"]
+    pending = settled_new_certificate(names)
+    del pending["Certificate"]["DomainValidationOptions"][0]["ResourceRecord"]
+
+    result, client, _query = run_untokened_request([not_found, pending, settled_new_certificate(names)])
+
+    assert isinstance(result, ModuleExit)
+    assert result.values == {"changed": True, "certificate_arn": "arn:new"}
+    assert client.describe_certificate.call_count == 3
+
+
+def test_describe_requested_certificate_is_bounded(no_sleep):
+    pending = {
+        "Certificate": {"DomainValidationOptions": [{"ValidationMethod": "DNS"}], "Status": "PENDING_VALIDATION"}
+    }
+    client = Mock()
+    client.describe_certificate.return_value = pending
+
+    assert plugin.describe_requested_certificate(FakeModule({}), client, "arn:new") == pending["Certificate"]
+    assert client.describe_certificate.call_count == plugin.CERTIFICATE_LIST_ATTEMPTS
+    assert no_sleep.call_count == plugin.CERTIFICATE_LIST_ATTEMPTS - 1

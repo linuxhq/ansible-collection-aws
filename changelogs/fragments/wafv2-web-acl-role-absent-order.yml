@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - wafv2_web_acl role - delete the web ACL before its ``aws-waf-logs-`` log group. Before, the log group was deleted
+    first, so when AWS refused the web ACL delete (for example, while the web ACL was still associated with a
+    resource) the logs were already gone and the web ACL kept a logging configuration for a deleted log group.

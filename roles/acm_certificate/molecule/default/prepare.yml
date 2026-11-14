@@ -1,0 +1,34 @@
+---
+- name: Prepare
+  hosts: all
+  tasks:
+    - name: Ensure imported molecule certificate directory exists
+      ansible.builtin.file:
+        mode: '0700'
+        path: "{{ molecule_certificate_dir }}"
+        state: directory
+
+    # ACM imports only a certificate that is currently valid, so each run generates its own.
+    - name: Ensure imported molecule certificates are generated
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - req
+          - -x509
+          - -newkey
+          - rsa:2048
+          - -nodes
+          - -days
+          - '7'
+          - -subj
+          - "/CN={{ _domain_name }}"
+          - -keyout
+          - "{{ molecule_certificate_dir }}/{{ _domain_name }}.key"
+          - -out
+          - "{{ molecule_certificate_dir }}/{{ _domain_name }}.crt"
+        creates: "{{ molecule_certificate_dir }}/{{ _domain_name }}.crt"
+      loop: "{{ molecule_imported_domain_names }}"
+      loop_control:
+        label: "{{ _domain_name }}"
+        loop_var: _domain_name
+...

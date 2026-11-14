@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ssm_send_command - stop treating ``parameters`` as ``no_log``. Ansible masked every occurrence of a parameter value
+    across the whole result, so returned values such as ``command_id`` and ``timeout_seconds`` were partially masked.
+    Parameter values are now returned as AWS reports them; set ``no_log`` on the task when a parameter value is secret.
