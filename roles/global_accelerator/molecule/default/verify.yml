@@ -48,6 +48,19 @@
               selectattr('port_ranges.0.from_port', 'equalto', 443) |
               first }}"
 
+    - name: Ensure both accelerators are disabled and tagged, and accelerator 01 has no listeners
+      ansible.builtin.assert:
+        that:
+          - _global_accelerator_info_dict['molecule-global-accelerator-01'].listeners | length == 0
+          - _global_accelerator_info_dict[_accelerator.name].enabled is false
+          - _global_accelerator_info_dict[_accelerator.name].tags == __global_accelerator_tags
+      loop: "{{ global_accelerator_list_update }}"
+      loop_control:
+        label: "{{ _accelerator.name }}"
+        loop_var: _accelerator
+      vars:
+        __global_accelerator_tags: "{{ _accelerator.tags | combine({'Name': _accelerator.name}) }}"
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_security_group_list:
@@ -84,6 +97,19 @@
       loop_control:
         label: "{{ _verify }}"
         loop_var: _verify
+
+    - name: Ensure information about remaining aws global accelerators is gathered
+      linuxhq.aws.global_accelerator_info:
+        validate_certs: true
+      register: __global_accelerator_absent_query
+
+    - name: Ensure both accelerators are absent
+      ansible.builtin.assert:
+        that:
+          - __global_accelerator_absent_query.accelerators |
+              map(attribute='name') |
+              intersect(global_accelerator_list_update | map(attribute='name')) |
+              length == 0
 
     - name: Ensure information about leftover aws virtual private cloud nat gateways is gathered
       amazon.aws.ec2_vpc_nat_gateway_info:

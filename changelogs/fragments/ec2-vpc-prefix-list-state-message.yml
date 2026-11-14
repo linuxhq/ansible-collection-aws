@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ec2_vpc_prefix_list - include EC2's C(StateMessage), which names the resources that block a change, when a wait
+    ends in a failed state and when an existing prefix list failed to create. A failed wait previously reported only
+    the waiter's terminal state.

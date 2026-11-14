@@ -1,0 +1,10 @@
+---
+minor_changes:
+  - ses_identity role - pass ``validate_certs=true`` to the ``amazon.aws.route53`` DMARC, DKIM, and SPF record tasks,
+    like the role's other AWS tasks, so TLS certificate validation cannot be turned off for them through
+    ``module_defaults`` or the environment.
+  - s3_bucket_info role - pass ``validate_certs=true`` to the ``amazon.aws.s3_bucket_info`` task, so TLS certificate
+    validation cannot be turned off for it through ``module_defaults`` or the environment.
+  - ssm_proxy role - pass ``validate_certs=true`` to the ``amazon.aws.ec2_instance_info`` task, like the role's other
+    AWS task, so TLS certificate validation cannot be turned off for it through ``module_defaults`` or the
+    environment.

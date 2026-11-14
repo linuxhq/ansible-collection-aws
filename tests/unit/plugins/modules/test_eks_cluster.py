@@ -852,7 +852,7 @@ def test_check_mode_predicts_changes_without_waiting_for_active_cluster(status, 
     client.tag_resource.assert_not_called()
 
 
-def run_present(module, described, client=None):
+def run_present(module, described, client=None, wait_for_update=None):
     """Run ensure_present with describe results and waits mocked; return the client and the result."""
     client = client or Mock()
     client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
@@ -862,7 +862,7 @@ def run_present(module, described, client=None):
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "require_nested_request_parameters"),
         patch.object(plugin, "wait_for_cluster"),
-        patch.object(plugin, "wait_for_update"),
+        patch.object(plugin, "wait_for_update", wait_for_update or Mock()),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -1371,6 +1371,94 @@ def test_defaulted_encryption_resources_still_detect_a_different_configuration(e
         plugin.ensure_present(Mock(), module)
 
     assert raised.value.values["msg"] == "Cannot modify encryption_config for existing EKS cluster example"
+
+
+UNENCRYPTED_CLUSTER = {"name": "example", "arn": "arn:example", "status": "ACTIVE", "deletionProtection": False}
+ENCRYPTION_PARAMS = {"encryption_config": [{"provider": {"key_arn": "arn:key"}}]}
+
+
+@pytest.mark.parametrize("wait", [True, False])
+def test_encryption_is_associated_with_an_unencrypted_cluster(wait):
+    client = Mock(associate_encryption_config=Mock(return_value={"update": {"id": "update-3", "status": "InProgress"}}))
+    described = [UNENCRYPTED_CLUSTER, dict(UNENCRYPTED_CLUSTER, encryptionConfig=STORED_ENCRYPTION)]
+
+    wait_for_update = Mock()
+    client, real = run_present(
+        FakeModule(eks_params(wait=wait, **ENCRYPTION_PARAMS)), described, client, wait_for_update
+    )
+
+    check_client, check = run_present(
+        FakeModule(eks_params(wait=wait, **ENCRYPTION_PARAMS), check_mode=True), [UNENCRYPTED_CLUSTER]
+    )
+
+    client.associate_encryption_config.assert_called_once_with(
+        clusterName="example", encryptionConfig=STORED_ENCRYPTION
+    )
+    client.update_cluster_config.assert_not_called()
+    assert real["changed"] is True
+    assert real["cluster"]["encryption_config"] == [{"provider": {"key_arn": "arn:key"}, "resources": ["secrets"]}]
+    if wait:
+        wait_for_update.assert_called_once_with(client, ANY, "update-3", changed=True, deadline=ANY)
+
+    assert check_client.mock_calls == []
+    assert check["changed"] is True
+    assert check["cluster"]["encryption_config"] == real["cluster"]["encryption_config"]
+
+
+@pytest.mark.parametrize("wait", [True, False])
+def test_encryption_association_is_waited_on_before_the_next_update(wait):
+    client = Mock(associate_encryption_config=Mock(return_value={"update": {"id": "update-3", "status": "InProgress"}}))
+    events = Mock()
+    client.attach_mock(events, "events")
+    params = eks_params(wait=wait, deletion_protection=True, **ENCRYPTION_PARAMS)
+
+    wait_for_update = Mock(side_effect=lambda *args, **kwargs: events.wait(args[2]))
+    client, result = run_present(
+        FakeModule(params), [UNENCRYPTED_CLUSTER, UNENCRYPTED_CLUSTER], client, wait_for_update
+    )
+
+    calls = [entry[0] for entry in client.mock_calls]
+    assert calls[:3] == ["associate_encryption_config", "events.wait", "update_cluster_config"]
+    client.update_cluster_config.assert_called_once_with(name="example", deletionProtection=True)
+    assert result["changed"] is True
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_encryption_association_support_is_checked_before_any_update(check_mode):
+    client = Mock()
+    module = FakeModule(eks_params(deletion_protection=True, **ENCRYPTION_PARAMS), check_mode=check_mode)
+
+    def require(module, client, service, methods, changed=False):
+        if "associate_encryption_config" in methods:
+            module.fail_json(changed=changed, msg="unsupported")
+
+    with (
+        patch.object(plugin, "describe_cluster", return_value=UNENCRYPTED_CLUSTER),
+        patch.object(plugin, "require_client_methods", side_effect=require),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit if check_mode else ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is check_mode
+    assert client.mock_calls == []
+
+
+def test_rejected_encryption_association_reports_unchanged():
+    error = plugin.ClientError({"Error": {"Code": "InvalidParameterException", "Message": "bad key"}}, "Associate")
+    client = Mock(associate_encryption_config=Mock(side_effect=error))
+    module = FakeModule(eks_params(deletion_protection=True, **ENCRYPTION_PARAMS))
+    with (
+        patch.object(plugin, "describe_cluster", return_value=UNENCRYPTED_CLUSTER),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["msg"].startswith("Unable to associate encryption with EKS cluster example")
+    client.update_cluster_config.assert_not_called()
 
 
 @pytest.mark.parametrize(

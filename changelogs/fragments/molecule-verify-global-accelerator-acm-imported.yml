@@ -1,0 +1,6 @@
+---
+trivial:
+  - global_accelerator role Molecule verify - assert that accelerator 01 has no listeners after ``listeners=[]``,
+    that both accelerators are disabled with their converged tags, and that both are gone after the absent pass.
+  - acm_certificate role Molecule verify - assert that each imported certificate exists after converge and that every
+    certificate, imported or Amazon issued, is gone after teardown.

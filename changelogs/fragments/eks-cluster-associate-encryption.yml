@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - eks_cluster - add O(encryption_config) to an existing cluster that has no encryption configuration with
+    AssociateEncryptionConfig, instead of failing. The module still fails before any change when the requested
+    configuration differs from an existing one. Adding encryption to an existing cluster requires botocore
+    C(1.20.17) or later.
