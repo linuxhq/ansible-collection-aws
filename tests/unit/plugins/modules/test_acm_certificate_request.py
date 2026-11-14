@@ -487,7 +487,7 @@ def run_token_request(described):
         plugin.main()
 
     client.request_certificate.assert_called_once()
-    client.describe_certificate.assert_called_once_with(CertificateArn="arn:replayed", aws_retry=True)
+    client.describe_certificate.assert_called_with(CertificateArn="arn:replayed", aws_retry=True)
     assert require.call_args_list[1].args[3]["describe_certificate"] == ("CertificateArn",)
     return raised.value, query
 
@@ -501,12 +501,8 @@ def run_token_request(described):
             {"Status": "PENDING_VALIDATION", "SubjectAlternativeNames": ["example.com"]},
             "which has other domain names",
         ),
-        (
-            plugin.ClientError({"Error": {"Code": "ResourceNotFoundException"}}, "DescribeCertificate"),
-            "which AWS Certificate Manager no longer describes",
-        ),
     ],
-    ids=["failed", "other-names", "missing"],
+    ids=["failed", "other-names"],
 )
 def test_supplied_token_returning_a_certificate_that_cannot_be_reused_fails_without_changes(described, reason):
     result, query = run_token_request(described)
@@ -983,3 +979,38 @@ def test_unchanged_reserved_tag_key_and_aws_value_are_accepted(check_mode):
         client.add_tags_to_certificate.assert_not_called()
     else:
         client.add_tags_to_certificate.assert_called_once()
+
+
+def test_supplied_token_certificate_not_yet_described_is_retried_and_not_treated_as_a_replay(no_sleep):
+    # A new certificate can take a few seconds to be described.
+    not_found = plugin.ClientError({"Error": {"Code": "ResourceNotFoundException"}}, "DescribeCertificate")
+    pending = {
+        "Certificate": {"Status": "PENDING_VALIDATION", "SubjectAlternativeNames": ["example.com", "www.example.com"]}
+    }
+    result, _query = run_token_request(not_found)
+    assert isinstance(result, ModuleExit)
+    assert result.values == {"changed": True, "certificate_arn": "arn:replayed"}
+
+    client = Mock()
+    client.request_certificate.return_value = {"CertificateArn": "arn:new"}
+    client.describe_certificate.side_effect = [not_found, not_found, pending]
+    module = FakeModule(
+        {
+            "domain_name": "example.com",
+            "idempotency_token": "Token_1",
+            "purge_tags": True,
+            "subject_alternative_names": ["www.example.com"],
+            "tags": None,
+        },
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"changed": True, "certificate_arn": "arn:new"}
+    assert client.describe_certificate.call_count == 3

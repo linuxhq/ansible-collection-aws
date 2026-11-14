@@ -289,37 +289,46 @@ def request_certificate(module, client, domain_name, idempotency_token, subject_
 
 
 def require_requested_certificate(module, client, certificate_arn, idempotency_token, desired_names):
-    """Fail when a supplied token returned a certificate the module would not reuse.
+    """Fail when a supplied token returned an existing certificate the module would not reuse.
 
     Live: ACM answers a request that repeats a token and the requested names within one hour with the certificate the
     earlier request created while it exists, even after it FAILED; it requests a new certificate after a delete, or
-    for other names.
+    for other names. A new certificate can take a few seconds to be described, so a missing one is not a replay.
     """
-    try:
-        response = client.describe_certificate(CertificateArn=certificate_arn, aws_retry=True)
-    except is_boto3_error_code("ResourceNotFoundException"):
-        response = {}
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e,
-            changed=True,
-            msg=f"Unable to describe AWS Certificate Manager certificate {certificate_arn}",
-        )
+    response = None
+    for attempt in range(CERTIFICATE_LIST_ATTEMPTS):
+        if attempt:
+            time.sleep(CERTIFICATE_LIST_DELAY)
+
+        try:
+            response = client.describe_certificate(CertificateArn=certificate_arn, aws_retry=True)
+            break
+        except is_boto3_error_code("ResourceNotFoundException"):
+            continue
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(
+                e,
+                changed=True,
+                msg=f"Unable to describe AWS Certificate Manager certificate {certificate_arn}",
+            )
+
+    if response is None:
+        # The listing wait that follows warns when ACM never shows the certificate.
+        return
 
     certificate = response.get("Certificate") if isinstance(response, dict) else None
-    certificate = certificate if isinstance(certificate, dict) else {}
-    status = certificate.get("Status")
+    if not isinstance(certificate, dict) or not certificate.get("Status"):
+        module.fail_json(
+            changed=True,
+            msg=f"AWS Certificate Manager did not return a status for certificate {certificate_arn}",
+        )
+
+    status = certificate["Status"]
     names = {name.lower() for name in certificate.get("SubjectAlternativeNames") or [] if isinstance(name, str)}
     if status in ("PENDING_VALIDATION", "ISSUED") and names == desired_names:
         return
 
-    if status is None:
-        reason = "which AWS Certificate Manager no longer describes"
-    elif names != desired_names:
-        reason = "which has other domain names"
-    else:
-        reason = f"which is {status}"
-
+    reason = "which has other domain names" if names != desired_names else f"which is {status}"
     module.fail_json(
         msg=(
             f"idempotency_token {idempotency_token} was already used to request AWS Certificate Manager certificate "
