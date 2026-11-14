@@ -564,14 +564,11 @@ def test_supplied_token_returning_a_usable_certificate_is_reported_as_requested(
     ],
     ids=["after-request", "within-clock-skew"],
 )
-@pytest.mark.parametrize("status", ["FAILED", "VALIDATION_TIMED_OUT", "PENDING_VALIDATION"])
-def test_supplied_token_certificate_created_by_the_request_is_reported_as_requested(created_at, status):
-    # Live: a new certificate went FAILED (ADDITIONAL_VERIFICATION_REQUIRED) 4 seconds after it was requested.
+def test_supplied_token_pending_certificate_created_by_the_request_is_reported_as_requested(created_at):
     result, query = run_token_request(
         {
             "CreatedAt": created_at(),
-            "FailureReason": "ADDITIONAL_VERIFICATION_REQUIRED",
-            "Status": status,
+            "Status": "PENDING_VALIDATION",
             "SubjectAlternativeNames": ["example.com", "www.example.com"],
         }
     )
@@ -580,6 +577,49 @@ def test_supplied_token_certificate_created_by_the_request_is_reported_as_reques
     assert result.values == {"changed": True, "certificate_arn": "arn:replayed"}
     # The certificate listing wait runs.
     assert query.call_count == 2 + plugin.CERTIFICATE_LIST_ATTEMPTS
+
+
+@pytest.mark.parametrize(
+    "created_at",
+    [
+        created_now,
+        lambda: datetime.now(timezone.utc) - plugin.REQUEST_CLOCK_SKEW + timedelta(seconds=1),
+    ],
+    ids=["after-request", "within-clock-skew"],
+)
+@pytest.mark.parametrize(
+    ("status", "failure_reason", "detail"),
+    [
+        ("FAILED", "ADDITIONAL_VERIFICATION_REQUIRED", "FAILED (ADDITIONAL_VERIFICATION_REQUIRED)"),
+        ("VALIDATION_TIMED_OUT", None, "VALIDATION_TIMED_OUT"),
+    ],
+    ids=["failed", "timed-out"],
+)
+def test_supplied_token_unusable_certificate_created_by_the_request_fails_as_changed(
+    created_at, status, failure_reason, detail
+):
+    # Live: a new certificate went FAILED (ADDITIONAL_VERIFICATION_REQUIRED) 4 seconds after it was requested. A
+    # concurrent request with the same token can also return it, so it is not reported as a reused token.
+    described = {
+        "CreatedAt": created_at(),
+        "Status": status,
+        "SubjectAlternativeNames": ["example.com", "www.example.com"],
+    }
+    if failure_reason:
+        described["FailureReason"] = failure_reason
+
+    result, query = run_token_request(described)
+
+    assert isinstance(result, ModuleFail)
+    assert result.values == {
+        "changed": True,
+        "msg": (
+            "AWS Certificate Manager certificate arn:replayed requested with idempotency_token Token_1 is " + detail
+        ),
+        "certificate_arn": "arn:replayed",
+    }
+    # The certificate listing wait is skipped.
+    assert query.call_count == 2
 
 
 @pytest.mark.parametrize("domain_name", ["example.com", "EXAMPLE.com"])

@@ -45,11 +45,12 @@ options:
         earlier request created while that certificate exists, even when it is no longer C(PENDING_VALIDATION) or
         C(ISSUED), for example C(FAILED). The module then fails without requesting a certificate; use a new token or
         omit it.
-      - A certificate that ACM created during this request is never treated as a replay; it is returned with
-        RV(certificate_arn) and C(changed=true) even when ACM has already set it to another status, for example
-        C(FAILED). The module detects a replay when ACM listed the returned certificate, in any status, before the
-        request, or when the certificate was created more than a few seconds before the request, so the clocks of
-        the managed node and AWS must agree to within a few seconds.
+      - A certificate that ACM created during this request is never treated as a replay. When ACM has already set
+        it to a status other than C(PENDING_VALIDATION) or C(ISSUED), for example C(FAILED), the module fails with
+        C(changed=true), RV(certificate_arn), and the status and failure reason. The module detects a replay when
+        ACM listed the returned certificate, in any status, before the request, or when the certificate was created
+        more than a few seconds before the request, so the clocks of the managed node and AWS must agree to within a
+        few seconds.
       - ACM requires a token of 1 to 32 ASCII word characters.
       - This option is only used when requesting a certificate.
     type: str
@@ -376,14 +377,22 @@ def require_requested_certificate(
             certificate_arn=certificate_arn,
         )
 
-    if certificate_arn not in listed_arns and created_at >= requested_at - REQUEST_CLOCK_SKEW:
-        # This request created the certificate.
-        return
-
     status = certificate["Status"]
     names = {name.lower() for name in certificate.get("SubjectAlternativeNames") or [] if isinstance(name, str)}
     if status in ("PENDING_VALIDATION", "ISSUED") and names == desired_names:
         return
+
+    if certificate_arn not in listed_arns and created_at >= requested_at - REQUEST_CLOCK_SKEW:
+        # This request, or a concurrent one with the same token, created the certificate.
+        failure_reason = certificate.get("FailureReason")
+        module.fail_json(
+            changed=True,
+            msg=(
+                f"AWS Certificate Manager certificate {certificate_arn} requested with idempotency_token "
+                f"{idempotency_token} is {status}" + (f" ({failure_reason})" if failure_reason else "")
+            ),
+            certificate_arn=certificate_arn,
+        )
 
     reason = "which has other domain names" if names != desired_names else f"which is {status}"
     module.fail_json(
