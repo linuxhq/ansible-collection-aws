@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - eks_cluster - fail before any AWS change, also in check mode, when a ``remote_network_config`` node or pod network
+    CIDR block is not in canonical form or appears more than once in its list, instead of applying earlier updates
+    before EKS rejects the remote network configuration.

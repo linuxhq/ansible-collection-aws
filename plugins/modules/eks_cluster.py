@@ -222,7 +222,9 @@ options:
             description:
               - The CIDR blocks of the remote node network.
               - This must contain at least one CIDR block, and entries must not be empty.
-              - This must contain at most 15 distinct CIDR blocks.
+              - Each CIDR block must be in canonical form, for example V(10.80.0.0/16) rather than V(10.80.0.5/16),
+                and must appear only once among the remote node networks.
+              - This must contain at most 15 CIDR blocks.
             elements: str
             required: true
             type: list
@@ -237,7 +239,9 @@ options:
             description:
               - The CIDR blocks of the remote pod network.
               - This must contain at least one CIDR block, and entries must not be empty.
-              - This must contain at most 15 distinct CIDR blocks.
+              - Each CIDR block must be in canonical form, for example V(10.81.0.0/16) rather than V(10.81.0.5/16),
+                and must appear only once among the remote pod networks.
+              - This must contain at most 15 CIDR blocks.
             elements: str
             required: true
             type: list
@@ -2258,9 +2262,33 @@ def main():
                 )
 
             # EKS rejects more than 15 per cluster, but check mode would predict success, and on an update they reach
-            # EKS after other updates. Repeats are counted once, as the cluster comparison ignores them.
+            # EKS after other updates.
             if len({cidr for entry in entries for cidr in entry["cidrs"]}) > 15:
                 module.fail_json(msg=f"remote_network_config.{network}[].cidrs must contain at most 15 CIDR blocks")
+
+            # EKS rejects a CIDR block that is not in canonical form or that repeats another one in the same list, but
+            # check mode would predict success, and on an update they reach EKS after other updates.
+            seen = set()
+            for cidr in (cidr for entry in entries for cidr in entry["cidrs"]):
+                try:
+                    ipaddress.ip_network(cidr)
+                except ValueError:
+                    try:
+                        canonical = ipaddress.ip_network(cidr, strict=False)
+                    except ValueError as e:
+                        module.fail_json(
+                            msg=f"remote_network_config.{network}[].cidrs must contain valid CIDR blocks: {e}"
+                        )
+
+                    module.fail_json(
+                        msg=f"remote_network_config.{network}[].cidrs must contain CIDR blocks in canonical form: "
+                        f"{cidr} should be {canonical}"
+                    )
+
+                if cidr in seen:
+                    module.fail_json(msg=f"remote_network_config.{network}[].cidrs must not repeat {cidr}")
+
+                seen.add(cidr)
 
         # EKS rejects these, but check mode would predict success, and a blank network entry or version reaches EKS
         # after other updates.
