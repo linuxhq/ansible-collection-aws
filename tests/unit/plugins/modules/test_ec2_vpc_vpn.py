@@ -2001,7 +2001,8 @@ def test_region_rejecting_a_tunnel_bandwidth_change_leaves_the_connection_unchan
     assert [call[0] for call in client.mock_calls] == ["modify_vpn_connection_options"]
 
 
-def test_unsupported_tunnel_bandwidth_update_fails_before_any_write(params, transit_connection, sdk_checks):
+@pytest.mark.parametrize("check_mode", [True, False])
+def test_unsupported_tunnel_bandwidth_update_fails_before_any_write(params, transit_connection, sdk_checks, check_mode):
     # botocore 1.40.71 to 1.43.2 can create with TunnelBandwidth but cannot send it to ModifyVpnConnectionOptions.
     params.update(tunnel_bandwidth="large", tags={"Env": "test"})
 
@@ -2012,9 +2013,33 @@ def test_unsupported_tunnel_bandwidth_update_fails_before_any_write(params, tran
     sdk_checks.side_effect = require
     client = Mock()
     with pytest.raises(ModuleFail) as raised:
-        plugin.ensure_present(client, FakeModule(params), transit_connection)
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), transit_connection)
 
+    # Check mode fails where the real run would instead of predicting a change.
     assert raised.value.values == {"changed": False, "msg": "Unsupported TunnelBandwidth"}
+    assert client.mock_calls == []
+
+
+def test_check_mode_create_runs_sdk_checks(params, sdk_checks):
+    params.update(customer_gateway_id="cgw-123", vpn_gateway_id="vgw-123", static_only=True, routes=["10.0.0.0/8"])
+    sdk_checks.side_effect = ModuleFail({"changed": False, "msg": "Unsupported"})
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.create_connection(client, FakeModule(params, check_mode=True))
+
+    assert raised.value.values == {"changed": False, "msg": "Unsupported"}
+    assert set(sdk_checks.call_args.args[3]) == {"create_vpn_connection", "create_vpn_connection_route"}
+    assert client.mock_calls == []
+
+
+def test_check_mode_delete_runs_sdk_checks(params, connection, sdk_checks):
+    sdk_checks.side_effect = ModuleFail({"changed": False, "msg": "Unsupported"})
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_absent(client, FakeModule(params, check_mode=True), connection)
+
+    assert raised.value.values == {"changed": False, "msg": "Unsupported"}
+    sdk_checks.assert_called_once_with(ANY, client, "EC2", {"delete_vpn_connection": ("VpnConnectionId",)})
     assert client.mock_calls == []
 
 

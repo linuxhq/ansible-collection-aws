@@ -1621,15 +1621,16 @@ def create_connection(client, module):
         }
     )
 
-    if module.check_mode:
-        module.exit_json(changed=True, vpn_connection={})
-
     methods = {"create_vpn_connection": tuple(request)}
     if module.params["routes"]:
         # Routes are added after creation, so their support is checked before creating anything.
         methods["create_vpn_connection_route"] = ("DestinationCidrBlock", "VpnConnectionId")
 
+    # Check mode fails where the real run would, before the create.
     require_client_methods(module, client, "EC2", methods)
+    if module.check_mode:
+        module.exit_json(changed=True, vpn_connection={})
+
     try:
         response = client.create_vpn_connection(**request, aws_retry=True)
     except (BotoCoreError, ClientError) as e:
@@ -1712,10 +1713,9 @@ def ensure_present(client, module, connection):
 
     updated = bool(tunnels or options or tags_to_set or tags_to_remove or add_routes or remove_routes)
     changed |= updated
-    if module.check_mode:
-        module.exit_json(changed=changed, vpn_connection=normalize_connection(connection))
 
-    # Every write is checked before the first one, so an older botocore fails without modifying anything.
+    # Every write is checked before the first one, so an older botocore fails without modifying anything, and check
+    # mode fails where the real run would.
     methods = {}
     if options:
         methods["modify_vpn_connection_options"] = ("VpnConnectionId",) + tuple(options)
@@ -1743,6 +1743,8 @@ def ensure_present(client, module, connection):
 
     methods.update(ec2_tag_methods(tags_to_set, tags_to_remove))
     require_client_methods(module, client, "EC2", methods, changed=mutated)
+    if module.check_mode:
+        module.exit_json(changed=changed, vpn_connection=normalize_connection(connection))
 
     pending_routes = {
         route["DestinationCidrBlock"]
@@ -1900,6 +1902,10 @@ def ensure_absent(client, module, connection):
         module.exit_json(changed=False, vpn_connection={})
 
     changed = connection["State"] != "deleting"
+    if changed:
+        # Check mode fails where the real run would, before the delete.
+        require_client_methods(module, client, "EC2", {"delete_vpn_connection": ("VpnConnectionId",)})
+
     if module.check_mode:
         module.exit_json(changed=changed, vpn_connection={})
 
@@ -1909,7 +1915,6 @@ def ensure_absent(client, module, connection):
         if connection["State"] == "pending":
             wait_for_connection(client, module, connection_id)
 
-        require_client_methods(module, client, "EC2", {"delete_vpn_connection": ("VpnConnectionId",)})
         try:
             client.delete_vpn_connection(VpnConnectionId=connection_id, aws_retry=True)
         except is_boto3_error_code("InvalidVpnConnectionID.NotFound"):

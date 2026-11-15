@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - ec2_vpc_vpn - check mode now runs the SDK support checks of the writes it predicts, so an installed botocore that
+    cannot change O(tunnel_bandwidth) on an existing connection fails in check mode as the real run does, instead
+    of reporting a change.
+...
