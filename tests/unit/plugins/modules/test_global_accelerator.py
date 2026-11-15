@@ -1231,6 +1231,7 @@ def test_listener_creation_without_purge_leaves_unlisted_listeners_unchanged(che
     }
     with (
         patch.object(plugin, "get_listeners", return_value=[current]),
+        patch.object(plugin, "get_endpoint_groups", return_value=[]),
         patch.object(plugin, "wait_for_accelerator"),
         patch.object(plugin, "delete_listener") as delete,
     ):
@@ -1343,6 +1344,7 @@ def test_override_endpoint_port_outside_retained_listeners_is_accepted():
         patch.object(plugin, "get_accelerator", return_value=deployed_accelerator()),
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "get_listeners", return_value=[current]) as get_listeners,
+        patch.object(plugin, "get_endpoint_groups", return_value=[]),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(Mock(), module)
@@ -1350,6 +1352,110 @@ def test_override_endpoint_port_outside_retained_listeners_is_accepted():
     assert raised.value.values["changed"] is True
     # The listeners listed before the first write are reused for the reconciliation.
     get_listeners.assert_called_once()
+
+
+def run_retained_port_override_case(module, client):
+    """Run ensure_present on a deployed accelerator whose retained listener arn:a (TCP 80) stores override 80->8080 in
+    us-east-1."""
+    endpoint_groups = port_override_listener_groups({"arn:a": (80, [8080])})
+    with (
+        patch.object(plugin, "get_accelerator", return_value=deployed_accelerator()),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_listeners", return_value=[review_listener("arn:a", 80, 80)]),
+        patch.object(
+            plugin,
+            "get_endpoint_groups",
+            side_effect=lambda client, module, listener_arn, changed=False: endpoint_groups.get(listener_arn, []),
+        ),
+        patch.object(plugin, "wait_for_accelerator"),
+    ):
+        plugin.ensure_present(client, module)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_listener_ports_including_a_retained_port_override_endpoint_port_fail_before_any_write(check_mode):
+    # Live: CreateListener rejects port ranges that include the endpoint port of a stored port override
+    # (InvalidPortRangeException "already in port overrides"), which a real run reaches only after updating the
+    # accelerator and creating the listener for port 443.
+    listeners = [override_listener("TCP", [(443, 443)]), override_listener("TCP", [(8080, 8080)])]
+    module = FakeModule(
+        accelerator_params(enabled=False, listeners=listeners, purge_listeners=False), check_mode=check_mode
+    )
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        run_retained_port_override_case(module, client)
+
+    assert raised.value.values == {
+        "changed": False,
+        "msg": (
+            "Unable to update AWS Global Accelerator listeners: desired ports include port override endpoint ports "
+            "8080 of retained listener arn:a"
+        ),
+    }
+    client.update_accelerator.assert_not_called()
+    client.create_listener.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_listener_reconciliation_checks_retained_port_overrides_before_any_listener_write(check_mode):
+    endpoint_groups = port_override_listener_groups({"arn:a": (80, [8080])})
+    module = FakeModule(
+        {
+            "listeners": [review_desired(443, 443), review_desired(8080, 8080)],
+            "purge_endpoint_groups": True,
+            "purge_listeners": False,
+        },
+        check_mode=check_mode,
+    )
+    with pytest.raises(ModuleFail) as raised:
+        run_listener_writes_against_port_overrides(module, [review_listener("arn:a", 80, 80)], endpoint_groups)
+
+    # The harness raises the AWS rejection on the second CreateListener, after the first one.
+    assert raised.value.values["changed"] is False
+    assert "8080 of retained listener arn:a" in raised.value.values["msg"]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_override_endpoint_port_of_a_retained_port_override_fails_before_any_write(check_mode):
+    # Live: Create/UpdateEndpointGroup reject an endpoint port another port override in the region uses, whichever
+    # listener it belongs to, which a real run reaches only after updating the accelerator and creating the listener.
+    listeners = [override_listener("TCP", [(443, 443)], {"us-east-1": [(443, 8080)]})]
+    module = FakeModule(
+        accelerator_params(enabled=False, listeners=listeners, purge_listeners=False), check_mode=check_mode
+    )
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        run_retained_port_override_case(module, client)
+
+    assert raised.value.values == {
+        "changed": False,
+        "msg": (
+            "Unable to update AWS Global Accelerator endpoint groups: port override endpoint ports 8080 in us-east-1 "
+            "are used by port overrides of retained listener arn:a"
+        ),
+    }
+    client.update_accelerator.assert_not_called()
+    client.create_listener.assert_not_called()
+    client.create_endpoint_group.assert_not_called()
+
+
+def test_override_endpoint_port_of_a_retained_port_override_in_another_region_is_accepted():
+    listeners = [override_listener("TCP", [(443, 443)], {"us-west-2": [(443, 8080)]})]
+    module = FakeModule(accelerator_params(listeners=listeners, purge_listeners=False), check_mode=True)
+    with pytest.raises(ModuleExit) as raised:
+        run_retained_port_override_case(module, Mock())
+
+    assert raised.value.values["changed"] is True
+
+
+def test_retained_endpoint_groups_are_listed_only_for_port_writes():
+    # A run that writes no listener ports or port overrides leaves the retained listeners' endpoint groups unlisted.
+    module = FakeModule({"listeners": [review_desired(443, 443)], "purge_listeners": False})
+    current = [review_listener("arn:a", 80, 80), review_listener("arn:b", 443, 443)]
+    with patch.object(plugin, "get_endpoint_groups") as get_endpoint_groups:
+        plugin.require_compatible_retained_listeners(Mock(), module, current)
+
+    get_endpoint_groups.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

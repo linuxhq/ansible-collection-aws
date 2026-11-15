@@ -30,7 +30,8 @@ description:
   - When O(purge_listeners=false), remaining entries always create new
     listeners and existing listeners not present in O(listeners) are left
     unchanged; the module fails before any listener change when a new
-    listener's ports overlap one of those existing listeners.
+    listener's ports overlap one of those existing listeners, or include the
+    endpoint port of a port override stored on one of their endpoint groups.
   - Endpoint groups are identified by
     O(listeners[].endpoint_groups[].endpoint_group_region), which AWS keeps
     unique per listener, so an entry updates the existing endpoint group for
@@ -1882,13 +1883,14 @@ def endpoint_port_release_order(module, plans, changed=False):
     return order
 
 
-def require_compatible_retained_listeners(module, current_listeners, changed=False):
+def require_compatible_retained_listeners(client, module, current_listeners, changed=False):
     """Fail when a listener purge_listeners=false keeps would make AWS reject a requested listener or endpoint group.
 
     changed reports whether the accelerator was already modified, for failure results.
     """
     matched, updates, creates = reconcile_listeners(module, current_listeners)[:3]
     desired_changes = [desired for current, desired in updates] + creates
+    retained = [current for current, desired in matched if desired is None]
     for current, unused_desired in matched:
         if any(listeners_overlap(current, desired) for desired in desired_changes):
             module.fail_json(
@@ -1899,16 +1901,15 @@ def require_compatible_retained_listeners(module, current_listeners, changed=Fal
 
     # Live: Create/UpdateEndpointGroup reject an endpoint port within any listener's port ranges, of either protocol.
     # main() checks the requested listeners' own port ranges before any AWS call.
-    endpoint_ports = sorted(
-        {
-            port_override["endpoint_port"]
-            for desired in [desired for current, desired in matched + updates] + creates
-            if desired is not None
-            for endpoint_group in desired["endpoint_groups"] or []
-            for port_override in endpoint_group.get("port_overrides") or []
-        }
-    )
-    for current in [current for current, desired in matched if desired is None]:
+    requested_ports = {
+        (endpoint_group["endpoint_group_region"], port_override["endpoint_port"])
+        for desired in [desired for current, desired in matched + updates] + creates
+        if desired is not None
+        for endpoint_group in desired["endpoint_groups"] or []
+        for port_override in endpoint_group.get("port_overrides") or []
+    }
+    endpoint_ports = sorted({port for region, port in requested_ports})
+    for current in retained:
         blocked = [str(port) for port in endpoint_ports if port_in_ranges(port, current["port_ranges"])]
         if blocked:
             module.fail_json(
@@ -1919,18 +1920,55 @@ def require_compatible_retained_listeners(module, current_listeners, changed=Fal
                 ),
             )
 
+    # Live: Create/UpdateListener reject port ranges that include the endpoint port of any stored port override, and
+    # Create/UpdateEndpointGroup reject an endpoint port another port override in the region uses. The stored
+    # overrides of retained listeners are listed only when this run writes listener ports or port overrides.
+    written_port_ranges = [port_range for desired in desired_changes for port_range in desired["port_ranges"]]
+    if not written_port_ranges and not requested_ports:
+        return
+
+    for current in retained:
+        stored = {
+            (endpoint_group["endpoint_group_region"], port_override["endpoint_port"])
+            for endpoint_group in get_endpoint_groups(client, module, current["listener_arn"], changed=changed)
+            for port_override in endpoint_group.get("port_overrides") or []
+        }
+        blocked = sorted({port for region, port in stored if port_in_ranges(port, written_port_ranges)})
+        if blocked:
+            module.fail_json(
+                changed=changed,
+                msg=(
+                    "Unable to update AWS Global Accelerator listeners: desired ports include port override endpoint "
+                    f"ports {', '.join(map(str, blocked))} of retained listener {current['listener_arn']}"
+                ),
+            )
+
+        taken = [
+            f"{port} in {region}" for region, port in sorted(stored & requested_ports, key=lambda item: item[::-1])
+        ]
+        if taken:
+            module.fail_json(
+                changed=changed,
+                msg=(
+                    "Unable to update AWS Global Accelerator endpoint groups: port override endpoint ports "
+                    f"{', '.join(taken)} are used by port overrides of retained listener {current['listener_arn']}"
+                ),
+            )
+
 
 def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=None, current_listeners=None):
     """Reconcile listeners; mutated reports earlier modifications, for failure results.
 
-    current_listeners holds the accelerator's listeners when the caller already listed them.
+    current_listeners holds the accelerator's listeners when the caller already listed them and checked them with
+    require_compatible_retained_listeners.
     """
     if current_listeners is None:
         current_listeners = []
         if accelerator_arn is not None:
             current_listeners = get_listeners(client, module, accelerator_arn, changed=mutated)
 
-    require_compatible_retained_listeners(module, current_listeners, changed=mutated)
+        require_compatible_retained_listeners(client, module, current_listeners, changed=mutated)
+
     matched, updates, creates, deletes = reconcile_listeners(module, current_listeners)
     changed = bool(updates or creates or deletes)
     result_listeners = []
@@ -2341,7 +2379,7 @@ def ensure_present(client, module, deadline=None):
     current_listeners = None
     if accelerator is not None and module.params["listeners"] is not None and not module.params["purge_listeners"]:
         current_listeners = get_listeners(client, module, accelerator["AcceleratorArn"])
-        require_compatible_retained_listeners(module, current_listeners)
+        require_compatible_retained_listeners(client, module, current_listeners)
 
     if not module.check_mode:
         # Later writes are checked before the first change, so an older botocore fails without modifying anything.
