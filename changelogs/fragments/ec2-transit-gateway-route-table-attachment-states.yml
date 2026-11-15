@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - ec2_transit_gateway_route_table - fail before any change, including in check mode, when
+    O(routes[].transit_gateway_attachment_id) names an attachment that is not C(available) or C(modifying), such as
+    a VPC attachment that is still C(pending) or a peering attachment that is C(pendingAcceptance) or C(rejected).
+    EC2 rejects routes to these attachments with C(IncorrectState). Before, only deleting and deleted attachments
+    were caught, so the route table could be created, tagged, and given earlier routes before the run failed.
+  - ec2_transit_gateway_route_table - look up route attachments in batches of at most 100 IDs. Before, 101 to 200
+    distinct O(routes[].transit_gateway_attachment_id) values failed with C(FilterLimitExceeded).

@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - route53_resolver - when a waited create, update, or IP address change leaves the endpoint C(ACTION_NEEDED), fail
+    with C(changed=true), the endpoint's status message, and the endpoint with its IP addresses. Before, the module
+    failed with only the waiter's generic terminal-state error, without the reason AWS gave.

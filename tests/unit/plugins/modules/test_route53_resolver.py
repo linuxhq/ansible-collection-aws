@@ -3,6 +3,7 @@ from unittest.mock import ANY, Mock, patch
 import pytest
 from botocore.exceptions import ClientError
 from botocore.session import get_session
+from botocore.stub import Stubber
 
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 
@@ -1406,7 +1407,15 @@ def acceptor_states(waiter_name):
 
 
 def test_waiting_for_a_usable_endpoint_stops_when_it_is_deleting():
-    assert acceptor_states("resolver_endpoint_operational")["DELETING"] == "failure"
+    assert acceptor_states("resolver_endpoint_operational") == {
+        "OPERATIONAL": "success",
+        # The waited write then fails with the endpoint's StatusMessage.
+        "ACTION_NEEDED": "success",
+        "DELETING": "failure",
+        "CREATING": "retry",
+        "UPDATING": "retry",
+        "AUTO_RECOVERING": "retry",
+    }
     assert acceptor_states("resolver_endpoint_settled") == {
         "OPERATIONAL": "success",
         "ACTION_NEEDED": "success",
@@ -1813,7 +1822,7 @@ def test_waited_repair_of_an_action_needed_endpoint_predicts_operational(ip_addr
             patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint_with_failed_address()),
             patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
             patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
-            # The waiter returns the endpoint only once it is OPERATIONAL and fails on ACTION_NEEDED.
+            # The waiter returns the endpoint once it is OPERATIONAL; ACTION_NEEDED fails with its StatusMessage.
             patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=operational),
             pytest.raises(ModuleExit) as raised,
         ):
@@ -1962,24 +1971,141 @@ def test_delete_wait_failure_reports_changed():
     assert raised.value.values["changed"] is True
 
 
+def stubbed_resolver_client():
+    raw_client = get_session().create_client(
+        "route53resolver",
+        region_name="us-east-1",
+        aws_access_key_id="EXAMPLE",
+        aws_secret_access_key="EXAMPLE",
+    )
+    return raw_client, RetryingBotoClientWrapper(raw_client, plugin.AWSRetry.jittered_backoff(delay=0))
+
+
+def stubbed_endpoint(**overrides):
+    """Return the endpoint as GetResolverEndpoint returns it, without addresses or tags."""
+    endpoint = existing_endpoint(**overrides)
+    del endpoint["IpAddresses"], endpoint["Tags"]
+    return endpoint
+
+
+NEEDS_ACTION_MESSAGE = "Subnet subnet-2 has no free addresses"
+NEEDS_ACTION_ADDRESSES = [
+    {"Ip": "192.0.2.1", "IpId": "rni-1", "SubnetId": "subnet-1", "Status": "ATTACHED"},
+    {"IpId": "rni-2", "SubnetId": "subnet-2", "Status": "FAILED_CREATION"},
+]
+
+
+def add_waits_ending_in_action_needed(stubber, **overrides):
+    """Stub the operational waiter's polls, which end in ACTION_NEEDED, and the endpoint reads that follow."""
+    request = {"ResolverEndpointId": "rslvr-1"}
+    in_progress = "CREATING" if overrides.pop("creating", False) else "UPDATING"
+    needs_action = stubbed_endpoint(Status="ACTION_NEEDED", StatusMessage=NEEDS_ACTION_MESSAGE, **overrides)
+    stubber.add_response("get_resolver_endpoint", {"ResolverEndpoint": stubbed_endpoint(Status=in_progress)}, request)
+    stubber.add_response("get_resolver_endpoint", {"ResolverEndpoint": needs_action}, request)
+    stubber.add_response("get_resolver_endpoint", {"ResolverEndpoint": needs_action}, request)
+    stubber.add_response(
+        "list_resolver_endpoint_ip_addresses",
+        {"IpAddresses": NEEDS_ACTION_ADDRESSES},
+        {"ResolverEndpointId": "rslvr-1"},
+    )
+
+
+def assert_fails_with_status_message(raised, **fields):
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"] == f"AWS Route53 Resolver endpoint main needs action: {NEEDS_ACTION_MESSAGE}"
+    endpoint = raised.value.values["resolver_endpoint"]
+    assert endpoint["status"] == "ACTION_NEEDED"
+    assert endpoint["status_message"] == NEEDS_ACTION_MESSAGE
+    assert [address["status"] for address in endpoint["ip_addresses"]] == ["ATTACHED", "FAILED_CREATION"]
+    for field, value in fields.items():
+        assert endpoint[field] == value
+
+
 def test_endpoint_that_needs_action_after_an_update_reports_changed():
-    client = Mock()
-    client.update_resolver_endpoint.return_value = {"ResolverEndpoint": existing_endpoint(Status="UPDATING")}
+    # The real operational waiter model polls GetResolverEndpoint until the update leaves the endpoint ACTION_NEEDED.
+    raw_client, client = stubbed_resolver_client()
     with (
-        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint()),
-        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(
-            plugin,
-            "wait_for_resolver_endpoint_status",
-            return_value=existing_endpoint(Protocols=["DoH"], Status="ACTION_NEEDED"),
-        ),
+        Stubber(raw_client) as stubber,
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=stubbed_endpoint()),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: dict(args[2], Tags=[])),
+        patch("botocore.waiter.time.sleep"),
         pytest.raises(ModuleFail) as raised,
     ):
+        stubber.add_response(
+            "list_resolver_endpoint_ip_addresses",
+            {"IpAddresses": existing_endpoint()["IpAddresses"]},
+            {"ResolverEndpointId": "rslvr-1"},
+        )
+        stubber.add_response(
+            "update_resolver_endpoint",
+            {"ResolverEndpoint": stubbed_endpoint(Protocols=["DoH"], Status="UPDATING")},
+            {"Protocols": ["DoH"], "ResolverEndpointId": "rslvr-1"},
+        )
+        add_waits_ending_in_action_needed(stubber, Protocols=["DoH"])
         plugin.ensure_present(client, FakeModule(endpoint_params(protocols=["DoH"], wait=True)))
 
-    assert raised.value.values["changed"] is True
-    assert raised.value.values["msg"].startswith("AWS Route53 Resolver endpoint main needs action")
+    # The failed address is not repaired in the same run, and no further write follows.
+    stubber.assert_no_pending_responses()
+    assert_fails_with_status_message(raised, protocols=["DoH"])
+
+
+def test_endpoint_that_needs_action_after_a_create_reports_changed():
+    raw_client, client = stubbed_resolver_client()
+    with (
+        Stubber(raw_client) as stubber,
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
+        patch("botocore.waiter.time.sleep"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        stubber.add_response("create_resolver_endpoint", {"ResolverEndpoint": stubbed_endpoint(Status="CREATING")})
+        add_waits_ending_in_action_needed(stubber, creating=True)
+        plugin.ensure_present(client, FakeModule(endpoint_params(wait=True)))
+
+    stubber.assert_no_pending_responses()
+    assert_fails_with_status_message(raised)
+
+
+def test_endpoint_that_needs_action_after_an_address_change_reports_changed():
+    raw_client, client = stubbed_resolver_client()
+    endpoint = existing_endpoint(
+        IpAddresses=[
+            {"Ip": "192.0.2.1", "IpId": "rni-1", "SubnetId": "subnet-1", "Status": "ATTACHED"},
+            {"Ip": "192.0.2.9", "IpId": "rni-9", "SubnetId": "subnet-9", "Status": "ATTACHED"},
+        ]
+    )
+    with (
+        Stubber(raw_client) as stubber,
+        patch("botocore.waiter.time.sleep"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        stubber.add_response(
+            "associate_resolver_endpoint_ip_address",
+            {"ResolverEndpoint": stubbed_endpoint(Status="UPDATING")},
+            {"IpAddress": {"Ip": "192.0.2.2", "SubnetId": "subnet-2"}, "ResolverEndpointId": "rslvr-1"},
+        )
+        # The settled wait between the changes, and the endpoint read after it.
+        for _call in range(2):
+            stubber.add_response(
+                "get_resolver_endpoint",
+                {"ResolverEndpoint": stubbed_endpoint(Status="OPERATIONAL")},
+                {"ResolverEndpointId": "rslvr-1"},
+            )
+
+        stubber.add_response(
+            "disassociate_resolver_endpoint_ip_address",
+            {"ResolverEndpoint": stubbed_endpoint(Status="UPDATING")},
+            {
+                "IpAddress": {"Ip": "192.0.2.9", "IpId": "rni-9", "SubnetId": "subnet-9"},
+                "ResolverEndpointId": "rslvr-1",
+            },
+        )
+        add_waits_ending_in_action_needed(stubber)
+        plugin.reconcile_resolver_endpoint_ip_addresses(
+            client, FakeModule(endpoint_params(wait=True)), endpoint, endpoint_params(), changed=True
+        )
+
+    stubber.assert_no_pending_responses()
+    assert_fails_with_status_message(raised)
 
 
 @pytest.mark.parametrize(("protocols", "changed"), [(["Do53", "DoH"], True), (None, False)])

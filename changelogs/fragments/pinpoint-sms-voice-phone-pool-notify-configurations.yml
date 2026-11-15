@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_pool - with O(state=absent), fail without changes, including in check mode, when the
+    pool has deletion protection enabled and a notify configuration uses it as its default pool, and name those
+    notify configurations. Before, the module disabled deletion protection and then AWS refused to delete the pool
+    (C(POOL_ASSOCIATED_TO_NOTIFY_CONFIGURATION)), leaving it unprotected. The check requires botocore 1.42.80 or
+    later and is skipped with older botocore.
