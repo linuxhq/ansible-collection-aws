@@ -124,6 +124,70 @@ def test_multiple_encryption_configs_are_rejected():
     assert raised.value.values["msg"] == "encryption_config must contain at most one entry"
 
 
+def test_log_type_choices_match_the_eks_log_types():
+    options = assert_module_contract(plugin)
+    types = options["argument_spec"]["logging"]["options"]["cluster_logging"]["options"]["types"]
+    shape = Session().get_service_model("eks").shape_for("LogSetup").members["types"].member
+
+    assert types["choices"] == shape.enum
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_log_type_both_enabled_and_disabled_fails_before_any_call(check_mode):
+    client = Mock()
+    module = FakeModule(
+        eks_params(
+            deletion_protection=True,
+            encryption_config=None,
+            logging={
+                "cluster_logging": [
+                    {"enabled": True, "types": ["api", "audit"]},
+                    {"enabled": False, "types": ["scheduler", "api"]},
+                ]
+            },
+            state="present",
+        ),
+        check_mode=check_mode,
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(module, "client", wraps=module.client) as create_client,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert (
+        raised.value.values["msg"] == "logging.cluster_logging[].types must not list api as both enabled and disabled"
+    )
+    create_client.assert_not_called()
+    assert client.mock_calls == []
+
+
+def test_log_type_repeated_with_the_same_state_is_accepted():
+    module = FakeModule(
+        eks_params(
+            encryption_config=None,
+            logging={
+                "cluster_logging": [
+                    {"enabled": True, "types": ["api"]},
+                    {"enabled": True, "types": ["api", "audit"]},
+                    {"enabled": False, "types": ["scheduler"]},
+                ]
+            },
+            state="present",
+        )
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once_with(None, module)
+
+
 def test_absent_tolerates_cluster_disappearing_during_delete():
     client = Mock()
     client.delete_cluster.side_effect = plugin.ClientError(

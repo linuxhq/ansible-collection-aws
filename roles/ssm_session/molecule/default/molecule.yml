@@ -130,7 +130,8 @@ provisioner:
         ssm_session_kms_key_consumers:
           - role/molecule-instance
 
-        ssm_session_shell_profile_linux: |-
+        # The trailing newline checks that the role trims the profile.
+        ssm_session_shell_profile_linux: |
           cd
 
 scenario:

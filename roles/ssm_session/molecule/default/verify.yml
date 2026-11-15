@@ -13,6 +13,18 @@
         label: "{{ _role | d(none) }}"
         loop_var: _role
 
+    - name: Ensure session document is gathered
+      linuxhq.aws.ssm_document_info:
+        name: SSM-SessionManagerRunShell
+        validate_certs: true
+      register: __ssm_session_document_query
+
+    - name: Ensure session document shell profiles are trimmed
+      ansible.builtin.assert:
+        that:
+          - __ssm_session_document_query.document.content.inputs.shellProfile.linux == 'cd'
+          - __ssm_session_document_query.document.content.inputs.shellProfile.windows == ''
+
     - name: Ensure command is executed
       linuxhq.aws.ssm_send_command:
         document_name: AWS-RunShellScript

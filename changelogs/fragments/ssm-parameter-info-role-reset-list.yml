@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ssm_parameter_info role - start ``_ssm_parameter_info_list`` from an empty list on every call. Before, a second
+    call in the same play added its parameters to the previous call's list, so ``_ssm_parameter_info_list`` and
+    ``_ssm_parameter_info_dict`` also published parameters the second call did not request.

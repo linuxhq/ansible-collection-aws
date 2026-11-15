@@ -172,6 +172,15 @@ options:
           types:
             description:
               - The log types in this entry.
+              - The module fails before any change when a log type appears in
+                entries with different O(logging.cluster_logging[].enabled)
+                values.
+            choices:
+              - api
+              - audit
+              - authenticator
+              - controllerManager
+              - scheduler
             elements: str
             required: true
             type: list
@@ -2108,6 +2117,7 @@ def main():
                     "options": {
                         "enabled": {"required": True, "type": "bool"},
                         "types": {
+                            "choices": ["api", "audit", "authenticator", "controllerManager", "scheduler"],
                             "elements": "str",
                             "required": True,
                             "type": "list",
@@ -2221,6 +2231,16 @@ def main():
         for field in ("security_group_ids", "subnet_ids"):
             if "" in ((module.params["resources_vpc_config"] or {}).get(field) or []):
                 module.fail_json(msg=f"resources_vpc_config.{field} must not contain empty entries")
+
+        # EKS cannot apply a log type that is both enabled and disabled, but check mode would predict success, and on
+        # an update the request reaches EKS after other updates and never converges.
+        log_type_states = {}
+        for entry in (module.params["logging"] or {}).get("cluster_logging") or []:
+            for log_type in entry["types"]:
+                if log_type_states.setdefault(log_type, entry["enabled"]) != entry["enabled"]:
+                    module.fail_json(
+                        msg=f"logging.cluster_logging[].types must not list {log_type} as both enabled and disabled"
+                    )
 
         if (module.params["resources_vpc_config"] or {}).get("public_access_cidrs") == []:
             module.fail_json(msg="resources_vpc_config.public_access_cidrs must not be empty")
