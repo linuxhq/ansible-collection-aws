@@ -68,6 +68,22 @@ def test_rejects_invalid_quota_value(value):
     assert "between 0" in raised.value.values["msg"]
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_empty_context_id_fails_before_any_aws_call(check_mode):
+    client = Mock()
+    module = FakeModule(params(context_id=""), check_mode=check_mode, client=client)
+    module.client = Mock(return_value=client)
+
+    result, query, require_client_methods = run(module)
+
+    assert isinstance(result, ModuleFail)
+    assert result.values == {"msg": "context_id must not be empty"}
+    module.client.assert_not_called()
+    assert client.method_calls == []
+    query.assert_not_called()
+    require_client_methods.assert_not_called()
+
+
 def test_response_resource_rejects_invalid_response():
     with pytest.raises(ModuleFail) as raised:
         plugin.response_resource(FakeModule({}), [], "Quota", "service quota")

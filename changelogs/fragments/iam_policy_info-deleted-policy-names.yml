@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - iam_policy_info - drop an inline policy deleted between listing and reading it from ``all_policy_names`` and
+    ``policy_names``, so the names match the returned ``policies``.

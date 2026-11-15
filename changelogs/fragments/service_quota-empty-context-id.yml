@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - service_quota - fail before any AWS call when ``context_id`` is an empty string, instead of treating it as omitted
+    and requesting an account-level increase.

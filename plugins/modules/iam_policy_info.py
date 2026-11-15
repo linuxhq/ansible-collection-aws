@@ -299,6 +299,7 @@ def build_entity_policies(client, module, entity_type, names):
             )
             get_policy = getattr(client, get_operation)
 
+        deleted_policy_names = set()
         for policy_name in policy_names:
             try:
                 response = get_policy(
@@ -306,6 +307,8 @@ def build_entity_policies(client, module, entity_type, names):
                     aws_retry=True,
                 )
             except is_boto3_error_code("NoSuchEntity"):
+                # The policy was deleted after it was listed, so it no longer belongs in the names either.
+                deleted_policy_names.add(policy_name)
                 continue
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
@@ -321,6 +324,12 @@ def build_entity_policies(client, module, entity_type, names):
                     "policy_document": policy_document,
                 }
             )
+
+        if deleted_policy_names:
+            all_policy_names = [
+                policy_name for policy_name in all_policy_names if policy_name not in deleted_policy_names
+            ]
+            policy_names = [policy_name for policy_name in policy_names if policy_name not in deleted_policy_names]
 
         results.append(
             {

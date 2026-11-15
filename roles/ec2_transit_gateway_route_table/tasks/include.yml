@@ -10,8 +10,6 @@
     state: "{{ _rtb.state | d('present') }}"
     tags: "{{ _rtb.tags | d(omit) }}"
     transit_gateway_id: "{{ _rtb.transit_gateway_id }}"
-    transit_gateway_route_table_id:
-      "{{ __ec2_transit_gateway_route_table_dict[_rtb.name] | d(omit) }}"
     validate_certs: true
     wait: "{{ _rtb.wait | d(true) }}"
     wait_delay: "{{ _rtb.wait_delay | d(5) }}"

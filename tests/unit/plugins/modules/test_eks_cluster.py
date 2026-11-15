@@ -2549,6 +2549,99 @@ def test_disabled_compute_config_without_node_pools_matches_a_standard_cluster(c
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "compute_enabled, compute_config",
+    [
+        (None, {"enabled": False, "node_pools": ["general-purpose"]}),
+        (None, {"enabled": False, "node_pools": [], "node_role_arn": "arn:node"}),
+        (None, {"node_pools": ["general-purpose"]}),
+        (None, {"node_role_arn": "arn:node"}),
+        (False, {"node_pools": ["general-purpose"], "node_role_arn": "arn:node"}),
+        (False, {"enabled": False, "node_pools": ["general-purpose"], "node_role_arn": "arn:node"}),
+    ],
+    ids=[
+        "standard-disabled-node-pools",
+        "standard-disabled-node-role",
+        "standard-omitted-node-pools",
+        "standard-omitted-node-role",
+        "auto-mode-disabled-omitted",
+        "auto-mode-disabled",
+    ],
+)
+def test_node_settings_without_enabled_compute_fail_before_any_update(check_mode, compute_enabled, compute_config):
+    # EKS rejects node pools and a node role while Auto Mode compute is not enabled, after every other update.
+    current = {
+        "name": "example",
+        "arn": "arn:example",
+        "status": "ACTIVE",
+        "version": "1.31",
+        "kubernetesNetworkConfig": {"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": bool(compute_enabled)}},
+    }
+    if compute_enabled is not None:
+        current["computeConfig"] = {"enabled": compute_enabled}
+        current["storageConfig"] = {"blockStorage": {"enabled": compute_enabled}}
+
+    client = Mock()
+    module = FakeModule(
+        eks_params(compute_config=compute_config, version="1.32", zonal_shift_config={"enabled": True}),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "msg": (
+            "compute_config.node_pools and compute_config.node_role_arn require EKS Auto Mode compute to be enabled "
+            "for existing EKS cluster example"
+        )
+    }
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "compute_config",
+    [
+        {"enabled": False, "node_pools": ["general-purpose"]},
+        {"enabled": False, "node_role_arn": "arn:node"},
+        {"node_pools": ["general-purpose"], "node_role_arn": "arn:node"},
+    ],
+    ids=["disabled-node-pools", "disabled-node-role", "omitted"],
+)
+def test_node_settings_without_enabled_compute_fail_before_create(check_mode, compute_config):
+    client = Mock()
+    module = FakeModule(
+        eks_params(
+            compute_config=compute_config,
+            resources_vpc_config={"subnet_ids": ["subnet-a", "subnet-b"]},
+            role_arn="arn:role",
+        ),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=None),
+        patch.object(plugin, "require_client_methods") as require_client_methods,
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "msg": (
+            "compute_config.node_pools and compute_config.node_role_arn require EKS Auto Mode compute to be enabled "
+            "for new EKS cluster example"
+        )
+    }
+    assert client.mock_calls == []
+    require_client_methods.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
 def test_compute_config_node_pools_on_a_standard_cluster_send_an_update(check_mode):
     current = {
         "name": "example",

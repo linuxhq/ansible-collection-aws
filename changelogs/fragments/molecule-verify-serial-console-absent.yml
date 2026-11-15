@@ -1,0 +1,4 @@
+---
+trivial:
+  - ec2_serial_console - Molecule verify asserts that serial console access is disabled in every scenario region after
+    teardown.
