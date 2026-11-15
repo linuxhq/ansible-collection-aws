@@ -195,6 +195,19 @@ def test_create_omits_unset_options(check_mode):
         client.request_sender_id.assert_called_once_with(IsoCountryCode="DE", SenderId="EXAMPLE", aws_retry=True)
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_create_returns_the_sender_id_in_upper_case(check_mode):
+    # Live: RequestSenderId returns a sender ID requested as P12m9f305 as P12M9F305.
+    client = model_client()
+    client.request_sender_id.return_value = described()
+    module = FakeModule(params(sender_id="Example"), check_mode=check_mode, client=client)
+    result, _require, _paginate = run(module, describe=None)
+
+    assert result.values["sender_id"]["sender_id"] == "EXAMPLE"
+    if not check_mode:
+        assert client.request_sender_id.call_args.kwargs["SenderId"] == "Example"
+
+
 def test_create_passes_aws_errors_through():
     # Countries that require registration are rejected by AWS, which the module reports.
     client = model_client()
