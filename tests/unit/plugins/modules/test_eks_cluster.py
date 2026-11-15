@@ -3413,9 +3413,11 @@ def test_more_than_fifteen_remote_network_cidrs_fail_before_any_aws_call(extra, 
 
 
 @pytest.mark.parametrize("network", ["remote_node_networks", "remote_pod_networks"])
-def test_fifteen_remote_network_cidr_blocks_reach_aws(network):
+@pytest.mark.parametrize("repeats", [0, 1], ids=["15", "15-blocks-and-repeat"])
+def test_fifteen_remote_network_cidr_blocks_reach_aws(repeats, network):
     config = {"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": POD_NETWORKS}
-    config[network] = [{"cidrs": remote_cidrs(network, 15)}]
+    cidrs = remote_cidrs(network, 15)
+    config[network] = [{"cidrs": cidrs + cidrs[:repeats]}]
     module = FakeModule(eks_params(remote_network_config=config, state="present"))
     module.client = Mock(side_effect=ModuleInitialized)
     with (
@@ -3425,6 +3427,29 @@ def test_fifteen_remote_network_cidr_blocks_reach_aws(network):
         plugin.main()
 
     module.client.assert_called_once()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_repeated_remote_network_cidr_beyond_fifteen_entries_matches_the_cluster(check_mode):
+    # A list whose 15 distinct blocks match the cluster converges, as it did before the limit was checked.
+    networks = [{"cidrs": remote_cidrs("remote_node_networks", 15)}]
+    current = dict(STANDARD_CLUSTER, remoteNetworkConfig={"remoteNodeNetworks": networks})
+    config = {
+        "remote_node_networks": [{"cidrs": remote_cidrs("remote_node_networks", 15) + ["10.80.0.0/24"]}],
+        "remote_pod_networks": None,
+    }
+    module = FakeModule(eks_params(remote_network_config=config, state="present"), check_mode=check_mode)
+    module.client = Mock(return_value=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is False
+    module.client.return_value.update_cluster_config.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -3459,23 +3484,76 @@ def test_non_canonical_remote_network_cidr_fails_before_any_aws_call(cidr, messa
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("network", ["remote_node_networks", "remote_pod_networks"])
-def test_repeated_remote_network_cidr_fails_before_any_aws_call(network, check_mode):
-    # UpdateClusterConfig rejects it after other updates were applied (live: "CIDR 10.81.0.0/16 overlaps with already
-    # existing CIDR 10.81.0.0/16"), even when the distinct blocks match the cluster.
+@pytest.mark.parametrize(
+    "network, key", [("remote_node_networks", "remoteNodeNetworks"), ("remote_pod_networks", "remotePodNetworks")]
+)
+def test_repeated_remote_network_cidr_is_sent_once(network, key, check_mode):
+    # UpdateClusterConfig rejects a repeated block (live: "CIDR 10.81.0.0/16 overlaps with already existing CIDR
+    # 10.81.0.0/16"), and the cluster comparison ignores repeats, so the first occurrence is kept in order.
+    current = dict(
+        STANDARD_CLUSTER,
+        accessConfig={"authenticationMode": "API"},
+        remoteNetworkConfig={"remoteNodeNetworks": NODE_NETWORKS, "remotePodNetworks": POD_NETWORKS},
+    )
     config = {"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": POD_NETWORKS}
-    config[network] = [{"cidrs": ["10.82.0.0/16", "10.83.0.0/16", "10.82.0.0/16"]}]
-    params = eks_params(deletion_protection=True, remote_network_config=config, state="present")
-    module = FakeModule(params, check_mode=check_mode)
-    module.client = Mock()
+    config[network] = [{"cidrs": ["10.83.0.0/16", "10.82.0.0/16", "10.83.0.0/16"]}]
+    module = FakeModule(eks_params(remote_network_config=config, state="present"), check_mode=check_mode)
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    module.client = Mock(return_value=client)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
 
-    assert raised.value.values == {"msg": f"remote_network_config.{network}[].cidrs must not repeat 10.82.0.0/16"}
-    module.client.assert_not_called()
+    expected = {"remoteNodeNetworks": NODE_NETWORKS, "remotePodNetworks": POD_NETWORKS}
+    expected[key] = [{"cidrs": ["10.83.0.0/16", "10.82.0.0/16"]}]
+    assert raised.value.values["changed"] is True
+    if check_mode:
+        client.update_cluster_config.assert_not_called()
+        assert raised.value.values["cluster"]["remote_network_config"][network] == [
+            {"cidrs": ["10.83.0.0/16", "10.82.0.0/16"]}
+        ]
+    else:
+        client.update_cluster_config.assert_called_once_with(name="example", remoteNetworkConfig=expected)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_repeated_remote_network_cidr_is_sent_once_on_create(check_mode):
+    config = {"remote_node_networks": [{"cidrs": ["10.80.0.0/16", "10.80.0.0/16"]}], "remote_pod_networks": None}
+    params = eks_params(
+        remote_network_config=config,
+        resources_vpc_config={"subnet_ids": ["subnet-a", "subnet-b"]},
+        role_arn="arn:role",
+        state="present",
+    )
+    module = FakeModule(params, check_mode=check_mode)
+    client = Mock()
+    client.create_cluster.return_value = {"cluster": dict(STANDARD_CLUSTER)}
+    module.client = Mock(return_value=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "describe_cluster", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is True
+    if check_mode:
+        client.create_cluster.assert_not_called()
+        assert raised.value.values["cluster"]["remote_network_config"]["remote_node_networks"] == [
+            {"cidrs": ["10.80.0.0/16"]}
+        ]
+    else:
+        assert client.create_cluster.call_args.kwargs["remoteNetworkConfig"] == {
+            "remoteNodeNetworks": [{"cidrs": ["10.80.0.0/16"]}]
+        }
 
 
 def test_same_cidr_in_node_and_pod_networks_is_not_a_repeat():
