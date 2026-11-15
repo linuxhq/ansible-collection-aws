@@ -80,8 +80,9 @@ options:
             O(routes[].blackhole=true).
           - Mutually exclusive with O(routes[].blackhole=true).
           - The module fails before any change when the attachment does not
-            exist, is deleting or deleted, or belongs to a different transit
-            gateway than the route table.
+            exist, is in a state other than C(available) or C(modifying), such
+            as C(pending), C(pendingAcceptance), C(rejected), or C(deleting), or
+            belongs to a different transit gateway than the route table.
         type: str
     type: list
   state:
@@ -304,7 +305,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.filters import MAX_FILTER_VALUES_PER_REQUEST
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -323,7 +323,12 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     wait_deadline,
 )
 
-ATTACHMENT_DELETED_STATES = {"deleted", "deleting"}
+# Live: CreateTransitGatewayRoute returns IncorrectState for an attachment in any other state, such as
+# pending, pendingAcceptance, rejected, deleting, or deleted.
+ATTACHMENT_ROUTABLE_STATES = {"available", "modifying"}
+# DescribeTransitGatewayAttachments returns FilterLimitExceeded above 100 filter values, lower than the
+# 200 that other EC2 describe operations accept.
+MAX_ATTACHMENT_FILTER_VALUES = 100
 ROUTE_TABLE_TERMINAL_STATES = {"deleted"}
 ROUTE_TABLE_DELETED_STATES = {"deleted", "deleting"}
 ROUTE_DELETED_STATES = {"deleted", "deleting"}
@@ -783,12 +788,13 @@ def route_attachment_ids(desired_routes):
 
 
 def require_route_attachments(client, module, transit_gateway_id, attachment_ids):
-    """Fail before any write when a route names an attachment that is missing or on another transit gateway.
+    """Fail before any write when a route names an attachment that is missing, not routable, or on another
+    transit gateway.
 
     EC2 rejects such a route only when it is written, after the table, its tags, and earlier routes.
     """
     attachments = []
-    for batch in chunks(attachment_ids, MAX_FILTER_VALUES_PER_REQUEST):
+    for batch in chunks(attachment_ids, MAX_ATTACHMENT_FILTER_VALUES):
         # Unlike TransitGatewayAttachmentIds, the filter returns nothing for a missing or malformed ID.
         attachments.extend(
             query_list(
@@ -813,16 +819,16 @@ def require_route_attachments(client, module, transit_gateway_id, attachment_ids
             transit_gateway_attachment_ids=missing,
         )
 
-    # Live: EC2 still lists these attachments but rejects a route to them (IncorrectState).
-    deleted = [
+    unroutable = [
         attachment_id
         for attachment_id in attachment_ids
-        if found[attachment_id].get("State") in ATTACHMENT_DELETED_STATES
+        if found[attachment_id].get("State") not in ATTACHMENT_ROUTABLE_STATES
     ]
-    if deleted:
+    if unroutable:
+        states = ", ".join(f"{attachment_id} ({found[attachment_id].get('State')})" for attachment_id in unroutable)
         module.fail_json(
-            msg=f"EC2 transit gateway attachments are deleting or deleted: {', '.join(deleted)}",
-            transit_gateway_attachment_ids=deleted,
+            msg=f"EC2 transit gateway attachments are not available or modifying: {states}",
+            transit_gateway_attachment_ids=unroutable,
         )
 
     foreign = [

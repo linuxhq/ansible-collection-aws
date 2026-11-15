@@ -65,7 +65,7 @@ options:
       values:
         description:
           - The target values.
-          - This must contain at most 50 entries.
+          - This must contain 1 to 50 distinct entries.
         elements: str
         required: true
         type: list

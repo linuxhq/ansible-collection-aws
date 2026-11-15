@@ -854,6 +854,8 @@ def test_absent_tolerates_disappearing_deletion_protection_update():
     )
     module = FakeModule({"pool_id": "pool-1", "state": "absent"})
     with (
+        # No notify configuration uses the pool.
+        patch.object(plugin, "require_no_notify_configurations"),
         patch.object(
             plugin,
             "describe_pools",
@@ -884,6 +886,8 @@ def test_absent_disables_deletion_protection_before_deleting():
     module = FakeModule({"pool_id": "pool-1", "state": "absent"})
 
     with (
+        # No notify configuration uses the pool.
+        patch.object(plugin, "require_no_notify_configurations"),
         patch.object(
             plugin,
             "describe_pools",
@@ -959,6 +963,8 @@ def test_absent_delete_race_after_disabling_deletion_protection_reports_changed(
     client.delete_pool.side_effect = not_found()
     module = FakeModule({"pool_id": "pool-1", "state": "absent"})
     with (
+        # No notify configuration uses the pool.
+        patch.object(plugin, "require_no_notify_configurations"),
         patch.object(plugin, "describe_pools", return_value=[active_pool(DeletionProtectionEnabled=True)]),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -1204,6 +1210,8 @@ def test_delete_failure_after_disabling_deletion_protection_reports_changed():
     )
     module = FakeModule({"pool_id": "pool-1", "state": "absent", "wait_delay": 1, "wait_timeout": 1})
     with (
+        # No notify configuration uses the pool.
+        patch.object(plugin, "require_no_notify_configurations"),
         patch.object(plugin, "describe_pools", return_value=[active_pool(DeletionProtectionEnabled=True)]),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -1468,6 +1476,8 @@ def test_absent_check_mode_predicts_the_delete_pool_response(deletion_protection
         client.delete_pool.return_value = dict(deleted, Status="DELETING")
         module = FakeModule(main_params(pool_id="pool-1", state="absent", wait=wait), check_mode=check_mode)
         with (
+            # No notify configuration uses the pool.
+            patch.object(plugin, "require_no_notify_configurations"),
             patch.object(plugin, "describe_pools", return_value=[dict(described)]),
             pytest.raises(ModuleExit) as raised,
         ):
@@ -1743,3 +1753,105 @@ def test_client_token_reused_for_a_pool_that_no_longer_matches_fails_without_cha
     client.create_pool.assert_called_once()
     client.tag_resource.assert_not_called()
     client.associate_origination_identity.assert_not_called()
+
+
+def notify_client(configurations, supported=True):
+    """Return a client whose DescribeNotifyConfigurations paginator returns configurations."""
+    client = Mock()
+    client.meta.method_to_api_mapping = (
+        {"describe_notify_configurations": "DescribeNotifyConfigurations"} if supported else {}
+    )
+    client.can_paginate.return_value = True
+    client.get_paginator.return_value.paginate.return_value.build_full_result.return_value = {
+        "NotifyConfigurations": configurations
+    }
+    client.update_pool.return_value = active_pool(DeletionProtectionEnabled=False)
+    client.delete_pool.return_value = {"PoolId": "pool-1", "Status": "DELETING"}
+    return client
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_absent_fails_before_disabling_protection_of_a_pool_that_notify_configurations_use(check_mode):
+    # Live: DeletePool fails with ConflictException POOL_ASSOCIATED_TO_NOTIFY_CONFIGURATION after UpdatePool has
+    # already disabled deletion protection.
+    client = notify_client(
+        [
+            {"NotifyConfigurationId": "notify-2", "PoolId": "pool-1"},
+            {"NotifyConfigurationId": "notify-1", "PoolId": "pool-1"},
+        ]
+    )
+    module = FakeModule(main_params(pool_id="pool-1", state="absent"), check_mode=check_mode)
+    with (
+        patch.object(plugin, "describe_pools", return_value=[active_pool(DeletionProtectionEnabled=True)]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values == {
+        "msg": (
+            "Cannot delete Pinpoint SMS Voice V2 pool pool-1: notify configurations use it as their default pool: "
+            "notify-1, notify-2. Delete those notify configurations or change their default pool first. "
+            "The pool has not been modified."
+        ),
+        "notify_configuration_ids": ["notify-1", "notify-2"],
+        "pool_id": "pool-1",
+    }
+    client.get_paginator.assert_called_once_with("describe_notify_configurations")
+    client.get_paginator.return_value.paginate.assert_called_once_with(
+        Filters=[{"Name": "default-pool", "Values": ["pool-1"]}]
+    )
+    client.update_pool.assert_not_called()
+    client.delete_pool.assert_not_called()
+
+
+@pytest.mark.parametrize("supported", [True, False], ids=["unused", "old-botocore"])
+def test_absent_deletes_a_protected_pool_without_notify_configurations(supported):
+    client = notify_client([], supported=supported)
+    module = FakeModule(main_params(pool_id="pool-1", state="absent"))
+    with (
+        patch.object(plugin, "describe_pools", return_value=[active_pool(DeletionProtectionEnabled=True)]),
+        patch.object(plugin, "wait_for_pool_active", return_value=active_pool(DeletionProtectionEnabled=False)),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+    # Old botocore cannot describe notify configurations, so the delete proceeds without the check.
+    assert client.get_paginator.called is supported
+    client.update_pool.assert_called_once_with(PoolId="pool-1", DeletionProtectionEnabled=False, aws_retry=True)
+    client.delete_pool.assert_called_once_with(PoolId="pool-1", aws_retry=True)
+
+
+def test_absent_leaves_the_notify_configuration_conflict_of_an_unprotected_pool_to_aws():
+    # Without deletion protection, DeletePool is the first write, so AWS's refusal changes nothing.
+    client = notify_client([{"NotifyConfigurationId": "notify-1", "PoolId": "pool-1"}])
+    module = FakeModule(main_params(pool_id="pool-1", state="absent"))
+    with (
+        patch.object(plugin, "describe_pools", return_value=[active_pool(DeletionProtectionEnabled=False)]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+    client.get_paginator.assert_not_called()
+    client.update_pool.assert_not_called()
+    client.delete_pool.assert_called_once_with(PoolId="pool-1", aws_retry=True)
+
+
+def test_notify_configuration_lookup_failure_names_the_pool():
+    client = notify_client([])
+    client.get_paginator.return_value.paginate.return_value.build_full_result.side_effect = plugin.ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "DescribeNotifyConfigurations"
+    )
+    module = FakeModule(main_params(pool_id="pool-1", state="absent"))
+    with (
+        patch.object(plugin, "describe_pools", return_value=[active_pool(DeletionProtectionEnabled=True)]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert (
+        raised.value.values["msg"] == "Unable to describe Pinpoint SMS Voice V2 notify configurations for pool pool-1"
+    )
+    assert raised.value.values.get("changed", False) is False
+    client.update_pool.assert_not_called()

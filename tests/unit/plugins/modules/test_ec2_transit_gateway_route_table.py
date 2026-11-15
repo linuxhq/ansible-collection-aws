@@ -1843,9 +1843,9 @@ def attachment_route(cidr, attachment_id):
         ),
         (
             [
-                {"TransitGatewayAttachmentId": "tgw-attach-1", "TransitGatewayId": "tgw-1"},
-                {"TransitGatewayAttachmentId": "tgw-attach-bad", "TransitGatewayId": "tgw-2"},
-                {"TransitGatewayAttachmentId": "tgw-attach-missing", "TransitGatewayId": "tgw-1"},
+                {"State": "available", "TransitGatewayAttachmentId": "tgw-attach-1", "TransitGatewayId": "tgw-1"},
+                {"State": "available", "TransitGatewayAttachmentId": "tgw-attach-bad", "TransitGatewayId": "tgw-2"},
+                {"State": "modifying", "TransitGatewayAttachmentId": "tgw-attach-missing", "TransitGatewayId": "tgw-1"},
             ],
             "EC2 transit gateway attachments do not belong to transit gateway tgw-1: tgw-attach-bad",
             ["tgw-attach-bad"],
@@ -1857,7 +1857,39 @@ def attachment_route(cidr, attachment_id):
                 {"State": "deleted", "TransitGatewayAttachmentId": "tgw-attach-bad", "TransitGatewayId": "tgw-1"},
                 {"State": "deleting", "TransitGatewayAttachmentId": "tgw-attach-missing", "TransitGatewayId": "tgw-1"},
             ],
-            "EC2 transit gateway attachments are deleting or deleted: tgw-attach-bad, tgw-attach-missing",
+            (
+                "EC2 transit gateway attachments are not available or modifying: "
+                "tgw-attach-bad (deleted), tgw-attach-missing (deleting)"
+            ),
+            ["tgw-attach-bad", "tgw-attach-missing"],
+        ),
+        # Live: EC2 also rejects routes to pending, pendingAcceptance, and rejected attachments (IncorrectState).
+        (
+            [
+                {"State": "modifying", "TransitGatewayAttachmentId": "tgw-attach-1", "TransitGatewayId": "tgw-1"},
+                {"State": "pending", "TransitGatewayAttachmentId": "tgw-attach-bad", "TransitGatewayId": "tgw-1"},
+                {
+                    "State": "pendingAcceptance",
+                    "TransitGatewayAttachmentId": "tgw-attach-missing",
+                    "TransitGatewayId": "tgw-1",
+                },
+            ],
+            (
+                "EC2 transit gateway attachments are not available or modifying: "
+                "tgw-attach-bad (pending), tgw-attach-missing (pendingAcceptance)"
+            ),
+            ["tgw-attach-bad", "tgw-attach-missing"],
+        ),
+        (
+            [
+                {"State": "available", "TransitGatewayAttachmentId": "tgw-attach-1", "TransitGatewayId": "tgw-1"},
+                {"State": "rejected", "TransitGatewayAttachmentId": "tgw-attach-bad", "TransitGatewayId": "tgw-1"},
+                {"State": "failed", "TransitGatewayAttachmentId": "tgw-attach-missing", "TransitGatewayId": "tgw-1"},
+            ],
+            (
+                "EC2 transit gateway attachments are not available or modifying: "
+                "tgw-attach-bad (rejected), tgw-attach-missing (failed)"
+            ),
             ["tgw-attach-bad", "tgw-attach-missing"],
         ),
     ],
@@ -1938,14 +1970,15 @@ def test_route_attachment_lookup_is_batched_by_filter_value_limit():
 
     def query(*args, **kwargs):
         return [
-            {"TransitGatewayAttachmentId": value, "TransitGatewayId": "tgw-1"}
+            {"State": "available", "TransitGatewayAttachmentId": value, "TransitGatewayId": "tgw-1"}
             for value in kwargs["Filters"][0]["Values"]
         ]
 
     with patch.object(plugin, "query_list", side_effect=query) as queried:
         plugin.require_route_attachments(Mock(), FakeModule({}), "tgw-1", attachment_ids)
 
-    assert [len(call.kwargs["Filters"][0]["Values"]) for call in queried.call_args_list] == [200, 1]
+    # Live: DescribeTransitGatewayAttachments returns FilterLimitExceeded for 101 filter values.
+    assert [len(call.kwargs["Filters"][0]["Values"]) for call in queried.call_args_list] == [100, 100, 1]
 
 
 @pytest.mark.parametrize(

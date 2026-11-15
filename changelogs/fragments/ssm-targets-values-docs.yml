@@ -1,0 +1,4 @@
+---
+trivial:
+  - ssm_association, ssm_send_command - document that O(targets[].values) must contain 1 to 50 distinct entries,
+    as the module enforces.

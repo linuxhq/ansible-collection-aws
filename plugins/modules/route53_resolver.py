@@ -423,11 +423,12 @@ ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA = {
                 "matcher": "path",
                 "state": "retry",
             },
+            # Terminal: the waited write fails with the endpoint's StatusMessage instead of the waiter's error.
             {
                 "argument": "ResolverEndpoint.Status",
                 "expected": "ACTION_NEEDED",
                 "matcher": "path",
-                "state": "failure",
+                "state": "success",
             },
         ],
     },
@@ -1006,20 +1007,8 @@ def ensure_present(client, module, deadline=None):
 
             endpoint = apply_tag_deltas(endpoint, tags_to_set, tag_keys_to_unset)
 
-    if (
-        module.params["wait"]
-        and not module.check_mode
-        and endpoint is not None
-        and endpoint.get("Status") == "ACTION_NEEDED"
-    ):
-        module.fail_json(
-            changed=changed,
-            msg=(
-                f"AWS Route53 Resolver endpoint {module.params['name']} needs action: "
-                f"{endpoint.get('StatusMessage') or 'no status message was returned'}"
-            ),
-            resolver_endpoint=boto3_resource_to_ansible_dict(endpoint, transform_tags=True, force_tags=False),
-        )
+    if module.params["wait"] and not module.check_mode:
+        fail_if_resolver_endpoint_needs_action(module, endpoint, changed)
 
     if endpoint is not None and "Tags" not in endpoint and tags is None and not created:
         endpoint = dict(endpoint, Tags=current_tags)
@@ -1235,7 +1224,28 @@ def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, stat
     if state == "deleted":
         return None
 
-    return get_resolver_endpoint(client, module, resolver_endpoint_id, changed=changed)
+    endpoint = get_resolver_endpoint(client, module, resolver_endpoint_id, changed=changed)
+    if state == "operational" and endpoint is not None and endpoint.get("Status") == "ACTION_NEEDED":
+        # Report the blocker before later address repairs or comparisons of the write that led here.
+        fail_if_resolver_endpoint_needs_action(
+            module, resolver_endpoint_with_ip_addresses(client, module, endpoint, changed=changed), changed
+        )
+
+    return endpoint
+
+
+def fail_if_resolver_endpoint_needs_action(module, endpoint, changed):
+    if endpoint is None or endpoint.get("Status") != "ACTION_NEEDED":
+        return
+
+    module.fail_json(
+        changed=changed,
+        msg=(
+            f"AWS Route53 Resolver endpoint {module.params['name']} needs action: "
+            f"{endpoint.get('StatusMessage') or 'no status message was returned'}"
+        ),
+        resolver_endpoint=boto3_resource_to_ansible_dict(endpoint, transform_tags=True, force_tags=False),
+    )
 
 
 def comparable_endpoint(endpoint):

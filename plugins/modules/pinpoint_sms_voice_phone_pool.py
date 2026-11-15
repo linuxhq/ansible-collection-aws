@@ -88,6 +88,10 @@ options:
       - When set with O(state=present), this pool is managed directly instead
         of searching by O(origination_identity).
       - When set with O(state=present), the pool must already exist.
+      - With O(state=absent), AWS refuses to delete a pool that a notify configuration uses as its default pool.
+        When the pool has deletion protection enabled, the module therefore fails without changes, including in
+        check mode, and names those notify configurations, instead of disabling deletion protection before a delete
+        that AWS refuses. This check requires botocore 1.42.80 or later and is skipped with older botocore.
     type: str
   state:
     choices:
@@ -575,6 +579,48 @@ def exit_result(module, changed, pool):
     module.exit_json(**result)
 
 
+def require_no_notify_configurations(client, module, pool):
+    """Fail before disabling deletion protection when notify configurations still use the pool.
+
+    Live: DeletePool then fails with ConflictException POOL_ASSOCIATED_TO_NOTIFY_CONFIGURATION, which would leave
+    the pool unprotected.
+    """
+    # Notify configurations need botocore 1.42.80; older botocore keeps deleting without this check.
+    if "describe_notify_configurations" not in client.meta.method_to_api_mapping:
+        return
+
+    pool_id = pool.get("PoolId")
+    try:
+        response = paginated_query_with_retries(
+            client,
+            "describe_notify_configurations",
+            Filters=[{"Name": "default-pool", "Values": [pool_id]}],
+        )
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(
+            e, msg=f"Unable to describe Pinpoint SMS Voice V2 notify configurations for pool {pool_id}"
+        )
+
+    configurations = response.get("NotifyConfigurations") if isinstance(response, dict) else None
+    if not isinstance(configurations, list) or not all(
+        isinstance(configuration, dict) and configuration.get("NotifyConfigurationId")
+        for configuration in configurations
+    ):
+        module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 notify configuration data")
+
+    if configurations:
+        configuration_ids = sorted(configuration["NotifyConfigurationId"] for configuration in configurations)
+        module.fail_json(
+            msg=(
+                f"Cannot delete Pinpoint SMS Voice V2 pool {pool_id}: notify configurations use it as their default "
+                f"pool: {', '.join(configuration_ids)}. Delete those notify configurations or change their default "
+                "pool first. The pool has not been modified."
+            ),
+            notify_configuration_ids=configuration_ids,
+            pool_id=pool_id,
+        )
+
+
 def ensure_absent(client, module):
     pool_id = module.params["pool_id"]
     pools = describe_pools(client, module, PoolIds=[pool_id])
@@ -587,6 +633,9 @@ def ensure_absent(client, module):
     response = current
 
     if changed and module.check_mode:
+        if current.get("DeletionProtectionEnabled"):
+            require_no_notify_configurations(client, module, current)
+
         # A real run returns the DeletePool response, which reports DELETING and does not model DeletionProtectionEnabled.
         response = {key: value for key, value in current.items() if key != "DeletionProtectionEnabled"}
         response["Status"] = "DELETING"
@@ -601,6 +650,8 @@ def ensure_absent(client, module):
                 exit_result(module, False, None)
 
         if current.get("DeletionProtectionEnabled"):
+            # Only a protected pool is written before DeletePool; an unprotected one fails there unchanged.
+            require_no_notify_configurations(client, module, current)
             try:
                 current = client.update_pool(
                     PoolId=pool_id,
