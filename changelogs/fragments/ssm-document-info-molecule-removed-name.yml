@@ -1,0 +1,4 @@
+---
+trivial:
+  - ssm_document_info - assert in the Molecule verify that a removed document name returns an empty list and dict.
+...
