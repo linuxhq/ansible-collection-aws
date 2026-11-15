@@ -52,7 +52,22 @@
         value: "{{ __ses_identity_dkim_record_list.0.name.split('.') | first }}.dkim.ap-southeast-4.amazonses.com"
         zone: "{{ __ses_identity_dkim_record_list.0.zone }}"
 
-    - name: Ensure ses identity role corrects the dkim record
+    - name: Ensure dmarc and spf records hold other values
+      amazon.aws.route53:
+        overwrite: true
+        record: "{{ _record.0 ~ ses_identity_list.0.identity }}"
+        state: present
+        type: TXT
+        value: "{{ _record.1 }}"
+        zone: "{{ ses_identity_list.0.zone }}"
+      loop:
+        - ['_dmarc.', '"v=DMARC1; p=none;"']
+        - ['', '"v=spf1 -all"']
+      loop_control:
+        label: "{{ _record.0 ~ ses_identity_list.0.identity }}"
+        loop_var: _record
+
+    - name: Ensure ses identity role corrects the dkim, dmarc and spf records
       ansible.builtin.include_role:
         name: ses_identity
 
@@ -67,6 +82,31 @@
       loop_control:
         label: "{{ _record.name }}"
         loop_var: _record
+
+    - name: Ensure identity dmarc and spf records are queried
+      amazon.aws.route53:
+        record: "{{ _record ~ ses_identity_list.0.identity }}"
+        state: get
+        type: TXT
+        zone: "{{ ses_identity_list.0.zone }}"
+      register: __ses_identity_policy_records
+      loop:
+        - '_dmarc.'
+        - ''
+      loop_control:
+        label: "{{ _record ~ ses_identity_list.0.identity }}"
+        loop_var: _record
+
+    - name: Ensure identity dmarc and spf record values are corrected
+      ansible.builtin.assert:
+        that:
+          - __ses_identity_policy_records.results |
+            map(attribute='resource_record_sets') |
+            map('first') |
+            map(attribute='resource_records') |
+            map('map', attribute='value') |
+            map('list') |
+            list == [['"v=DMARC1; p=quarantine;"'], ['"v=spf1 include:amazonses.com -all"']]
 
     - name: Ensure identity verification txt records are queried
       amazon.aws.route53:
@@ -128,6 +168,21 @@
         type: CNAME
         value: "{{ __ses_identity_dkim_record_list.0.name.split('.') | first }}.dkim.ap-southeast-4.amazonses.com"
         zone: "{{ __ses_identity_dkim_record_list.0.zone }}"
+
+    - name: Ensure dmarc and spf records hold other values before removal
+      amazon.aws.route53:
+        overwrite: true
+        record: "{{ _record.0 ~ ses_identity_list.0.identity }}"
+        state: present
+        type: TXT
+        value: "{{ _record.1 }}"
+        zone: "{{ ses_identity_list.0.zone }}"
+      loop:
+        - ['_dmarc.', '"v=DMARC1; p=none;"']
+        - ['', '"v=spf1 -all"']
+      loop_control:
+        label: "{{ _record.0 ~ ses_identity_list.0.identity }}"
+        loop_var: _record
 
     - name: Ensure ses identity role is included
       ansible.builtin.include_role:

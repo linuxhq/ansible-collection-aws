@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_sender_id - return the sender ID in upper case when check mode predicts a new sender ID,
+    as ``RequestSenderId`` returns it, so a sender ID requested as ``Example`` is predicted as ``EXAMPLE``.

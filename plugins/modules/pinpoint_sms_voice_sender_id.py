@@ -349,6 +349,8 @@ def ensure_present(client, module, current):
         if module.check_mode:
             # A real run returns the RequestSenderId response; predict only what the request determines.
             predicted = dict(request, DeletionProtectionEnabled=bool(deletion_protection_enabled))
+            # Live: RequestSenderId returns a sender ID requested as P12m9f305 as P12M9F305.
+            predicted["SenderId"] = request["SenderId"].upper()
             predicted["Tags"] = request.get("Tags", [])
             exit_result(module, True, predicted)
 

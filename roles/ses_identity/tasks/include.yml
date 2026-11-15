@@ -57,11 +57,14 @@
   tags:
     - ses_identity
   amazon.aws.route53:
+    # A TXT record with another value is replaced.
+    overwrite: true
     record: "_dmarc.{{ _identity.identity }}"
     state: "{{ _identity.state }}"
     type: TXT
     validate_certs: true
-    value: '"v=DMARC1; p=quarantine;"'
+    # An omitted value deletes the stored record, whatever its value.
+    value: "{{ omit if _identity.state == 'absent' else '\"v=DMARC1; p=quarantine;\"' }}"
     zone: "{{ _identity.zone }}"
 
 - name: Ensure aws simple email service identity dkim records are managed
@@ -88,11 +91,14 @@
   tags:
     - ses_identity
   amazon.aws.route53:
+    # A TXT record with another value is replaced.
+    overwrite: true
     record: "{{ _identity.identity }}"
     state: "{{ _identity.state }}"
     type: TXT
     validate_certs: true
-    value: '"v=spf1 include:amazonses.com -all"'
+    # An omitted value deletes the stored record, whatever its value.
+    value: "{{ omit if _identity.state == 'absent' else '\"v=spf1 include:amazonses.com -all\"' }}"
     zone: "{{ _identity.zone }}"
 
 - name: Ensure aws simple email service identity is absent
