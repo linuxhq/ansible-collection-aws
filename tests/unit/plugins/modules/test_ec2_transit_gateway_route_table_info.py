@@ -77,11 +77,36 @@ def test_route_search_uses_paginated_query():
         client,
         "search_transit_gateway_routes",
         TransitGatewayRouteTableId="tgw-rtb-1",
-        Filters=[{"Name": "type", "Values": ["static", "propagated"]}],
+        Filters=[{"Name": "type", "Values": ["static", "propagated", "system"]}],
         MaxResults=1000,
     )
     assert query.call_args.kwargs == {"Filters": [{"Name": "transit-gateway-route-table-id", "Values": ["tgw-rtb-1"]}]}
     client.search_transit_gateway_routes.assert_not_called()
+
+
+def test_route_search_includes_system_routes():
+    # SearchTransitGatewayRoutes requires a filter; the type filter covers every TransitGatewayRouteType, and EC2
+    # accepts "system" as a filter value (live).
+    client = Mock()
+    module = FakeModule({"filters": None, "transit_gateway_route_table_ids": ["tgw-rtb-1"]}, client=client)
+    route = {"DestinationCidrBlock": "10.0.0.0/8", "State": "active", "Type": "system"}
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "query_list",
+            return_value=[{"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}],
+        ),
+        patch.object(plugin, "paginated_query_with_retries", return_value={"Routes": [route]}) as search,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert search.call_args.kwargs["Filters"] == [{"Name": "type", "Values": ["static", "propagated", "system"]}]
+    assert raised.value.values["transit_gateway_route_tables"][0]["routes"] == [
+        {"destination_cidr_block": "10.0.0.0/8", "state": "active", "type": "system"}
+    ]
 
 
 def test_empty_results_do_not_require_route_search():

@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - ec2_transit_gateway_route_table_info - return routes of the ``system`` route type alongside static and propagated
+    routes.
