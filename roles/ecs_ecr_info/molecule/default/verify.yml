@@ -115,6 +115,34 @@
           - _ecs_ecr_info_dict['molecule-11'].repository_name is defined
           - _ecs_ecr_info_dict['molecule-11'].repository_uri is defined
 
+    - name: Ensure role is included with a missing repository name
+      ansible.builtin.include_role:
+        name: ecs_ecr_info
+      vars:
+        ecs_ecr_info_repository_names:
+          - molecule-missing
+
+    - name: Ensure info with a missing repository name is verified
+      ansible.builtin.assert:
+        that:
+          - _ecs_ecr_info_list == []
+          - _ecs_ecr_info_dict == {}
+
+    - name: Ensure role is included with existing and missing repository names
+      ansible.builtin.include_role:
+        name: ecs_ecr_info
+      vars:
+        ecs_ecr_info_repository_names:
+          - molecule-00
+          - molecule-missing
+          - molecule-01
+
+    - name: Ensure info with existing and missing repository names is verified
+      ansible.builtin.assert:
+        that:
+          - _ecs_ecr_info_list | length == 2
+          - _ecs_ecr_info_dict.keys() | sort == ['molecule-00', 'molecule-01']
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ecs_ecr_list:

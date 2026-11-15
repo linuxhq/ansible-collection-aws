@@ -84,7 +84,7 @@ transit_gateway_route_tables:
       type: bool
     routes:
       description:
-        - The static and propagated routes gathered from C(SearchTransitGatewayRoutes).
+        - The static, propagated, and system routes gathered from C(SearchTransitGatewayRoutes).
         - Empty unless the route table is available.
         - Requires botocore 1.42.37 or later when an available route table is returned.
       returned: always
@@ -305,7 +305,7 @@ def main():
                     client,
                     "search_transit_gateway_routes",
                     TransitGatewayRouteTableId=transit_gateway_route_table_id,
-                    Filters=ansible_dict_to_boto3_filter_list({"type": ["static", "propagated"]}),
+                    Filters=ansible_dict_to_boto3_filter_list({"type": ["static", "propagated", "system"]}),
                     MaxResults=1000,
                 )
             except is_boto3_error_code("InvalidRouteTableID.NotFound"):

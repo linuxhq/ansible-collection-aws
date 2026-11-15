@@ -55,6 +55,18 @@
         that:
           - _glue_connection_info_dict['molecule'].name == glue_connection_list.0.name
 
+    - name: Ensure role is included with a missing name
+      ansible.builtin.include_role:
+        name: glue_connection_info
+      vars:
+        glue_connection_info_name: molecule-missing
+
+    - name: Ensure info with a missing name is verified
+      ansible.builtin.assert:
+        that:
+          - _glue_connection_info_list == []
+          - _glue_connection_info_dict == {}
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_security_group_list:

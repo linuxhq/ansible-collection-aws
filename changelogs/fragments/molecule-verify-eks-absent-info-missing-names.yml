@@ -1,0 +1,4 @@
+---
+trivial:
+  - eks_cluster, eks_cluster_info, rds_subnet_group_info, glue_connection_info and ecs_ecr_info roles - Molecule verify
+    asserts removed clusters are gone and missing names publish empty facts.

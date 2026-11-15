@@ -3453,6 +3453,124 @@ def test_repeated_remote_network_cidr_beyond_fifteen_entries_matches_the_cluster
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("network", ["remote_node_networks", "remote_pod_networks"])
+@pytest.mark.parametrize(
+    "cidr, message",
+    [
+        ("10.80.0.5/16", "must contain CIDR blocks in canonical form: 10.80.0.5/16 should be 10.80.0.0/16"),
+        (
+            "10.80.0.0/33",
+            "must contain valid CIDR blocks: '10.80.0.0/33' does not appear to be an IPv4 or IPv6 network",
+        ),
+    ],
+    ids=["host-bits", "invalid"],
+)
+def test_non_canonical_remote_network_cidr_fails_before_any_aws_call(cidr, message, network, check_mode):
+    # UpdateClusterConfig rejects it after other updates were applied (live: "Invalid remote node network: CIDR
+    # 10.80.0.5/16 is not in the canonical form. Expected: 10.80.0.0/16").
+    config = {"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": POD_NETWORKS}
+    config[network] = [{"cidrs": ["10.82.0.0/16", cidr]}]
+    params = eks_params(deletion_protection=True, remote_network_config=config, state="present")
+    module = FakeModule(params, check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": f"remote_network_config.{network}[].cidrs {message}"}
+    module.client.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "network, key", [("remote_node_networks", "remoteNodeNetworks"), ("remote_pod_networks", "remotePodNetworks")]
+)
+def test_repeated_remote_network_cidr_is_sent_once(network, key, check_mode):
+    # UpdateClusterConfig rejects a repeated block (live: "CIDR 10.81.0.0/16 overlaps with already existing CIDR
+    # 10.81.0.0/16"), and the cluster comparison ignores repeats, so the first occurrence is kept in order.
+    current = dict(
+        STANDARD_CLUSTER,
+        accessConfig={"authenticationMode": "API"},
+        remoteNetworkConfig={"remoteNodeNetworks": NODE_NETWORKS, "remotePodNetworks": POD_NETWORKS},
+    )
+    config = {"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": POD_NETWORKS}
+    config[network] = [{"cidrs": ["10.83.0.0/16", "10.82.0.0/16", "10.83.0.0/16"]}]
+    module = FakeModule(eks_params(remote_network_config=config, state="present"), check_mode=check_mode)
+    client = Mock()
+    client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
+    module.client = Mock(return_value=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    expected = {"remoteNodeNetworks": NODE_NETWORKS, "remotePodNetworks": POD_NETWORKS}
+    expected[key] = [{"cidrs": ["10.83.0.0/16", "10.82.0.0/16"]}]
+    assert raised.value.values["changed"] is True
+    if check_mode:
+        client.update_cluster_config.assert_not_called()
+        assert raised.value.values["cluster"]["remote_network_config"][network] == [
+            {"cidrs": ["10.83.0.0/16", "10.82.0.0/16"]}
+        ]
+    else:
+        client.update_cluster_config.assert_called_once_with(name="example", remoteNetworkConfig=expected)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_repeated_remote_network_cidr_is_sent_once_on_create(check_mode):
+    config = {"remote_node_networks": [{"cidrs": ["10.80.0.0/16", "10.80.0.0/16"]}], "remote_pod_networks": None}
+    params = eks_params(
+        remote_network_config=config,
+        resources_vpc_config={"subnet_ids": ["subnet-a", "subnet-b"]},
+        role_arn="arn:role",
+        state="present",
+    )
+    module = FakeModule(params, check_mode=check_mode)
+    client = Mock()
+    client.create_cluster.return_value = {"cluster": dict(STANDARD_CLUSTER)}
+    module.client = Mock(return_value=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "describe_cluster", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is True
+    if check_mode:
+        client.create_cluster.assert_not_called()
+        assert raised.value.values["cluster"]["remote_network_config"]["remote_node_networks"] == [
+            {"cidrs": ["10.80.0.0/16"]}
+        ]
+    else:
+        assert client.create_cluster.call_args.kwargs["remoteNetworkConfig"] == {
+            "remoteNodeNetworks": [{"cidrs": ["10.80.0.0/16"]}]
+        }
+
+
+def test_same_cidr_in_node_and_pod_networks_is_not_a_repeat():
+    # Only repeats within one list are rejected; overlap between node and pod networks is left to EKS.
+    config = {"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": NODE_NETWORKS}
+    module = FakeModule(eks_params(remote_network_config=config, state="present"))
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
+
+    module.client.assert_called_once()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("subnet_ids", [["subnet-1"], ["subnet-1", "subnet-1"]])
 def test_create_with_fewer_than_two_distinct_subnets_fails_before_any_aws_call(subnet_ids, check_mode):
     # CreateCluster rejects it with "Subnets specified must be in at least two different AZs" (live).

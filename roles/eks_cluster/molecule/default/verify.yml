@@ -68,4 +68,13 @@
       loop_control:
         label: "{{ _verify }}"
         loop_var: _verify
+
+    - name: Ensure cluster info is gathered after removal
+      ansible.builtin.include_role:
+        name: eks_cluster_info
+
+    - name: Ensure removed clusters are verified
+      ansible.builtin.assert:
+        that:
+          - _eks_cluster_info_dict.keys() | intersect(eks_cluster_list | map(attribute='name')) | list == []
 ...
