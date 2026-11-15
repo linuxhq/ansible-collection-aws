@@ -2604,6 +2604,38 @@ def test_node_settings_without_enabled_compute_fail_before_any_update(check_mode
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("node_role_arn", ["arn:b", None])
+def test_rerun_after_disabling_auto_mode_with_matching_node_settings_is_unchanged(check_mode, node_role_arn):
+    # A task that disabled Auto Mode compute together with node settings stays a no-op when the cluster kept them.
+    compute_config = {"enabled": False, "nodePools": ["system"], "nodeRoleArn": "arn:b"}
+    current = dict(
+        AUTO_MODE_CLUSTER,
+        computeConfig=compute_config,
+        kubernetesNetworkConfig={"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": False}},
+        storageConfig={"blockStorage": {"enabled": False}},
+    )
+    client = Mock()
+    module = FakeModule(
+        eks_params(
+            compute_config={"enabled": False, "node_pools": ["system"], "node_role_arn": node_role_arn},
+            kubernetes_network_config={"elastic_load_balancing": {"enabled": False}},
+            storage_config={"block_storage": {"enabled": False}},
+        ),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize(
     "compute_config",
     [
