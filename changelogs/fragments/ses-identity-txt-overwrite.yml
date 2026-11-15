@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ses_identity role - replace a DMARC or SPF TXT record that holds another value instead of failing with
+    ``Record already exists with different value``, and delete the stored DMARC and SPF TXT records with
+    ``state=absent`` whatever their value, as the DKIM record task does.
