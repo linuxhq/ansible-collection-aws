@@ -818,7 +818,10 @@ def ensure_present(client, module):
             arn = current.get("PoolArn")
 
             if (tags_to_set or tag_keys_to_unset) and not arn:
-                module.fail_json(changed=pool_changed, msg="Unable to tag Pinpoint SMS Voice V2 pool")
+                module.fail_json(
+                    changed=pool_changed,
+                    msg=f"Unable to tag Pinpoint SMS Voice V2 pool {current['PoolId']}: AWS did not return its ARN",
+                )
 
             reconcile_arn_tags(
                 module,

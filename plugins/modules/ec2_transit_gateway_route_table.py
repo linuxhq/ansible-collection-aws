@@ -79,6 +79,9 @@ options:
           - Required when O(routes[].state=present) unless
             O(routes[].blackhole=true).
           - Mutually exclusive with O(routes[].blackhole=true).
+          - The module fails before any change when the attachment does not
+            exist, is deleting or deleted, or belongs to a different transit
+            gateway than the route table.
         type: str
     type: list
   state:
@@ -286,6 +289,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
     paginated_query_with_retries,
 )
+from ansible_collections.amazon.aws.plugins.module_utils.iterators import chunks
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
@@ -300,6 +304,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.filters import MAX_FILTER_VALUES_PER_REQUEST
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -318,6 +323,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     wait_deadline,
 )
 
+ATTACHMENT_DELETED_STATES = {"deleted", "deleting"}
 ROUTE_TABLE_TERMINAL_STATES = {"deleted"}
 ROUTE_TABLE_DELETED_STATES = {"deleted", "deleting"}
 ROUTE_DELETED_STATES = {"deleted", "deleting"}
@@ -329,6 +335,7 @@ ROUTE_STATE_ORDER = {
     "deleting": 3,
 }
 SEARCH_ROUTES_PARAMETERS = ("Filters", "MaxResults", "NextToken", "TransitGatewayRouteTableId")
+DESCRIBE_ATTACHMENTS_PARAMETERS = ("Filters", "MaxResults", "NextToken")
 
 
 def route_table_id(route_table):
@@ -765,6 +772,75 @@ def ensure_route_absent(
     return True, None if route.get("State") == "deleted" else route
 
 
+def route_attachment_ids(desired_routes):
+    return sorted(
+        {
+            route["transit_gateway_attachment_id"]
+            for route in desired_routes
+            if route["state"] == "present" and route.get("transit_gateway_attachment_id")
+        }
+    )
+
+
+def require_route_attachments(client, module, transit_gateway_id, attachment_ids):
+    """Fail before any write when a route names an attachment that is missing or on another transit gateway.
+
+    EC2 rejects such a route only when it is written, after the table, its tags, and earlier routes.
+    """
+    attachments = []
+    for batch in chunks(attachment_ids, MAX_FILTER_VALUES_PER_REQUEST):
+        # Unlike TransitGatewayAttachmentIds, the filter returns nothing for a missing or malformed ID.
+        attachments.extend(
+            query_list(
+                module,
+                client,
+                "describe_transit_gateway_attachments",
+                "TransitGatewayAttachments",
+                "Unable to describe EC2 transit gateway attachments",
+                Filters=ansible_dict_to_boto3_filter_list({"transit-gateway-attachment-id": batch}),
+            )
+        )
+
+    found = {
+        attachment.get("TransitGatewayAttachmentId"): attachment
+        for attachment in attachments
+        if isinstance(attachment, dict)
+    }
+    missing = [attachment_id for attachment_id in attachment_ids if attachment_id not in found]
+    if missing:
+        module.fail_json(
+            msg=f"EC2 transit gateway attachments do not exist: {', '.join(missing)}",
+            transit_gateway_attachment_ids=missing,
+        )
+
+    # Live: EC2 still lists these attachments but rejects a route to them (IncorrectState).
+    deleted = [
+        attachment_id
+        for attachment_id in attachment_ids
+        if found[attachment_id].get("State") in ATTACHMENT_DELETED_STATES
+    ]
+    if deleted:
+        module.fail_json(
+            msg=f"EC2 transit gateway attachments are deleting or deleted: {', '.join(deleted)}",
+            transit_gateway_attachment_ids=deleted,
+        )
+
+    foreign = [
+        attachment_id
+        for attachment_id in attachment_ids
+        if found[attachment_id].get("TransitGatewayId") != transit_gateway_id
+    ]
+    if foreign:
+        module.fail_json(
+            msg=(
+                f"EC2 transit gateway attachments do not belong to transit gateway {transit_gateway_id}: "
+                f"{', '.join(foreign)}"
+            ),
+            transit_gateway_attachment_ids=foreign,
+            transit_gateway_id=transit_gateway_id,
+        )
+
+
 def ensure_present(client, module):
     # Every wait in one run shares wait_timeout, so the total wait does not grow with the number of routes.
     deadline = wait_deadline(module)
@@ -780,13 +856,22 @@ def ensure_present(client, module):
 
     changed = False
 
-    if route_table is None:
-        if route_table_identifier:
-            module.fail_json(
-                msg=f"EC2 transit gateway route table {route_table_identifier} does not exist",
-                transit_gateway_route_table_id=route_table_identifier,
-            )
+    if route_table is None and route_table_identifier:
+        module.fail_json(
+            msg=f"EC2 transit gateway route table {route_table_identifier} does not exist",
+            transit_gateway_route_table_id=route_table_identifier,
+        )
 
+    attachment_ids = route_attachment_ids(desired_routes)
+    if attachment_ids:
+        require_route_attachments(
+            client,
+            module,
+            route_table.get("TransitGatewayId") if route_table else transit_gateway_id,
+            attachment_ids,
+        )
+
+    if route_table is None:
         changed = True
         if module.check_mode:
             route_table = {
@@ -1268,6 +1353,9 @@ def main():
     # so an SDK without that support fails before AWS is modified.
     if routes is not None and (routes or module.params["purge_routes"]):
         required_methods["search_transit_gateway_routes"] = SEARCH_ROUTES_PARAMETERS
+
+    if route_attachment_ids(routes or []):
+        required_methods["describe_transit_gateway_attachments"] = DESCRIBE_ATTACHMENTS_PARAMETERS
 
     require_client_methods(module, client, "EC2", required_methods)
 

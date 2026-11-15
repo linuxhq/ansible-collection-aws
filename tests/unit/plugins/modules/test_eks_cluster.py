@@ -6,6 +6,7 @@ from botocore.exceptions import WaiterError
 from botocore.session import Session
 from botocore.stub import Stubber
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import sdk as sdk_utils
 from ansible_collections.linuxhq.aws.plugins.modules import eks_cluster as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules import utils
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -611,6 +612,8 @@ def test_no_wait_change_waits_for_active_cluster_and_rechecks_state():
     module = FakeModule(params)
     with (
         patch.object(plugin, "describe_cluster", side_effect=[transitioning, active]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
         patch.object(plugin, "wait_for_cluster") as wait_for_cluster,
         pytest.raises(ModuleExit) as raised,
     ):
@@ -849,7 +852,12 @@ def test_eks_partial_logging_is_idempotent(log_type, enabled, expected_changed):
     module = FakeModule(
         eks_params(logging={"cluster_logging": [{"types": [log_type], "enabled": enabled}]}), check_mode=True
     )
-    with patch.object(plugin, "describe_cluster", return_value=current), pytest.raises(ModuleExit) as result:
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as result,
+    ):
         plugin.ensure_present(Mock(), module)
 
     assert result.value.values["changed"] is expected_changed
@@ -899,6 +907,8 @@ def test_check_mode_predicts_changes_without_waiting_for_active_cluster(status, 
     current = {"name": "example", "arn": "arn:aws:eks:us-east-1:123456789012:cluster/example", "status": status}
     with (
         patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
         patch.object(plugin, "wait_for_cluster") as waiter,
         pytest.raises(ModuleExit) as result,
     ):
@@ -1500,11 +1510,11 @@ def test_encryption_association_support_is_checked_before_any_update(check_mode)
         patch.object(plugin, "describe_cluster", return_value=UNENCRYPTED_CLUSTER),
         patch.object(plugin, "require_client_methods", side_effect=require),
         patch.object(plugin, "require_nested_request_parameters"),
-        pytest.raises(ModuleExit if check_mode else ModuleFail) as raised,
+        pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module)
 
-    assert raised.value.values["changed"] is check_mode
+    assert raised.value.values == {"changed": False, "msg": "unsupported"}
     assert client.mock_calls == []
 
 
@@ -1961,7 +1971,12 @@ def test_check_mode_create_omits_unreturned_bootstrap_setting():
         ),
         check_mode=True,
     )
-    with patch.object(plugin, "describe_cluster", return_value=None), pytest.raises(ModuleExit) as raised:
+    with (
+        patch.object(plugin, "describe_cluster", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleExit) as raised,
+    ):
         plugin.ensure_present(Mock(), module)
 
     assert "bootstrap_self_managed_addons" not in raised.value.values["cluster"]
@@ -3557,6 +3572,8 @@ def test_version_more_than_one_minor_away_fails_before_any_update(check_mode, de
     client = Mock()
     with (
         patch.object(plugin, "describe_cluster", side_effect=described),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_nested_request_parameters"),
         patch.object(plugin, "wait_for_cluster"),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -3889,3 +3906,69 @@ def test_auto_mode_follows_an_access_change_away_from_config_map(check_mode):
                 storageConfig={"blockStorage": {"enabled": True}},
             ),
         ]
+
+
+def without_client_parameter(method_name, parameter_name):
+    """Simulate an older botocore whose EKS model lacks one request parameter."""
+    parameters = sdk_utils.get_boto3_client_method_parameters
+
+    def available(client, name):
+        return [
+            parameter for parameter in parameters(client, name) if (name, parameter) != (method_name, parameter_name)
+        ]
+
+    return patch.object(sdk_utils, "get_boto3_client_method_parameters", available)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_create_sdk_support_is_checked_in_check_mode(check_mode):
+    # botocore 1.35.0 CreateCluster has no zonalShiftConfig (added in 1.35.45).
+    client = eks_client()
+    module = FakeModule(
+        eks_params(
+            resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
+            role_arn="arn:role",
+            zonal_shift_config={"enabled": True},
+        ),
+        check_mode=check_mode,
+    )
+    with (
+        patch.object(plugin, "describe_cluster", return_value=None),
+        without_client_parameter("create_cluster", "zonalShiftConfig"),
+        patch.object(client, "create_cluster") as create_cluster,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "changed": False,
+        "msg": "Installed botocore does not support EKS create_cluster parameter zonalShiftConfig",
+    }
+    create_cluster.assert_not_called()
+
+
+@pytest.mark.parametrize("status", ["ACTIVE", "UPDATING"])
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_update_sdk_support_is_checked_in_check_mode(check_mode, status):
+    # botocore 1.35.0 UpdateClusterConfig has no deletionProtection (added in 1.40.3).
+    client = eks_client()
+    current = dict(DESCRIBED_CLUSTER, deletionProtection=False, status=status)
+    module = FakeModule(eks_params(deletion_protection=True, tags={"Env": "test"}), check_mode=check_mode)
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        without_client_parameter("update_cluster_config", "deletionProtection"),
+        patch.object(plugin, "wait_for_cluster") as wait_for_cluster,
+        patch.object(client, "update_cluster_config") as update_cluster_config,
+        patch.object(client, "tag_resource") as tag_resource,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "changed": False,
+        "msg": "Installed botocore does not support EKS update_cluster_config parameter deletionProtection",
+    }
+    # The SDK checks are local, so a real run fails before it waits for a cluster that is not ACTIVE.
+    wait_for_cluster.assert_not_called()
+    update_cluster_config.assert_not_called()
+    tag_resource.assert_not_called()

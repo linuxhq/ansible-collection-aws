@@ -1521,18 +1521,19 @@ def predicted_endpoint_group(current, desired, default_health_check_port=None, s
         predicted["port_overrides"] = normalized_port_overrides(desired["port_overrides"])
 
     if desired["endpoint_configurations"] is not None:
-        current_ids = {endpoint.get("endpoint_id") for endpoint in (current or {}).get("endpoint_descriptions", [])}
+        current_endpoints = {
+            endpoint.get("endpoint_id"): endpoint for endpoint in (current or {}).get("endpoint_descriptions", [])
+        }
         endpoint_descriptions = []
         for configuration in desired["endpoint_configurations"]:
             # An endpoint listed under the requested ID keeps it.
             endpoint_id = configuration["endpoint_id"]
-            if endpoint_id not in current_ids:
+            if endpoint_id not in current_endpoints:
                 endpoint_id = listed_endpoint_id(endpoint_id, scope)
 
-            endpoint = {
-                "endpoint_id": endpoint_id,
-                "weight": configuration["weight"],
-            }
+            # Live, UpdateEndpointGroup keeps the stored client IP preservation of an endpoint that omits it.
+            endpoint = dict(current_endpoints.get(endpoint_id) or {}, endpoint_id=endpoint_id)
+            endpoint["weight"] = configuration["weight"]
             if configuration["client_ip_preservation_enabled"] is not None:
                 endpoint["client_ip_preservation_enabled"] = configuration["client_ip_preservation_enabled"]
 

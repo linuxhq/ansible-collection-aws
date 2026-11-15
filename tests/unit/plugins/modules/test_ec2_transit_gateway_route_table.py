@@ -24,6 +24,13 @@ class FakeModule(utils.FakeModule):
         super().__init__(dict({"wait_delay": 5, "wait_timeout": 600}, **params), **kwargs)
 
 
+@pytest.fixture
+def attachments_found():
+    """Treat every route attachment as an existing attachment of the route table's transit gateway."""
+    with patch.object(plugin, "require_route_attachments") as require_attachments:
+        yield require_attachments
+
+
 @pytest.mark.parametrize("code", ["InvalidRoute.NotFound", "InvalidRouteTableID.NotFound"])
 def test_route_delete_tolerates_route_disappearing(code):
     client = Mock()
@@ -427,6 +434,7 @@ def test_get_route_skips_prefix_list_references():
         assert plugin.get_route(Mock(), FakeModule({}), "tgw-rtb-1", "10.0.0.0/8") is None
 
 
+@pytest.mark.usefixtures("attachments_found")
 def test_changed_static_route_is_replaced_in_place():
     client = Mock()
     replacement = {
@@ -813,6 +821,7 @@ def test_route_search_rejects_malformed_response():
     assert "invalid transit gateway routes" in raised.value.values["msg"]
 
 
+@pytest.mark.usefixtures("attachments_found")
 def test_purge_removes_only_undesired_static_routes():
     client = Mock()
     desired_route = {
@@ -972,6 +981,7 @@ def run_present_transition(case, check_mode):
 
 
 @pytest.mark.parametrize("case", ["pending_table", "pending_route", "deleting_route", "purge_pending_table"])
+@pytest.mark.usefixtures("attachments_found")
 def test_present_check_mode_skips_transition_waits(case):
     check, check_client = run_present_transition(case, check_mode=True)
     real, _real_client = run_present_transition(case, check_mode=False)
@@ -987,6 +997,7 @@ def test_present_check_mode_skips_transition_waits(case):
 
 
 @pytest.mark.parametrize("purge_routes", [True, False])
+@pytest.mark.usefixtures("attachments_found")
 def test_check_mode_predicts_routes_on_pending_table_without_searching(purge_routes):
     module = FakeModule(
         present_params(
@@ -1040,6 +1051,7 @@ def test_check_mode_absent_routes_on_pending_table_report_no_change():
     assert client.mock_calls == []
 
 
+@pytest.mark.usefixtures("attachments_found")
 def test_check_mode_searches_routes_on_available_table():
     module = FakeModule(
         present_params(
@@ -1738,6 +1750,7 @@ def test_resulting_tag_limit_counts_the_name_tag_before_any_write(check_mode):
     client.create_transit_gateway_route.assert_not_called()
 
 
+@pytest.mark.usefixtures("attachments_found")
 def test_route_waits_share_one_wait_timeout_budget():
     # The first route settles after 8 of 10 seconds, so the second route has only 2 seconds left.
     clock = {"now": 0}
@@ -1799,3 +1812,162 @@ def test_reserved_tag_keys_fail_before_any_write(key, check_mode):
     assert raised.value.values.get("changed", False) is False
     client.create_tags.assert_not_called()
     client.delete_tags.assert_not_called()
+
+
+def attachment_route(cidr, attachment_id):
+    return {"destination_cidr_block": cidr, "state": "present", "transit_gateway_attachment_id": attachment_id}
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "overrides, found",
+    [
+        # A missing table would be created and tagged before the first route write.
+        ({"name": "main", "transit_gateway_id": "tgw-1", "transit_gateway_route_table_id": None}, None),
+        # A tag change on an existing table would be written before the first route write.
+        (
+            {"tags": {"Env": "test"}, "purge_tags": False},
+            {"State": "available", "TransitGatewayId": "tgw-1", "TransitGatewayRouteTableId": "tgw-rtb-1"},
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "attachments, message, attachment_ids",
+    [
+        # Live: EC2 rejects a missing (InvalidTransitGatewayAttachmentID.NotFound) or malformed
+        # (InvalidTransitGatewayAttachmentID.Malformed) ID only on the route write; the filter matches neither.
+        (
+            [{"TransitGatewayAttachmentId": "tgw-attach-1", "TransitGatewayId": "tgw-1"}],
+            "EC2 transit gateway attachments do not exist: tgw-attach-bad, tgw-attach-missing",
+            ["tgw-attach-bad", "tgw-attach-missing"],
+        ),
+        (
+            [
+                {"TransitGatewayAttachmentId": "tgw-attach-1", "TransitGatewayId": "tgw-1"},
+                {"TransitGatewayAttachmentId": "tgw-attach-bad", "TransitGatewayId": "tgw-2"},
+                {"TransitGatewayAttachmentId": "tgw-attach-missing", "TransitGatewayId": "tgw-1"},
+            ],
+            "EC2 transit gateway attachments do not belong to transit gateway tgw-1: tgw-attach-bad",
+            ["tgw-attach-bad"],
+        ),
+        # Live: EC2 keeps listing deleting and deleted attachments but rejects routes to them (IncorrectState).
+        (
+            [
+                {"State": "available", "TransitGatewayAttachmentId": "tgw-attach-1", "TransitGatewayId": "tgw-1"},
+                {"State": "deleted", "TransitGatewayAttachmentId": "tgw-attach-bad", "TransitGatewayId": "tgw-1"},
+                {"State": "deleting", "TransitGatewayAttachmentId": "tgw-attach-missing", "TransitGatewayId": "tgw-1"},
+            ],
+            "EC2 transit gateway attachments are deleting or deleted: tgw-attach-bad, tgw-attach-missing",
+            ["tgw-attach-bad", "tgw-attach-missing"],
+        ),
+    ],
+)
+def test_unusable_route_attachments_fail_before_any_write(
+    overrides, found, attachments, message, attachment_ids, check_mode
+):
+    client = Mock()
+    routes = [
+        attachment_route("10.0.0.0/16", "tgw-attach-1"),
+        attachment_route("10.1.0.0/16", "tgw-attach-missing"),
+        attachment_route("10.2.0.0/16", "tgw-attach-bad"),
+        # An absent route's attachment is never written, so it is not checked.
+        dict(attachment_route("10.3.0.0/16", "tgw-attach-gone"), state="absent"),
+    ]
+    module = FakeModule(present_params(purge_routes=False, routes=routes, **overrides), check_mode=check_mode)
+    with (
+        patch.object(plugin, "find_route_table", return_value=found),
+        patch.object(plugin, "query_list", return_value=attachments) as query,
+        patch.object(plugin, "get_route", side_effect=AssertionError("Unexpected route search")),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == message
+    assert raised.value.values["transit_gateway_attachment_ids"] == attachment_ids
+    assert raised.value.values.get("changed", False) is False
+    query.assert_called_once_with(
+        module,
+        client,
+        "describe_transit_gateway_attachments",
+        "TransitGatewayAttachments",
+        "Unable to describe EC2 transit gateway attachments",
+        Filters=[
+            {
+                "Name": "transit-gateway-attachment-id",
+                "Values": ["tgw-attach-1", "tgw-attach-bad", "tgw-attach-missing"],
+            }
+        ],
+    )
+    assert client.mock_calls == []
+
+
+def test_route_attachments_of_the_table_transit_gateway_are_written():
+    client = Mock()
+    client.create_transit_gateway_route.return_value = {
+        "Route": {
+            "DestinationCidrBlock": "10.0.0.0/16",
+            "State": "active",
+            "TransitGatewayAttachments": [{"TransitGatewayAttachmentId": "tgw-attach-1"}],
+            "Type": "static",
+        }
+    }
+    module = FakeModule(present_params(purge_routes=False, routes=[attachment_route("10.0.0.0/16", "tgw-attach-1")]))
+    # The table's transit gateway is used, since transit_gateway_id may be omitted with a route table ID.
+    table = {"State": "available", "TransitGatewayId": "tgw-1", "TransitGatewayRouteTableId": "tgw-rtb-1"}
+    attachment = {"State": "available", "TransitGatewayAttachmentId": "tgw-attach-1", "TransitGatewayId": "tgw-1"}
+    with (
+        patch.object(plugin, "find_route_table", return_value=table),
+        patch.object(plugin, "query_list", return_value=[attachment]),
+        patch.object(plugin, "get_route", return_value=None),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert result.value.values["changed"] is True
+    client.create_transit_gateway_route.assert_called_once_with(
+        DestinationCidrBlock="10.0.0.0/16",
+        TransitGatewayRouteTableId="tgw-rtb-1",
+        TransitGatewayAttachmentId="tgw-attach-1",
+        aws_retry=True,
+    )
+
+
+def test_route_attachment_lookup_is_batched_by_filter_value_limit():
+    attachment_ids = sorted(f"tgw-attach-{index:03d}" for index in range(201))
+
+    def query(*args, **kwargs):
+        return [
+            {"TransitGatewayAttachmentId": value, "TransitGatewayId": "tgw-1"}
+            for value in kwargs["Filters"][0]["Values"]
+        ]
+
+    with patch.object(plugin, "query_list", side_effect=query) as queried:
+        plugin.require_route_attachments(Mock(), FakeModule({}), "tgw-1", attachment_ids)
+
+    assert [len(call.kwargs["Filters"][0]["Values"]) for call in queried.call_args_list] == [200, 1]
+
+
+@pytest.mark.parametrize(
+    "routes, checked",
+    [
+        (None, False),
+        ([{"blackhole": True, "destination_cidr_block": "10.0.0.0/8", "state": "present"}], False),
+        ([dict(attachment_route("10.0.0.0/8", "tgw-attach-1"), state="absent")], False),
+        ([attachment_route("10.0.0.0/8", "tgw-attach-1")], True),
+    ],
+)
+def test_attachment_lookup_support_is_checked_only_when_routes_name_attachments(routes, checked):
+    client = Mock()
+    module = FakeModule(present_params(purge_routes=False, routes=routes), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require_methods,
+        patch.object(plugin, "ensure_present"),
+    ):
+        plugin.main()
+
+    methods = require_methods.call_args.args[3]
+    assert ("describe_transit_gateway_attachments" in methods) is checked
+    if checked:
+        assert methods["describe_transit_gateway_attachments"] == ("Filters", "MaxResults", "NextToken")

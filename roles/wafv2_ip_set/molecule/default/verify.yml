@@ -1,7 +1,22 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
+  roles:
+    - wafv2_ip_set_info
+
+  post_tasks:
+    - name: Ensure ip sets are verified
+      ansible.builtin.assert:
+        that:
+          - _ip_set.name in _wafv2_ip_set_info_dict
+          - (_wafv2_ip_set_info_dict[_ip_set.name].addresses | sort) == (_ip_set.addresses | sort)
+          - _wafv2_ip_set_info_dict[_ip_set.name].ip_address_version == _ip_set.ip_address_version | upper
+          - _wafv2_ip_set_info_dict[_ip_set.name].tags.Name == _ip_set.name
+      loop: "{{ wafv2_ip_set_list }}"
+      loop_control:
+        label: "{{ _ip_set.name }}"
+        loop_var: _ip_set
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         wafv2_ip_set_list:
@@ -10,6 +25,20 @@
                   {'addresses': [],
                    'state': 'absent'}) }}"
 
-  roles:
-    - wafv2_ip_set
+    - name: Ensure ip sets are deleted
+      ansible.builtin.include_role:
+        name: wafv2_ip_set
+
+    - name: Ensure role is included after deletion
+      ansible.builtin.include_role:
+        name: wafv2_ip_set_info
+
+    - name: Ensure deleted ip sets are verified
+      ansible.builtin.assert:
+        that:
+          - _ip_set.name not in _wafv2_ip_set_info_dict
+      loop: "{{ wafv2_ip_set_list }}"
+      loop_control:
+        label: "{{ _ip_set.name }}"
+        loop_var: _ip_set
 ...

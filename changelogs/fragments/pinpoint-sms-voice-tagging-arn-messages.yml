@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_pool - name the pool and the reason (AWS returned no pool ARN) when tags cannot be
+    changed. Before, the failure said only that the pool could not be tagged.
+  - pinpoint_sms_voice_phone_number - name the phone number when AWS returns no phone number ARN for tagging.

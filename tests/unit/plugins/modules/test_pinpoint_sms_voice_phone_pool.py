@@ -1125,6 +1125,28 @@ def present_params(**overrides):
 
 
 @pytest.mark.parametrize(("deletion_protection_enabled", "changed"), [(True, True), (None, False)])
+def test_tagging_without_a_returned_arn_names_the_pool(deletion_protection_enabled, changed):
+    # UpdatePoolResult does not require PoolArn.
+    pool = active_pool()
+    pool.pop("PoolArn")
+    client = Mock()
+    client.update_pool.return_value = dict(pool, DeletionProtectionEnabled=True)
+    module = FakeModule(present_params(deletion_protection_enabled=deletion_protection_enabled))
+    with (
+        patch.object(plugin, "find_pool", return_value=pool),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "changed": changed,
+        "msg": "Unable to tag Pinpoint SMS Voice V2 pool pool-1: AWS did not return its ARN",
+    }
+    assert client.update_pool.called is changed
+    client.tag_resource.assert_not_called()
+
+
+@pytest.mark.parametrize(("deletion_protection_enabled", "changed"), [(True, True), (None, False)])
 def test_tag_failure_reports_whether_the_pool_was_updated(deletion_protection_enabled, changed):
     client = Mock()
     client.update_pool.return_value = active_pool(DeletionProtectionEnabled=True)

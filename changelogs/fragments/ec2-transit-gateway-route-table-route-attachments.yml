@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - ec2_transit_gateway_route_table - fail before any change, including in check mode, when
+    O(routes[].transit_gateway_attachment_id) names an attachment that does not exist, is deleting or deleted, or
+    belongs to a different transit gateway than the route table. Before, EC2 rejected the route only after the route
+    table had been created, its tags written, and earlier routes in the list applied.

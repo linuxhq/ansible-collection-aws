@@ -1543,6 +1543,15 @@ def ensure_present(client, module, deadline=None):
         if len(set(create_request["resourcesVpcConfig"]["subnetIds"])) < 2:
             module.fail_json(msg="resources_vpc_config.subnet_ids must contain at least two distinct subnets")
 
+        # Check mode fails where the real run would, before the create.
+        require_client_methods(
+            module,
+            client,
+            "EKS",
+            {"create_cluster": tuple(create_request)},
+        )
+        require_nested_request_parameters(module, client, "CreateCluster", create_request)
+
         if module.check_mode:
             cluster = check_mode_cluster(module, None)
             # CreateCluster returns a CREATING cluster, and a waited create describes it once ACTIVE;
@@ -1555,13 +1564,6 @@ def ensure_present(client, module, deadline=None):
 
             exit_result(module, True, cluster, "present")
 
-        require_client_methods(
-            module,
-            client,
-            "EKS",
-            {"create_cluster": tuple(create_request)},
-        )
-        require_nested_request_parameters(module, client, "CreateCluster", create_request)
         try:
             response = client.create_cluster(**create_request, aws_retry=True)
         except (BotoCoreError, ClientError) as e:
@@ -1840,24 +1842,8 @@ def ensure_present(client, module, deadline=None):
     cluster_changed = config_changed or version_changed
     resource_changed = cluster_changed or tags_changed
 
-    if resource_changed and not module.check_mode and current.get("status") != "ACTIVE":
-        wait_for_cluster(client, module, "cluster_active", deadline=deadline)
-        return ensure_present(client, module, deadline=deadline)
-
-    if resource_changed and module.check_mode and current.get("status") == "FAILED":
-        # A real run waits for the cluster to become ACTIVE before changing it, and that wait fails on FAILED.
-        module.fail_json(msg=wait_for_cluster_error(module, "cluster_active"))
-
-    if module.check_mode and current.get("status") in CLUSTER_TRANSITION_STATUSES and (wait or resource_changed):
-        # The real run waits for the cluster to become ACTIVE before changing it, and when wait=true.
-        current = dict(current, status="ACTIVE")
-
-    if resource_changed and module.check_mode:
-        exit_result(module, True, check_mode_cluster(module, current, changes), "present")
-
-    arn = current["arn"]
-
-    # Check every SDK requirement first so an unsupported later call cannot fail after an earlier change.
+    # Check every SDK requirement first so an unsupported later call cannot fail after an earlier change, and so
+    # check mode fails where the real run would.
     update_requests = [dict(update_request, name=name) for update_request in update_requests]
     for update_request in update_requests:
         require_client_methods(
@@ -1889,6 +1875,23 @@ def ensure_present(client, module, deadline=None):
 
     if methods:
         require_client_methods(module, client, "EKS", methods)
+
+    if resource_changed and not module.check_mode and current.get("status") != "ACTIVE":
+        wait_for_cluster(client, module, "cluster_active", deadline=deadline)
+        return ensure_present(client, module, deadline=deadline)
+
+    if resource_changed and module.check_mode and current.get("status") == "FAILED":
+        # A real run waits for the cluster to become ACTIVE before changing it, and that wait fails on FAILED.
+        module.fail_json(msg=wait_for_cluster_error(module, "cluster_active"))
+
+    if module.check_mode and current.get("status") in CLUSTER_TRANSITION_STATUSES and (wait or resource_changed):
+        # The real run waits for the cluster to become ACTIVE before changing it, and when wait=true.
+        current = dict(current, status="ACTIVE")
+
+    if resource_changed and module.check_mode:
+        exit_result(module, True, check_mode_cluster(module, current, changes), "present")
+
+    arn = current["arn"]
 
     # EKS changes the support policy only while the cluster runs a version in standard support, so with a version
     # update in the same run the policy is sent after that update completes. Otherwise it is sent first, so a
