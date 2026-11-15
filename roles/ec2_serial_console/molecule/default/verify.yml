@@ -30,4 +30,25 @@
     - name: Ensure roles are included
       ansible.builtin.include_role:
         name: ec2_serial_console
+
+    - name: Ensure ec2 serial console access is gathered after teardown
+      linuxhq.aws.ec2_serial_console_info:
+        region: "{{ _region }}"
+        validate_certs: true
+      register: __ec2_serial_console_absent_result
+      loop: "{{ ec2_serial_console_regions }}"
+      loop_control:
+        label: "{{ _region | d(none) }}"
+        loop_var: _region
+
+    - name: Ensure ec2 serial console access is disabled
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - not _result.changed
+          - not _result.serial_console_access.serial_console_access_enabled
+      loop: "{{ __ec2_serial_console_absent_result.results }}"
+      loop_control:
+        label: "{{ _result._region | d(none) }}"
+        loop_var: _result
 ...

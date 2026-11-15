@@ -30,6 +30,7 @@ options:
         its C(quota_context.context_id) is C(*) or absent.
       - This option requires AWS SDK support for the C(ContextId) request
         parameter.
+      - This must not be empty when specified.
     type: str
   quota_code:
     description:
@@ -504,9 +505,13 @@ def main():
     if not math.isfinite(module.params["value"]) or not 0 <= module.params["value"] <= 10000000000:
         module.fail_json(msg="value must be between 0 and 10000000000")
 
+    # An empty context ID would silently turn a resource-level request into an account-level one.
+    if module.params["context_id"] == "":
+        module.fail_json(msg="context_id must not be empty")
+
     client = module.client("service-quotas", retry_decorator=AWSRetry.jittered_backoff())
 
-    context_id = module.params.get("context_id") or None
+    context_id = module.params["context_id"]
     quota_code = module.params["quota_code"]
     service_code = module.params["service_code"]
     desired_value = module.params["value"]

@@ -67,6 +67,9 @@ options:
           - When omitted while EKS Auto Mode compute is enabled, the existing node pools are kept.
           - An empty list while EKS Auto Mode compute is enabled disables the built-in node pools, and EKS then
             removes the cluster's node role.
+          - EKS rejects node pools on a cluster without EKS Auto Mode compute; the module fails before any change if
+            this is not empty and differs from the cluster's node pools while EKS Auto Mode compute is neither
+            enabled on the cluster nor enabled by O(compute_config.enabled).
         elements: str
         type: list
       node_role_arn:
@@ -78,6 +81,9 @@ options:
           - This cannot be changed while EKS Auto Mode compute stays enabled and the cluster has a node role; the module
             fails before any change if it differs from the cluster's node role.
           - A cluster with EKS Auto Mode compute enabled and no node role accepts a node role together with node pools.
+          - EKS rejects a node role on a cluster without EKS Auto Mode compute; the module fails before any change if
+            this is set and differs from the cluster's node role while EKS Auto Mode compute is neither enabled on
+            the cluster nor enabled by O(compute_config.enabled).
         type: str
     type: dict
   deletion_protection:
@@ -1492,6 +1498,26 @@ def parse_version(version):
     return (int(match.group(1)), int(match.group(2))) if match else None
 
 
+def require_node_settings_with_compute(module, compute_enabled, description, current_compute_config=None):
+    """Fail when node pools or a node role are requested for a cluster that has and gets no EKS Auto Mode compute."""
+    # EKS rejects them, but check mode would predict success, and on an update the Auto Mode request is sent after
+    # every other update. EKS accepts them together with disabling Auto Mode compute, and values that match the
+    # cluster's are not sent, so a rerun of that task stays a no-op.
+    compute_config = module.params["compute_config"] or {}
+    current_compute_config = current_compute_config or {}
+    requested = {"node_pools": ("nodePools", []), "node_role_arn": ("nodeRoleArn", None)}
+    if not compute_enabled and any(
+        compute_config.get(option) and changed(current_compute_config.get(key, default), compute_config[option])
+        for option, (key, default) in requested.items()
+    ):
+        module.fail_json(
+            msg=(
+                "compute_config.node_pools and compute_config.node_role_arn require EKS Auto Mode compute to be "
+                f"enabled for {description}"
+            )
+        )
+
+
 def require_one_minor_version_update(module, current_version, version):
     # EKS updates one minor version at a time and rolls back only to the previous minor version, but check mode would
     # predict success, and the version update reaches EKS after the configuration updates. A rollback to the previous
@@ -1535,6 +1561,10 @@ def ensure_present(client, module, deadline=None):
 
         if create_request.get("roleArn") is None:
             module.fail_json(msg="role_arn is required to create an EKS cluster")
+
+        require_node_settings_with_compute(
+            module, (module.params["compute_config"] or {}).get("enabled") is True, f"new EKS cluster {name}"
+        )
 
         if not (create_request.get("resourcesVpcConfig") or {}).get("subnetIds"):
             module.fail_json(msg="resources_vpc_config.subnet_ids is required to create an EKS cluster")
@@ -1623,6 +1653,13 @@ def ensure_present(client, module, deadline=None):
     compute_enabled = compute_config.get("enabled")
     if compute_enabled is None:
         compute_enabled = current_compute_config.get("enabled")
+
+    require_node_settings_with_compute(
+        module,
+        compute_enabled is True or current_compute_config.get("enabled") is True,
+        f"existing EKS cluster {name}",
+        current_compute_config,
+    )
 
     node_pools = compute_config.get("node_pools")
     if node_pools is None:

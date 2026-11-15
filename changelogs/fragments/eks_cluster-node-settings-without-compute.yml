@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - eks_cluster - fail before any change, including in check mode, when ``compute_config.node_pools`` or
+    ``compute_config.node_role_arn`` is set for a cluster that neither has nor gets EKS Auto Mode compute. EKS rejects
+    these, and on an update the request was sent after the task's other updates, so the run failed after changing
+    the cluster while check mode predicted success.

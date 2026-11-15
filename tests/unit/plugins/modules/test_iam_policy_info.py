@@ -263,3 +263,29 @@ def test_missing_entity_is_not_included_in_the_results():
         patch.object(plugin, "paginated_query_with_retries", side_effect=error),
     ):
         assert plugin.build_entity_policies(Mock(), module, "User", ["missing"]) == []
+
+
+@pytest.mark.parametrize("policy_name", [None, "gone"])
+def test_policy_deleted_after_listing_is_dropped_from_the_names(policy_name):
+    def get_role_policy(RoleName, PolicyName, aws_retry):
+        if PolicyName == "gone":
+            raise plugin.ClientError({"Error": {"Code": "NoSuchEntity", "Message": "missing"}}, "GetRolePolicy")
+
+        return {"PolicyDocument": {"Statement": []}}
+
+    client = Mock(get_role_policy=Mock(side_effect=get_role_policy))
+    module = FakeModule({"policy_name": policy_name})
+    with (
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "paginated_query_with_retries", return_value={"PolicyNames": ["gone", "kept"]}),
+    ):
+        result = plugin.build_entity_policies(client, module, "Role", ["app"])
+
+    assert result == [
+        {
+            "name": "app",
+            "all_policy_names": ["kept"],
+            "policies": [] if policy_name else [{"policy_name": "kept", "policy_document": {"Statement": []}}],
+            "policy_names": [] if policy_name else ["kept"],
+        }
+    ]

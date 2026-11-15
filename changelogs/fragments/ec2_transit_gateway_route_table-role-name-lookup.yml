@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ec2_transit_gateway_route_table role - pass ``name`` and ``transit_gateway_id`` to the module instead of looking up
+    route table IDs with ``ec2_transit_gateway_route_table_info``. The lookup required botocore 1.42.37 even for items
+    without ``routes`` and searched the routes of every route table in the region.
