@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - global_accelerator - check mode now keeps the stored client IP preservation setting of an existing endpoint
+    when O(listeners[].endpoint_groups[].endpoint_configurations[].client_ip_preservation_enabled) is omitted, as
+    the real UpdateEndpointGroup does. Before, the predicted endpoint description dropped it.

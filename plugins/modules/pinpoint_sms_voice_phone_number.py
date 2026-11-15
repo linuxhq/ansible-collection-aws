@@ -920,7 +920,12 @@ def ensure_present(client, module):
 
         tags_changed = bool(tags_to_set or tag_keys_to_unset)
         if tags_changed and not module.check_mode and not current.get("PhoneNumberArn"):
-            module.fail_json(msg="AWS did not return the phone number ARN required for tagging")
+            module.fail_json(
+                msg=(
+                    "AWS did not return the phone number ARN required for tagging Pinpoint SMS Voice V2 phone number "
+                    f"{current['PhoneNumberId']}"
+                )
+            )
 
         # Check mode checks the SDK as the real run does, so it fails where the real run fails before any write.
         methods = {}

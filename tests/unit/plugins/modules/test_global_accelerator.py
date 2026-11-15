@@ -705,6 +705,50 @@ def test_endpoint_group_attachment_does_not_require_update():
     ]
 
 
+@pytest.mark.parametrize(("requested", "predicted"), [(None, True), (False, False)])
+def test_predicted_endpoint_keeps_stored_client_ip_preservation_unless_requested(requested, predicted):
+    # Live: UpdateEndpointGroup with ClientIPPreservationEnabled omitted keeps the stored value.
+    stored = {
+        "client_ip_preservation_enabled": True,
+        "endpoint_id": "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/example/1",
+        "health_state": "HEALTHY",
+        "weight": 128,
+    }
+    current = {"endpoint_descriptions": [stored]}
+    desired = {
+        "endpoint_configurations": [
+            {
+                "attachment_arn": None,
+                "client_ip_preservation_enabled": requested,
+                "endpoint_id": stored["endpoint_id"],
+                "weight": 64,
+            },
+            {
+                "attachment_arn": None,
+                "client_ip_preservation_enabled": None,
+                "endpoint_id": "eipalloc-new",
+                "weight": 128,
+            },
+        ],
+        "endpoint_group_region": "us-east-1",
+        "health_check_interval_seconds": None,
+        "health_check_path": None,
+        "health_check_port": None,
+        "health_check_protocol": None,
+        "port_overrides": None,
+        "threshold_count": None,
+        "traffic_dial_percentage": None,
+    }
+
+    assert plugin.endpoint_group_requires_update(current, desired)
+    assert plugin.predicted_endpoint_group(current, desired)["endpoint_descriptions"] == [
+        dict(stored, client_ip_preservation_enabled=predicted, weight=64),
+        {"endpoint_id": "eipalloc-new", "weight": 128},
+    ]
+    assert current["endpoint_descriptions"] == [stored]
+    assert stored["weight"] == 128
+
+
 def test_listener_reconciliation_reuses_protocol_listener_for_update():
     current = [
         {
@@ -2059,9 +2103,8 @@ def test_an_update_sends_the_requested_arn_and_check_mode_predicts_the_listed_id
     )
     assert real == listed_endpoint_group(EIP_ALLOCATION_ID, weight=200)
     assert check_client.mock_calls == []
-    # Check mode does not predict the health state or the client IP preservation default (carry-over).
-    assert predicted["endpoint_descriptions"] == [{"endpoint_id": EIP_ALLOCATION_ID, "weight": 200}]
-    assert dict(predicted, endpoint_descriptions=None) == dict(real, endpoint_descriptions=None)
+    # The endpoint listed under the allocation ID keeps its stored client IP preservation and health fields.
+    assert predicted == real
 
 
 def test_a_create_sends_the_requested_arn_and_check_mode_predicts_the_listed_id():

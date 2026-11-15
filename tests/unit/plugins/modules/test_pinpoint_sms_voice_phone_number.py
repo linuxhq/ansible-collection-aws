@@ -1286,6 +1286,23 @@ def test_tag_failure_reports_whether_the_number_was_updated(deletion_protection_
     assert client.update_phone_number.called is changed
 
 
+def test_tagging_without_a_returned_arn_names_the_number():
+    client = Mock()
+    module = FakeModule(phone_number_params(phone_number_id="phone-1", tags={"Env": "test"}))
+    with (
+        patch.object(plugin, "get_phone_number", return_value=existing_number()),
+        patch.object(plugin, "phone_number_tags", return_value={}),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {
+        "msg": "AWS did not return the phone number ARN required for tagging Pinpoint SMS Voice V2 phone number phone-1"
+    }
+    client.tag_resource.assert_not_called()
+
+
 def test_unsupported_tagging_fails_before_updating_settings():
     client = Mock()
 

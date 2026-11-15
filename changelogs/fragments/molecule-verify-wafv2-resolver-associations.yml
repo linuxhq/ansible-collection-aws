@@ -1,0 +1,4 @@
+---
+trivial:
+  - wafv2_ip_set, wafv2_resources, route53_resolver_rule_associate - Molecule verify asserts the managed IP sets,
+    web ACL association, and resolver rule associations after converge and their absence after teardown.
