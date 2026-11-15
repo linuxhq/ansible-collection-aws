@@ -105,6 +105,7 @@ it for reviews, triage, or probes.
 - Comparison-only values are never sent.
 - Inputs keep the API's naming and accepted values.
 - No options for unsupported parameters.
+- Skip missing validation the provider rejects before any change.
 
 ### State
 
