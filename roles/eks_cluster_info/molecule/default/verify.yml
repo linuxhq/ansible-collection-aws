@@ -60,6 +60,18 @@
           - _eks_cluster_info_dict[eks_cluster_list.1.name].resources_vpc_config.endpoint_private_access
           - _eks_cluster_info_dict[eks_cluster_list.1.name].version == '1.35'
 
+    - name: Ensure role is included with a missing name
+      ansible.builtin.include_role:
+        name: eks_cluster_info
+      vars:
+        eks_cluster_info_name: molecule-missing
+
+    - name: Ensure info with a missing name is verified
+      ansible.builtin.assert:
+        that:
+          - _eks_cluster_info_list == []
+          - _eks_cluster_info_dict == {}
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_security_group_list:

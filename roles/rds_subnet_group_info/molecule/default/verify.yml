@@ -38,6 +38,18 @@
           - _rds_subnet_group_info_dict.keys() | list == [rds_subnet_group_list.0.name]
           - _rds_subnet_group_info_dict['molecule'].db_subnet_group_arn is defined
 
+    - name: Ensure role is included with a missing name
+      ansible.builtin.include_role:
+        name: rds_subnet_group_info
+      vars:
+        rds_subnet_group_info_name: molecule-missing
+
+    - name: Ensure info with a missing name is verified
+      ansible.builtin.assert:
+        that:
+          - _rds_subnet_group_info_list == []
+          - _rds_subnet_group_info_dict == {}
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_vpc_net_list:
