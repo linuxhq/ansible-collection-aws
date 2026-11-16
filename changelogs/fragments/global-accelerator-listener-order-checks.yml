@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - global_accelerator - check circular listener port updates and port override endpoint ports swapped between
+    listeners before updating the accelerator, so a run that also changes O(enabled), O(name), or O(ip_address_type)
+    fails without changing anything. Previously the accelerator was updated (for example disabled) before the run
+    failed. Endpoint groups listed for these checks are reused for the reconciliation instead of being listed again.
+...
