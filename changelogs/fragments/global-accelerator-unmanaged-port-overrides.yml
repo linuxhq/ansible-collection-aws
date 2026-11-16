@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - global_accelerator - whatever O(purge_listeners) is, fail without changing anything, in check mode too, when a
+    stored port override the run leaves unmanaged conflicts with the run's writes. That is an override of a kept
+    listener listed without O(listeners[].endpoint_groups), of an endpoint group listed without
+    O(listeners[].endpoint_groups[].port_overrides), or of an endpoint group O(purge_endpoint_groups=false) keeps,
+    whose endpoint port a written listener's ports include, whose listener port an updated listener's ports leave out,
+    or whose endpoint port a requested override uses in the same region. AWS rejected these only after earlier changes
+    in the same run.
+...
