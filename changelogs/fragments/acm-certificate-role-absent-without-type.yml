@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - acm_certificate role - remove the DNS validation records of an absent entry that omits ``type``, instead of
+    leaving them in the Route 53 zone.
+...

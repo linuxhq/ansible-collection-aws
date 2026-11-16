@@ -90,10 +90,12 @@
         label: "{{ _query._record.name }}"
         loop_var: _query
 
+    # Absent entries omit type, so the role must remove validation records without it.
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         acm_certificate_list:
           "{{ acm_certificate_list |
+              json_query('[].{domain_name: domain_name, zone: zone}') |
               map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure molecule certificates are absent
