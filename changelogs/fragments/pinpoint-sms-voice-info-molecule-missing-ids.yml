@@ -1,0 +1,5 @@
+---
+trivial:
+  - pinpoint_sms_voice_phone_number_info, pinpoint_sms_voice_phone_pool_info - assert in the Molecule verify that a
+    well-formed nonexistent ID is omitted and that querying only that ID publishes an empty list and dict.
+...
