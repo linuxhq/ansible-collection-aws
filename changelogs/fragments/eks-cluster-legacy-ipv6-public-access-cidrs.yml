@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - eks_cluster - fail without changing anything, in check mode too, when O(resources_vpc_config.public_access_cidrs)
+    contains an IPv6 CIDR block for an IPv6 cluster made before October 2024, identified by its
+    C(eks.amazonaws.com) or C(eks.amazonaws.com.cn) endpoint. EKS rejects these blocks for such clusters, and the
+    module sent them only after its other updates of the same run.
+...

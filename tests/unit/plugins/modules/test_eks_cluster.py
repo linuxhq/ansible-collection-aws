@@ -3113,6 +3113,58 @@ def test_ipv6_public_access_cidrs_on_an_ipv4_cluster_fail_before_any_update(cidr
     wait_for_cluster.assert_not_called()
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "host",
+    ["EXAMPLE.gr7.us-east-1.eks.amazonaws.com", "EXAMPLE.yl4.cn-north-1.eks.amazonaws.com.cn"],
+    ids=["commercial", "china"],
+)
+def test_ipv6_public_access_cidrs_on_a_pre_october_2024_ipv6_cluster_fail_before_any_update(host, check_mode):
+    # "You can't add IPv6 CIDR blocks to the public endpoint of these old IPv6 clusters that you made before October
+    # 2024"; EKS identifies them by their eks.amazonaws.com endpoint (EKS user guide, cluster-endpoint).
+    current = dict(IPV6_CLUSTER, endpoint=f"https://{host}")
+    params = eks_params(
+        deletion_protection=True, resources_vpc_config=vpc_config_params(public_access_cidrs=["2001:db8::/32"])
+    )
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "wait_for_cluster") as wait_for_cluster,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values == {
+        "msg": "resources_vpc_config.public_access_cidrs must not contain IPv6 CIDR blocks for an IPv6 cluster made "
+        f"before October 2024, as its endpoint {host.lower()} shows"
+    }
+    assert client.mock_calls == []
+    wait_for_cluster.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "endpoint",
+    [None, "https://EXAMPLE.gr7.us-east-1.eks.api.aws", "https://EXAMPLE.cn-north-1.eks.api.amazonwebservices.com.cn"],
+    ids=["missing", "dual-stack", "china-dual-stack"],
+)
+def test_ipv6_public_access_cidrs_reach_aws_for_an_ipv6_cluster_without_an_old_endpoint(endpoint, check_mode):
+    cidrs = ["0.0.0.0/0", "::/0"]
+    current = dict(IPV6_CLUSTER, endpoint=endpoint)
+    params = eks_params(deletion_protection=True, resources_vpc_config=vpc_config_params(public_access_cidrs=cidrs))
+
+    client, result = run_present(FakeModule(params, check_mode=check_mode), [current])
+
+    assert result["changed"] is True
+    if check_mode:
+        assert client.mock_calls == []
+    else:
+        assert client.update_cluster_config.call_args_list == [
+            call(name="example", deletionProtection=True),
+            call(name="example", resourcesVpcConfig={"publicAccessCidrs": cidrs}),
+        ]
+
+
 def test_ipv6_public_access_cidrs_reach_aws_for_an_ipv6_cluster():
     # IPv6 clusters made after October 2024 accept them (model).
     cidrs = ["0.0.0.0/0", "::/0"]
